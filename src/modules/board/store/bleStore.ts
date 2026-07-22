@@ -450,6 +450,9 @@ export function releaseFocusedSeries(metric: string): void {
   if (focusedSeriesRefs.size === 0) {
     focusedSeriesSub?.remove()
     focusedSeriesSub = null
+    // No listener left to refresh exclusions/generation — drop them so a later
+    // focus doesn't briefly render bands from the previous session.
+    useFocusedSeriesStore.getState().clear()
   }
 }
 

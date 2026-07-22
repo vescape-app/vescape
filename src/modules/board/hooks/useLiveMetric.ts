@@ -76,6 +76,9 @@ export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
  */
 export function useLiveMetric(pick: TelemetrySelector): LiveMetricPoint[] {
   const metricKey = SELECTOR_KEYS.get(pick) ?? ''
+  if (__DEV__ && !metricKey) {
+    console.warn('useLiveMetric: selector must be a `liveSelectors.*` reference, got an unknown fn')
+  }
   useEffect(() => {
     if (!metricKey) return
     acquireFocusedSeries(metricKey)
