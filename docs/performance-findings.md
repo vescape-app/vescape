@@ -28,11 +28,14 @@ Native events → liveTelemetryRuntime (mutable buffer + SharedValues)
                     │
                     └── 1Hz timer → zustand set({ metricVersion, liveStatus, liveLocationHistory })
                                         │
-                                        └── useLiveMetric(selector) → useMemo + module-level cache
-                                            Projects from raw buffer on demand
-                                            Cache keyed by (version, selector fn ref)
-                                            Cleared on version bump
-                                            Shared across all components in same render frame
+                                        └── useLiveSeries(key) → center sparklines
+                                            Reads the natively-decimated `onLiveSeries`
+                                            store (~1Hz). No JS-thread projection.
+
+Native (focused)  → onFocusedSeries (per focused metric, fixed-width buckets)
+                        └── useLiveMetric(selector) → focusedSeriesStore
+                            `/control` detail charts only; native decimates,
+                            JS just maps the flat series to points.
 ```
 
 ### Key design decisions
@@ -80,10 +83,10 @@ The Compass (`phoneHeading`) map mode wired the ~30Hz `DeviceMotion` magnetomete
 
 ## Files
 
-| File                                       | Role                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------ |
-| `src/telemetry/liveTelemetryRuntime.ts`    | Mutable buffer, SharedValues, version counter, snapshot publishing |
-| `src/telemetry/liveMetricHistory.ts`       | Buffer ops: insert, prune, dedup, summarize                        |
-| `src/modules/board/hooks/useLiveMetric.ts` | React hook with module-level projection cache                      |
-| `src/modules/board/store/bleStore.ts`      | Zustand store, 1Hz publish timer, event subscriptions              |
-| `src/hooks/useRenderRateWarning.ts`        | Dev-only render-rate canary; tripwire at stream boundaries         |
+| File                                       | Role                                                                 |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| `src/telemetry/liveTelemetryRuntime.ts`    | Mutable buffer, SharedValues, version counter, snapshot publishing   |
+| `src/telemetry/liveMetricHistory.ts`       | Buffer ops: insert, prune, dedup, summarize                          |
+| `src/modules/board/hooks/useLiveMetric.ts` | Detail-chart hook: focuses a metric, reads the native focused series |
+| `src/modules/board/store/bleStore.ts`      | Zustand store, 1Hz publish timer, event subscriptions                |
+| `src/hooks/useRenderRateWarning.ts`        | Dev-only render-rate canary; tripwire at stream boundaries           |

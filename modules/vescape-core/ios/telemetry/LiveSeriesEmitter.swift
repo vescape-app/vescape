@@ -14,6 +14,11 @@ internal final class LiveSeriesEmitter {
   private static let buckets = 64
   /// One display frame — the fastest an emit can usefully arrive. See `scaledIntervalMs`.
   private static let minIntervalMs = 16
+  /// Focused detail-chart resolution: fixed-width time buckets (constant scrub resolution
+  /// regardless of window length), capped so a long window can't blow up the payload.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `FOCUSED_SERIES_BUCKET_WIDTH_MS`
+  private static let focusedBucketWidthMs: Int64 = 250
+  private static let focusedMaxBuckets = 1_500
 
   /// Send a native event to JS. Wired by the coordinator.
   var emit: ((String, [String: Any?]) -> Void)?
@@ -30,6 +35,9 @@ internal final class LiveSeriesEmitter {
   private var active = false
   private var primed = false
   private var tickSeq = 0
+  /// Metric keys the mounted `/control` detail charts are focused on (JS intent); empty = none.
+  /// Mutated and read on the main queue alongside the tick.
+  private var focusedMetrics: Set<String> = []
 
   /// Set the live-history window (minutes) from the `liveHistoryLimit` setting.
   func setWindowMinutes(_ minutes: Int) {
@@ -108,6 +116,7 @@ internal final class LiveSeriesEmitter {
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.active, self.tickSeq == expected else { return }
       self.emitSeries()
+      self.emitFocusedSeries()
       self.scheduleTick()
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + Double(scaledIntervalMs()) / 1000.0, execute: work)
@@ -117,7 +126,7 @@ internal final class LiveSeriesEmitter {
     let samples = recentSnapshot()
     guard !samples.isEmpty else { return }
     var metrics: [String: Any?] = [:]
-    for metric in Self.metrics {
+    for metric in Self.centerMetrics {
       let series = LiveSeriesDownsampler.downsampleMinMax(
         samples,
         bucketCount: Self.buckets,
@@ -129,6 +138,39 @@ internal final class LiveSeriesEmitter {
     }
     guard !metrics.isEmpty else { return }
     emit?("onLiveSeries", ["metrics": metrics, "generation": generation()])
+  }
+
+  /// Set which metrics the high-res focused stream covers (empty to stop it); emits immediately.
+  func setFocusedMetrics(_ metrics: [String]) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.focusedMetrics = Set(metrics)
+      if !metrics.isEmpty { self.emitFocusedSeries() }
+    }
+  }
+
+  private func emitFocusedSeries() {
+    guard !focusedMetrics.isEmpty else { return }
+    let samples = recentSnapshot()
+    let bucketCount = max(1, min(Self.focusedMaxBuckets, Int(windowMs / Self.focusedBucketWidthMs)))
+    for metric in focusedMetrics {
+      guard let m = Self.allMetrics.first(where: { $0.key == metric }) else { continue }
+      let series = LiveSeriesDownsampler.downsampleMinMax(
+        samples,
+        bucketCount: bucketCount,
+        windowMs: windowMs,
+        timestamp: { self.timestamp($0) ?? 0 },
+        value: m.select
+      )
+      // iOS has no metric sanitizer yet, so no exclusion spans ride along — see the class @platform-diff.
+      emit?("onFocusedSeries", [
+        "metric": metric,
+        "series": series,
+        "exclusions": [String: [Double]](),
+        "windowMs": windowMs,
+        "generation": generation(),
+      ])
+    }
   }
 
   private func timestamp(_ sample: [String: Any?]?) -> Int64? {
@@ -143,7 +185,8 @@ internal final class LiveSeriesEmitter {
     let select: ([String: Any?]) -> Double?
   }
 
-  private static let metrics: [Metric] = [
+  /// Center-screen metrics streamed continuously on `onLiveSeries` (strip + gauge + battery).
+  private static let centerMetrics: [Metric] = [
     Metric(key: "motorTemp") { num($0, "tempMotor").flatMap { $0 > 0 ? $0 : nil } },
     Metric(key: "controllerTemp") { num($0, "tempMosfet") },
     Metric(key: "motorCurrent") { num($0, "motorCurrent") },
@@ -152,13 +195,19 @@ internal final class LiveSeriesEmitter {
     Metric(key: "batteryPercent") { num($0, "batteryPercent") },
     Metric(key: "speed") { num($0, "speed").map { abs($0) } },
     Metric(key: "duty") { num($0, "dutyCycle").map { abs($0) * 100 } },
-    // Detail-chart-only metrics (no center sparkline) so `/control` reads the cheap series too.
+  ]
+
+  /// Detail-chart-only metrics (no center sparkline); served only via `onFocusedSeries` on focus.
+  private static let focusedOnlyMetrics: [Metric] = [
     Metric(key: "pitch") { num($0, "pitch") },
     Metric(key: "roll") { num($0, "roll") },
     Metric(key: "balancePitch") { num($0, "balancePitch") },
     Metric(key: "footpadAdc1") { num($0, "adc1") },
     Metric(key: "footpadAdc2") { num($0, "adc2") },
   ]
+
+  /// Every metric a `/control` detail chart can focus (center + detail-only).
+  private static let allMetrics: [Metric] = centerMetrics + focusedOnlyMetrics
 
   private static func num(_ map: [String: Any?], _ key: String) -> Double? {
     guard let raw = map[key] ?? nil else { return nil }

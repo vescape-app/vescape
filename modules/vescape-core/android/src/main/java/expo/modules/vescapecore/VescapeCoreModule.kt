@@ -150,6 +150,7 @@ class VescapeCoreModule : Module() {
       "onLiveState",
       "onLiveTick",
       "onLiveSeries",
+      "onFocusedSeries",
       "onTelemetryHistory",
       "onBms",
       "onBmsSeries",
@@ -237,6 +238,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onLiveTick") { stopObserving("onLiveTick") }
     OnStartObserving("onLiveSeries") { startObserving("onLiveSeries") }
     OnStopObserving("onLiveSeries") { stopObserving("onLiveSeries") }
+    OnStartObserving("onFocusedSeries") { startObserving("onFocusedSeries") }
+    OnStopObserving("onFocusedSeries") { stopObserving("onFocusedSeries") }
     OnStartObserving("onTelemetryHistory") { startObserving("onTelemetryHistory") }
     OnStopObserving("onTelemetryHistory") { stopObserving("onTelemetryHistory") }
     OnStartObserving("onBms") { startObserving("onBms") }
@@ -374,6 +377,9 @@ class VescapeCoreModule : Module() {
     Function("setTelemetryRecordingEnabled") { enabled: Boolean -> setTelemetryRecordingEnabled(enabled) }
     Function("setBmsSeriesFocused") { focused: Boolean ->
       CoreForegroundService.setBmsSeriesFocused(focused)
+    }
+    Function("setFocusedSeriesMetrics") { metrics: List<String> ->
+      CoreForegroundService.setFocusedSeriesMetrics(metrics)
     }
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)

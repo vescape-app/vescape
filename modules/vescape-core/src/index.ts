@@ -1212,6 +1212,22 @@ export interface LiveSeriesEvent {
   generation: number
 }
 
+/**
+ * High-resolution series for the one metric a `/control` detail chart has focused,
+ * decimated natively on fixed-width time buckets. `series` and each `exclusions` entry
+ * are flat `[ts0, v0, ts1, v1, ...]` / `[start0, end0, ...]` arrays. Excluded spans ride
+ * along per exclusion key so JS can rebuild overlay bands without raw samples.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveSeriesEmitter.kt `emitFocusedSeries`
+ * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `emitFocusedSeries`
+ */
+export interface FocusedSeriesEvent {
+  metric: string
+  series: number[]
+  exclusions: Record<string, number[]>
+  windowMs: number
+  generation: number
+}
+
 // ---------------------------------------------------------------------------
 // Group Ride (observe) — wire protocol mirror of vescape-server
 // docs/group-ride/PROTOCOL.md. Observing only receives; it sends nothing.
@@ -1679,8 +1695,10 @@ type VescapeCoreEvents = {
   onLiveState: (event: LiveStateEvent) => void
   /** High-frequency (per-frame) scalar tick for live gauges. No history, no nested arrays. */
   onLiveTick: (event: TelemetryEvent) => void
-  /** Decimated per-metric min/max sparkline series (~1Hz) for the live strip + detail charts. */
+  /** Decimated per-metric min/max sparkline series (~1Hz) for the live strip. */
   onLiveSeries: (event: LiveSeriesEvent) => void
+  /** High-res fixed-width-bucket series for the one focused `/control` detail-chart metric (~1Hz). */
+  onFocusedSeries: (event: FocusedSeriesEvent) => void
   /** Batched full samples (~3Hz) for history buffer and detail charts. */
   onTelemetryHistory: (event: TelemetryHistoryEvent) => void
   onBms: (event: BmsEvent) => void
@@ -1746,6 +1764,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateGroupRideIdentity(riderId: string, riderName: string, riderColor: string | null): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
+  setFocusedSeriesMetrics(metrics: string[]): void
   reloadAlertRules(): void
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
@@ -2042,6 +2061,11 @@ export function setTelemetryRecordingEnabled(enabled: boolean): void {
 /** Open/close native bridge pushes for the Live BMS Series. Native retention keeps running. */
 export function setBmsSeriesFocused(focused: boolean): void {
   native.setBmsSeriesFocused(focused)
+}
+
+/** Set the metric keys the high-res `onFocusedSeries` stream covers (empty array to stop it). */
+export function setFocusedSeriesMetrics(metrics: string[]): void {
+  native.setFocusedSeriesMetrics(metrics)
 }
 
 /** Tell the Android foreground service to re-read alert rules from native storage. */
@@ -2889,6 +2913,12 @@ export function addLiveSeriesListener(cb: (event: LiveSeriesEvent) => void): Eve
   }
 
   return emitter.addListener('onLiveSeries', cb)
+}
+
+export function addFocusedSeriesListener(
+  cb: (event: FocusedSeriesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onFocusedSeries', cb)
 }
 
 export function addTelemetryHistoryListener(
