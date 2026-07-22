@@ -40,30 +40,30 @@ Native (focused)  → onFocusedSeries (per focused metric, fixed-width buckets)
 
 ### Key design decisions
 
-| Decision                                            | Why                                                                                          |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Mutable buffer, not zustand state                   | Avoid creating new arrays every sample. Buffer holds ~6000 items at 5min window.             |
-| Module-level projection cache                       | Multiple cards use same buffer. Project once per selector per frame, not once per component. |
-| Version counter in zustand                          | Single primitive selector. All metric consumers batch into one React render pass.            |
-| SharedValues for real-time display                  | Speed gauge, duty %, temps update at full telemetry rate (~20Hz) without React renders.      |
-| 1Hz publish rate (`LIVE_HISTORY_PUBLISH_MS = 1000`) | Charts don't need faster updates. Keeps React render budget low. Do not decrease this value. |
+| Decision                                            | Why                                                                                                                                                                |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mutable buffer, not zustand state                   | Avoid creating new arrays every sample. Buffer holds ~6000 items at 5min window.                                                                                   |
+| Native decimation, not JS projection                | Sparklines read the natively-decimated `onLiveSeries` store; detail charts read the focused `onFocusedSeries` stream. No JS-thread projection over the raw buffer. |
+| Version counter in zustand                          | Single primitive selector. All metric consumers batch into one React render pass.                                                                                  |
+| SharedValues for real-time display                  | Speed gauge, duty %, temps update at full telemetry rate (~20Hz) without React renders.                                                                            |
+| 1Hz publish rate (`LIVE_HISTORY_PUBLISH_MS = 1000`) | Charts don't need faster updates. Keeps React render budget low. Do not decrease this value.                                                                       |
 
 ## Performance characteristics
 
-| Metric                                        | Value                          |
-| --------------------------------------------- | ------------------------------ |
-| Buffer size at 5min/20Hz                      | ~6000 telemetry samples        |
-| Projection cost (single selector, 6000 items) | <1ms                           |
-| React renders per publish                     | 1 batch (all metric consumers) |
-| SharedValue updates                           | ~20/sec, zero React cost       |
-| Production JS lag (10min history)             | <50ms                          |
+| Metric                                    | Value                          |
+| ----------------------------------------- | ------------------------------ |
+| Buffer size at 5min/20Hz                  | ~6000 telemetry samples        |
+| Focused series payload (per metric, ~1Hz) | ≤ 1500 buckets, fixed-width    |
+| React renders per publish                 | 1 batch (all metric consumers) |
+| SharedValue updates                       | ~20/sec, zero React cost       |
+| Production JS lag (10min history)         | <50ms                          |
 
 ## What NOT to do
 
 - **Don't store projected arrays in zustand** — creates new refs every publish, triggers diffing on large objects.
 - **Don't use `useSyncExternalStore` alongside zustand** — causes double renders because sync external store fires outside React's batching window.
 - **Don't reduce `LIVE_HISTORY_PUBLISH_MS`** — 1Hz is sufficient for charts. Lower values multiply render cost without visual benefit.
-- **Don't iterate buffer per-component** — always use the shared projection cache.
+- **Don't iterate the raw buffer per-component** — read the native decimated (`onLiveSeries`) or focused (`onFocusedSeries`) series.
 - **Don't trust dev-mode profiling numbers** — React DevTools adds 40-50% overhead. Always verify perf issues exist in production builds before optimizing.
 
 ## General rule: high-frequency streams never drive React state
