@@ -188,6 +188,13 @@ export interface Board {
   name: string
   description: string | null
   createdAt: number
+  /**
+   * Tombstone stamp: epoch ms of the rider's delete, `null` while the Board is alive. A deleted
+   * Board keeps its row so Ride History can still name it (ADR 0027) — {@link getBoards} filters
+   * tombstones, {@link getBoard} deliberately does not. Native-owned: deletion goes through
+   * {@link deleteBoard}, never through an upsert.
+   */
+  deletedAt: number | null
   batteryConfig: BatteryConfig | null
   /** Last Battery SoC Estimate persisted natively; survives full app kill. `undefined` before first session. */
   lastBattery?: LastBattery | null
@@ -232,6 +239,12 @@ export interface Board {
   /** Probe-confirmed reachability. `null` means offline-only/unlinked. */
   link: BoardLink | null
 }
+
+/**
+ * Write shape for {@link upsertBoard}. A tombstone is stamped by {@link deleteBoard} alone, and an
+ * upsert never clears the one already on the row, so callers never author `deletedAt`.
+ */
+export type BoardInput = Omit<Board, 'deletedAt'>
 
 export interface LastBattery {
   percent: number

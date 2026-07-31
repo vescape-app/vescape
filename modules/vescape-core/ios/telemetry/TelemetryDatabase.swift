@@ -659,6 +659,17 @@ enum TelemetryDatabase {
       }
     }
 
+    // Board tombstones (#279). Deleting a Board stops removing its row and stamps `deleted_at`
+    // instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
+    // rows stay null, i.e. alive.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_40_41`
+    migrator.registerMigration("v41_board_deleted_at") { db in
+      let hasDeletedAt = try db.columns(in: "boards").contains { $0.name == "deleted_at" }
+      if !hasDeletedAt {
+        try db.execute(sql: "ALTER TABLE boards ADD COLUMN deleted_at INTEGER")
+      }
+    }
+
     return migrator
   }
 }

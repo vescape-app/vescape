@@ -3,6 +3,7 @@ import type { EventSubscription } from 'expo-modules-core'
 import type {
   AppSettings,
   Board,
+  BoardInput,
   BoardCandidate,
   BoardLink,
   CompanionPresenceBoard,
@@ -749,12 +750,17 @@ export const e2eFake = {
     return [...e2eBoards]
   },
 
-  upsertBoard(board: Board): void {
+  upsertBoard(board: BoardInput): void {
     const index = e2eBoards.findIndex((b) => b.id === board.id)
+    // A tombstone survives an upsert, like native — only a delete stamps one.
+    const stored: Board = {
+      ...board,
+      deletedAt: index >= 0 ? e2eBoards[index].deletedAt : null,
+    }
     if (index >= 0) {
-      e2eBoards[index] = board
+      e2eBoards[index] = stored
     } else {
-      e2eBoards.push(board)
+      e2eBoards.push(stored)
     }
   },
 
@@ -798,6 +804,7 @@ export const e2eFake = {
         name: 'E2E Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -819,6 +826,7 @@ export const e2eFake = {
         name: 'E2E History Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -841,6 +849,7 @@ export const e2eFake = {
         name: 'E2E Privacy Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',

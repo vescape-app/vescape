@@ -207,8 +207,9 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
+  /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteBoardWithSettings(id)
+    dao.deleteBoardWithSettings(id, System.currentTimeMillis())
     dao.deleteBoardConfigValues(id)
     dao.deleteBoardConfigChangeNotice(id)
     notifyDataChanged(AppDataScope.BOARDS)
@@ -855,6 +856,7 @@ class AppDataRepository private constructor(private val context: Context) {
     val settings = getTypedSettings()
     settings.selectedBoardId
       ?.let { dao.getBoard(it) }
+      ?.takeIf { it.deletedAt == null }
       ?.let { it.toMap(dao.getBoardSettings(it.id)) }
       ?: dao.getBoards().firstOrNull()?.let { it.toMap(dao.getBoardSettings(it.id)) }
   }
@@ -923,6 +925,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "matchBoardConfig" to values["matchBoardConfig"],
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
+    "deletedAt" to deletedAt,
   )
 }
 

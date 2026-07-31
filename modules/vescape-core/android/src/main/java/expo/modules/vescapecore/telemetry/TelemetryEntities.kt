@@ -234,6 +234,15 @@ data class BoardEntity(
   val bleId: String?,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
+  /**
+   * Tombstone stamp: epoch ms of the rider's delete, null while the Board is alive. A deleted Board
+   * keeps its row so Ride History can still name it; only the Board's configuration is
+   * hard-deleted (ADR-0027).
+   *
+   * Written by the delete path only — an upsert from the bridge never authors it.
+   */
+  @ColumnInfo(name = "deleted_at")
+  val deletedAt: Long? = null,
 )
 
 @Entity(
