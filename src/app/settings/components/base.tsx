@@ -18,6 +18,7 @@ import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
 import { ScreenTitle } from '@/components/base/ScreenTitle'
+import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
@@ -249,14 +250,25 @@ function ScreenTitleShowcase() {
   )
 }
 
+function VescapeWordmarkShowcase() {
+  return (
+    <ShowcaseCard name="VescapeWordmark">
+      <View style={{ alignItems: 'center' }}>
+        <VescapeWordmark width={220} />
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 export default function BaseComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CubeIcon}
-          description="Button, IconButton, Banner, Placeholder, ScreenTitle."
+          description="Button, IconButton, Banner, Placeholder, ScreenTitle, VescapeWordmark."
         />
+        <VescapeWordmarkShowcase />
         <IconButtonShowcase />
         <ButtonShowcase />
         <PlaceholderShowcase />

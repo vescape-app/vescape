@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   legalLegendText: {
-    color: theme.palette.mono.white,
+    color: theme.neutral.textPrimary,
     fontSize: 9,
     fontWeight: '800',
     textShadowColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),

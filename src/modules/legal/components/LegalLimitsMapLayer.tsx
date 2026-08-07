@@ -59,7 +59,7 @@ export function LegalLimitsMapLayer({
           style={{
             fillColor: legalStatusColorExpression(statusColors) as never,
             fillOpacity: 0.48,
-            fillOutlineColor: theme.alpha(theme.palette.mono.white, 0.7),
+            fillOutlineColor: theme.alpha(neutral.textPrimary, 0.7),
           }}
         />
         <LineLayer
@@ -67,7 +67,7 @@ export function LegalLimitsMapLayer({
           sourceLayerID="country_boundaries"
           filter={legalCountryFilterExpression() as never}
           style={{
-            lineColor: theme.alpha(theme.palette.mono.white, 0.85),
+            lineColor: theme.alpha(neutral.textPrimary, 0.85),
             lineWidth: ['interpolate', ['linear'], ['zoom'], 3, 0.75, 6, 1.6],
           }}
         />
@@ -84,7 +84,7 @@ export function LegalLimitsMapLayer({
             textField: ['get', 'label'],
             textSize: ['interpolate', ['linear'], ['zoom'], 3, 18, 5, 28],
             textColor: theme.palette.mono.white,
-            textHaloColor: neutral.surfaceDeep,
+            textHaloColor: theme.palette.mono.black,
             textHaloWidth: 2,
             textFont: ['Open Sans Bold', 'Arial Unicode MS Bold'],
             textAllowOverlap: true,
@@ -97,7 +97,7 @@ export function LegalLimitsMapLayer({
             textField: ['get', 'subtitle'],
             textSize: ['interpolate', ['linear'], ['zoom'], 3, 8, 5, 11],
             textColor: theme.alpha(theme.palette.mono.white, 0.8),
-            textHaloColor: neutral.surfaceDeep,
+            textHaloColor: theme.palette.mono.black,
             textHaloWidth: 1.5,
             textOffset: [0, 1.65],
             textFont: ['Open Sans Semibold', 'Arial Unicode MS Regular'],

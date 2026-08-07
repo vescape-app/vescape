@@ -32,6 +32,7 @@ import { ThemeController } from '@/modules/settings/components/ThemeController'
 import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
+import { MapThemeCoordinator } from '@/screens/MapThemeCoordinator'
 
 const clerkPublishableKey = requireClerkPublishableKey()
 
@@ -145,6 +146,7 @@ function RootLayout() {
       <DiagnosticErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemeController />
+          <MapThemeCoordinator />
           {/* Android resolves PlatformColor when a native view is created. Remount the visual
               surface after the application UI mode changes so every cached color is refreshed. */}
           <View key={resolvedTheme} style={{ flex: 1 }}>

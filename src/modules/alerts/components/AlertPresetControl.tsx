@@ -28,7 +28,7 @@ import {
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 
 /**
@@ -281,22 +281,14 @@ interface LevelTone {
   color: string
 }
 
-const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string; tone: LevelTone }[] = [
-  {
-    id: 'off',
-    label: 'Off',
-    tone: {
-      bg: theme.neutral.surface,
-      border: theme.neutral.border,
-      color: theme.neutral.textSecondary,
-    },
-  },
+const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string }[] = [
+  { id: 'off', label: 'Off' },
   // Cautiousness ramp, not an alarm ramp: careful (blue) → balanced (green) → risky (yellow).
   // Green marks the recommended default; orange and red stay reserved for real alerts, so
   // `minimal` must not borrow either — it is a choice, never a fault.
-  { id: 'safe', label: 'Safe', tone: theme.palette.blue },
-  { id: 'normal', label: 'Normal', tone: theme.palette.green },
-  { id: 'minimal', label: 'Minimal', tone: theme.palette.yellow },
+  { id: 'safe', label: 'Safe' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'minimal', label: 'Minimal' },
 ]
 
 const ALL_LEVELS: AlertPresetLevel[] = ['off', ...ALERT_PRESET_ACTIVE_LEVELS]
@@ -310,11 +302,16 @@ interface LevelSliderProps {
 
 function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
   const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const tones: Record<AlertPresetLevel, LevelTone> = {
+    off: { bg: neutral.surface, border: neutral.border, color: neutral.textSecondary },
+    safe: accents.blue,
+    normal: accents.green,
+    minimal: accents.yellow,
+    custom: { bg: neutral.surface, border: neutral.border, color: neutral.textMuted },
+  }
   const activeIndex = Math.max(0, ALL_LEVELS.indexOf(value))
-  const tone =
-    activeIndex === 0
-      ? { bg: neutral.surface, border: neutral.border, color: neutral.textSecondary }
-      : LEVEL_OPTIONS[activeIndex]!.tone
+  const tone = tones[value]
   const progress = useSharedValue(activeIndex)
 
   useEffect(() => {
@@ -342,6 +339,7 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
       </Animated.View>
       {LEVEL_OPTIONS.map((option) => {
         const active = option.id === value
+        const optionTone = tones[option.id]
         return (
           <Pressable
             key={option.id}
@@ -355,7 +353,7 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
             <Text
               style={[
                 styles.sliderLabel,
-                { color: active ? option.tone.color : theme.neutral.textMuted },
+                { color: active ? optionTone.color : theme.neutral.textMuted },
               ]}
               numberOfLines={1}
             >

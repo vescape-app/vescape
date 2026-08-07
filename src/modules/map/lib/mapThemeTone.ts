@@ -24,13 +24,16 @@ export function resolveMapThemeTone({
   imagerySaturation: number
 }): MapThemeTone {
   const daylight = clamp(outdoorLight, 0, 1)
-  const opacityFactor = theme === 'dark' ? 0.55 + daylight * 0.2 : 0.78 + daylight * 0.12
-  const saturationAdjustment = theme === 'dark' ? -0.35 + daylight * 0.2 : -0.2 + daylight * 0.1
+  const lightTheme = theme === 'light'
+  const saturationAdjustment = lightTheme ? -0.03 : -0.35 + daylight * 0.2
+  const themedImageryOpacity = lightTheme
+    ? 0.32 + imageryOpacity * 0.64
+    : imageryOpacity * (0.55 + daylight * 0.2)
 
   return {
-    imageryOpacity: clamp(imageryOpacity * opacityFactor, 0.1, 1),
+    imageryOpacity: clamp(themedImageryOpacity, 0.1, 1),
     imagerySaturation: clamp(imagerySaturation + saturationAdjustment, -1, 1),
-    imageryContrast: theme === 'dark' ? -0.3 + daylight * 0.08 : -0.15 + daylight * 0.05,
-    roadLineOpacity: theme === 'dark' ? 0.45 + daylight * 0.2 : 0.7 + daylight * 0.05,
+    imageryContrast: lightTheme ? -0.02 : -0.3 + daylight * 0.08,
+    roadLineOpacity: lightTheme ? 0.75 : 0.45 + daylight * 0.2,
   }
 }

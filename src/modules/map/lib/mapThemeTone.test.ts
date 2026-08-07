@@ -40,16 +40,38 @@ describe('resolveMapThemeTone', () => {
     expect(lightNight.imageryContrast).toBeGreaterThan(darkNight.imageryContrast)
   })
 
-  test('light daylight stays toned instead of snapping to full-contrast imagery', () => {
-    const tone = resolveMapThemeTone({
+  test('light theme keeps satellite imagery bright without outdoor-light dimming', () => {
+    const day = resolveMapThemeTone({
       theme: 'light',
       outdoorLight: 1,
       imageryOpacity: 1,
       imagerySaturation: 0,
     })
-    expect(tone.imageryOpacity).toBe(0.9)
-    expect(tone.imagerySaturation).toBe(-0.1)
-    expect(tone.imageryContrast).toBeCloseTo(-0.1)
+    const night = resolveMapThemeTone({
+      theme: 'light',
+      outdoorLight: 0,
+      imageryOpacity: 1,
+      imagerySaturation: 0,
+    })
+    expect(day).toEqual({
+      imageryOpacity: 0.96,
+      imagerySaturation: -0.03,
+      imageryContrast: -0.02,
+      roadLineOpacity: 0.75,
+    })
+    expect(night).toEqual(day)
+  })
+
+  test('light theme keeps low-opacity telemetry satellite imagery legible', () => {
+    const tone = resolveMapThemeTone({
+      theme: 'light',
+      outdoorLight: 0,
+      imageryOpacity: 0.2,
+      imagerySaturation: -0.35,
+    })
+
+    expect(tone.imageryOpacity).toBeCloseTo(0.448)
+    expect(tone.imagerySaturation).toBeCloseTo(-0.38)
   })
 
   test('keeps manual values inside Mapbox ranges', () => {

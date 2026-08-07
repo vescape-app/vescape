@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { accentColors } from '@/constants/theme'
+import { accentColors, neutralColors } from '@/constants/theme'
 
 function relativeLuminance(hex: string): number {
   const channels = [1, 3, 5].map(
@@ -31,5 +31,14 @@ describe('accent palettes', () => {
       }
     }
     expect(failures).toEqual([])
+  })
+
+  test('light canvas hierarchy and muted copy remain distinct', () => {
+    const neutral = neutralColors.light
+
+    expect(contrastRatio('#ffffff', neutral.bg)).toBeGreaterThanOrEqual(1.15)
+    expect(contrastRatio(neutral.surface, neutral.bg)).toBeGreaterThanOrEqual(1.08)
+    expect(contrastRatio(neutral.textMuted, neutral.bg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(accentColors.light.yellow.text, neutral.bg)).toBeGreaterThanOrEqual(4.5)
   })
 })

@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <!-- @parity /src/constants/theme.ts `neutralColors` and `accentColors` -->
-  <color name="vescape_neutral_bg">#F4F7FB</color>
-  <color name="vescape_neutral_surface">#FFFFFF</color>
-  <color name="vescape_neutral_surface_deep">#E8EEF5</color>
-  <color name="vescape_neutral_border">#CBD5E1</color>
+  <color name="vescape_neutral_bg">#E7EDF4</color>
+  <color name="vescape_neutral_surface">#F4F7FB</color>
+  <color name="vescape_neutral_surface_deep">#D8E0EA</color>
+  <color name="vescape_neutral_border">#B6C3D1</color>
   <color name="vescape_neutral_text_primary">#0F172A</color>
   <color name="vescape_neutral_text_secondary">#475569</color>
-  <color name="vescape_neutral_text_muted">#64748B</color>
-  <color name="vescape_neutral_text_dim">#94A3B8</color>
+  <color name="vescape_neutral_text_muted">#566579</color>
+  <color name="vescape_neutral_text_dim">#7A899C</color>
 
-  <color name="vescape_neutral_bg_alpha_060">#99F4F7FB</color>
-  <color name="vescape_neutral_bg_alpha_075">#BFF4F7FB</color>
-  <color name="vescape_neutral_bg_alpha_085">#D9F4F7FB</color>
-  <color name="vescape_neutral_surface_alpha_085">#D9FFFFFF</color>
-  <color name="vescape_neutral_surface_deep_alpha_030">#4DE8EEF5</color>
-  <color name="vescape_neutral_surface_deep_alpha_040">#66E8EEF5</color>
-  <color name="vescape_neutral_surface_deep_alpha_060">#99E8EEF5</color>
-  <color name="vescape_neutral_surface_deep_alpha_080">#CCE8EEF5</color>
-  <color name="vescape_neutral_surface_deep_alpha_085">#D9E8EEF5</color>
-  <color name="vescape_neutral_surface_deep_alpha_100">#FFE8EEF5</color>
+  <color name="vescape_neutral_bg_alpha_060">#99E7EDF4</color>
+  <color name="vescape_neutral_bg_alpha_075">#BFE7EDF4</color>
+  <color name="vescape_neutral_bg_alpha_085">#D9E7EDF4</color>
+  <color name="vescape_neutral_surface_alpha_085">#D9F4F7FB</color>
+  <color name="vescape_neutral_surface_deep_alpha_030">#4DD8E0EA</color>
+  <color name="vescape_neutral_surface_deep_alpha_040">#66D8E0EA</color>
+  <color name="vescape_neutral_surface_deep_alpha_060">#99D8E0EA</color>
+  <color name="vescape_neutral_surface_deep_alpha_080">#CCD8E0EA</color>
+  <color name="vescape_neutral_surface_deep_alpha_085">#D9D8E0EA</color>
+  <color name="vescape_neutral_surface_deep_alpha_100">#FFD8E0EA</color>
   <color name="vescape_neutral_text_secondary_alpha_012">#1F475569</color>
   <color name="vescape_neutral_text_secondary_alpha_030">#4D475569</color>
   <color name="vescape_neutral_text_secondary_alpha_060">#99475569</color>

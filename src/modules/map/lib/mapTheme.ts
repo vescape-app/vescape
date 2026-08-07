@@ -7,3 +7,9 @@ export function themeOverrideForMapStyle(style: MapStyleKey): ResolvedTheme | nu
   if (style === 'outdoors') return 'light'
   return null
 }
+
+/** Keep explicit day/night basemaps aligned with the configured app appearance. */
+export function mapStyleForTheme(style: MapStyleKey, theme: ResolvedTheme): MapStyleKey {
+  if (style !== 'onedark' && style !== 'outdoors') return style
+  return theme === 'dark' ? 'onedark' : 'outdoors'
+}

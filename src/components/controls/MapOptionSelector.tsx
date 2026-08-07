@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 
 interface MapOption<Key extends string> {
   key: Key
@@ -69,6 +70,8 @@ export function MapOptionSelector<Key extends string>({
   onToggle,
   onSelect,
 }: MapOptionSelectorProps<Key>) {
+  const resolvedActiveColor = useResolvedColor(activeColor)
+  const resolvedActiveBackground = useResolvedColor(activeBackground)
   const metrics = SELECTOR_METRICS[size]
   const optionCount = options.length
   const shellStyle = useAnimatedStyle(
@@ -111,9 +114,9 @@ export function MapOptionSelector<Key extends string>({
             icon={option.icon}
             selected={activeKey === option.key}
             expanded={expanded}
-            activeColor={activeColor}
-            activeBackground={activeBackground}
-            activeBorder={theme.alpha(activeColor, 0.6)}
+            activeColor={resolvedActiveColor}
+            activeBackground={resolvedActiveBackground}
+            activeBorder={theme.alpha(resolvedActiveColor, 0.6)}
             metrics={metrics}
             onPress={() => {
               if (activeKey === option.key) {

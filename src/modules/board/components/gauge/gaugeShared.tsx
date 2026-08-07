@@ -12,6 +12,7 @@ import {
 
 import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { accentColors, theme, type AlphaLevel } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   clamp01,
@@ -58,27 +59,19 @@ export function GlowGradient({ arc, color, stops, opacities }: GlowGradientProps
 }
 
 const ALERT_STOPS = [0, 0.82, 0.965, 0.99, 1]
-const ALERT_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.12, 0]
+const ALERT_OPACITIES: AlphaLevel[] = [0, 0, 0.3, 0.3, 0]
 
 // ── Alert markers ────────────────────────────────────────────────────────────
 
 const TICK_LENGHT = 2
 const TICK_WIDTH = 0.35
 
-function AlertTick({ arc, fraction }: { arc: Arc; fraction: number }) {
+function AlertTick({ arc, fraction, color }: { arc: Arc; fraction: number; color: string }) {
   const path = useMemo(
     () => radialTickPath(arc, fraction, TICK_LENGHT, -STROKE / 2),
     [arc, fraction],
   )
-  return (
-    <Path
-      path={path}
-      color={accentColors.dark.yellow.color}
-      style="stroke"
-      strokeWidth={TICK_WIDTH}
-      strokeCap="butt"
-    />
-  )
+  return <Path path={path} color={color} style="stroke" strokeWidth={TICK_WIDTH} strokeCap="butt" />
 }
 
 // Numeric marker labels sit just inside the arc, centered on the tick.
@@ -90,11 +83,13 @@ function AlertLabel({
   fraction,
   text,
   font,
+  color,
 }: {
   arc: Arc
   fraction: number
   text: string
   font: SkFont
+  color: string
 }) {
   const p = polar(arc, arc.r - LABEL_INSET, fraction)
   const width = font.getTextWidth(text)
@@ -104,7 +99,7 @@ function AlertLabel({
       y={p.y + LABEL_FONT_SIZE / 2}
       text={text}
       font={font}
-      color={accentColors.dark.yellow.text}
+      color={color}
     />
   )
 }
@@ -119,6 +114,7 @@ interface AlertMarkerProps {
 }
 
 export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: AlertMarkerProps) {
+  const accents = useResolvedAccentColors()
   const thresholdFraction = normalizeFraction(alert.threshold, min, max)
   const maxFraction =
     alert.thresholdMax == null ? null : normalizeFraction(alert.thresholdMax, min, max)
@@ -137,18 +133,32 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
           <RadialGradient
             c={vec(arc.cx, arc.cy)}
             r={arc.r}
-            colors={ALERT_OPACITIES.map((o) => theme.alpha(accentColors.dark.yellow.color, o))}
+            colors={ALERT_OPACITIES.map((o) => theme.alpha(accents.yellow.color, o))}
             positions={ALERT_STOPS}
           />
         </Path>
       ) : null}
-      <AlertTick arc={arc} fraction={thresholdFraction} />
-      {range ? <AlertTick arc={arc} fraction={range.fraction} /> : null}
+      <AlertTick arc={arc} fraction={thresholdFraction} color={accents.yellow.color} />
+      {range ? (
+        <AlertTick arc={arc} fraction={range.fraction} color={accents.yellow.color} />
+      ) : null}
       {labelFont && alert.label ? (
-        <AlertLabel arc={arc} fraction={thresholdFraction} text={alert.label} font={labelFont} />
+        <AlertLabel
+          arc={arc}
+          fraction={thresholdFraction}
+          text={alert.label}
+          font={labelFont}
+          color={accents.yellow.text}
+        />
       ) : null}
       {labelFont && alert.labelMax && range ? (
-        <AlertLabel arc={arc} fraction={range.fraction} text={alert.labelMax} font={labelFont} />
+        <AlertLabel
+          arc={arc}
+          fraction={range.fraction}
+          text={alert.labelMax}
+          font={labelFont}
+          color={accents.yellow.text}
+        />
       ) : null}
     </>
   )

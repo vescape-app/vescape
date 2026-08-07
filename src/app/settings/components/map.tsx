@@ -1,7 +1,8 @@
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useRef, useState, type ElementRef } from 'react'
+import { useCallback, useMemo, useRef, useState, type ElementRef } from 'react'
 import { StyleSheet, View } from 'react-native'
+import { useSharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 import type { MapPoint } from 'vescape-core'
 
@@ -10,11 +11,19 @@ import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
+import { MapNavigationSelector } from '@/modules/map/components/MapNavigationSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
-import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
+import {
+  BLANK_STYLE,
+  MAP_STYLES,
+  type MapNavigationMode,
+  type MapStyleKey,
+} from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
-import { theme } from '@/constants/theme'
+import { neutralColors, theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
+import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import {
   FIXTURE_ACCURACY_FIX,
@@ -52,6 +61,9 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const [styleExpanded, setStyleExpanded] = useState(false)
+  const [navigationMode, setNavigationMode] = useState<MapNavigationMode>('northUp')
+  const [navigationExpanded, setNavigationExpanded] = useState(false)
+  const navigationHeading = useSharedValue(32)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
   const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
@@ -61,6 +73,8 @@ export default function MapComponentsShowcase() {
   const [sheetVisible, setSheetVisible] = useState(false)
   const cameraRef = useRef<ElementRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const outdoorLight = useThemeStore((state) => state.outdoorLight)
 
   const handleMapLoaded = useCallback(() => {
     cameraRef.current?.setCamera({
@@ -76,6 +90,31 @@ export default function MapComponentsShowcase() {
   const isSatellite = selectedStyle.key === 'satellite'
   const useCustomJSON = isMapy || isOneDark || isSatellite
   const showBuildings3d = selectedStyle.key === 'outdoors' || selectedStyle.key === 'onedark'
+  const satelliteTone = useMemo(
+    () =>
+      resolveMapThemeTone({
+        theme: resolvedTheme,
+        outdoorLight,
+        imageryOpacity: 1,
+        imagerySaturation: 0,
+      }),
+    [outdoorLight, resolvedTheme],
+  )
+  const satelliteStyleJSON = useMemo(
+    () =>
+      getSatelliteDarkMapStyle(
+        satelliteTone.imageryOpacity,
+        true,
+        true,
+        false,
+        true,
+        satelliteTone.imagerySaturation,
+        satelliteTone.roadLineOpacity,
+        satelliteTone.imageryContrast,
+        neutralColors[resolvedTheme].surfaceDeep,
+      ),
+    [resolvedTheme, satelliteTone],
+  )
 
   return (
     <View style={styles.container}>
@@ -88,7 +127,7 @@ export default function MapComponentsShowcase() {
             : isMapy
               ? BLANK_STYLE
               : isSatellite
-                ? getSatelliteDarkMapStyle()
+                ? satelliteStyleJSON
                 : undefined
         }
         pitchEnabled={false}
@@ -177,6 +216,16 @@ export default function MapComponentsShowcase() {
           onSelect={(key) => {
             setStyleKey(key)
             setStyleExpanded(false)
+          }}
+        />
+        <MapNavigationSelector
+          activeMode={navigationMode}
+          heading={navigationHeading}
+          expanded={navigationExpanded}
+          onToggle={() => setNavigationExpanded((value) => !value)}
+          onSelect={(mode) => {
+            setNavigationMode(mode)
+            setNavigationExpanded(false)
           }}
         />
         <View ref={moreTriggerRef} collapsable={false}>

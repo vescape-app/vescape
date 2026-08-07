@@ -9,6 +9,7 @@ import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
 import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
 import { IconButton } from '@/components/base/IconButton'
 import { computeAutoRange } from '@/components/charts/chartMath'
+import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
@@ -92,10 +93,10 @@ export default function BatteryScreen() {
     () => ({
       points: voltagePoints,
       range: voltageRange,
-      color: neutral.textMuted,
+      color: theme.alpha(neutral.textDim, 0.6),
       formatValue: formatVoltage,
     }),
-    [neutral.textMuted, voltagePoints, voltageRange],
+    [neutral.textDim, voltagePoints, voltageRange],
   )
 
   // Gauge reads the latest of the calm ~1Hz decimated series — the same SoC source/cadence the

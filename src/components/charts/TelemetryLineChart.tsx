@@ -31,7 +31,6 @@ import {
   getChartTimeLabels,
   getXPosition,
   getChartAlertMarkers,
-  CHART_ALERT_LINE_COLOR,
   getChartExclusionColor,
   splitChartPointSegments,
   splitChartLineSegments,
@@ -44,7 +43,12 @@ import {
   useChartTrim,
   type ChartTrimConfig,
 } from '@/components/charts/TelemetryChartTrim'
-import { useResolvedColor, useResolvedColorItems, useResolvedNeutralColors } from '@/hooks/useTheme'
+import {
+  useResolvedAccentColors,
+  useResolvedColor,
+  useResolvedColorItems,
+  useResolvedNeutralColors,
+} from '@/hooks/useTheme'
 
 export type { ChartTrimConfig } from '@/components/charts/TelemetryChartTrim'
 
@@ -398,6 +402,7 @@ export function TelemetryLineChart({
 }: TelemetryLineChartProps) {
   'use no memo'
   const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
   const resolvedColor = useResolvedColor(color)
   const resolvedTimeRangeHighlights = useResolvedColorItems(timeRangeHighlights)
   const [chartWidth, setChartWidth] = useState(0)
@@ -669,7 +674,7 @@ export function TelemetryLineChart({
                     key={marker.value}
                     p1={vec(0, marker.y)}
                     p2={vec(chartWidth, marker.y)}
-                    color={CHART_ALERT_LINE_COLOR}
+                    color={theme.alpha(accents.yellow.color, 0.3)}
                     strokeWidth={1}
                   />
                 ))}
@@ -687,7 +692,11 @@ export function TelemetryLineChart({
                       width={bandWidth}
                       height={EXCLUSION_MARKER_HEIGHT}
                       r={0.5}
-                      color={getChartExclusionColor(range.reason, neutral.textSecondary)}
+                      color={getChartExclusionColor(
+                        range.reason,
+                        neutral.textSecondary,
+                        accents.yellow.color,
+                      )}
                       opacity={0.85}
                     />
                   )

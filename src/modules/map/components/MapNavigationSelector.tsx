@@ -16,8 +16,6 @@ import { MAP_NAVIGATION_MODES, type MapNavigationMode } from '@/modules/map/cons
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 
-const COLLAPSED_ICON_COLOR = theme.palette.mono.white
-
 interface MapNavigationSelectorProps {
   activeMode: MapNavigationMode
   heading: SharedValue<number>
@@ -49,20 +47,20 @@ export function MapNavigationSelector({
   const activeIcon =
     activeMode === 'northUp' ? (
       <NorthAwareIcon heading={heading}>
-        <ArrowUpIcon size={iconSize} color={COLLAPSED_ICON_COLOR} weight="bold" />
+        <ArrowUpIcon size={iconSize} color={accents.green.text} weight="bold" />
       </NorthAwareIcon>
     ) : activeMode === 'gpsHeading' ? (
       <NorthAwareIcon heading={heading} rotateNorthDot>
-        <ForwardNavigationIcon size={iconSize} color={COLLAPSED_ICON_COLOR} />
+        <ForwardNavigationIcon size={iconSize} color={accents.green.text} />
       </NorthAwareIcon>
     ) : activeMode === 'phoneHeading' ? (
       <NorthAwareIcon heading={heading} rotateNorthDot>
-        <DeviceMobileIcon size={iconSize} color={COLLAPSED_ICON_COLOR} weight="bold" />
+        <DeviceMobileIcon size={iconSize} color={accents.green.text} weight="bold" />
       </NorthAwareIcon>
     ) : (
       <NorthAwareIcon heading={heading} rotateNorthDot>
         <Animated.View style={freeRotateIconStyle}>
-          <ArrowUpIcon size={iconSize} color={COLLAPSED_ICON_COLOR} weight="bold" />
+          <ArrowUpIcon size={iconSize} color={accents.green.text} weight="bold" />
         </Animated.View>
       </NorthAwareIcon>
     )

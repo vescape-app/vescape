@@ -65,4 +65,14 @@ describe('satellite dark map style', () => {
     expect(style.layers.some((layer) => layer.id === 'poi-label')).toBe(false)
     expect(style.layers.some((layer) => layer.id === 'transit-label')).toBe(false)
   })
+
+  test('accepts a theme-matched background behind satellite tiles', () => {
+    const style = JSON.parse(
+      getSatelliteDarkMapStyle(1, true, true, false, true, 0, 0.75, 0, '#e8eef5'),
+    ) as { layers: { id: string; paint: Record<string, unknown> }[] }
+
+    expect(style.layers.find((layer) => layer.id === 'background')?.paint).toEqual({
+      'background-color': '#e8eef5',
+    })
+  })
 })

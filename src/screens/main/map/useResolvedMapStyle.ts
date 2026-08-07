@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { IS_MAPY_CONFIGURED } from '@/config/mapy'
+import { neutralColors } from '@/constants/theme'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import {
   getSatelliteDarkMapStyle,
@@ -92,8 +93,9 @@ export function useResolvedMapStyle({
         initialSatelliteTone.imagerySaturation,
         0.35,
         initialSatelliteTone.imageryContrast,
+        neutralColors[resolvedTheme].surfaceDeep,
       ),
-    [initialSatelliteTone],
+    [initialSatelliteTone, resolvedTheme],
   )
   const satelliteImageryPaint = useMemo(
     () =>

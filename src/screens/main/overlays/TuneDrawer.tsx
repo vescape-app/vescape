@@ -38,7 +38,7 @@ import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 
 interface TuneDrawerProps {
@@ -278,7 +278,10 @@ function TuneProfilePill({
   onPress,
 }: TuneProfilePillProps) {
   const neutral = useResolvedNeutralColors()
-  const fadedColor = theme.alpha(color.color, 0.6)
+  const resolvedBackground = useResolvedColor(color.bg)
+  const resolvedBorder = useResolvedColor(color.border)
+  const resolvedColor = useResolvedColor(color.color)
+  const fadedColor = theme.alpha(resolvedColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
 
   useEffect(() => {
@@ -292,11 +295,11 @@ function TuneProfilePill({
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [neutral.surfaceDeep, color.bg],
+        [neutral.surfaceDeep, resolvedBackground],
       ),
-      borderColor: interpolateColor(activeProgress.value, [0, 1], [neutral.border, color.border]),
+      borderColor: interpolateColor(activeProgress.value, [0, 1], [neutral.border, resolvedBorder]),
     }),
-    [color.bg, color.border, neutral.border, neutral.surfaceDeep],
+    [neutral.border, neutral.surfaceDeep, resolvedBackground, resolvedBorder],
   )
   const labelStyle = useAnimatedStyle(
     () => ({
@@ -316,11 +319,11 @@ function TuneProfilePill({
         accessibilityState={{ selected: active }}
         onPress={onPress}
       >
-        <IconComponent size={18} color={active ? color.color : fadedColor} weight="duotone" />
+        <IconComponent size={18} color={active ? resolvedColor : fadedColor} weight="duotone" />
         <AnimatedText
           style={[
             styles.profilePillText,
-            { color: active ? color.color : theme.neutral.textMuted },
+            { color: active ? resolvedColor : neutral.textMuted },
             labelStyle,
           ]}
           numberOfLines={1}
@@ -347,6 +350,9 @@ function LegalModeWidget({
   onValueChange,
   onWarningPress,
 }: LegalModeWidgetProps) {
+  const neutral = useResolvedNeutralColors()
+  const errorColor = useResolvedColor(theme.status.error.color)
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -389,11 +395,11 @@ function LegalModeWidget({
         value={value}
         onValueChange={onValueChange}
         trackColor={{
-          false: theme.neutral.border,
-          true: theme.alpha(theme.status.error.color, 0.6),
+          false: neutral.border,
+          true: theme.alpha(errorColor, 0.6),
         }}
-        thumbColor={value ? theme.status.error.color : theme.neutral.textMuted}
-        ios_backgroundColor={theme.neutral.border}
+        thumbColor={value ? errorColor : neutral.textMuted}
+        ios_backgroundColor={neutral.border}
         accessibilityLabel="Legal Mode"
       />
     </Pressable>

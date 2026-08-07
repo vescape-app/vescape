@@ -36,6 +36,7 @@ export function getSatelliteDarkMapStyle(
   imagerySaturation = DEFAULT_SATELLITE_IMAGERY_SATURATION,
   streetLineOpacity = 0.8,
   imageryContrast?: number,
+  backgroundColor: string = theme.palette.slate.surfaceDeep,
 ) {
   const paint = getSatelliteImageryPaint(imageryOpacity, imagerySaturation, imageryContrast)
   const clampedStreetLineOpacity = Math.max(0, Math.min(1, streetLineOpacity))
@@ -60,7 +61,7 @@ export function getSatelliteDarkMapStyle(
       {
         id: 'background',
         type: 'background',
-        paint: { 'background-color': theme.palette.slate.surfaceDeep },
+        paint: { 'background-color': backgroundColor },
       },
       {
         id: 'satellite',

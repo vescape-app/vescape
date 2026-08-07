@@ -4,6 +4,7 @@ import type { Icon } from 'phosphor-react-native'
 
 import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface SwitchWidgetProps {
   label: string
@@ -31,15 +32,17 @@ export function SwitchWidget({
   accessibilityLabel,
 }: SwitchWidgetProps) {
   const square = size === 'square'
+  const neutral = useResolvedNeutralColors()
+  const resolvedAccent = useResolvedColor(accent)
 
   const control = (
     <Switch
       value={value}
       onValueChange={onValueChange}
       disabled={disabled}
-      trackColor={{ false: theme.neutral.border, true: theme.alpha(accent, 0.6) }}
-      thumbColor={value ? accent : theme.neutral.textMuted}
-      ios_backgroundColor={theme.neutral.border}
+      trackColor={{ false: neutral.border, true: theme.alpha(resolvedAccent, 0.6) }}
+      thumbColor={value ? resolvedAccent : neutral.textMuted}
+      ios_backgroundColor={neutral.border}
       accessibilityLabel={accessibilityLabel ?? label}
     />
   )

@@ -223,7 +223,7 @@ function GaugeBar({ width, height, fraction, color, alerts, min, max, charging }
             y={lineY - bandH}
             width={to - from}
             height={bandH + LINE_THICK}
-            color={theme.alpha(accents.yellow.color, 0.12)}
+            color={theme.alpha(accents.yellow.color, 0.3)}
           />
         )
       })}

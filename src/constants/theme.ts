@@ -256,14 +256,14 @@ export const neutralColors = {
     textDim: '#475569',
   },
   light: {
-    bg: '#f4f7fb',
-    surface: '#ffffff',
-    surfaceDeep: '#e8eef5',
-    border: '#cbd5e1',
+    bg: '#e7edf4',
+    surface: '#f4f7fb',
+    surfaceDeep: '#d8e0ea',
+    border: '#b6c3d1',
     textPrimary: '#0f172a',
     textSecondary: '#475569',
-    textMuted: '#64748b',
-    textDim: '#94a3b8',
+    textMuted: '#566579',
+    textDim: '#7a899c',
   },
 } as const
 
