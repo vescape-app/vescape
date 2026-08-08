@@ -65,7 +65,7 @@ const e2eSettings: AppSettings = {
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'gpsHeading',
+  mapOrientationMode: 'gpsHeading',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
   socEstimateWindowSeconds: 20,

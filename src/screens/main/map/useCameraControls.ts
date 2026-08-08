@@ -39,7 +39,7 @@ export function useCameraControls({
   persistedFallback,
   perspectiveEnabled,
   mapViewport,
-  mapNavigationMode,
+  mapOrientationMode,
   heading,
   history,
   follow,
@@ -193,13 +193,13 @@ export function useCameraControls({
   const getLiveFollowCamera = useCallback(() => {
     const baseZoomLevel = followZoomLevelRef.current ?? gpsCamera.zoomLevel
     const manualFollowZoom = followZoomLevelRef.current != null
-    const effectiveNavigationMode =
-      mapNavigationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapNavigationMode
+    const effectiveOrientationMode =
+      mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode
     const effect = reduceMapCameraIntent(controllerStateRef.current, {
       type: 'FollowLive',
       gpsCamera: { ...gpsCamera, zoomLevel: baseZoomLevel },
       followHeadingDeg: getFollowDeg(),
-      navigationMode: effectiveNavigationMode,
+      orientationMode: effectiveOrientationMode,
       perspectiveEnabled,
       viewportHeight,
       preserveHeading: resetOnRecenter ? undefined : currentCameraRef.current?.heading,
@@ -214,7 +214,7 @@ export function useCameraControls({
   }, [
     gpsCamera,
     getFollowDeg,
-    mapNavigationMode,
+    mapOrientationMode,
     phoneReady,
     perspectiveEnabled,
     resetOnRecenter,
@@ -298,7 +298,7 @@ export function useCameraControls({
   const intentCommands = useCameraIntentCommands({
     cameraRefs,
     gpsCamera,
-    mapNavigationMode,
+    mapOrientationMode,
     perspectiveEnabled,
     dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,

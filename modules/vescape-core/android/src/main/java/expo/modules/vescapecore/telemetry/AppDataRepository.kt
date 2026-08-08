@@ -27,7 +27,7 @@ internal enum class AppDataScope(val wire: String) {
 internal fun validMapStyleKey(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("onedark", "outdoors", "satellite", "mapy") }
 
-internal fun validMapNavigationMode(value: Any?): String? =
+internal fun validMapOrientationMode(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("northUp", "gpsHeading", "phoneHeading", "freeRotate") }
 
 internal fun validSatelliteImageryOpacity(value: Any?): Double? =
@@ -271,7 +271,7 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteMapImageryOpacity = req("satelliteMapImageryOpacity", 1.0, ::validSatelliteImageryOpacity),
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
-      mapNavigationMode = req("mapNavigationMode", "northUp", ::validMapNavigationMode),
+      mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
@@ -342,8 +342,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "satelliteImagerySaturation" ->
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
-      "mapNavigationMode" ->
-        validMapNavigationMode(value) ?: return@withContext
+      "mapOrientationMode" ->
+        validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
       "historyMetricHotRanges" ->
         validHistoryMetricHotRanges(value) ?: return@withContext
@@ -398,7 +398,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteMapImageryOpacity" -> d.satelliteMapImageryOpacity
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
-        "mapNavigationMode" -> d.mapNavigationMode
+        "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
         "socEstimateWindowSeconds" -> d.socEstimateWindowSeconds
@@ -733,7 +733,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteMapImageryOpacity" to satelliteMapImageryOpacity,
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
-  "mapNavigationMode" to mapNavigationMode,
+  "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
   "socEstimateWindowSeconds" to socEstimateWindowSeconds,

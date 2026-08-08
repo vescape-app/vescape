@@ -376,7 +376,7 @@ data class AppSettings(
   val satelliteMapImageryOpacity: Double = 1.0,
   val satelliteImagerySaturation: Double = -0.35,
   val hideTelemetryMapDetails: Boolean = true,
-  val mapNavigationMode: String = "northUp",
+  val mapOrientationMode: String = "northUp",
   val historyMetricGradientsEnabled: Boolean = true,
   val historyMetricHotRanges: Map<String, Map<String, Double>> = DEFAULT_HISTORY_METRIC_HOT_RANGES,
   val socEstimateWindowSeconds: Int = 20,

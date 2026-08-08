@@ -1,8 +1,8 @@
 import type { LocationEvent } from 'vescape-core'
 
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 
-const MAP_NAVIGATION_MODE_LABELS: Record<MapNavigationMode, string> = {
+const MAP_ORIENTATION_MODE_LABELS: Record<MapOrientationMode, string> = {
   northUp: 'North up',
   gpsHeading: 'GPS heading',
   phoneHeading: 'Compass',
@@ -17,7 +17,7 @@ const MAP_STYLE_LABELS: Record<string, string> = {
 }
 
 interface NavigationDiagnosticsViewModelArgs {
-  mapNavigationMode: MapNavigationMode
+  mapOrientationMode: MapOrientationMode
   mapStyleKey: string
   gpsFix: LocationEvent | null
   retainedGpsBearingDeg: number | null
@@ -60,7 +60,7 @@ const BOARD_UNAVAILABLE_ROWS = [
 ]
 
 export function buildNavigationDiagnosticsViewModel({
-  mapNavigationMode,
+  mapOrientationMode,
   mapStyleKey,
   gpsFix,
   retainedGpsBearingDeg,
@@ -73,15 +73,15 @@ export function buildNavigationDiagnosticsViewModel({
   updatedAt,
   now,
 }: NavigationDiagnosticsViewModelArgs): NavigationDiagnosticsViewModel {
-  const selectedMode = MAP_NAVIGATION_MODE_LABELS[mapNavigationMode] ?? mapNavigationMode
+  const selectedMode = MAP_ORIENTATION_MODE_LABELS[mapOrientationMode] ?? mapOrientationMode
   const mapStyle = MAP_STYLE_LABELS[mapStyleKey] ?? mapStyleKey
   const gpsReady = gpsFix != null
   const phoneReady = phoneHeadingDeg != null && phoneHeadingStatus === 'ready'
   const headingReady =
-    mapNavigationMode === 'northUp' ||
-    mapNavigationMode === 'freeRotate' ||
-    (mapNavigationMode === 'gpsHeading' && retainedGpsBearingDeg != null) ||
-    (mapNavigationMode === 'phoneHeading' && phoneReady)
+    mapOrientationMode === 'northUp' ||
+    mapOrientationMode === 'freeRotate' ||
+    (mapOrientationMode === 'gpsHeading' && retainedGpsBearingDeg != null) ||
+    (mapOrientationMode === 'phoneHeading' && phoneReady)
 
   return {
     selectedMode,
@@ -109,24 +109,24 @@ export function buildNavigationDiagnosticsViewModel({
 }
 
 export function getNavigationFallbackReason({
-  mapNavigationMode,
+  mapOrientationMode,
   gpsFix,
   retainedGpsBearingDeg,
   phoneHeadingDeg,
   phoneHeadingStatus,
 }: Pick<
   NavigationDiagnosticsViewModelArgs,
-  | 'mapNavigationMode'
+  | 'mapOrientationMode'
   | 'gpsFix'
   | 'retainedGpsBearingDeg'
   | 'phoneHeadingDeg'
   | 'phoneHeadingStatus'
 >): string | null {
-  if (mapNavigationMode === 'gpsHeading') {
+  if (mapOrientationMode === 'gpsHeading') {
     if (!gpsFix) return 'gps_fix_unavailable'
     if (retainedGpsBearingDeg == null) return 'gps_bearing_unavailable'
   }
-  if (mapNavigationMode === 'phoneHeading') {
+  if (mapOrientationMode === 'phoneHeading') {
     if (phoneHeadingDeg == null) return `phone_heading_${phoneHeadingStatus || 'unavailable'}`
   }
   return null

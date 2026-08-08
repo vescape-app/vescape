@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import type { LocationEvent } from 'vescape-core'
 
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { getNavigationFallbackReason } from '@/modules/map/lib/navigationDiagnostics'
 import type { PhoneHeadingStatus } from '@/modules/map/lib/phoneHeading'
 import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDiagnosticsStore'
@@ -13,7 +13,7 @@ export function useNavigationDiagnosticsSync({
   phoneHeadingStatus,
   gpsPinBearingDeg,
   displayedCameraHeading,
-  mapNavigationMode,
+  mapOrientationMode,
 }: {
   gpsFix: LocationEvent | null
   retainedGpsBearing: { bearingDeg: number; sourceTimestamp: number } | null
@@ -21,7 +21,7 @@ export function useNavigationDiagnosticsSync({
   phoneHeadingStatus: PhoneHeadingStatus | 'idle'
   gpsPinBearingDeg: number | null
   displayedCameraHeading: number
-  mapNavigationMode: MapNavigationMode
+  mapOrientationMode: MapOrientationMode
 }) {
   const updateNavigationDiagnostics = useNavigationDiagnosticsStore((state) => state.update)
 
@@ -35,7 +35,7 @@ export function useNavigationDiagnosticsSync({
       activeDisplayHeadingDeg: gpsPinBearingDeg,
       cameraHeadingDeg: displayedCameraHeading,
       fallbackReason: getNavigationFallbackReason({
-        mapNavigationMode,
+        mapOrientationMode,
         gpsFix,
         retainedGpsBearingDeg: retainedGpsBearing?.bearingDeg ?? null,
         phoneHeadingDeg: phoneHeadingDegRef.current,
@@ -46,7 +46,7 @@ export function useNavigationDiagnosticsSync({
     displayedCameraHeading,
     gpsFix,
     gpsPinBearingDeg,
-    mapNavigationMode,
+    mapOrientationMode,
     phoneHeadingDegRef,
     phoneHeadingStatus,
     retainedGpsBearing?.bearingDeg,

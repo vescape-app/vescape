@@ -5,10 +5,10 @@ import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
 describe('getGpsPuckBearing', () => {
   test.each(['northUp', 'freeRotate', 'phoneHeading'] as const)(
     'uses phone heading for the puck in %s mode',
-    (navigationMode) => {
+    (orientationMode) => {
       expect(
         getGpsPuckBearing({
-          navigationMode,
+          orientationMode,
           approximateFix: false,
           phoneHeadingDeg: 42,
           gpsBearingDeg: 170,
@@ -20,7 +20,7 @@ describe('getGpsPuckBearing', () => {
   test('uses GPS course only in GPS heading mode', () => {
     expect(
       getGpsPuckBearing({
-        navigationMode: 'gpsHeading',
+        orientationMode: 'gpsHeading',
         approximateFix: false,
         phoneHeadingDeg: 42,
         gpsBearingDeg: 170,
@@ -31,7 +31,7 @@ describe('getGpsPuckBearing', () => {
   test('hides the arrow for an approximate fix', () => {
     expect(
       getGpsPuckBearing({
-        navigationMode: 'northUp',
+        orientationMode: 'northUp',
         approximateFix: true,
         phoneHeadingDeg: 42,
         gpsBearingDeg: 170,
