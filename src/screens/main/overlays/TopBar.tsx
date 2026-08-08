@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
 import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { IconButton } from '@/components/base/IconButton'
-import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
@@ -35,6 +34,12 @@ import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
+import type { MapSelection } from '@/modules/map/lib/mapSelection'
+import { distanceMeters } from '@/helpers/mapGeometry'
+import { DASH, fmtDistance } from '@/helpers/format'
+import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
+import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
 
 interface TopBarProps {
   boards: Board[]
@@ -45,6 +50,9 @@ interface TopBarProps {
   onAddBoard: () => void
   onDisconnect: () => void
   onWeatherPress?: () => void
+  activeNavigationTarget: MapSelection | null
+  currentLocation: { latitude: number; longitude: number } | null
+  onCancelNavigation: () => void
 }
 
 interface BoardPillProps {
@@ -132,6 +140,9 @@ export function TopBar({
   onAddBoard,
   onDisconnect,
   onWeatherPress,
+  activeNavigationTarget,
+  currentLocation,
+  onCancelNavigation,
 }: TopBarProps) {
   const insets = useSafeAreaInsets()
   const pillRef = useRef<View>(null)
@@ -140,6 +151,7 @@ export function TopBar({
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
   const nearbyBadge = useGroupRideStore((s) => s.badge)
@@ -163,6 +175,14 @@ export function TopBar({
   const hasWeather = weatherCode != null && weatherTemp != null
   const now = new Date()
   const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
+  const navigationTargetKind =
+    activeNavigationTarget?.type === 'mapPoint'
+      ? activeNavigationTarget.point.category
+      : 'direction'
+  const navigationDistance =
+    activeNavigationTarget && currentLocation
+      ? fmtDistance(distanceMeters(currentLocation, activeNavigationTarget))
+      : DASH
 
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
@@ -177,15 +197,30 @@ export function TopBar({
             accent={rideActive ? theme.palette.groupRide.color : undefined}
           />
         </View>
-        <BoardPill
-          ref={pillRef}
-          activeBoardId={activeBoardId}
-          activeBoard={activeBoard}
-          bleStatus={bleStatus}
-          isReplay={isReplay}
-          onOpenSelector={() => setSelectorOpen(true)}
-          onDisconnect={onDisconnect}
-        />
+        {activeNavigationTarget ? (
+          <View ref={pillRef} collapsable={false}>
+            <ActiveNavigationTopBar
+              boardName={activeBoard?.name ?? 'No board'}
+              connected={bleStatus === 'connected' || bleStatus === 'stale'}
+              targetTitle={activeNavigationTarget.title}
+              targetKind={navigationTargetKind}
+              distanceLabel={navigationDistance}
+              riderColor={riderColor}
+              onBoardPress={() => setSelectorOpen(true)}
+              onCancel={onCancelNavigation}
+            />
+          </View>
+        ) : (
+          <BoardPill
+            ref={pillRef}
+            activeBoardId={activeBoardId}
+            activeBoard={activeBoard}
+            bleStatus={bleStatus}
+            isReplay={isReplay}
+            onOpenSelector={() => setSelectorOpen(true)}
+            onDisconnect={onDisconnect}
+          />
+        )}
         {/* The gear wears whatever is happening inside the drawer — a required update, or a
             running backup with its progress — the same way Social wears an active Group Ride. */}
         <View ref={settingsRef} collapsable={false} style={styles.iconRight}>
@@ -208,18 +243,17 @@ export function TopBar({
           />
         </View>
       </View>
-      {hasWeather && (
-        <Pressable style={styles.weatherRow} onPress={onWeatherPress}>
-          <WeatherStat
-            code={weatherCode!}
-            temperature={weatherTemp!}
-            hour={now.getHours()}
-            isNight={isNight}
-            precipProbability={weatherPrecip}
-            size="sm"
-          />
-        </Pressable>
-      )}
+      {hasWeather ? (
+        <WeatherSidePill
+          code={weatherCode!}
+          temperature={weatherTemp!}
+          precipProbability={weatherPrecip ?? null}
+          hour={now.getHours()}
+          isNight={isNight}
+          verticalOffset={insets.top / 2}
+          onPress={onWeatherPress}
+        />
+      ) : null}
 
       <EdgeDrawer
         visible={socialOpen}
@@ -269,6 +303,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 20,
   },
   row: {
@@ -328,11 +363,5 @@ const styles = StyleSheet.create({
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  weatherRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
   },
 })
