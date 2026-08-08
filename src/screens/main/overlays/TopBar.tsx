@@ -326,10 +326,12 @@ const styles = StyleSheet.create({
   },
   iconRight: {
     position: 'absolute',
+    top: 0,
     right: 10,
   },
   iconLeft: {
     position: 'absolute',
+    top: 0,
     left: 10,
   },
   pill: {
