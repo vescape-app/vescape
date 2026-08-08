@@ -49,9 +49,9 @@ describe('map camera profiles', () => {
   })
 
   test('removes tilt at far zoom for every profile', () => {
-    for (const profile of Object.keys(MAP_CAMERA_PROFILES) as Array<
-      keyof typeof MAP_CAMERA_PROFILES
-    >) {
+    for (const profile of Object.keys(
+      MAP_CAMERA_PROFILES,
+    ) as (keyof typeof MAP_CAMERA_PROFILES)[]) {
       expect(
         getPitchForProfileZoom({
           profile,

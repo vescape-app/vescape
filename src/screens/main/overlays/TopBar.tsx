@@ -4,6 +4,7 @@ import { Text } from '@/components/base/Text'
 import {
   ArrowFatLinesUpIcon,
   BroadcastIcon,
+  ArrowsClockwiseIcon,
   CaretDownIcon,
   GearSixIcon,
   PencilSimpleIcon,
@@ -18,7 +19,7 @@ import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { IconButton } from '@/components/base/IconButton'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
-import { AccountWidget } from '@/modules/profile/components/AccountWidget'
+import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { useBleStore } from '@/modules/board/store/bleStore'
@@ -31,7 +32,9 @@ import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { theme } from '@/constants/theme'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
+import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
+import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 
 interface TopBarProps {
   boards: Board[]
@@ -135,6 +138,8 @@ export function TopBar({
   const socialRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [socialOpen, setSocialOpen] = useState(false)
+  const settingsRef = useRef<View>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
   const nearbyBadge = useGroupRideStore((s) => s.badge)
@@ -147,6 +152,12 @@ export function TopBar({
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
   const versionWarning =
     appStatus?.version.status === 'update-warning' || appStatus?.version.status === 'online-blocked'
+  const backup = useBackupSlot()
+  const trigger = settingsTriggerState({
+    versionWarning,
+    updateAvailable: availableUpdate !== null,
+    backup,
+  })
   const sunrise = useWeatherStore((s) => s.sunrise)
   const sunset = useWeatherStore((s) => s.sunset)
   const hasWeather = weatherCode != null && weatherTemp != null
@@ -175,18 +186,27 @@ export function TopBar({
           onOpenSelector={() => setSelectorOpen(true)}
           onDisconnect={onDisconnect}
         />
-        {/* An Update Warning / Online Block takes over the gear's icon and accent — same treatment
-            as an active group ride; a plain available update only badges it with a dot. Settings
-            stays this button's one destination, and the update is started from the pill inside. */}
-        <IconButton
-          icon={versionWarning ? ArrowFatLinesUpIcon : GearSixIcon}
-          onPress={() => router.push(routes.settings)}
-          onLongPress={() => router.push(routes.settingsComponents)}
-          accent={versionWarning ? theme.status.upgrade.color : undefined}
-          dot={!versionWarning && availableUpdate ? theme.status.upgrade.color : undefined}
-          accessibilityLabel={availableUpdate ? 'Settings, update available' : 'Settings'}
-          style={styles.iconRight}
-        />
+        {/* The gear wears whatever is happening inside the drawer — a required update, or a
+            running backup with its progress — the same way Social wears an active Group Ride. */}
+        <View ref={settingsRef} collapsable={false} style={styles.iconRight}>
+          <IconButton
+            icon={GearSixIcon}
+            takeover={
+              trigger.takeover
+                ? {
+                    icon: trigger.takeover === 'update' ? ArrowFatLinesUpIcon : ArrowsClockwiseIcon,
+                    accent: trigger.accent,
+                    progress: trigger.progress,
+                  }
+                : null
+            }
+            onPress={() => setSettingsOpen(true)}
+            onLongPress={() => router.push(routes.settingsComponents)}
+            dot={trigger.dot}
+            accessibilityLabel={trigger.accessibilityLabel}
+            testID="settings-drawer-trigger"
+          />
+        </View>
       </View>
       {hasWeather && (
         <Pressable style={styles.weatherRow} onPress={onWeatherPress}>
@@ -204,15 +224,23 @@ export function TopBar({
       <EdgeDrawer
         visible={socialOpen}
         triggerRef={socialRef}
+        edge="top"
         title="Social"
         icon={UsersThreeIcon}
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet
-          accountWidget={<AccountWidget onNavigate={() => setSocialOpen(false)} />}
-          onNavigate={() => setSocialOpen(false)}
-        />
+        <SocialSheet onNavigate={() => setSocialOpen(false)} />
+      </EdgeDrawer>
+
+      <EdgeDrawer
+        visible={settingsOpen}
+        triggerRef={settingsRef}
+        edge="top"
+        backdropTestID="settings-drawer-backdrop"
+        onClose={() => setSettingsOpen(false)}
+      >
+        <SettingsSheet backup={backup} onNavigate={() => setSettingsOpen(false)} />
       </EdgeDrawer>
 
       <BoardSelectorSheet

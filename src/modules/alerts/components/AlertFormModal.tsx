@@ -6,6 +6,7 @@ import { ChatTextIcon, RadioactiveIcon, WaveformIcon } from 'phosphor-react-nati
 import { Input } from '@/components/forms/Input'
 import { SoundPicker } from '@/components/forms/SoundPicker'
 
+import { Stepper } from '@/components/forms/Stepper'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
 import { telemetryByControlId } from '@/modules/board/constants/telemetry'
 import { theme } from '@/constants/theme'
@@ -14,14 +15,24 @@ import {
   type TelemetryAlertTab as AlertTab,
 } from '@/modules/board/constants/telemetryThresholds'
 import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
-import { type AlertSoundType } from '@/modules/alerts/store/alertsStore'
+import { type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import { type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import {
+  ALERT_BEEP_COUNT_DEFAULT,
+  ALERT_BEEP_COUNT_RANGE,
   type AlertSound,
   type AlertSoundCategory,
+  type AlertSoundType,
   getAlertSounds,
   previewAlertSound,
 } from 'vescape-core'
+
+/**
+ * Repeat cadences offered to the rider, with `Off` as the one-shot choice. Deliberately coarse: the
+ * difference between 12s and 15s is not a choice anyone can make meaningfully in a settings screen,
+ * and native floors the value regardless.
+ */
+const REPEAT_INTERVAL_CHOICES = [5, 10, 30, 60] as const
 
 function getPresetsForCategory(category: AlertSoundCategory): AlertSound[] {
   return getAlertSounds().filter((p) => p.category === category)
@@ -104,7 +115,7 @@ interface AlertFormModalProps {
   editRule: DraftAlertRule | null
   batteryConfig: DerivedBatteryConfig | null
   onClose(): void
-  onSave(threshold: number, thresholdMax: number | null, soundType: AlertSoundType): void
+  onSave(draft: AlertRuleDraft): void
 }
 
 function getEditFormDefaults(
@@ -121,6 +132,8 @@ function getEditFormDefaults(
     messageTemplate: isTts
       ? editRule.soundType.slice(4)
       : getDefaultMessageTemplate(editRule.controlId, batteryConfig),
+    repeatEverySeconds: editRule.repeatEverySeconds,
+    beepCount: editRule.beepCount,
   }
 }
 
@@ -146,6 +159,8 @@ function getNewFormDefaults(
       thresholdMax: preset.thresholdMax != null ? snap(preset.thresholdMax) : high,
       soundType: preset.tab === 'geiger' ? geigerSoundType : defaultSoundType,
       messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
+      repeatEverySeconds: null,
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     }
   }
 
@@ -155,6 +170,8 @@ function getNewFormDefaults(
     thresholdMax: high,
     soundType: defaultSoundType,
     messageTemplate: getDefaultMessageTemplate(controlId, batteryConfig),
+    repeatEverySeconds: null,
+    beepCount: ALERT_BEEP_COUNT_DEFAULT,
   }
 }
 
@@ -185,6 +202,8 @@ export function AlertFormModal({
   const [messageTemplate, setMessageTemplate] = useState(
     getDefaultMessageTemplate(controlId, batteryConfig),
   )
+  const [repeatEverySeconds, setRepeatEverySeconds] = useState<number | null>(null)
+  const [beepCount, setBeepCount] = useState(ALERT_BEEP_COUNT_DEFAULT)
   const [prevVisible, setPrevVisible] = useState(visible)
 
   if (visible && !prevVisible) {
@@ -202,6 +221,8 @@ export function AlertFormModal({
     setThresholdMax(defaults.thresholdMax)
     setSoundType(defaults.soundType)
     setMessageTemplate(defaults.messageTemplate)
+    setRepeatEverySeconds(defaults.repeatEverySeconds)
+    setBeepCount(defaults.beepCount)
   }
   if (visible !== prevVisible) {
     setPrevVisible(visible)
@@ -221,9 +242,26 @@ export function AlertFormModal({
   )
 
   const handleSave = useCallback(() => {
-    const finalSoundType = tab === 'message' ? `tts:${messageTemplate}` : soundType
-    onSave(threshold, tab === 'geiger' ? thresholdMax : null, finalSoundType)
-  }, [tab, threshold, thresholdMax, soundType, messageTemplate, onSave])
+    const isRange = tab === 'geiger'
+    onSave({
+      threshold,
+      thresholdMax: isRange ? thresholdMax : null,
+      soundType: tab === 'message' ? `tts:${messageTemplate}` : soundType,
+      // A range rule's cadence follows range depth, and text-to-speech speaks once per
+      // announcement — neither has a beep count or a repeat interval to honor.
+      repeatEverySeconds: isRange ? null : repeatEverySeconds,
+      beepCount,
+    })
+  }, [
+    tab,
+    threshold,
+    thresholdMax,
+    soundType,
+    messageTemplate,
+    repeatEverySeconds,
+    beepCount,
+    onSave,
+  ])
 
   return (
     <Modal
@@ -329,6 +367,23 @@ export function AlertFormModal({
               </View>
             )}
 
+            {tab !== 'geiger' && (
+              <RepeatField value={repeatEverySeconds} onChange={setRepeatEverySeconds} />
+            )}
+
+            {tab === 'single' && (
+              <View style={styles.dialField}>
+                <Text style={styles.fieldLabel}>BEEPS</Text>
+                <Stepper
+                  value={beepCount}
+                  min={ALERT_BEEP_COUNT_RANGE.min}
+                  max={ALERT_BEEP_COUNT_RANGE.max}
+                  onChange={setBeepCount}
+                  fullWidth
+                />
+              </View>
+            )}
+
             {tab === 'message' ? (
               <View style={styles.messageField}>
                 <Text style={styles.fieldLabel}>TEMPLATE</Text>
@@ -377,6 +432,53 @@ export function AlertFormModal({
         </View>
       </View>
     </Modal>
+  )
+}
+
+/** Repeat cadence for a single-threshold rule; `Off` is the one-shot choice. */
+function RepeatField({
+  value,
+  onChange,
+}: {
+  value: number | null
+  onChange: (next: number | null) => void
+}) {
+  return (
+    <View style={styles.dialField}>
+      <Text style={styles.fieldLabel}>REPEAT</Text>
+      <View style={styles.choiceRow}>
+        <ChoiceButton label="Off" active={value == null} onPress={() => onChange(null)} />
+        {REPEAT_INTERVAL_CHOICES.map((seconds) => (
+          <ChoiceButton
+            key={seconds}
+            label={`${seconds}s`}
+            active={value === seconds}
+            onPress={() => onChange(seconds)}
+          />
+        ))}
+      </View>
+      <Text style={styles.fieldHint}>
+        {value == null
+          ? 'Announces once, then again only after it drops back down'
+          : `Keeps announcing every ${value}s while past the threshold`}
+      </Text>
+    </View>
+  )
+}
+
+function ChoiceButton({
+  label,
+  active,
+  onPress,
+}: {
+  label: string
+  active: boolean
+  onPress: () => void
+}) {
+  return (
+    <TouchableOpacity style={[styles.choice, active && styles.choiceActive]} onPress={onPress}>
+      <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text>
+    </TouchableOpacity>
   )
 }
 
@@ -435,6 +537,33 @@ const styles = StyleSheet.create({
   },
   dialField: {
     gap: 6,
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  choice: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: theme.palette.slate.surfaceDeep,
+  },
+  choiceActive: {
+    backgroundColor: theme.palette.sky.bg,
+  },
+  choiceText: {
+    color: theme.palette.slate.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  choiceTextActive: {
+    color: theme.palette.slate.textPrimary,
+  },
+  fieldHint: {
+    color: theme.palette.slate.textMuted,
+    fontSize: 11,
+    fontWeight: '500',
   },
   fieldLabel: {
     color: theme.palette.slate.textMuted,

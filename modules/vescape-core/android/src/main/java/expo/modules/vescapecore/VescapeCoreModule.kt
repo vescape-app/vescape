@@ -1,6 +1,8 @@
 package expo.modules.vescapecore
 
 import expo.modules.vescapecore.alerts.AlertFeedback
+import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
+import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
@@ -74,6 +76,8 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     enabled = true,
     soundType = soundType,
     createdAt = 0,
+    repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
+    beepCount = normalizedAlertBeepCount((this["beepCount"] as? Number)?.toInt()),
     source = null,
   )
 }
@@ -550,6 +554,12 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("stopRemoteTilt") {
       CoreForegroundService.stopRemoteTilt()
+    }
+    AsyncFunction("startBoardMove") { input: Int ->
+      CoreForegroundService.startBoardMove(input)
+    }
+    AsyncFunction("stopBoardMove") {
+      CoreForegroundService.stopBoardMove()
     }
     AsyncFunction("pushProfileToBoard") { profileId: String, promise: Promise ->
       CoreForegroundService.pushProfileToBoard(

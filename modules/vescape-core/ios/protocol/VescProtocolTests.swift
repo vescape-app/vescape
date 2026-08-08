@@ -16,6 +16,42 @@ final class VescProtocolTests: XCTestCase {
     )
   }
 
+  func testBuildsBoardMoveRemoteCommandForRefloat13() {
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 15, UInt8(bitPattern: -25)],
+      buildBoardMoveCommand(transport: .direct, generation: .remote, input: -25)
+    )
+  }
+
+  func testFramesBoardMoveForCan() {
+    XCTAssertEqual(
+      [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 15, 0],
+      buildBoardMoveCommand(transport: .can(7), generation: .remote, input: 0)
+    )
+  }
+
+  func testBuildsBoardMoveRcMoveCommandForOlderRefloat() {
+    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 60, 1, 61],
+      buildBoardMoveCommand(transport: .direct, generation: .rcMove, input: 127)
+    )
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 0, 1, 1],
+      buildBoardMoveCommand(transport: .direct, generation: .rcMove, input: 0)
+    )
+  }
+
+  func testBoardMoveGenerationFollowsTheRefloatBaseVersion() {
+    XCTAssertEqual(.rcMove, BoardMoveGeneration.forBaseVersion("1.2.0"))
+    XCTAssertEqual(.rcMove, BoardMoveGeneration.forBaseVersion("1.0.0"))
+    XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion("1.3.0"))
+    XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion("2.0.0"))
+    // Unknown firmware guesses the current generation rather than refusing to move.
+    XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion(nil))
+    XCTAssertEqual(.remote, BoardMoveGeneration.forBaseVersion("nonsense"))
+  }
+
   func testParsesFirmwareVersionPayloads() {
     XCTAssertNil(parseFwVersion(payload: [UInt8(COMM_FW_VERSION), 6]))
     XCTAssertEqual("FW 6.05", parseFwVersion(payload: [UInt8(COMM_FW_VERSION), 6, 5]))

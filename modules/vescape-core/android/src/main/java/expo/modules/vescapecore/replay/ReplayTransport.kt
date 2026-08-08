@@ -113,7 +113,7 @@ internal class ReplayTransport(
     /** Replay swallows all writes; request/response FSMs get replies on the recording's schedule. */
     override fun sendPayload(payload: ByteArray): Boolean = !cancelled
 
-    override fun sendRemoteTilt(payload: ByteArray, urgent: Boolean): Boolean = !cancelled
+    override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean = !cancelled
 
     override fun clear(markIntentional: Boolean) {
         cancelled = true

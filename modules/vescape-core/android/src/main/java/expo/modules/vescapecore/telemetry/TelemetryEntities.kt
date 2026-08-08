@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -283,6 +284,15 @@ data class AlertRuleEntity(
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
   /**
+   * Repeat cadence in seconds for a single-threshold rule; null is one-shot. Ignored for range
+   * rules. Mirrors TS `AlertRule.repeatEverySeconds`.
+   */
+  @ColumnInfo(name = "repeat_every_seconds")
+  val repeatEverySeconds: Long? = null,
+  /** Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`. */
+  @ColumnInfo(name = "beep_count")
+  val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
+  /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
    * JS authors and regenerates preset rules; native only persists the string.
    */
@@ -359,6 +369,7 @@ data class AppSettings(
   val movingSpeedThresholdKmh: Double = 3.0,
   val freeSpinMaxSpeedDeltaKmh: Double = DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
   val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
+  val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,
   val satelliteImageryOpacity: Double = 0.2,
@@ -369,6 +380,7 @@ data class AppSettings(
   val historyMetricGradientsEnabled: Boolean = true,
   val historyMetricHotRanges: Map<String, Map<String, Double>> = DEFAULT_HISTORY_METRIC_HOT_RANGES,
   val socEstimateWindowSeconds: Int = 20,
+  val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
   val telemetryPollRateHz: Int = 20,
   val wearMirrorIntervalMs: Int = 500,

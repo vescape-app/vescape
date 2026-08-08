@@ -47,6 +47,7 @@ interface HistoryActions {
   selectBlock: (block: TelemetryMinuteBucket | null) => Promise<void>
   selectSession: (session: HistorySession | null) => Promise<void>
   refreshSummary: () => Promise<void>
+  regroupSessions: () => void
   removeSelectedSession: () => Promise<void>
   clearHistory: () => Promise<void>
 }
@@ -101,6 +102,11 @@ function buildPreviewSamples(
     .map(bucketToPreviewSample)
 }
 
+/** Rider-set ride split gap. Read per grouping call so a settings change re-groups on next load. */
+function rideSplitGapMs() {
+  return useSettingsStore.getState().rideSplitGapMinutes * 60_000
+}
+
 function getSessionRangeOptions(session: HistorySession) {
   return {
     fromMs: session.startAtMs,
@@ -150,7 +156,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       set({
         summary,
         blocks,
-        sessions: groupHistorySessions(blocks),
+        sessions: groupHistorySessions(blocks, { gapMs: rideSplitGapMs() }),
         liveBlocks: blocks.slice(0, useSettingsStore.getState().liveHistoryLimit),
         selectedBlock: null,
         selectedSession: null,
@@ -197,7 +203,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
           liveSamples: range.boardSamples,
           liveGpsSamples: range.gpsSamples,
           blocks,
-          sessions: groupHistorySessions(blocks),
+          sessions: groupHistorySessions(blocks, { gapMs: rideSplitGapMs() }),
         }
       })
     } catch (err) {
@@ -219,7 +225,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       })
       const ids = new Set(blocks.map((b) => b.id))
       const merged = [...blocks, ...next.filter((b) => !ids.has(b.id))]
-      const sessions = groupHistorySessions(merged)
+      const sessions = groupHistorySessions(merged, { gapMs: rideSplitGapMs() })
       const selectedSession = get().selectedSession
       const nextSelectedSession = selectedSession
         ? sessions.find(
@@ -354,6 +360,21 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
     }
   },
 
+  /** Re-group the loaded blocks after the ride split gap changed. Grouping is read-time, no reload. */
+  regroupSessions() {
+    const { blocks, selectedSession } = get()
+    if (!blocks.length) return
+    const sessions = groupHistorySessions(blocks, { gapMs: rideSplitGapMs() })
+    set({
+      sessions,
+      // A merged/split ride keeps a matching id only by luck; drop a selection that no longer exists.
+      selectedSession:
+        selectedSession && sessions.some((session) => session.id === selectedSession.id)
+          ? selectedSession
+          : null,
+    })
+  },
+
   async removeSelectedSession() {
     const { selectedSession, sessions } = get()
     if (!selectedSession) return
@@ -369,7 +390,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const blocks = await getTelemetryHistory({ limit: reloadLimit })
       const liveBlocks = blocks.slice(0, useSettingsStore.getState().liveHistoryLimit)
-      const nextSessions = groupHistorySessions(blocks)
+      const nextSessions = groupHistorySessions(blocks, { gapMs: rideSplitGapMs() })
       const nextSelectedSession =
         selectedIndex >= 0
           ? (nextSessions[selectedIndex] ?? nextSessions[selectedIndex - 1] ?? null)
@@ -411,7 +432,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       const blocks = await getTelemetryHistory({ limit: reloadLimit })
       set({
         blocks,
-        sessions: groupHistorySessions(blocks),
+        sessions: groupHistorySessions(blocks, { gapMs: rideSplitGapMs() }),
         liveBlocks: blocks.slice(0, useSettingsStore.getState().liveHistoryLimit),
         selectedBlock: null,
         selectedSession: null,

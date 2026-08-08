@@ -7,6 +7,7 @@ import {
   type AppSettings,
 } from 'vescape-core'
 import { DEFAULT_HISTORY_METRIC_HOT_RANGES } from '@/modules/history/lib/metricColorScale'
+import { DEFAULT_RIDE_SPLIT_GAP_MINUTES } from '@/modules/history/lib/sessions'
 import {
   DEFAULT_SATELLITE_IMAGERY_OPACITY,
   DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
@@ -25,6 +26,7 @@ const DEFAULTS: AppSettings = {
   movingSpeedThresholdKmh: 3,
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
+  rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
   satelliteImageryOpacity: DEFAULT_SATELLITE_IMAGERY_OPACITY,
@@ -35,6 +37,7 @@ const DEFAULTS: AppSettings = {
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: DEFAULT_HISTORY_METRIC_HOT_RANGES,
   socEstimateWindowSeconds: 20,
+  boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,

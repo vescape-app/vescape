@@ -12,6 +12,13 @@ import { basename, join } from 'path'
 
 export type CapturePlatform = 'android' | 'ios'
 
+/**
+ * Which harness a fixture build serves. Both boot from the same staged database and replayed
+ * recording; they differ in what they do with the session and therefore in how much of the device
+ * they are entitled to pin down.
+ */
+export type FixtureRunMode = 'screenshots' | 'smoke'
+
 export const ROOT = join(import.meta.dir, '..', '..')
 export const FIXTURE_ZIP = join(ROOT, 'shared', 'fixtures', 'screenshot-db.zip')
 
@@ -41,6 +48,14 @@ export interface CaptureDriver {
   stageFixtures(): Promise<void>
   /** Pins the device to `CAPTURE_LOCATION` so both sets share one map backdrop. */
   pinLocation(): Promise<void>
+  /**
+   * Makes sure the flows will drive the app and not a lock screen.
+   *
+   * A physical Android device locks itself while a Release build compiles, and a locked one fails
+   * every flow at its first assertion with nothing on screen to say why — the app is running and
+   * focused underneath, so the failure reads as a broken app rather than a covered one.
+   */
+  requireAwakeDisplay(): Promise<void>
   /** Pins (`clean`) or restores the status bar and any other run chrome. */
   setChrome(clean: boolean): Promise<void>
 }
@@ -87,20 +102,32 @@ export async function runOrDie(
 }
 
 /**
- * Build env for a screenshot build, identical on both platforms.
+ * Build env for a run that boots from staged fixtures, identical on both platforms and both modes.
  *
- * `EXPO_PUBLIC_E2E` must stay unset: it reroutes board and telemetry reads to `e2eFake`, which
- * would leave the native replay session invisible to the UI. Fixture names are baked into the build
- * rather than read from a file at runtime — see `src/config/screenshotMode.ts`.
+ * Every mode flag is cleared before the chosen one is set, because the ambient environment gets
+ * spread in first. `EXPO_PUBLIC_E2E` would reroute board and telemetry reads to `e2eFake`, leaving
+ * the native replay session invisible to the UI — the screenshots would photograph a fake and the
+ * smoke run would assert against one. The *other* run's flag is no better: a shell that already
+ * exports `EXPO_PUBLIC_SCREENSHOTS=1` would give a smoke build both modes at once, and
+ * `showDevControls` (capture-only) would then hide the REPLAY badge that `01-telemetry` asserts on.
+ *
+ * Fixture names are baked into the build rather than read from a file at runtime — see
+ * `src/config/fixtureSession.ts`.
  */
-export function screenshotBuildEnv(replay: string): Record<string, string | undefined> {
+export function fixtureBuildEnv(
+  mode: FixtureRunMode,
+  replay: string,
+): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {
     ...process.env,
-    EXPO_PUBLIC_SCREENSHOTS: '1',
-    EXPO_PUBLIC_SCREENSHOTS_REPLAY: replay,
-    EXPO_PUBLIC_SCREENSHOTS_DB: existsSync(FIXTURE_ZIP) ? basename(FIXTURE_ZIP) : '',
+    EXPO_PUBLIC_FIXTURE_REPLAY: replay,
+    EXPO_PUBLIC_FIXTURE_DB: existsSync(FIXTURE_ZIP) ? basename(FIXTURE_ZIP) : '',
   }
   delete env.EXPO_PUBLIC_E2E
+  delete env.EXPO_PUBLIC_SCREENSHOTS
+  delete env.EXPO_PUBLIC_SMOKE
+  if (mode === 'screenshots') env.EXPO_PUBLIC_SCREENSHOTS = '1'
+  else env.EXPO_PUBLIC_SMOKE = '1'
   return env
 }
 

@@ -226,6 +226,10 @@ class CoreForegroundService : Service() {
 
         fun stopRemoteTilt(): Boolean = instance?.controller?.stopRemoteTilt() ?: false
 
+        fun startBoardMove(input: Int): Boolean = instance?.controller?.startBoardMove(input) ?: false
+
+        fun stopBoardMove(): Boolean = instance?.controller?.stopBoardMove() ?: false
+
         fun pushProfileToBoard(
             context: Context,
             profileId: String,

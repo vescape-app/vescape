@@ -25,7 +25,7 @@ internal final class AlertCoordinator {
     }
     activeGeigerRuleIds.formIntersection(geigerRuleIds)
     rules = value
-    engine.resetDebounce()
+    engine.resetAlertState()
   }
 
   func evaluate(
@@ -97,7 +97,7 @@ internal final class AlertCoordinator {
         if !text.isEmpty { player.speakMessage(text) }
       }
       for alert in single where !alert.soundType.hasPrefix("tts:") {
-        player.playSingle(soundType: alert.soundType)
+        player.playSingle(soundType: alert.soundType, beepCount: alert.beepCount)
       }
       if vibrateSingles { player.vibrate(rangeDepth: nil) }
     }

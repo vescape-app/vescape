@@ -13,6 +13,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
+import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
 // @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
@@ -52,6 +54,12 @@ internal fun validSocEstimateWindowSeconds(value: Any?): Int? =
     ?.coerceIn(0, 120)
 
 /** Max telemetry poll rate in Hz; 0 = unlimited (pure response-paced), capped at 100Hz. */
+/** Board Move strength, percent of full remote input. Floored so a stored 0 cannot mean "no move". */
+internal fun validBoardMoveStrengthPercent(value: Any?): Int? =
+  (value as? Number)
+    ?.toInt()
+    ?.coerceIn(10, 100)
+
 internal fun validTelemetryPollRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
@@ -72,6 +80,12 @@ internal fun validDismissedCommunityMessageIds(value: Any?): List<String>? {
   val list = value as? List<*> ?: return null
   return list.filterIsInstance<String>().filter { it.isNotEmpty() }.distinct()
 }
+
+/** Ride split gap in minutes; at least 1 so every ride can still end, capped at 24h. */
+internal fun validRideSplitGapMinutes(value: Any?): Int? =
+  (value as? Number)
+    ?.toInt()
+    ?.coerceIn(1, 1440)
 
 /** Auto close delay in minutes; at least 1 so a fired timer always had a real wait. */
 internal fun validAutoCloseDelayMinutes(value: Any?): Int? =
@@ -261,6 +275,7 @@ class AppDataRepository private constructor(private val context: Context) {
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
+      boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
       wearMirrorIntervalMs = req("wearMirrorIntervalMs", 500, ::validWearMirrorIntervalMs),
@@ -270,6 +285,11 @@ class AppDataRepository private constructor(private val context: Context) {
       companionPresenceCooldownMinutes = req("companionPresenceCooldownMinutes", 60, ::validCompanionCooldownMinutes),
       autoCloseEnabled = req("autoCloseEnabled", false) { it as? Boolean },
       autoCloseDelayMinutes = req("autoCloseDelayMinutes", 15, ::validAutoCloseDelayMinutes),
+      rideSplitGapMinutes = req(
+        "rideSplitGapMinutes",
+        DEFAULT_RIDE_SPLIT_GAP_MINUTES,
+        ::validRideSplitGapMinutes,
+      ),
       riderId = opt("riderId") { it as? String },
       riderName = opt("riderName") { it as? String },
       riderColor = opt("riderColor") { it as? String },
@@ -329,6 +349,8 @@ class AppDataRepository private constructor(private val context: Context) {
         validHistoryMetricHotRanges(value) ?: return@withContext
       "socEstimateWindowSeconds" ->
         validSocEstimateWindowSeconds(value) ?: return@withContext
+      "boardMoveStrengthPercent" ->
+        validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
@@ -342,6 +364,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "autoCloseEnabled" -> value as? Boolean ?: return@withContext
       "autoCloseDelayMinutes" ->
         validAutoCloseDelayMinutes(value) ?: return@withContext
+      "rideSplitGapMinutes" ->
+        validRideSplitGapMinutes(value) ?: return@withContext
       "riderId", "riderName", "riderColor" -> value as? String
       // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
@@ -378,6 +402,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
         "socEstimateWindowSeconds" -> d.socEstimateWindowSeconds
+        "boardMoveStrengthPercent" -> d.boardMoveStrengthPercent
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
         "telemetryPollRateHz" -> d.telemetryPollRateHz
         "wearMirrorIntervalMs" -> d.wearMirrorIntervalMs
@@ -387,6 +412,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "companionPresenceCooldownMinutes" -> d.companionPresenceCooldownMinutes
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
+        "rideSplitGapMinutes" -> d.rideSplitGapMinutes
         "riderId" -> d.riderId
         "riderName" -> d.riderName
         "riderColor" -> d.riderColor
@@ -711,6 +737,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
   "socEstimateWindowSeconds" to socEstimateWindowSeconds,
+  "boardMoveStrengthPercent" to boardMoveStrengthPercent,
   "connectionSoundsEnabled" to connectionSoundsEnabled,
   "telemetryPollRateHz" to telemetryPollRateHz,
   "wearMirrorIntervalMs" to wearMirrorIntervalMs,
@@ -720,6 +747,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "companionPresenceCooldownMinutes" to companionPresenceCooldownMinutes,
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,
+  "rideSplitGapMinutes" to rideSplitGapMinutes,
   "riderId" to riderId,
   "riderName" to riderName,
   "riderColor" to riderColor,
@@ -758,6 +786,8 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "enabled" to enabled,
   "soundType" to soundType,
   "createdAt" to createdAt,
+  "repeatEverySeconds" to repeatEverySeconds,
+  "beepCount" to beepCount,
   "source" to source,
 )
 
@@ -1057,6 +1087,8 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   enabled = getBoolean("enabled"),
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),
+  repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
+  beepCount = normalizedAlertBeepCount((get("beepCount") as? Number)?.toInt()),
   source = get("source") as? String,
 )
 

@@ -13,6 +13,7 @@ import expo.modules.vescapecore.location.LegalPolicyCatalog
 import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
+import expo.modules.vescapecore.protocol.BoardMoveGeneration
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.protocol.COMM_BMS_GET_VALUES
 import expo.modules.vescapecore.protocol.COMM_CUSTOM_APP_DATA
@@ -44,6 +45,7 @@ import expo.modules.vescapecore.config.RefloatConfigProtocol
 import expo.modules.vescapecore.config.RefloatConfigProtocolResult
 import expo.modules.vescapecore.config.RefloatConfigSchemaParser
 import expo.modules.vescapecore.protocol.RefloatTelemetry
+import expo.modules.vescapecore.BoardMoveController
 import expo.modules.vescapecore.RemoteTiltController
 import expo.modules.vescapecore.RiderPresence
 import expo.modules.vescapecore.service.SessionConfig
@@ -189,7 +191,16 @@ internal class BoardSessionController(private val service: CoreForegroundService
         transport = {
             if (boardStatus == BoardPhase.Connected && boardConfig != null) currentBoardTransport() else null
         },
-        send = { payload, urgent -> transport.sendRemoteTilt(payload, urgent) },
+        send = { payload, urgent -> transport.sendRemoteInput(payload, urgent) },
+    )
+    private val boardMoveController = BoardMoveController(
+        scheduler = scheduler,
+        transport = {
+            if (boardStatus == BoardPhase.Connected && boardConfig != null) currentBoardTransport() else null
+        },
+        canMove = ::firmwareCommandsTrusted,
+        generation = { BoardMoveGeneration.forBaseVersion(boardConfig?.refloatBaseVersion) },
+        send = { payload, urgent -> transport.sendRemoteInput(payload, urgent) },
     )
     private val notificationController by lazy {
         NotificationController(
@@ -1755,6 +1766,12 @@ private var wearAutoLaunchOnConnect = true
     fun stopRemoteTilt(): Boolean =
         firmwareCommandsTrusted() && remoteTiltController.stop()
 
+    fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
+
+    // Deliberately ungated: a stop must reach the board even if the link lost trust mid-hold,
+    // otherwise the rider's release does nothing and the board coasts to the firmware timeout.
+    fun stopBoardMove(): Boolean = boardMoveController.stop()
+
     fun remoteTiltState(): Map<String, Any?>? =
         remoteTiltWire(
             remoteTiltController.currentValue,
@@ -1786,6 +1803,7 @@ private var wearAutoLaunchOnConnect = true
         // Final write so the persisted last battery is fresh, not up to 30s stale.
         persistLastBattery(latestBatterySoc, telemetry?.batteryVoltage, nowMs(), force = true)
         remoteTiltController.stop()
+        boardMoveController.stop()
         flushTelemetryDiagnostics("stop")
         configController.onSessionTerminated("Board session stopped during Refloat config op")
         val stoppedConfig = boardConfig

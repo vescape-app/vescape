@@ -282,6 +282,8 @@ final class AppDataRepository {
           "enabled": (row["enabled"] as Int64) != 0,
           "soundType": row["sound_type"] as String,
           "createdAt": row["created_at"] as Int64,
+          "repeatEverySeconds": row["repeat_every_seconds"] as Int64?,
+          "beepCount": row["beep_count"] as Int? ?? alertBeepCountDefault,
           "source": row["source"] as String?,
         ]
       }
@@ -308,6 +310,8 @@ final class AppDataRepository {
           enabled: (row["enabled"] as Int64) != 0,
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
+          repeatEverySeconds: row["repeat_every_seconds"] as Int64?,
+          beepCount: row["beep_count"] as Int? ?? alertBeepCountDefault,
           source: row["source"] as String?
         )
       }
@@ -325,14 +329,16 @@ final class AppDataRepository {
     let enabled = (rule["enabled"] as? Bool) ?? false
     let soundType = rule["soundType"] as? String ?? "default"
     let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? nowMs()
+    let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
+    let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
     write { db in
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, source]
+        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source]
       )
     }
   }
@@ -471,6 +477,12 @@ final class AppDataRepository {
       // persist a malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
       value = flag
+    } else if key == "boardMoveStrengthPercent" {
+      guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
+      value = percent
+    } else if key == "rideSplitGapMinutes" {
+      guard let minutes = Self.rideSplitGapMinutes(rawValue) else { return }
+      value = minutes
     } else if key == "dismissedCommunityMessageIds" {
       guard let ids = Self.dismissedCommunityMessageIds(rawValue) else { return }
       value = ids
@@ -532,6 +544,7 @@ final class AppDataRepository {
     "directionPointLongitude": NSNull(),
     "legalPolicy": NSNull(),
     "movingSpeedThresholdKmh": 3,
+    "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
     "satelliteOverlayEnabled": true,
@@ -540,6 +553,7 @@ final class AppDataRepository {
     "satelliteImagerySaturation": -0.35,
     "hideTelemetryMapDetails": true,
     "telemetryPollRateHz": 20,
+    "boardMoveStrengthPercent": 60,
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],
@@ -562,11 +576,30 @@ final class AppDataRepository {
       satelliteImageryOpacity(settings["satelliteMapImageryOpacity"]) ?? defaultSettings["satelliteMapImageryOpacity"]
     normalized["satelliteImagerySaturation"] =
       satelliteImagerySaturation(settings["satelliteImagerySaturation"]) ?? defaultSettings["satelliteImagerySaturation"]
+    normalized["boardMoveStrengthPercent"] =
+      boardMoveStrengthPercent(settings["boardMoveStrengthPercent"]) ?? defaultSettings["boardMoveStrengthPercent"]
+    normalized["rideSplitGapMinutes"] =
+      rideSplitGapMinutes(settings["rideSplitGapMinutes"]) ?? defaultSettings["rideSplitGapMinutes"]
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
     normalized["dismissedCommunityMessageIds"] =
       dismissedCommunityMessageIds(settings["dismissedCommunityMessageIds"]) ?? [String]()
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
     return normalized
+  }
+
+  /// Board Move strength, percent of full remote input. Floored so a stored `0` cannot mean
+  /// "no move", and a negative value cannot invert the direction buttons.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validBoardMoveStrengthPercent`
+  static func boardMoveStrengthPercent(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(100, max(10, number.intValue))
+  }
+
+  /// Ride split gap in minutes; at least 1 so every ride can still end, capped at 24h.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validRideSplitGapMinutes`
+  static func rideSplitGapMinutes(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(1440, max(1, number.intValue))
   }
 
   /// Acknowledged Community Message IDs: a de-duplicated list of non-empty ID strings, or `nil` when

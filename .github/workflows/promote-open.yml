@@ -49,7 +49,7 @@ env:
 jobs:
   validate:
     name: Validate exact candidate and live Play tracks
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,7 +101,7 @@ jobs:
   promote:
     name: Promote exact phone and Wear artifacts
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
         with:

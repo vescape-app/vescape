@@ -23,7 +23,7 @@ import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
-import { useScreenshotFixtures } from '@/bootstrap/screenshotFixtures'
+import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
@@ -114,9 +114,9 @@ function RootLayout() {
     if (fontsLoaded || fontError) void SplashScreen.hideAsync()
   }, [fontsLoaded, fontError])
 
-  // Screenshot mode restores a fixture database before anything reads it; every other build is
-  // ready on the first render.
-  const fixturesReady = useScreenshotFixtures()
+  // A fixture build (screenshots, smoke) restores a database before anything reads it; every other
+  // build is ready on the first render.
+  const fixturesReady = useSessionFixtures()
 
   useEffect(() => {
     if (!fixturesReady) return
@@ -212,7 +212,7 @@ function RootLayout() {
             />
             <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
-            <Stack.Screen name={stackScreens.settingsFilters} options={{ title: 'Filters' }} />
+            <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
             <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
             <Stack.Screen name={stackScreens.settingsDatabase} options={{ title: 'Database' }} />
             <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />

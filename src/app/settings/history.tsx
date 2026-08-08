@@ -1,38 +1,84 @@
-import { View, Switch, StyleSheet, ScrollView } from 'react-native'
+import { StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   GaugeIcon,
   ArrowsOutLineHorizontalIcon,
   ProhibitIcon,
-  FadersIcon,
+  ClockCounterClockwiseIcon,
+  PathIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
+import { Text } from '@/components/base/Text'
+
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { useHistoryStore } from '@/modules/history/store/historyStore'
+import { DEFAULT_RIDE_SPLIT_GAP_MINUTES } from '@/modules/history/lib/sessions'
 import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
+import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 
-export default function FiltersSettingsScreen() {
-  const { movingSpeedThresholdKmh, freeSpinMaxSpeedDeltaKmh, freeSpinStationaryBoardCapKmh, set } =
-    useSettingsStore(
-      useShallow((s) => ({
-        movingSpeedThresholdKmh: s.movingSpeedThresholdKmh,
-        freeSpinMaxSpeedDeltaKmh: s.freeSpinMaxSpeedDeltaKmh,
-        freeSpinStationaryBoardCapKmh: s.freeSpinStationaryBoardCapKmh,
-        set: s.set,
-      })),
-    )
+const MIN_RIDE_SPLIT_GAP_MINUTES = 1
+const MAX_RIDE_SPLIT_GAP_MINUTES = 240
+
+export default function HistorySettingsScreen() {
+  const {
+    rideSplitGapMinutes,
+    movingSpeedThresholdKmh,
+    freeSpinMaxSpeedDeltaKmh,
+    freeSpinStationaryBoardCapKmh,
+    set,
+  } = useSettingsStore(
+    useShallow((s) => ({
+      rideSplitGapMinutes: s.rideSplitGapMinutes,
+      movingSpeedThresholdKmh: s.movingSpeedThresholdKmh,
+      freeSpinMaxSpeedDeltaKmh: s.freeSpinMaxSpeedDeltaKmh,
+      freeSpinStationaryBoardCapKmh: s.freeSpinStationaryBoardCapKmh,
+      set: s.set,
+    })),
+  )
+  const regroupSessions = useHistoryStore((s) => s.regroupSessions)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
-          icon={FadersIcon}
-          description="Changes apply to new rides only. Rebuild history to reprocess past rides."
+          icon={ClockCounterClockwiseIcon}
+          description="How recorded telemetry becomes rides in your history."
         />
+
+        <SettingsCard>
+          <SettingsRow
+            icon={PathIcon}
+            label="Split rides after"
+            hint={`A stop longer than this starts a new ride. Applies to past rides too.\nDefault: ${DEFAULT_RIDE_SPLIT_GAP_MINUTES} min.`}
+            right={
+              <Stepper
+                value={rideSplitGapMinutes}
+                unit="min"
+                min={MIN_RIDE_SPLIT_GAP_MINUTES}
+                max={MAX_RIDE_SPLIT_GAP_MINUTES}
+                onChange={(nextValue) => {
+                  const clampedValue = Math.min(
+                    MAX_RIDE_SPLIT_GAP_MINUTES,
+                    Math.max(MIN_RIDE_SPLIT_GAP_MINUTES, nextValue),
+                  )
+                  if (clampedValue === rideSplitGapMinutes) return
+                  void set('rideSplitGapMinutes', clampedValue).then(regroupSessions)
+                }}
+              />
+            }
+          />
+        </SettingsCard>
+
+        <SettingsSectionTitle>Filters</SettingsSectionTitle>
+        <Text style={styles.sectionHint}>
+          Changes apply to new rides only. Rebuild history to reprocess past rides.
+        </Text>
+
         <SettingsCard>
           <SettingsRow
             icon={GaugeIcon}

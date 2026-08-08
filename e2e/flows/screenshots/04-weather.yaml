@@ -1,10 +1,10 @@
 # Weather uses live open-meteo + RainViewer data; a rerun may be needed to catch a good frame.
 appId: ${APP_ID}
 ---
-- runFlow: _map-mode.yaml
+- runFlow: ../fixture/_map-mode.yaml
 - tapOn:
     id: map-mode-weather
 - waitForAnimationToEnd:
     timeout: 20000
 - takeScreenshot: ${OUT_DIR}/04-weather
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

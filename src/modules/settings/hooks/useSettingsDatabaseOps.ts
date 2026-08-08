@@ -6,12 +6,12 @@ import * as Updates from 'expo-updates'
 import {
   addTelemetryRebuildProgressListener,
   backupDatabase,
-  getDatabaseSizeBytes,
   rebuildTelemetryBuckets,
   restoreDatabase,
 } from 'vescape-core'
 
 import { formatBytes } from '@/helpers/format'
+import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
 
 type OpState = 'idle' | 'running' | 'done' | 'error'
 
@@ -26,7 +26,7 @@ async function reloadRuntime() {
 }
 
 export function useSettingsDatabaseOps() {
-  const [dbSize, setDbSize] = useState<number | null>(null)
+  const { bytes: dbSize, refresh: refreshDatabaseSize } = useDatabaseSize()
   const [rebuildState, setRebuildState] = useState<OpState>('idle')
   const [rebuildResult, setRebuildResult] = useState<string | null>(null)
   const [backupState, setBackupState] = useState<OpState>('idle')
@@ -38,16 +38,6 @@ export function useSettingsDatabaseOps() {
     current: number
     total: number
   } | null>(null)
-
-  const refreshDatabaseSize = useCallback(() => {
-    getDatabaseSizeBytes()
-      .then(setDbSize)
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    refreshDatabaseSize()
-  }, [refreshDatabaseSize])
 
   useEffect(() => {
     const subscription = addTelemetryRebuildProgressListener((event) => {
@@ -114,7 +104,7 @@ export function useSettingsDatabaseOps() {
       setRestoreState('error')
       setRestoreResult(e?.message ?? 'Restore failed')
     }
-  }, [refreshDatabaseSize])
+  }, [])
 
   const rebuildHint =
     rebuildState === 'error' && rebuildResult

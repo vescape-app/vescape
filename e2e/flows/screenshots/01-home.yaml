@@ -2,7 +2,7 @@
 # until the whole recentWindowMs sparkline window has elapsed at 1x — see scripts/screenshots.ts.
 appId: ${APP_ID}
 ---
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml
 - waitForAnimationToEnd:
     timeout: 20000
 - takeScreenshot: ${OUT_DIR}/01-home

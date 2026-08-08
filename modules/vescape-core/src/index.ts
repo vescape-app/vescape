@@ -255,6 +255,9 @@ export interface AlertTestRule {
   threshold: number
   thresholdMax: number | null
   soundType: AlertSoundType
+  /** Carried so a test sounds like the real rule: same cadence, same number of beeps. */
+  repeatEverySeconds: number | null
+  beepCount: number
 }
 
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AlertRuleEntity`
@@ -270,11 +273,43 @@ export interface AlertRule {
   soundType: AlertSoundType
   createdAt: number
   /**
+   * Repeat cadence for a single-threshold rule, in seconds. `null` ⇒ one-shot: it announces once
+   * per crossing and stays silent until the metric re-arms it. Ignored for range (geiger) rules,
+   * whose cadence follows range depth. Native clamps to {@link ALERT_REPEAT_MIN_SECONDS}.
+   */
+  repeatEverySeconds: number | null
+  /**
+   * How many times the sound plays per announcement, {@link ALERT_BEEP_COUNT_RANGE}. Applies to
+   * preset sounds only — a text-to-speech rule speaks once regardless.
+   */
+  beepCount: number
+  /**
    * Provenance tag. `manual` (or absent) = rider-authored. `preset` rules are generated + owned
    * by JS orchestration and regenerated wholesale; native persists the string opaquely.
    */
   source?: 'manual' | 'preset'
 }
+
+/**
+ * Floor on {@link AlertRule.repeatEverySeconds}. Native clamps to it, so no rule written by any
+ * path — rider, preset, or import — can announce fast enough to become noise.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_REPEAT_MIN_SECONDS`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertRepeatMinSeconds`
+ */
+export const ALERT_REPEAT_MIN_SECONDS = 3
+
+/**
+ * Inclusive bounds on {@link AlertRule.beepCount}. Past 5 the beeps stop being countable by ear
+ * at riding speed, which is the only thing the count is for.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
+ */
+export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
+
+/** Beeps per announcement when nothing says otherwise — matches the pre-`beepCount` behavior. */
+export const ALERT_BEEP_COUNT_DEFAULT = 3
 
 export type PrivacyZonePreset = 'home' | 'work' | 'custom'
 
@@ -960,6 +995,11 @@ export interface AppSettings {
   movingSpeedThresholdKmh: number
   freeSpinMaxSpeedDeltaKmh: number
   freeSpinStationaryBoardCapKmh: number
+  /**
+   * Minutes of no recorded samples that end a ride: a longer stop starts a new one in the history
+   * list and in profile stats. Read-time grouping, so changing it re-groups existing rides too.
+   */
+  rideSplitGapMinutes: number
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
   satelliteOverlayEnabled: boolean
@@ -987,6 +1027,11 @@ export interface AppSettings {
   >
   /** Battery SoC Estimate median window, seconds. 0 = off. See ADR-0016. */
   socEstimateWindowSeconds: number
+  /**
+   * Board Move strength as a percentage of the full remote input, 10..100. The board still clamps
+   * the result with its own `remote.max_move_speed` / `remote_throttle_current_max`.
+   */
+  boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
   /** Android-only: use CompanionDeviceManager presence to connect selected board when nearby. */
@@ -1562,6 +1607,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
   stopRemoteTilt(): Promise<boolean>
+  startBoardMove(input: number): Promise<boolean>
+  stopBoardMove(): Promise<boolean>
   getTuneProfiles(boardId: string, refloatBaseVersion?: string | null): Promise<TuneProfile[]>
   getTuneProfile(profileId: string): Promise<TuneProfile | null>
   createProfile(
@@ -1627,13 +1674,24 @@ const native = requireNativeModule<VescapeCoreNativeModule>('VescapeCore')
 const emitter = native
 const E2E_ENABLED = process.env.EXPO_PUBLIC_E2E === '1'
 
+/**
+ * BLE discovery is faked in the smoke run too, and only discovery.
+ *
+ * An emulator has no radio, so no harness can ever scan a real board — that fake stands in for
+ * absent hardware. Every other `E2E_ENABLED` branch below stands in for absent *data*, which the
+ * smoke run gets from a restored database and a replayed recording instead (`@/config/env`
+ * `smokeMode`). Folding the two under one flag is what would make a smoke run assert against
+ * `e2eFake` rather than the native stack it exists to test.
+ */
+const FAKE_SCAN = E2E_ENABLED || process.env.EXPO_PUBLIC_SMOKE === '1'
+
 // ---------------------------------------------------------------------------
 // API
 // ---------------------------------------------------------------------------
 
 /** Start BLE scan — emits onDevice events for every advertisement received. */
 export function scan(): void {
-  if (E2E_ENABLED) {
+  if (FAKE_SCAN) {
     e2eFake.scan()
     return
   }
@@ -1643,7 +1701,7 @@ export function scan(): void {
 
 /** Stop ongoing BLE scan. */
 export function stopScan(): void {
-  if (E2E_ENABLED) {
+  if (FAKE_SCAN) {
     e2eFake.stopScan()
     return
   }
@@ -2187,6 +2245,27 @@ export async function stopRemoteTilt(): Promise<boolean> {
   return native.stopRemoteTilt()
 }
 
+/**
+ * Hold a Board Move input until {@link stopBoardMove}. `input` is `-127..127`:
+ * positive moves the board forward, negative backward, `0` stops. Unlike Remote
+ * Tilt this drives motor output, and the firmware honours it only while the
+ * board is disengaged (ready). Native repeats the input on a tick, because the
+ * board drops the request after ~1s of silence.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildBoardMoveCommand`
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildBoardMoveCommand`
+ */
+export async function startBoardMove(input: number): Promise<boolean> {
+  if (E2E_ENABLED) return true
+  return native.startBoardMove(input)
+}
+
+/** Stop moving and send a neutral input so the board halts immediately. */
+export async function stopBoardMove(): Promise<boolean> {
+  if (E2E_ENABLED) return true
+  return native.stopBoardMove()
+}
+
 export async function getTuneProfiles(
   boardId: string,
   refloatBaseVersion?: string | null,
@@ -2449,8 +2528,13 @@ export function seedE2EData(flow: string): void {
 // Event listeners
 // ---------------------------------------------------------------------------
 
+/**
+ * Discovery is a pair: `scan()` emits into `e2eFake`'s listener set, so a build that fakes the scan
+ * has to subscribe there too. Splitting only the emit side leaves JS listening to the native
+ * emitter for advertisements nothing is sending — the scan screen simply stays empty.
+ */
 export function addDeviceListener(cb: (event: DeviceFoundEvent) => void): EventSubscription {
-  if (E2E_ENABLED) {
+  if (FAKE_SCAN) {
     return e2eFake.addDeviceListener(cb)
   }
 

@@ -28,7 +28,9 @@ env:
 jobs:
   gates:
     name: Release gates
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +41,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -46,6 +51,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
       - run: bun install --frozen-lockfile
@@ -56,7 +69,9 @@ jobs:
   build:
     name: Build signed artifacts once
     needs: gates
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     outputs:
       marketing_version: ${{ steps.release.outputs.marketing_version }}
       phone_code: ${{ steps.release.outputs.phone_code }}
@@ -70,6 +85,9 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-trusted
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -77,6 +95,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
       - name: Allocate artifact versions
@@ -180,7 +206,7 @@ jobs:
   upload_phone:
     name: Upload phone internal
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
         with:
@@ -222,7 +248,7 @@ jobs:
     # so parallel uploads delete each other's edit.
     needs: [build, upload_phone]
     if: always() && needs.build.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
         with:
@@ -262,7 +288,7 @@ jobs:
     name: Publish release manifest
     if: always() && needs.build.result == 'success'
     needs: [build, upload_phone, upload_wear]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/download-artifact@v4
         with:

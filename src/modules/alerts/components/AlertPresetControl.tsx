@@ -179,6 +179,7 @@ export function AlertPresetControl({
       id: `${metric}-${index}`,
       threshold: spec.threshold,
       thresholdMax: spec.thresholdMax,
+      repeats: spec.repeatEverySeconds != null,
       label: gauge.formatMarker(spec.threshold),
       labelMax: spec.thresholdMax == null ? undefined : gauge.formatMarker(spec.thresholdMax),
     }))

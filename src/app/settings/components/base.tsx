@@ -9,8 +9,10 @@ import {
   withTiming,
 } from 'react-native-reanimated'
 import {
+  ArrowFatLinesUpIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowsClockwiseIcon,
   CubeIcon,
   FadersIcon,
   GearSixIcon,
@@ -35,6 +37,19 @@ function IconButtonShowcase() {
   const [loading, setLoading] = useState(false)
   const [disabled, setDisabled] = useState(false)
   const [dot, setDot] = useState(true)
+  const [takeover, setTakeover] = useState('backup')
+  const [progress, setProgress] = useState('40%')
+
+  const activeTakeover =
+    takeover === 'none'
+      ? null
+      : takeover === 'update'
+        ? { icon: ArrowFatLinesUpIcon, accent: theme.settingsIcon.update }
+        : {
+            icon: ArrowsClockwiseIcon,
+            accent: theme.settingsIcon.sync,
+            progress: progress === 'none' ? undefined : Number.parseInt(progress, 10) / 100,
+          }
 
   return (
     <ShowcaseCard
@@ -44,6 +59,18 @@ function IconButtonShowcase() {
           <ToggleRow label="loading" value={loading} onToggle={setLoading} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
           <ToggleRow label="dot" value={dot} onToggle={setDot} />
+          <ChipRow
+            label="takeover"
+            options={['none', 'update', 'backup']}
+            selected={takeover}
+            onSelect={setTakeover}
+          />
+          <ChipRow
+            label="progress"
+            options={['none', '10%', '40%', '85%']}
+            selected={progress}
+            onSelect={setProgress}
+          />
         </>
       }
     >
@@ -75,6 +102,27 @@ function IconButtonShowcase() {
             icon={TrashIcon}
             size="lg"
             destructive
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+        </View>
+        <View style={{ gap: 8, alignItems: 'center' }}>
+          <IconButton
+            icon={GearSixIcon}
+            takeover={activeTakeover}
+            dot={dot ? theme.status.upgrade.color : undefined}
+            accessibilityLabel="Settings"
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <IconButton
+            icon={GearSixIcon}
+            size="lg"
+            takeover={activeTakeover}
+            dot={dot ? theme.status.upgrade.color : undefined}
+            accessibilityLabel="Settings"
             onPress={() => {}}
             loading={loading}
             disabled={disabled}

@@ -24,7 +24,7 @@ concurrency:
 jobs:
   gates:
     name: Release gates
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +35,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -65,7 +68,7 @@ jobs:
   build:
     name: Build signed IPA and upload to TestFlight
     needs: gates
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     outputs:
       marketing_version: ${{ steps.release.outputs.marketing_version }}
       build_number: ${{ steps.release.outputs.build_number }}
@@ -78,6 +81,9 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-trusted
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -105,6 +111,14 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
       - name: Install CocoaPods
         run: pod install
         working-directory: ios

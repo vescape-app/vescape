@@ -27,10 +27,7 @@ import { mkdirSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
-import {
-  SCREENSHOT_REPLAY_WARMUP_MS,
-  SCREENSHOT_REPLAY_WARMUP_WALL_MS,
-} from '../src/config/screenshotWarmup.ts'
+import { REPLAY_WARMUP_MS, REPLAY_WARMUP_WALL_MS } from '../src/config/replayWarmup.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
 import {
   CommandFailed,
@@ -43,6 +40,8 @@ import { createIosDriver } from './lib/iosCapture.ts'
 import { select, SelectCancelled } from './lib/select.ts'
 
 const FLOWS_DIR = join(ROOT, 'e2e', 'flows', 'screenshots')
+/** Shared with the smoke run — see `e2e/flows/fixture/_boot.yaml`. */
+const BOOT_FLOW = join('..', 'fixture', '_boot.yaml')
 
 const PLATFORMS: CapturePlatform[] = ['android', 'ios']
 
@@ -181,6 +180,7 @@ async function capturePlatform(platform: CapturePlatform, args: Args): Promise<v
     await driver.buildAndInstall()
   }
 
+  await driver.requireAwakeDisplay()
   await driver.stageFixtures()
   await driver.pinLocation()
   await driver.setChrome(true)
@@ -193,15 +193,14 @@ async function capturePlatform(platform: CapturePlatform, args: Args): Promise<v
     const rest = selected.filter((file) => !file.startsWith('01-'))
 
     const bootedAt = Date.now()
-    await runFlow('_boot.yaml', driver)
+    await runFlow(BOOT_FLOW, driver)
     for (const file of rest) await runFlow(file, driver)
 
     if (hero.length > 0 && !args.noWait) {
       // The warmup hands over its window already filled, but delivering it costs real seconds of
       // its own — the run has to wait out the rest of the window *plus* that.
       const toFillMs =
-        Math.max(0, args.sparklineMinutes * 60_000 - SCREENSHOT_REPLAY_WARMUP_MS) +
-        SCREENSHOT_REPLAY_WARMUP_WALL_MS
+        Math.max(0, args.sparklineMinutes * 60_000 - REPLAY_WARMUP_MS) + REPLAY_WARMUP_WALL_MS
       const remainingMs = toFillMs - (Date.now() - bootedAt)
       if (remainingMs > 0) {
         console.log(`› Waiting ${Math.ceil(remainingMs / 1000)}s for the sparkline window to fill…`)

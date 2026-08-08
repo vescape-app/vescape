@@ -18,4 +18,4 @@ appId: ${APP_ID}
 - waitForAnimationToEnd:
     timeout: 20000
 - takeScreenshot: ${OUT_DIR}/07-history-detail
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

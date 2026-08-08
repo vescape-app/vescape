@@ -193,8 +193,28 @@ A rider intent that depends on the connected controller's Refloat behavior rathe
 _Avoid_: Runtime command, board action, unsafe command
 
 **Alert Rule**:
-A user-defined telemetry threshold, owned by one **Board**, that can trigger board-riding feedback during a live connection to that Board. A rule with only a threshold fires a one-shot alert; a rule with both threshold and thresholdMax fires a geiger-style progressive alert that accelerates with range depth.
+A user-defined telemetry threshold, owned by one **Board**, that can trigger board-riding feedback during a live connection to that Board. Comes in three flavors: a **One-Shot Alert Rule**, a **Repeating Alert Rule**, and a **Geiger Alert Rule**.
 _Avoid_: Alarm, notification
+
+**One-Shot Alert Rule**:
+An **Alert Rule** with a single threshold that announces once per crossing and stays silent until the metric re-arms it.
+_Avoid_: Single alert, point alert
+
+**Repeating Alert Rule**:
+A single-threshold **Alert Rule** that keeps announcing on a rider-chosen fixed interval for as long as the metric stays past its threshold.
+_Avoid_: Recurring alert, nag (informal only), geiger
+
+**Geiger Alert Rule**:
+An **Alert Rule** with both a threshold and a thresholdMax whose ticking accelerates with **Alert Range Depth** and holds a sustained tone past thresholdMax.
+_Avoid_: Range alert, progressive alert
+
+**Alert Range Depth**:
+How far a metric has travelled through a **Geiger Alert Rule**'s band, as a 0–1 fraction that saturates at 1 past thresholdMax; the sole driver of tick cadence.
+_Avoid_: Severity, intensity, progress
+
+**Alert Re-Arm**:
+The return of a fired single-threshold **Alert Rule** to a state where it can announce again, requiring the metric to fall back past its threshold by a per-metric margin so a value hovering on the line cannot re-announce.
+_Avoid_: Reset, cooldown, debounce, hysteresis (the mechanism, not the concept)
 
 **Alert Sound**:
 A bundled audio asset used for alert feedback, belonging to exactly one category: single (one-threshold alerts) or geiger (range alerts with progressive ticking). Selected on an **Alert Rule** via its sound type.
@@ -205,7 +225,7 @@ A rider-selected intensity level for one telemetry metric (battery, speed, duty,
 _Avoid_: Alert Sound (the audio asset), Alert Level as a rules concept, warning pack
 
 **Alert Message Template**:
-A user-authored spoken phrase on a one-shot Alert Rule that may include current alert-value placeholders and is spoken by native text-to-speech when the rule fires.
+A user-authored spoken phrase on a single-threshold **Alert Rule** that may include current alert-value placeholders and is spoken by native text-to-speech when the rule fires.
 _Avoid_: TTS sound, voice preset, notification text
 
 **Watch Mirror**:
@@ -239,6 +259,10 @@ _Avoid_: fast-forward, playback rate, time scale
 **App Setting**:
 A user-controlled app preference that affects app behavior across boards unless explicitly scoped elsewhere.
 _Avoid_: Option, config
+
+**Settings Drawer**:
+The edge drawer behind the top-right button on the main screen: the **Vescape Account**, the app's live self-status (backup, version, storage), the few settings worth one tap, and one link to Advanced settings for everything else. Its button wears whatever inside it needs attention — a required update, or a running backup with its progress — the way the Social button wears an active **Group Ride**.
+_Avoid_: settings menu, settings popover, quick settings
 
 **Board Setting**:
 A rider-adjustable preference or soft state scoped to one **Board**, stored schemalessly per Board (key-value). Distinct from Board identity and probe-confirmed facts (name, **Board Link**), which are structured Board fields. Examples: battery configuration, **Alert Preset** levels, **Board Top Speed**.
@@ -358,6 +382,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Warning** is not an **Alert Rule** (app-authored, not rider-authored) and produces no riding feedback; it is passive display only.
 - A **Board Warning** detector can be replayed offline against a **Debug Recording**'s BLE frames; a committed clean Debug Recording guards against false positives.
 - An **Alert Rule** evaluates against live **Telemetry Samples**.
+- A **One-Shot** or **Repeating Alert Rule** announces only while fired and needs an **Alert Re-Arm** before it can announce again; a **Geiger Alert Rule** has neither, its cadence follows **Alert Range Depth**.
 - An **Alert Rule** belongs to one **Board**; the alert engine evaluates only the connected **Board**'s rules, and deleting a **Board** deletes its rules.
 - An **Alert Preset** is set per metric and produces zero or more **Alert Rules** for that metric; those rules are regenerated wholesale when its level changes and coexist with the rider's manual **Alert Rules**.
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.

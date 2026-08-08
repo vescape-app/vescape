@@ -19,7 +19,7 @@ import {
   type DraftAlertRule,
 } from '@/modules/alerts/lib/customAlertRules'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
-import { useAlertsStore, type AlertSoundType } from '@/modules/alerts/store/alertsStore'
+import { useAlertsStore, type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /**
@@ -45,13 +45,8 @@ export interface MetricAlertsController {
   customize(): void
   /** Drop every rule in {@link rules} and return to a generated level. */
   discardCustom(): void
-  addRule(threshold: number, thresholdMax: number | null, soundType: AlertSoundType): void
-  updateRule(
-    id: string,
-    threshold: number,
-    thresholdMax: number | null,
-    soundType: AlertSoundType,
-  ): void
+  addRule(draft: AlertRuleDraft): void
+  updateRule(id: string, draft: AlertRuleDraft): void
   toggleRule(id: string): void
   removeRule(id: string): void
 }
@@ -92,10 +87,8 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       discardCustom: () => {
         if (metric) void presets().discardCustom(metric)
       },
-      addRule: (threshold, thresholdMax, soundType) =>
-        add(controlId, threshold, thresholdMax, soundType),
-      updateRule: (id, threshold, thresholdMax, soundType) =>
-        update(id, threshold, thresholdMax, soundType),
+      addRule: (draft) => add(controlId, draft),
+      updateRule: (id, draft) => update(id, draft),
       toggleRule: (id) => void toggle(id),
       removeRule: (id) => void remove(id),
     }
@@ -146,21 +139,18 @@ export function useDraftMetricAlerts(
           }),
         }),
       discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
-      addRule: (threshold, thresholdMax, soundType) =>
+      addRule: (draft) =>
         withRules([
           ...setup.rules,
           {
             id: generateId(),
             controlId: metric,
-            threshold,
-            thresholdMax,
             enabled: true,
-            soundType,
             createdAt: Date.now(),
+            ...draft,
           },
         ]),
-      updateRule: (id, threshold, thresholdMax, soundType) =>
-        mapRule(id, (rule) => ({ ...rule, threshold, thresholdMax, soundType })),
+      updateRule: (id, draft) => mapRule(id, (rule) => ({ ...rule, ...draft })),
       toggleRule: (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
       removeRule: (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }

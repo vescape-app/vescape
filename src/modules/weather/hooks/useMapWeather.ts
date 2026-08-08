@@ -17,6 +17,7 @@ export function useMapWeather(
   useEffect(() => {
     if (!location) return
     void fetchWeather(location.latitude, location.longitude)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- coords, not object identity, drive the refetch
   }, [location?.latitude, location?.longitude, fetchWeather])
 
   if (temperature == null || weatherCode == null) return null

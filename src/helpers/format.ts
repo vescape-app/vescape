@@ -56,6 +56,21 @@ export function fmtTimeAgo(atMs: number, nowMs = Date.now()): string {
   return `${Math.floor(diffH / 24)}d ago`
 }
 
+/**
+ * Abbreviate a count so it stays narrow in a fixed-width slot: 999 → "999", 1240 → "1.2k",
+ * 100000 → "100k". Backup backlogs run to six figures and must not widen the tile that shows them.
+ */
+export function fmtCompactCount(value: number): string {
+  const n = Math.max(0, Math.round(value))
+  if (n < 1000) return String(n)
+  // Round before picking the suffix: 999_999 rounds to 1000k, which belongs in the next unit.
+  const k = n / 1000
+  const roundedK = k < 10 ? Number(k.toFixed(1)) : Math.round(k)
+  if (roundedK < 1000) return `${k < 10 ? k.toFixed(1) : roundedK}k`
+  const m = n / 1_000_000
+  return `${m < 10 ? m.toFixed(1) : Math.round(m)}M`
+}
+
 /** Format bytes to human-readable string (B, KB, MB). */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

@@ -16,7 +16,7 @@ import {
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
   runOrDie,
-  screenshotBuildEnv,
+  fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
 } from './captureDriver.ts'
@@ -130,7 +130,7 @@ export async function createIosDriver(
       // flows drive is the app the store gets.
       await runOrDie(
         ['bunx', 'expo', 'run:ios', '--configuration', 'Release', '--device', sim.udid],
-        screenshotBuildEnv(replay),
+        fixtureBuildEnv('screenshots', replay),
       )
     },
 
@@ -166,6 +166,10 @@ export async function createIosDriver(
       }
 
       await simctl('privacy', sim.udid, 'grant', 'location-always', applicationId)
+    },
+
+    async requireAwakeDisplay() {
+      // A simulator has no keyguard: nothing can come between the flows and the app.
     },
 
     async pinLocation() {

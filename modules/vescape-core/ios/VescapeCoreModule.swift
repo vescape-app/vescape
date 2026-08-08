@@ -557,6 +557,14 @@ public class VescapeCoreModule: Module {
       false
     }
 
+    AsyncFunction("startBoardMove") { (input: Int) -> Bool in
+      self.coordinator.startBoardMove(input: input)
+    }
+
+    AsyncFunction("stopBoardMove") { () -> Bool in
+      self.coordinator.stopBoardMove()
+    }
+
     // MARK: - Tune Profiles (#161)
     // DB-backed per-board VESC tune configs with Tune History, matching Android 1:1. `TuneProfileStore`
     // owns the transactional semantics; mutations reject with Android's error vocabulary.
@@ -939,6 +947,8 @@ public class VescapeCoreModule: Module {
       enabled: true,
       soundType: soundType,
       createdAt: 0,
+      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
+      beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
       source: nil
     )
   }

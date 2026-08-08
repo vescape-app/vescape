@@ -14,7 +14,7 @@ import {
   AndroidLogoIcon,
   AppleLogoIcon,
   MapPinIcon,
-  FadersIcon,
+  ClockCounterClockwiseIcon,
   ChartLineUpIcon,
   GaugeIcon,
   WatchIcon,
@@ -96,28 +96,28 @@ export default function SettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={BluetoothConnectedIcon}
-            iconColor={theme.palette.cyan.color}
+            iconColor={theme.settingsIcon.connection}
             label="Connection"
             hint="Auto start, auto connect, and sounds"
             onPress={() => router.push(routes.settingsConnection)}
           />
           <SettingsRow
             icon={GaugeIcon}
-            iconColor={theme.palette.green.color}
+            iconColor={theme.settingsIcon.liveTelemetry}
             label="Live telemetry"
             hint="Graphs, update rate, and battery smoothing"
             onPress={() => router.push(routes.settingsLiveTelemetry)}
           />
           <SettingsRow
             icon={WarningIcon}
-            iconColor={theme.status.warning.color}
+            iconColor={theme.settingsIcon.diagnostics}
             label="Diagnostics"
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
           <SettingsRow
             icon={MapTrifoldIcon}
-            iconColor={theme.palette.sky.color}
+            iconColor={theme.settingsIcon.map}
             label="Map"
             hint="Map appearance and satellite imagery"
             onPress={() => router.push(routes.settingsMap)}
@@ -131,7 +131,7 @@ export default function SettingsScreen() {
             <SettingsCard>
               <SettingsRow
                 icon={WatchIcon}
-                iconColor={theme.palette.amber.color}
+                iconColor={theme.settingsIcon.watch}
                 label="Watch Mirror"
                 hint="Auto open and telemetry push rate"
                 onPress={() => router.push(routes.settingsWatch)}
@@ -145,21 +145,21 @@ export default function SettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={MapPinIcon}
-            iconColor={theme.palette.green.color}
+            iconColor={theme.settingsIcon.privacyZones}
             label="Privacy zones"
             hint="Skip recording near saved places"
             onPress={() => router.push(routes.settingsPrivacyZones)}
           />
           <SettingsRow
-            icon={FadersIcon}
-            iconColor={theme.palette.purple.color}
-            label="Filters"
-            hint="Ride data filtering and free-spin detection"
-            onPress={() => router.push(routes.settingsFilters)}
+            icon={ClockCounterClockwiseIcon}
+            iconColor={theme.settingsIcon.filters}
+            label="History"
+            hint="Ride splitting and ride data filtering"
+            onPress={() => router.push(routes.settingsHistory)}
           />
           <SettingsRow
             icon={ChartLineUpIcon}
-            iconColor={theme.palette.cyan.color}
+            iconColor={theme.settingsIcon.graphs}
             label="Graphs"
             hint="Hot gradients and color ramps"
             onPress={() => router.push(routes.settingsGraphs)}
@@ -171,14 +171,14 @@ export default function SettingsScreen() {
         <SettingsCard>
           <SettingsRow
             icon={CodeIcon}
-            iconColor={theme.palette.yellow.color}
+            iconColor={theme.settingsIcon.dev}
             label="Dev tools"
             hint="Diagnostics and local verification"
             onPress={() => router.push(routes.settingsDev)}
           />
           <SettingsRow
             icon={InfoIcon}
-            iconColor={theme.palette.cyan.color}
+            iconColor={theme.settingsIcon.about}
             label="About us"
             hint="The people who built this app"
             onPress={() => router.push(routes.settingsAbout)}

@@ -91,6 +91,37 @@ describe('generateAlertPresetRules — battery / temperature (discrete)', () => 
     expect(controller.every((r) => r.controlId === 'controller-temp')).toBe(true)
     expect(motor[0].soundType).not.toBe(controller[0].soundType)
   })
+
+  test('the two temperatures ride different ladders, each under its own throttle point', () => {
+    const motor = generateAlertPresetRules('motor-temp', 'normal').map((r) => r.threshold)
+    const controller = generateAlertPresetRules('controller-temp', 'normal').map((r) => r.threshold)
+
+    expect(motor).not.toEqual(controller)
+    // Stock VESC throttling starts at 100°C motor / 85°C controller. Announcing above that means
+    // telling the rider about a decision the board already made.
+    expect(Math.max(...motor)).toBeLessThanOrEqual(100)
+    expect(Math.max(...controller)).toBeLessThanOrEqual(85)
+  })
+
+  test('every temperature level ends in exactly one repeating rung', () => {
+    for (const metric of ['motor-temp', 'controller-temp'] as const) {
+      for (const level of ALERT_PRESET_ACTIVE_LEVELS) {
+        const rules = generateAlertPresetRules(metric, level)
+        const repeating = rules.filter((r) => r.repeatEverySeconds != null)
+
+        expect(repeating).toHaveLength(1)
+        // The nag is the top of the ladder — nothing announces above it.
+        expect(repeating[0].threshold).toBe(Math.max(...rules.map((r) => r.threshold)))
+      }
+    }
+  })
+
+  test('battery points announce once — a low battery does not become a nag', () => {
+    const rules = generateAlertPresetRules('battery', 'safe', { hasBatteryConfig: true })
+
+    expect(rules.length).toBeGreaterThan(0)
+    expect(rules.every((r) => r.repeatEverySeconds == null)).toBe(true)
+  })
 })
 
 describe('generateAlertPresetRules — speed / duty (geiger)', () => {

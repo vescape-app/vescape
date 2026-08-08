@@ -35,6 +35,7 @@ describe('release-note selection', () => {
   })
 
   test('selects notes when the runtime does not provide Array.toSorted', () => {
+    /* eslint-disable no-extend-native -- deliberately stubbing the prototype to test the fallback */
     const original = Array.prototype.toSorted
     Object.defineProperty(Array.prototype, 'toSorted', { configurable: true, value: undefined })
     try {

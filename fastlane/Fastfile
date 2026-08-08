@@ -421,12 +421,14 @@ platform :ios do
       xcargs:         "CURRENT_PROJECT_VERSION=#{ENV["VERSION_CODE"]} MARKETING_VERSION=#{ENV["APP_VERSION"]}"
     )
 
-    # Step 1: Upload to TestFlight and distribute to testers immediately.
-    # Skip waiting for processing so the lane doesn't block for 10-30 min.
+    # Upload to TestFlight, wait for Apple to finish processing, then
+    # distribute to internal testers and the external 'External Testers' group.
+    # Waiting adds ~10-20 min but is required for external distribution.
     upload_to_testflight(
-      api_key:                              api_key,
-      skip_waiting_for_build_processing:    true,
-      distribute_external:                  false
+      api_key:             api_key,
+      distribute_external: true,
+      groups:              ["External Testers"],
+      notify_external_testers: true
     )
 
     # Step 2: Create an App Store draft at the same version so you can review

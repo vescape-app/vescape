@@ -198,12 +198,12 @@ export function getChartTimeRangeBands<T extends ChartTimeRange>(
 }
 
 export function toExcludedRanges(
-  exclusions: Array<{
+  exclusions: {
     startMs: number
     endMs: number
     reason: string
     metrics: Record<string, boolean>
-  }>,
+  }[],
   metric: string | string[],
   mergeGapMs = 2000,
 ): ExcludedRange[] {
@@ -266,11 +266,11 @@ export function splitChartLineSegments(
   height: number,
   windowMs?: number,
   gapMultiplier = DEFAULT_GAP_MULTIPLIER,
-): Array<Array<{ x: number; y: number }>> {
+): { x: number; y: number }[][] {
   if (points.length === 0 || width <= 0) return []
   const gapThresholdMs = resolveGapThresholdMs(points, gapMultiplier)
-  const segments: Array<Array<{ x: number; y: number }>> = []
-  let current: Array<{ x: number; y: number }> = []
+  const segments: { x: number; y: number }[][] = []
+  let current: { x: number; y: number }[] = []
 
   for (let i = 0; i < points.length; i += 1) {
     const point = points[i]

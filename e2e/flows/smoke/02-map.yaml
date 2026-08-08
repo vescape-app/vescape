@@ -1,0 +1,33 @@
+# Map mode and its overlays, reached the way a rider reaches them.
+#
+# Map mode is entered by the reveal pan gesture, not a route, and the mode overlays are view states
+# rather than screens — so a regression here is invisible to anything that only walks the router.
+#
+# Every wait is on a control the mode itself renders (`map-mode-weather`, `weather-exit`,
+# `legal-limits-exit`). Two things are deliberately not used. `waitForAnimationToEnd` never returns
+# early on a screen with a live map and a live gauge, so it would spend its whole timeout every
+# time. And `map-settled` — the marker MainMap publishes from Mapbox's own idle event — never
+# reaches Maestro's view hierarchy at all, even with the map fully drawn on screen; it has no
+# caller anywhere in the repo, so it appears never to have worked. See the follow-up issue.
+appId: ${APP_ID}
+---
+- runFlow: ../fixture/_map-mode.yaml
+
+- tapOn:
+    id: map-mode-weather
+- extendedWaitUntil:
+    visible:
+      id: weather-exit
+    timeout: 30000
+- tapOn:
+    id: weather-exit
+
+- runFlow: ../fixture/_map-mode.yaml
+- tapOn:
+    id: map-mode-legal-limits
+- extendedWaitUntil:
+    visible:
+      id: legal-limits-exit
+    timeout: 30000
+
+- runFlow: ../fixture/_home.yaml

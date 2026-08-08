@@ -13,4 +13,4 @@ appId: ${APP_ID}
 - waitForAnimationToEnd:
     timeout: 20000
 - takeScreenshot: ${OUT_DIR}/08-social
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

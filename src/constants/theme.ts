@@ -189,6 +189,31 @@ export const status = {
 /** Tune Profile actions and entry points. */
 export const tune = palette.purple
 
+/**
+ * Icon accent per settings destination. A destination keeps one color wherever it is offered — the
+ * Settings Drawer, the settings screens and any future entry point all read the same token, so
+ * recoloring a destination is a single edit here.
+ */
+export const settingsIcon = {
+  account: palette.cyan.color,
+  sync: palette.cyan.color,
+  update: status.upgrade.color,
+  database: status.warning.color,
+  /** Board Link and BLE connection share the "pairing" purple. */
+  link: palette.purple.color,
+  connection: palette.purple.color,
+  liveTelemetry: telemetry.speed,
+  diagnostics: status.warning.color,
+  map: palette.sky.color,
+  watch: palette.amber.color,
+  privacyZones: palette.green.color,
+  filters: palette.purple.color,
+  graphs: palette.cyan.color,
+  advanced: palette.slate.light,
+  dev: palette.yellow.color,
+  about: palette.cyan.color,
+} as const
+
 /** Banner callouts — flat row, accent icon + neutral text. */
 export const banner = {
   info: { icon: status.info.color },
@@ -263,6 +288,7 @@ export const theme = {
   map,
   status,
   tune,
+  settingsIcon,
   alpha,
   banner,
   weather,
