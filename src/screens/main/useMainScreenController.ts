@@ -83,7 +83,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   const satelliteMapImageryOpacity = useSettingsStore((s) => s.satelliteMapImageryOpacity)
   const satelliteImagerySaturation = useSettingsStore((s) => s.satelliteImagerySaturation)
   const hideTelemetryMapDetails = useSettingsStore((s) => s.hideTelemetryMapDetails)
-  const mapOrientationMode = useSettingsStore((s) => s.mapNavigationMode)
+  const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const setSetting = useSettingsStore((s) => s.set)
   const {
     blocks,
@@ -347,7 +347,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
 
   const setMapOrientationMode = useCallback(
     (nextMode: typeof mapOrientationMode) => {
-      void setSetting('mapNavigationMode', nextMode)
+      void setSetting('mapOrientationMode', nextMode)
     },
     [setSetting],
   )
