@@ -5,7 +5,7 @@ import type { MapPoint, MapPointPatch } from 'vescape-core'
 
 import type { Board } from '@/modules/board/store/boardStore'
 import { LegalLimitsMapOverlay } from '@/modules/legal/components/LegalLimitsMapOverlay'
-import type { MapNavigationMode, MapStyleKey } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode, MapStyleKey } from '@/modules/map/constants/mapStyles'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import { WeatherMapOverlay } from '@/modules/weather/components/WeatherMapOverlay'
@@ -39,8 +39,8 @@ interface MainMapOverlayProps {
   heading: SharedValue<number>
   mapStyleKey: MapStyleKey
   setMapStyleKey: (key: MapStyleKey) => void
-  mapNavigationMode: MapNavigationMode
-  setMapNavigationMode: (mode: MapNavigationMode) => void
+  mapOrientationMode: MapOrientationMode
+  setMapOrientationMode: (mode: MapOrientationMode) => void
   mapSelector: MapSelector
   setMapSelector: (selector: MapSelector) => void
   enterMapFocus: () => void
@@ -181,8 +181,8 @@ export function MainOverlays({
         heading={map.heading}
         mapStyleKey={map.mapStyleKey}
         setMapStyleKey={map.setMapStyleKey}
-        mapNavigationMode={map.mapNavigationMode}
-        setMapNavigationMode={map.setMapNavigationMode}
+        mapOrientationMode={map.mapOrientationMode}
+        setMapOrientationMode={map.setMapOrientationMode}
         mapSelector={map.mapSelector}
         setMapSelector={map.setMapSelector}
       />

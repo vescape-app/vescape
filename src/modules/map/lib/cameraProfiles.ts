@@ -1,4 +1,4 @@
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 
 const MIN_ZOOM = 0
 const GPS_HEADING_MIN_ZOOM = 16
@@ -91,12 +91,12 @@ export const MAP_CAMERA_PROFILES: Record<MapCameraProfileKey, CameraProfileDefin
   },
 } as const
 
-export function getMapCameraProfileForNavigationMode(
-  navigationMode: MapNavigationMode,
+export function getMapCameraProfileForOrientationMode(
+  orientationMode: MapOrientationMode,
 ): MapCameraProfileKey {
-  if (navigationMode === 'gpsHeading') return 'gpsHeading'
-  if (navigationMode === 'phoneHeading') return 'compass'
-  if (navigationMode === 'freeRotate') return 'freeRotate'
+  if (orientationMode === 'gpsHeading') return 'gpsHeading'
+  if (orientationMode === 'phoneHeading') return 'compass'
+  if (orientationMode === 'freeRotate') return 'freeRotate'
   return 'northUp'
 }
 

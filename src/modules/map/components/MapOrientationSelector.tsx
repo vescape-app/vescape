@@ -12,35 +12,35 @@ import {
   MapOptionSelector,
   type MapOptionSelectorSize,
 } from '@/components/controls/MapOptionSelector'
-import { MAP_NAVIGATION_MODES, type MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import { MAP_ORIENTATION_MODES, type MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { theme } from '@/constants/theme'
 
 const COLLAPSED_ICON_COLOR = theme.palette.mono.white
 
-interface MapNavigationSelectorProps {
-  activeMode: MapNavigationMode
+interface MapOrientationSelectorProps {
+  activeMode: MapOrientationMode
   heading: SharedValue<number>
   expanded: boolean
   size?: MapOptionSelectorSize
   onToggle: () => void
-  onSelect: (mode: MapNavigationMode) => void
+  onSelect: (mode: MapOrientationMode) => void
 }
 
-export function MapNavigationSelector({
+export function MapOrientationSelector({
   activeMode,
   heading,
   expanded,
   size = 'md',
   onToggle,
   onSelect,
-}: MapNavigationSelectorProps) {
+}: MapOrientationSelectorProps) {
   const iconSize = size === 'sm' ? 18 : 21
   const optionIconSize = size === 'sm' ? 17 : 20
   const freeRotateIconStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${-heading.value}deg` }],
   }))
-  const options: { key: MapNavigationMode; label: string; icon: ReactNode }[] =
-    MAP_NAVIGATION_MODES.map((option) => ({
+  const options: { key: MapOrientationMode; label: string; icon: ReactNode }[] =
+    MAP_ORIENTATION_MODES.map((option) => ({
       ...option,
       icon: getNavigationIcon(option.key, activeMode, optionIconSize),
     }))
@@ -82,8 +82,8 @@ export function MapNavigationSelector({
 }
 
 function getNavigationIcon(
-  mode: MapNavigationMode,
-  activeMode: MapNavigationMode,
+  mode: MapOrientationMode,
+  activeMode: MapOrientationMode,
   iconSize: number,
 ) {
   const color = activeMode === mode ? theme.palette.green.text : theme.palette.slate.textSecondary

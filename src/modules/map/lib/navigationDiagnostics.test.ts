@@ -25,7 +25,7 @@ function fix(overrides: Partial<LocationEvent> = {}): LocationEvent {
 describe('navigation diagnostics', () => {
   test('formats ready gps heading evidence', () => {
     const vm = buildNavigationDiagnosticsViewModel({
-      mapNavigationMode: 'gpsHeading',
+      mapOrientationMode: 'gpsHeading',
       mapStyleKey: 'onedark',
       gpsFix: fix(),
       retainedGpsBearingDeg: 91,
@@ -51,7 +51,7 @@ describe('navigation diagnostics', () => {
 
   test('reports unavailable board fields and waiting compass fallback', () => {
     const vm = buildNavigationDiagnosticsViewModel({
-      mapNavigationMode: 'phoneHeading',
+      mapOrientationMode: 'phoneHeading',
       mapStyleKey: 'satellite',
       gpsFix: null,
       retainedGpsBearingDeg: null,
@@ -73,7 +73,7 @@ describe('navigation diagnostics', () => {
   test('computes fallback reasons deterministically', () => {
     expect(
       getNavigationFallbackReason({
-        mapNavigationMode: 'gpsHeading',
+        mapOrientationMode: 'gpsHeading',
         gpsFix: null,
         retainedGpsBearingDeg: null,
         phoneHeadingDeg: null,
@@ -82,7 +82,7 @@ describe('navigation diagnostics', () => {
     ).toBe('gps_fix_unavailable')
     expect(
       getNavigationFallbackReason({
-        mapNavigationMode: 'phoneHeading',
+        mapOrientationMode: 'phoneHeading',
         gpsFix: fix(),
         retainedGpsBearingDeg: 40,
         phoneHeadingDeg: null,

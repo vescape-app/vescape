@@ -9,7 +9,7 @@ import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { captureMode } from '@/config/env'
 import {
   MAP_DEFAULTS,
-  type MapNavigationMode,
+  type MapOrientationMode,
   type MapStyleKey,
 } from '@/modules/map/constants/mapStyles'
 import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
@@ -104,7 +104,7 @@ interface MainMapProps {
   history: MainMapHistoryProps
   style: MainMapStyleProps
   mapPoints: MainMapPointsProps
-  mapNavigationMode: MapNavigationMode
+  mapOrientationMode: MapOrientationMode
   rotationLocked: boolean
   perspectiveEnabled: boolean
   onPerspectiveChange: (enabled: boolean) => void
@@ -132,7 +132,7 @@ export const MainMap = memo(
       history,
       style: styleProps,
       mapPoints: mapPointProps,
-      mapNavigationMode,
+      mapOrientationMode,
       rotationLocked,
       perspectiveEnabled,
       onPerspectiveChange,
@@ -223,8 +223,8 @@ export const MainMap = memo(
       [lastGpsLatitude, lastGpsLongitude],
     )
 
-    const gpsHeadingMode = mapNavigationMode === 'gpsHeading'
-    const phoneHeadingMode = mapNavigationMode === 'phoneHeading'
+    const gpsHeadingMode = mapOrientationMode === 'gpsHeading'
+    const phoneHeadingMode = mapOrientationMode === 'phoneHeading'
     const phoneHeadingDegRef = useRef<number | null>(null)
     const [phoneHeadingStatus, setPhoneHeadingStatus] = useState<PhoneHeadingStatus | 'idle'>(
       'idle',
@@ -266,13 +266,13 @@ export const MainMap = memo(
       persistedFallback,
       perspectiveEnabled,
       mapViewport: mapLayout,
-      mapNavigationMode,
+      mapOrientationMode,
       heading: {
         gpsMode: headingFollowMode,
         phoneMode: phoneHeadingMode,
         phoneReady: phoneHeadingStatus === 'ready',
         getFollowDeg: getFollowHeadingDeg,
-        resetOnRecenter: mapNavigationMode !== 'freeRotate',
+        resetOnRecenter: mapOrientationMode !== 'freeRotate',
       },
       history: {
         active: historyActive,
@@ -289,7 +289,7 @@ export const MainMap = memo(
       onPerspectiveChange,
     })
     const gpsPuckBearingDeg = getGpsPuckBearing({
-      navigationMode: mapNavigationMode,
+      orientationMode: mapOrientationMode,
       approximateFix: approximateGpsPuckActive,
       phoneHeadingDeg: null,
       gpsBearingDeg: directionBearingDeg,
@@ -357,7 +357,7 @@ export const MainMap = memo(
       phoneHeadingStatus,
       gpsPinBearingDeg,
       displayedCameraHeading,
-      mapNavigationMode,
+      mapOrientationMode,
     })
 
     useEffect(() => {
