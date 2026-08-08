@@ -202,11 +202,20 @@ export function TopBar({
             <ActiveNavigationTopBar
               boardName={activeBoard?.name ?? 'No board'}
               connected={bleStatus === 'connected' || bleStatus === 'stale'}
+              activeBoardId={activeBoardId}
+              canDisconnect={
+                bleStatus === 'connected' ||
+                bleStatus === 'stale' ||
+                bleStatus === 'reconnecting' ||
+                bleStatus === 'rescanning' ||
+                bleStatus === 'waiting_for_telemetry'
+              }
               targetTitle={activeNavigationTarget.title}
               targetKind={navigationTargetKind}
               distanceLabel={navigationDistance}
               riderColor={riderColor}
               onBoardPress={() => setSelectorOpen(true)}
+              onDisconnect={onDisconnect}
               onCancel={onCancelNavigation}
             />
           </View>

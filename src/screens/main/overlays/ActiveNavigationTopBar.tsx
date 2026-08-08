@@ -1,6 +1,6 @@
 import { createElement, useCallback, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { CaretDownIcon, XIcon } from 'phosphor-react-native'
+import { CaretDownIcon, PowerIcon, XIcon } from 'phosphor-react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   interpolate,
@@ -11,6 +11,7 @@ import Animated, {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
 import type { MapPinKind } from '@/modules/map-points/constants/mapPoints'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 
@@ -21,8 +22,40 @@ interface ActiveNavigationTopBarProps {
   targetKind: MapPinKind
   distanceLabel: string
   riderColor: string
+  activeBoardId: string | null
+  canDisconnect: boolean
   onBoardPress: () => void
+  onDisconnect: () => void
   onCancel: () => void
+}
+
+function BoardActions({
+  activeBoardId,
+  canDisconnect,
+  onDisconnect,
+}: {
+  activeBoardId: string | null
+  canDisconnect: boolean
+  onDisconnect: () => void
+}) {
+  return (
+    <>
+      {canDisconnect ? (
+        <>
+          <View style={styles.divider} />
+          <Pressable
+            accessibilityLabel="Disconnect board"
+            onPress={onDisconnect}
+            style={styles.boardAction}
+            testID="board-disconnect-button"
+          >
+            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
+          </Pressable>
+        </>
+      ) : null}
+      {activeBoardId ? <BoardWarningControl boardId={activeBoardId} /> : null}
+    </>
+  )
 }
 
 function compactBoardName(name: string, availableWidth: number) {
@@ -37,42 +70,57 @@ function NavigationBoardPill({
   connected,
   availableWidth,
   expanded,
+  activeBoardId,
+  canDisconnect,
   onPress,
+  onDisconnect,
 }: {
   name: string
   connected: boolean
   availableWidth: number
   expanded: boolean
+  activeBoardId: string | null
+  canDisconnect: boolean
   onPress: () => void
+  onDisconnect: () => void
 }) {
   const label = expanded ? name : compactBoardName(name, availableWidth)
   return (
-    <Pressable
-      accessibilityLabel="Board selector"
-      onPress={onPress}
+    <View
       style={[
         styles.boardPill,
         expanded && styles.boardPillExpanded,
         !label && styles.boardPillDotOnly,
       ]}
     >
-      <View
-        style={[
-          styles.statusDot,
-          {
-            backgroundColor: connected ? theme.palette.green.color : theme.palette.slate.textMuted,
-          },
-        ]}
-      />
-      {label ? (
-        <Text numberOfLines={1} style={[styles.boardName, expanded && styles.boardNameExpanded]}>
-          {label}
-        </Text>
-      ) : null}
+      <Pressable accessibilityLabel="Board selector" onPress={onPress} style={styles.boardIdentity}>
+        <View
+          style={[
+            styles.statusDot,
+            {
+              backgroundColor: connected
+                ? theme.palette.green.color
+                : theme.palette.slate.textMuted,
+            },
+          ]}
+        />
+        {label ? (
+          <Text numberOfLines={1} style={[styles.boardName, expanded && styles.boardNameExpanded]}>
+            {label}
+          </Text>
+        ) : null}
+        {expanded ? (
+          <CaretDownIcon size={11} color={theme.palette.slate.textMuted} weight="bold" />
+        ) : null}
+      </Pressable>
       {expanded ? (
-        <CaretDownIcon size={11} color={theme.palette.slate.textMuted} weight="bold" />
+        <BoardActions
+          activeBoardId={activeBoardId}
+          canDisconnect={canDisconnect}
+          onDisconnect={onDisconnect}
+        />
       ) : null}
-    </Pressable>
+    </View>
   )
 }
 
@@ -103,7 +151,10 @@ export function ActiveNavigationTopBar({
   targetKind,
   distanceLabel,
   riderColor,
+  activeBoardId,
+  canDisconnect,
   onBoardPress,
+  onDisconnect,
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
@@ -185,6 +236,11 @@ export function ActiveNavigationTopBar({
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
               </View>
+              <BoardActions
+                activeBoardId={activeBoardId}
+                canDisconnect={canDisconnect}
+                onDisconnect={onDisconnect}
+              />
               <CancelButton color={riderColor} onPress={onCancel} />
             </View>
           ) : (
@@ -209,6 +265,8 @@ export function ActiveNavigationTopBar({
             connected={connected}
             availableWidth={navigationPrimary ? boardTextWidth : 130}
             expanded={!navigationPrimary}
+            activeBoardId={activeBoardId}
+            canDisconnect={canDisconnect}
             onPress={() => {
               if (navigationPrimary) {
                 swapPrimary(false)
@@ -216,6 +274,7 @@ export function ActiveNavigationTopBar({
               }
               onBoardPress()
             }}
+            onDisconnect={onDisconnect}
           />
         </Animated.View>
       </View>
@@ -240,8 +299,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
+    overflow: 'hidden',
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.palette.slate.border,
@@ -255,9 +313,15 @@ const styles = StyleSheet.create({
     height: 38,
     minWidth: 112,
     maxWidth: 190,
-    gap: 7,
-    paddingHorizontal: 11,
     borderRadius: 19,
+  },
+  boardIdentity: {
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
   },
   statusDot: {
     width: 6,
@@ -278,7 +342,7 @@ const styles = StyleSheet.create({
   targetPill: {
     height: 38,
     minWidth: 166,
-    maxWidth: 220,
+    maxWidth: 280,
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 19,
@@ -313,6 +377,17 @@ const styles = StyleSheet.create({
   cancel: {
     width: 30,
     height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  divider: {
+    width: 1,
+    height: 20,
+    backgroundColor: theme.palette.slate.border,
+  },
+  boardAction: {
+    width: 32,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
