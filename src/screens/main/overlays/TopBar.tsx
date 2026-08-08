@@ -12,6 +12,7 @@ import {
   UsersThreeIcon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
@@ -35,6 +36,16 @@ import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
+import type { MapSelection } from '@/modules/map/lib/mapSelection'
+import { distanceMeters } from '@/helpers/mapGeometry'
+import { fmtDistance } from '@/helpers/format'
+import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { PrototypeSwitcher } from '@/components/dev/PrototypeSwitcher'
+import {
+  NavigationTopBarPrototype,
+  type NavigationTopBarPrototypeVariant,
+  WeatherSidePillPrototype,
+} from '@/screens/main/overlays/NavigationTopBarPrototype'
 
 interface TopBarProps {
   boards: Board[]
@@ -45,6 +56,9 @@ interface TopBarProps {
   onAddBoard: () => void
   onDisconnect: () => void
   onWeatherPress?: () => void
+  activeNavigationTarget: MapSelection | null
+  currentLocation: { latitude: number; longitude: number } | null
+  onCancelNavigation: () => void
 }
 
 interface BoardPillProps {
@@ -54,6 +68,14 @@ interface BoardPillProps {
   isReplay: boolean
   onOpenSelector: () => void
   onDisconnect: () => void
+}
+
+function readPrototypeVariant(
+  value: string | string[] | undefined,
+): NavigationTopBarPrototypeVariant | null {
+  if (!__DEV__) return null
+  const variant = Array.isArray(value) ? value[0] : value
+  return variant === 'A' || variant === 'B' || variant === 'C' ? variant : null
 }
 
 /** The board identity pill: selector, edit, disconnect and the Board Warning control. */
@@ -132,6 +154,9 @@ export function TopBar({
   onAddBoard,
   onDisconnect,
   onWeatherPress,
+  activeNavigationTarget,
+  currentLocation,
+  onCancelNavigation,
 }: TopBarProps) {
   const insets = useSafeAreaInsets()
   const pillRef = useRef<View>(null)
@@ -140,6 +165,9 @@ export function TopBar({
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const params = useLocalSearchParams<{ variant?: string | string[] }>()
+  const prototypeVariant = readPrototypeVariant(params.variant)
+  const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
   const nearbyBadge = useGroupRideStore((s) => s.badge)
@@ -163,9 +191,34 @@ export function TopBar({
   const hasWeather = weatherCode != null && weatherTemp != null
   const now = new Date()
   const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
+  const prototypeTarget = activeNavigationTarget ?? {
+    type: 'coordinate' as const,
+    id: 'prototype-bonk-target',
+    latitude: 50.0616,
+    longitude: 19.9383,
+    title: 'Bonk spot',
+    subtitle: null,
+  }
+  const prototypeTargetKind =
+    activeNavigationTarget?.type === 'mapPoint'
+      ? activeNavigationTarget.point.category
+      : activeNavigationTarget
+        ? 'direction'
+        : 'bonk'
+  const prototypeDistance =
+    activeNavigationTarget && currentLocation
+      ? distanceMeters(currentLocation, activeNavigationTarget)
+      : 184
 
   return (
-    <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
+    <View
+      style={[
+        styles.wrap,
+        prototypeVariant && styles.prototypeWrap,
+        { paddingTop: Math.max(insets.top, 8) },
+      ]}
+      pointerEvents="box-none"
+    >
       <View style={styles.row}>
         <View ref={socialRef} collapsable={false} style={styles.iconLeft}>
           <IconButton
@@ -177,15 +230,31 @@ export function TopBar({
             accent={rideActive ? theme.palette.groupRide.color : undefined}
           />
         </View>
-        <BoardPill
-          ref={pillRef}
-          activeBoardId={activeBoardId}
-          activeBoard={activeBoard}
-          bleStatus={bleStatus}
-          isReplay={isReplay}
-          onOpenSelector={() => setSelectorOpen(true)}
-          onDisconnect={onDisconnect}
-        />
+        {prototypeVariant ? (
+          <View ref={pillRef} collapsable={false}>
+            <NavigationTopBarPrototype
+              variant={prototypeVariant}
+              boardName={activeBoard?.name ?? 'Thor Hammer'}
+              connected={bleStatus === 'connected' || bleStatus === 'stale'}
+              targetTitle={prototypeTarget.title}
+              targetKind={prototypeTargetKind}
+              distanceLabel={fmtDistance(prototypeDistance)}
+              riderColor={riderColor}
+              onBoardPress={() => setSelectorOpen(true)}
+              onCancel={onCancelNavigation}
+            />
+          </View>
+        ) : (
+          <BoardPill
+            ref={pillRef}
+            activeBoardId={activeBoardId}
+            activeBoard={activeBoard}
+            bleStatus={bleStatus}
+            isReplay={isReplay}
+            onOpenSelector={() => setSelectorOpen(true)}
+            onDisconnect={onDisconnect}
+          />
+        )}
         {/* The gear wears whatever is happening inside the drawer — a required update, or a
             running backup with its progress — the same way Social wears an active Group Ride. */}
         <View ref={settingsRef} collapsable={false} style={styles.iconRight}>
@@ -208,7 +277,7 @@ export function TopBar({
           />
         </View>
       </View>
-      {hasWeather && (
+      {hasWeather && prototypeVariant !== 'C' && (
         <Pressable style={styles.weatherRow} onPress={onWeatherPress}>
           <WeatherStat
             code={weatherCode!}
@@ -220,6 +289,17 @@ export function TopBar({
           />
         </Pressable>
       )}
+      {hasWeather && prototypeVariant === 'C' ? (
+        <WeatherSidePillPrototype
+          code={weatherCode!}
+          temperature={weatherTemp!}
+          precipProbability={weatherPrecip ?? null}
+          hour={now.getHours()}
+          isNight={isNight}
+          verticalOffset={insets.top / 2}
+          onPress={onWeatherPress}
+        />
+      ) : null}
 
       <EdgeDrawer
         visible={socialOpen}
@@ -259,6 +339,16 @@ export function TopBar({
           onAddBoard()
         }}
       />
+      {prototypeVariant ? (
+        <PrototypeSwitcher
+          current={prototypeVariant}
+          variants={[
+            { key: 'A', label: 'Separate pills' },
+            { key: 'B', label: 'Joined rail' },
+            { key: 'C', label: 'Target first' },
+          ]}
+        />
+      ) : null}
     </View>
   )
 }
@@ -270,6 +360,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
+  },
+  prototypeWrap: {
+    bottom: 0,
   },
   row: {
     flexDirection: 'row',
