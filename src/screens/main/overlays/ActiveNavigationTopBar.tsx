@@ -1,6 +1,6 @@
 import { createElement, useCallback, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { CaretDownIcon, PowerIcon, XIcon } from 'phosphor-react-native'
+import { CaretDownIcon, XIcon } from 'phosphor-react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   interpolate,
@@ -23,39 +23,12 @@ interface ActiveNavigationTopBarProps {
   distanceLabel: string
   riderColor: string
   activeBoardId: string | null
-  canDisconnect: boolean
   onBoardPress: () => void
-  onDisconnect: () => void
   onCancel: () => void
 }
 
-function BoardActions({
-  activeBoardId,
-  canDisconnect,
-  onDisconnect,
-}: {
-  activeBoardId: string | null
-  canDisconnect: boolean
-  onDisconnect: () => void
-}) {
-  return (
-    <>
-      {canDisconnect ? (
-        <>
-          <View style={styles.divider} />
-          <Pressable
-            accessibilityLabel="Disconnect board"
-            onPress={onDisconnect}
-            style={styles.boardAction}
-            testID="board-disconnect-button"
-          >
-            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
-          </Pressable>
-        </>
-      ) : null}
-      {activeBoardId ? <BoardWarningControl boardId={activeBoardId} /> : null}
-    </>
-  )
+function BoardWarnings({ activeBoardId }: { activeBoardId: string | null }) {
+  return activeBoardId ? <BoardWarningControl boardId={activeBoardId} /> : null
 }
 
 function compactBoardName(name: string, availableWidth: number) {
@@ -71,18 +44,14 @@ function NavigationBoardPill({
   availableWidth,
   expanded,
   activeBoardId,
-  canDisconnect,
   onPress,
-  onDisconnect,
 }: {
   name: string
   connected: boolean
   availableWidth: number
   expanded: boolean
   activeBoardId: string | null
-  canDisconnect: boolean
   onPress: () => void
-  onDisconnect: () => void
 }) {
   const label = expanded ? name : compactBoardName(name, availableWidth)
   return (
@@ -113,13 +82,7 @@ function NavigationBoardPill({
           <CaretDownIcon size={11} color={theme.palette.slate.textMuted} weight="bold" />
         ) : null}
       </Pressable>
-      {expanded ? (
-        <BoardActions
-          activeBoardId={activeBoardId}
-          canDisconnect={canDisconnect}
-          onDisconnect={onDisconnect}
-        />
-      ) : null}
+      {expanded ? <BoardWarnings activeBoardId={activeBoardId} /> : null}
     </View>
   )
 }
@@ -152,9 +115,7 @@ export function ActiveNavigationTopBar({
   distanceLabel,
   riderColor,
   activeBoardId,
-  canDisconnect,
   onBoardPress,
-  onDisconnect,
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
@@ -236,11 +197,7 @@ export function ActiveNavigationTopBar({
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
               </View>
-              <BoardActions
-                activeBoardId={activeBoardId}
-                canDisconnect={canDisconnect}
-                onDisconnect={onDisconnect}
-              />
+              <BoardWarnings activeBoardId={activeBoardId} />
               <CancelButton color={riderColor} onPress={onCancel} />
             </View>
           ) : (
@@ -266,7 +223,6 @@ export function ActiveNavigationTopBar({
             availableWidth={navigationPrimary ? boardTextWidth : 130}
             expanded={!navigationPrimary}
             activeBoardId={activeBoardId}
-            canDisconnect={canDisconnect}
             onPress={() => {
               if (navigationPrimary) {
                 swapPrimary(false)
@@ -274,7 +230,6 @@ export function ActiveNavigationTopBar({
               }
               onBoardPress()
             }}
-            onDisconnect={onDisconnect}
           />
         </Animated.View>
       </View>
@@ -377,17 +332,6 @@ const styles = StyleSheet.create({
   cancel: {
     width: 30,
     height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: theme.palette.slate.border,
-  },
-  boardAction: {
-    width: 32,
-    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
