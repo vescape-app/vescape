@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { router } from 'expo-router'
 import { Text } from '@/components/base/Text'
 import {
   ArrowRightIcon,
@@ -20,8 +21,10 @@ import { BoardLinkTimeline } from '@/modules/board/components/BoardLinkTimeline'
 import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
 import { useBoardLink } from '@/modules/board/hooks/useBoardLink'
 import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/boardTransport'
+import { isOneWheelDevice } from '@/modules/board/lib/onewheel'
 import { NUS_SERVICE_UUID, useBleStore } from '@/modules/board/store/bleStore'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
+import { routes } from '@/navigation/routes'
 
 interface Props {
   wizard: UseAddBoardWizard
@@ -126,17 +129,20 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
     return () => stopScan()
   }, [status, startScan, stopScan])
 
-  const { vescDevices, otherDevices } = useMemo(() => {
+  const { vescDevices, owDevices, otherDevices } = useMemo(() => {
     const vesc = []
+    const ow = []
     const other = []
     for (const device of devices) {
       if (device.serviceUUIDs.some((uuid) => uuid.toLowerCase() === NUS_SERVICE_UUID)) {
         vesc.push(device)
+      } else if (isOneWheelDevice(device)) {
+        ow.push(device)
       } else {
         other.push(device)
       }
     }
-    return { vescDevices: vesc, otherDevices: other }
+    return { vescDevices: vesc, owDevices: ow, otherDevices: other }
   }, [devices])
 
   const SignalIcon = isScanning ? WifiHighIcon : devices.length > 0 ? WifiLowIcon : WifiSlashIcon
@@ -221,6 +227,27 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
               onPress={() => wizard.selectDevice(device.id, device.name)}
             />
           ))}
+          {owDevices.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>OneWheel (PoC)</Text>
+              {owDevices.map((device) => (
+                <DeviceRow
+                  key={device.id}
+                  id={device.id}
+                  name={device.name}
+                  rssi={device.rssi}
+                  onPress={() => {
+                    // OneWheel skips the wizard: the native link probe speaks VESC UART only.
+                    stopScan()
+                    router.push({
+                      pathname: routes.addBoardOw,
+                      params: { bleId: device.id, name: device.name },
+                    })
+                  }}
+                />
+              ))}
+            </>
+          )}
           {vescDevices.length === 0 && devices.length === 0 && isScanning && (
             <Text style={styles.emptyHint}>Boards will appear as they are found</Text>
           )}
@@ -307,6 +334,14 @@ const styles = StyleSheet.create({
     color: theme.palette.slate.textMuted,
     fontSize: 13,
     fontWeight: '600',
+  },
+  sectionLabel: {
+    color: theme.palette.slate.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 4,
   },
   pairedBanner: {
     flexDirection: 'row',

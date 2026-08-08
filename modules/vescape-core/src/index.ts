@@ -1420,6 +1420,46 @@ export type CriticalRideNotificationPermissionStatus =
   | 'unknown'
 
 /**
+ * OneWheel PoC session phases, wire strings mirroring the native enum.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/ow/OwGattClient.kt `OwPhase`
+ */
+// TODO(iOS parity): OneWheel PoC is Android-only for now.
+export type OwPhase = 'connecting' | 'unlocking' | 'locked' | 'ready' | 'disconnected' | 'error'
+
+/**
+ * Full OneWheel session snapshot, re-emitted by native on every change.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/ow/OwGattClient.kt `emitState`
+ */
+export interface OwStateEvent {
+  phase: OwPhase
+  deviceId: string
+  message: string | null
+  firmwareRevision: number | null
+  hardwareRevision: number | null
+  serial: number | null
+  rideMode: number | null
+  speedKmh: number | null
+  batteryPercent: number | null
+}
+
+/**
+ * One raw characteristic read/notification from the board. `display` is the natively parsed
+ * human value, `hex` the untouched wire bytes.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/ow/OwProtocol.kt `OwCharacteristicSpec`
+ */
+export interface OwCharacteristicEvent {
+  uuid: string
+  shortId: string
+  name: string
+  hex: string
+  display: string
+  updatedAt: number
+}
+
+/**
  * Event names must match the native `Events(...)` declarations exactly — a name only listed here
  * yields a listener that never fires.
  *
@@ -1458,6 +1498,10 @@ type VescapeCoreEvents = {
   onBoardWarnings: (event: BoardWarningsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
+  /** OneWheel PoC session snapshot, on every state/metric change. */
+  onOwState: (event: OwStateEvent) => void
+  /** OneWheel PoC raw characteristic dump, per read/notification. */
+  onOwCharacteristic: (event: OwCharacteristicEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -1475,6 +1519,8 @@ interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) =
 type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   scan(): void
   stopScan(): void
+  owConnect(deviceId: string): void
+  owDisconnect(): void
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
@@ -1672,6 +1718,22 @@ export function stopScan(): void {
   }
 
   native.stopScan()
+}
+
+/**
+ * OneWheel PoC: connect to a Future Motion board, run the firmware-lock handshake when possible,
+ * then stream every characteristic it exposes. Module-owned session, not a Board Session.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `owConnectInternal`
+ */
+// TODO(iOS parity): OneWheel PoC is Android-only for now.
+export function owConnect(deviceId: string): void {
+  native.owConnect(deviceId)
+}
+
+/** OneWheel PoC: tear down the session started by `owConnect`. Idempotent. */
+export function owDisconnect(): void {
+  native.owDisconnect()
 }
 
 /** Start app-level Android location updates independently of a board session. */
@@ -2668,4 +2730,14 @@ export function addGroupRideErrorListener(
   cb: (event: GroupRideErrorEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideError', cb)
+}
+
+export function addOwStateListener(cb: (event: OwStateEvent) => void): EventSubscription {
+  return emitter.addListener('onOwState', cb)
+}
+
+export function addOwCharacteristicListener(
+  cb: (event: OwCharacteristicEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onOwCharacteristic', cb)
 }

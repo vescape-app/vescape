@@ -41,6 +41,7 @@ import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.vescapecore.mappoints.MapPointApi
+import expo.modules.vescapecore.ow.OwGattClient
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
@@ -101,6 +102,7 @@ class VescapeCoreModule : Module() {
   private val observedEvents = mutableSetOf<String>()
   private val mainHandler = Handler(Looper.getMainLooper())
   private var activeProbe: ActiveBoardProbe? = null
+  private var owClient: OwGattClient? = null
   private var previewAlertFeedback: AlertFeedback? = null
   /** UI alert tests own feedback + evaluator state separate from the live Board Session. */
   private var alertTestFeedback: AlertFeedback? = null
@@ -160,6 +162,9 @@ class VescapeCoreModule : Module() {
       "onAppDataChanged",
       "onBoardWarnings",
       "onAppStatus",
+      // TODO(iOS parity): OneWheel PoC is Android-only for now.
+      "onOwState",
+      "onOwCharacteristic",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -238,6 +243,10 @@ class VescapeCoreModule : Module() {
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
     }
     OnStopObserving("onAppStatus") { stopObserving("onAppStatus") }
+    OnStartObserving("onOwState") { startObserving("onOwState") }
+    OnStopObserving("onOwState") { stopObserving("onOwState") }
+    OnStartObserving("onOwCharacteristic") { startObserving("onOwCharacteristic") }
+    OnStopObserving("onOwCharacteristic") { stopObserving("onOwCharacteristic") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -270,6 +279,7 @@ class VescapeCoreModule : Module() {
       previewAlertFeedback = null
       stopAlertTest()
       cancelActiveProbe(null, "module_destroyed")
+      owDisconnectInternal()
       if (CoreForegroundService.emitEvent != null) {
         CoreForegroundService.emitEvent = null
       }
@@ -277,6 +287,8 @@ class VescapeCoreModule : Module() {
 
     Function("scan") { startScan(resetRetries = true) }
     Function("stopScan") { stopScanInternal() }
+    Function("owConnect") { deviceId: String -> owConnectInternal(deviceId) }
+    Function("owDisconnect") { owDisconnectInternal() }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }
@@ -924,6 +936,39 @@ key == "wearAutoLaunchOnConnect" ||
     scanner = null
     scanCallback = null
     scanStatus = "idle"
+  }
+
+  /**
+   * OneWheel PoC session: owned by the module (not the foreground service) until the concept
+   * proves out. Listener callbacks already arrive on the main handler.
+   *
+   * @parity /modules/vescape-core/src/index.ts `owConnect`
+   */
+  // TODO(iOS parity): OneWheel PoC is Android-only for now.
+  private fun owConnectInternal(deviceId: String) {
+    owDisconnectInternal()
+    val device = btAdapter.getRemoteDevice(deviceId)
+    val client = OwGattClient(
+      context = context.applicationContext,
+      handler = mainHandler,
+      device = device,
+      listener = object : OwGattClient.Listener {
+        override fun onState(state: Map<String, Any?>) {
+          if (shouldEmitToFrontend("onOwState")) sendEvent("onOwState", state)
+        }
+
+        override fun onCharacteristic(payload: Map<String, Any?>) {
+          if (shouldEmitToFrontend("onOwCharacteristic")) sendEvent("onOwCharacteristic", payload)
+        }
+      },
+    )
+    owClient = client
+    client.connect()
+  }
+
+  private fun owDisconnectInternal() {
+    owClient?.clear()
+    owClient = null
   }
 
   private fun startLocationUpdates() {
