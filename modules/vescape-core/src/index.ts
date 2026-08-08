@@ -1046,7 +1046,7 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
-  /** Android-only: use CompanionDeviceManager presence to connect selected board when nearby. */
+  /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
    * Board Warnings master switch (kill switch). Off ⇒ native runs no warning detector evaluation
@@ -1109,6 +1109,12 @@ export interface AppSettings {
    * only the IDs — never the server messages themselves. Absent/empty means nothing acknowledged.
    */
   dismissedCommunityMessageIds: string[]
+}
+
+export interface CompanionPresenceBoard {
+  boardId: string
+  name: string
+  bleId: string
 }
 
 export interface DiagnosticStatus {
@@ -1782,6 +1788,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getRemoteTiltState(): RemoteTiltState | null
   setSelectedBoard(boardId: string | null): void
   setCompanionPresenceEnabled(enabled: boolean): Promise<void>
+  getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]>
+  addCompanionPresenceBoard(boardId: string): Promise<void>
+  removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
   getTelemetrySamples(options: {
     fromMs: number
@@ -2784,6 +2793,21 @@ export async function setCompanionPresenceEnabled(enabled: boolean): Promise<voi
     return
   }
   return native.setCompanionPresenceEnabled(enabled)
+}
+
+export async function getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]> {
+  if (E2E_ENABLED) return e2eFake.getCompanionPresenceBoards()
+  return native.getCompanionPresenceBoards()
+}
+
+export async function addCompanionPresenceBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) return e2eFake.addCompanionPresenceBoard(boardId)
+  return native.addCompanionPresenceBoard(boardId)
+}
+
+export async function removeCompanionPresenceBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) return e2eFake.removeCompanionPresenceBoard(boardId)
+  return native.removeCompanionPresenceBoard(boardId)
 }
 
 export function seedE2EData(flow: string): void {

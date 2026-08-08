@@ -272,14 +272,17 @@ Writing default-equivalent value deletes the override row. Unknown keys and type
 
 ## Diagnostics
 
-| fn                                      | sync | returns                                  |
-| --------------------------------------- | ---- | ---------------------------------------- |
-| `setDebugRecordingEnabled(enabled)`     | yes  | void. Android only                       |
-| `listDebugRecordings()`                 | no   | `{ name, createdAt, sizeBytes }[]`       |
-| `exportDebugRecording(name)`            | no   | `{ uri, name, sizeBytes }`. Android only |
-| `reportUiError(message,source?,stack?)` | yes  | void                                     |
-| `reportDiagnosticTest()`                | yes  | `DiagnosticStatus`                       |
-| `getDiagnosticStatus()`                 | yes  | `DiagnosticStatus`                       |
+| fn                                      | sync | returns                                   |
+| --------------------------------------- | ---- | ----------------------------------------- |
+| `setDebugRecordingEnabled(enabled)`     | yes  | void. Android only                        |
+| `getCompanionPresenceBoards()`          | yes  | Android companion-associated saved boards |
+| `addCompanionPresenceBoard(boardId)`    | yes  | Associate and observe one linked board    |
+| `removeCompanionPresenceBoard(boardId)` | yes  | Stop observing and remove its association |
+| `listDebugRecordings()`                 | no   | `{ name, createdAt, sizeBytes }[]`        |
+| `exportDebugRecording(name)`            | no   | `{ uri, name, sizeBytes }`. Android only  |
+| `reportUiError(message,source?,stack?)` | yes  | void                                      |
+| `reportDiagnosticTest()`                | yes  | `DiagnosticStatus`                        |
+| `getDiagnosticStatus()`                 | yes  | `DiagnosticStatus`                        |
 
 ### DiagnosticStatus shape
 

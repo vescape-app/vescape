@@ -758,7 +758,7 @@ private var wearAutoLaunchOnConnect = true
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
-            val boardId = selectedCompanionBoardId(AppDataRepository.get(appCtx), address)
+            val boardId = companionBoardId(AppDataRepository.get(appCtx), address)
             if (boardId == null) {
                 scheduler.post { stopIfIdle() }
                 return@launch
@@ -768,6 +768,9 @@ private var wearAutoLaunchOnConnect = true
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
+            // Presence can belong to any configured Board, not necessarily the last one the Rider
+            // used. Make the triggering Board selected before building/emitting the new session.
+            AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = false)
             } catch (e: Exception) {
@@ -789,14 +792,10 @@ private var wearAutoLaunchOnConnect = true
         }
     }
 
-    private suspend fun selectedCompanionBoardId(repo: AppDataRepository, address: String): String? {
+    private suspend fun companionBoardId(repo: AppDataRepository, address: String): String? {
         val settings = repo.getTypedSettings()
         if (!settings.companionPresenceEnabled) return null
-        val selectedBoardId = settings.selectedBoardId ?: return null
-        val board = repo.getBoard(selectedBoardId) ?: return null
-        val link = board["link"] as? Map<*, *> ?: return null
-        val bleId = link["bleId"] as? String ?: return null
-        return selectedBoardId.takeIf { bleId.equals(address, ignoreCase = true) }
+        return companionBoardIdForAddress(repo.getBoards(), address)
     }
 
     private fun connectSelectedBoard(recordingEnabled: Boolean) {
@@ -2660,6 +2659,15 @@ private var wearAutoLaunchOnConnect = true
 
     private fun diagnosticProperties(session: SessionConfig?, operation: String): Map<String, Any?> =
         diagnosticsRecorder.diagnosticProperties(session, operation)
+}
+
+internal fun companionBoardIdForAddress(
+    boards: List<Map<String, Any?>>,
+    address: String,
+): String? = boards.firstNotNullOfOrNull { board ->
+    val link = board["link"] as? Map<*, *> ?: return@firstNotNullOfOrNull null
+    val bleId = link["bleId"] as? String ?: return@firstNotNullOfOrNull null
+    (board["id"] as? String)?.takeIf { bleId.equals(address, ignoreCase = true) }
 }
 
 private const val LINK_INTEGRITY_BMS_TIMEOUT_MS = 12_000L

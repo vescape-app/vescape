@@ -398,6 +398,18 @@ public class VescapeCoreModule: Module {
       promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
     }
 
+    AsyncFunction("getCompanionPresenceBoards") { (promise: Promise) in
+      promise.resolve([])
+    }
+
+    AsyncFunction("addCompanionPresenceBoard") { (_: String, promise: Promise) in
+      promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
+    }
+
+    AsyncFunction("removeCompanionPresenceBoard") { (_: String, promise: Promise) in
+      promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
+    }
+
     Function("setDebugRecordingEnabled") { (enabled: Bool) in
       self.requestedDebugRecordingEnabled = enabled
     }

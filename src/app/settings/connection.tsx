@@ -4,10 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   BluetoothConnectedIcon,
   ClockCountdownIcon,
+  PlusIcon,
   PowerIcon,
   RecordIcon,
   RocketLaunchIcon,
   SpeakerHighIcon,
+  TrashIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -18,6 +20,9 @@ import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
+import { FadeCardModal } from '@/components/modals/FadeCardModal'
+import { IconButton } from '@/components/base/IconButton'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import {
   ensureBackgroundLocation,
@@ -29,56 +34,113 @@ export default function ConnectionSettingsScreen() {
     autoConnect,
     autoRecording,
     companionPresenceEnabled,
+    companionPresenceBoards,
     companionPresenceCooldownMinutes,
     connectionSoundsEnabled,
     autoCloseEnabled,
     autoCloseDelayMinutes,
     set,
     setCompanionPresence,
+    addCompanionBoard,
+    removeCompanionBoard,
   } = useSettingsStore(
     useShallow((s) => ({
       autoConnect: s.autoConnect,
       autoRecording: s.autoRecording,
       companionPresenceEnabled: s.companionPresenceEnabled,
+      companionPresenceBoards: s.companionPresenceBoards,
       companionPresenceCooldownMinutes: s.companionPresenceCooldownMinutes,
       connectionSoundsEnabled: s.connectionSoundsEnabled,
       autoCloseEnabled: s.autoCloseEnabled,
       autoCloseDelayMinutes: s.autoCloseDelayMinutes,
       set: s.set,
       setCompanionPresence: s.setCompanionPresence,
+      addCompanionBoard: s.addCompanionBoard,
+      removeCompanionBoard: s.removeCompanionBoard,
     })),
+  )
+  const boards = useBoardStore((s) => s.boards)
+  const availableAutoStartBoards = boards.filter(
+    (board) =>
+      board.link && !companionPresenceBoards.some((enabled) => enabled.boardId === board.id),
   )
 
   const [bgLocationPrompt, setBgLocationPrompt] = useState(false)
+  const [boardPickerVisible, setBoardPickerVisible] = useState(false)
+  const [pendingBoardId, setPendingBoardId] = useState<string | null>(null)
+  const [busyBoardId, setBusyBoardId] = useState<string | null>(null)
+  const [masterBusy, setMasterBusy] = useState(false)
 
-  const enableCompanion = () =>
-    setCompanionPresence(true).catch((error) => {
+  const onCompanionToggle = async (enabled: boolean) => {
+    setMasterBusy(true)
+    try {
+      await setCompanionPresence(enabled)
+      if (
+        enabled &&
+        useSettingsStore.getState().companionPresenceBoards.length === 0 &&
+        availableAutoStartBoards.length > 0
+      ) {
+        setBoardPickerVisible(true)
+      }
+    } catch (error) {
+      console.warn('Companion presence toggle failed', error)
+      Alert.alert(
+        'Auto start app',
+        error instanceof Error ? error.message : 'Could not change auto start',
+      )
+    } finally {
+      setMasterBusy(false)
+    }
+  }
+
+  const enableCompanion = async (boardId: string) => {
+    setBusyBoardId(boardId)
+    try {
+      await addCompanionBoard(boardId)
+    } catch (error) {
       console.warn('Companion presence toggle failed', error)
       Alert.alert(
         'Auto start app',
         error instanceof Error ? error.message : 'Could not enable auto start',
       )
-    })
-
-  const onCompanionToggle = async (next: boolean) => {
-    if (!next) {
-      void setCompanionPresence(false)
-      return
+    } finally {
+      setBusyBoardId(null)
+      setPendingBoardId(null)
     }
+  }
+
+  const onAddCompanionBoard = async (boardId: string) => {
+    setBoardPickerVisible(false)
     // Hands-off auto-start records GPS only with "Allow all the time": the OS starts the service
     // from the background and withholds while-in-use location. Explain why before any grant attempt.
     if (await hasBackgroundLocation()) {
-      void enableCompanion()
+      void enableCompanion(boardId)
     } else {
+      setPendingBoardId(boardId)
       setBgLocationPrompt(true)
+    }
+  }
+
+  const onRemoveCompanionBoard = async (boardId: string) => {
+    setBusyBoardId(boardId)
+    try {
+      await removeCompanionBoard(boardId)
+    } catch (error) {
+      console.warn('Companion presence removal failed', error)
+      Alert.alert(
+        'Auto start app',
+        error instanceof Error ? error.message : 'Could not remove auto-start board',
+      )
+    } finally {
+      setBusyBoardId(null)
     }
   }
 
   const onBgLocationConfirm = async () => {
     setBgLocationPrompt(false)
     // Android 10 grants inline; Android 11+ removed the dialog, so fall back to Settings.
-    if (await ensureBackgroundLocation()) {
-      void enableCompanion()
+    if ((await ensureBackgroundLocation()) && pendingBoardId) {
+      void enableCompanion(pendingBoardId)
     } else {
       Linking.openSettings()
     }
@@ -98,13 +160,18 @@ export default function ConnectionSettingsScreen() {
             <SettingsCard>
               <SettingsRow
                 icon={RocketLaunchIcon}
-                iconColor={theme.palette.green.color}
+                iconColor={
+                  companionPresenceEnabled
+                    ? theme.palette.green.color
+                    : theme.palette.slate.textMuted
+                }
                 label="Auto start app"
-                hint="When your phone finds your board, it will automatically start the app in the background"
+                hint="Start the app when one of your configured boards appears"
                 right={
                   <Switch
                     value={companionPresenceEnabled}
-                    onValueChange={(v) => void onCompanionToggle(v)}
+                    disabled={masterBusy}
+                    onValueChange={(enabled) => void onCompanionToggle(enabled)}
                     trackColor={{
                       false: theme.palette.slate.border,
                       true: theme.palette.sky.border,
@@ -117,6 +184,50 @@ export default function ConnectionSettingsScreen() {
                   />
                 }
               />
+              {companionPresenceEnabled && companionPresenceBoards.length === 0 ? (
+                <SettingsRow
+                  icon={RocketLaunchIcon}
+                  iconColor={theme.palette.slate.textMuted}
+                  label="No auto-start boards"
+                  hint="Add a linked board to start the app when it appears"
+                />
+              ) : companionPresenceEnabled ? (
+                companionPresenceBoards.map((board) => (
+                  <SettingsRow
+                    key={board.boardId}
+                    icon={RocketLaunchIcon}
+                    iconColor={theme.palette.green.color}
+                    label={board.name}
+                    hint={board.bleId}
+                    right={
+                      <IconButton
+                        icon={TrashIcon}
+                        destructive
+                        loading={busyBoardId === board.boardId}
+                        accessibilityLabel={`Remove ${board.name} from auto start`}
+                        onPress={() => void onRemoveCompanionBoard(board.boardId)}
+                      />
+                    }
+                  />
+                ))
+              ) : null}
+              {companionPresenceEnabled ? (
+                <SettingsRow
+                  icon={PlusIcon}
+                  iconColor={theme.palette.sky.color}
+                  label="Add board"
+                  hint={
+                    availableAutoStartBoards.length > 0
+                      ? 'Choose another linked board'
+                      : 'No linked boards available'
+                  }
+                  onPress={
+                    availableAutoStartBoards.length > 0
+                      ? () => setBoardPickerVisible(true)
+                      : undefined
+                  }
+                />
+              ) : null}
               {companionPresenceEnabled ? (
                 <SettingsRow
                   icon={ClockCountdownIcon}
@@ -288,6 +399,25 @@ export default function ConnectionSettingsScreen() {
         onConfirm={onBgLocationConfirm}
         onCancel={() => setBgLocationPrompt(false)}
       />
+      <FadeCardModal
+        visible={boardPickerVisible}
+        title="Add auto-start board"
+        titleIcon={RocketLaunchIcon}
+        onDismiss={() => setBoardPickerVisible(false)}
+      >
+        <SettingsCard>
+          {availableAutoStartBoards.map((board) => (
+            <SettingsRow
+              key={board.id}
+              icon={BluetoothConnectedIcon}
+              iconColor={theme.palette.cyan.color}
+              label={board.name}
+              hint={board.link?.bleId}
+              onPress={() => void onAddCompanionBoard(board.id)}
+            />
+          ))}
+        </SettingsCard>
+      </FadeCardModal>
     </SafeAreaView>
   )
 }
