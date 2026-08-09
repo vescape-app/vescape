@@ -1772,6 +1772,13 @@ private var wearAutoLaunchOnConnect = true
     // otherwise the rider's release does nothing and the board coasts to the firmware timeout.
     fun stopBoardMove(): Boolean = boardMoveController.stop()
 
+    /**
+     * The live position Navigation starts a path from. See `LocationTracker.riderPosition`.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderPosition`
+     */
+    fun riderPosition(): LocationSnapshot? = locationTracker.riderPosition
+
     fun remoteTiltState(): Map<String, Any?>? =
         remoteTiltWire(
             remoteTiltController.currentValue,

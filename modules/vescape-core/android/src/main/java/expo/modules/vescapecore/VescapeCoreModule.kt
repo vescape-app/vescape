@@ -754,8 +754,8 @@ class VescapeCoreModule : Module() {
       if (latitude == null || longitude == null) {
         navigation.clear()
       } else {
-        val settings = repository.getTypedSettings()
-        navigation.setTarget(latitude, longitude, settings.lastGpsLatitude, settings.lastGpsLongitude)
+        val origin = navigationOrigin(repository)
+        navigation.setTarget(latitude, longitude, origin?.first, origin?.second)
       }
     }
     // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
@@ -1146,13 +1146,31 @@ key == "wearAutoLaunchOnConnect" ||
   private suspend fun recomputeNavigation(appContext: Context) {
     val repository = AppDataRepository.get(appContext)
     val directionPoint = repository.getDirectionPoint() ?: return
-    val settings = repository.getTypedSettings()
+    val origin = navigationOrigin(repository)
     NavigationController.get(appContext).recompute(
       directionPoint.first,
       directionPoint.second,
-      settings.lastGpsLatitude,
-      settings.lastGpsLongitude,
+      origin?.first,
+      origin?.second,
     )
+  }
+
+  /**
+   * Where a path starts: the rider's live fix, however weak, falling back to the last GPS position
+   * written to app data only when the phone has produced nothing at all this run.
+   *
+   * The stored row is a survivor of the last session — persisted at most every 30s and only from a
+   * precise fix — so on a cold start indoors it is easily yesterday's position kilometres away. A
+   * live approximate fix is the rider; the stored one only claims to be.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `navigationOrigin`
+   */
+  private suspend fun navigationOrigin(repository: AppDataRepository): Pair<Double, Double>? {
+    CoreForegroundService.currentRiderPosition()?.let { return it.latitude to it.longitude }
+    val settings = repository.getTypedSettings()
+    val latitude = settings.lastGpsLatitude ?: return null
+    val longitude = settings.lastGpsLongitude ?: return null
+    return latitude to longitude
   }
 
   private suspend fun reloadPrivacyZonesIntoRecorder(appContext: Context) {

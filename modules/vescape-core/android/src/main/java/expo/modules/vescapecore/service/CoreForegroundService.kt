@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
+import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
@@ -415,6 +416,9 @@ class CoreForegroundService : Service() {
                 ?: idleState(AppDataRepository.get(context.applicationContext))
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
+
+        /** Live rider position for Navigation; null while the service is not up. */
+        fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
         private fun idleState(repository: AppDataRepository): Map<String, Any?> {
             val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }

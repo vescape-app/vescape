@@ -850,12 +850,12 @@ public class VescapeCoreModule: Module {
       // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
       // one ends it. The Directions call runs off the promise so the pin lands immediately.
       if let latitude, let longitude {
-        let settings = self.appData.getSettings()
+        let origin = self.navigationOrigin()
         NavigationController.shared.setTarget(
           toLatitude: latitude,
           toLongitude: longitude,
-          fromLatitude: settings["lastGpsLatitude"] as? Double,
-          fromLongitude: settings["lastGpsLongitude"] as? Double
+          fromLatitude: origin?.latitude,
+          fromLongitude: origin?.longitude
         )
       } else {
         NavigationController.shared.clear()
@@ -1251,13 +1251,30 @@ public class VescapeCoreModule: Module {
   /// now. A no-op with no Direction Point: there is nothing to compute a path to.
   private func recomputeNavigation() {
     guard let directionPoint = appData.getDirectionPoint() else { return }
-    let settings = appData.getSettings()
+    let origin = navigationOrigin()
     NavigationController.shared.recompute(
       toLatitude: directionPoint.latitude,
       toLongitude: directionPoint.longitude,
-      fromLatitude: settings["lastGpsLatitude"] as? Double,
-      fromLongitude: settings["lastGpsLongitude"] as? Double
+      fromLatitude: origin?.latitude,
+      fromLongitude: origin?.longitude
     )
+  }
+
+  /// Where a path starts: the rider's live fix, however weak, falling back to the last GPS position
+  /// in app data only when the phone has produced nothing at all this run.
+  ///
+  /// The stored row is a survivor of the last session, so on a cold start indoors it is easily
+  /// yesterday's position kilometres away. A live approximate fix is the rider; the stored one only
+  /// claims to be.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `navigationOrigin`
+  private func navigationOrigin() -> (latitude: Double, longitude: Double)? {
+    if let live = coordinator.riderPosition() { return live }
+    let settings = appData.getSettings()
+    guard let latitude = settings["lastGpsLatitude"] as? Double,
+          let longitude = settings["lastGpsLongitude"] as? Double
+    else { return nil }
+    return (latitude, longitude)
   }
 
   /// Emit `onNavigation` with the process's current Navigation (`nil` while none is computed).
