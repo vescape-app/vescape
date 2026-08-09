@@ -1452,8 +1452,26 @@ export interface Navigation {
   /** Navigation Profile the path was produced under. Selection is a later slice; always `walking`. */
   profile: string
   computedAtMs: number
+  status: NavigationStatus
+  /** Empty unless `status` is `ready`. Never infer failure from this — read `status`. */
   coordinates: [longitude: number, latitude: number][]
 }
+
+/**
+ * How a Navigation ended up. A Navigation exists for as long as its Direction Point does, so a
+ * request that produced no path is still a Navigation — one that says why instead of drawing a line.
+ *
+ * - `ready` — a usable path was computed.
+ * - `fetchFailed` — could not ask: no signal, timeout, API error. Worth retrying with signal.
+ * - `noPathFound` — asked and answered, but nothing rideable leads there. Retrying from the same
+ *   spot will say the same thing.
+ *
+ * Nothing retries on its own. `retryNavigation` is the only way a failed one is recomputed.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationStatus`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationStatus`
+ */
+export type NavigationStatus = 'ready' | 'fetchFailed' | 'noPathFound'
 
 /**
  * Native Navigation changed. Emitted whenever it is computed or cleared, and replayed on subscribe,
@@ -1695,6 +1713,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteMapPoint(id: string): Promise<void>
   setMapPointReaction(id: string, reaction: MapPointReaction | null): Promise<void>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
+  retryNavigation(): Promise<void>
   getSettings(): Promise<AppSettings>
   refreshLegalPolicy(): Promise<void>
   setLegalMode(boardId: string, enabled: boolean): Promise<void>
@@ -2503,6 +2522,21 @@ export async function setDirectionPoint(
   longitude: number | null,
 ): Promise<void> {
   return native.setDirectionPoint(latitude, longitude)
+}
+
+/**
+ * Asks native to compute the Navigation again, from the rider's current position to the Direction
+ * Point they already have. A no-op when no Direction Point is set.
+ *
+ * The rider's own retry, and the only one there is: nothing in the app may call this automatically,
+ * on a timer, on reconnect or on a new fix. A path that appears mid-ride without being asked for is
+ * exactly what Navigation is designed not to do.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `retryNavigation`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `retryNavigation`
+ */
+export async function retryNavigation(): Promise<void> {
+  return native.retryNavigation()
 }
 
 export async function getSettings(): Promise<AppSettings> {

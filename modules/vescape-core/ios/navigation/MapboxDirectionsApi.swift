@@ -36,19 +36,21 @@ final class MapboxDirectionsApi: DirectionsRoutes {
     session = URLSession(configuration: configuration)
   }
 
-  /// Points of the first returned route as `(latitude, longitude)`, or `nil` when the token is
-  /// missing, the call fails, or Mapbox returns no route. A `nil` simply yields no Navigation:
-  /// failure UI is a later slice, and this slice never retries.
+  /// Points of the first returned route, or which way this failed. A missing token, a transport
+  /// error and a non-2xx response are all `.failed` — the question never got a real answer. A 2xx
+  /// carrying no route is `.noPath`: Mapbox answered, and the answer is that nothing leads there.
+  ///
+  /// Nothing is retried here; retrying is the rider's call.
   func route(
     fromLatitude: Double,
     fromLongitude: Double,
     toLatitude: Double,
     toLongitude: Double,
     profile: String
-  ) async -> [(latitude: Double, longitude: Double)]? {
+  ) async -> DirectionsResult {
     guard !accessToken.isEmpty else {
       Self.log.warning("No Mapbox access token baked in; skipping Directions call")
-      return nil
+      return .failed
     }
 
     // Mapbox takes coordinates as `longitude,latitude` — the opposite order from `setDirectionPoint`.
@@ -59,26 +61,26 @@ final class MapboxDirectionsApi: DirectionsRoutes {
       URLQueryItem(name: "overview", value: "full"),
       URLQueryItem(name: "access_token", value: accessToken),
     ]
-    guard let url = components?.url else { return nil }
+    guard let url = components?.url else { return .failed }
 
     do {
       let (data, response) = try await session.data(from: url)
       guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
         Self.log.warning("Directions call failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-        return nil
+        return .failed
       }
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard
         let routes = json?["routes"] as? [[String: Any]],
         let geometry = routes.first?["geometry"] as? String,
         !geometry.isEmpty
-      else { return nil }
+      else { return .noPath }
 
       let points = Polyline6.decode(geometry)
-      return points.isEmpty ? nil : points
+      return points.isEmpty ? .noPath : .path(points)
     } catch {
       Self.log.warning("Directions call failed: \(error.localizedDescription, privacy: .public)")
-      return nil
+      return .failed
     }
   }
 }

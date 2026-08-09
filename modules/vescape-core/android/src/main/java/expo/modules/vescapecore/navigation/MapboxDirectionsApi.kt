@@ -26,9 +26,12 @@ class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
   private val client = OkHttpClient.Builder().callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
 
   /**
-   * Points of the first returned route as `(latitude, longitude)`, or `null` when the token is
-   * missing, the call fails, or Mapbox returns no route. A `null` simply yields no Navigation:
-   * failure UI is a later slice, and this slice never retries.
+   * Points of the first returned route, or which way this failed. A missing token, a transport
+   * error and a non-2xx response are all [DirectionsResult.Failed] — the question never got a real
+   * answer. A 2xx carrying no route is [DirectionsResult.NoPath]: Mapbox answered, and the answer is
+   * that nothing leads there.
+   *
+   * Nothing is retried here; retrying is the rider's call.
    */
   override suspend fun route(
     fromLatitude: Double,
@@ -36,10 +39,10 @@ class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
     toLatitude: Double,
     toLongitude: Double,
     profile: String,
-  ): List<Pair<Double, Double>>? = withContext(Dispatchers.IO) {
+  ): DirectionsResult = withContext(Dispatchers.IO) {
     if (accessToken.isEmpty()) {
       Log.w(TAG, "No Mapbox access token baked in; skipping Directions call")
-      return@withContext null
+      return@withContext DirectionsResult.Failed
     }
 
     // Mapbox takes coordinates as `longitude,latitude` — the opposite order from `setDirectionPoint`.
@@ -52,7 +55,7 @@ class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
         val body = response.body?.string()
         if (!response.isSuccessful || body == null) {
           Log.w(TAG, "Directions call failed: HTTP ${response.code}")
-          return@withContext null
+          return@withContext DirectionsResult.Failed
         }
         val geometry = JSONObject(body)
           .optJSONArray("routes")
@@ -60,13 +63,16 @@ class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
           ?.getJSONObject(0)
           ?.optString("geometry")
           ?.takeIf { it.isNotEmpty() }
-          ?: return@withContext null
+          ?: return@withContext DirectionsResult.NoPath
 
-        Polyline6.decode(geometry).takeIf { it.isNotEmpty() }
+        Polyline6.decode(geometry)
+          .takeIf { it.isNotEmpty() }
+          ?.let(DirectionsResult::Path)
+          ?: DirectionsResult.NoPath
       }
     } catch (e: Exception) {
       Log.w(TAG, "Directions call failed: ${e.message}")
-      null
+      DirectionsResult.Failed
     }
   }
 

@@ -32,14 +32,29 @@ final class NavigationControllerTests: XCTestCase {
       toLatitude: Double,
       toLongitude: Double,
       profile: String
-    ) async -> [(latitude: Double, longitude: Double)]? {
+    ) async -> DirectionsResult {
       lock.withLock { callCount += 1 }
       started.fulfill()
       while !lock.withLock({ released.contains(toLatitude) }) {
         try? await Task.sleep(nanoseconds: 5_000_000)
       }
-      return [(fromLatitude, fromLongitude), (toLatitude, toLongitude)]
+      return .path([(fromLatitude, fromLongitude), (toLatitude, toLongitude)])
     }
+  }
+
+  /// Routing stub that answers immediately with whatever the test hands it.
+  private final class FixedRoutes: DirectionsRoutes, @unchecked Sendable {
+    private let result: DirectionsResult
+
+    init(_ result: DirectionsResult) { self.result = result }
+
+    func route(
+      fromLatitude: Double,
+      fromLongitude: Double,
+      toLatitude: Double,
+      toLongitude: Double,
+      profile: String
+    ) async -> DirectionsResult { result }
   }
 
   /// In-memory stand-in for the App Settings rows, so restore and write-through need no database.
@@ -72,6 +87,7 @@ final class NavigationControllerTests: XCTestCase {
       targetLongitude: targetLongitude,
       profile: "walking",
       computedAtMs: 1_700_000_000_000,
+      status: .ready,
       points: [(riderLatitude, riderLongitude), (targetLatitude, targetLongitude)]
     )
   }
@@ -238,10 +254,9 @@ final class NavigationControllerTests: XCTestCase {
     XCTAssertNil(emitted.values.last ?? nil)
   }
 
-  func testNoRiderPositionYieldsNoNavigation() {
-    let controller = NavigationController(api: GatedRoutes(), store: FakeStore())
-    let emitted = EmissionLog()
-    controller.onChange = { emitted.append($0) }
+  func testNoRiderPositionIsReportedAsAFetchFailureNotAsNoNavigation() {
+    let routes = GatedRoutes()
+    let controller = NavigationController(api: routes, store: FakeStore())
 
     controller.setTarget(
       toLatitude: targetLatitude,
@@ -250,8 +265,101 @@ final class NavigationControllerTests: XCTestCase {
       fromLongitude: nil
     )
 
-    XCTAssertNil(controller.current)
-    XCTAssertTrue(emitted.values.isEmpty)
+    XCTAssertEqual(controller.current?.status, .fetchFailed)
+    XCTAssertEqual(controller.current?.points.count, 0)
+    // Nothing to ask with, so nothing was asked.
+    XCTAssertEqual(routes.calls, 0)
+  }
+
+  func testFailedFetchAndEmptyAnswerAreDifferentFailures() {
+    let failing = NavigationController(api: FixedRoutes(.failed), store: FakeStore())
+    failing.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    let empty = NavigationController(api: FixedRoutes(.noPath), store: FakeStore())
+    empty.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(failing.current?.status, .fetchFailed)
+    XCTAssertEqual(empty.current?.status, .noPathFound)
+  }
+
+  func testPathDetouringAbsurdlyAroundTheTargetIsNoPathAtAll() {
+    // Straight line is ~13 km; this answer rides ~110 km of it, the shape Directions returns when
+    // the only way to the target is back out along a road.
+    let detour = DirectionsResult.path([
+      (riderLatitude, riderLongitude),
+      (riderLatitude + 0.5, riderLongitude),
+      (targetLatitude, targetLongitude),
+    ])
+    let controller = NavigationController(api: FixedRoutes(detour), store: FakeStore())
+
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(controller.current?.status, .noPathFound)
+    XCTAssertEqual(controller.current?.points.count, 0)
+  }
+
+  func testFailedNavigationIsStoredSoARestartDoesNotHideTheFailure() {
+    let store = FakeStore(directionPoint: (targetLatitude, targetLongitude))
+    let controller = NavigationController(api: FixedRoutes(.failed), store: store)
+
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+    XCTAssertEqual(store.stored?.status, .fetchFailed)
+
+    let restarted = NavigationController(api: GatedRoutes(), store: store)
+    restarted.restore()
+    settle()
+
+    XCTAssertEqual(restarted.current?.status, .fetchFailed)
+  }
+
+  func testRetryingAFailedNavigationRecomputesItFromTheRidersCurrentPosition() {
+    let store = FakeStore(directionPoint: (targetLatitude, targetLongitude))
+    let controller = NavigationController(api: FixedRoutes(.failed), store: store)
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    // Retry is an ordinary `setTarget` from where the rider is now, which is what the module calls.
+    // The rider has moved since the pin was dropped.
+    let routes = GatedRoutes()
+    let retrying = NavigationController(api: routes, store: store)
+    retrying.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude + 0.01,
+      fromLongitude: riderLongitude
+    )
+    routes.release(targetLatitude)
+    settle()
+
+    XCTAssertEqual(retrying.current?.status, .ready)
+    XCTAssertEqual(retrying.current?.points.first?.latitude ?? 0, riderLatitude + 0.01, accuracy: 1e-9)
   }
 
   /// `onChange` fires from whichever thread published, so the log needs its own guard.

@@ -863,6 +863,26 @@ public class VescapeCoreModule: Module {
       promise.resolve(nil)
     }
 
+    // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
+    // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
+    // by then they have usually ridden somewhere with signal, or somewhere a path exists.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `retryNavigation`
+    // @parity /modules/vescape-core/src/index.ts `retryNavigation`
+    AsyncFunction("retryNavigation") { (promise: Promise) in
+      guard let directionPoint = self.appData.getDirectionPoint() else {
+        promise.resolve(nil)
+        return
+      }
+      let settings = self.appData.getSettings()
+      NavigationController.shared.setTarget(
+        toLatitude: directionPoint.latitude,
+        toLongitude: directionPoint.longitude,
+        fromLatitude: settings["lastGpsLatitude"] as? Double,
+        fromLongitude: settings["lastGpsLongitude"] as? Double
+      )
+      promise.resolve(nil)
+    }
+
     AsyncFunction("getSettings") { (promise: Promise) in
       promise.resolve(self.appData.getSettings())
     }

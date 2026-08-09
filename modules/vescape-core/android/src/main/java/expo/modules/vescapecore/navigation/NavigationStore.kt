@@ -41,6 +41,7 @@ object NavigationJson {
   private const val TARGET_LONGITUDE = "targetLongitude"
   private const val PROFILE = "profile"
   private const val COMPUTED_AT_MS = "computedAtMs"
+  private const val STATUS = "status"
   private const val GEOMETRY = "geometry"
 
   fun encode(navigation: Navigation): String = JSONObject()
@@ -48,17 +49,24 @@ object NavigationJson {
     .put(TARGET_LONGITUDE, navigation.targetLongitude)
     .put(PROFILE, navigation.profile)
     .put(COMPUTED_AT_MS, navigation.computedAtMs)
+    .put(STATUS, navigation.status.wire)
     .put(GEOMETRY, Polyline6.encode(navigation.points))
     .toString()
 
   /**
-   * Parses [json], or returns `null` when it is malformed or holds no points. A path that cannot be
-   * read is simply not restored: Navigation has no failure UI, and the rider can set the pin again.
+   * Parses [json], or returns `null` when it is malformed. A failed Navigation is stored and
+   * restored like any other: the rider comes back to the same "no path here, retry?" they left,
+   * never to a spinner and never to a line that was never computed.
+   *
+   * A `ready` row with no points is a contradiction and is dropped — the rider can set the pin
+   * again. Rows written before the status existed always carried points, so their missing key
+   * defaults to `ready`.
    */
   fun decode(json: String): Navigation? = try {
     val stored = JSONObject(json)
+    val status = NavigationStatus.fromWire(stored.optString(STATUS).takeIf { it.isNotEmpty() })
     val points = Polyline6.decode(stored.optString(GEOMETRY))
-    if (points.isEmpty()) {
+    if (status == NavigationStatus.READY && points.isEmpty()) {
       null
     } else {
       Navigation(
@@ -66,6 +74,7 @@ object NavigationJson {
         targetLongitude = stored.getDouble(TARGET_LONGITUDE),
         profile = stored.getString(PROFILE),
         computedAtMs = stored.getLong(COMPUTED_AT_MS),
+        status = status,
         points = points,
       )
     }

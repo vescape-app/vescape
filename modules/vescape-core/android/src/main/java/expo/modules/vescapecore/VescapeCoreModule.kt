@@ -757,6 +757,23 @@ class VescapeCoreModule : Module() {
         navigation.setTarget(latitude, longitude, settings.lastGpsLatitude, settings.lastGpsLongitude)
       }
     }
+    // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
+    // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
+    // by then they have usually ridden somewhere with signal, or somewhere a path exists.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `retryNavigation`
+    // @parity /modules/vescape-core/src/index.ts `retryNavigation`
+    AsyncFunction("retryNavigation") Coroutine { ->
+      val appCtx = context.applicationContext
+      val repository = AppDataRepository.get(appCtx)
+      val directionPoint = repository.getDirectionPoint() ?: return@Coroutine
+      val settings = repository.getTypedSettings()
+      NavigationController.get(appCtx).setTarget(
+        directionPoint.first,
+        directionPoint.second,
+        settings.lastGpsLatitude,
+        settings.lastGpsLongitude,
+      )
+    }
     AsyncFunction("getSettings") {
       runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
     }

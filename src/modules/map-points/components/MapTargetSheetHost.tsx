@@ -1,5 +1,5 @@
-import { NavigationArrowIcon, XIcon } from 'phosphor-react-native'
-import type { MapPoint, MapPointPatch } from 'vescape-core'
+import { ArrowClockwiseIcon, NavigationArrowIcon, XIcon } from 'phosphor-react-native'
+import type { MapPoint, MapPointPatch, NavigationStatus } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
@@ -21,6 +21,10 @@ interface MapTargetSheetHostProps {
   onEndEdit: () => void
   onNavigateSelected: () => void
   onCancelNavigation: () => void
+  /** How the path to the active target ended up. `null` while there is no Navigation at all. */
+  navigationStatus: NavigationStatus | null
+  /** Rider-initiated recompute, offered only when the path failed. */
+  onRetryNavigation: () => void
   onDismissSelected: () => void
   onAddFeature: () => void
   onSaveMapPoint: (id: string, patch: MapPointPatch) => Promise<MapPoint | null>
@@ -47,6 +51,8 @@ export function MapTargetSheetHost({
   onEndEdit,
   onNavigateSelected,
   onCancelNavigation,
+  navigationStatus,
+  onRetryNavigation,
   onDismissSelected,
   onAddFeature,
   onSaveMapPoint,
@@ -113,20 +119,47 @@ export function MapTargetSheetHost({
 
   if (!activeTarget || activeTargetSuppressed) return null
 
+  const cancelAction = {
+    ...actionColors,
+    label: 'Cancel navigation',
+    accessibilityLabel: 'Cancel navigation',
+    Icon: XIcon,
+    onPress: onCancelNavigation,
+  }
+  // No path was computed. Retry leads, because it is the only thing that can change the situation —
+  // and it only ever happens on this tap, never on its own.
+  const failureNotice = navigationStatus ? NAVIGATION_FAILURE_NOTICES[navigationStatus] : null
+  const retryAction = failureNotice
+    ? {
+        ...actionColors,
+        label: 'Retry',
+        accessibilityLabel: 'Retry path to target',
+        Icon: ArrowClockwiseIcon,
+        onPress: onRetryNavigation,
+      }
+    : null
+
   return (
     <MapTargetSheet
       key={activeTarget.id}
       target={activeTarget}
       bottom={bottom}
       mode="navigation"
-      action={{
-        ...actionColors,
-        label: 'Cancel navigation',
-        accessibilityLabel: 'Cancel navigation',
-        Icon: XIcon,
-        onPress: onCancelNavigation,
-      }}
+      action={retryAction ?? cancelAction}
+      secondaryAction={retryAction ? cancelAction : undefined}
+      notice={failureNotice}
       onFocusTarget={() => onFocusTarget(activeTarget)}
     />
   )
+}
+
+/**
+ * What the rider is told when no line is drawn. Deliberately says what is missing rather than
+ * apologising: the pin, the bearing and the distance are still there, and in a trackless forest
+ * that is all the information that exists.
+ */
+const NAVIGATION_FAILURE_NOTICES: Record<NavigationStatus, string | null> = {
+  ready: null,
+  fetchFailed: 'No path yet — could not reach routing. Check your signal and retry.',
+  noPathFound: 'No path leads here. Ride by the pin, bearing and distance.',
 }

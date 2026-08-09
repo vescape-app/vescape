@@ -10,6 +10,7 @@ import {
   ShapeSource,
   SymbolLayer,
 } from '@rnmapbox/maps'
+import { WarningIcon } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
@@ -631,11 +632,18 @@ export function MainMapLayers({
     activeNavigationTarget?.type === 'mapPoint' ? activeNavigationTarget.point.id : null
   const showDirectionPoint =
     directionPoint != null && activeNavigationTarget?.type !== 'mapPoint' && !historyActive
-  const directionPointIconKind = 'direction' as const
 
   // Native computes and owns the Navigation; this only draws the coordinates it was handed. They
   // already arrive as GeoJSON `[longitude, latitude]`, so nothing is reordered here.
   const navigation = useMapStore((state) => state.navigation)
+  // No path could be computed. The pin stays exactly where the rider put it — it is still their
+  // Direction Point, with a bearing and a distance — but it stops pretending a route is coming.
+  const navigationFailed = navigation != null && navigation.status !== 'ready'
+  const directionPinColor = navigationFailed ? theme.status.warning.color : directionColor
+  const directionPinTextColor = navigationFailed ? theme.status.warning.text : directionTextColor
+  const directionPinIcon = navigationFailed
+    ? WarningIcon
+    : getMapPointKindIcon('direction' as const)
   const navigationShape = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(
     () =>
       navigation && navigation.coordinates.length > 1
@@ -735,12 +743,12 @@ export function MainMapLayers({
         <MapPin
           // Color in the key: PointAnnotation snapshots its children natively, so a
           // rider-color or icon change must remount the pin to re-render.
-          key={`center-direction-position-${directionColor}-${directionPointIconKind}`}
+          key={`center-direction-position-${directionPinColor}-${navigationFailed ? 'failed' : 'direction'}`}
           id="center-direction-position"
           coordinate={[directionPoint.longitude, directionPoint.latitude]}
-          color={directionColor}
-          icon={getMapPointKindIcon(directionPointIconKind)}
-          iconColor={directionTextColor}
+          color={directionPinColor}
+          icon={directionPinIcon}
+          iconColor={directionPinTextColor}
           selected
           navigationActive
           onSelected={onFocusDirectionPoint}

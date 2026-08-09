@@ -18,7 +18,7 @@ import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { type MapSearchResult } from '@/modules/map/lib/search'
-import type { DirectionPoint } from '@/modules/map/store/mapStore'
+import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
 import { routes } from '@/navigation/routes'
@@ -477,6 +477,11 @@ export function MapModeOverlay({
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
+  // Native owns whether a path exists; this only decides what the sheet says about it. Read here
+  // rather than drilled from the screen, because the sheet is its only consumer.
+  const navigationStatus = useMapStore((s) => s.navigation?.status ?? null)
+  const retryNavigation = useMapStore((s) => s.retryNavigation)
+
   const navigationTarget =
     activeNavigationTarget ??
     (directionPoint
@@ -596,6 +601,8 @@ export function MapModeOverlay({
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
             onCancelNavigation={onCancelNavigation}
+            navigationStatus={navigationStatus}
+            onRetryNavigation={() => void retryNavigation()}
             onDismissSelected={() => {
               setEditingMapPointId(null)
               setAddMenuOpen(false)

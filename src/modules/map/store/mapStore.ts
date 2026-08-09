@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   addNavigationListener,
   getSettings,
+  retryNavigation as recomputeNavigation,
   setDirectionPoint as persistDirectionPoint,
   type Navigation,
 } from 'vescape-core'
@@ -19,7 +20,8 @@ interface MapState {
   directionPoint: DirectionPoint | null
   /**
    * Path to the direction point, mirrored from native. Native computes and owns it; this store only
-   * carries it to the map layer. `null` while none exists or none could be computed.
+   * carries it to the map layer. `null` while no Direction Point is set; a Navigation whose `status`
+   * is not `ready` is a computed answer of "no path", not an absence.
    */
   navigation: Navigation | null
   /** Last direction point write failure, in rider-facing words. Cleared by the next success. */
@@ -31,6 +33,7 @@ interface MapActions {
   setDirectionPoint(latitude: number, longitude: number): Promise<void>
   clearDirectionPoint(): Promise<void>
   replaceNavigation(navigation: Navigation | null): void
+  retryNavigation(): Promise<void>
 }
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
@@ -77,6 +80,15 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
 
     replaceNavigation(navigation) {
       set({ navigation })
+    },
+
+    /**
+     * The rider asking for the path again. Nothing is set here: native recomputes and pushes the
+     * result back through `onNavigation` like any other change, so this side never holds a second
+     * opinion about the path. Only ever called from a rider tap.
+     */
+    async retryNavigation() {
+      await recomputeNavigation()
     },
   }
 })

@@ -31,6 +31,7 @@ enum NavigationJson {
   private static let targetLongitudeKey = "targetLongitude"
   private static let profileKey = "profile"
   private static let computedAtMsKey = "computedAtMs"
+  private static let statusKey = "status"
   private static let geometryKey = "geometry"
 
   static func encode(_ navigation: Navigation) -> String? {
@@ -39,14 +40,20 @@ enum NavigationJson {
       targetLongitudeKey: navigation.targetLongitude,
       profileKey: navigation.profile,
       computedAtMsKey: navigation.computedAtMs,
+      statusKey: navigation.status.rawValue,
       geometryKey: Polyline6.encode(navigation.points),
     ]
     guard let data = try? JSONSerialization.data(withJSONObject: stored) else { return nil }
     return String(data: data, encoding: .utf8)
   }
 
-  /// Parses `json`, or returns `nil` when it is malformed or holds no points. A path that cannot be
-  /// read is simply not restored: Navigation has no failure UI, and the rider can set the pin again.
+  /// Parses `json`, or returns `nil` when it is malformed. A failed Navigation is stored and
+  /// restored like any other: the rider comes back to the same "no path here, retry?" they left,
+  /// never to a spinner and never to a line that was never computed.
+  ///
+  /// A `ready` row with no points is a contradiction and is dropped — the rider can set the pin
+  /// again. Rows written before the status existed always carried points, so their missing key
+  /// defaults to `ready`.
   static func decode(_ json: String) -> Navigation? {
     guard
       let data = json.data(using: .utf8),
@@ -57,13 +64,15 @@ enum NavigationJson {
       let computedAtMs = (stored[computedAtMsKey] as? NSNumber)?.int64Value,
       let geometry = stored[geometryKey] as? String
     else { return nil }
+    let status = (stored[statusKey] as? String).flatMap(NavigationStatus.init(rawValue:)) ?? .ready
     let points = Polyline6.decode(geometry)
-    guard !points.isEmpty else { return nil }
+    guard status != .ready || !points.isEmpty else { return nil }
     return Navigation(
       targetLatitude: targetLatitude,
       targetLongitude: targetLongitude,
       profile: profile,
       computedAtMs: computedAtMs,
+      status: status,
       points: points
     )
   }

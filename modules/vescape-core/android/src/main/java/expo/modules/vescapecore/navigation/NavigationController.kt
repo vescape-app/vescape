@@ -7,6 +7,34 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
+ * How a Navigation ended up. A Navigation exists for as long as its Direction Point does, so a
+ * request that produced no path is still a Navigation — one that says why instead of drawing a line.
+ * JS must never have to infer failure from an empty coordinate array.
+ *
+ * The two failures are told apart because they are different rider situations, and will likely want
+ * different copy: [FETCH_FAILED] is worth retrying once the signal comes back, [NO_PATH_FOUND] is
+ * not going to change by trying again from the same spot.
+ *
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationStatus`
+ * @parity /modules/vescape-core/src/index.ts `NavigationStatus`
+ */
+enum class NavigationStatus(val wire: String) {
+  /** A usable path was computed and is in `points`. */
+  READY("ready"),
+
+  /** Could not ask: no signal, timeout, HTTP error, missing token. `points` is empty. */
+  FETCH_FAILED("fetchFailed"),
+
+  /** Asked and answered, but nothing rideable leads there. `points` is empty. */
+  NO_PATH_FOUND("noPathFound");
+
+  companion object {
+    fun fromWire(wire: String?): NavigationStatus =
+      entries.firstOrNull { it.wire == wire } ?: READY
+  }
+}
+
+/**
  * A rideable path from the rider to their Direction Point, following real ways. Computed once and
  * then fixed: nothing here recomputes, reroutes, or reacts to the rider moving.
  *
@@ -20,13 +48,15 @@ data class Navigation(
   val targetLongitude: Double,
   val profile: String,
   val computedAtMs: Long,
-  /** Path points in encoding order, each `(latitude, longitude)`. */
+  val status: NavigationStatus,
+  /** Path points in encoding order, each `(latitude, longitude)`. Empty unless [status] is READY. */
   val points: List<Pair<Double, Double>>,
 ) {
   fun toMap(): Map<String, Any?> = mapOf(
     "target" to mapOf("latitude" to targetLatitude, "longitude" to targetLongitude),
     "profile" to profile,
     "computedAtMs" to computedAtMs,
+    "status" to status.wire,
     // GeoJSON order, which is what the JS `ShapeSource` expects — flipped from the pairs above.
     "coordinates" to points.map { (latitude, longitude) -> listOf(longitude, latitude) },
   )
@@ -37,9 +67,10 @@ data class Navigation(
  * Direction Point ends it. The two are strictly 1:1, so this holds at most one at a time.
  *
  * **There is deliberately no rerouting.** No off-route detection, no recompute, no arrival
- * detection, no retry. EUC riders leave the line by hundreds of metres as a matter of course, and a
- * path that redraws itself under them is worse than a stale one. Only the rider replaces a
- * Navigation. Please do not add rerouting here.
+ * detection, no automatic retry — not in the foreground and not in the background. EUC riders leave
+ * the line by hundreds of metres as a matter of course, and a path that redraws itself under them is
+ * worse than a stale one. A failed Navigation stays failed until the rider asks again, which is an
+ * ordinary [setTarget] call. Only the rider replaces a Navigation. Please do not add rerouting here.
  *
  * Durable: every change is written through to [NavigationStore], and [restore] brings the stored
  * path back on cold start. Restoring is a read, never a fetch — the stored path is the truth however
@@ -54,14 +85,31 @@ data class Navigation(
  * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `DirectionsRoutes`
  */
 fun interface DirectionsRoutes {
-  /** Path points as `(latitude, longitude)`, or `null` when no route could be produced. */
   suspend fun route(
     fromLatitude: Double,
     fromLongitude: Double,
     toLatitude: Double,
     toLongitude: Double,
     profile: String,
-  ): List<Pair<Double, Double>>?
+  ): DirectionsResult
+}
+
+/**
+ * What one Directions call produced. "Could not ask" and "asked, nothing leads there" are separate
+ * cases all the way down, because the rider's options differ: one is worth retrying, the other is
+ * the honest answer for that pin.
+ *
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `DirectionsResult`
+ */
+sealed interface DirectionsResult {
+  /** Path points as `(latitude, longitude)`. */
+  data class Path(val points: List<Pair<Double, Double>>) : DirectionsResult
+
+  /** The service answered, but returned nothing rideable. */
+  object NoPath : DirectionsResult
+
+  /** The service could not be reached or asked at all. */
+  object Failed : DirectionsResult
 }
 
 class NavigationController(
@@ -117,7 +165,11 @@ class NavigationController(
 
   /**
    * Computes the Navigation to [toLatitude]/[toLongitude] from the rider's position. A missing
-   * rider position or a failed fetch yields no Navigation rather than a straight line.
+   * rider position, a failed fetch or a path nothing could ride yields a Navigation carrying the
+   * reason rather than a straight line — see [NavigationStatus].
+   *
+   * This is also the whole of retry: asking again is just setting the same target from wherever the
+   * rider is now, which is why there is no separate retry path to keep in step.
    *
    * Returns immediately: the Directions call runs on this controller's own scope, so callers never
    * block the rider's tap on the network.
@@ -133,24 +185,49 @@ class NavigationController(
     // rather than leaving a stale line drawn under a pin that has visibly moved — a Navigation
     // belongs to exactly one Direction Point.
     publish(request, null)
-    if (fromLatitude == null || fromLongitude == null) return
+
+    // No fix yet is a "could not ask", not a "nothing leads there": the rider is told, and asking
+    // again once the phone has a position is exactly the retry that already exists.
+    if (fromLatitude == null || fromLongitude == null) {
+      publish(request, failed(toLatitude, toLongitude, NavigationStatus.FETCH_FAILED))
+      return
+    }
 
     scope.launch {
-      val points = api.route(fromLatitude, fromLongitude, toLatitude, toLongitude, DEFAULT_PROFILE)
-      publish(
-        request,
-        points?.let {
-          Navigation(
-            targetLatitude = toLatitude,
-            targetLongitude = toLongitude,
-            profile = DEFAULT_PROFILE,
-            computedAtMs = System.currentTimeMillis(),
-            points = it,
-          )
-        },
-      )
+      val navigation =
+        when (val result = api.route(fromLatitude, fromLongitude, toLatitude, toLongitude, DEFAULT_PROFILE)) {
+          is DirectionsResult.Failed -> failed(toLatitude, toLongitude, NavigationStatus.FETCH_FAILED)
+          is DirectionsResult.NoPath -> failed(toLatitude, toLongitude, NavigationStatus.NO_PATH_FOUND)
+          is DirectionsResult.Path ->
+            if (NavigationUsability.isUsable(result.points, toLatitude, toLongitude)) {
+              Navigation(
+                targetLatitude = toLatitude,
+                targetLongitude = toLongitude,
+                profile = DEFAULT_PROFILE,
+                computedAtMs = System.currentTimeMillis(),
+                status = NavigationStatus.READY,
+                points = result.points,
+              )
+            } else {
+              failed(toLatitude, toLongitude, NavigationStatus.NO_PATH_FOUND)
+            }
+        }
+      publish(request, navigation)
     }
   }
+
+  private fun failed(
+    toLatitude: Double,
+    toLongitude: Double,
+    status: NavigationStatus,
+  ) = Navigation(
+    targetLatitude = toLatitude,
+    targetLongitude = toLongitude,
+    profile = DEFAULT_PROFILE,
+    computedAtMs = System.currentTimeMillis(),
+    status = status,
+    points = emptyList(),
+  )
 
   /** Clearing the Direction Point ends the Navigation; they are strictly 1:1. */
   fun clear() = publish(claimRequest(), null)

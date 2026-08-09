@@ -12,6 +12,8 @@ export function MapTargetSheet({
   bottom,
   mode,
   action,
+  secondaryAction,
+  notice,
   onAddFeature,
   onEdit,
   onSave,
@@ -25,6 +27,10 @@ export function MapTargetSheet({
   bottom: number
   mode: 'select' | 'navigation' | 'edit'
   action: MapTargetSheetAction
+  /** Navigation mode only: a second button beside the primary one. */
+  secondaryAction?: MapTargetSheetAction
+  /** Navigation mode only: why there is no path, in rider-facing words. */
+  notice?: string | null
   onAddFeature?: () => void
   onEdit?: () => void
   onSave?: () => void
@@ -59,6 +65,8 @@ export function MapTargetSheet({
         target={target}
         bottom={bottom}
         action={action}
+        secondaryAction={secondaryAction}
+        notice={notice}
         media={media.assets}
         onDismiss={onDismiss}
         onFocusTarget={onFocusTarget}

@@ -34,12 +34,23 @@ class NavigationControllerTest {
             toLatitude: Double,
             toLongitude: Double,
             profile: String,
-        ): List<Pair<Double, Double>> {
+        ): DirectionsResult {
             calls.incrementAndGet()
             started.countDown()
             gate(toLatitude).await(WAIT_SECONDS, TimeUnit.SECONDS)
-            return listOf(fromLatitude to fromLongitude, toLatitude to toLongitude)
+            return DirectionsResult.Path(listOf(fromLatitude to fromLongitude, toLatitude to toLongitude))
         }
+    }
+
+    /** Routing stub that answers immediately with whatever the test hands it. */
+    private class FixedRoutes(private val result: DirectionsResult) : DirectionsRoutes {
+        override suspend fun route(
+            fromLatitude: Double,
+            fromLongitude: Double,
+            toLatitude: Double,
+            toLongitude: Double,
+            profile: String,
+        ): DirectionsResult = result
     }
 
     /** In-memory stand-in for the App Settings rows, so restore and write-through need no database. */
@@ -74,6 +85,7 @@ class NavigationControllerTest {
         targetLongitude = TARGET_LNG,
         profile = "walking",
         computedAtMs = 1_700_000_000_000L,
+        status = NavigationStatus.READY,
         points = listOf(RIDER_LAT to RIDER_LNG, targetLatitude to TARGET_LNG),
     )
 
@@ -190,13 +202,81 @@ class NavigationControllerTest {
     }
 
     @Test
-    fun `no rider position yields no Navigation`() {
-        val (controller, emitted) = controller(GatedRoutes())
+    fun `no rider position is reported as a fetch failure, not as no Navigation`() {
+        val routes = GatedRoutes()
+        val (controller, _) = controller(routes)
 
         controller.setTarget(TARGET_LAT, TARGET_LNG, null, null)
 
-        assertNull(controller.current)
-        synchronized(emitted) { assertTrue(emitted.isEmpty()) }
+        assertEquals(NavigationStatus.FETCH_FAILED, controller.current?.status)
+        assertTrue(controller.current?.points.isNullOrEmpty())
+        // Nothing to ask with, so nothing was asked.
+        assertEquals(0, routes.calls.get())
+    }
+
+    @Test
+    fun `a failed fetch and an empty answer are different failures`() {
+        val (failing, _) = controller(FixedRoutes(DirectionsResult.Failed))
+        failing.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        val (empty, _) = controller(FixedRoutes(DirectionsResult.NoPath))
+        empty.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(NavigationStatus.FETCH_FAILED, failing.current?.status)
+        assertEquals(NavigationStatus.NO_PATH_FOUND, empty.current?.status)
+    }
+
+    @Test
+    fun `a path that detours absurdly around the target is no path at all`() {
+        // Straight line is ~13 km; this answer rides ~110 km of it, the shape Directions returns
+        // when the only way to the target is back out along a road.
+        val detour = DirectionsResult.Path(
+            listOf(RIDER_LAT to RIDER_LNG, RIDER_LAT + 0.5 to RIDER_LNG, TARGET_LAT to TARGET_LNG),
+        )
+        val (controller, _) = controller(FixedRoutes(detour))
+
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(NavigationStatus.NO_PATH_FOUND, controller.current?.status)
+        assertTrue(controller.current?.points.isNullOrEmpty())
+    }
+
+    @Test
+    fun `a failed Navigation is stored, so a restart does not hide the failure`() {
+        val store = FakeStore(directionPoint = TARGET_LAT to TARGET_LNG)
+        val (controller, _) = controller(FixedRoutes(DirectionsResult.Failed), store)
+
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(NavigationStatus.FETCH_FAILED, store.stored?.status)
+
+        val (restarted, _) = controller(GatedRoutes(), store)
+        restarted.restore()
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(NavigationStatus.FETCH_FAILED, restarted.current?.status)
+    }
+
+    @Test
+    fun `retrying a failed Navigation recomputes it from the rider's current position`() {
+        val routes = GatedRoutes()
+        val store = FakeStore(directionPoint = TARGET_LAT to TARGET_LNG)
+        val (controller, _) = controller(FixedRoutes(DirectionsResult.Failed), store)
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        // Retry is an ordinary `setTarget` from where the rider is now, which is what the module
+        // calls. The rider has moved since the pin was dropped.
+        val (retrying, _) = controller(routes, store)
+        retrying.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT + 0.01, RIDER_LNG)
+        routes.gate(TARGET_LAT).countDown()
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(NavigationStatus.READY, retrying.current?.status)
+        assertEquals(RIDER_LAT + 0.01, retrying.current?.points?.first()?.first ?: 0.0, 1e-9)
     }
 
     private companion object {
