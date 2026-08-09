@@ -947,6 +947,8 @@ public class VescapeCoreModule: Module {
       enabled: true,
       soundType: soundType,
       createdAt: 0,
+      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
+      beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
       source: nil
     )
   }

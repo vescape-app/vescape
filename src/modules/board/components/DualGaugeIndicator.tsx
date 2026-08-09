@@ -39,6 +39,7 @@ export function DualGaugeIndicator({
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [alertRules],
   )
@@ -51,6 +52,7 @@ export function DualGaugeIndicator({
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [alertRules],
   )

@@ -47,6 +47,7 @@ export function MetricDetailGauge({
               id: rule.id,
               threshold: rule.threshold,
               thresholdMax: rule.thresholdMax,
+              repeats: rule.repeatEverySeconds != null,
             })),
     [alertRules, metric.controlId],
   )

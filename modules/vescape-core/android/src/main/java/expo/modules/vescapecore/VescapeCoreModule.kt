@@ -1,6 +1,8 @@
 package expo.modules.vescapecore
 
 import expo.modules.vescapecore.alerts.AlertFeedback
+import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
+import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
@@ -75,6 +77,8 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     enabled = true,
     soundType = soundType,
     createdAt = 0,
+    repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
+    beepCount = normalizedAlertBeepCount((this["beepCount"] as? Number)?.toInt()),
     source = null,
   )
 }

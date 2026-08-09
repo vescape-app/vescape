@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { LEGAL_LIMIT_MAP_CAMERA } from '@/modules/legal/lib/legalLimits'
 import type { reduceMapCameraIntent } from '@/modules/map/lib/cameraController'
 import { toEngineTarget } from '@/modules/map/lib/cameraEngine/cameraTarget'
@@ -12,7 +12,7 @@ import type { CameraControlRefs } from '@/screens/main/map/cameraControlTypes'
 interface UseCameraIntentCommandsParams {
   cameraRefs: CameraControlRefs
   gpsCamera: Pick<CameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
-  mapNavigationMode: MapNavigationMode
+  mapOrientationMode: MapOrientationMode
   perspectiveEnabled: boolean
   dispatchCameraIntent: (
     intent: Parameters<typeof reduceMapCameraIntent>[1],
@@ -26,7 +26,7 @@ interface UseCameraIntentCommandsParams {
 export function useCameraIntentCommands({
   cameraRefs,
   gpsCamera,
-  mapNavigationMode,
+  mapOrientationMode,
   perspectiveEnabled,
   dispatchCameraIntent,
   getFollowHeadingDeg,
@@ -59,7 +59,7 @@ export function useCameraIntentCommands({
       enabled,
       currentCamera: currentCameraRef.current,
       fallbackZoomLevel: gpsCamera.zoomLevel,
-      navigationMode: mapNavigationMode,
+      orientationMode: mapOrientationMode,
     })
     applyCamera(effect?.camera)
   }, [
@@ -67,7 +67,7 @@ export function useCameraIntentCommands({
     currentCameraRef,
     dispatchCameraIntent,
     gpsCamera.zoomLevel,
-    mapNavigationMode,
+    mapOrientationMode,
     onPerspectiveChange,
     perspectiveEnabled,
   ])
@@ -110,7 +110,7 @@ export function useCameraIntentCommands({
         coordinate,
         currentCamera: currentCameraRef.current,
         fallbackZoomLevel: gpsCamera.zoomLevel,
-        navigationMode: mapNavigationMode,
+        orientationMode: mapOrientationMode,
         perspectiveEnabled,
       })
       applyCamera(effect?.camera, {
@@ -122,7 +122,7 @@ export function useCameraIntentCommands({
       currentCameraRef,
       dispatchCameraIntent,
       gpsCamera.zoomLevel,
-      mapNavigationMode,
+      mapOrientationMode,
       perspectiveEnabled,
     ],
   )

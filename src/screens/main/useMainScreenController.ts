@@ -83,7 +83,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   const satelliteMapImageryOpacity = useSettingsStore((s) => s.satelliteMapImageryOpacity)
   const satelliteImagerySaturation = useSettingsStore((s) => s.satelliteImagerySaturation)
   const hideTelemetryMapDetails = useSettingsStore((s) => s.hideTelemetryMapDetails)
-  const mapNavigationMode = useSettingsStore((s) => s.mapNavigationMode)
+  const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const setSetting = useSettingsStore((s) => s.set)
   const {
     blocks,
@@ -196,7 +196,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   const weatherActive = mode === 'weather'
   const legalLimitsActive = mode === 'legalLimits'
   const historyActive = mode === 'history'
-  const rotationLocked = mapNavigationMode === 'northUp'
+  const rotationLocked = mapOrientationMode === 'northUp'
   const previousRide = getPreviousRideSession(sessions, selectedSession)
   const nextRide = getNextRideSession(sessions, selectedSession)
   const canPreviousRide = !!previousRide || historyHasMore
@@ -345,9 +345,9 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     [setSetting],
   )
 
-  const setMapNavigationMode = useCallback(
-    (nextMode: typeof mapNavigationMode) => {
-      void setSetting('mapNavigationMode', nextMode)
+  const setMapOrientationMode = useCallback(
+    (nextMode: typeof mapOrientationMode) => {
+      void setSetting('mapOrientationMode', nextMode)
     },
     [setSetting],
   )
@@ -412,8 +412,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     satelliteImagerySaturation,
     hideTelemetryMapDetails,
     setMapStyleKey,
-    mapNavigationMode,
-    setMapNavigationMode,
+    mapOrientationMode,
+    setMapOrientationMode,
     mapSelector,
     setMapSelector,
     dismissMapSelector,

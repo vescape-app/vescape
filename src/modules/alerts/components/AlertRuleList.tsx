@@ -18,7 +18,7 @@ import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertFormModal } from '@/modules/alerts/components/AlertFormModal'
 import { type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import { type MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
-import { type AlertSoundType } from '@/modules/alerts/store/alertsStore'
+import { type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
 /**
  * The rider's own Alert Rules for one control: rows with mute + delete, and the add/edit form.
@@ -44,13 +44,9 @@ export function AlertRuleList({
     setEditRule(null)
   }
 
-  const handleSave = (
-    threshold: number,
-    thresholdMax: number | null,
-    soundType: AlertSoundType,
-  ) => {
-    if (editRule) controller.updateRule(editRule.id, threshold, thresholdMax, soundType)
-    else controller.addRule(threshold, thresholdMax, soundType)
+  const handleSave = (draft: AlertRuleDraft) => {
+    if (editRule) controller.updateRule(editRule.id, draft)
+    else controller.addRule(draft)
     closeForm()
   }
 
@@ -134,6 +130,12 @@ function AlertRuleRow({
   const isGeiger = rule.thresholdMax != null
   const isTts = rule.soundType.startsWith('tts:')
   const TypeIcon = isGeiger ? RadioactiveIcon : isTts ? ChatTextIcon : WaveformIcon
+  const detail = [
+    rule.repeatEverySeconds == null ? null : `every ${rule.repeatEverySeconds}s`,
+    isGeiger || isTts ? null : `${rule.beepCount}×`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <TouchableOpacity style={styles.ruleRow} onPress={onEdit} activeOpacity={0.7}>
@@ -159,6 +161,11 @@ function AlertRuleRow({
             {rule.soundType.slice(4)}
           </Text>
         )}
+        {detail ? (
+          <Text style={[styles.ruleDetail, !rule.enabled && styles.ruleTextDisabled]}>
+            {detail}
+          </Text>
+        ) : null}
       </View>
 
       <TouchableOpacity
@@ -221,6 +228,12 @@ const styles = StyleSheet.create({
   ruleTtsTemplate: {
     color: theme.palette.slate.textMuted,
     fontSize: 12,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  ruleDetail: {
+    color: theme.palette.slate.textDim,
+    fontSize: 11,
     fontWeight: '500',
     marginTop: 1,
   },

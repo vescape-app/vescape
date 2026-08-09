@@ -273,8 +273,11 @@ function LinearGaugeShowcase() {
         aux={empty ? undefined : mode === 'stale old' ? `${voltageText} · 2h ago` : voltageText}
         charging={charging}
         alerts={[
-          { id: 'low', threshold: 20, thresholdMax: null },
-          { id: 'band', threshold: 40, thresholdMax: 60 },
+          // One of each rule flavor: one-shot (tick only), geiger and repeating (both band the
+          // rest of the scale, since both keep making noise above where their marks stop).
+          { id: 'one-shot', threshold: 20, thresholdMax: null },
+          { id: 'geiger', threshold: 40, thresholdMax: 60 },
+          { id: 'repeating', threshold: 90, thresholdMax: null, repeats: true },
         ]}
         hint={empty ? 'Set battery config in board settings' : undefined}
       />

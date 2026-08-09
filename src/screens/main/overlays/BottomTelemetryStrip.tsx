@@ -108,7 +108,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               unit={telemetry.motorTemp.unit}
               size={VALUE_FONT_SIZE}
               weight="800"
-              align="center"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -130,7 +130,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               unit={telemetry.controllerTemp.unit}
               size={VALUE_FONT_SIZE}
               weight="800"
-              align="center"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -152,7 +152,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               unit={telemetry.motorCurrent.unit}
               size={VALUE_FONT_SIZE}
               weight="800"
-              align="center"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -174,7 +174,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               unit={telemetry.battCurrent.unit}
               size={VALUE_FONT_SIZE}
               weight="800"
-              align="center"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline

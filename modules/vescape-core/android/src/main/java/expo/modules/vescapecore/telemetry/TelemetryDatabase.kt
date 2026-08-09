@@ -7,12 +7,13 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 import java.io.File
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 31
+internal const val TELEMETRY_DATABASE_VERSION = 32
 
 @Database(
   entities = [
@@ -572,6 +573,23 @@ abstract class TelemetryDatabase : RoomDatabase() {
     }
 
     /**
+     * Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
+     * former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v32_alert_repeat`
+     */
+    internal val MIGRATION_31_32 = object : Migration(31, 32) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        if (!hasColumn(db, "alerts", "repeat_every_seconds")) {
+          db.execSQL("ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
+        }
+        if (!hasColumn(db, "alerts", "beep_count")) {
+          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT $ALERT_BEEP_COUNT_DEFAULT")
+        }
+      }
+    }
+
+    /**
      * One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
      * the whole database lives in the main file, then renames it in place. Idempotent: once the new
      * file exists (or no legacy file is present) this is a no-op.
@@ -629,6 +647,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_28_29,
             MIGRATION_29_30,
             MIGRATION_30_31,
+            MIGRATION_31_32,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

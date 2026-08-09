@@ -39,15 +39,20 @@ async function checkedGh(args: string[], label: string): Promise<string> {
   return result.stdout
 }
 
-async function checkedGit(args: string[], label: string): Promise<string> {
+async function git(args: string[]): Promise<GhResult> {
   const process = Bun.spawn(['git', ...args], { stdout: 'pipe', stderr: 'pipe' })
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     new Response(process.stdout).text(),
     new Response(process.stderr).text(),
   ])
-  if (exitCode !== 0) throw new Error(`${label}: ${stderr.trim() || stdout.trim()}`)
-  return stdout.trim()
+  return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() }
+}
+
+async function checkedGit(args: string[], label: string): Promise<string> {
+  const result = await git(args)
+  if (result.exitCode !== 0) throw new Error(`${label}: ${result.stderr || result.stdout}`)
+  return result.stdout
 }
 
 export interface DispatchPayload {
@@ -223,17 +228,30 @@ export async function repositoryDefaultBranch(repo: string): Promise<string> {
 
 export async function resolveSourceSha(input: string): Promise<string> {
   const ref = input.trim()
-  const process = Bun.spawn(['git', 'rev-parse', '--verify', `${ref}^{commit}`], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-  ])
-  if (exitCode !== 0) throw new Error(`Cannot resolve commit "${ref}": ${stderr.trim()}`)
-  return stdout.trim().toLowerCase()
+  const result = await git(['rev-parse', '--verify', `${ref}^{commit}`])
+  if (result.exitCode !== 0) throw new Error(`Cannot resolve commit "${ref}": ${result.stderr}`)
+  return result.stdout.toLowerCase()
+}
+
+export interface SourceRefPreview {
+  sha: string
+  subject: string
+  releasedBranch: boolean
+}
+
+/** Non-throwing preview of what a typed ref points at, so the build screen can show it live. */
+export async function describeSourceRef(input: string): Promise<SourceRefPreview | null> {
+  const ref = input.trim()
+  if (!ref) return null
+  const described = await git(['show', '-s', '--format=%H%n%s', `${ref}^{commit}`])
+  if (described.exitCode !== 0) return null
+  const [sha = '', ...subjectLines] = described.stdout.split('\n')
+  const ancestry = await git(['merge-base', '--is-ancestor', sha, 'origin/main'])
+  return {
+    sha: sha.toLowerCase(),
+    subject: subjectLines.join(' ').trim(),
+    releasedBranch: ancestry.exitCode === 0,
+  }
 }
 
 export async function verifyRemoteCommit(repo: string, sourceSha: string): Promise<void> {

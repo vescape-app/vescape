@@ -24,7 +24,7 @@ internal class AlertCoordinator(
         }
         activeGeigerRuleIds = activeGeigerRuleIds.intersect(geigerRuleIds)
         rules = value
-        engine.resetDebounce()
+        engine.resetAlertState()
     }
 
     fun evaluate(
@@ -84,7 +84,7 @@ internal class AlertCoordinator(
                 val text = renderAlertMessageTemplate(alert.soundType.removePrefix("tts:"), alert, batteryPercent, onDiagnostic)
                 if (text.isNotEmpty()) feedback().speakMessage(text)
             }
-            for (alert in single) if (!alert.soundType.startsWith("tts:")) feedback().playSingle(alert.soundType)
+            for (alert in single) if (!alert.soundType.startsWith("tts:")) feedback().playSingle(alert.soundType, alert.beepCount)
             if (vibrateSingles) feedback().vibrate(null)
         }
         return fired.map { it.toMap() }

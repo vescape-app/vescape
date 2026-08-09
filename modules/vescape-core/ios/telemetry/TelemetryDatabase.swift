@@ -504,6 +504,21 @@ enum TelemetryDatabase {
       try FavoriteMediaStore.createTables(db)
     }
 
+    // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
+    // former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_31_32`
+    migrator.registerMigration("v32_alert_repeat") { db in
+      let columns = try db.columns(in: "alerts").map(\.name)
+      if !columns.contains("repeat_every_seconds") {
+        try db.execute(sql: "ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
+      }
+      if !columns.contains("beep_count") {
+        try db.execute(
+          sql: "ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT \(alertBeepCountDefault)"
+        )
+      }
+    }
+
     return migrator
   }
 }

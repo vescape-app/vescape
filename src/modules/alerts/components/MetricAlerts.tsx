@@ -62,6 +62,7 @@ export function MetricAlerts({
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [controller?.rules],
   )

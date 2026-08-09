@@ -2,9 +2,9 @@ import type { RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
-import { MapNavigationSelector } from '@/modules/map/components/MapNavigationSelector'
+import { MapOrientationSelector } from '@/modules/map/components/MapOrientationSelector'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
-import type { MapNavigationMode, MapStyleKey } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode, MapStyleKey } from '@/modules/map/constants/mapStyles'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import type { MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
@@ -15,8 +15,8 @@ interface MapControlsProps {
   heading: SharedValue<number>
   mapStyleKey: MapStyleKey
   setMapStyleKey: (key: MapStyleKey) => void
-  mapNavigationMode: MapNavigationMode
-  setMapNavigationMode: (mode: MapNavigationMode) => void
+  mapOrientationMode: MapOrientationMode
+  setMapOrientationMode: (mode: MapOrientationMode) => void
   mapSelector: MapSelector
   setMapSelector: (selector: MapSelector) => void
 }
@@ -28,8 +28,8 @@ export function MapControls({
   heading,
   mapStyleKey,
   setMapStyleKey,
-  mapNavigationMode,
-  setMapNavigationMode,
+  mapOrientationMode,
+  setMapOrientationMode,
   mapSelector,
   setMapSelector,
 }: MapControlsProps) {
@@ -50,17 +50,17 @@ export function MapControls({
       ) : null}
       <View pointerEvents="box-none" style={styles.mapSelectors}>
         {showNavigationSelector ? (
-          <MapNavigationSelector
-            activeMode={mapNavigationMode}
+          <MapOrientationSelector
+            activeMode={mapOrientationMode}
             heading={heading}
             expanded={navigationExpanded}
             size="sm"
             onToggle={() => setMapSelector(mapSelector === 'navigation' ? null : 'navigation')}
             onSelect={(nextMode) => {
-              if (mapNavigationMode === 'freeRotate' && nextMode !== 'freeRotate') {
+              if (mapOrientationMode === 'freeRotate' && nextMode !== 'freeRotate') {
                 mapRef.current?.resetRotation()
               }
-              setMapNavigationMode(nextMode)
+              setMapOrientationMode(nextMode)
             }}
           />
         ) : null}

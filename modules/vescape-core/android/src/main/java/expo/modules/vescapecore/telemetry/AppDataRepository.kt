@@ -13,6 +13,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
+import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
 // @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
@@ -25,7 +27,7 @@ internal enum class AppDataScope(val wire: String) {
 internal fun validMapStyleKey(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("onedark", "outdoors", "satellite", "mapy") }
 
-internal fun validMapNavigationMode(value: Any?): String? =
+internal fun validMapOrientationMode(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("northUp", "gpsHeading", "phoneHeading", "freeRotate") }
 
 internal fun validSatelliteImageryOpacity(value: Any?): Double? =
@@ -269,7 +271,7 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteMapImageryOpacity = req("satelliteMapImageryOpacity", 1.0, ::validSatelliteImageryOpacity),
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
-      mapNavigationMode = req("mapNavigationMode", "northUp", ::validMapNavigationMode),
+      mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
@@ -340,8 +342,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "satelliteImagerySaturation" ->
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
-      "mapNavigationMode" ->
-        validMapNavigationMode(value) ?: return@withContext
+      "mapOrientationMode" ->
+        validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
       "historyMetricHotRanges" ->
         validHistoryMetricHotRanges(value) ?: return@withContext
@@ -396,7 +398,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteMapImageryOpacity" -> d.satelliteMapImageryOpacity
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
-        "mapNavigationMode" -> d.mapNavigationMode
+        "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
         "socEstimateWindowSeconds" -> d.socEstimateWindowSeconds
@@ -734,7 +736,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteMapImageryOpacity" to satelliteMapImageryOpacity,
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
-  "mapNavigationMode" to mapNavigationMode,
+  "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
   "socEstimateWindowSeconds" to socEstimateWindowSeconds,
@@ -787,6 +789,8 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "enabled" to enabled,
   "soundType" to soundType,
   "createdAt" to createdAt,
+  "repeatEverySeconds" to repeatEverySeconds,
+  "beepCount" to beepCount,
   "source" to source,
 )
 
@@ -1089,6 +1093,8 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   enabled = getBoolean("enabled"),
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),
+  repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
+  beepCount = normalizedAlertBeepCount((get("beepCount") as? Number)?.toInt()),
   source = get("source") as? String,
 )
 

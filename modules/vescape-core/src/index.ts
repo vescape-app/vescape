@@ -264,6 +264,9 @@ export interface AlertTestRule {
   threshold: number
   thresholdMax: number | null
   soundType: AlertSoundType
+  /** Carried so a test sounds like the real rule: same cadence, same number of beeps. */
+  repeatEverySeconds: number | null
+  beepCount: number
 }
 
 // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AlertRuleEntity`
@@ -279,11 +282,43 @@ export interface AlertRule {
   soundType: AlertSoundType
   createdAt: number
   /**
+   * Repeat cadence for a single-threshold rule, in seconds. `null` ⇒ one-shot: it announces once
+   * per crossing and stays silent until the metric re-arms it. Ignored for range (geiger) rules,
+   * whose cadence follows range depth. Native clamps to {@link ALERT_REPEAT_MIN_SECONDS}.
+   */
+  repeatEverySeconds: number | null
+  /**
+   * How many times the sound plays per announcement, {@link ALERT_BEEP_COUNT_RANGE}. Applies to
+   * preset sounds only — a text-to-speech rule speaks once regardless.
+   */
+  beepCount: number
+  /**
    * Provenance tag. `manual` (or absent) = rider-authored. `preset` rules are generated + owned
    * by JS orchestration and regenerated wholesale; native persists the string opaquely.
    */
   source?: 'manual' | 'preset'
 }
+
+/**
+ * Floor on {@link AlertRule.repeatEverySeconds}. Native clamps to it, so no rule written by any
+ * path — rider, preset, or import — can announce fast enough to become noise.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_REPEAT_MIN_SECONDS`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertRepeatMinSeconds`
+ */
+export const ALERT_REPEAT_MIN_SECONDS = 3
+
+/**
+ * Inclusive bounds on {@link AlertRule.beepCount}. Past 5 the beeps stop being countable by ear
+ * at riding speed, which is the only thing the count is for.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_RANGE`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
+ */
+export const ALERT_BEEP_COUNT_RANGE = { min: 1, max: 5 } as const
+
+/** Beeps per announcement when nothing says otherwise — matches the pre-`beepCount` behavior. */
+export const ALERT_BEEP_COUNT_DEFAULT = 3
 
 export type PrivacyZonePreset = 'home' | 'work' | 'custom'
 
@@ -985,7 +1020,7 @@ export interface AppSettings {
   satelliteImagerySaturation: number
   /** Hide POI names and icons on the telemetry/home map. Explore keeps map details visible. */
   hideTelemetryMapDetails: boolean
-  mapNavigationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
+  mapOrientationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
   historyMetricGradientsEnabled: boolean
   historyMetricHotRanges: Partial<
     Record<

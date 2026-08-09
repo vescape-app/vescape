@@ -282,6 +282,8 @@ final class AppDataRepository {
           "enabled": (row["enabled"] as Int64) != 0,
           "soundType": row["sound_type"] as String,
           "createdAt": row["created_at"] as Int64,
+          "repeatEverySeconds": row["repeat_every_seconds"] as Int64?,
+          "beepCount": row["beep_count"] as Int? ?? alertBeepCountDefault,
           "source": row["source"] as String?,
         ]
       }
@@ -308,6 +310,8 @@ final class AppDataRepository {
           enabled: (row["enabled"] as Int64) != 0,
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
+          repeatEverySeconds: row["repeat_every_seconds"] as Int64?,
+          beepCount: row["beep_count"] as Int? ?? alertBeepCountDefault,
           source: row["source"] as String?
         )
       }
@@ -325,14 +329,16 @@ final class AppDataRepository {
     let enabled = (rule["enabled"] as? Bool) ?? false
     let soundType = rule["soundType"] as? String ?? "default"
     let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? nowMs()
+    let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
+    let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
     write { db in
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, source]
+        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source]
       )
     }
   }

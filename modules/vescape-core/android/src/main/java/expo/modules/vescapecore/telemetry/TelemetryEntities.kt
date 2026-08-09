@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -283,6 +284,15 @@ data class AlertRuleEntity(
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
   /**
+   * Repeat cadence in seconds for a single-threshold rule; null is one-shot. Ignored for range
+   * rules. Mirrors TS `AlertRule.repeatEverySeconds`.
+   */
+  @ColumnInfo(name = "repeat_every_seconds")
+  val repeatEverySeconds: Long? = null,
+  /** Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`. */
+  @ColumnInfo(name = "beep_count")
+  val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
+  /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
    * JS authors and regenerates preset rules; native only persists the string.
    */
@@ -366,7 +376,7 @@ data class AppSettings(
   val satelliteMapImageryOpacity: Double = 1.0,
   val satelliteImagerySaturation: Double = -0.35,
   val hideTelemetryMapDetails: Boolean = true,
-  val mapNavigationMode: String = "northUp",
+  val mapOrientationMode: String = "northUp",
   val historyMetricGradientsEnabled: Boolean = true,
   val historyMetricHotRanges: Map<String, Map<String, Double>> = DEFAULT_HISTORY_METRIC_HOT_RANGES,
   val socEstimateWindowSeconds: Int = 20,

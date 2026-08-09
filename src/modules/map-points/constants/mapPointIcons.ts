@@ -1,8 +1,8 @@
 import {
   ChargingStationIcon,
-  CompassIcon,
   EyeIcon,
   FlagIcon,
+  MapPinIcon,
   type Icon,
 } from 'phosphor-react-native'
 import type { MapPinKind } from '@/modules/map-points/constants/mapPoints'
@@ -14,7 +14,7 @@ import {
 } from '@/modules/map-points/components/MapPointSvgIcons'
 
 const MAP_POINT_KIND_ICONS: Record<MapPinKind, Icon> = {
-  direction: CompassIcon,
+  direction: MapPinIcon,
   drop: DropMapPointIcon,
   bonk: BonkMapPointIcon,
   nose_slide: SlideMapPointIcon,

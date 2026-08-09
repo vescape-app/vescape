@@ -22,6 +22,46 @@ import kotlin.math.abs
 
 private const val TTS_PREFIX = "tts:"
 
+/**
+ * Floor on an Alert Rule's repeat cadence, in seconds.
+ *
+ * @parity /modules/vescape-core/src/index.ts `ALERT_REPEAT_MIN_SECONDS`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertRepeatMinSeconds`
+ */
+const val ALERT_REPEAT_MIN_SECONDS = 3L
+
+/**
+ * Inclusive bounds on an Alert Rule's beep count.
+ *
+ * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_RANGE`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
+ */
+val ALERT_BEEP_COUNT_RANGE = 1..5
+
+/**
+ * Beeps per announcement when nothing says otherwise.
+ *
+ * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
+ * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountDefault`
+ */
+const val ALERT_BEEP_COUNT_DEFAULT = 3
+
+/** Gap between beeps of one announcement — tight enough that a burst reads as a single signal. */
+internal const val ALERT_BEEP_SPACING_MS = 350L
+
+/**
+ * Clamp a repeat cadence coming from JS. Anything non-positive means one-shot; everything else is
+ * floored, so no rule written by any path can announce fast enough to become noise.
+ */
+fun normalizedAlertRepeatSeconds(raw: Double?): Long? {
+    if (raw == null || !raw.isFinite() || raw <= 0.0) return null
+    return maxOf(ALERT_REPEAT_MIN_SECONDS, Math.round(raw))
+}
+
+/** Clamp a beep count coming from JS; absent or out of range falls back to the default. */
+fun normalizedAlertBeepCount(raw: Int?): Int =
+    raw?.coerceIn(ALERT_BEEP_COUNT_RANGE.first, ALERT_BEEP_COUNT_RANGE.last) ?: ALERT_BEEP_COUNT_DEFAULT
+
 internal fun alertControlUnit(controlId: String): String =
     telemetryMetricByControlId[controlId]?.unit ?: ""
 
@@ -83,6 +123,7 @@ private fun ttsSampleAlert(soundType: String) = FiredAlert(
     thresholdMax = null,
     soundType = soundType,
     rangeDepth = null,
+    beepCount = ALERT_BEEP_COUNT_DEFAULT,
     firedAt = System.currentTimeMillis(),
 )
 
@@ -100,6 +141,7 @@ internal data class FiredAlert(
     val thresholdMax: Double?,
     val soundType: String,
     val rangeDepth: Double?,
+    val beepCount: Int,
     val firedAt: Long,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -110,6 +152,7 @@ internal data class FiredAlert(
         "thresholdMax" to thresholdMax,
         "soundType" to soundType,
         "rangeDepth" to rangeDepth,
+        "beepCount" to beepCount,
         "firedAt" to firedAt,
     )
 }
@@ -141,12 +184,16 @@ internal fun withLegalModeOverlay(
     )
 }
 
-internal class AlertEngine {
+/**
+ * @param now Wall clock in ms. Injected so repeat cadence is testable without sleeping.
+ */
+internal class AlertEngine(private val now: () -> Long = { System.currentTimeMillis() }) {
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `AlertEngine`
     private val lastFiredAt = HashMap<String, Long>()
     private val armedState = HashMap<String, Boolean>()
 
-    fun resetDebounce() {
+    /** Forget every latch and repeat clock. Called when a new Board Session starts. */
+    fun resetAlertState() {
         lastFiredAt.clear()
         armedState.clear()
     }
@@ -159,8 +206,8 @@ internal class AlertEngine {
 
     /**
      * Evaluate already-normalized metric values. Production telemetry and the UI alert test both
-     * enter the same stateful threshold/debounce/hysteresis path; callers isolate state by owning
-     * separate [AlertEngine] instances.
+     * enter the same stateful arm/re-arm path; callers isolate state by owning separate
+     * [AlertEngine] instances.
      *
      * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `evaluateValues`
      */
@@ -176,52 +223,96 @@ internal class AlertEngine {
         valueFor: (String) -> Double?,
     ): List<FiredAlert> {
         if (rules.isEmpty()) return emptyList()
-        val now = System.currentTimeMillis()
+        val now = now()
         val fired = mutableListOf<FiredAlert>()
-
-        if (batteryPercent != null) {
-            for (rule in rules) {
-                if (rule.controlId == "battery" && rule.thresholdMax == null) {
-                    if (armedState[rule.id] == false && batteryPercent > rule.threshold + BATTERY_HYSTERESIS_PERCENT) {
-                        armedState[rule.id] = true
-                    }
-                }
-            }
-        }
 
         for (rule in rules) {
             val value = valueFor(rule.controlId) ?: continue
             val compareValue = if (rule.controlId == "battery" && batteryPercent != null) batteryPercent else value
             val aboveDir = alertDirectionIsAbove(rule.controlId)
             val triggered = if (aboveDir) compareValue >= rule.threshold else compareValue <= rule.threshold
-            if (!triggered) continue
-            val rangeDepth = alertRangeDepth(compareValue, rule.threshold, rule.thresholdMax, aboveDir)
-            if (rangeDepth == null) {
-                if (rule.controlId == "battery" && batteryPercent != null) {
-                    if (armedState[rule.id] == false) continue
-                    armedState[rule.id] = false
-                } else {
-                    if (now - (lastFiredAt[rule.id] ?: 0L) < 10_000L) continue
-                    lastFiredAt[rule.id] = now
-                }
+
+            if (isRangeRule(rule, aboveDir)) {
+                if (!triggered) continue
+                fired.add(rule.toFiredAlert(
+                    value = value,
+                    rangeDepth = alertRangeDepth(compareValue, rule.threshold, rule.thresholdMax, aboveDir),
+                    now = now,
+                ))
+                continue
             }
-            fired.add(FiredAlert(
-                ruleId = rule.id,
-                controlId = rule.controlId,
-                value = value,
-                threshold = rule.threshold,
-                thresholdMax = rule.thresholdMax,
-                soundType = rule.soundType,
-                rangeDepth = rangeDepth,
-                firedAt = now,
-            ))
-        }
-        return fired.sortedWith(
-            compareBy<FiredAlert> { if (it.rangeDepth != null) 0 else 1 }
-                .thenByDescending {
-                    if (alertDirectionIsAbove(it.controlId)) it.threshold else -it.threshold
+
+            // Single-threshold rule: announce on crossing, then stay latched until the metric
+            // travels back past the threshold by this metric's re-arm margin.
+            val armed = armedState[rule.id] ?: true
+            if (!triggered) {
+                if (!armed && hasRearmed(compareValue, rule, aboveDir)) {
+                    armedState[rule.id] = true
+                    lastFiredAt.remove(rule.id)
                 }
+                continue
+            }
+            if (!armed) {
+                val repeatMs = (rule.repeatEverySeconds ?: continue) * 1_000L
+                if (now - (lastFiredAt[rule.id] ?: 0L) < repeatMs) continue
+            }
+            armedState[rule.id] = false
+            lastFiredAt[rule.id] = now
+            fired.add(rule.toFiredAlert(value = value, rangeDepth = null, now = now))
+        }
+
+        return coalesceByControl(
+            fired.sortedWith(
+                compareBy<FiredAlert> { if (it.rangeDepth != null) 0 else 1 }
+                    .thenByDescending {
+                        if (alertDirectionIsAbove(it.controlId)) it.threshold else -it.threshold
+                    }
+            )
         )
+    }
+
+    /**
+     * Keep one single-threshold announcement per metric — the most severe, which the caller has
+     * already sorted first. A fast climb crosses several rungs in one evaluation; the rider wants
+     * the worst news, not a stutter of speech cut off mid-word. The dropped rules stay latched, so
+     * they are spent rather than pending.
+     *
+     * Range rules pass through untouched: their feedback is a continuous loop keyed by rule id,
+     * not an announcement.
+     */
+    private fun coalesceByControl(sorted: List<FiredAlert>): List<FiredAlert> {
+        val announced = HashSet<String>()
+        return sorted.filter { alert ->
+            alert.rangeDepth != null || announced.add(alert.controlId)
+        }
+    }
+
+    private fun AlertRuleEntity.toFiredAlert(value: Double, rangeDepth: Double?, now: Long) = FiredAlert(
+        ruleId = id,
+        controlId = controlId,
+        value = value,
+        threshold = threshold,
+        thresholdMax = thresholdMax,
+        soundType = soundType,
+        rangeDepth = rangeDepth,
+        beepCount = beepCount,
+        firedAt = now,
+    )
+
+    /** True once a fired rule's metric has travelled back past its threshold by the re-arm margin. */
+    private fun hasRearmed(compareValue: Double, rule: AlertRuleEntity, aboveDir: Boolean): Boolean {
+        val margin = alertRearmMargin(rule.controlId, rule.threshold)
+        return if (aboveDir) compareValue < rule.threshold - margin else compareValue > rule.threshold + margin
+    }
+
+    private fun alertRearmMargin(controlId: String, threshold: Double): Double =
+        // Controls with no metric definition (footpad) get a relative margin rather than none:
+        // zero would let a value dithering on the threshold announce on every telemetry tick.
+        telemetryMetricByControlId[controlId]?.alertRearmMargin ?: (abs(threshold) * 0.02)
+
+    private fun isRangeRule(rule: AlertRuleEntity, aboveDir: Boolean): Boolean {
+        val max = rule.thresholdMax ?: return false
+        return if (aboveDir) max > rule.threshold else max < rule.threshold
     }
 
     private fun alertDirectionIsAbove(controlId: String): Boolean =
@@ -238,10 +329,6 @@ internal class AlertEngine {
         if (span <= 0.0) return null
         val depth = if (aboveDir) value - threshold else threshold - value
         return (depth / span).coerceIn(0.0, 1.0)
-    }
-
-    companion object {
-        internal const val BATTERY_HYSTERESIS_PERCENT = 10.0
     }
 
     private fun extractAlertValue(controlId: String, t: RefloatTelemetry): Double? = when (controlId) {
@@ -349,12 +436,15 @@ internal class AlertFeedback(
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "vesc_alert")
     }
 
-    fun playSingle(soundType: String) {
+    /** Play one announcement: [beepCount] plays of the rule's sound, [ALERT_BEEP_SPACING_MS] apart. */
+    fun playSingle(soundType: String, beepCount: Int = ALERT_BEEP_COUNT_DEFAULT) {
         try {
             val preset = resolveAlertPreset(soundType, ALERT_CATEGORY_SINGLE)
+            val beeps = normalizedAlertBeepCount(beepCount)
             playPreset(preset)
-            handler.postDelayed({ playPreset(preset) }, 500)
-            handler.postDelayed({ playPreset(preset) }, 1_000)
+            for (index in 1 until beeps) {
+                handler.postDelayed({ playPreset(preset) }, index * ALERT_BEEP_SPACING_MS)
+            }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
         }

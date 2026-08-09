@@ -109,5 +109,7 @@ function toTestRule(rule: DraftAlertRule): AlertTestRule {
     threshold: rule.threshold,
     thresholdMax: rule.thresholdMax,
     soundType: rule.soundType,
+    repeatEverySeconds: rule.repeatEverySeconds,
+    beepCount: rule.beepCount,
   }
 }
