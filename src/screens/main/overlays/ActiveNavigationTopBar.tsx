@@ -120,7 +120,14 @@ function TargetIcon({
 
 function CancelButton({ color, onPress }: { color: string; onPress: () => void }) {
   return (
-    <Pressable accessibilityLabel="Cancel navigation" onPress={onPress} style={styles.cancel}>
+    <Pressable
+      accessibilityLabel="Cancel navigation"
+      onPress={(event) => {
+        event.stopPropagation()
+        onPress()
+      }}
+      style={styles.cancel}
+    >
       <XIcon size={12} color={color} weight="bold" />
     </Pressable>
   )
@@ -202,8 +209,9 @@ export function ActiveNavigationTopBar({
       <View style={styles.stack}>
         <Animated.View pointerEvents="auto" style={[styles.swapItem, navigationSwapStyle]}>
           {navigationPrimary ? (
-            <View
+            <Pressable
               accessibilityLabel={`Navigation target: ${targetTitle}`}
+              onPress={() => swapPrimary(false)}
               style={[
                 styles.targetPill,
                 { borderColor: targetBorder, backgroundColor: targetTint },
@@ -218,9 +226,8 @@ export function ActiveNavigationTopBar({
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
               </View>
-              <BoardWarnings activeBoardId={activeBoardId} />
               <CancelButton color={riderColor} onPress={onCancel} />
-            </View>
+            </Pressable>
           ) : (
             <Pressable
               accessibilityLabel="Show navigation target"
