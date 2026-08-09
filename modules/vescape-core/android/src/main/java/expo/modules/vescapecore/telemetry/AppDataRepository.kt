@@ -699,6 +699,9 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "name" to name,
     "description" to values["description"],
     "createdAt" to createdAt,
+    // Board family. Absent row = VESC — every board predates the OneWheel session path.
+    // TODO(iOS parity): OneWheel sessions are Android-only for now.
+    "kind" to (values["kind"] ?: "vesc"),
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
     "dismissedWarnings" to values["dismissedWarnings"],
@@ -944,6 +947,8 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   }
 
   putOrDelete("description", (get("description") as? String)?.takeIf { it.isNotBlank() })
+  // Only the non-default family persists; a VESC board stores no `kind` row.
+  putOrDelete("kind", (get("kind") as? String)?.takeIf { it == "onewheel" })
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
@@ -969,6 +974,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
   }
   return when (key) {
     "description" -> (raw as? String)?.let { key to it }
+    "kind" -> (raw as? String)?.takeIf { it == "onewheel" }?.let { key to it }
     "batteryConfig" -> normalizeBatteryConfig(raw)?.let { key to it }
     "transport" -> (raw as? String)?.let {
       key to BoardTransport.toBridge(BoardTransport.decode(it))

@@ -960,6 +960,14 @@ key == "wearAutoLaunchOnConnect" ||
         override fun onCharacteristic(payload: Map<String, Any?>) {
           if (shouldEmitToFrontend("onOwCharacteristic")) sendEvent("onOwCharacteristic", payload)
         }
+
+        override fun onPhase(phase: expo.modules.vescapecore.ow.OwPhase, message: String?) {
+          // Raw pairing UI consumes the full state event above; Board Session owns typed phases.
+        }
+
+        override fun onTransportActivity() {
+          // Raw pairing has no freshness watchdog; Board Session consumes transport activity.
+        }
       },
     )
     owClient = client

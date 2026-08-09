@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.service
 
 import expo.modules.vescapecore.alerts.AlertFeedback
+import expo.modules.vescapecore.connection.BoardKind
 import expo.modules.vescapecore.connection.BoardSessionController
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.notification.NotificationController
@@ -50,6 +51,8 @@ data class SessionConfig(
     val deviceId: String?,
     val deviceName: String,
     val transport: BoardTransport?,
+    /** Board family; VESC unless the stored board record says otherwise. */
+    val boardKind: BoardKind = BoardKind.Vesc,
     val linkVersion: Int? = null,
     /** Probe-confirmed smart-BMS presence. `null` = unknown (legacy link) → still polled. */
     val hasBms: Boolean? = null,

@@ -48,11 +48,12 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
     const spread = summarizeBms(s.latestBms)?.spread
     return spread == null ? null : Math.round(spread * 1000) / 1000
   })
-  const { batteryConfig, hasBoard, lastBattery } = useBoardStore(
+  const { batteryConfig, boardKind, hasBoard, lastBattery } = useBoardStore(
     useShallow((s) => {
       const board = s.boards.find((b) => b.id === s.activeBoardId)
       return {
         batteryConfig: board?.batteryConfig ?? null,
+        boardKind: board?.kind ?? 'vesc',
         hasBoard: board != null,
         lastBattery: board?.lastBattery ?? null,
       }
@@ -66,8 +67,8 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
 
   // Config gates whether a SoC reading exists at all (voltage limits set).
   const batteryConfigured = useMemo(
-    () => deriveBatteryConfig(batteryConfig).warning == null,
-    [batteryConfig],
+    () => boardKind === 'onewheel' || deriveBatteryConfig(batteryConfig).warning == null,
+    [batteryConfig, boardKind],
   )
 
   // Battery alert thresholds are percent-scaled, so they only map onto the 0–100 bar once a

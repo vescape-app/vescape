@@ -36,6 +36,7 @@ internal suspend fun buildSessionConfig(
         deviceId = bleId,
         deviceName = boardName,
         transport = BoardTransport.fromBridge(link["transport"]),
+        boardKind = BoardKind.fromWire(board["kind"]),
         linkVersion = (link["linkVersion"] as? Number)?.toInt(),
         hasBms = link["hasBms"] as? Boolean,
         vescFirmwareVersion = link["vescFirmwareVersion"] as? String,

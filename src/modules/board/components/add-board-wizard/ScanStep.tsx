@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { router } from 'expo-router'
 import { Text } from '@/components/base/Text'
 import {
   ArrowRightIcon,
@@ -8,10 +7,13 @@ import {
   CaretDownIcon,
   CaretRightIcon,
   CheckCircleIcon,
+  DeviceMobileIcon,
+  LockIcon,
   WifiHighIcon,
   WifiLowIcon,
   WifiSlashIcon,
 } from 'phosphor-react-native'
+import { addOwStateListener, owConnect, owDisconnect, type OwStateEvent } from 'vescape-core'
 import { useShallow } from 'zustand/react/shallow'
 
 import { Button } from '@/components/base/Button'
@@ -24,7 +26,6 @@ import { formatBmsSuffix, formatBoardTransport } from '@/modules/board/lib/board
 import { isOneWheelDevice } from '@/modules/board/lib/onewheel'
 import { NUS_SERVICE_UUID, useBleStore } from '@/modules/board/store/bleStore'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
-import { routes } from '@/navigation/routes'
 
 interface Props {
   wizard: UseAddBoardWizard
@@ -33,6 +34,9 @@ interface Props {
 }
 
 export function ScanStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
+  if (wizard.pairPhase === 'onewheel') {
+    return <OneWheelPairStep wizard={wizard} />
+  }
   if (wizard.pairPhase === 'probing') {
     return (
       <LinkStep
@@ -237,12 +241,8 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
                   name={device.name}
                   rssi={device.rssi}
                   onPress={() => {
-                    // OneWheel skips the wizard: the native link probe speaks VESC UART only.
                     stopScan()
-                    router.push({
-                      pathname: routes.addBoardOw,
-                      params: { bleId: device.id, name: device.name },
-                    })
+                    wizard.selectOneWheel(device.id, device.name)
                   }}
                 />
               ))}
@@ -279,6 +279,80 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
           )}
         </>
       )}
+    </ScrollView>
+  )
+}
+
+function OneWheelPairStep({ wizard }: { wizard: UseAddBoardWizard }) {
+  const [connecting, setConnecting] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+  const wizardRef = useRef(wizard)
+  wizardRef.current = wizard
+
+  useEffect(() => {
+    if (!connecting) return
+    let completed = false
+    const subscription = addOwStateListener((state: OwStateEvent) => {
+      if (state.phase === 'ready') {
+        completed = true
+        owDisconnect()
+        wizardRef.current.onOneWheelReady()
+      } else if (state.phase === 'locked' || state.phase === 'error') {
+        completed = true
+        owDisconnect()
+        setConnecting(false)
+        setFailure(
+          state.message ?? 'Open the Onewheel app, connect to the board, then return and retry.',
+        )
+      }
+    })
+    owConnect(wizardRef.current.bleId)
+    return () => {
+      subscription.remove()
+      if (!completed) owDisconnect()
+    }
+  }, [connecting])
+
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.step}>
+      <View style={styles.header}>
+        <DeviceMobileIcon size={20} color={theme.palette.sky.color} weight="duotone" />
+        <Text style={styles.title}>Prepare your OneWheel</Text>
+      </View>
+
+      <View style={styles.owNotice}>
+        <Text style={styles.owNoticeTitle}>The official app must unlock the board first</Text>
+        <Text style={styles.owNoticeText}>
+          1. Open the Onewheel app and connect to {wizard.bleName || 'the board'}.{`\n`}2. Wait
+          until its riding mode and battery appear.{`\n`}3. Return here and tap Connect.
+        </Text>
+      </View>
+
+      {failure ? (
+        <View style={styles.owFailure}>
+          <LockIcon size={18} color={theme.status.error.color} weight="duotone" />
+          <Text style={styles.owFailureText} selectable>
+            {failure}
+          </Text>
+        </View>
+      ) : null}
+
+      <Button
+        label={connecting ? 'Connecting…' : failure ? 'Try again' : 'Connect in Vescape'}
+        icon={BluetoothIcon}
+        disabled={connecting}
+        onPress={() => {
+          setFailure(null)
+          setConnecting(true)
+        }}
+        testID="add-board-onewheel-connect"
+      />
+      <Button
+        label="Choose another board"
+        variant="secondary"
+        disabled={connecting}
+        onPress={wizard.clearDevice}
+      />
     </ScrollView>
   )
 }
@@ -361,5 +435,39 @@ const styles = StyleSheet.create({
   },
   upgradeButton: {
     backgroundColor: theme.status.upgrade.color,
+  },
+  owNotice: {
+    gap: 8,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.status.info.border,
+    backgroundColor: theme.status.info.bg,
+  },
+  owNoticeTitle: {
+    color: theme.status.info.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  owNoticeText: {
+    color: theme.palette.slate.textSecondary,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  owFailure: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.status.error.border,
+    backgroundColor: theme.status.error.bg,
+  },
+  owFailureText: {
+    flex: 1,
+    color: theme.status.error.text,
+    fontSize: 13,
+    lineHeight: 19,
   },
 })

@@ -169,6 +169,7 @@ internal fun legalModeEnableError(
 @SuppressLint("MissingPermission")
 internal class BoardSessionController(private val service: CoreForegroundService) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val owSessionController = OwSessionController(service.applicationContext, mainHandler)
     private val scheduler: Scheduler = HandlerScheduler(mainHandler)
     private val packetReassembler = VescPacketReassembler()
     private val pollingLoop = PollingLoop(
@@ -795,6 +796,16 @@ private var wearAutoLaunchOnConnect = true
 
     fun consumePendingStart() {
         val start = CoreForegroundService.claimPendingStart() ?: return
+        val current = boardConfig
+        if (
+            current?.boardKind == BoardKind.OneWheel &&
+            start.boardConfig.boardKind == BoardKind.OneWheel &&
+            current.appBoardId == start.boardConfig.appBoardId &&
+            owSessionController.isActive
+        ) {
+            start.onSuccess()
+            return
+        }
         beginSession(start)
     }
 
@@ -917,6 +928,15 @@ private var wearAutoLaunchOnConnect = true
     private fun beginSession(start: PendingStart) {
         isStoppingService = false
         withNotificationRepaintSuppressed { stopCurrentBoardSession(emitDisconnected = false) }
+        if (start.boardConfig.boardKind == BoardKind.OneWheel) {
+            boardConfig = start.boardConfig
+            selectedBoardName = start.boardConfig.deviceName
+            setStatus(BoardPhase.Connecting)
+            reassertForeground()
+            owSessionController.start(start.boardConfig)
+            start.onSuccess()
+            return
+        }
         refreshLiveHistoryLimit()
         boardConfig = start.boardConfig
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
@@ -1800,6 +1820,13 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun stopCurrentBoardSession(emitDisconnected: Boolean) {
+        if (boardConfig?.boardKind == BoardKind.OneWheel) {
+            owSessionController.stop(emitDisconnected)
+            boardConfig = null
+            boardError = null
+            transitionBoardPhase(BoardPhase.Idle)
+            return
+        }
         // Final write so the persisted last battery is fresh, not up to 30s stale.
         persistLastBattery(latestBatterySoc, telemetry?.batteryVoltage, nowMs(), force = true)
         remoteTiltController.stop()
@@ -2071,6 +2098,10 @@ private var wearAutoLaunchOnConnect = true
     }
 
     fun setTelemetryRecordingEnabled(enabled: Boolean) {
+        if (boardConfig?.boardKind == BoardKind.OneWheel) {
+            owSessionController.setTelemetryRecordingEnabled(enabled)
+            return
+        }
         val session = boardConfig
         if (enabled) {
             if (
@@ -2206,6 +2237,9 @@ private var wearAutoLaunchOnConnect = true
     }
 
     fun liveStateMap(includeRecent: Boolean = false): Map<String, Any?> {
+        if (boardConfig?.boardKind == BoardKind.OneWheel) {
+            return owSessionController.liveStateMap(includeRecent)
+        }
         val settings = kotlinx.coroutines.runBlocking {
             AppDataRepository.get(service.applicationContext).getTypedSettings()
         }
@@ -2238,6 +2272,10 @@ private var wearAutoLaunchOnConnect = true
     }
 
     suspend fun loadAlertRules(context: Context, generation: Long) {
+        if (boardConfig?.boardKind == BoardKind.OneWheel) {
+            owSessionController.reloadAlertRules()
+            return
+        }
         // The alert engine evaluates only the connected Board's rules. No connected Board ⇒ no rules.
         val boardId = boardConfig?.appBoardId
         if (boardId == null) {

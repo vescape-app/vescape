@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { router } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
-import type { BatteryConfig, BoardLink } from 'vescape-core'
+import type { BatteryConfig, BoardKind, BoardLink } from 'vescape-core'
 
 import {
   ALERT_PRESET_METRICS,
@@ -45,7 +45,7 @@ export const WIZARD_STEPS = ['scan', 'name', 'battery', 'presets', 'confirm'] as
 export type WizardStepId = (typeof WIZARD_STEPS)[number]
 
 /** Sub-phase of the Pair step: choosing a peripheral, or probing the chosen one. */
-type PairPhase = 'select' | 'probing'
+type PairPhase = 'select' | 'probing' | 'onewheel'
 
 interface AddBoardWizardState {
   step: number
@@ -53,6 +53,7 @@ interface AddBoardWizardState {
   /** Active steps for this run. */
   steps: readonly WizardStepId[]
   pairPhase: PairPhase
+  boardKind: BoardKind
   bleId: string
   bleName: string
   draftLink: BoardLink | null
@@ -79,6 +80,8 @@ interface AddBoardWizardActions {
   next: () => void
   back: () => void
   selectDevice: (id: string, deviceName: string) => void
+  selectOneWheel: (id: string, deviceName: string) => void
+  onOneWheelReady: () => void
   clearDevice: () => void
   onDeviceProbed: (link: BoardLink) => void
   continueOffline: () => void
@@ -102,11 +105,9 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     useShallow((s) => ({ addBoard: s.addBoard, setActiveBoard: s.setActiveBoard })),
   )
 
-  // Alert setup is per-board now (#254), so every new board gets its own guided preset step.
-  const steps = WIZARD_STEPS
-
   const [step, setStep] = useState(0)
   const [pairPhase, setPairPhase] = useState<PairPhase>('select')
+  const [boardKind, setBoardKind] = useState<BoardKind>('vesc')
   const [bleId, setBleId] = useState('')
   const [bleName, setBleName] = useState('')
   const [draftLink, setDraftLink] = useState<BoardLink | null>(null)
@@ -121,6 +122,10 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const [topSpeedKmh, setTopSpeedKmh] = useState(DEFAULT_BOARD_TOP_SPEED_KMH)
   const [alertSetup, setAlertSetup] = useState<DraftAlertSetupBag>(DEFAULT_DRAFT_ALERT_SETUP)
 
+  // Future Motion reports SoC directly, so original OneWheels do not need voltage-pack setup.
+  const steps =
+    boardKind === 'onewheel' ? (['scan', 'name', 'presets', 'confirm'] as const) : WIZARD_STEPS
+
   const setMetricAlertSetup = (metric: AlertPresetMetric, setup: DraftAlertSetup) =>
     setAlertSetup((prev) => ({ ...prev, [metric]: setup }))
 
@@ -134,8 +139,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
         }
   const derivedBattery = deriveBatteryConfig(previewConfig)
   const batteryWarning = derivedBattery.warning
-  const hasBatteryConfig = batteryWarning == null
-  const canSave = Boolean(name.trim()) && batteryWarning == null
+  const hasBatteryConfig = boardKind === 'onewheel' || batteryWarning == null
+  const canSave = Boolean(name.trim()) && hasBatteryConfig
   const batterySummary = getBatterySummary(
     false,
     derivedBattery,
@@ -150,6 +155,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
 
   // Selecting a peripheral starts a Board Probe before the rest of the wizard.
   const selectDevice = (id: string, deviceName: string) => {
+    setBoardKind('vesc')
     setBleId(id)
     setBleName(deviceName)
     if (!name.trim()) setName(deviceName)
@@ -157,8 +163,23 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     setPairPhase('probing')
   }
 
+  const selectOneWheel = (id: string, deviceName: string) => {
+    setBoardKind('onewheel')
+    setBleId(id)
+    setBleName(deviceName)
+    if (!name.trim()) setName(deviceName || 'OneWheel')
+    setDraftLink({ bleId: id, transport: 'direct' })
+    setPairPhase('onewheel')
+  }
+
+  const onOneWheelReady = () => {
+    setPairPhase('select')
+    next()
+  }
+
   // Drop the chosen peripheral and return to the device list.
   const clearDevice = () => {
+    setBoardKind('vesc')
     setBleId('')
     setBleName('')
     setDraftLink(null)
@@ -180,16 +201,20 @@ export function useAddBoardWizard(): UseAddBoardWizard {
 
   const save = () => {
     if (!canSave) return
-    const batteryConfig = buildBatteryConfig(
-      batteryMode,
-      cellPresetId,
-      seriesCount,
-      parallelCount,
-      manualMinVoltage,
-      manualMaxVoltage,
-    )
+    const batteryConfig =
+      boardKind === 'onewheel'
+        ? null
+        : buildBatteryConfig(
+            batteryMode,
+            cellPresetId,
+            seriesCount,
+            parallelCount,
+            manualMinVoltage,
+            manualMaxVoltage,
+          )
     const board = addBoard({
       name: name.trim(),
+      kind: boardKind,
       description: description.trim() || undefined,
       link: draftLink,
       batteryConfig,
@@ -218,6 +243,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     stepId: steps[step] ?? steps[steps.length - 1]!,
     steps,
     pairPhase,
+    boardKind,
     bleId,
     bleName,
     draftLink,
@@ -239,6 +265,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     next,
     back,
     selectDevice,
+    selectOneWheel,
+    onOneWheelReady,
     clearDevice,
     onDeviceProbed,
     continueOffline,

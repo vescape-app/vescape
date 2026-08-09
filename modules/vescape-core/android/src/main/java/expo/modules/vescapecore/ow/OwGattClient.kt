@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothGattService
 import android.content.Context
 import android.os.Build
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.util.UUID
@@ -20,6 +21,15 @@ private const val OP_TIMEOUT_MS = 5_000L
 private const val HANDSHAKE_TIMEOUT_MS = 6_000L
 private const val KEEP_ALIVE_MS = 15_000L
 private const val UNLOCK_CHALLENGE_BYTES = 20
+private const val KEEP_ALIVE_START_RETRY_MS = 200L
+private const val KEEP_ALIVE_START_MAX_ATTEMPTS = 5
+private const val TELEMETRY_FRAME_INTERVAL_MS = 100L
+
+internal fun shouldRetryOwKeepAliveStart(failedAttempts: Int): Boolean =
+  failedAttempts < KEEP_ALIVE_START_MAX_ATTEMPTS
+
+/** The one live client; see [OwGattClient.connect]. */
+private var activeClient: OwGattClient? = null
 
 /**
  * OneWheel session phases, wire strings for the JS mirror.
@@ -55,9 +65,19 @@ internal class OwGattClient(
   internal interface Listener {
     /** Full snapshot, re-emitted on every change. Keys mirror `OwStateEvent` on the TS side. */
     fun onState(state: Map<String, Any?>)
+
     /** One characteristic read/notification. Keys mirror `OwCharacteristicEvent` on the TS side. */
     fun onCharacteristic(payload: Map<String, Any?>)
+
+    /** Typed phase transitions for the session layer (the map above stays the PoC/JS channel). */
+    fun onPhase(phase: OwPhase, message: String?)
+
+    /** A successful GATT exchange, including keepalive writes while telemetry values are unchanged. */
+    fun onTransportActivity()
   }
+
+  /** Live telemetry frames while unlocked, built from the latest values of every channel. */
+  var frameListener: ((OwFrame) -> Unit)? = null
 
   private sealed interface GattOp {
     val label: String
@@ -69,7 +89,12 @@ internal class OwGattClient(
     override fun start(gatt: BluetoothGatt) = gatt.readCharacteristic(char)
   }
 
-  private inner class WriteOp(val char: BluetoothGattCharacteristic, val bytes: ByteArray) : GattOp {
+  private inner class WriteOp(
+    val char: BluetoothGattCharacteristic,
+    val bytes: ByteArray,
+    val retryStart: Boolean = false,
+    var failedStartAttempts: Int = 0,
+  ) : GattOp {
     override val label = "write ${char.uuid}"
     override fun start(gatt: BluetoothGatt): Boolean {
       return if (Build.VERSION.SDK_INT >= 33) {
@@ -106,6 +131,7 @@ internal class OwGattClient(
 
   private var gatt: BluetoothGatt? = null
   private var phase = OwPhase.Connecting
+  private var lastEmittedPhase: OwPhase? = null
   private var service: BluetoothGattService? = null
 
   private val opQueue = ArrayDeque<GattOp>()
@@ -122,14 +148,31 @@ internal class OwGattClient(
   private var batteryPercent: Int? = null
   private var stateMessage: String? = null
 
+  // Frame channels beyond the state snapshot.
+  private var rpm: Int? = null
+  private var batteryVoltage: Double? = null
+  private var batteryCurrent: Double? = null
+  private var pitchDeg: Double? = null
+  private var rollDeg: Double? = null
+  private var controllerTempC: Double? = null
+  private var motorTempC: Double? = null
+  private var lifetimeOdometerM: Double? = null
+  private var faultCode: Int? = null
+
   private val challengeBuffer = ByteArrayOutputStream()
   private var unlockAttempted = false
   private var handshakeTimeout: Runnable? = null
   private var keepAlive: Runnable? = null
   private var connectTimeout: Runnable? = null
+  private var telemetryFrame: Runnable? = null
+  private var lastTelemetryFrameAtMs = 0L
   private var cleared = false
 
   fun connect() {
+    // Single OneWheel connection process-wide: a PoC/debug client still holding the board yields
+    // to a fresh session client (two GATT links to one board confuse the FM firmware).
+    activeClient?.let { if (it !== this) it.clear() }
+    activeClient = this
     emitState()
     connectTimeout = Runnable {
       Log.w(TAG, "connect timeout")
@@ -143,10 +186,13 @@ internal class OwGattClient(
   /** Idempotent teardown; safe to call from any module lifecycle hook. */
   fun clear() {
     cleared = true
+    if (activeClient === this) activeClient = null
     connectTimeout?.let { handler.removeCallbacks(it) }
     handshakeTimeout?.let { handler.removeCallbacks(it) }
     keepAlive?.let { handler.removeCallbacks(it) }
     opWatchdog?.let { handler.removeCallbacks(it) }
+    telemetryFrame?.let { handler.removeCallbacks(it) }
+    telemetryFrame = null
     opQueue.clear()
     opInFlight = null
     afterDrain = null
@@ -255,6 +301,7 @@ internal class OwGattClient(
       if (gatt !== this@OwGattClient.gatt) return
       handler.post {
         if (cleared || gatt !== this@OwGattClient.gatt) return@post
+        if (status == BluetoothGatt.GATT_SUCCESS) listener.onTransportActivity()
         completeOp()
       }
     }
@@ -266,6 +313,7 @@ internal class OwGattClient(
       if (gatt !== this@OwGattClient.gatt) return
       handler.post {
         if (cleared || gatt !== this@OwGattClient.gatt) return@post
+        if (status == BluetoothGatt.GATT_SUCCESS) listener.onTransportActivity()
         completeOp()
       }
     }
@@ -355,7 +403,7 @@ internal class OwGattClient(
     val char = service?.getCharacteristic(owCharUuid(OW_CHAR_FIRMWARE)) ?: return
     val tick = Runnable {
       if (!cleared && phase == OwPhase.Ready) {
-        enqueue(WriteOp(char, bytes))
+        enqueue(WriteOp(char, bytes, retryStart = true))
         drainQueue()
         startKeepAlive()
       }
@@ -390,6 +438,8 @@ internal class OwGattClient(
   private fun beU16(value: ByteArray): Int? = value.takeIf { it.size >= 2 }
     ?.let { (it[0].toInt() and 0xFF shl 8) or (it[1].toInt() and 0xFF) }
 
+  private fun angleDeg(raw: Int): Double = 0.1 * (1800 - raw)
+
   private fun handleValue(uuid: UUID, value: ByteArray) {
     val shortId = owShortId(uuid)
     val spec = owSpecFor(uuid)
@@ -403,21 +453,66 @@ internal class OwGattClient(
       0xf301 -> serial = beU16(value)
       OW_CHAR_RIDE_MODE -> rideMode = value.lastOrNull()?.toInt()?.and(0xFF)
       OW_CHAR_BATTERY -> batteryPercent = value.lastOrNull()?.toInt()?.and(0xFF)
-      OW_CHAR_RPM -> speedKmh = beU16(value)?.let { owSpeedKmh(it) }
+      OW_CHAR_RPM -> {
+        rpm = beU16(value)
+        speedKmh = rpm?.let { owSpeedKmh(it) }
+      }
+      0xf316 -> batteryVoltage = beU16(value)?.let { it / 10.0 }
+      0xf312 -> batteryCurrent = beU16(value)?.let { it.toShort().toInt() * 0.002 }
+      0xf307 -> pitchDeg = beU16(value)?.let { angleDeg(it) }
+      0xf308 -> rollDeg = beU16(value)?.let { angleDeg(it) }
+      0xf310 -> {
+        controllerTempC = value.getOrNull(0)?.toInt()?.and(0xFF)?.toDouble()
+        motorTempC = value.getOrNull(1)?.toInt()?.and(0xFF)?.toDouble()
+      }
+      0xf319 -> lifetimeOdometerM = beU16(value)?.let { owLifetimeMilesToMeters(it) }
+      0xf31c -> faultCode = value.firstOrNull()?.toInt()?.and(0xFF)
     }
     if (shortId in listOf(OW_CHAR_RIDE_MODE, OW_CHAR_BATTERY, OW_CHAR_RPM)) {
       emitState()
     }
+    if (shouldScheduleOwTelemetryFrame(phase, shortId)) scheduleTelemetryFrame()
     listener.onCharacteristic(
       mapOf(
         "uuid" to uuid.toString(),
-        "shortId" to (shortId?.let { "f3%02x".format(it) } ?: uuid.toString()),
+        "shortId" to (shortId?.let { "f3%02x".format(it and 0xFF) } ?: uuid.toString()),
         "name" to (spec?.name ?: "Unknown"),
         "hex" to owHex(value),
         "display" to display,
         "updatedAt" to System.currentTimeMillis().toDouble(),
       ),
     )
+  }
+
+  private fun currentFrame() = OwFrame(
+    atMs = System.currentTimeMillis(),
+    rpm = rpm,
+    speedKmh = speedKmh,
+    batteryPercent = batteryPercent,
+    batteryVoltage = batteryVoltage,
+    batteryCurrent = batteryCurrent,
+    pitchDeg = pitchDeg,
+    rollDeg = rollDeg,
+    controllerTempC = controllerTempC,
+    motorTempC = motorTempC,
+    rideMode = rideMode,
+    lifetimeOdometerM = lifetimeOdometerM,
+    faultCode = faultCode,
+  )
+
+  /** Coalesce independent OW characteristics into one complete latest-values frame at 10 Hz. */
+  private fun scheduleTelemetryFrame() {
+    if (telemetryFrame != null) return
+    val now = SystemClock.elapsedRealtime()
+    val delayMs = (TELEMETRY_FRAME_INTERVAL_MS - (now - lastTelemetryFrameAtMs)).coerceAtLeast(0L)
+    val emit = Runnable {
+      telemetryFrame = null
+      if (cleared || phase != OwPhase.Ready) return@Runnable
+      lastTelemetryFrameAtMs = SystemClock.elapsedRealtime()
+      frameListener?.invoke(currentFrame())
+    }
+    telemetryFrame = emit
+    handler.postDelayed(emit, delayMs)
   }
 
   // --- op queue -------------------------------------------------------------
@@ -451,6 +546,19 @@ internal class OwGattClient(
     }
     if (!started) {
       Log.w(TAG, "op start failed: ${next.label}")
+      if (
+        next is WriteOp &&
+        next.retryStart &&
+        shouldRetryOwKeepAliveStart(next.failedStartAttempts)
+      ) {
+        next.failedStartAttempts += 1
+        opWatchdog?.let { handler.removeCallbacks(it) }
+        opWatchdog = null
+        opInFlight = null
+        opQueue.addFirst(next)
+        handler.postDelayed(::drainQueue, KEEP_ALIVE_START_RETRY_MS)
+        return
+      }
       completeOp()
     }
   }
@@ -472,6 +580,12 @@ internal class OwGattClient(
   }
 
   private fun emitState() {
+    // State snapshots change often; session phases must only be announced on an actual transition.
+    // Re-announcing Ready for battery/RPM updates made the session flicker back to Waiting.
+    if (phase != lastEmittedPhase) {
+      lastEmittedPhase = phase
+      listener.onPhase(phase, stateMessage)
+    }
     listener.onState(
       mapOf(
         "phase" to phase.wire,

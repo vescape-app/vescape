@@ -81,6 +81,13 @@ export interface FiredAlert {
  */
 export type BoardTransport = 'direct' | number
 
+/**
+ * Board family selecting the native Board Session implementation.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardKind.kt `BoardKind`
+ * @platform-diff OneWheel Board Sessions are Android-only for now.
+ */
+export type BoardKind = 'vesc' | 'onewheel'
+
 export type BoardProbeOutcome = 'resolved' | 'needs-pick' | 'none'
 
 /** A probe-confirmed transport plus the capabilities discovered while probing it. */
@@ -166,6 +173,8 @@ export interface BoardLink {
 export interface Board {
   id: string
   name: string
+  /** Absent on legacy records and normalized to `vesc` by native persistence. */
+  kind?: BoardKind
   description: string | null
   createdAt: number
   batteryConfig: BatteryConfig | null

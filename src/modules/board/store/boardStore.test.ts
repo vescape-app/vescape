@@ -124,6 +124,19 @@ test('new boards can use manual battery config', async () => {
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))
 })
 
+test('original OneWheel preserves null battery config because it reports percentage directly', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+
+  const board = useBoardStore
+    .getState()
+    .addBoard({ name: 'OneWheel', kind: 'onewheel', batteryConfig: null })
+
+  expect(board.batteryConfig).toBeNull()
+  expect(upsertBoard).toHaveBeenCalledWith(
+    expect.objectContaining({ kind: 'onewheel', batteryConfig: null }),
+  )
+})
+
 test('updated battery config survives a store reload from native boards', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const board: Board = {

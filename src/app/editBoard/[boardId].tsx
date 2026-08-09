@@ -120,6 +120,7 @@ export default function EditBoardScreen() {
             linkSaving={form.saving === 'link'}
             keepMissingBatteryConfig={form.keepMissingBatteryConfig}
             batterySummary={form.batterySummary}
+            showBatteryConfig={editingBoard.kind !== 'onewheel'}
             boardControls={
               <>
                 <SettingsSectionTitle>Board top speed</SettingsSectionTitle>
@@ -168,7 +169,7 @@ export default function EditBoardScreen() {
         onCancel={() => setInfoModalVisible(false)}
       />
       <BoardBatteryEditorModal
-        visible={batteryModalVisible}
+        visible={editingBoard.kind !== 'onewheel' && batteryModalVisible}
         batteryMode={form.battery.batteryMode}
         cellPresetId={form.battery.cellPresetId}
         seriesCount={form.battery.seriesCount}

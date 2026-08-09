@@ -98,8 +98,12 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
         <ConfirmRow
           icon={BatteryFullIcon}
           iconColor={theme.palette.green.color}
-          label={wizard.batterySummary.title}
-          value={wizard.batterySummary.value}
+          label={wizard.boardKind === 'onewheel' ? 'Battery' : wizard.batterySummary.title}
+          value={
+            wizard.boardKind === 'onewheel'
+              ? 'Percentage reported by OneWheel'
+              : wizard.batterySummary.value
+          }
         />
       </View>
 

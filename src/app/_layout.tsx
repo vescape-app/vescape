@@ -229,7 +229,6 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
             <Stack.Screen name={stackScreens.addBoardScan} options={{ title: 'Pair Board' }} />
             <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
-            <Stack.Screen name={stackScreens.addBoardOw} options={{ title: 'OneWheel (PoC)' }} />
             <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
             <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
           </Stack>

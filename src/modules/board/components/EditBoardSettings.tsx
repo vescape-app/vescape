@@ -26,6 +26,7 @@ interface EditBoardSettingsProps {
   linkSaving?: boolean
   keepMissingBatteryConfig: boolean
   batterySummary: BatterySummary
+  showBatteryConfig?: boolean
   /** Board-scoped controls composed by the edit route (Board Top Speed + Alert Presets). */
   boardControls?: ReactNode
   /** Active/dismissed Board Warning counts; the row renders only when the board has any warnings. */
@@ -47,6 +48,7 @@ export function EditBoardSettings({
   linkSaving = false,
   keepMissingBatteryConfig,
   batterySummary,
+  showBatteryConfig = true,
   boardControls,
   warningCounts,
   warningsAnchorRef,
@@ -68,17 +70,19 @@ export function EditBoardSettings({
         iconWeight="duotone"
       />
 
-      <SettingsCard>
-        <BoardSettingRow
-          icon={BatteryChargingIcon}
-          iconColor={theme.palette.yellow.text}
-          label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
-          value={batterySummary.value}
-          hint={batterySummary.hint}
-          onPress={onOpenBattery}
-          testID="edit-board-battery-row"
-        />
-      </SettingsCard>
+      {showBatteryConfig ? (
+        <SettingsCard>
+          <BoardSettingRow
+            icon={BatteryChargingIcon}
+            iconColor={theme.palette.yellow.text}
+            label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
+            value={batterySummary.value}
+            hint={batterySummary.hint}
+            onPress={onOpenBattery}
+            testID="edit-board-battery-row"
+          />
+        </SettingsCard>
+      ) : null}
 
       {boardControls}
 

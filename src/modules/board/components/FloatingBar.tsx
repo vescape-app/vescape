@@ -137,7 +137,7 @@ function getStatusPill(
   if (status === 'connecting')
     return {
       kind: 'spinner',
-      text: 'Connecting…',
+      text: board.kind === 'onewheel' ? 'Connecting to OneWheel…' : 'Connecting…',
       color: theme.palette.sky.color,
       onPress: onStopScan,
     }
@@ -164,7 +164,8 @@ function getStatusPill(
   if (status === 'idle')
     return {
       kind: 'action',
-      text: 'Board not connected',
+      text:
+        board.kind === 'onewheel' ? 'Open Onewheel app first, then return' : 'Board not connected',
       buttonText: 'Connect',
       config: ALERT_CONFIG.warning,
       onPress: onRetryConnect,
@@ -172,7 +173,7 @@ function getStatusPill(
   if (status === 'error')
     return {
       kind: 'action',
-      text: 'Connection failed',
+      text: board.kind === 'onewheel' ? 'Unlock in Onewheel app, then retry' : 'Connection failed',
       buttonText: 'Retry',
       config: ALERT_CONFIG.error,
       onPress: onRetryConnect,

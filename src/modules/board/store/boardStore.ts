@@ -7,6 +7,7 @@ import {
   setSelectedBoard as nativeSetSelectedBoard,
   type BatteryConfig,
   type Board,
+  type BoardKind,
   type BoardLink,
   upsertBoard,
 } from 'vescape-core'
@@ -27,6 +28,7 @@ interface BoardActions {
   load: () => Promise<void>
   addBoard: (data: {
     name: string
+    kind?: BoardKind
     description?: string
     link?: BoardLink | null
     batteryConfig?: BatteryConfig | null
@@ -78,6 +80,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
 
   addBoard({
     name,
+    kind,
     description,
     link,
     batteryConfig,
@@ -88,9 +91,11 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     const board: Board = {
       id: generateId(),
       name,
+      kind: kind ?? 'vesc',
       description: description ?? null,
       createdAt: Date.now(),
-      batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,
+      // `null` means the board supplies SoC directly (original OneWheel).
+      batteryConfig: batteryConfig === undefined ? DEFAULT_BATTERY_CONFIG : batteryConfig,
       topSpeedKmh,
       alertPreset: alertPreset ?? null,
       alertPresetsOnboarded: alertPresetsOnboarded ?? false,
