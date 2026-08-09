@@ -143,7 +143,7 @@ export function MapTargetSheetHost({
   // proposal: they check where it goes, switch the Profile, ask again — and only then accept it.
   // Accepting is what closes the map, so it leads the row while the other two flank it.
   const confirmAction = {
-    ...NAVIGATION_ACTION_COLORS.confirm,
+    ...actionColors,
     label: 'Ride it',
     accessibilityLabel: 'Accept path and return to ride view',
     Icon: CheckIcon,
@@ -185,18 +185,11 @@ export function MapTargetSheetHost({
 }
 
 /**
- * The three navigation actions read as three different decisions, so they do not share the Map
- * Point's colour the way the select sheet's single action does: accepting the path is the way on
- * (green), asking again is neutral work (slate), and dropping the Navigation is destructive (red).
+ * The side actions read as different decisions from the confirm, so they leave the target's colour
+ * to it: asking again is neutral work (slate), dropping the Navigation is destructive (red).
  * Emphasis is border and text on a dark tinted pill — never a bright fill; see `docs/design.md`.
  */
 const NAVIGATION_ACTION_COLORS = {
-  confirm: {
-    color: theme.palette.green.color,
-    textColor: theme.palette.green.text,
-    borderColor: theme.palette.green.color,
-    bgColor: theme.alpha(theme.palette.green.color, 0.12),
-  },
   recompute: {
     color: theme.palette.slate.color,
     textColor: theme.palette.slate.textSecondary,
