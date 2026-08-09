@@ -136,6 +136,9 @@ export function MainOverlays({
         onEnterLegalLimits={map.enterLegalLimits}
         onEnterHistory={() => void history.enterHistoryMode()}
         onOffscreenIndicatorPress={map.onOffscreenIndicatorPress}
+        activeNavigationTarget={map.activeNavigationTarget}
+        currentLocation={map.weatherLocation}
+        onCancelNavigation={map.onCancelNavigation}
       />
 
       {isMapMode ? (
