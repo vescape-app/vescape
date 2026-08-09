@@ -58,6 +58,8 @@ class NavigationControllerTest {
         var stored: Navigation? = null,
         var directionPoint: Pair<Double, Double>? = null,
         var storedProfile: NavigationProfile? = null,
+        /** Held open to keep the profile read in flight while the test taps. */
+        private val profileGate: CountDownLatch? = null,
     ) : NavigationStore {
         private val lock = Any()
 
@@ -69,7 +71,10 @@ class NavigationControllerTest {
 
         override suspend fun directionPoint(): Pair<Double, Double>? = synchronized(lock) { directionPoint }
 
-        override suspend fun loadProfile(): NavigationProfile? = synchronized(lock) { storedProfile }
+        override suspend fun loadProfile(): NavigationProfile? {
+            profileGate?.await(WAIT_SECONDS, TimeUnit.SECONDS)
+            return synchronized(lock) { storedProfile }
+        }
 
         override suspend fun saveProfile(profile: NavigationProfile) {
             synchronized(lock) { storedProfile = profile }
@@ -376,6 +381,26 @@ class NavigationControllerTest {
         Thread.sleep(SETTLE_MS)
 
         assertEquals(NavigationStatus.NO_PATH_FOUND, controller.current?.status)
+    }
+
+    @Test
+    fun `a profile chosen during restore wins over the stored one`() {
+        val routes = ProfileRecordingRoutes()
+        val gate = CountDownLatch(1)
+        val store = FakeStore(storedProfile = NavigationProfile.CYCLING, profileGate = gate)
+        val (controller, _) = controller(routes, store)
+
+        controller.restore()
+        // The rider switches while yesterday's value is still being read.
+        controller.selectProfile(NavigationProfile.DRIVING)
+        gate.countDown()
+        Thread.sleep(SETTLE_MS)
+
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(listOf("driving"), routes.profiles)
+        assertEquals(NavigationProfile.DRIVING, store.storedProfile)
     }
 
     private companion object {

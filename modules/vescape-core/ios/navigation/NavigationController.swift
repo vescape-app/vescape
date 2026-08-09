@@ -143,6 +143,14 @@ final class NavigationController {
   /// under a newer choice, and the path keeps carrying the profile that actually produced it.
   private var profile: NavigationProfile = .default
 
+  /// Set once the rider has chosen, so a slow `restore` cannot overwrite a newer choice.
+  private var profileChosen = false
+
+  /// Serializes every write to `store` — the path and the sticky profile alike. Two rows, one
+  /// order: a profile write overtaking an older one would leave the rider's second choice undone by
+  /// their first on the next start.
+  private let writes = SerialWrites()
+
   /// The Navigation Profile the next computed path will use.
   var currentProfile: NavigationProfile { lock.withLock { profile } }
 
@@ -178,7 +186,10 @@ final class NavigationController {
   func restore() {
     let request = claimRequest()
     Task {
-      if let stored = await store.loadProfile() { lock.withLock { profile = stored } }
+      if let stored = await store.loadProfile() {
+        // The rider may have switched while this read was in flight; their choice is the newer one.
+        lock.withLock { if !profileChosen { profile = stored } }
+      }
       guard let stored = await store.load() else { return }
       let directionPoint = await store.directionPoint()
       // The two are written separately, so an interrupted write can leave a path leading somewhere
@@ -239,12 +250,18 @@ final class NavigationController {
   /// "last choice wins" is about the choice, not about whether that one request found a path.
   func selectProfile(_ next: NavigationProfile) {
     let changed: Bool = lock.withLock {
-      guard profile != next else { return false }
+      guard profile != next || !profileChosen else { return false }
       profile = next
+      // A restore still in flight must not undo this with yesterday's value.
+      profileChosen = true
       return true
     }
     guard changed else { return }
-    Task { await store.saveProfile(next) }
+    Task {
+      // Same converge rule as `persist`: serialized, and re-read when it runs so the last write
+      // saves the rider's latest choice however the taps interleaved.
+      await writes.enqueue { [self] in await store.saveProfile(currentProfile) }
+    }
   }
 
   /// The rider asking for a fresh path to the Direction Point they already have, from where they
@@ -356,19 +373,25 @@ final class NavigationController {
 
   /// Writes whatever is current through to the store, off the caller's thread.
   ///
-  /// It deliberately re-reads `state` instead of taking a value: writes are not ordered against each
-  /// other, so a write that carried its own stale value could land last and leave storage
-  /// disagreeing with what native holds. Re-reading makes every write converge on the newest state.
+  /// Two things make storage converge on what native holds rather than on whichever write happened
+  /// to finish last. Writes are serialized through `writes`, so they land in the order they were
+  /// enqueued; and each one re-reads `state` *when it runs* rather than carrying a value, so the
+  /// last write to run necessarily saves the newest state. Either alone leaves a stale row behind:
+  /// unordered writes can land out of order, and a carried value can be stale before its turn comes.
   private func persist(_ request: Int) {
     Task {
-      let navigation: Navigation?? = lock.withLock { request == generation ? .some(state) : nil }
-      guard let navigation else { return }
-      await store.save(navigation)
+      await writes.enqueue { [self] in
+        let navigation: Navigation?? = lock.withLock { request == generation ? .some(state) : nil }
+        guard let navigation else { return }
+        await store.save(navigation)
+      }
     }
   }
 
   /// `Navigation` holds a tuple array, which is not `Equatable`, so redundant no-op emits are
-  /// filtered on the fields that identify one.
+  /// filtered field by field instead. Every field takes part, matching the Android peer's whole-value
+  /// comparison: a recompute can land in the same millisecond as the path it replaces and differ
+  /// only in profile or geometry, and dropping that would leave JS drawing the older one.
   private func isSame(_ a: Navigation?, _ b: Navigation?) -> Bool {
     switch (a, b) {
     case (nil, nil): return true
@@ -377,7 +400,24 @@ final class NavigationController {
         && a.targetLatitude == b.targetLatitude
         && a.targetLongitude == b.targetLongitude
         && a.status == b.status
+        && a.profile == b.profile
+        && a.points.count == b.points.count
+        && zip(a.points, b.points).allSatisfy { $0.latitude == $1.latitude && $0.longitude == $1.longitude }
     default: return false
+    }
+  }
+}
+
+/// Runs enqueued writes one after another, in enqueue order. An `actor` alone would not do: actors
+/// are reentrant across `await`, so two writes suspended on the database would interleave.
+private actor SerialWrites {
+  private var tail: Task<Void, Never>?
+
+  func enqueue(_ work: @escaping () async -> Void) {
+    let previous = tail
+    tail = Task {
+      await previous?.value
+      await work()
     }
   }
 }

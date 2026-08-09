@@ -63,16 +63,22 @@ final class NavigationControllerTests: XCTestCase {
     private var storage: Navigation?
     private var target: (latitude: Double, longitude: Double)?
     private var profile: NavigationProfile?
+    /// Held closed to keep the profile read in flight while the test taps.
+    private var profileGateOpen: Bool
 
     init(
       stored: Navigation? = nil,
       directionPoint: (latitude: Double, longitude: Double)? = nil,
-      profile: NavigationProfile? = nil
+      profile: NavigationProfile? = nil,
+      gateProfileRead: Bool = false
     ) {
       storage = stored
       target = directionPoint
       self.profile = profile
+      profileGateOpen = !gateProfileRead
     }
+
+    func openProfileGate() { lock.withLock { profileGateOpen = true } }
 
     var storedProfile: NavigationProfile? { lock.withLock { profile } }
 
@@ -88,7 +94,12 @@ final class NavigationControllerTests: XCTestCase {
       lock.withLock { target }
     }
 
-    func loadProfile() async -> NavigationProfile? { lock.withLock { profile } }
+    func loadProfile() async -> NavigationProfile? {
+      while !lock.withLock({ profileGateOpen }) {
+        try? await Task.sleep(nanoseconds: 5_000_000)
+      }
+      return lock.withLock { profile }
+    }
 
     func saveProfile(_ next: NavigationProfile) async {
       lock.withLock { profile = next }
@@ -498,6 +509,29 @@ final class NavigationControllerTests: XCTestCase {
     settle()
 
     XCTAssertEqual(controller.current?.status, .noPathFound)
+  }
+
+  func testProfileChosenDuringRestoreWinsOverTheStoredOne() {
+    let routes = ProfileRecordingRoutes()
+    let store = FakeStore(profile: .cycling, gateProfileRead: true)
+    let controller = NavigationController(api: routes, store: store)
+
+    controller.restore()
+    // The rider switches while yesterday's value is still being read.
+    controller.selectProfile(.driving)
+    store.openProfileGate()
+    settle()
+
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(routes.profiles, ["driving"])
+    XCTAssertEqual(store.storedProfile, .driving)
   }
 
   /// `onChange` fires from whichever thread published, so the log needs its own guard.

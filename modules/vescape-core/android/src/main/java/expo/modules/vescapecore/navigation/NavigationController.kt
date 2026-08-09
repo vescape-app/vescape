@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * How a Navigation ended up. A Navigation exists for as long as its Direction Point does, so a
@@ -163,6 +165,9 @@ class NavigationController(
    */
   private var profile: NavigationProfile = NavigationProfile.DEFAULT
 
+  /** Set once the rider has chosen, so a slow [restore] cannot overwrite a newer choice. */
+  private var profileChosen = false
+
   val current: Navigation? get() = synchronized(lock) { state }
 
   /** Notified on every change, including the clear to `null`. */
@@ -189,7 +194,10 @@ class NavigationController(
   fun restore() {
     val request = claimRequest()
     scope.launch {
-      store.loadProfile()?.let { stored -> synchronized(lock) { profile = stored } }
+      store.loadProfile()?.let { stored ->
+        // The rider may have switched while this read was in flight; their choice is the newer one.
+        synchronized(lock) { if (!profileChosen) profile = stored }
+      }
       val stored = store.load() ?: return@launch
       val directionPoint = store.directionPoint()
       // The two are written separately, so an interrupted write can leave a path leading somewhere
@@ -254,12 +262,17 @@ class NavigationController(
    * "last choice wins" is about the choice, not about whether that one request found a path.
    */
   fun selectProfile(next: NavigationProfile) {
-    val changed = synchronized(lock) {
-      if (profile == next) return
+    synchronized(lock) {
+      if (profile == next && profileChosen) return
       profile = next
-      next
+      // A restore still in flight must not undo this with yesterday's value.
+      profileChosen = true
     }
-    scope.launch { store.saveProfile(changed) }
+    scope.launch {
+      // Same converge rule as [persist]: serialized, and re-read after acquiring so the last write
+      // to run saves the rider's latest choice however the taps interleaved.
+      writes.withLock { store.saveProfile(currentProfile) }
+    }
   }
 
   /**
@@ -367,14 +380,27 @@ class NavigationController(
   /**
    * Writes whatever is current through to the store, off the caller's thread.
    *
-   * It deliberately re-reads [state] instead of taking a value: writes are not ordered against each
-   * other, so a write that carried its own stale value could land last and leave storage disagreeing
-   * with what native holds. Re-reading makes every write converge on the newest state instead.
+   * Two things make storage converge on what native holds rather than on whichever write happened to
+   * finish last. Writes are serialized through [writes], so they land in the order they acquire it;
+   * and each one re-reads [state] *after* acquiring rather than carrying a value, so the last write
+   * to run necessarily saves the newest state. Either alone leaves a stale row behind: unordered
+   * writes can land out of order, and a carried value can be stale before its turn comes.
    */
   private fun persist(request: Int) {
-    val navigation = synchronized(lock) { if (request != generation) return else state }
-    scope.launch { store.save(navigation) }
+    scope.launch {
+      writes.withLock {
+        val navigation = synchronized(lock) { if (request != generation) return@withLock else state }
+        store.save(navigation)
+      }
+    }
   }
+
+  /**
+   * Serializes every write to [store] — the path and the sticky profile alike. Two rows, one order:
+   * a profile write overtaking an older one would leave the rider's second choice undone by their
+   * first on the next start.
+   */
+  private val writes = Mutex()
 
   companion object {
     @Volatile
