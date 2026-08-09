@@ -1,4 +1,5 @@
 import { WarningIcon } from 'phosphor-react-native'
+import type { ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
@@ -20,6 +21,7 @@ export function MapTargetNavigationBody({
   action,
   secondaryAction,
   notice,
+  profileSelector,
   media,
   onDismiss,
   onFocusTarget,
@@ -31,6 +33,8 @@ export function MapTargetNavigationBody({
   secondaryAction?: MapTargetSheetAction
   /** Why there is no line, in rider-facing words. */
   notice?: string | null
+  /** Which kind of ways the path may follow. Sits on the path view, never in app settings. */
+  profileSelector?: ReactNode
   media: readonly MapPointMediaAsset[]
   onDismiss?: () => void
   onFocusTarget?: () => void
@@ -52,6 +56,7 @@ export function MapTargetNavigationBody({
           <Text style={styles.noticeText}>{notice}</Text>
         </View>
       ) : null}
+      {profileSelector ? <View style={styles.profileRow}>{profileSelector}</View> : null}
       <MapTargetActionRow>
         <MapTargetPrimaryAction action={action} />
         {secondaryAction ? <MapTargetPrimaryAction action={secondaryAction} /> : null}
@@ -61,6 +66,9 @@ export function MapTargetNavigationBody({
 }
 
 const styles = StyleSheet.create({
+  profileRow: {
+    flexDirection: 'row',
+  },
   notice: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -62,11 +62,19 @@ final class NavigationControllerTests: XCTestCase {
     private let lock = NSLock()
     private var storage: Navigation?
     private var target: (latitude: Double, longitude: Double)?
+    private var profile: NavigationProfile?
 
-    init(stored: Navigation? = nil, directionPoint: (latitude: Double, longitude: Double)? = nil) {
+    init(
+      stored: Navigation? = nil,
+      directionPoint: (latitude: Double, longitude: Double)? = nil,
+      profile: NavigationProfile? = nil
+    ) {
       storage = stored
       target = directionPoint
+      self.profile = profile
     }
+
+    var storedProfile: NavigationProfile? { lock.withLock { profile } }
 
     var stored: Navigation? { lock.withLock { storage } }
 
@@ -79,13 +87,38 @@ final class NavigationControllerTests: XCTestCase {
     func directionPoint() async -> (latitude: Double, longitude: Double)? {
       lock.withLock { target }
     }
+
+    func loadProfile() async -> NavigationProfile? { lock.withLock { profile } }
+
+    func saveProfile(_ next: NavigationProfile) async {
+      lock.withLock { profile = next }
+    }
+  }
+
+  /// Routing stub that records the profile it was asked for.
+  private final class ProfileRecordingRoutes: DirectionsRoutes, @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [String] = []
+
+    var profiles: [String] { lock.withLock { seen } }
+
+    func route(
+      fromLatitude: Double,
+      fromLongitude: Double,
+      toLatitude: Double,
+      toLongitude: Double,
+      profile: String
+    ) async -> DirectionsResult {
+      lock.withLock { seen.append(profile) }
+      return .path([(fromLatitude, fromLongitude), (toLatitude, toLongitude)])
+    }
   }
 
   private func navigation(targetLatitude: Double) -> Navigation {
     Navigation(
       targetLatitude: targetLatitude,
       targetLongitude: targetLongitude,
-      profile: "walking",
+      profile: .walking,
       computedAtMs: 1_700_000_000_000,
       status: .ready,
       points: [(riderLatitude, riderLongitude), (targetLatitude, targetLongitude)]
@@ -360,6 +393,111 @@ final class NavigationControllerTests: XCTestCase {
 
     XCTAssertEqual(retrying.current?.status, .ready)
     XCTAssertEqual(retrying.current?.points.first?.latitude ?? 0, riderLatitude + 0.01, accuracy: 1e-9)
+  }
+
+  func testStickyProfileIsWhatTheNextNavigationIsComputedUnder() {
+    let routes = ProfileRecordingRoutes()
+    let store = FakeStore(profile: .cycling)
+    let controller = NavigationController(api: routes, store: store)
+
+    controller.restore()
+    settle()
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(routes.profiles, ["cycling"])
+    XCTAssertEqual(controller.current?.profile, .cycling)
+  }
+
+  func testRiderWhoHasNeverChosenWalks() {
+    let routes = ProfileRecordingRoutes()
+    let controller = NavigationController(api: routes, store: FakeStore())
+
+    controller.restore()
+    settle()
+    controller.setTarget(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(routes.profiles, ["walking"])
+  }
+
+  func testChoosingAProfileSticksItForTheNextNavigation() {
+    let routes = ProfileRecordingRoutes()
+    let store = FakeStore()
+    let controller = NavigationController(api: routes, store: store)
+
+    controller.selectProfile(.driving)
+    controller.recompute(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(store.storedProfile, .driving)
+    XCTAssertEqual(controller.current?.profile, .driving)
+    // The next Direction Point is computed under it without being told again.
+    controller.setTarget(
+      toLatitude: secondTargetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+    XCTAssertEqual(routes.profiles, ["driving", "driving"])
+  }
+
+  func testRecomputeThatFindsNothingLeavesTheDrawnPathAlone() {
+    let store = FakeStore(
+      stored: navigation(targetLatitude: targetLatitude),
+      directionPoint: (targetLatitude, targetLongitude)
+    )
+    let controller = NavigationController(api: FixedRoutes(.failed), store: store)
+    let emitted = EmissionLog()
+    controller.onChange = { emitted.append($0) }
+    controller.restore()
+    settle()
+    XCTAssertEqual(controller.current?.status, .ready)
+    let drawnAt = controller.current?.computedAtMs
+
+    controller.recompute(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    // Losing a working line by asking for a better one is a bad trade.
+    XCTAssertEqual(controller.current?.status, .ready)
+    XCTAssertEqual(controller.current?.computedAtMs, drawnAt)
+    XCTAssertEqual(store.stored?.status, .ready)
+    XCTAssertEqual(emitted.values.last??.status, .ready)
+  }
+
+  func testRecomputeWithNothingDrawnYetReportsTheFailure() {
+    let controller = NavigationController(api: FixedRoutes(.noPath), store: FakeStore())
+
+    controller.recompute(
+      toLatitude: targetLatitude,
+      toLongitude: targetLongitude,
+      fromLatitude: riderLatitude,
+      fromLongitude: riderLongitude
+    )
+    settle()
+
+    XCTAssertEqual(controller.current?.status, .noPathFound)
   }
 
   /// `onChange` fires from whichever thread published, so the log needs its own guard.

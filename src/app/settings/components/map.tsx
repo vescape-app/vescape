@@ -3,13 +3,14 @@ import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ElementRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import type { MapPoint } from 'vescape-core'
+import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
+import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
@@ -59,6 +60,7 @@ export default function MapComponentsShowcase() {
   const [activeHistoryMapMetric, setActiveHistoryMapMetric] = useState<HistoryMetricKey>('speed')
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
   const cameraRef = useRef<ElementRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
 
@@ -177,6 +179,13 @@ export default function MapComponentsShowcase() {
           onSelect={(key) => {
             setStyleKey(key)
             setStyleExpanded(false)
+          }}
+        />
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile: ${profile}`)
           }}
         />
         <View ref={moreTriggerRef} collapsable={false}>

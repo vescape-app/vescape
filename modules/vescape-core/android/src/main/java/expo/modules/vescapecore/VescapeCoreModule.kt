@@ -21,6 +21,7 @@ import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.buildSessionConfig
 
 import expo.modules.vescapecore.navigation.NavigationController
+import expo.modules.vescapecore.navigation.NavigationProfile
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -760,19 +761,20 @@ class VescapeCoreModule : Module() {
     // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
     // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
     // by then they have usually ridden somewhere with signal, or somewhere a path exists.
-    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `retryNavigation`
-    // @parity /modules/vescape-core/src/index.ts `retryNavigation`
-    AsyncFunction("retryNavigation") Coroutine { ->
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
+    // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
+    AsyncFunction("recomputeNavigation") Coroutine { ->
+      recomputeNavigation(context.applicationContext)
+    }
+    // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
+    // path is computed again under it. The stored profile moves even with no Direction Point set —
+    // the rider chose, and the next Navigation honours it.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
+    // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
+    AsyncFunction("setNavigationProfile") Coroutine { profile: String ->
       val appCtx = context.applicationContext
-      val repository = AppDataRepository.get(appCtx)
-      val directionPoint = repository.getDirectionPoint() ?: return@Coroutine
-      val settings = repository.getTypedSettings()
-      NavigationController.get(appCtx).setTarget(
-        directionPoint.first,
-        directionPoint.second,
-        settings.lastGpsLatitude,
-        settings.lastGpsLongitude,
-      )
+      NavigationController.get(appCtx).selectProfile(NavigationProfile.fromWire(profile))
+      recomputeNavigation(appCtx)
     }
     AsyncFunction("getSettings") {
       runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
@@ -1135,6 +1137,22 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.stopBoardSession(context.applicationContext) {
       promise.resolve(null)
     }
+  }
+
+  /**
+   * Asks for the path again, to the Direction Point the rider already has and from where they are
+   * now. A no-op with no Direction Point: there is nothing to compute a path to.
+   */
+  private suspend fun recomputeNavigation(appContext: Context) {
+    val repository = AppDataRepository.get(appContext)
+    val directionPoint = repository.getDirectionPoint() ?: return
+    val settings = repository.getTypedSettings()
+    NavigationController.get(appContext).recompute(
+      directionPoint.first,
+      directionPoint.second,
+      settings.lastGpsLatitude,
+      settings.lastGpsLongitude,
+    )
   }
 
   private suspend fun reloadPrivacyZonesIntoRecorder(appContext: Context) {

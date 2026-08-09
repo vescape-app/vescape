@@ -35,6 +35,38 @@ enum class NavigationStatus(val wire: String) {
 }
 
 /**
+ * The kind of ways a Navigation may follow. The rider picks it while looking at a path, and the
+ * choice sticks as the default for the next one.
+ *
+ * The wire strings are Mapbox Directions profile names and go into the request path unchanged, so
+ * they are a contract with the routing service as much as with JS.
+ *
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationProfile`
+ * @parity /modules/vescape-core/src/index.ts `NavigationProfile`
+ */
+enum class NavigationProfile(val wire: String) {
+  /** Reaches footpaths and forest tracks, which is where Direction Points usually are. */
+  WALKING("walking"),
+
+  /** Cycleways and roads; refuses footpaths. */
+  CYCLING("cycling"),
+
+  /** Roads only. */
+  DRIVING("driving");
+
+  companion object {
+    /**
+     * What a rider who has never chosen gets. `CYCLING` would refuse footpaths and hit the no-path
+     * state constantly, so the widest-reaching profile leads.
+     */
+    val DEFAULT = WALKING
+
+    fun fromWire(wire: String?): NavigationProfile =
+      entries.firstOrNull { it.wire == wire } ?: DEFAULT
+  }
+}
+
+/**
  * A rideable path from the rider to their Direction Point, following real ways. Computed once and
  * then fixed: nothing here recomputes, reroutes, or reacts to the rider moving.
  *
@@ -46,7 +78,8 @@ enum class NavigationStatus(val wire: String) {
 data class Navigation(
   val targetLatitude: Double,
   val targetLongitude: Double,
-  val profile: String,
+  /** The Navigation Profile this path was produced under; it never changes for this Navigation. */
+  val profile: NavigationProfile,
   val computedAtMs: Long,
   val status: NavigationStatus,
   /** Path points in encoding order, each `(latitude, longitude)`. Empty unless [status] is READY. */
@@ -54,7 +87,7 @@ data class Navigation(
 ) {
   fun toMap(): Map<String, Any?> = mapOf(
     "target" to mapOf("latitude" to targetLatitude, "longitude" to targetLongitude),
-    "profile" to profile,
+    "profile" to profile.wire,
     "computedAtMs" to computedAtMs,
     "status" to status.wire,
     // GeoJSON order, which is what the JS `ShapeSource` expects — flipped from the pairs above.
@@ -66,11 +99,11 @@ data class Navigation(
  * Owns the process's single Navigation. Setting a Direction Point asks for one; clearing the
  * Direction Point ends it. The two are strictly 1:1, so this holds at most one at a time.
  *
- * **There is deliberately no rerouting.** No off-route detection, no recompute, no arrival
- * detection, no automatic retry — not in the foreground and not in the background. EUC riders leave
- * the line by hundreds of metres as a matter of course, and a path that redraws itself under them is
- * worse than a stale one. A failed Navigation stays failed until the rider asks again, which is an
- * ordinary [setTarget] call. Only the rider replaces a Navigation. Please do not add rerouting here.
+ * **There is deliberately no rerouting.** No off-route detection, no arrival detection, no automatic
+ * retry — not in the foreground and not in the background. EUC riders leave the line by hundreds of
+ * metres as a matter of course, and a path that redraws itself under them is worse than a stale one.
+ * A failed Navigation stays failed until the rider asks again, which is a [recompute] call made from
+ * a rider's tap. Only the rider replaces a Navigation. Please do not add rerouting here.
  *
  * Durable: every change is written through to [NavigationStore], and [restore] brings the stored
  * path back on cold start. Restoring is a read, never a fetch — the stored path is the truth however
@@ -121,6 +154,15 @@ class NavigationController(
 
   private var state: Navigation? = null
 
+  /**
+   * The Navigation Profile the next computed path will use — the rider's last choice, cached here so
+   * [setTarget] can read it without waiting on a database. Seeded from the store by [restore].
+   *
+   * It is not the profile of the drawn path: a recompute that failed leaves the old path drawn under
+   * a newer choice, and the path keeps carrying the profile that actually produced it.
+   */
+  private var profile: NavigationProfile = NavigationProfile.DEFAULT
+
   val current: Navigation? get() = synchronized(lock) { state }
 
   /** Notified on every change, including the clear to `null`. */
@@ -147,6 +189,7 @@ class NavigationController(
   fun restore() {
     val request = claimRequest()
     scope.launch {
+      store.loadProfile()?.let { stored -> synchronized(lock) { profile = stored } }
       val stored = store.load() ?: return@launch
       val directionPoint = store.directionPoint()
       // The two are written separately, so an interrupted write can leave a path leading somewhere
@@ -168,8 +211,9 @@ class NavigationController(
    * rider position, a failed fetch or a path nothing could ride yields a Navigation carrying the
    * reason rather than a straight line — see [NavigationStatus].
    *
-   * This is also the whole of retry: asking again is just setting the same target from wherever the
-   * rider is now, which is why there is no separate retry path to keep in step.
+   * Uses the rider's sticky Navigation Profile. Asking for the same target again is [recompute],
+   * which keeps a working path when the new request fails; this one always replaces, because the
+   * target moved and the old path is already wrong.
    *
    * Returns immediately: the Directions call runs on this controller's own scope, so callers never
    * block the rider's tap on the network.
@@ -187,43 +231,103 @@ class NavigationController(
     publish(request, null)
 
     // No fix yet is a "could not ask", not a "nothing leads there": the rider is told, and asking
-    // again once the phone has a position is exactly the retry that already exists.
+    // again once the phone has a position is exactly what [recompute] does.
     if (fromLatitude == null || fromLongitude == null) {
-      publish(request, failed(toLatitude, toLongitude, NavigationStatus.FETCH_FAILED))
+      publish(request, failed(toLatitude, toLongitude, currentProfile, NavigationStatus.FETCH_FAILED))
       return
     }
 
     scope.launch {
-      val navigation =
-        when (val result = api.route(fromLatitude, fromLongitude, toLatitude, toLongitude, DEFAULT_PROFILE)) {
-          is DirectionsResult.Failed -> failed(toLatitude, toLongitude, NavigationStatus.FETCH_FAILED)
-          is DirectionsResult.NoPath -> failed(toLatitude, toLongitude, NavigationStatus.NO_PATH_FOUND)
-          is DirectionsResult.Path ->
-            if (NavigationUsability.isUsable(result.points, toLatitude, toLongitude)) {
-              Navigation(
-                targetLatitude = toLatitude,
-                targetLongitude = toLongitude,
-                profile = DEFAULT_PROFILE,
-                computedAtMs = System.currentTimeMillis(),
-                status = NavigationStatus.READY,
-                points = result.points,
-              )
-            } else {
-              failed(toLatitude, toLongitude, NavigationStatus.NO_PATH_FOUND)
-            }
-        }
-      publish(request, navigation)
+      publish(request, compute(toLatitude, toLongitude, fromLatitude, fromLongitude, currentProfile))
     }
   }
+
+  /** The Navigation Profile the next computed path will use. */
+  val currentProfile: NavigationProfile get() = synchronized(lock) { profile }
+
+  /**
+   * Remembers [next] as the rider's Navigation Profile without touching the current path. Switching
+   * profile is [selectProfile] followed by [recompute]; on its own this only moves the default the
+   * next Navigation will be computed under.
+   *
+   * The choice is stored even when the recompute that follows it fails: the rider chose it, and
+   * "last choice wins" is about the choice, not about whether that one request found a path.
+   */
+  fun selectProfile(next: NavigationProfile) {
+    val changed = synchronized(lock) {
+      if (profile == next) return
+      profile = next
+      next
+    }
+    scope.launch { store.saveProfile(changed) }
+  }
+
+  /**
+   * The rider asking for a fresh path to the Direction Point they already have, from where they are
+   * now. This is the *only* way a Navigation is replaced once computed — nothing may call it on a
+   * timer, on reconnect or on a new fix.
+   *
+   * Unlike [setTarget] it does not drop the current path first, and a request that produces no path
+   * is discarded while a usable one is already drawn: losing a working line by asking for a better
+   * one is a bad trade. The rider is told nothing changed by the line simply staying put.
+   */
+  fun recompute(
+    toLatitude: Double,
+    toLongitude: Double,
+    fromLatitude: Double?,
+    fromLongitude: Double?,
+  ) {
+    val request = claimRequest()
+    val requested = currentProfile
+
+    if (fromLatitude == null || fromLongitude == null) {
+      publish(request, failed(toLatitude, toLongitude, requested, NavigationStatus.FETCH_FAILED), keepUsablePath = true)
+      return
+    }
+
+    scope.launch {
+      publish(
+        request,
+        compute(toLatitude, toLongitude, fromLatitude, fromLongitude, requested),
+        keepUsablePath = true,
+      )
+    }
+  }
+
+  private suspend fun compute(
+    toLatitude: Double,
+    toLongitude: Double,
+    fromLatitude: Double,
+    fromLongitude: Double,
+    profile: NavigationProfile,
+  ): Navigation =
+    when (val result = api.route(fromLatitude, fromLongitude, toLatitude, toLongitude, profile.wire)) {
+      is DirectionsResult.Failed -> failed(toLatitude, toLongitude, profile, NavigationStatus.FETCH_FAILED)
+      is DirectionsResult.NoPath -> failed(toLatitude, toLongitude, profile, NavigationStatus.NO_PATH_FOUND)
+      is DirectionsResult.Path ->
+        if (NavigationUsability.isUsable(result.points, toLatitude, toLongitude)) {
+          Navigation(
+            targetLatitude = toLatitude,
+            targetLongitude = toLongitude,
+            profile = profile,
+            computedAtMs = System.currentTimeMillis(),
+            status = NavigationStatus.READY,
+            points = result.points,
+          )
+        } else {
+          failed(toLatitude, toLongitude, profile, NavigationStatus.NO_PATH_FOUND)
+        }
+    }
 
   private fun failed(
     toLatitude: Double,
     toLongitude: Double,
+    profile: NavigationProfile,
     status: NavigationStatus,
   ) = Navigation(
     targetLatitude = toLatitude,
     targetLongitude = toLongitude,
-    profile = DEFAULT_PROFILE,
+    profile = profile,
     computedAtMs = System.currentTimeMillis(),
     status = status,
     points = emptyList(),
@@ -235,16 +339,25 @@ class NavigationController(
   private fun claimRequest(): Int = synchronized(lock) { ++generation }
 
   /**
-   * Commits [navigation] if [request] is still the newest intent, and notifies in that same commit
-   * order. The staleness check, the write and the notify are one critical section: splitting them
+   * Commits [navigation] if [request] is still the newest intent — and, when [keepUsablePath] is
+   * set, only if it is not a downgrade from a drawn path to a failure — and notifies in that same
+   * commit order. The staleness check, the write and the notify are one critical section: splitting them
    * lets a stale result land after a newer one, leaving JS mirroring a path native no longer holds.
    *
    * `onChange` only enqueues an event emit and never calls back into this controller, so holding
    * the lock across it cannot deadlock.
    */
-  private fun publish(request: Int, navigation: Navigation?) {
+  private fun publish(request: Int, navigation: Navigation?, keepUsablePath: Boolean = false) {
     synchronized(lock) {
       if (request != generation || state == navigation) return
+      // A recompute that found nothing must not take away a path the rider can still ride. Checked
+      // in here rather than at the call site so the read of `state` and the write are one step.
+      if (keepUsablePath &&
+        navigation?.status != NavigationStatus.READY &&
+        state?.status == NavigationStatus.READY
+      ) {
+        return
+      }
       state = navigation
       onChange?.invoke(navigation)
     }
@@ -264,9 +377,6 @@ class NavigationController(
   }
 
   companion object {
-    /** Navigation Profile selection is a later slice; until then every Navigation is walking. */
-    private const val DEFAULT_PROFILE = "walking"
-
     @Volatile
     private var instance: NavigationController? = null
 

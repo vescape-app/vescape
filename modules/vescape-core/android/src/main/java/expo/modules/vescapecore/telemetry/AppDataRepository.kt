@@ -666,6 +666,23 @@ class AppDataRepository private constructor(private val context: Context) {
     }
   }
 
+  /**
+   * The rider's last chosen Navigation Profile, as its wire string. App data rather than a
+   * user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
+   * switching profile while looking at a path.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationProfile`
+   */
+  suspend fun getNavigationProfile(): String? = withContext(Dispatchers.IO) {
+    dao.getAppSetting(NAVIGATION_PROFILE)?.valueJson?.let { decodeSettingJson(it) as? String }
+  }
+
+  suspend fun setNavigationProfile(profile: String): Unit = withContext(Dispatchers.IO) {
+    dao.upsertAppSetting(
+      AppSettingEntity(NAVIGATION_PROFILE, encodeSettingJson(profile), System.currentTimeMillis()),
+    )
+  }
+
   suspend fun getAutoConnectBoard(): Map<String, Any?>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
     settings.selectedBoardId
@@ -926,6 +943,13 @@ internal const val DIRECTION_POINT_LONGITUDE = "directionPointLongitude"
  * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPathKey`
  */
 internal const val NAVIGATION_PATH = "navigationPath"
+
+/**
+ * The rider's sticky Navigation Profile. Native-owned app data outside the settings projection —
+ * see `getNavigationProfile`.
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationProfileKey`
+ */
+internal const val NAVIGATION_PROFILE = "navigationProfile"
 
 private fun Map<String, Any?>.toPrivacyZoneEntity(): PrivacyZoneEntity {
   val now = System.currentTimeMillis()

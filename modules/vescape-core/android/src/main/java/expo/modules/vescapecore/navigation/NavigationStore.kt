@@ -24,6 +24,14 @@ interface NavigationStore {
    * still leads here.
    */
   suspend fun directionPoint(): Pair<Double, Double>?
+
+  /**
+   * The rider's last chosen Navigation Profile, or `null` when they have never chosen one. Stored
+   * apart from the path because it outlives it: it is what the *next* Navigation is computed under.
+   */
+  suspend fun loadProfile(): NavigationProfile?
+
+  suspend fun saveProfile(profile: NavigationProfile)
 }
 
 /**
@@ -47,7 +55,7 @@ object NavigationJson {
   fun encode(navigation: Navigation): String = JSONObject()
     .put(TARGET_LATITUDE, navigation.targetLatitude)
     .put(TARGET_LONGITUDE, navigation.targetLongitude)
-    .put(PROFILE, navigation.profile)
+    .put(PROFILE, navigation.profile.wire)
     .put(COMPUTED_AT_MS, navigation.computedAtMs)
     .put(STATUS, navigation.status.wire)
     .put(GEOMETRY, Polyline6.encode(navigation.points))
@@ -72,7 +80,7 @@ object NavigationJson {
       Navigation(
         targetLatitude = stored.getDouble(TARGET_LATITUDE),
         targetLongitude = stored.getDouble(TARGET_LONGITUDE),
-        profile = stored.getString(PROFILE),
+        profile = NavigationProfile.fromWire(stored.optString(PROFILE)),
         computedAtMs = stored.getLong(COMPUTED_AT_MS),
         status = status,
         points = points,
@@ -99,4 +107,10 @@ class AppDataNavigationStore(context: Context) : NavigationStore {
     repository.setNavigationPath(navigation?.let(NavigationJson::encode))
 
   override suspend fun directionPoint(): Pair<Double, Double>? = repository.getDirectionPoint()
+
+  override suspend fun loadProfile(): NavigationProfile? =
+    repository.getNavigationProfile()?.let(NavigationProfile::fromWire)
+
+  override suspend fun saveProfile(profile: NavigationProfile) =
+    repository.setNavigationProfile(profile.wire)
 }

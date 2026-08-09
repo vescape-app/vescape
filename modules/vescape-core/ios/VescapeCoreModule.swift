@@ -866,20 +866,21 @@ public class VescapeCoreModule: Module {
     // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
     // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
     // by then they have usually ridden somewhere with signal, or somewhere a path exists.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `retryNavigation`
-    // @parity /modules/vescape-core/src/index.ts `retryNavigation`
-    AsyncFunction("retryNavigation") { (promise: Promise) in
-      guard let directionPoint = self.appData.getDirectionPoint() else {
-        promise.resolve(nil)
-        return
-      }
-      let settings = self.appData.getSettings()
-      NavigationController.shared.setTarget(
-        toLatitude: directionPoint.latitude,
-        toLongitude: directionPoint.longitude,
-        fromLatitude: settings["lastGpsLatitude"] as? Double,
-        fromLongitude: settings["lastGpsLongitude"] as? Double
-      )
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `recomputeNavigation`
+    // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
+    AsyncFunction("recomputeNavigation") { (promise: Promise) in
+      self.recomputeNavigation()
+      promise.resolve(nil)
+    }
+
+    // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
+    // path is computed again under it. The stored profile moves even with no Direction Point set —
+    // the rider chose, and the next Navigation honours it.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setNavigationProfile`
+    // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
+    AsyncFunction("setNavigationProfile") { (profile: String, promise: Promise) in
+      NavigationController.shared.selectProfile(NavigationProfile.fromWire(profile))
+      self.recomputeNavigation()
       promise.resolve(nil)
     }
 
@@ -1244,6 +1245,19 @@ public class VescapeCoreModule: Module {
       guard self.shouldEmitToFrontend("onAppStatus") else { return }
       self.sendEvent("onAppStatus", ["status": status?.toMap()])
     }
+  }
+
+  /// Asks for the path again, to the Direction Point the rider already has and from where they are
+  /// now. A no-op with no Direction Point: there is nothing to compute a path to.
+  private func recomputeNavigation() {
+    guard let directionPoint = appData.getDirectionPoint() else { return }
+    let settings = appData.getSettings()
+    NavigationController.shared.recompute(
+      toLatitude: directionPoint.latitude,
+      toLongitude: directionPoint.longitude,
+      fromLatitude: settings["lastGpsLatitude"] as? Double,
+      fromLongitude: settings["lastGpsLongitude"] as? Double
+    )
   }
 
   /// Emit `onNavigation` with the process's current Navigation (`nil` while none is computed).

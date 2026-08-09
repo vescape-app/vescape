@@ -19,6 +19,31 @@ enum NavigationStatus: String {
   case noPathFound
 }
 
+/// The kind of ways a Navigation may follow. The rider picks it while looking at a path, and the
+/// choice sticks as the default for the next one.
+///
+/// The raw values are Mapbox Directions profile names and go into the request path unchanged, so
+/// they are a contract with the routing service as much as with JS.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationProfile`
+/// @parity /modules/vescape-core/src/index.ts `NavigationProfile`
+enum NavigationProfile: String {
+  /// Reaches footpaths and forest tracks, which is where Direction Points usually are.
+  case walking
+  /// Cycleways and roads; refuses footpaths.
+  case cycling
+  /// Roads only.
+  case driving
+
+  /// What a rider who has never chosen gets. `cycling` would refuse footpaths and hit the no-path
+  /// state constantly, so the widest-reaching profile leads.
+  static let `default` = NavigationProfile.walking
+
+  static func fromWire(_ wire: String?) -> NavigationProfile {
+    wire.flatMap(NavigationProfile.init(rawValue:)) ?? .default
+  }
+}
+
 /// A rideable path from the rider to their Direction Point, following real ways. Computed once and
 /// then fixed: nothing here recomputes, reroutes, or reacts to the rider moving.
 ///
@@ -29,7 +54,8 @@ enum NavigationStatus: String {
 struct Navigation {
   let targetLatitude: Double
   let targetLongitude: Double
-  let profile: String
+  /// The Navigation Profile this path was produced under; it never changes for this Navigation.
+  let profile: NavigationProfile
   let computedAtMs: Int64
   let status: NavigationStatus
   /// Path points in encoding order, each `(latitude, longitude)`. Empty unless `status` is `ready`.
@@ -38,7 +64,7 @@ struct Navigation {
   func toMap() -> [String: Any] {
     [
       "target": ["latitude": targetLatitude, "longitude": targetLongitude],
-      "profile": profile,
+      "profile": profile.rawValue,
       "computedAtMs": computedAtMs,
       "status": status.rawValue,
       // GeoJSON order, which is what the JS `ShapeSource` expects — flipped from the pairs above.
@@ -78,12 +104,12 @@ enum DirectionsResult {
 /// Owns the process's single Navigation. Setting a Direction Point asks for one; clearing the
 /// Direction Point ends it. The two are strictly 1:1, so this holds at most one at a time.
 ///
-/// **There is deliberately no rerouting.** No off-route detection, no recompute, no arrival
-/// detection, no automatic retry — not in the foreground and not in the background. EUC riders
-/// leave the line by hundreds of metres as a matter of course, and a path that redraws itself under
-/// them is worse than a stale one. A failed Navigation stays failed until the rider asks again,
-/// which is an ordinary `setTarget` call. Only the rider replaces a Navigation. Please do not add
-/// rerouting here.
+/// **There is deliberately no rerouting.** No off-route detection, no arrival detection, no
+/// automatic retry — not in the foreground and not in the background. EUC riders leave the line by
+/// hundreds of metres as a matter of course, and a path that redraws itself under them is worse
+/// than a stale one. A failed Navigation stays failed until the rider asks again, which is a
+/// `recompute` call made from a rider's tap. Only the rider replaces a Navigation. Please do not
+/// add rerouting here.
 ///
 /// Durable: every change is written through to `NavigationStore`, and `restore()` brings the stored
 /// path back on cold start. Restoring is a read, never a fetch — the stored path is the truth
@@ -103,15 +129,22 @@ final class NavigationController {
     return controller
   }()
 
-  /// Navigation Profile selection is a later slice; until then every Navigation is walking.
-  private static let defaultProfile = "walking"
-
   private let api: DirectionsRoutes
   private let store: NavigationStore
   private let lock = NSLock()
 
   private var state: Navigation?
   var current: Navigation? { lock.withLock { state } }
+
+  /// The Navigation Profile the next computed path will use — the rider's last choice, cached here
+  /// so `setTarget` can read it without waiting on a database. Seeded from the store by `restore`.
+  ///
+  /// It is not the profile of the drawn path: a recompute that failed leaves the old path drawn
+  /// under a newer choice, and the path keeps carrying the profile that actually produced it.
+  private var profile: NavigationProfile = .default
+
+  /// The Navigation Profile the next computed path will use.
+  var currentProfile: NavigationProfile { lock.withLock { profile } }
 
   /// Notified on every change, including the clear to `nil`.
   var onChange: ((Navigation?) -> Void)?
@@ -145,6 +178,7 @@ final class NavigationController {
   func restore() {
     let request = claimRequest()
     Task {
+      if let stored = await store.loadProfile() { lock.withLock { profile = stored } }
       guard let stored = await store.load() else { return }
       let directionPoint = await store.directionPoint()
       // The two are written separately, so an interrupted write can leave a path leading somewhere
@@ -163,8 +197,9 @@ final class NavigationController {
   /// rider position, a failed fetch or a path nothing could ride yields a Navigation carrying the
   /// reason rather than a straight line — see `NavigationStatus`.
   ///
-  /// This is also the whole of retry: asking again is just setting the same target from wherever the
-  /// rider is now, which is why there is no separate retry path to keep in step.
+  /// Uses the rider's sticky Navigation Profile. Asking for the same target again is `recompute`,
+  /// which keeps a working path when the new request fails; this one always replaces, because the
+  /// target moved and the old path is already wrong.
   ///
   /// Returns immediately: the Directions call runs in its own `Task`, so callers never block the
   /// rider's tap on the network.
@@ -181,53 +216,113 @@ final class NavigationController {
     publish(request, nil)
 
     // No fix yet is a "could not ask", not a "nothing leads there": the rider is told, and asking
-    // again once the phone has a position is exactly the retry that already exists.
+    // again once the phone has a position is exactly what `recompute` does.
     guard let fromLatitude, let fromLongitude else {
-      publish(request, failed(toLatitude, toLongitude, .fetchFailed))
+      publish(request, failed(toLatitude, toLongitude, currentProfile, .fetchFailed))
+      return
+    }
+
+    let requested = currentProfile
+    Task {
+      let navigation = await compute(
+        toLatitude, toLongitude, fromLatitude, fromLongitude, requested
+      )
+      publish(request, navigation)
+    }
+  }
+
+  /// Remembers `next` as the rider's Navigation Profile without touching the current path.
+  /// Switching profile is `selectProfile` followed by `recompute`; on its own this only moves the
+  /// default the next Navigation will be computed under.
+  ///
+  /// The choice is stored even when the recompute that follows it fails: the rider chose it, and
+  /// "last choice wins" is about the choice, not about whether that one request found a path.
+  func selectProfile(_ next: NavigationProfile) {
+    let changed: Bool = lock.withLock {
+      guard profile != next else { return false }
+      profile = next
+      return true
+    }
+    guard changed else { return }
+    Task { await store.saveProfile(next) }
+  }
+
+  /// The rider asking for a fresh path to the Direction Point they already have, from where they
+  /// are now. This is the *only* way a Navigation is replaced once computed — nothing may call it
+  /// on a timer, on reconnect or on a new fix.
+  ///
+  /// Unlike `setTarget` it does not drop the current path first, and a request that produces no
+  /// path is discarded while a usable one is already drawn: losing a working line by asking for a
+  /// better one is a bad trade. The rider is told nothing changed by the line simply staying put.
+  func recompute(
+    toLatitude: Double,
+    toLongitude: Double,
+    fromLatitude: Double?,
+    fromLongitude: Double?
+  ) {
+    let request = claimRequest()
+    let requested = currentProfile
+
+    guard let fromLatitude, let fromLongitude else {
+      publish(
+        request, failed(toLatitude, toLongitude, requested, .fetchFailed), keepUsablePath: true
+      )
       return
     }
 
     Task {
-      let result = await api.route(
-        fromLatitude: fromLatitude,
-        fromLongitude: fromLongitude,
-        toLatitude: toLatitude,
-        toLongitude: toLongitude,
-        profile: Self.defaultProfile
+      let navigation = await compute(
+        toLatitude, toLongitude, fromLatitude, fromLongitude, requested
       )
-      let navigation: Navigation
-      switch result {
-      case .failed:
-        navigation = failed(toLatitude, toLongitude, .fetchFailed)
-      case .noPath:
-        navigation = failed(toLatitude, toLongitude, .noPathFound)
-      case let .path(points):
-        navigation = NavigationUsability.isUsable(
-          points, targetLatitude: toLatitude, targetLongitude: toLongitude
+      publish(request, navigation, keepUsablePath: true)
+    }
+  }
+
+  private func compute(
+    _ toLatitude: Double,
+    _ toLongitude: Double,
+    _ fromLatitude: Double,
+    _ fromLongitude: Double,
+    _ profile: NavigationProfile
+  ) async -> Navigation {
+    let result = await api.route(
+      fromLatitude: fromLatitude,
+      fromLongitude: fromLongitude,
+      toLatitude: toLatitude,
+      toLongitude: toLongitude,
+      profile: profile.rawValue
+    )
+    switch result {
+    case .failed:
+      return failed(toLatitude, toLongitude, profile, .fetchFailed)
+    case .noPath:
+      return failed(toLatitude, toLongitude, profile, .noPathFound)
+    case let .path(points):
+      return NavigationUsability.isUsable(
+        points, targetLatitude: toLatitude, targetLongitude: toLongitude
+      )
+        ? Navigation(
+          targetLatitude: toLatitude,
+          targetLongitude: toLongitude,
+          profile: profile,
+          computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+          status: .ready,
+          points: points
         )
-          ? Navigation(
-            targetLatitude: toLatitude,
-            targetLongitude: toLongitude,
-            profile: Self.defaultProfile,
-            computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
-            status: .ready,
-            points: points
-          )
-          : failed(toLatitude, toLongitude, .noPathFound)
-      }
-      publish(request, navigation)
+        : failed(toLatitude, toLongitude, profile, .noPathFound)
     }
   }
 
   private func failed(
     _ toLatitude: Double,
     _ toLongitude: Double,
+    _ profile: NavigationProfile,
     _ status: NavigationStatus
   ) -> Navigation {
     Navigation(
       targetLatitude: toLatitude,
       targetLongitude: toLongitude,
-      profile: Self.defaultProfile,
+      profile: profile,
       computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
       status: status,
       points: []
@@ -239,15 +334,19 @@ final class NavigationController {
     publish(claimRequest(), nil)
   }
 
-  /// Commits `navigation` if `request` is still the newest intent, and notifies in that same commit
-  /// order. The staleness check, the write and the notify are one critical section: splitting them
+  /// Commits `navigation` if `request` is still the newest intent — and, when `keepUsablePath` is
+  /// set, only if it is not a downgrade from a drawn path to a failure — and notifies in that same
+  /// commit order. The staleness check, the write and the notify are one critical section: splitting them
   /// lets a stale result land after a newer one, leaving JS mirroring a path native no longer holds.
   ///
   /// `onChange` only hops to the main queue to emit and never calls back into this controller, so
   /// holding the lock across it cannot deadlock.
-  private func publish(_ request: Int, _ navigation: Navigation?) {
+  private func publish(_ request: Int, _ navigation: Navigation?, keepUsablePath: Bool = false) {
     let committed: Bool = lock.withLock {
       guard request == generation, !isSame(state, navigation) else { return false }
+      // A recompute that found nothing must not take away a path the rider can still ride. Checked
+      // in here rather than at the call site so the read of `state` and the write are one step.
+      if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
       state = navigation
       onChange?(navigation)
       return true

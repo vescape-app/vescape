@@ -1,8 +1,9 @@
 import { ArrowClockwiseIcon, NavigationArrowIcon, XIcon } from 'phosphor-react-native'
-import type { MapPoint, MapPointPatch, NavigationStatus } from 'vescape-core'
+import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
+import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 interface MapTargetSheetHostProps {
@@ -23,8 +24,14 @@ interface MapTargetSheetHostProps {
   onCancelNavigation: () => void
   /** How the path to the active target ended up. `null` while there is no Navigation at all. */
   navigationStatus: NavigationStatus | null
-  /** Rider-initiated recompute, offered only when the path failed. */
-  onRetryNavigation: () => void
+  /**
+   * Which kind of ways produced the drawn path. `null` while there is no Navigation, which is when
+   * the switcher has nothing to be the current state of and is not shown.
+   */
+  navigationProfile: NavigationProfile | null
+  /** Rider-initiated recompute. The only thing that ever replaces a Navigation. */
+  onRecomputeNavigation: () => void
+  onSelectNavigationProfile: (profile: NavigationProfile) => void
   onDismissSelected: () => void
   onAddFeature: () => void
   onSaveMapPoint: (id: string, patch: MapPointPatch) => Promise<MapPoint | null>
@@ -52,7 +59,9 @@ export function MapTargetSheetHost({
   onNavigateSelected,
   onCancelNavigation,
   navigationStatus,
-  onRetryNavigation,
+  navigationProfile,
+  onRecomputeNavigation,
+  onSelectNavigationProfile,
   onDismissSelected,
   onAddFeature,
   onSaveMapPoint,
@@ -126,18 +135,17 @@ export function MapTargetSheetHost({
     Icon: XIcon,
     onPress: onCancelNavigation,
   }
-  // No path was computed. Retry leads, because it is the only thing that can change the situation —
-  // and it only ever happens on this tap, never on its own.
   const failureNotice = navigationStatus ? NAVIGATION_FAILURE_NOTICES[navigationStatus] : null
-  const retryAction = failureNotice
-    ? {
-        ...actionColors,
-        label: 'Retry',
-        accessibilityLabel: 'Retry path to target',
-        Icon: ArrowClockwiseIcon,
-        onPress: onRetryNavigation,
-      }
-    : null
+  // Recompute always leads, in the same slot whether or not there is a path: after a failure it is
+  // the only thing that can change the situation, and with a path drawn it is how the rider asks for
+  // a fresh one from where they are now. It only ever happens on this tap, never on its own.
+  const recomputeAction = {
+    ...actionColors,
+    label: failureNotice ? 'Retry' : 'Recompute',
+    accessibilityLabel: failureNotice ? 'Retry path to target' : 'Recompute path from here',
+    Icon: ArrowClockwiseIcon,
+    onPress: onRecomputeNavigation,
+  }
 
   return (
     <MapTargetSheet
@@ -145,9 +153,17 @@ export function MapTargetSheetHost({
       target={activeTarget}
       bottom={bottom}
       mode="navigation"
-      action={retryAction ?? cancelAction}
-      secondaryAction={retryAction ? cancelAction : undefined}
+      action={recomputeAction}
+      secondaryAction={cancelAction}
       notice={failureNotice}
+      profileSelector={
+        navigationProfile ? (
+          <NavigationProfileSelector
+            activeProfile={navigationProfile}
+            onSelect={onSelectNavigationProfile}
+          />
+        ) : null
+      }
       onFocusTarget={() => onFocusTarget(activeTarget)}
     />
   )

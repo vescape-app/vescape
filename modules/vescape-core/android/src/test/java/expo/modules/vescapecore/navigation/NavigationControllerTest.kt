@@ -57,6 +57,7 @@ class NavigationControllerTest {
     private class FakeStore(
         var stored: Navigation? = null,
         var directionPoint: Pair<Double, Double>? = null,
+        var storedProfile: NavigationProfile? = null,
     ) : NavigationStore {
         private val lock = Any()
 
@@ -67,6 +68,30 @@ class NavigationControllerTest {
         }
 
         override suspend fun directionPoint(): Pair<Double, Double>? = synchronized(lock) { directionPoint }
+
+        override suspend fun loadProfile(): NavigationProfile? = synchronized(lock) { storedProfile }
+
+        override suspend fun saveProfile(profile: NavigationProfile) {
+            synchronized(lock) { storedProfile = profile }
+        }
+    }
+
+    /** Routing stub that records the profile it was asked for. */
+    private class ProfileRecordingRoutes : DirectionsRoutes {
+        private val seen = mutableListOf<String>()
+
+        val profiles: List<String> get() = synchronized(seen) { seen.toList() }
+
+        override suspend fun route(
+            fromLatitude: Double,
+            fromLongitude: Double,
+            toLatitude: Double,
+            toLongitude: Double,
+            profile: String,
+        ): DirectionsResult {
+            synchronized(seen) { seen += profile }
+            return DirectionsResult.Path(listOf(fromLatitude to fromLongitude, toLatitude to toLongitude))
+        }
     }
 
     private fun controller(
@@ -83,7 +108,7 @@ class NavigationControllerTest {
     private fun navigation(targetLatitude: Double = TARGET_LAT) = Navigation(
         targetLatitude = targetLatitude,
         targetLongitude = TARGET_LNG,
-        profile = "walking",
+        profile = NavigationProfile.WALKING,
         computedAtMs = 1_700_000_000_000L,
         status = NavigationStatus.READY,
         points = listOf(RIDER_LAT to RIDER_LNG, targetLatitude to TARGET_LNG),
@@ -277,6 +302,80 @@ class NavigationControllerTest {
 
         assertEquals(NavigationStatus.READY, retrying.current?.status)
         assertEquals(RIDER_LAT + 0.01, retrying.current?.points?.first()?.first ?: 0.0, 1e-9)
+    }
+
+    @Test
+    fun `the sticky profile is what the next Navigation is computed under`() {
+        val routes = ProfileRecordingRoutes()
+        val store = FakeStore(storedProfile = NavigationProfile.CYCLING)
+        val (controller, _) = controller(routes, store)
+
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(listOf("cycling"), routes.profiles)
+        assertEquals(NavigationProfile.CYCLING, controller.current?.profile)
+    }
+
+    @Test
+    fun `a rider who has never chosen walks`() {
+        val routes = ProfileRecordingRoutes()
+        val (controller, _) = controller(routes, FakeStore())
+
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(listOf("walking"), routes.profiles)
+    }
+
+    @Test
+    fun `choosing a profile sticks it for the next Navigation`() {
+        val routes = ProfileRecordingRoutes()
+        val store = FakeStore()
+        val (controller, _) = controller(routes, store)
+
+        controller.selectProfile(NavigationProfile.DRIVING)
+        controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(NavigationProfile.DRIVING, store.storedProfile)
+        assertEquals(NavigationProfile.DRIVING, controller.current?.profile)
+        // The next Direction Point is computed under it without being told again.
+        controller.setTarget(SECOND_TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+        assertEquals(listOf("driving", "driving"), routes.profiles)
+    }
+
+    @Test
+    fun `a recompute that finds nothing leaves the drawn path alone`() {
+        val store = FakeStore(navigation(), TARGET_LAT to TARGET_LNG)
+        val (controller, emitted) = controller(FixedRoutes(DirectionsResult.Failed), store)
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        val drawn = controller.current
+        assertEquals(NavigationStatus.READY, drawn?.status)
+
+        controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        // Losing a working line by asking for a better one is a bad trade.
+        assertEquals(drawn, controller.current)
+        assertEquals(NavigationStatus.READY, store.stored?.status)
+        synchronized(emitted) { assertEquals(NavigationStatus.READY, emitted.last()?.status) }
+    }
+
+    @Test
+    fun `a recompute with nothing drawn yet reports the failure`() {
+        val (controller, _) = controller(FixedRoutes(DirectionsResult.NoPath))
+
+        controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(NavigationStatus.NO_PATH_FOUND, controller.current?.status)
     }
 
     private companion object {

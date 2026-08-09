@@ -480,7 +480,9 @@ export function MapModeOverlay({
   // Native owns whether a path exists; this only decides what the sheet says about it. Read here
   // rather than drilled from the screen, because the sheet is its only consumer.
   const navigationStatus = useMapStore((s) => s.navigation?.status ?? null)
-  const retryNavigation = useMapStore((s) => s.retryNavigation)
+  const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
+  const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
+  const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
 
   const navigationTarget =
     activeNavigationTarget ??
@@ -602,7 +604,9 @@ export function MapModeOverlay({
             onNavigateSelected={() => void onNavigateSelectedTarget()}
             onCancelNavigation={onCancelNavigation}
             navigationStatus={navigationStatus}
-            onRetryNavigation={() => void retryNavigation()}
+            navigationProfile={navigationProfile}
+            onRecomputeNavigation={() => void recomputeNavigation()}
+            onSelectNavigationProfile={(profile) => void setNavigationProfile(profile)}
             onDismissSelected={() => {
               setEditingMapPointId(null)
               setAddMenuOpen(false)

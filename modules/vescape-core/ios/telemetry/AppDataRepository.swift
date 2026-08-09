@@ -474,6 +474,34 @@ final class AppDataRepository {
     }
   }
 
+  /// The rider's last chosen Navigation Profile, as its wire string. App data rather than a
+  /// user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
+  /// switching profile while looking at a path.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationProfile`
+  static let navigationProfileKey = "navigationProfile"
+
+  func getNavigationProfile() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationProfileKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationProfile(_ profile: String) {
+    guard let encoded = Self.encodeJson(profile) else { return }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [Self.navigationProfileKey, encoded, updatedAt]
+      )
+    }
+  }
+
   // MARK: - Settings
 
   func getSettings() -> [String: Any?] {
@@ -481,9 +509,10 @@ final class AppDataRepository {
       var stored: [String: Any] = [:]
       for row in try Row.fetchAll(db, sql: "SELECT key, value_json FROM app_settings") {
         let key: String = row["key"]
-        // Native-owned and large; JS gets the Navigation through `onNavigation`, never here.
-        // (Android's projection is a typed whitelist, so it drops this key without an exclusion.)
-        guard key != Self.navigationPathKey else { continue }
+        // Native-owned; JS gets the Navigation through `onNavigation`, never here — and the path
+        // is large besides. (Android's projection is a typed whitelist, so it drops these keys
+        // without an exclusion.)
+        guard key != Self.navigationPathKey, key != Self.navigationProfileKey else { continue }
         if let decoded = Self.decodeJson(row["value_json"]) { stored[key] = decoded }
       }
       return stored
@@ -500,9 +529,12 @@ final class AppDataRepository {
 
   func updateSetting(_ key: String, rawValue: Any?) {
     // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
-    // The Navigation is native-owned too: JS moves it by setting a Direction Point, never by
-    // writing this row.
-    guard key != "legalPolicy", key != "legalMode", key != Self.navigationPathKey else { return }
+    // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the
+    // profile through `setNavigationProfile`, never by writing these rows.
+    guard
+      key != "legalPolicy", key != "legalMode",
+      key != Self.navigationPathKey, key != Self.navigationProfileKey
+    else { return }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
       write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }

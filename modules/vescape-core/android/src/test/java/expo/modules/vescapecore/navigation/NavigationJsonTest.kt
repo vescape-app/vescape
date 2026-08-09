@@ -53,7 +53,7 @@ class NavigationJsonTest {
     private fun navigation(status: NavigationStatus, points: List<Pair<Double, Double>>) = Navigation(
         targetLatitude = 52.3,
         targetLongitude = 21.1,
-        profile = "walking",
+        profile = NavigationProfile.WALKING,
         computedAtMs = 1_700_000_000_000L,
         status = status,
         points = points,

@@ -2,9 +2,11 @@ import { create } from 'zustand'
 import {
   addNavigationListener,
   getSettings,
-  retryNavigation as recomputeNavigation,
+  recomputeNavigation,
   setDirectionPoint as persistDirectionPoint,
+  setNavigationProfile as persistNavigationProfile,
   type Navigation,
+  type NavigationProfile,
 } from 'vescape-core'
 
 /**
@@ -33,7 +35,8 @@ interface MapActions {
   setDirectionPoint(latitude: number, longitude: number): Promise<void>
   clearDirectionPoint(): Promise<void>
   replaceNavigation(navigation: Navigation | null): void
-  retryNavigation(): Promise<void>
+  recomputeNavigation(): Promise<void>
+  setNavigationProfile(profile: NavigationProfile): Promise<void>
 }
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
@@ -87,8 +90,17 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
      * result back through `onNavigation` like any other change, so this side never holds a second
      * opinion about the path. Only ever called from a rider tap.
      */
-    async retryNavigation() {
+    async recomputeNavigation() {
       await recomputeNavigation()
+    },
+
+    /**
+     * The rider switching which kind of ways the path may follow. Native owns both halves — storing
+     * the choice and computing the new path — so this side neither remembers the profile nor waits
+     * for the result; the new Navigation arrives through `onNavigation` like any other.
+     */
+    async setNavigationProfile(profile) {
+      await persistNavigationProfile(profile)
     },
   }
 })

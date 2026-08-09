@@ -55,7 +55,7 @@ final class NavigationStoreTests: XCTestCase {
     Navigation(
       targetLatitude: 52.3,
       targetLongitude: 21.1,
-      profile: "walking",
+      profile: .walking,
       computedAtMs: 1_700_000_000_000,
       status: status,
       points: points

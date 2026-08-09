@@ -16,6 +16,12 @@ protocol NavigationStore {
   /// The current Direction Point as `(latitude, longitude)`. A restored path is only usable while it
   /// still leads here.
   func directionPoint() async -> (latitude: Double, longitude: Double)?
+
+  /// The rider's last chosen Navigation Profile, or `nil` when they have never chosen one. Stored
+  /// apart from the path because it outlives it: it is what the *next* Navigation is computed under.
+  func loadProfile() async -> NavigationProfile?
+
+  func saveProfile(_ profile: NavigationProfile) async
 }
 
 /// Wire form of a stored Navigation. The path rides as its `polyline6` body rather than as a
@@ -38,7 +44,7 @@ enum NavigationJson {
     let stored: [String: Any] = [
       targetLatitudeKey: navigation.targetLatitude,
       targetLongitudeKey: navigation.targetLongitude,
-      profileKey: navigation.profile,
+      profileKey: navigation.profile.rawValue,
       computedAtMsKey: navigation.computedAtMs,
       statusKey: navigation.status.rawValue,
       geometryKey: Polyline6.encode(navigation.points),
@@ -60,10 +66,10 @@ enum NavigationJson {
       let stored = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
       let targetLatitude = stored[targetLatitudeKey] as? Double,
       let targetLongitude = stored[targetLongitudeKey] as? Double,
-      let profile = stored[profileKey] as? String,
       let computedAtMs = (stored[computedAtMsKey] as? NSNumber)?.int64Value,
       let geometry = stored[geometryKey] as? String
     else { return nil }
+    let profile = NavigationProfile.fromWire(stored[profileKey] as? String)
     let status = (stored[statusKey] as? String).flatMap(NavigationStatus.init(rawValue:)) ?? .ready
     let points = Polyline6.decode(geometry)
     guard status != .ready || !points.isEmpty else { return nil }
@@ -96,5 +102,13 @@ struct AppDataNavigationStore: NavigationStore {
 
   func directionPoint() async -> (latitude: Double, longitude: Double)? {
     repository.getDirectionPoint()
+  }
+
+  func loadProfile() async -> NavigationProfile? {
+    repository.getNavigationProfile().map(NavigationProfile.fromWire)
+  }
+
+  func saveProfile(_ profile: NavigationProfile) async {
+    repository.setNavigationProfile(profile.rawValue)
   }
 }

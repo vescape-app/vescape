@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { MapPoint, MapPointPatch } from 'vescape-core'
 
 import { MapTargetEditBody } from '@/modules/map-points/components/MapTargetSheetEditBody'
@@ -14,6 +15,7 @@ export function MapTargetSheet({
   action,
   secondaryAction,
   notice,
+  profileSelector,
   onAddFeature,
   onEdit,
   onSave,
@@ -31,6 +33,8 @@ export function MapTargetSheet({
   secondaryAction?: MapTargetSheetAction
   /** Navigation mode only: why there is no path, in rider-facing words. */
   notice?: string | null
+  /** Navigation mode only: the Navigation Profile switcher, shown beside the drawn path. */
+  profileSelector?: ReactNode
   onAddFeature?: () => void
   onEdit?: () => void
   onSave?: () => void
@@ -67,6 +71,7 @@ export function MapTargetSheet({
         action={action}
         secondaryAction={secondaryAction}
         notice={notice}
+        profileSelector={profileSelector}
         media={media.assets}
         onDismiss={onDismiss}
         onFocusTarget={onFocusTarget}
