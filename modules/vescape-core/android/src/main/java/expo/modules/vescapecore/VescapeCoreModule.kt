@@ -20,6 +20,7 @@ import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.buildSessionConfig
 
+import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -164,6 +165,7 @@ class VescapeCoreModule : Module() {
       "onAppDataChanged",
       "onBoardWarnings",
       "onAppStatus",
+      "onNavigation",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -174,6 +176,16 @@ class VescapeCoreModule : Module() {
     appStatusUnsub = AppStatusCoordinator.get(context).addChangeListener { status ->
       if (shouldEmitToFrontend("onAppStatus")) {
         sendEvent("onAppStatus", mapOf("status" to status?.toMap()))
+      }
+    }
+
+    // Navigation is native-owned; JS only renders the coordinates it is handed. Push every change,
+    // including the clear to `null` (late subscribers replay below and through `getNavigation`).
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
+    // @parity /modules/vescape-core/src/index.ts `NavigationEvent`
+    NavigationController.get(context).onChange = { navigation ->
+      if (shouldEmitToFrontend("onNavigation")) {
+        sendEvent("onNavigation", mapOf("navigation" to navigation?.toMap()))
       }
     }
 
@@ -242,6 +254,12 @@ class VescapeCoreModule : Module() {
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
     }
     OnStopObserving("onAppStatus") { stopObserving("onAppStatus") }
+    OnStartObserving("onNavigation") {
+      startObserving("onNavigation")
+      // Late subscriber: replay the current Navigation so JS is immediately consistent.
+      sendEvent("onNavigation", mapOf("navigation" to NavigationController.get(context).current?.toMap()))
+    }
+    OnStopObserving("onNavigation") { stopObserving("onNavigation") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -724,8 +742,21 @@ class VescapeCoreModule : Module() {
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") Coroutine { latitude: Double?, longitude: Double? ->
       val appCtx = context.applicationContext
-      AppDataRepository.get(appCtx).setDirectionPoint(latitude, longitude)
+      val repository = AppDataRepository.get(appCtx)
+      repository.setDirectionPoint(latitude, longitude)
       CoreForegroundService.reloadGroupRideTarget(appCtx)
+
+      // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
+      // one ends it. The Directions call runs off the promise so the pin lands immediately.
+      val navigation = NavigationController.get(appCtx)
+      if (latitude == null || longitude == null) {
+        navigation.clear()
+      } else {
+        val settings = repository.getTypedSettings()
+        CoroutineScope(Dispatchers.IO).launch {
+          navigation.setTarget(latitude, longitude, settings.lastGpsLatitude, settings.lastGpsLongitude)
+        }
+      }
     }
     AsyncFunction("getSettings") {
       runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }

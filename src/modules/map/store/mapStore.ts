@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import { getSettings, setDirectionPoint as persistDirectionPoint } from 'vescape-core'
+import {
+  addNavigationListener,
+  getSettings,
+  setDirectionPoint as persistDirectionPoint,
+  type Navigation,
+} from 'vescape-core'
 
 /**
  * Personal navigation target. Not a Map Point: it is never shared, has no author and no reactions.
@@ -12,6 +17,11 @@ export interface DirectionPoint {
 
 interface MapState {
   directionPoint: DirectionPoint | null
+  /**
+   * Path to the direction point, mirrored from native. Native computes and owns it; this store only
+   * carries it to the map layer. `null` while none exists or none could be computed.
+   */
+  navigation: Navigation | null
   /** Last direction point write failure, in rider-facing words. Cleared by the next success. */
   error: string | null
 }
@@ -20,6 +30,7 @@ interface MapActions {
   loadDirectionPoint(): Promise<void>
   setDirectionPoint(latitude: number, longitude: number): Promise<void>
   clearDirectionPoint(): Promise<void>
+  replaceNavigation(navigation: Navigation | null): void
 }
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
@@ -41,6 +52,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
 
   return {
     directionPoint: null,
+    navigation: null,
     error: null,
 
     async loadDirectionPoint() {
@@ -62,5 +74,22 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
       if (!get().directionPoint) return
       await moveDirectionPoint(null)
     },
+
+    replaceNavigation(navigation) {
+      set({ navigation })
+    },
   }
 })
+
+/**
+ * Wire the native → JS Navigation mirror. Call once at app root; returns an unsubscribe.
+ *
+ * Push only, unlike `startAppStatusSync`: native replays the current Navigation on subscribe and on
+ * every change, so there is nothing a separate pull could catch up on.
+ */
+export function startNavigationSync(): () => void {
+  const sub = addNavigationListener((event) =>
+    useMapStore.getState().replaceNavigation(event.navigation),
+  )
+  return () => sub.remove()
+}

@@ -76,7 +76,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -113,11 +113,20 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onAppStatus", ["status": AppStatusCoordinator.shared.current?.toMap()])
     }
     OnStopObserving("onAppStatus") { self.observedEvents.remove("onAppStatus") }
+    OnStartObserving("onNavigation") {
+      self.observedEvents.insert("onNavigation")
+      // Late subscriber: replay the current Navigation so JS is immediately consistent.
+      self.sendEvent("onNavigation", ["navigation": NavigationController.shared.current?.toMap()])
+    }
+    OnStopObserving("onNavigation") { self.observedEvents.remove("onNavigation") }
 
     OnCreate {
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
       // subscribers replay above and through `getAppStatus`).
       AppStatusCoordinator.shared.onChange = { [weak self] status in self?.sendAppStatus(status) }
+
+      // Navigation is native-owned; JS only renders the coordinates it is handed.
+      NavigationController.shared.onChange = { [weak self] navigation in self?.sendNavigation(navigation) }
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
@@ -836,6 +845,22 @@ public class VescapeCoreModule: Module {
     // The direction target is personal client state, never a Map Point.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in
       self.appData.setDirectionPoint(latitude: latitude, longitude: longitude)
+
+      // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
+      // one ends it. The Directions call runs off the promise so the pin lands immediately.
+      if let latitude, let longitude {
+        let settings = self.appData.getSettings()
+        Task {
+          await NavigationController.shared.setTarget(
+            toLatitude: latitude,
+            toLongitude: longitude,
+            fromLatitude: settings["lastGpsLatitude"] as? Double,
+            fromLongitude: settings["lastGpsLongitude"] as? Double
+          )
+        }
+      } else {
+        NavigationController.shared.clear()
+      }
       promise.resolve(nil)
     }
 
@@ -1199,6 +1224,18 @@ public class VescapeCoreModule: Module {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onAppStatus") else { return }
       self.sendEvent("onAppStatus", ["status": status?.toMap()])
+    }
+  }
+
+  /// Emit `onNavigation` with the process's current Navigation (`nil` while none is computed).
+  /// `sendEvent` must run on the main thread; drop the emit when no JS listener is attached — the
+  /// replay on subscribe and `getNavigation` self-heal it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onNavigation`
+  /// @parity /modules/vescape-core/src/index.ts `NavigationEvent`
+  private func sendNavigation(_ navigation: Navigation?) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onNavigation") else { return }
+      self.sendEvent("onNavigation", ["navigation": navigation?.toMap()])
     }
   }
 

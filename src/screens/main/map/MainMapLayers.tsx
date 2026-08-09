@@ -15,7 +15,7 @@ import { StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
-import type { DirectionPoint } from '@/modules/map/store/mapStore'
+import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { MapPin } from '@/modules/map/components/MapPin'
@@ -632,6 +632,22 @@ export function MainMapLayers({
   const showDirectionPoint =
     directionPoint != null && activeNavigationTarget?.type !== 'mapPoint' && !historyActive
   const directionPointIconKind = 'direction' as const
+
+  // Native computes and owns the Navigation; this only draws the coordinates it was handed. They
+  // already arrive as GeoJSON `[longitude, latitude]`, so nothing is reordered here.
+  const navigation = useMapStore((state) => state.navigation)
+  const navigationShape = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(
+    () =>
+      navigation && navigation.coordinates.length > 1
+        ? {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: navigation.coordinates },
+            properties: {},
+          }
+        : null,
+    [navigation],
+  )
+  const showNavigation = showDirectionPoint && navigationShape != null
   const mapObjectsInteractive = !weatherActive && !legalLimitsActive && !historyActive
 
   return (
@@ -690,6 +706,30 @@ export function MainMapLayers({
           riders={riders}
           highContrastRoutes={isSatellite}
         />
+      )}
+      {showNavigation && (
+        // Drawn whole, never trimmed or dimmed as the rider advances — deliberate, see #353.
+        // `lineMetrics` is free now and is what a later dimming pass would need.
+        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
+          <LineLayer
+            id="center-navigation-casing"
+            style={{
+              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineWidth: MAP_DEFAULTS.navigationWidth + 4,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+          <LineLayer
+            id="center-navigation-line"
+            style={{
+              lineColor: directionColor,
+              lineWidth: MAP_DEFAULTS.navigationWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+        </ShapeSource>
       )}
       {showDirectionPoint && (
         <MapPin

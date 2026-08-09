@@ -1435,6 +1435,35 @@ export interface AppStatusEvent {
 }
 
 /**
+ * The rideable path from the rider to their Direction Point, computed natively. JS renders it and
+ * nothing else: there is no routing logic on this side, and a Navigation never changes on its own.
+ *
+ * `coordinates` are GeoJSON `[longitude, latitude]` pairs — the opposite order from
+ * `setDirectionPoint(latitude, longitude)` — so they feed a `ShapeSource` unmodified.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `Navigation`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `Navigation`
+ */
+export interface Navigation {
+  target: { latitude: number; longitude: number }
+  /** Navigation Profile the path was produced under. Selection is a later slice; always `walking`. */
+  profile: string
+  computedAtMs: number
+  coordinates: [longitude: number, latitude: number][]
+}
+
+/**
+ * Native Navigation changed. Emitted whenever it is computed or cleared, and replayed on subscribe,
+ * so a late listener is immediately consistent. `null` means no Navigation — no Direction Point is
+ * set, or the path could not be computed.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onNavigation`
+ */
+export interface NavigationEvent {
+  navigation: Navigation | null
+}
+
+/**
  * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt
  */
@@ -1493,6 +1522,8 @@ type VescapeCoreEvents = {
   onBoardWarnings: (event: BoardWarningsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
+  /** Native Navigation, on every change (including clears) and on subscribe. */
+  onNavigation: (event: NavigationEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2559,6 +2590,10 @@ export function addBoardWarningsListener(
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {
   return emitter.addListener('onAppStatus', cb)
+}
+
+export function addNavigationListener(cb: (event: NavigationEvent) => void): EventSubscription {
+  return emitter.addListener('onNavigation', cb)
 }
 
 export function addLiveStateListener(cb: (event: LiveStateEvent) => void): EventSubscription {
