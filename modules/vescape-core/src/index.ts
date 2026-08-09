@@ -1441,6 +1441,9 @@ export interface AppStatusEvent {
  * `coordinates` are GeoJSON `[longitude, latitude]` pairs — the opposite order from
  * `setDirectionPoint(latitude, longitude)` — so they feed a `ShapeSource` unmodified.
  *
+ * It is durable: native stores it and restores it on cold start, so a `computedAtMs` days old is
+ * expected and is not a reason to ask for a new one. Nothing on this side refetches.
+ *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `Navigation`
  * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `Navigation`
  */

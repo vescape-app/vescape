@@ -49,20 +49,29 @@ protocol DirectionsRoutes {
 /// a path that redraws itself under them is worse than a stale one. Only the rider replaces a
 /// Navigation. Please do not add rerouting here.
 ///
-/// In-memory only for now: it survives JS reloads but not a process restart. Persistence is a later
-/// slice.
+/// Durable: every change is written through to `NavigationStore`, and `restore()` brings the stored
+/// path back on cold start. Restoring is a read, never a fetch — the stored path is the truth
+/// however old it is, so a path computed last weekend is still the path.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt
 final class NavigationController {
   /// Process singleton — the Navigation must outlive JS runtime reloads.
-  static let shared = NavigationController(
-    api: MapboxDirectionsApi(accessToken: MapboxDirectionsApi.bakedAccessToken)
-  )
+  static let shared: NavigationController = {
+    let controller = NavigationController(
+      api: MapboxDirectionsApi(accessToken: MapboxDirectionsApi.bakedAccessToken),
+      store: AppDataNavigationStore()
+    )
+    // Restore here rather than from the module, so a JS reload — which recreates the module but not
+    // this singleton — cannot re-run it over a Navigation the rider has since replaced.
+    controller.restore()
+    return controller
+  }()
 
   /// Navigation Profile selection is a later slice; until then every Navigation is walking.
   private static let defaultProfile = "walking"
 
   private let api: DirectionsRoutes
+  private let store: NavigationStore
   private let lock = NSLock()
 
   private var state: Navigation?
@@ -86,8 +95,32 @@ final class NavigationController {
     }
   }
 
-  init(api: DirectionsRoutes) {
+  init(api: DirectionsRoutes, store: NavigationStore) {
     self.api = api
+    self.store = store
+  }
+
+  /// Cold start: brings the stored Navigation back, without touching the network.
+  ///
+  /// Claims a token like any other intent, so a rider who taps a new Direction Point while the read
+  /// is still in flight wins over the restore rather than being overwritten by yesterday's path.
+  ///
+  /// Returns immediately; the read runs in its own `Task`.
+  func restore() {
+    let request = claimRequest()
+    Task {
+      guard let stored = await store.load() else { return }
+      let directionPoint = await store.directionPoint()
+      // The two are written separately, so an interrupted write can leave a path leading somewhere
+      // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
+      let matchesDirectionPoint = stored.targetLatitude == directionPoint?.latitude
+        && stored.targetLongitude == directionPoint?.longitude
+      let usable = matchesDirectionPoint ? stored : nil
+      publish(request, usable)
+      // `publish(nil)` changed nothing here — nothing had been published yet — so the disagreeing
+      // row has to be dropped explicitly, or every later start would re-read and re-reject it.
+      if usable == nil { persist(request) }
+    }
   }
 
   /// Computes the Navigation to `toLatitude`/`toLongitude` from the rider's position. A missing
@@ -143,10 +176,25 @@ final class NavigationController {
   /// `onChange` only hops to the main queue to emit and never calls back into this controller, so
   /// holding the lock across it cannot deadlock.
   private func publish(_ request: Int, _ navigation: Navigation?) {
-    lock.withLock {
-      guard request == generation, !isSame(state, navigation) else { return }
+    let committed: Bool = lock.withLock {
+      guard request == generation, !isSame(state, navigation) else { return false }
       state = navigation
       onChange?(navigation)
+      return true
+    }
+    if committed { persist(request) }
+  }
+
+  /// Writes whatever is current through to the store, off the caller's thread.
+  ///
+  /// It deliberately re-reads `state` instead of taking a value: writes are not ordered against each
+  /// other, so a write that carried its own stale value could land last and leave storage
+  /// disagreeing with what native holds. Re-reading makes every write converge on the newest state.
+  private func persist(_ request: Int) {
+    Task {
+      let navigation: Navigation?? = lock.withLock { request == generation ? .some(state) : nil }
+      guard let navigation else { return }
+      await store.save(navigation)
     }
   }
 

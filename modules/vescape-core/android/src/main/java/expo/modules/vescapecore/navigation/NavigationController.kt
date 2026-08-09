@@ -41,8 +41,9 @@ data class Navigation(
  * path that redraws itself under them is worse than a stale one. Only the rider replaces a
  * Navigation. Please do not add rerouting here.
  *
- * In-memory only for now: it survives JS reloads but not a process restart. Persistence is a later
- * slice.
+ * Durable: every change is written through to [NavigationStore], and [restore] brings the stored
+ * path back on cold start. Restoring is a read, never a fetch — the stored path is the truth however
+ * old it is, so a path computed last weekend is still the path.
  *
  * @parity /modules/vescape-core/ios/navigation/NavigationController.swift
  */
@@ -65,6 +66,7 @@ fun interface DirectionsRoutes {
 
 class NavigationController(
   private val api: DirectionsRoutes,
+  private val store: NavigationStore,
   private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
   private val lock = Any()
@@ -85,6 +87,33 @@ class NavigationController(
    * happened to run them, which is not the order the rider tapped in.
    */
   private var generation = 0
+
+  /**
+   * Cold start: brings the stored Navigation back, without touching the network.
+   *
+   * Claims a token like any other intent, so a rider who taps a new Direction Point while the read
+   * is still in flight wins over the restore rather than being overwritten by yesterday's path.
+   *
+   * Returns immediately; the read runs on this controller's own scope.
+   */
+  fun restore() {
+    val request = claimRequest()
+    scope.launch {
+      val stored = store.load() ?: return@launch
+      val directionPoint = store.directionPoint()
+      // The two are written separately, so an interrupted write can leave a path leading somewhere
+      // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
+      val usable = stored.takeIf {
+        directionPoint != null &&
+          it.targetLatitude == directionPoint.first &&
+          it.targetLongitude == directionPoint.second
+      }
+      publish(request, usable)
+      // `publish(null)` changed nothing here — nothing had been published yet — so the disagreeing
+      // row has to be dropped explicitly, or every later start would re-read and re-reject it.
+      if (usable == null) persist(request)
+    }
+  }
 
   /**
    * Computes the Navigation to [toLatitude]/[toLongitude] from the rider's position. A missing
@@ -142,6 +171,19 @@ class NavigationController(
       state = navigation
       onChange?.invoke(navigation)
     }
+    persist(request)
+  }
+
+  /**
+   * Writes whatever is current through to the store, off the caller's thread.
+   *
+   * It deliberately re-reads [state] instead of taking a value: writes are not ordered against each
+   * other, so a write that carried its own stale value could land last and leave storage disagreeing
+   * with what native holds. Re-reading makes every write converge on the newest state instead.
+   */
+  private fun persist(request: Int) {
+    val navigation = synchronized(lock) { if (request != generation) return else state }
+    scope.launch { store.save(navigation) }
   }
 
   companion object {
@@ -155,7 +197,13 @@ class NavigationController(
     fun get(context: Context): NavigationController = instance ?: synchronized(this) {
       instance ?: NavigationController(
         MapboxDirectionsApi(MapboxDirectionsApi.accessToken(context.applicationContext)),
-      ).also { instance = it }
+        AppDataNavigationStore(context.applicationContext),
+      ).also {
+        instance = it
+        // Restore here rather than from the module, so a JS reload — which recreates the module but
+        // not this singleton — cannot re-run it over a Navigation the rider has since replaced.
+        it.restore()
+      }
     }
   }
 }

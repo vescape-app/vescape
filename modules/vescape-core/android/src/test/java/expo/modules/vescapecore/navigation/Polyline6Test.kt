@@ -58,6 +58,32 @@ class Polyline6Test {
         assertPointsEqual(Polyline6.decode(full).take(2), Polyline6.decode(truncated))
     }
 
+    @Test
+    fun `encoding reproduces the body a path was decoded from`() {
+        // Byte-identical, not merely equivalent: storage size depends on the encoder emitting the
+        // same minimal varints Mapbox does.
+        val body = "qnhsbBwzxag@mh@wtAgp@xsD"
+
+        assertEquals(body, Polyline6.encode(Polyline6.decode(body)))
+    }
+
+    @Test
+    fun `a path round-trips through encoding unchanged`() {
+        val points = listOf(
+            52.237049 to 21.017532,
+            52.237712 to 21.018904,
+            52.238500 to 21.016011,
+            -33.868820 to 151.209290,
+        )
+
+        assertPointsEqual(points, Polyline6.decode(Polyline6.encode(points)))
+    }
+
+    @Test
+    fun `no points encode to an empty body`() {
+        assertEquals("", Polyline6.encode(emptyList()))
+    }
+
     private companion object {
         const val TOLERANCE = 1e-6
     }

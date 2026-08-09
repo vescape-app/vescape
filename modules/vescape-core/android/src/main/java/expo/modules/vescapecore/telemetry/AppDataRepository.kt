@@ -644,6 +644,28 @@ class AppDataRepository private constructor(private val context: Context) {
       notifyDataChanged(AppDataScope.SETTINGS)
     }
 
+  /**
+   * The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately not part of
+   * the settings projection: it is native-owned, JS receives it through `onNavigation` instead, and
+   * it is by far the largest value here (~14 KB for a long path) so it must not ride along on every
+   * settings read.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPath`
+   */
+  suspend fun getNavigationPath(): String? = withContext(Dispatchers.IO) {
+    dao.getAppSetting(NAVIGATION_PATH)?.valueJson?.let { decodeSettingJson(it) as? String }
+  }
+
+  suspend fun setNavigationPath(json: String?): Unit = withContext(Dispatchers.IO) {
+    if (json == null) {
+      dao.deleteAppSetting(NAVIGATION_PATH)
+    } else {
+      dao.upsertAppSetting(
+        AppSettingEntity(NAVIGATION_PATH, encodeSettingJson(json), System.currentTimeMillis()),
+      )
+    }
+  }
+
   suspend fun getAutoConnectBoard(): Map<String, Any?>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
     settings.selectedBoardId
@@ -897,6 +919,13 @@ fun PrivacyZoneEntity.toMap(): Map<String, Any?> = mapOf(
  */
 internal const val DIRECTION_POINT_LATITUDE = "directionPointLatitude"
 internal const val DIRECTION_POINT_LONGITUDE = "directionPointLongitude"
+
+/**
+ * The stored Navigation, next to the Direction Point it belongs to. Native-owned and outside the
+ * settings projection — see `getNavigationPath`.
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPathKey`
+ */
+internal const val NAVIGATION_PATH = "navigationPath"
 
 private fun Map<String, Any?>.toPrivacyZoneEntity(): PrivacyZoneEntity {
   val now = System.currentTimeMillis()

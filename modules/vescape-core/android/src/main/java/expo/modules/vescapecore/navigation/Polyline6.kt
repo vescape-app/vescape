@@ -38,6 +38,39 @@ object Polyline6 {
     return points
   }
 
+  /**
+   * Inverse of [decode], for storing a path compactly. Round-trips exactly: [decode] yields
+   * coordinates that are already whole 1e6 units, so re-encoding them loses nothing.
+   *
+   * Takes `(latitude, longitude)` pairs in the same order [decode] returns them.
+   */
+  fun encode(points: List<Pair<Double, Double>>): String {
+    val encoded = StringBuilder()
+    var latitude = 0
+    var longitude = 0
+
+    for ((pointLatitude, pointLongitude) in points) {
+      val nextLatitude = Math.round(pointLatitude * SCALE).toInt()
+      val nextLongitude = Math.round(pointLongitude * SCALE).toInt()
+      encoded.appendDelta(nextLatitude - latitude)
+      encoded.appendDelta(nextLongitude - longitude)
+      latitude = nextLatitude
+      longitude = nextLongitude
+    }
+
+    return encoded.toString()
+  }
+
+  /** Writes one delta as the zigzag varint [Cursor.nextDelta] reads back. */
+  private fun StringBuilder.appendDelta(delta: Int) {
+    var remaining = if (delta < 0) (delta shl 1).inv() else delta shl 1
+    while (remaining >= 0x20) {
+      append(((0x20 or (remaining and 0x1f)) + 63).toChar())
+      remaining = remaining shr 5
+    }
+    append((remaining + 63).toChar())
+  }
+
   /** Walks the encoded string one zigzag varint at a time, so both axes share one reader. */
   private class Cursor(private val encoded: String) {
     private var index = 0

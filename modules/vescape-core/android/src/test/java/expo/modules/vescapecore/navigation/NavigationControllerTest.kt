@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The rider's last action must win. A Directions call takes seconds, so a fetch started for an
@@ -22,6 +23,7 @@ class NavigationControllerTest {
     private class GatedRoutes : DirectionsRoutes {
         private val gates = mutableMapOf<Double, CountDownLatch>()
         val started = CountDownLatch(1)
+        val calls = AtomicInteger(0)
 
         fun gate(targetLatitude: Double): CountDownLatch =
             synchronized(gates) { gates.getOrPut(targetLatitude) { CountDownLatch(1) } }
@@ -33,17 +35,108 @@ class NavigationControllerTest {
             toLongitude: Double,
             profile: String,
         ): List<Pair<Double, Double>> {
+            calls.incrementAndGet()
             started.countDown()
             gate(toLatitude).await(WAIT_SECONDS, TimeUnit.SECONDS)
             return listOf(fromLatitude to fromLongitude, toLatitude to toLongitude)
         }
     }
 
-    private fun controller(routes: DirectionsRoutes): Pair<NavigationController, MutableList<Navigation?>> {
-        val controller = NavigationController(routes, CoroutineScope(SupervisorJob() + Dispatchers.IO))
+    /** In-memory stand-in for the App Settings rows, so restore and write-through need no database. */
+    private class FakeStore(
+        var stored: Navigation? = null,
+        var directionPoint: Pair<Double, Double>? = null,
+    ) : NavigationStore {
+        private val lock = Any()
+
+        override suspend fun load(): Navigation? = synchronized(lock) { stored }
+
+        override suspend fun save(navigation: Navigation?) {
+            synchronized(lock) { stored = navigation }
+        }
+
+        override suspend fun directionPoint(): Pair<Double, Double>? = synchronized(lock) { directionPoint }
+    }
+
+    private fun controller(
+        routes: DirectionsRoutes,
+        store: NavigationStore = FakeStore(),
+    ): Pair<NavigationController, MutableList<Navigation?>> {
+        val controller =
+            NavigationController(routes, store, CoroutineScope(SupervisorJob() + Dispatchers.IO))
         val emitted = mutableListOf<Navigation?>()
         controller.onChange = { synchronized(emitted) { emitted += it } }
         return controller to emitted
+    }
+
+    private fun navigation(targetLatitude: Double = TARGET_LAT) = Navigation(
+        targetLatitude = targetLatitude,
+        targetLongitude = TARGET_LNG,
+        profile = "walking",
+        computedAtMs = 1_700_000_000_000L,
+        points = listOf(RIDER_LAT to RIDER_LNG, targetLatitude to TARGET_LNG),
+    )
+
+    @Test
+    fun `a stored path comes back on restore without a Directions call`() {
+        val routes = GatedRoutes()
+        val store = FakeStore(navigation(), TARGET_LAT to TARGET_LNG)
+        val (controller, emitted) = controller(routes, store)
+
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(TARGET_LAT, controller.current?.targetLatitude)
+        assertEquals(navigation().points, controller.current?.points)
+        // Restoring is a read: a path computed last weekend is still the path.
+        assertEquals(0, routes.calls.get())
+        synchronized(emitted) { assertEquals(1, emitted.size) }
+    }
+
+    @Test
+    fun `a stored path whose target disagrees with the Direction Point is discarded`() {
+        val store = FakeStore(navigation(), SECOND_TARGET_LAT to TARGET_LNG)
+        val (controller, emitted) = controller(GatedRoutes(), store)
+
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+
+        assertNull(controller.current)
+        // Dropped from storage too, or every later start would re-read and re-reject it.
+        assertNull(store.stored)
+        synchronized(emitted) { assertTrue(emitted.isEmpty()) }
+    }
+
+    @Test
+    fun `a rider tap during restore wins over the stored path`() {
+        val routes = GatedRoutes()
+        val store = FakeStore(navigation(), TARGET_LAT to TARGET_LNG)
+        val (controller, _) = controller(routes, store)
+
+        controller.restore()
+        controller.setTarget(SECOND_TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        routes.gate(SECOND_TARGET_LAT).countDown()
+        Thread.sleep(SETTLE_MS)
+
+        assertEquals(SECOND_TARGET_LAT, controller.current?.targetLatitude)
+        assertEquals(SECOND_TARGET_LAT, store.stored?.targetLatitude)
+    }
+
+    @Test
+    fun `clearing the Direction Point erases the stored path`() {
+        val routes = GatedRoutes()
+        val store = FakeStore()
+        val (controller, _) = controller(routes, store)
+
+        controller.setTarget(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        routes.gate(TARGET_LAT).countDown()
+        Thread.sleep(SETTLE_MS)
+        assertEquals(TARGET_LAT, store.stored?.targetLatitude)
+
+        controller.clear()
+        Thread.sleep(SETTLE_MS)
+
+        assertNull(store.stored)
     }
 
     @Test

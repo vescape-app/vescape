@@ -33,6 +33,37 @@ enum Polyline6 {
     return points
   }
 
+  /// Inverse of `decode`, for storing a path compactly. Round-trips exactly: `decode` yields
+  /// coordinates that are already whole 1e6 units, so re-encoding them loses nothing.
+  ///
+  /// Takes `(latitude, longitude)` pairs in the same order `decode` returns them.
+  static func encode(_ points: [(latitude: Double, longitude: Double)]) -> String {
+    var encoded = ""
+    var latitude = 0
+    var longitude = 0
+
+    for point in points {
+      let nextLatitude = Int((point.latitude * scale).rounded())
+      let nextLongitude = Int((point.longitude * scale).rounded())
+      appendDelta(nextLatitude - latitude, to: &encoded)
+      appendDelta(nextLongitude - longitude, to: &encoded)
+      latitude = nextLatitude
+      longitude = nextLongitude
+    }
+
+    return encoded
+  }
+
+  /// Writes one delta as the zigzag varint `Cursor.nextDelta` reads back.
+  private static func appendDelta(_ delta: Int, to encoded: inout String) {
+    var remaining = delta < 0 ? ~(delta << 1) : delta << 1
+    while remaining >= 0x20 {
+      encoded.append(Character(UnicodeScalar(UInt8((0x20 | (remaining & 0x1f)) + 63))))
+      remaining >>= 5
+    }
+    encoded.append(Character(UnicodeScalar(UInt8(remaining + 63))))
+  }
+
   /// Walks the encoded string one zigzag varint at a time, so both axes share one reader.
   private struct Cursor {
     private let units: [Int]

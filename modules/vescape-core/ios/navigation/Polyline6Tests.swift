@@ -51,4 +51,27 @@ final class Polyline6Tests: XCTestCase {
     let expected = Polyline6.decode(full).prefix(2).map { ($0.latitude, $0.longitude) }
     assertPoints(Array(expected), Polyline6.decode(truncated))
   }
+
+  func testEncodingReproducesTheBodyAPathWasDecodedFrom() {
+    // Byte-identical, not merely equivalent: storage size depends on the encoder emitting the same
+    // minimal varints Mapbox does.
+    let body = "qnhsbBwzxag@mh@wtAgp@xsD"
+
+    XCTAssertEqual(body, Polyline6.encode(Polyline6.decode(body)))
+  }
+
+  func testPathRoundTripsThroughEncodingUnchanged() {
+    let points: [(latitude: Double, longitude: Double)] = [
+      (52.237049, 21.017532),
+      (52.237712, 21.018904),
+      (52.238500, 21.016011),
+      (-33.868820, 151.209290),
+    ]
+
+    assertPoints(points.map { ($0.latitude, $0.longitude) }, Polyline6.decode(Polyline6.encode(points)))
+  }
+
+  func testNoPointsEncodeToAnEmptyBody() {
+    XCTAssertEqual("", Polyline6.encode([]))
+  }
 }
