@@ -19,23 +19,29 @@ export function MapTargetNavigationBody({
   target,
   bottom,
   action,
-  secondaryAction,
+  sideActions,
   notice,
   profileSelector,
   media,
+  targetColor,
+  targetTextColor,
   onDismiss,
   onFocusTarget,
 }: {
   target: MapSelection
   bottom: number
+  /** Confirming the path and leaving the map for the ride view. The rider's likely next move. */
   action: MapTargetSheetAction
-  /** Shown beside the primary action. Used when a failed path offers a retry next to the cancel. */
-  secondaryAction?: MapTargetSheetAction
+  /** Flanking the confirm at lesser weight: asking for the path again, and dropping it. */
+  sideActions?: readonly MapTargetSheetAction[]
   /** Why there is no line, in rider-facing words. */
   notice?: string | null
   /** Which kind of ways the path may follow. Sits on the path view, never in app settings. */
   profileSelector?: ReactNode
   media: readonly MapPointMediaAsset[]
+  /** The Direction Point's own colour, for the header badge — the actions carry their own. */
+  targetColor: string
+  targetTextColor: string
   onDismiss?: () => void
   onFocusTarget?: () => void
 }) {
@@ -44,8 +50,8 @@ export function MapTargetNavigationBody({
       target={target}
       bottom={bottom}
       header={<MapTargetReadHeader target={target} />}
-      fallbackColor={action.color}
-      fallbackTextColor={action.textColor}
+      fallbackColor={targetColor}
+      fallbackTextColor={targetTextColor}
       onDismiss={onDismiss}
       onFocusTarget={onFocusTarget}
     >
@@ -58,8 +64,13 @@ export function MapTargetNavigationBody({
       ) : null}
       {profileSelector ? <View style={styles.profileRow}>{profileSelector}</View> : null}
       <MapTargetActionRow>
+        {sideActions?.slice(0, 1).map((sideAction) => (
+          <MapTargetPrimaryAction key={sideAction.label} action={sideAction} compact />
+        ))}
         <MapTargetPrimaryAction action={action} />
-        {secondaryAction ? <MapTargetPrimaryAction action={secondaryAction} /> : null}
+        {sideActions?.slice(1).map((sideAction) => (
+          <MapTargetPrimaryAction key={sideAction.label} action={sideAction} compact />
+        ))}
       </MapTargetActionRow>
     </MapTargetSheetFrame>
   )

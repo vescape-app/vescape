@@ -13,7 +13,9 @@ export function MapTargetSheet({
   bottom,
   mode,
   action,
-  secondaryAction,
+  sideActions,
+  targetColor,
+  targetTextColor,
   notice,
   profileSelector,
   onAddFeature,
@@ -29,8 +31,11 @@ export function MapTargetSheet({
   bottom: number
   mode: 'select' | 'navigation' | 'edit'
   action: MapTargetSheetAction
-  /** Navigation mode only: a second button beside the primary one. */
-  secondaryAction?: MapTargetSheetAction
+  /** Navigation mode only: smaller buttons flanking the primary one. */
+  sideActions?: readonly MapTargetSheetAction[]
+  /** Navigation mode only: the target's colour for the header badge. */
+  targetColor?: string
+  targetTextColor?: string
   /** Navigation mode only: why there is no path, in rider-facing words. */
   notice?: string | null
   /** Navigation mode only: the Navigation Profile switcher, shown beside the drawn path. */
@@ -69,7 +74,9 @@ export function MapTargetSheet({
         target={target}
         bottom={bottom}
         action={action}
-        secondaryAction={secondaryAction}
+        sideActions={sideActions}
+        targetColor={targetColor ?? action.color}
+        targetTextColor={targetTextColor ?? action.textColor}
         notice={notice}
         profileSelector={profileSelector}
         media={media.assets}

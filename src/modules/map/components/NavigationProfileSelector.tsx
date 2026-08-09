@@ -14,14 +14,21 @@ import { theme } from '@/constants/theme'
  *
  * It shows the profile that produced the drawn path, not the one stored for next time — a switch
  * whose recompute found nothing leaves the old path, and this snaps back with it.
+ *
+ * `open` lays every profile out at once. On the path view that is the right shape: the rider is
+ * already deciding which ways the path may follow, and making them tap once to reveal the choices
+ * and again to pick one puts a shrug in the middle of a decision they have already made.
  */
 export function NavigationProfileSelector({
   activeProfile,
   size = 'md',
+  open = false,
   onSelect,
 }: {
   activeProfile: NavigationProfile
   size?: MapOptionSelectorSize
+  /** Show all profiles side by side instead of collapsing to the active one. */
+  open?: boolean
   onSelect: (profile: NavigationProfile) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -48,10 +55,13 @@ export function NavigationProfileSelector({
       activeColor={ACTIVE_COLOR}
       activeBackground={theme.alpha(theme.palette.green.color, 0.12)}
       collapsedAccessibilityLabel={`Path follows: ${profileOption(activeProfile).label}`}
-      expanded={expanded}
+      expanded={open || expanded}
       size={size}
       options={options}
-      onToggle={() => setExpanded((open) => !open)}
+      onToggle={() => {
+        if (open) return
+        setExpanded((current) => !current)
+      }}
       onSelect={(profile) => {
         setExpanded(false)
         onSelect(profile)

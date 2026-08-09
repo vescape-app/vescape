@@ -4,7 +4,7 @@ import type { ForwardedRef, RefObject } from 'react'
 import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
 import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
-import type { HistoryCameraViewport } from '@/modules/map/lib/historyCamera'
+import type { RouteCameraViewport } from '@/modules/map/lib/routeCamera'
 import type { CameraSnapshot, HistoryPreviewTarget } from '@/modules/map/lib/cameraMotion'
 
 export interface GpsFix {
@@ -30,7 +30,7 @@ export interface UseCameraControlsParams {
   cameraFix: GpsFix | null
   persistedFallback: [number, number] | null
   perspectiveEnabled: boolean
-  mapViewport: HistoryCameraViewport
+  mapViewport: RouteCameraViewport
   mapNavigationMode: MapNavigationMode
   heading: {
     gpsMode: boolean

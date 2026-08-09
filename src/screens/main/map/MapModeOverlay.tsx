@@ -603,6 +603,7 @@ export function MapModeOverlay({
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
             onCancelNavigation={onCancelNavigation}
+            onConfirmNavigation={onExit}
             navigationStatus={navigationStatus}
             navigationProfile={navigationProfile}
             onRecomputeNavigation={() => void recomputeNavigation()}

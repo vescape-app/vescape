@@ -182,7 +182,17 @@ export function MapTargetActionRow({ children }: { children: ReactNode }) {
   return <View style={styles.actionRow}>{children}</View>
 }
 
-export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetAction }) {
+/**
+ * A sheet action button. `compact` is the same button at side-action weight: it keeps its label but
+ * gives the row's width to the action the rider is most likely to want.
+ */
+export function MapTargetPrimaryAction({
+  action,
+  compact = false,
+}: {
+  action: MapTargetSheetAction
+  compact?: boolean
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -190,12 +200,19 @@ export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetActio
       onPress={action.onPress}
       style={({ pressed }) => [
         styles.actionButton,
+        compact ? styles.actionButtonCompact : styles.actionButtonLead,
         { backgroundColor: action.bgColor, borderColor: action.borderColor },
         pressed && mapSheetStyles.mapTargetNavigatePressed,
       ]}
     >
-      <action.Icon size={18} color={action.textColor} weight="bold" />
-      <Text style={[mapSheetStyles.mapTargetNavigateText, { color: action.textColor }]}>
+      <action.Icon size={compact ? 16 : 18} color={action.textColor} weight="bold" />
+      <Text
+        style={[
+          mapSheetStyles.mapTargetNavigateText,
+          compact && styles.actionLabelCompact,
+          { color: action.textColor },
+        ]}
+      >
         {action.label}
       </Text>
     </Pressable>
@@ -204,7 +221,6 @@ export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetActio
 
 const styles = StyleSheet.create({
   actionButton: {
-    flex: 1,
     minWidth: 0,
     height: 46,
     borderRadius: 23,
@@ -215,6 +231,17 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.green.bg,
     borderWidth: 1,
     borderColor: theme.palette.green.border,
+  },
+  actionButtonLead: {
+    flex: 2,
+  },
+  actionButtonCompact: {
+    flex: 1,
+    height: 42,
+    gap: 6,
+  },
+  actionLabelCompact: {
+    fontSize: 12,
   },
   actionRow: {
     flexDirection: 'row',

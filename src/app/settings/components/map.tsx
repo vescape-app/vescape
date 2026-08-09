@@ -188,6 +188,15 @@ export default function MapComponentsShowcase() {
             setLastEvent(`Navigation Profile: ${profile}`)
           }}
         />
+        {/* Open variant: what the navigation sheet shows while a path is on screen. */}
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          open
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile (open): ${profile}`)
+          }}
+        />
         <View ref={moreTriggerRef} collapsable={false}>
           <IconButton
             icon={SlidersHorizontalIcon}

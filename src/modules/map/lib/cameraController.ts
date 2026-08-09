@@ -104,6 +104,11 @@ export type MapCameraIntent =
       type: 'EnterLegalLimitsView'
       camera: MapCameraSnapshot
     }
+  | {
+      /** Frame a whole line of coordinates — today the Navigation path the rider is confirming. */
+      type: 'FitRoute'
+      camera: MapCameraSnapshot
+    }
 
 export interface MapCameraEffect {
   camera: Partial<MapCameraSnapshot>
@@ -297,7 +302,7 @@ export function reduceMapCameraIntent(
     }
   }
 
-  if (intent.type === 'EnterLegalLimitsView') {
+  if (intent.type === 'FitRoute' || intent.type === 'EnterLegalLimitsView') {
     return {
       state: {
         ...state,

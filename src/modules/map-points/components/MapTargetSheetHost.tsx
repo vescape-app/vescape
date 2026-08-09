@@ -1,4 +1,4 @@
-import { ArrowClockwiseIcon, NavigationArrowIcon, XIcon } from 'phosphor-react-native'
+import { ArrowClockwiseIcon, CheckIcon, NavigationArrowIcon, XIcon } from 'phosphor-react-native'
 import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
@@ -22,6 +22,8 @@ interface MapTargetSheetHostProps {
   onEndEdit: () => void
   onNavigateSelected: () => void
   onCancelNavigation: () => void
+  /** The rider accepting the drawn path: the map steps aside and the ride view takes over. */
+  onConfirmNavigation: () => void
   /** How the path to the active target ended up. `null` while there is no Navigation at all. */
   navigationStatus: NavigationStatus | null
   /**
@@ -58,6 +60,7 @@ export function MapTargetSheetHost({
   onEndEdit,
   onNavigateSelected,
   onCancelNavigation,
+  onConfirmNavigation,
   navigationStatus,
   navigationProfile,
   onRecomputeNavigation,
@@ -129,18 +132,27 @@ export function MapTargetSheetHost({
   if (!activeTarget || activeTargetSuppressed) return null
 
   const cancelAction = {
-    ...actionColors,
-    label: 'Cancel navigation',
+    ...NAVIGATION_ACTION_COLORS.cancel,
+    label: 'Cancel',
     accessibilityLabel: 'Cancel navigation',
     Icon: XIcon,
     onPress: onCancelNavigation,
   }
   const failureNotice = navigationStatus ? NAVIGATION_FAILURE_NOTICES[navigationStatus] : null
-  // Recompute always leads, in the same slot whether or not there is a path: after a failure it is
-  // the only thing that can change the situation, and with a path drawn it is how the rider asks for
-  // a fresh one from where they are now. It only ever happens on this tap, never on its own.
+  // Setting a Direction Point leaves the rider on the map looking at the path, because a path is a
+  // proposal: they check where it goes, switch the Profile, ask again — and only then accept it.
+  // Accepting is what closes the map, so it leads the row while the other two flank it.
+  const confirmAction = {
+    ...NAVIGATION_ACTION_COLORS.confirm,
+    label: 'Ride it',
+    accessibilityLabel: 'Accept path and return to ride view',
+    Icon: CheckIcon,
+    onPress: onConfirmNavigation,
+  }
+  // After a failure recompute is the only thing that can change the situation; with a path drawn it
+  // is how the rider asks for a fresh one from where they are now. Never happens on its own.
   const recomputeAction = {
-    ...actionColors,
+    ...NAVIGATION_ACTION_COLORS.recompute,
     label: failureNotice ? 'Retry' : 'Recompute',
     accessibilityLabel: failureNotice ? 'Retry path to target' : 'Recompute path from here',
     Icon: ArrowClockwiseIcon,
@@ -153,13 +165,16 @@ export function MapTargetSheetHost({
       target={activeTarget}
       bottom={bottom}
       mode="navigation"
-      action={recomputeAction}
-      secondaryAction={cancelAction}
+      action={confirmAction}
+      sideActions={[recomputeAction, cancelAction]}
+      targetColor={actionColor}
+      targetTextColor={actionTextColor}
       notice={failureNotice}
       profileSelector={
         navigationProfile ? (
           <NavigationProfileSelector
             activeProfile={navigationProfile}
+            open
             onSelect={onSelectNavigationProfile}
           />
         ) : null
@@ -168,6 +183,33 @@ export function MapTargetSheetHost({
     />
   )
 }
+
+/**
+ * The three navigation actions read as three different decisions, so they do not share the Map
+ * Point's colour the way the select sheet's single action does: accepting the path is the way on
+ * (green), asking again is neutral work (slate), and dropping the Navigation is destructive (red).
+ * Emphasis is border and text on a dark tinted pill — never a bright fill; see `docs/design.md`.
+ */
+const NAVIGATION_ACTION_COLORS = {
+  confirm: {
+    color: theme.palette.green.color,
+    textColor: theme.palette.green.text,
+    borderColor: theme.palette.green.color,
+    bgColor: theme.alpha(theme.palette.green.color, 0.12),
+  },
+  recompute: {
+    color: theme.palette.slate.color,
+    textColor: theme.palette.slate.textSecondary,
+    borderColor: theme.palette.slate.border,
+    bgColor: theme.alpha(theme.palette.slate.color, 0.12),
+  },
+  cancel: {
+    color: theme.palette.red.color,
+    textColor: theme.palette.red.text,
+    borderColor: theme.alpha(theme.palette.red.color, 0.4),
+    bgColor: theme.alpha(theme.palette.red.color, 0.1),
+  },
+} as const
 
 /**
  * What the rider is told when no line is drawn. Deliberately says what is missing rather than

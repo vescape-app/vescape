@@ -297,9 +297,10 @@ export function MainScreen({
       })
       clearSelectedMapPoints()
       setSelectedNavigationTarget(null)
-      controller.exitMapFocus()
+      // Deliberately stays on the map: the path is a proposal until the rider accepts it from the
+      // navigation sheet, which is what closes the map. See `onConfirmNavigation`.
     },
-    [clearSelectedMapPoints, controller, setDirectionPoint],
+    [clearSelectedMapPoints, setDirectionPoint],
   )
   const handleNavigateSelectedTarget = useCallback(async () => {
     if (!selectedNavigationTarget) return

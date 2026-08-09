@@ -38,6 +38,7 @@ import { useMapOverlaySelection } from '@/screens/main/map/useMapOverlaySelectio
 import { useMapPressHandlers } from '@/screens/main/map/useMapPressHandlers'
 import { useMapViewport } from '@/screens/main/map/useMapViewport'
 import { useNavigationDiagnosticsSync } from '@/screens/main/map/useNavigationDiagnosticsSync'
+import { useNavigationPathFraming } from '@/screens/main/map/useNavigationPathFraming'
 import { useOffscreenMapIndicators } from '@/screens/main/map/useOffscreenMapIndicators'
 import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
 
@@ -258,6 +259,7 @@ export const MainMap = memo(
       stopCameraAnimation,
       setFollowZoomLevel,
       recenterLive,
+      fitRoute,
       getLiveFollowCamera,
       getHistoryPreviewCamera,
     } = useCameraControls({
@@ -418,6 +420,8 @@ export const MainMap = memo(
       onMapInteraction,
       onLongPressTarget,
     })
+
+    useNavigationPathFraming({ active: mode === 'map' && !historyActive, fitRoute })
 
     const handleTouchStart = useCallback(() => {
       onMapInteraction()
