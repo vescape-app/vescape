@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
  *
  * @parity /modules/vescape-core/ios/navigation/MapboxDirectionsApi.swift
  */
-class MapboxDirectionsApi(private val accessToken: String) {
+class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
   private val client = OkHttpClient.Builder().callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
 
   /**
@@ -30,7 +30,7 @@ class MapboxDirectionsApi(private val accessToken: String) {
    * missing, the call fails, or Mapbox returns no route. A `null` simply yields no Navigation:
    * failure UI is a later slice, and this slice never retries.
    */
-  suspend fun route(
+  override suspend fun route(
     fromLatitude: Double,
     fromLongitude: Double,
     toLatitude: Double,

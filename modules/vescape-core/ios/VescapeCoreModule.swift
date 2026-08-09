@@ -158,6 +158,7 @@ public class VescapeCoreModule: Module {
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
       AppStatusCoordinator.shared.onChange = nil
+      NavigationController.shared.onChange = nil
       self.frontendActive = false
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
@@ -850,14 +851,12 @@ public class VescapeCoreModule: Module {
       // one ends it. The Directions call runs off the promise so the pin lands immediately.
       if let latitude, let longitude {
         let settings = self.appData.getSettings()
-        Task {
-          await NavigationController.shared.setTarget(
-            toLatitude: latitude,
-            toLongitude: longitude,
-            fromLatitude: settings["lastGpsLatitude"] as? Double,
-            fromLongitude: settings["lastGpsLongitude"] as? Double
-          )
-        }
+        NavigationController.shared.setTarget(
+          toLatitude: latitude,
+          toLongitude: longitude,
+          fromLatitude: settings["lastGpsLatitude"] as? Double,
+          fromLongitude: settings["lastGpsLongitude"] as? Double
+        )
       } else {
         NavigationController.shared.clear()
       }

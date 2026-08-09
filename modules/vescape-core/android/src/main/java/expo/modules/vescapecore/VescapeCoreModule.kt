@@ -286,6 +286,7 @@ class VescapeCoreModule : Module() {
       // module reachable (mirrors iOS OnDestroy nulling `onChange`). A fresh module re-attaches in
       // its own definition().
       BoardWarningRegistry.get(context).onChange = null
+      NavigationController.get(context).onChange = null
       appStatusUnsub?.invoke()
       appStatusUnsub = null
       previewAlertFeedback?.release()
@@ -753,9 +754,7 @@ class VescapeCoreModule : Module() {
         navigation.clear()
       } else {
         val settings = repository.getTypedSettings()
-        CoroutineScope(Dispatchers.IO).launch {
-          navigation.setTarget(latitude, longitude, settings.lastGpsLatitude, settings.lastGpsLongitude)
-        }
+        navigation.setTarget(latitude, longitude, settings.lastGpsLatitude, settings.lastGpsLongitude)
       }
     }
     AsyncFunction("getSettings") {

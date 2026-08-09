@@ -10,7 +10,7 @@ import os
 /// token.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/MapboxDirectionsApi.kt
-final class MapboxDirectionsApi {
+final class MapboxDirectionsApi: DirectionsRoutes {
   /// Info.plist key holding the Mapbox access token, injected at prebuild time so native never
   /// depends on the JS runtime having started.
   /// @parity /plugins/withMapboxToken.ts `IOS_INFO_PLIST_KEY`

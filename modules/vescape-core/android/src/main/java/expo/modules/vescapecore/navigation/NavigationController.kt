@@ -1,7 +1,10 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * A rideable path from the rider to their Direction Point, following real ways. Computed once and
@@ -43,59 +46,102 @@ data class Navigation(
  *
  * @parity /modules/vescape-core/ios/navigation/NavigationController.swift
  */
-class NavigationController(private val api: MapboxDirectionsApi) {
-  @Volatile
-  var current: Navigation? = null
-    private set
+/**
+ * The one thing [NavigationController] needs from a routing service. A seam, so the controller's
+ * ordering guarantees are testable without a network.
+ *
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `DirectionsRoutes`
+ */
+fun interface DirectionsRoutes {
+  /** Path points as `(latitude, longitude)`, or `null` when no route could be produced. */
+  suspend fun route(
+    fromLatitude: Double,
+    fromLongitude: Double,
+    toLatitude: Double,
+    toLongitude: Double,
+    profile: String,
+  ): List<Pair<Double, Double>>?
+}
+
+class NavigationController(
+  private val api: DirectionsRoutes,
+  private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+) {
+  private val lock = Any()
+
+  private var state: Navigation? = null
+
+  val current: Navigation? get() = synchronized(lock) { state }
 
   /** Notified on every change, including the clear to `null`. */
   var onChange: ((Navigation?) -> Unit)? = null
 
   /**
-   * Requests generate a token so a slower earlier fetch cannot overwrite a newer Direction Point —
-   * the rider tapping twice in a second must end up with the second path, not whichever call the
-   * network happened to finish last.
+   * Ordering token. Every intent claims one *synchronously*, before any network work starts, so the
+   * rider's last action always wins: a fetch that resolves late finds its token stale and is
+   * dropped rather than resurrecting a path over a newer target or over a clear.
+   *
+   * Claiming it inside the coroutine instead would order requests by whenever the dispatcher
+   * happened to run them, which is not the order the rider tapped in.
    */
-  private val generation = AtomicInteger(0)
+  private var generation = 0
 
   /**
    * Computes the Navigation to [toLatitude]/[toLongitude] from the rider's position. A missing
    * rider position or a failed fetch yields no Navigation rather than a straight line.
+   *
+   * Returns immediately: the Directions call runs on this controller's own scope, so callers never
+   * block the rider's tap on the network.
    */
-  suspend fun setTarget(
+  fun setTarget(
     toLatitude: Double,
     toLongitude: Double,
     fromLatitude: Double?,
     fromLongitude: Double?,
   ) {
-    val request = generation.incrementAndGet()
-    if (fromLatitude == null || fromLongitude == null) {
-      publish(request, null)
-      return
-    }
+    val request = claimRequest()
+    // The previous path led to the previous Direction Point, so it is already wrong. Drop it now
+    // rather than leaving a stale line drawn under a pin that has visibly moved — a Navigation
+    // belongs to exactly one Direction Point.
+    publish(request, null)
+    if (fromLatitude == null || fromLongitude == null) return
 
-    val points = api.route(fromLatitude, fromLongitude, toLatitude, toLongitude, DEFAULT_PROFILE)
-    publish(
-      request,
-      points?.let {
-        Navigation(
-          targetLatitude = toLatitude,
-          targetLongitude = toLongitude,
-          profile = DEFAULT_PROFILE,
-          computedAtMs = System.currentTimeMillis(),
-          points = it,
-        )
-      },
-    )
+    scope.launch {
+      val points = api.route(fromLatitude, fromLongitude, toLatitude, toLongitude, DEFAULT_PROFILE)
+      publish(
+        request,
+        points?.let {
+          Navigation(
+            targetLatitude = toLatitude,
+            targetLongitude = toLongitude,
+            profile = DEFAULT_PROFILE,
+            computedAtMs = System.currentTimeMillis(),
+            points = it,
+          )
+        },
+      )
+    }
   }
 
   /** Clearing the Direction Point ends the Navigation; they are strictly 1:1. */
-  fun clear() = publish(generation.incrementAndGet(), null)
+  fun clear() = publish(claimRequest(), null)
 
+  private fun claimRequest(): Int = synchronized(lock) { ++generation }
+
+  /**
+   * Commits [navigation] if [request] is still the newest intent, and notifies in that same commit
+   * order. The staleness check, the write and the notify are one critical section: splitting them
+   * lets a stale result land after a newer one, leaving JS mirroring a path native no longer holds.
+   *
+   * `onChange` only enqueues an event emit and never calls back into this controller, so holding
+   * the lock across it cannot deadlock.
+   */
   private fun publish(request: Int, navigation: Navigation?) {
-    if (request != generation.get()) return
-    current = navigation
-    onChange?.invoke(navigation)
+    synchronized(lock) {
+      if (request != generation || state == navigation) return
+      state = navigation
+      onChange?.invoke(navigation)
+    }
   }
 
   companion object {
