@@ -1,7 +1,6 @@
 package app.vescape.wear
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,8 +20,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.wear.compose.foundation.AnchorType
+import androidx.wear.compose.foundation.CurvedAlignment
+import androidx.wear.compose.foundation.CurvedDirection
+import androidx.wear.compose.foundation.CurvedLayout
+import androidx.wear.compose.foundation.CurvedTextStyle
+import androidx.wear.compose.foundation.curvedColumn
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import androidx.wear.compose.material.curvedText
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -63,9 +70,14 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
             // Battery: bottom arc, left (140°) -> right (40°) through 90°.
             drawGauge(center, radius, 140f, -BATTERY_SWEEP, battFrac, battColor, style = SoftGaugeStyle, drawHead = false, glowStrength = battGlow)
             // Temps: small arcs in the gaps beside the battery gauge, growing from the bottom.
-            drawGauge(center, radius, 144f, TEMP_SWEEP, motorFrac, motorColor, style = SoftGaugeStyle, drawHead = false, glowStrength = motorGlow)
-            drawGauge(center, radius, 36f, -TEMP_SWEEP, ctrlFrac, ctrlColor, style = SoftGaugeStyle, drawHead = false, glowStrength = ctrlGlow)
+            drawGauge(center, radius, MOTOR_ARC_START, TEMP_SWEEP, motorFrac, motorColor, style = SoftGaugeStyle, drawHead = false, glowStrength = motorGlow)
+            drawGauge(center, radius, CTRL_ARC_START, -TEMP_SWEEP, ctrlFrac, ctrlColor, style = SoftGaugeStyle, drawHead = false, glowStrength = ctrlGlow)
         }
+
+        // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
+        // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
+        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor)
+        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor)
 
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
@@ -82,34 +94,15 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
                 LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: "--", "%", dutyColor)
             }
 
-            // ── Bottom: temps near center, nudged toward their side gauges, battery % above bottom gauge ──
-            Column(
+            // ── Bottom: battery % above the bottom gauge ──
+            Box(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween,
+                contentAlignment = Alignment.BottomCenter,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp, start = 24.dp, end = 24.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    SmallGaugeValue(
-                        Modifier.weight(1f),
-                        temp(frame.motorTemp),
-                        "Motor",
-                        motorColor,
-                        horizontalAlignment = Alignment.Start,
-                    )
-                    SmallGaugeValue(
-                        Modifier.weight(1f),
-                        temp(frame.ctrlTemp),
-                        "Ctrl",
-                        ctrlColor,
-                        horizontalAlignment = Alignment.End,
-                    )
-                }
                 Text(
+                    // Same size as the curved temp values so the three secondary readouts match.
                     text = frame.battery?.let { "${format(it, 0)}%" } ?: "--",
-                    style = MaterialTheme.typography.title3,
+                    style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
                     color = battColor,
                 )
             }
@@ -126,6 +119,30 @@ internal fun AmbientLayout(frame: WatchFrame) {
         color = AmbientText,
         textAlign = TextAlign.Center,
     )
+}
+
+/**
+ * A temperature value bent along the rim, sitting just inside the gauge line at [anchorDeg]
+ * (canvas degrees: 0 = 3 o'clock, clockwise), with a tiny [label] stacked one ring further in.
+ * Counter-clockwise angular direction keeps bottom-half text upright.
+ */
+@Composable
+private fun CurvedTemp(anchorDeg: Float, value: String, label: String, color: Color) {
+    CurvedLayout(
+        modifier = Modifier.fillMaxSize().padding(TEMP_LABEL_GAP),
+        anchor = anchorDeg,
+        anchorType = AnchorType.Center,
+        angularDirection = CurvedDirection.Angular.CounterClockwise,
+    ) {
+        // Outside in: value hugs the arc, label sits above it (toward the watch centre).
+        curvedColumn(
+            radialDirection = CurvedDirection.Radial.OutsideIn,
+            angularAlignment = CurvedAlignment.Angular.Center,
+        ) {
+            curvedText(text = value, color = color, style = CurvedTextStyle(fontSize = TEMP_FONT_SIZE))
+            curvedText(text = label, color = SecondaryText, style = CurvedTextStyle(fontSize = TEMP_LABEL_FONT_SIZE))
+        }
+    }
 }
 
 /**
@@ -189,21 +206,6 @@ private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, col
     }
 }
 
-/** Smaller value + label for the temperature readouts. */
-@Composable
-private fun SmallGaugeValue(
-    modifier: Modifier,
-    value: String,
-    unit: String,
-    color: Color,
-    horizontalAlignment: Alignment.Horizontal = Alignment.CenterHorizontally,
-) {
-    Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
-        Text(text = value, style = MaterialTheme.typography.title3, color = color)
-        Text(text = unit, style = MaterialTheme.typography.caption3, color = SecondaryText)
-    }
-}
-
 private fun format(value: Double, decimals: Int): String = String.format("%.${decimals}f", value)
 
 private fun temp(value: Double?): String = value?.let { "${format(it, 0)}°" } ?: "--"
@@ -226,6 +228,13 @@ private const val SPEED_MAX = 50.0
 private const val TEMP_MIN = 10.0
 private const val TEMP_MAX = 80.0
 private const val TEMP_SWEEP = 32f
+private const val MOTOR_ARC_START = 144f
+private const val CTRL_ARC_START = 36f
+
+// Curved temp text: clears the rim line (HEAD_W) with a small gap so it reads above the arc.
+private val TEMP_LABEL_GAP = 7.dp
+private val TEMP_FONT_SIZE = 15.sp
+private val TEMP_LABEL_FONT_SIZE = 7.sp
 
 private fun tempFraction(value: Double?): Float =
     (((value ?: TEMP_MIN) - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)).toFloat().coerceIn(0f, 1f)
