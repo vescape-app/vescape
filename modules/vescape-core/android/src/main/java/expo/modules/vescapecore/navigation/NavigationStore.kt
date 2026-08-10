@@ -51,6 +51,8 @@ object NavigationJson {
   private const val COMPUTED_AT_MS = "computedAtMs"
   private const val STATUS = "status"
   private const val GEOMETRY = "geometry"
+  private const val DISTANCE_METERS = "distanceMeters"
+  private const val DURATION_SECONDS = "durationSeconds"
 
   fun encode(navigation: Navigation): String = JSONObject()
     .put(TARGET_LATITUDE, navigation.targetLatitude)
@@ -58,6 +60,8 @@ object NavigationJson {
     .put(PROFILE, navigation.profile.wire)
     .put(COMPUTED_AT_MS, navigation.computedAtMs)
     .put(STATUS, navigation.status.wire)
+    .put(DISTANCE_METERS, navigation.distanceMeters)
+    .put(DURATION_SECONDS, navigation.durationSeconds)
     .put(GEOMETRY, Polyline6.encode(navigation.points))
     .toString()
 
@@ -83,6 +87,10 @@ object NavigationJson {
         profile = NavigationProfile.fromWire(stored.optString(PROFILE)),
         computedAtMs = stored.getLong(COMPUTED_AT_MS),
         status = status,
+        // Rows written before the path carried its length restore without one; the sheet then shows
+        // the path with no numbers rather than refusing a perfectly rideable stored line.
+        distanceMeters = stored.optDouble(DISTANCE_METERS, 0.0),
+        durationSeconds = stored.optDouble(DURATION_SECONDS, 0.0),
         points = points,
       )
     }

@@ -39,6 +39,8 @@ enum NavigationJson {
   private static let computedAtMsKey = "computedAtMs"
   private static let statusKey = "status"
   private static let geometryKey = "geometry"
+  private static let distanceMetersKey = "distanceMeters"
+  private static let durationSecondsKey = "durationSeconds"
 
   static func encode(_ navigation: Navigation) -> String? {
     let stored: [String: Any] = [
@@ -47,6 +49,8 @@ enum NavigationJson {
       profileKey: navigation.profile.rawValue,
       computedAtMsKey: navigation.computedAtMs,
       statusKey: navigation.status.rawValue,
+      distanceMetersKey: navigation.distanceMeters,
+      durationSecondsKey: navigation.durationSeconds,
       geometryKey: Polyline6.encode(navigation.points),
     ]
     guard let data = try? JSONSerialization.data(withJSONObject: stored) else { return nil }
@@ -79,6 +83,10 @@ enum NavigationJson {
       profile: profile,
       computedAtMs: computedAtMs,
       status: status,
+      // Rows written before the path carried its length restore without one; the sheet then shows
+      // the path with no numbers rather than refusing a perfectly rideable stored line.
+      distanceMeters: (stored[distanceMetersKey] as? NSNumber)?.doubleValue ?? 0,
+      durationSeconds: (stored[durationSecondsKey] as? NSNumber)?.doubleValue ?? 0,
       points: points
     )
   }

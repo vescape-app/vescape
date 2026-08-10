@@ -481,6 +481,9 @@ export function MapModeOverlay({
   // rather than drilled from the screen, because the sheet is its only consumer.
   const navigationStatus = useMapStore((s) => s.navigation?.status ?? null)
   const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
+  const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
+  const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
+  const navigationComputing = useMapStore((s) => s.navigationComputing)
   const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
   const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
 
@@ -605,6 +608,15 @@ export function MapModeOverlay({
             onCancelNavigation={onCancelNavigation}
             onConfirmNavigation={onExit}
             navigationStatus={navigationStatus}
+            navigationPath={
+              navigationStatus === 'ready'
+                ? {
+                    distanceMeters: navigationDistanceMeters,
+                    durationSeconds: navigationDurationSeconds,
+                  }
+                : null
+            }
+            navigationComputing={navigationComputing}
             navigationProfile={navigationProfile}
             onRecomputeNavigation={() => void recomputeNavigation()}
             onSelectNavigationProfile={(profile) => void setNavigationProfile(profile)}

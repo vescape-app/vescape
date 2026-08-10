@@ -38,7 +38,11 @@ final class NavigationControllerTests: XCTestCase {
       while !lock.withLock({ released.contains(toLatitude) }) {
         try? await Task.sleep(nanoseconds: 5_000_000)
       }
-      return .path([(fromLatitude, fromLongitude), (toLatitude, toLongitude)])
+      return .path(
+        points: [(fromLatitude, fromLongitude), (toLatitude, toLongitude)],
+        distanceMeters: 1_000,
+        durationSeconds: 600
+      )
     }
   }
 
@@ -121,7 +125,11 @@ final class NavigationControllerTests: XCTestCase {
       profile: String
     ) async -> DirectionsResult {
       lock.withLock { seen.append(profile) }
-      return .path([(fromLatitude, fromLongitude), (toLatitude, toLongitude)])
+      return .path(
+        points: [(fromLatitude, fromLongitude), (toLatitude, toLongitude)],
+        distanceMeters: 1_000,
+        durationSeconds: 600
+      )
     }
   }
 
@@ -132,6 +140,8 @@ final class NavigationControllerTests: XCTestCase {
       profile: .walking,
       computedAtMs: 1_700_000_000_000,
       status: .ready,
+      distanceMeters: 1_000,
+      durationSeconds: 600,
       points: [(riderLatitude, riderLongitude), (targetLatitude, targetLongitude)]
     )
   }
@@ -339,11 +349,15 @@ final class NavigationControllerTests: XCTestCase {
   func testPathDetouringAbsurdlyAroundTheTargetIsNoPathAtAll() {
     // Straight line is ~13 km; this answer rides ~110 km of it, the shape Directions returns when
     // the only way to the target is back out along a road.
-    let detour = DirectionsResult.path([
-      (riderLatitude, riderLongitude),
-      (riderLatitude + 0.5, riderLongitude),
-      (targetLatitude, targetLongitude),
-    ])
+    let detour = DirectionsResult.path(
+      points: [
+        (riderLatitude, riderLongitude),
+        (riderLatitude + 0.5, riderLongitude),
+        (targetLatitude, targetLongitude),
+      ],
+      distanceMeters: 110_000,
+      durationSeconds: 90_000
+    )
     let controller = NavigationController(api: FixedRoutes(detour), store: FakeStore())
 
     controller.setTarget(

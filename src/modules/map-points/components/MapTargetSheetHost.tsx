@@ -26,6 +26,13 @@ interface MapTargetSheetHostProps {
   onConfirmNavigation: () => void
   /** How the path to the active target ended up. `null` while there is no Navigation at all. */
   navigationStatus: NavigationStatus | null
+  /** How far the drawn path runs and how long it takes. `null` while no path is drawn. */
+  navigationPath: { distanceMeters: number; durationSeconds: number } | null
+  /**
+   * Native is working on a path right now. Without this the sheet is silent for the length of a
+   * Directions call, and a switch that ends up failing never changes anything the rider can see.
+   */
+  navigationComputing: boolean
   /**
    * Which kind of ways produced the drawn path. `null` while there is no Navigation, which is when
    * the switcher has nothing to be the current state of and is not shown.
@@ -62,6 +69,8 @@ export function MapTargetSheetHost({
   onCancelNavigation,
   onConfirmNavigation,
   navigationStatus,
+  navigationPath,
+  navigationComputing,
   navigationProfile,
   onRecomputeNavigation,
   onSelectNavigationProfile,
@@ -170,6 +179,8 @@ export function MapTargetSheetHost({
       targetColor={actionColor}
       targetTextColor={actionTextColor}
       notice={failureNotice}
+      path={navigationPath}
+      computing={navigationComputing}
       profileSelector={
         navigationProfile ? (
           <NavigationProfileSelector

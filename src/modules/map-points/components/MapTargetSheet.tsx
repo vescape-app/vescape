@@ -17,6 +17,8 @@ export function MapTargetSheet({
   targetColor,
   targetTextColor,
   notice,
+  path,
+  computing,
   profileSelector,
   onAddFeature,
   onEdit,
@@ -38,6 +40,10 @@ export function MapTargetSheet({
   targetTextColor?: string
   /** Navigation mode only: why there is no path, in rider-facing words. */
   notice?: string | null
+  /** Navigation mode only: how far the drawn path runs and how long it takes. */
+  path?: { distanceMeters: number; durationSeconds: number } | null
+  /** Navigation mode only: native is computing a path right now. */
+  computing?: boolean
   /** Navigation mode only: the Navigation Profile switcher, shown beside the drawn path. */
   profileSelector?: ReactNode
   onAddFeature?: () => void
@@ -78,6 +84,8 @@ export function MapTargetSheet({
         targetColor={targetColor ?? action.color}
         targetTextColor={targetTextColor ?? action.textColor}
         notice={notice}
+        path={path}
+        computing={computing}
         profileSelector={profileSelector}
         media={media.assets}
         onDismiss={onDismiss}

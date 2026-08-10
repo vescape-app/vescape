@@ -38,7 +38,11 @@ class NavigationControllerTest {
             calls.incrementAndGet()
             started.countDown()
             gate(toLatitude).await(WAIT_SECONDS, TimeUnit.SECONDS)
-            return DirectionsResult.Path(listOf(fromLatitude to fromLongitude, toLatitude to toLongitude))
+            return DirectionsResult.Path(
+                listOf(fromLatitude to fromLongitude, toLatitude to toLongitude),
+                distanceMeters = 1_000.0,
+                durationSeconds = 600.0,
+            )
         }
     }
 
@@ -95,7 +99,11 @@ class NavigationControllerTest {
             profile: String,
         ): DirectionsResult {
             synchronized(seen) { seen += profile }
-            return DirectionsResult.Path(listOf(fromLatitude to fromLongitude, toLatitude to toLongitude))
+            return DirectionsResult.Path(
+                listOf(fromLatitude to fromLongitude, toLatitude to toLongitude),
+                distanceMeters = 1_000.0,
+                durationSeconds = 600.0,
+            )
         }
     }
 
@@ -116,6 +124,8 @@ class NavigationControllerTest {
         profile = NavigationProfile.WALKING,
         computedAtMs = 1_700_000_000_000L,
         status = NavigationStatus.READY,
+        distanceMeters = 1_000.0,
+        durationSeconds = 600.0,
         points = listOf(RIDER_LAT to RIDER_LNG, targetLatitude to TARGET_LNG),
     )
 
@@ -264,6 +274,8 @@ class NavigationControllerTest {
         // when the only way to the target is back out along a road.
         val detour = DirectionsResult.Path(
             listOf(RIDER_LAT to RIDER_LNG, RIDER_LAT + 0.5 to RIDER_LNG, TARGET_LAT to TARGET_LNG),
+            distanceMeters = 110_000.0,
+            durationSeconds = 90_000.0,
         )
         val (controller, _) = controller(FixedRoutes(detour))
 

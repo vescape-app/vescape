@@ -116,7 +116,10 @@ public class VescapeCoreModule: Module {
     OnStartObserving("onNavigation") {
       self.observedEvents.insert("onNavigation")
       // Late subscriber: replay the current Navigation so JS is immediately consistent.
-      self.sendEvent("onNavigation", ["navigation": NavigationController.shared.current?.toMap()])
+      self.sendEvent("onNavigation", [
+        "navigation": NavigationController.shared.current?.toMap(),
+        "computing": NavigationController.shared.computing,
+      ])
     }
     OnStopObserving("onNavigation") { self.observedEvents.remove("onNavigation") }
 
@@ -1285,7 +1288,10 @@ public class VescapeCoreModule: Module {
   private func sendNavigation(_ navigation: Navigation?) {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onNavigation") else { return }
-      self.sendEvent("onNavigation", ["navigation": navigation?.toMap()])
+      self.sendEvent("onNavigation", [
+        "navigation": navigation?.toMap(),
+        "computing": NavigationController.shared.computing,
+      ])
     }
   }
 

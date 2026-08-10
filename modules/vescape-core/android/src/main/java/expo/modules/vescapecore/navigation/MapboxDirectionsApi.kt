@@ -57,18 +57,26 @@ class MapboxDirectionsApi(private val accessToken: String) : DirectionsRoutes {
           Log.w(TAG, "Directions call failed: HTTP ${response.code}")
           return@withContext DirectionsResult.Failed
         }
-        val geometry = JSONObject(body)
+        val route = JSONObject(body)
           .optJSONArray("routes")
           ?.takeIf { it.length() > 0 }
           ?.getJSONObject(0)
-          ?.optString("geometry")
-          ?.takeIf { it.isNotEmpty() }
+          ?: return@withContext DirectionsResult.NoPath
+        val geometry = route.optString("geometry").takeIf { it.isNotEmpty() }
           ?: return@withContext DirectionsResult.NoPath
 
-        Polyline6.decode(geometry)
-          .takeIf { it.isNotEmpty() }
-          ?.let(DirectionsResult::Path)
-          ?: DirectionsResult.NoPath
+        val points = Polyline6.decode(geometry)
+        if (points.isEmpty()) {
+          DirectionsResult.NoPath
+        } else {
+          // Mapbox reports both for the route it returned; they are the only length and time the
+          // app ever shows, so nothing here recomputes them from the geometry.
+          DirectionsResult.Path(
+            points = points,
+            distanceMeters = route.optDouble("distance", 0.0).takeIf { it.isFinite() } ?: 0.0,
+            durationSeconds = route.optDouble("duration", 0.0).takeIf { it.isFinite() } ?: 0.0,
+          )
+        }
       }
     } catch (e: Exception) {
       Log.w(TAG, "Directions call failed: ${e.message}")

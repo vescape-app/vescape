@@ -1,8 +1,8 @@
 import {
   ChargingStationIcon,
-  CompassIcon,
   EyeIcon,
   FlagIcon,
+  MapPinIcon,
   type Icon,
 } from 'phosphor-react-native'
 import type { MapPinKind } from '@/modules/map-points/constants/mapPoints'
@@ -14,7 +14,9 @@ import {
 } from '@/modules/map-points/components/MapPointSvgIcons'
 
 const MAP_POINT_KIND_ICONS: Record<MapPinKind, Icon> = {
-  direction: CompassIcon,
+  // The pin, the same one the target sheet's header shows: the rider looks between the map and the
+  // sheet while deciding on a path, and two icons for one Direction Point read as two things.
+  direction: MapPinIcon,
   drop: DropMapPointIcon,
   bonk: BonkMapPointIcon,
   nose_slide: SlideMapPointIcon,

@@ -1456,6 +1456,15 @@ export interface Navigation {
   profile: NavigationProfile
   computedAtMs: number
   status: NavigationStatus
+  /**
+   * How far the path runs and how long the routing service thinks it takes. Both are `0` unless
+   * `status` is `ready`, and both can be `0` on a path restored from before they were stored.
+   *
+   * The duration is the Navigation Profile's own estimate — a walking path is timed at walking
+   * pace — so it says what shape the ride ahead is, not when an EUC gets there.
+   */
+  distanceMeters: number
+  durationSeconds: number
   /** Empty unless `status` is `ready`. Never infer failure from this — read `status`. */
   coordinates: [longitude: number, latitude: number][]
 }
@@ -1499,6 +1508,12 @@ export type NavigationProfile = 'walking' | 'cycling' | 'driving'
  */
 export interface NavigationEvent {
   navigation: Navigation | null
+  /**
+   * Whether native is computing a path right now. The one part of Navigation state that is not
+   * durable, and the only reason a rider's tap is allowed to look like it did something before a
+   * result exists: a recompute that fails publishes no new Navigation at all.
+   */
+  computing: boolean
 }
 
 /**

@@ -72,12 +72,20 @@ final class MapboxDirectionsApi: DirectionsRoutes {
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard
         let routes = json?["routes"] as? [[String: Any]],
-        let geometry = routes.first?["geometry"] as? String,
+        let route = routes.first,
+        let geometry = route["geometry"] as? String,
         !geometry.isEmpty
       else { return .noPath }
 
       let points = Polyline6.decode(geometry)
-      return points.isEmpty ? .noPath : .path(points)
+      guard !points.isEmpty else { return .noPath }
+      // Mapbox reports both for the route it returned; they are the only length and time the app
+      // ever shows, so nothing here recomputes them from the geometry.
+      return .path(
+        points: points,
+        distanceMeters: (route["distance"] as? NSNumber)?.doubleValue ?? 0,
+        durationSeconds: (route["duration"] as? NSNumber)?.doubleValue ?? 0
+      )
     } catch {
       Self.log.warning("Directions call failed: \(error.localizedDescription, privacy: .public)")
       return .failed

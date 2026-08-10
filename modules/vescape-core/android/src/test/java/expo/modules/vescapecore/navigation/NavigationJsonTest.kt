@@ -56,6 +56,8 @@ class NavigationJsonTest {
         profile = NavigationProfile.WALKING,
         computedAtMs = 1_700_000_000_000L,
         status = status,
+        distanceMeters = 1_234.5,
+        durationSeconds = 678.9,
         points = points,
     )
 }

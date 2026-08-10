@@ -84,6 +84,15 @@ data class Navigation(
   val profile: NavigationProfile,
   val computedAtMs: Long,
   val status: NavigationStatus,
+  /**
+   * How far the path runs, in metres, and how long the routing service thinks it takes, in seconds.
+   * Both are `0.0` unless [status] is READY — a Navigation with no path has no length to report.
+   *
+   * The duration is the profile's own estimate (a walking path is timed at walking pace), so it is
+   * the shape of the ride ahead rather than an EUC arrival time.
+   */
+  val distanceMeters: Double,
+  val durationSeconds: Double,
   /** Path points in encoding order, each `(latitude, longitude)`. Empty unless [status] is READY. */
   val points: List<Pair<Double, Double>>,
 ) {
@@ -92,6 +101,8 @@ data class Navigation(
     "profile" to profile.wire,
     "computedAtMs" to computedAtMs,
     "status" to status.wire,
+    "distanceMeters" to distanceMeters,
+    "durationSeconds" to durationSeconds,
     // GeoJSON order, which is what the JS `ShapeSource` expects — flipped from the pairs above.
     "coordinates" to points.map { (latitude, longitude) -> listOf(longitude, latitude) },
   )
@@ -137,8 +148,12 @@ fun interface DirectionsRoutes {
  * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `DirectionsResult`
  */
 sealed interface DirectionsResult {
-  /** Path points as `(latitude, longitude)`. */
-  data class Path(val points: List<Pair<Double, Double>>) : DirectionsResult
+  /** Path points as `(latitude, longitude)`, with the service's own length and time for them. */
+  data class Path(
+    val points: List<Pair<Double, Double>>,
+    val distanceMeters: Double,
+    val durationSeconds: Double,
+  ) : DirectionsResult
 
   /** The service answered, but returned nothing rideable. */
   object NoPath : DirectionsResult
@@ -170,7 +185,23 @@ class NavigationController(
 
   val current: Navigation? get() = synchronized(lock) { state }
 
-  /** Notified on every change, including the clear to `null`. */
+  /**
+   * How many Directions calls are in flight. A rider who taps two profiles in a row has two, and
+   * the rider is "waiting for a path" until the last of them lands — hence a count and not a flag.
+   */
+  private var inFlight = 0
+
+  /**
+   * Whether a path is being computed right now. The one piece of Navigation state that is not
+   * durable: a request in flight dies with the process, and a cold start is never waiting.
+   *
+   * It exists because the alternative reads as a broken app. A recompute that fails leaves the old
+   * path in place and publishes nothing, so without this the rider taps a Profile and sees the UI
+   * do nothing at all for fifteen seconds.
+   */
+  val computing: Boolean get() = synchronized(lock) { inFlight > 0 }
+
+  /** Notified on every change, including the clear to `null` and every [computing] transition. */
   var onChange: ((Navigation?) -> Unit)? = null
 
   /**
@@ -245,8 +276,14 @@ class NavigationController(
       return
     }
 
+    val requested = currentProfile
+    beginComputing()
     scope.launch {
-      publish(request, compute(toLatitude, toLongitude, fromLatitude, fromLongitude, currentProfile))
+      try {
+        publish(request, compute(toLatitude, toLongitude, fromLatitude, fromLongitude, requested))
+      } finally {
+        endComputing()
+      }
     }
   }
 
@@ -298,12 +335,34 @@ class NavigationController(
       return
     }
 
+    beginComputing()
     scope.launch {
-      publish(
-        request,
-        compute(toLatitude, toLongitude, fromLatitude, fromLongitude, requested),
-        keepUsablePath = true,
-      )
+      try {
+        publish(
+          request,
+          compute(toLatitude, toLongitude, fromLatitude, fromLongitude, requested),
+          keepUsablePath = true,
+        )
+      } finally {
+        endComputing()
+      }
+    }
+  }
+
+  /**
+   * Bracket around one in-flight Directions call. Both ends notify, because [computing] is part of
+   * what JS mirrors: the spinner has to come on before the fetch and go off after the result has
+   * already been published, or the rider sees a gap between the two.
+   */
+  private fun beginComputing() = changeInFlight(1)
+
+  private fun endComputing() = changeInFlight(-1)
+
+  private fun changeInFlight(delta: Int) {
+    synchronized(lock) {
+      val was = inFlight > 0
+      inFlight = (inFlight + delta).coerceAtLeast(0)
+      if (was != (inFlight > 0)) onChange?.invoke(state)
     }
   }
 
@@ -324,6 +383,8 @@ class NavigationController(
             targetLongitude = toLongitude,
             profile = profile,
             computedAtMs = System.currentTimeMillis(),
+            distanceMeters = result.distanceMeters,
+            durationSeconds = result.durationSeconds,
             status = NavigationStatus.READY,
             points = result.points,
           )
@@ -343,6 +404,8 @@ class NavigationController(
     profile = profile,
     computedAtMs = System.currentTimeMillis(),
     status = status,
+    distanceMeters = 0.0,
+    durationSeconds = 0.0,
     points = emptyList(),
   )
 

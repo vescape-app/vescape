@@ -26,6 +26,12 @@ interface MapState {
    * is not `ready` is a computed answer of "no path", not an absence.
    */
   navigation: Navigation | null
+  /**
+   * Whether native is computing a path right now, mirrored like the path itself. Nothing on this
+   * side sets it from a tap: a rider's request is only "in flight" once native says so, which is
+   * also the only thing that can say when it stopped.
+   */
+  navigationComputing: boolean
   /** Last direction point write failure, in rider-facing words. Cleared by the next success. */
   error: string | null
 }
@@ -34,7 +40,7 @@ interface MapActions {
   loadDirectionPoint(): Promise<void>
   setDirectionPoint(latitude: number, longitude: number): Promise<void>
   clearDirectionPoint(): Promise<void>
-  replaceNavigation(navigation: Navigation | null): void
+  replaceNavigation(navigation: Navigation | null, computing: boolean): void
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
 }
@@ -59,6 +65,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
   return {
     directionPoint: null,
     navigation: null,
+    navigationComputing: false,
     error: null,
 
     async loadDirectionPoint() {
@@ -81,8 +88,8 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
       await moveDirectionPoint(null)
     },
 
-    replaceNavigation(navigation) {
-      set({ navigation })
+    replaceNavigation(navigation, computing) {
+      set({ navigation, navigationComputing: computing })
     },
 
     /**
@@ -113,7 +120,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
  */
 export function startNavigationSync(): () => void {
   const sub = addNavigationListener((event) =>
-    useMapStore.getState().replaceNavigation(event.navigation),
+    useMapStore.getState().replaceNavigation(event.navigation, event.computing),
   )
   return () => sub.remove()
 }

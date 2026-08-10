@@ -58,6 +58,14 @@ struct Navigation {
   let profile: NavigationProfile
   let computedAtMs: Int64
   let status: NavigationStatus
+  /// How far the path runs, in metres, and how long the routing service thinks it takes, in
+  /// seconds. Both are `0` unless `status` is `ready` — a Navigation with no path has no length to
+  /// report.
+  ///
+  /// The duration is the profile's own estimate (a walking path is timed at walking pace), so it is
+  /// the shape of the ride ahead rather than an EUC arrival time.
+  let distanceMeters: Double
+  let durationSeconds: Double
   /// Path points in encoding order, each `(latitude, longitude)`. Empty unless `status` is `ready`.
   let points: [(latitude: Double, longitude: Double)]
 
@@ -67,6 +75,8 @@ struct Navigation {
       "profile": profile.rawValue,
       "computedAtMs": computedAtMs,
       "status": status.rawValue,
+      "distanceMeters": distanceMeters,
+      "durationSeconds": durationSeconds,
       // GeoJSON order, which is what the JS `ShapeSource` expects — flipped from the pairs above.
       "coordinates": points.map { [$0.longitude, $0.latitude] },
     ]
@@ -93,8 +103,12 @@ protocol DirectionsRoutes {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `DirectionsResult`
 enum DirectionsResult {
-  /// Path points as `(latitude, longitude)`.
-  case path([(latitude: Double, longitude: Double)])
+  /// Path points as `(latitude, longitude)`, with the service's own length and time for them.
+  case path(
+    points: [(latitude: Double, longitude: Double)],
+    distanceMeters: Double,
+    durationSeconds: Double
+  )
   /// The service answered, but returned nothing rideable.
   case noPath
   /// The service could not be reached or asked at all.
@@ -154,7 +168,19 @@ final class NavigationController {
   /// The Navigation Profile the next computed path will use.
   var currentProfile: NavigationProfile { lock.withLock { profile } }
 
-  /// Notified on every change, including the clear to `nil`.
+  /// How many Directions calls are in flight. A rider who taps two profiles in a row has two, and
+  /// the rider is "waiting for a path" until the last of them lands — hence a count and not a flag.
+  private var inFlight = 0
+
+  /// Whether a path is being computed right now. The one piece of Navigation state that is not
+  /// durable: a request in flight dies with the process, and a cold start is never waiting.
+  ///
+  /// It exists because the alternative reads as a broken app. A recompute that fails leaves the old
+  /// path in place and publishes nothing, so without this the rider taps a Profile and sees the UI
+  /// do nothing at all for fifteen seconds.
+  var computing: Bool { lock.withLock { inFlight > 0 } }
+
+  /// Notified on every change, including the clear to `nil` and every `computing` transition.
   var onChange: ((Navigation?) -> Void)?
 
   /// Ordering token. Every intent claims one *synchronously*, before any network work starts, so
@@ -234,11 +260,13 @@ final class NavigationController {
     }
 
     let requested = currentProfile
+    beginComputing()
     Task {
       let navigation = await compute(
         toLatitude, toLongitude, fromLatitude, fromLongitude, requested
       )
       publish(request, navigation)
+      endComputing()
     }
   }
 
@@ -287,11 +315,28 @@ final class NavigationController {
       return
     }
 
+    beginComputing()
     Task {
       let navigation = await compute(
         toLatitude, toLongitude, fromLatitude, fromLongitude, requested
       )
       publish(request, navigation, keepUsablePath: true)
+      endComputing()
+    }
+  }
+
+  /// Bracket around one in-flight Directions call. Both ends notify, because `computing` is part of
+  /// what JS mirrors: the spinner has to come on before the fetch and go off after the result has
+  /// already been published, or the rider sees a gap between the two.
+  private func beginComputing() { changeInFlight(1) }
+
+  private func endComputing() { changeInFlight(-1) }
+
+  private func changeInFlight(_ delta: Int) {
+    lock.withLock {
+      let was = inFlight > 0
+      inFlight = max(0, inFlight + delta)
+      if was != (inFlight > 0) { onChange?(state) }
     }
   }
 
@@ -314,7 +359,7 @@ final class NavigationController {
       return failed(toLatitude, toLongitude, profile, .fetchFailed)
     case .noPath:
       return failed(toLatitude, toLongitude, profile, .noPathFound)
-    case let .path(points):
+    case let .path(points, distanceMeters, durationSeconds):
       return NavigationUsability.isUsable(
         points, targetLatitude: toLatitude, targetLongitude: toLongitude
       )
@@ -324,6 +369,8 @@ final class NavigationController {
           profile: profile,
           computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
           status: .ready,
+          distanceMeters: distanceMeters,
+          durationSeconds: durationSeconds,
           points: points
         )
         : failed(toLatitude, toLongitude, profile, .noPathFound)
@@ -342,6 +389,8 @@ final class NavigationController {
       profile: profile,
       computedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
       status: status,
+      distanceMeters: 0,
+      durationSeconds: 0,
       points: []
     )
   }
@@ -401,6 +450,8 @@ final class NavigationController {
         && a.targetLongitude == b.targetLongitude
         && a.status == b.status
         && a.profile == b.profile
+        && a.distanceMeters == b.distanceMeters
+        && a.durationSeconds == b.durationSeconds
         && a.points.count == b.points.count
         && zip(a.points, b.points).allSatisfy { $0.latitude == $1.latitude && $0.longitude == $1.longitude }
     default: return false

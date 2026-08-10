@@ -58,6 +58,8 @@ final class NavigationStoreTests: XCTestCase {
       profile: .walking,
       computedAtMs: 1_700_000_000_000,
       status: status,
+      distanceMeters: 1_234.5,
+      durationSeconds: 678.9,
       points: points
     )
   }

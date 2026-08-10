@@ -186,7 +186,13 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/src/index.ts `NavigationEvent`
     NavigationController.get(context).onChange = { navigation ->
       if (shouldEmitToFrontend("onNavigation")) {
-        sendEvent("onNavigation", mapOf("navigation" to navigation?.toMap()))
+        sendEvent(
+          "onNavigation",
+          mapOf(
+            "navigation" to navigation?.toMap(),
+            "computing" to NavigationController.get(context).computing,
+          ),
+        )
       }
     }
 
@@ -258,7 +264,13 @@ class VescapeCoreModule : Module() {
     OnStartObserving("onNavigation") {
       startObserving("onNavigation")
       // Late subscriber: replay the current Navigation so JS is immediately consistent.
-      sendEvent("onNavigation", mapOf("navigation" to NavigationController.get(context).current?.toMap()))
+      sendEvent(
+        "onNavigation",
+        mapOf(
+          "navigation" to NavigationController.get(context).current?.toMap(),
+          "computing" to NavigationController.get(context).computing,
+        ),
+      )
     }
     OnStopObserving("onNavigation") { stopObserving("onNavigation") }
 

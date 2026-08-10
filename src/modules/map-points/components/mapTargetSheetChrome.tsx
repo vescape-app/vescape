@@ -183,15 +183,19 @@ export function MapTargetActionRow({ children }: { children: ReactNode }) {
 }
 
 /**
- * A sheet action button. `compact` is the same button at side-action weight: it keeps its label but
- * gives the row's width to the action the rider is most likely to want.
+ * A sheet action button. `compact` is the same button at side-action weight, giving the row's width
+ * to the action the rider is most likely to want; `iconOnly` drops to the icon alone, for actions
+ * whose icon is unambiguous and whose label would otherwise crowd the one that matters. The label
+ * still exists — it stays the accessibility name.
  */
 export function MapTargetPrimaryAction({
   action,
   compact = false,
+  iconOnly = false,
 }: {
   action: MapTargetSheetAction
   compact?: boolean
+  iconOnly?: boolean
 }) {
   return (
     <Pressable
@@ -201,20 +205,23 @@ export function MapTargetPrimaryAction({
       style={({ pressed }) => [
         styles.actionButton,
         compact ? styles.actionButtonCompact : styles.actionButtonLead,
+        iconOnly && styles.actionButtonIconOnly,
         { backgroundColor: action.bgColor, borderColor: action.borderColor },
         pressed && mapSheetStyles.mapTargetNavigatePressed,
       ]}
     >
-      <action.Icon size={compact ? 16 : 18} color={action.textColor} weight="bold" />
-      <Text
-        style={[
-          mapSheetStyles.mapTargetNavigateText,
-          compact && styles.actionLabelCompact,
-          { color: action.textColor },
-        ]}
-      >
-        {action.label}
-      </Text>
+      <action.Icon size={compact ? 18 : 18} color={action.textColor} weight="bold" />
+      {iconOnly ? null : (
+        <Text
+          style={[
+            mapSheetStyles.mapTargetNavigateText,
+            compact && styles.actionLabelCompact,
+            { color: action.textColor },
+          ]}
+        >
+          {action.label}
+        </Text>
+      )}
     </Pressable>
   )
 }
@@ -239,6 +246,12 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 42,
     gap: 6,
+  },
+  /** A square button: it holds an icon, so it must not stretch with the row it sits in. */
+  actionButtonIconOnly: {
+    flex: 0,
+    width: 46,
+    gap: 0,
   },
   actionLabelCompact: {
     fontSize: 12,
