@@ -14,11 +14,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { configureReanimatedLogger } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { Text } from '@/components/base/Text'
+import { DevBadge } from '@/components/dev/DevBadge'
 import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBoundary'
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
-import { isDevelopmentApp } from '@/config/appVariant'
-import { showDevControls } from '@/config/env'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
@@ -42,49 +40,6 @@ function requireClerkPublishableKey(): string {
   return key
 }
 
-function DevelopmentBadge() {
-  const insets = useSafeAreaInsets()
-  if (!isDevelopmentApp || !showDevControls) return null
-
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: Math.max(2, insets.top - 6),
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        alignItems: 'center',
-      }}
-    >
-      <View
-        style={{
-          paddingHorizontal: 5,
-          paddingVertical: 1,
-          borderWidth: 1,
-          borderColor: theme.status.warning.color,
-          borderRadius: 999,
-          backgroundColor: theme.status.warning.bg,
-        }}
-      >
-        <Text
-          style={{
-            color: theme.status.warning.text,
-            fontSize: 8,
-            lineHeight: 10,
-            fontWeight: '800',
-            letterSpacing: 0.6,
-            textTransform: 'uppercase',
-          }}
-        >
-          dev
-        </Text>
-      </View>
-    </View>
-  )
-}
-
 // Keep the native splash visible until Raleway loads so there is no font-flash
 // on cold start. `expo-router` already prevents auto-hide; this makes the gate
 // explicit and ties `hideAsync()` to font readiness.
@@ -97,6 +52,7 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
+  const insets = useSafeAreaInsets()
   const [fontsLoaded, fontError] = useFonts({
     'Raleway-300': require('../../assets/fonts/Raleway-300.ttf'),
     'Raleway-400': require('../../assets/fonts/Raleway-400.ttf'),
@@ -237,7 +193,19 @@ function RootLayout() {
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />
-          <DevelopmentBadge />
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              top: Math.max(2, insets.top - 6),
+              left: 0,
+              right: 0,
+              zIndex: 100,
+              alignItems: 'center',
+            }}
+          >
+            <DevBadge />
+          </View>
           <StatusBar style="light" />
         </GestureHandlerRootView>
       </DiagnosticErrorBoundary>
