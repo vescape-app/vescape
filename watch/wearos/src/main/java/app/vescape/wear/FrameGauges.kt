@@ -30,8 +30,9 @@ import kotlin.math.sin
  * Wrist layout for a live Watch Frame. Three quarter-style gauges hug the watch rim — speed
  * top-left, duty top-right (almost touching at top center), battery across the bottom — styled like
  * the phone's DualGauge: thin gray guide, radial gradient fill from the centre, a strong rim line,
- * and a head tick at the current value. Temps + battery % sit inside. [muted] dims every value so a
- * frozen (stale) reading is never shown as live.
+ * and a head tick at the current value. Temps + battery % sit inside, with the wall clock
+ * ([WatchClock]) at the top rim gap since the fullscreen mirror hides the system time. [muted] dims
+ * every value so a frozen (stale) reading is never shown as live.
  */
 @Composable
 internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
@@ -70,7 +71,9 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
             modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // ── Top: speed + duty values, nudged down slightly ──
+            // ── Top: wall clock at the rim gap, then speed + duty values ──
+            WatchClock(modifier = Modifier.padding(top = 8.dp), color = if (muted) DimText else SecondaryText)
+
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(start = 32.dp, end = 32.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.Bottom,
