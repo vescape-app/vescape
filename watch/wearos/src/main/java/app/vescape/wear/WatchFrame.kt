@@ -5,7 +5,11 @@ import java.nio.ByteOrder
 
 /**
  * Float32 lane count + order of a Watch Frame:
- *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance.
+ *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
+ *   7 riderEast, 8 riderNorth, 9 course.
+ *
+ * Lanes 7-9 place the rider on the route pushed over [ROUTE_PATH]: metres east/north of that route's
+ * origin plus the course, degrees clockwise from north.
  *
  * Mirrors the phone-side builder (`expo.modules.vescapecore.WatchFrameBuilder`, `WATCH_FRAME_FIELD_COUNT`)
  * by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same order,
@@ -15,7 +19,7 @@ import java.nio.ByteOrder
  * different app versions still talk: an older phone's shorter frame keeps rendering, it just carries
  * no nav. Only the first [WATCH_FRAME_MIN_FIELD_COUNT] lanes are required.
  */
-private const val WATCH_FRAME_FIELD_COUNT = 7
+private const val WATCH_FRAME_FIELD_COUNT = 10
 private const val WATCH_FRAME_MIN_FIELD_COUNT = 5
 private const val WATCH_FRAME_HEADER_BYTES = 2
 
@@ -39,6 +43,12 @@ data class WatchFrame(
     val navBearing: Double? = null,
     /** Straight-line distance to the navigation target, metres. */
     val navDistanceM: Double? = null,
+    /** Rider position, metres east of the pushed route's origin. Null when there is no route. */
+    val riderEastM: Double? = null,
+    /** Rider position, metres north of the pushed route's origin. Null when there is no route. */
+    val riderNorthM: Double? = null,
+    /** Travel course, degrees clockwise from north. */
+    val courseDeg: Double? = null,
 )
 
 /** Pure bytes -> [WatchFrame] decoder. Returns null on a short buffer or too few lanes. */
@@ -65,6 +75,9 @@ object WatchFrameDecoder {
             waiting = flags and FLAG_WAITING != 0,
             navBearing = lanes[5].orNull(),
             navDistanceM = lanes[6].orNull(),
+            riderEastM = lanes[7].orNull(),
+            riderNorthM = lanes[8].orNull(),
+            courseDeg = lanes[9].orNull(),
         )
     }
 

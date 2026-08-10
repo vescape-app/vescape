@@ -11,6 +11,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.wear.ambient.AmbientLifecycleObserver
+import com.google.android.gms.wearable.DataClient
+import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
 
@@ -21,6 +23,7 @@ import com.google.android.gms.wearable.Wearable
  */
 class MainActivity : ComponentActivity() {
     private val messageClient by lazy { Wearable.getMessageClient(this) }
+    private val dataClient by lazy { Wearable.getDataClient(this) }
     private val phoneLinkMonitor by lazy { PhoneLinkMonitor(this) }
     private val frameReplayer by lazy { FrameReplayer(this) }
     private val ongoingActivityController by lazy { OngoingActivityController(this) }
@@ -48,6 +51,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Route polyline arriving on the Data Layer: pushed once per route change, deleted when the
+     * route ends. Deletion clears the wrist route, which is what hides the drawn line.
+     */
+    private val routeListener = DataClient.OnDataChangedListener { events ->
+        for (event in events) {
+            if (event.dataItem.uri.path != ROUTE_PATH) continue
+            val route = when (event.type) {
+                DataEvent.TYPE_DELETED -> null
+                else -> WatchRouteDecoder.decode(event.dataItem.data ?: ByteArray(0))
+            }
+            runOnUiThread { RouteState.accept(route) }
+        }
+        events.release()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -70,6 +89,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         messageClient.addListener(listener)
+        dataClient.addListener(routeListener)
+        // A listener only sees changes, so pick up a route that synced while we were stopped.
+        dataClient.dataItems.addOnSuccessListener { items ->
+            val item = items.firstOrNull { it.uri.path == ROUTE_PATH }
+            RouteState.accept(item?.data?.let(WatchRouteDecoder::decode))
+            items.release()
+        }
         phoneLinkMonitor.start()
         WatchDiagnostics.recordReceiver(active = true)
     }
@@ -82,6 +108,7 @@ class MainActivity : ComponentActivity() {
         }
         WatchDiagnostics.recordReceiver(active = false)
         phoneLinkMonitor.stop()
+        dataClient.removeListener(routeListener)
         messageClient.removeListener(listener)
         super.onStop()
     }

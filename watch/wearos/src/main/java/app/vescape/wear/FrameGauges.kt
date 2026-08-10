@@ -50,7 +50,16 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
     val motorColor = if (muted) DimText else MotorTempColor
     val ctrlColor = if (muted) DimText else CtrlTempColor
 
+    val navBearing = frame.navBearing
+    val navDistance = frame.navDistanceM
+    val hasNav = navBearing != null && navDistance != null
+
     Box(modifier = Modifier.fillMaxSize()) {
+        // Bottom layer: route ahead + rider dot, under every gauge and readout.
+        if (hasNav) {
+            NavRoute(frame = frame, muted = muted)
+        }
+
         // Rim gauges on one shared screen-centred circle.
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = size.minDimension / 2f - HEAD_W.toPx()
@@ -77,10 +86,8 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
 
         // Navigation, only while the phone is sending it: chevron on the rim + distance above the
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
-        val navBearing = frame.navBearing
-        val navDistance = frame.navDistanceM
-        if (navBearing != null && navDistance != null) {
-            NavPointer(bearingDeg = navBearing, distanceM = navDistance, muted = muted)
+        if (hasNav) {
+            NavPointer(bearingDeg = navBearing!!, distanceM = navDistance!!, muted = muted)
         }
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the

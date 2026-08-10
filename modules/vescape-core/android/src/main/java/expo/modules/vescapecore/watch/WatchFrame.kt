@@ -6,13 +6,18 @@ import kotlin.math.abs
 
 /**
  * Number of Float32 lanes in a Watch Frame, in this fixed order:
- *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance.
+ *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
+ *   7 riderEast, 8 riderNorth, 9 course.
+ *
+ * Lanes 7-9 place the rider against the route pushed on [WATCH_ROUTE_PATH]: metres east/north of
+ * that route's origin (see `offsetMeters`) plus the current course, degrees clockwise from north.
+ * They are per-fix data, which is why they ride the frame and the polyline itself does not.
  *
  * The wrist-side decoder ([app.vescape.wear] `WatchFrameDecoder`) carries the same constant and lane
  * order by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same
  * order, or the decode silently misreads. Keep the two lists adjacent in review.
  */
-internal const val WATCH_FRAME_FIELD_COUNT = 7
+internal const val WATCH_FRAME_FIELD_COUNT = 10
 
 /** Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian. */
 internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -42,6 +47,12 @@ internal data class WatchFrame(
     val navBearing: Double? = null,
     /** Straight-line distance to the navigation target, metres. TODO(nav): see [navBearing]. */
     val navDistanceM: Double? = null,
+    /** Rider position, metres east of the pushed route's origin. Null when there is no route. */
+    val riderEastM: Double? = null,
+    /** Rider position, metres north of the pushed route's origin. Null when there is no route. */
+    val riderNorthM: Double? = null,
+    /** Travel course, degrees clockwise from north. Null when the fix carries no usable heading. */
+    val courseDeg: Double? = null,
 )
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
@@ -55,6 +66,10 @@ internal data class WatchSnapshot(
     /** Nav target relative bearing (degrees) and distance (metres), derived natively. TODO(nav): see [WatchFrame.navBearing]. */
     val navBearing: Double? = null,
     val navDistanceM: Double? = null,
+    /** Rider offset from the pushed route origin (metres) and course (degrees), derived natively. */
+    val riderEastM: Double? = null,
+    val riderNorthM: Double? = null,
+    val courseDeg: Double? = null,
 )
 
 /**
@@ -72,6 +87,9 @@ internal object WatchFrameBuilder {
         stale = stale,
         navBearing = snapshot.navBearing,
         navDistanceM = snapshot.navDistanceM,
+        riderEastM = snapshot.riderEastM,
+        riderNorthM = snapshot.riderNorthM,
+        courseDeg = snapshot.courseDeg,
     )
 
     /**
@@ -104,6 +122,10 @@ internal object WatchFrameBuilder {
             // Nav lanes ride as NaN until a route feeds them, which is how the wrist hides the overlay.
             putFloat(frame.navBearing.toLaneFloat())
             putFloat(frame.navDistanceM.toLaneFloat())
+            // Rider placement against the pushed route; NaN whenever there is no route to place on.
+            putFloat(frame.riderEastM.toLaneFloat())
+            putFloat(frame.riderNorthM.toLaneFloat())
+            putFloat(frame.courseDeg.toLaneFloat())
         }.array()
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN
