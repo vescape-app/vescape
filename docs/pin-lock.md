@@ -121,39 +121,8 @@ if ((magicnr == 101) && (floatcmd > 1)
 ```
 
 `101` is our `REFLOAT_MAGIC` (`modules/vescape-core/ios/protocol/VescProtocol.swift`). So on a
-locked board **telemetry polling is unaffected and Refloat tune writes are silently dropped** —
-which is the split the feature is aiming for, and the failure mode we must surface rather than
-report as a successful write.
-
-## If we implement it
-
-Split capability from state — they have different lifetimes:
-
-```
-setup (Board Probe)   -> "does this fw answer 155?"   -> persist on the Board Link
-session connect       -> LOCK_STATUS(cached pin)      -> session state (lock_on_boot!)
-before a config write -> wrap in 157, or refuse with a clear reason
-```
-
-`hasBms` is the precedent for a probe-discovered capability persisted on the link. Its path:
-
-```
-BoardTransportDetector -> TransportDetection.Probe/.Candidate -> VescapeCoreModule bridge dict
-  -> BoardLinkPersistence.compose/settings -> LinkIdentity -> BoardSessionController
-```
-
-Recommendation: persist `supportsPinLock` but keep it **out** of `LinkIdentity.isComplete` /
-`matches` / `mismatches`. It is a firmware capability we act on, not an identity fingerprint we
-verify against, and `isComplete` pins `linkVersion == 3` exactly — touching it would mark every
-stored link `outdated` and force a re-probe for every user. A firmware change already shows up as a
-`firmware` mismatch.
-
-Session lock state belongs next to `linkIntegrity` on `BoardSession`, not on the link. Surfacing
-"board locked, tune writes will fail" as a Board Warning needs a new kind in
-[board-warnings.md](./board-warnings.md).
-
-Probe once on the confirmed transport, not once per candidate — each blind probe bumps the
-cooldown.
+locked board **telemetry polling is unaffected and Refloat tune writes are silently dropped**, with
+no error reply.
 
 ## Flashing the fork
 
@@ -161,10 +130,8 @@ Possible over BLE with VESC Tool mobile (Firmware tab, custom file). Requires a 
 `.bin` matching the exact hardware target. An interrupted transfer can leave the controller without
 valid firmware, recoverable only over USB or ST-Link.
 
-We do **not** implement flashing, and should not. The commands are small —
-`COMM_JUMP_TO_BOOTLOADER` (1), `COMM_ERASE_NEW_APP` (2), `COMM_WRITE_NEW_APP_DATA` (3), plus
-`_LZO` (81) and `_ALL_CAN` variants — but a bug means a bricked controller and Vescape has no
-recovery path to offer. VESC Tool is the reference implementation and the user needs it once.
+Vescape does not implement flashing. The commands are `COMM_JUMP_TO_BOOTLOADER` (1),
+`COMM_ERASE_NEW_APP` (2), `COMM_WRITE_NEW_APP_DATA` (3), plus `_LZO` (81) and `_ALL_CAN` variants.
 
 After any flash: PIN is cleared, config needs backup/restore, package may need reloading.
 
