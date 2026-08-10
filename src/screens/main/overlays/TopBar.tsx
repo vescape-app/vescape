@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   ArrowFatLinesUpIcon,
@@ -56,6 +56,7 @@ interface TopBarProps {
 }
 
 interface BoardPillProps {
+  maxWidth: number
   activeBoardId: string | null
   activeBoard: Board | undefined
   bleStatus: string
@@ -66,7 +67,7 @@ interface BoardPillProps {
 
 /** The board identity pill: selector, edit, disconnect and the Board Warning control. */
 const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
-  { activeBoardId, activeBoard, bleStatus, isReplay, onOpenSelector, onDisconnect },
+  { maxWidth, activeBoardId, activeBoard, bleStatus, isReplay, onOpenSelector, onDisconnect },
   ref,
 ) {
   const canDisconnect =
@@ -84,7 +85,7 @@ const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         : theme.palette.slate.textSecondary
 
   return (
-    <View ref={ref} style={styles.pill}>
+    <View ref={ref} style={[styles.pill, { maxWidth }]}>
       <Pressable
         style={styles.boardButton}
         onPress={onOpenSelector}
@@ -145,6 +146,8 @@ export function TopBar({
   onCancelNavigation,
 }: TopBarProps) {
   const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
+  const boardPillMaxWidth = width - 116
   const pillRef = useRef<View>(null)
   const socialRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -200,28 +203,31 @@ export function TopBar({
         {activeNavigationTarget ? (
           <View ref={pillRef} collapsable={false}>
             <ActiveNavigationTopBar
+              boardPill={
+                <BoardPill
+                  maxWidth={boardPillMaxWidth}
+                  activeBoardId={activeBoardId}
+                  activeBoard={activeBoard}
+                  bleStatus={bleStatus}
+                  isReplay={isReplay}
+                  onOpenSelector={() => setSelectorOpen(true)}
+                  onDisconnect={onDisconnect}
+                />
+              }
+              maxWidth={Math.min(boardPillMaxWidth, 240)}
               boardName={activeBoard?.name ?? 'No board'}
               connected={bleStatus === 'connected' || bleStatus === 'stale'}
-              activeBoardId={activeBoardId}
-              canDisconnect={
-                bleStatus === 'connected' ||
-                bleStatus === 'stale' ||
-                bleStatus === 'reconnecting' ||
-                bleStatus === 'rescanning' ||
-                bleStatus === 'waiting_for_telemetry'
-              }
               targetTitle={activeNavigationTarget.title}
               targetKind={navigationTargetKind}
               distanceLabel={navigationDistance}
               riderColor={riderColor}
-              onBoardPress={() => setSelectorOpen(true)}
-              onDisconnect={onDisconnect}
               onCancel={onCancelNavigation}
             />
           </View>
         ) : (
           <BoardPill
             ref={pillRef}
+            maxWidth={boardPillMaxWidth}
             activeBoardId={activeBoardId}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
@@ -346,11 +352,13 @@ const styles = StyleSheet.create({
   },
   boardButton: {
     flexDirection: 'row',
+    flexShrink: 1,
     alignItems: 'center',
     gap: 6,
     paddingLeft: 10,
     paddingRight: 8,
     minHeight: 38,
+    minWidth: 0,
   },
   statusDot: {
     width: 7,
@@ -361,7 +369,7 @@ const styles = StyleSheet.create({
     color: theme.palette.slate.textPrimary,
     fontSize: 13,
     fontWeight: '800',
-    maxWidth: 120,
+    maxWidth: 180,
     flexShrink: 1,
   },
   divider: {
