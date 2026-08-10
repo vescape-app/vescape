@@ -99,25 +99,25 @@ export function MainScreen({
   const handleHeadingChange = useCallback(
     (heading: number) => {
       cameraHeading.set(heading)
-      if (!(controller.mode === 'telemetry' && controller.mapNavigationMode === 'phoneHeading')) {
+      if (!(controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading')) {
         selectorHeading.set(heading)
       }
     },
-    [cameraHeading, controller.mapNavigationMode, controller.mode, selectorHeading],
+    [cameraHeading, controller.mapOrientationMode, controller.mode, selectorHeading],
   )
   const handlePhoneHeadingChange = useCallback(
     (heading: number | null) => {
       if (heading == null) return
-      if (controller.mode === 'telemetry' && controller.mapNavigationMode === 'phoneHeading') {
+      if (controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading') {
         selectorHeading.set(heading)
       }
     },
-    [controller.mapNavigationMode, controller.mode, selectorHeading],
+    [controller.mapOrientationMode, controller.mode, selectorHeading],
   )
   useEffect(() => {
-    if (controller.mode === 'telemetry' && controller.mapNavigationMode === 'phoneHeading') return
+    if (controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading') return
     selectorHeading.set(cameraHeading.value)
-  }, [cameraHeading, controller.mapNavigationMode, controller.mode, selectorHeading])
+  }, [cameraHeading, controller.mapOrientationMode, controller.mode, selectorHeading])
   const [offscreenMapIndicators, setOffscreenMapIndicators] = useState<
     OffscreenMapIndicatorState[]
   >([])
@@ -468,7 +468,7 @@ export function MainScreen({
         history={mapHistoryProps}
         style={mapStyleProps}
         mapPoints={mapPointProps}
-        mapNavigationMode={controller.mapNavigationMode}
+        mapOrientationMode={controller.mapOrientationMode}
         rotationLocked={controller.rotationLocked}
         perspectiveEnabled={controller.perspectiveEnabled}
         onPerspectiveChange={controller.setPerspectiveEnabled}
@@ -504,8 +504,8 @@ export function MainScreen({
           heading: selectorHeading,
           mapStyleKey: controller.mapStyleKey,
           setMapStyleKey: controller.setMapStyleKey,
-          mapNavigationMode: controller.mapNavigationMode,
-          setMapNavigationMode: controller.setMapNavigationMode,
+          mapOrientationMode: controller.mapOrientationMode,
+          setMapOrientationMode: controller.setMapOrientationMode,
           mapSelector: controller.mapSelector,
           setMapSelector: controller.setMapSelector,
           enterMapFocus: controller.handleMapFocus,

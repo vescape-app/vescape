@@ -1011,7 +1011,7 @@ export interface AppSettings {
   satelliteImagerySaturation: number
   /** Hide POI names and icons on the telemetry/home map. Explore keeps map details visible. */
   hideTelemetryMapDetails: boolean
-  mapNavigationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
+  mapOrientationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
   historyMetricGradientsEnabled: boolean
   historyMetricHotRanges: Partial<
     Record<

@@ -30,6 +30,7 @@ import {
 import { LiveHud } from '@/screens/main/overlays/LiveHud'
 import { TopBar } from '@/screens/main/overlays/TopBar'
 import { TuneDrawer } from '@/screens/main/overlays/TuneDrawer'
+import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 const RECORD_BUTTON_HEIGHT = 48
 const HISTORY_BUTTON_SIZE = 54
@@ -56,6 +57,9 @@ interface TelemetryOverlayProps {
   onEnterLegalLimits: () => void
   onEnterHistory: () => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
+  activeNavigationTarget: MapSelection | null
+  currentLocation: { latitude: number; longitude: number } | null
+  onCancelNavigation: () => void
 }
 
 /**
@@ -82,6 +86,9 @@ export function TelemetryOverlay({
   onEnterLegalLimits,
   onEnterHistory,
   onOffscreenIndicatorPress,
+  activeNavigationTarget,
+  currentLocation,
+  onCancelNavigation,
 }: TelemetryOverlayProps) {
   const insets = useSafeAreaInsets()
   const [revealGestureActive, setRevealGestureActive] = useState(false)
@@ -195,6 +202,9 @@ export function TelemetryOverlay({
           onAddBoard={onAddBoard}
           onDisconnect={onStopScan}
           onWeatherPress={onEnterWeather}
+          activeNavigationTarget={activeNavigationTarget}
+          currentLocation={currentLocation}
+          onCancelNavigation={onCancelNavigation}
         />
         <FloatingBar
           bleStatus={bleStatus}

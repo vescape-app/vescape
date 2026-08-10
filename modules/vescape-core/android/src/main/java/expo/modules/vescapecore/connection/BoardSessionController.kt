@@ -389,6 +389,16 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var replayTransport: ReplayTransport? = null
     private val transport: SessionTransport get() = replayTransport ?: gattClient
 
+    /**
+     * True while a replay has parked a GPS monitor that was already running when it started, so the
+     * live monitor can be re-armed when the replay ends. iOS needs no such flag: it stops the GPS
+     * monitor on every session end, replay or not.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
+     * @platform-diff Android keeps GPS monitoring alive across sessions; iOS does not.
+     */
+    private var gpsSuppressedByReplay = false
+
     private val reconnectBlePort = ReconnectBleScanner(
         scanner = { bluetoothAdapter.bluetoothLeScanner },
         scheduler = scheduler,
@@ -939,6 +949,13 @@ private var wearAutoLaunchOnConnect = true
         }
         // A replay owns the session's notion of time for its lifetime.
         sessionClock = replayTransport?.clock ?: SystemSessionClock
+        // Guarding [startLocationUpdates] is not enough: the map, the recording toggle or a prior
+        // live session may already have the GPS monitor running, and those live fixes would fight
+        // the recorded ones. A replay owns position, so park the live monitor for its lifetime.
+        if (replayTransport != null && gpsMonitor.active) {
+            gpsSuppressedByReplay = true
+            stopLocationUpdates()
+        }
         selectedBoardName = start.boardConfig.deviceName
         sessionSequence += 1
         val session = BoardSession(id = sessionSequence)
@@ -1852,6 +1869,11 @@ private var wearAutoLaunchOnConnect = true
         sessionSequence += 1
         boardConfig = null
         boardError = null
+        // The replay released position; hand it back to the live monitor it displaced.
+        if (gpsSuppressedByReplay) {
+            gpsSuppressedByReplay = false
+            startLocationUpdates()
+        }
         // Idle repaint (title + Connect action) rides on the phase transition, like every other
         // phase change — see [refreshNotification].
         transitionBoardPhase(BoardPhase.Idle)

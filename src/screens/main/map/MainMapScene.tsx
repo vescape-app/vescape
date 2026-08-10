@@ -126,8 +126,10 @@ export function MainMapScene({
         rotateEnabled={!rotationLocked}
         compassEnabled={false}
         scaleBarEnabled={false}
-        logoEnabled={false}
-        attributionEnabled={false}
+        logoEnabled={mapStyle.mapDetailsVisible}
+        logoPosition={{ bottom: 8, left: 8 }}
+        attributionEnabled={mapStyle.mapDetailsVisible}
+        attributionPosition={{ bottom: 8, left: 92 }}
         onDidFinishLoadingMap={onDidFinishLoadingMap}
         onPress={onPress}
         onLongPress={onLongPress}

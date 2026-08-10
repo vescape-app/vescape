@@ -137,8 +137,12 @@ The Map Camera Controller's in-flight adjustment from approximate Ride History f
 _Avoid_: Second jump, route correction, recenter after load
 
 **Map Camera Profile**:
-A named camera behavior used by the Map Camera Controller to derive heading, zoom, pitch, padding, and animation policy for a view or navigation mode.
+A named camera behavior used by the Map Camera Controller to derive heading, zoom, pitch, padding, and animation policy for a view or Map Orientation Mode.
 _Avoid_: Tilt setting, view camera hack, mode special case
+
+**Map Orientation Mode**:
+The rider's chosen map camera orientation: north up, GPS heading, compass, or free rotate. It says which way the map faces, not where the rider is going.
+_Avoid_: Navigation mode, map navigation, heading mode
 
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.
@@ -363,7 +367,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Map Camera Profile** for compass follow is applied only after a real compass heading is available; heading zero is not used as a placeholder for compass readiness.
 - A style reload is treated as a **Map Camera Intent** that preserves the current manual camera snapshot or recomputes the active logical target without resetting heading or pitch.
 - A weather view uses a **Map Camera Profile** rather than a direct zoom change; it keeps the current map center while applying a weather overview zoom and low or flat pitch.
-- A **Map Camera Controller** uses **App Settings** such as map style, navigation mode, and perspective mode, but those settings remain durable preferences outside the controller.
+- A **Map Camera Controller** uses **App Settings** such as map style, **Map Orientation Mode**, and perspective mode, but those settings remain durable preferences outside the controller.
 - A **Privacy Zone** limits what **Ride Recording** data is retained without changing **Live State**.
 - A **Ride Recording** becomes part of **Ride History**.
 - A **Moving Window** belongs to one **Ride Recording** and is derived from which **Telemetry Samples** are excluded from speed metrics; a Ride Recording without one is excluded from **Ride History**.
@@ -455,6 +459,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - "tilt setting" is too narrow because pitch depends on zoom, heading, padding, and view intent; resolved term: use **Map Camera Profile**.
 - "filter" may mean dropping samples, smoothing charts, or excluding implausible values from metrics; resolved term: use **Metric Sanitizer** for metric exclusion that preserves original samples.
 - "save area" or "safe area" may mean a privacy boundary around home or work; resolved term: use **Privacy Zone**.
+- "navigation mode" may mean how the map camera is oriented or guidance toward a destination; resolved term: use **Map Orientation Mode** for camera orientation and reserve "navigation" for destination guidance.
 - "smoother" is avoided in the raw-telemetry layer (see **Metric Sanitizer**) but is legitimate for the **Battery SoC Estimate**, a processed derived value that smooths the percentage only — never the raw voltage **Telemetry Sample**.
 - "BMS telemetry" may mean live smart-BMS cell values or a durable battery-health archive; resolved: use **Live BMS Series** for the ephemeral in-memory cell-voltage window (retained by `liveHistoryLimit`, never persisted), distinct from scalar **Telemetry Samples**. No durable BMS/battery-health store exists; if one is ever added it needs its own term and a rest-normalized capture trigger.
 - "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts **Ride Recording** sample persistence only — the **Board Session** stays connected and live at a reduced poll rate.

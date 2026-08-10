@@ -7,6 +7,8 @@ import {
   createDispatchPayload,
   createPromotionDispatchPayload,
   createProductionDispatchPayload,
+  describeSourceRef,
+  type SourceRefPreview,
   dispatchInternalBuild,
   dispatchIosInternalBuild,
   dispatchOpenPromotion,
@@ -100,6 +102,10 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const initialRef =
     initialSourceRef ?? process.argv.find((value) => value.startsWith('--sha='))?.slice(6) ?? 'HEAD'
   const [sourceRef, setSourceRef] = useState(initialRef)
+  // The prefilled ref is a suggestion: the first keystroke replaces it instead of appending to it.
+  const [sourceRefEdited, setSourceRefEdited] = useState(false)
+  const [sourcePreview, setSourcePreview] = useState<SourceRefPreview | null>(null)
+  const [sourceChecking, setSourceChecking] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialPhase)
   const [status, setStatus] = useState('')
   const [releaseState, setReleaseState] = useState<ReleaseState>(initialReleaseState)
@@ -132,6 +138,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     goto('error')
   }
 
+  const gotoBuildSource = () => {
+    setSourceRefEdited(false)
+    goto('build-source')
+  }
+
   const loadDashboard = () => {
     setReleaseState(initialReleaseState())
     setStatus('')
@@ -143,6 +154,23 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     if (initialPhase === 'dashboard') loadDashboard()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (phase !== 'build-source') return
+    let active = true
+    setSourceChecking(true)
+    const timer = setTimeout(() => {
+      void describeSourceRef(sourceRef).then((preview) => {
+        if (!active) return
+        setSourcePreview(preview)
+        setSourceChecking(false)
+      })
+    }, 120)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [phase, sourceRef])
 
   const actions = availableActions(releaseState)
 
@@ -526,7 +554,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     else if (id === 'halt') void prepareProduction('halt')
     else if (id === 'resume') void prepareProduction('resume')
     else if (id === 'status') void prepareProduction('status')
-    else if (id === 'build') goto('build-source')
+    else if (id === 'build') gotoBuildSource()
     else if (id === 'prepare') void prepareVersionMenu()
     else loadDashboard()
   }
@@ -567,13 +595,19 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     if (phase === 'build-source') {
-      if (key.return) void prepare()
-      else if (key.escape) loadDashboard()
-      else if (key.backspace || key.delete) setSourceRef((value) => value.slice(0, -1))
-      else if (input && !key.ctrl && !key.meta) {
+      if (key.return) {
+        if (sourcePreview) void prepare()
+      } else if (key.escape) loadDashboard()
+      else if (key.backspace || key.delete) {
+        setSourceRefEdited(true)
+        setSourceRef((value) => (sourceRefEdited ? value.slice(0, -1) : ''))
+      } else if (input && !key.ctrl && !key.meta) {
         // Buffered stdin can deliver control characters (bare LF does not set key.return)
         const typed = input.replace(/[^\w./-]/g, '')
-        if (typed) setSourceRef((value) => value + typed)
+        if (typed) {
+          setSourceRefEdited(true)
+          setSourceRef((value) => (sourceRefEdited ? value + typed : typed))
+        }
       }
       return
     }
@@ -606,8 +640,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       moveIndex(key, 2)
       if (key.return) {
         if (index === CONFIRM_INDEX && plan) void dispatch(plan)
-        else goto('build-source')
-      } else if (key.escape) goto('build-source')
+        else gotoBuildSource()
+      } else if (key.escape) gotoBuildSource()
       return
     }
     if (phase === 'promote-confirm') {
@@ -704,7 +738,18 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           <Text bold>Build and send to Internal</Text>
           <Text>
             Source commit: <Text color="yellow">{sourceRef || ' '}</Text>
+            {sourceRefEdited ? '' : ' (typing replaces this)'}
           </Text>
+          {sourcePreview ? (
+            <Text color={sourcePreview.releasedBranch ? 'green' : 'yellow'}>
+              {sourcePreview.sha.slice(0, 12)} {sourcePreview.subject}
+              {sourcePreview.releasedBranch ? '' : ' · not on origin/main'}
+            </Text>
+          ) : (
+            <Text color={sourceChecking ? 'gray' : 'red'}>
+              {sourceChecking ? 'Resolving…' : 'Unknown ref · nothing to build'}
+            </Text>
+          )}
           <Hint>Type a git ref or SHA · Enter continues · Esc cancels</Hint>
         </Box>
       )}
