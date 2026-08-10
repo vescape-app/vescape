@@ -182,7 +182,7 @@ export const MainMap = memo(
       accuracyShape,
       approximateGpsPuckActive,
       directionBearingDeg,
-      retainedGpsBearing,
+      retainedGpsBearingSourceTimestamp,
       riderFocusRows,
       mapRiders,
       trackedMapPoints,
@@ -354,7 +354,8 @@ export const MainMap = memo(
 
     useNavigationDiagnosticsSync({
       gpsFix,
-      retainedGpsBearing,
+      courseDeg: directionBearingDeg,
+      courseSourceTimestamp: retainedGpsBearingSourceTimestamp,
       phoneHeadingDegRef,
       phoneHeadingStatus,
       gpsPinBearingDeg,

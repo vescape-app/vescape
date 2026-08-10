@@ -30,11 +30,23 @@ export interface ErrorEvent {
   message: string
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
+ */
 export interface LocationEvent {
   latitude: number
   longitude: number
   speedMps: number | null
+  /** The fix's own bearing, straight off the receiver — noisy at a standstill. */
   bearingDeg: number | null
+  /**
+   * The direction the rider is actually travelling, derived natively per precise fix and retained
+   * briefly across stops. Null on approximate fixes and while no course is trustworthy.
+   */
+  courseDeg: number | null
+  /** The fix `courseDeg` came from; older than `timestamp` while a course is retained. */
+  courseSourceTimestamp: number | null
   accuracyM: number | null
   altitudeM: number | null
   timestamp: number

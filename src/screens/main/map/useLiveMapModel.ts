@@ -3,10 +3,7 @@ import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
-import {
-  getLiveGpsPresentation,
-  getReliableGpsBearingFromFixes,
-} from '@/helpers/liveGpsPresentation'
+import { getLiveGpsPresentation } from '@/helpers/liveGpsPresentation'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -50,27 +47,14 @@ export function useLiveMapModel({
 }) {
   const [initialApproximateFix, setInitialApproximateFix] = useState<LocationEvent | null>(null)
   const gpsFix = liveLocations.at(-1) ?? null
-  const previousGpsFix = liveLocations.at(-2) ?? null
-  const previousReliableBearing = useMemo(
-    () => getReliableGpsBearingFromFixes(liveLocations.slice(0, -1)),
-    [liveLocations],
-  )
   const gpsPresentation = useMemo(
     () =>
       getLiveGpsPresentation({
         preciseFix: gpsFix,
-        previousPreciseFix: previousGpsFix,
         latestApproximateFix: latestApproximateLocation,
         initialApproximateFix,
-        previousReliableBearing,
       }),
-    [
-      gpsFix,
-      initialApproximateFix,
-      latestApproximateLocation,
-      previousGpsFix,
-      previousReliableBearing,
-    ],
+    [gpsFix, initialApproximateFix, latestApproximateLocation],
   )
   const { cameraFix, accuracyFix, accuracyRadiusM, directionBearingDeg } = gpsPresentation
   const approximateGpsPuckActive =
@@ -170,7 +154,7 @@ export function useLiveMapModel({
     accuracyShape,
     approximateGpsPuckActive,
     directionBearingDeg,
-    retainedGpsBearing: gpsPresentation.nextReliableBearing,
+    retainedGpsBearingSourceTimestamp: gpsPresentation.directionBearingSourceTimestamp,
     riderFocusRows,
     mapRiders,
     trackedMapPoints,

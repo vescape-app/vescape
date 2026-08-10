@@ -154,6 +154,7 @@ internal final class BoardSessionController: VescGattListener {
   private let liveTelemetryRefreshMinMs: Int64 = 1000
   private var latestLocation: TelemetryLocationCapture?
   private var latestPreciseLocation: TelemetryLocationCapture?
+  private let courseDeriver = GpsCourseDeriver()
   private var recentLocations: [[String: Any?]] = []
   private var gpsError: String?
 
@@ -696,6 +697,7 @@ internal final class BoardSessionController: VescGattListener {
     lastTelemetryAt = nil
     latestLocation = nil
     latestPreciseLocation = nil
+    courseDeriver.reset()
     recentLocations.removeAll(keepingCapacity: true)
     endLiveActivity()
     settleConnect(success: false, code: error == nil ? nil : "DISCONNECTED", message: error)
@@ -1524,7 +1526,21 @@ internal final class BoardSessionController: VescGattListener {
     recordingCoordinator.currentRecorder()?.recordPhoneHeading(headingDeg)
   }
 
-  private func onLocationUpdated(_ location: TelemetryLocationCapture) {
+  private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
+    var location = incoming
+    // Approximate fixes never feed the course: they are metres of noise apart and would spin a
+    // derived bearing, and they are not what the map's GPS heading mode follows either.
+    if location.precise {
+      let course = courseDeriver.derive(
+        latitude: location.latitude,
+        longitude: location.longitude,
+        speedMps: location.speedMps,
+        bearingDeg: location.bearingDeg,
+        timestamp: location.timestamp
+      )
+      location.courseDeg = course?.bearingDeg
+      location.courseSourceTimestamp = course?.sourceTimestamp
+    }
     recordingCoordinator.recordLocation(location)
     latestLocation = location
     if location.precise {

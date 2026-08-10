@@ -18,6 +18,7 @@ internal class LocationTracker(
     private val telemetryPipeline: TelemetryPipeline,
 ) {
     private val recentLocations = ArrayDeque<Map<String, Any?>>()
+    private val courseDeriver = GpsCourseDeriver()
     var latestLocation: LocationSnapshot? = null
         private set
     var latestPreciseLocation: LocationSnapshot? = null
@@ -37,15 +38,33 @@ internal class LocationTracker(
 
     fun onLocationUpdated(location: Location) {
         val accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null
+        val speedMps = if (location.hasSpeed()) location.speed.toDouble() else null
+        val bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null
+        val precise = isPreciseGpsFix(location.provider, accuracyM)
+        // Approximate fixes never feed the course: they are metres of noise apart and would spin a
+        // derived bearing, and they are not what the map's GPS heading mode follows either.
+        val course = if (precise) {
+            courseDeriver.derive(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                speedMps = speedMps,
+                bearingDeg = bearingDeg,
+                timestamp = location.time,
+            )
+        } else {
+            null
+        }
         val snapshot = LocationSnapshot(
             latitude = location.latitude,
             longitude = location.longitude,
-            speedMps = if (location.hasSpeed()) location.speed.toDouble() else null,
-            bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null,
+            speedMps = speedMps,
+            bearingDeg = bearingDeg,
             accuracyM = accuracyM,
             altitudeM = if (location.hasAltitude()) location.altitude else null,
             timestamp = location.time,
-            precise = isPreciseGpsFix(location.provider, accuracyM),
+            precise = precise,
+            courseDeg = course?.bearingDeg,
+            courseSourceTimestamp = course?.sourceTimestamp,
         )
         latestLocation = snapshot
         if (!snapshot.precise) {
