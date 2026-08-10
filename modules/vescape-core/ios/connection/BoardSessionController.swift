@@ -594,7 +594,16 @@ internal final class BoardSessionController: VescGattListener {
     // failing store site (mirrors Android clearing `warningFailuresReported`). Keeps warning-path
     // failures non-fatal and reported without per-frame spam.
     BoardWarningFailureReporter.shared.beginSession()
-    if replayTransport == nil { gpsError = gpsMonitor.start() }
+    // Guarding `startLocationUpdates` is not enough: the map, the recording toggle or a prior live
+    // session may already have the GPS monitor running, and those live fixes would fight the
+    // recorded ones. A replay owns position, so park the live monitor for its lifetime; every
+    // session end stops the monitor anyway, so there is nothing to unwind here.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
+    if replayTransport == nil {
+      gpsError = gpsMonitor.start()
+    } else if gpsMonitor.active {
+      gpsMonitor.stop()
+    }
     // Fresh rule set for this session's alert engine — only the connected Board's enabled rules
     // (mirrors Android loadAlertRules on connect).
     let board = appData.getBoard(config.appBoardId)
