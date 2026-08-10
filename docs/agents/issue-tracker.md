@@ -61,33 +61,33 @@ Treat these as navigational hints, not a complete file list or ownership boundar
 
 Use one or more app-area labels for filtering:
 
-| Area label         | Title prefix    | Use for                                                                                       |
-| ------------------ | --------------- | --------------------------------------------------------------------------------------------- |
-| `area:history`     | `[History]`     | ride history, sessions, buckets, graphs                                                       |
-| `area:sanitizers`  | `[Sanitizers]`  | metric sanitizers and exclusions                                                              |
-| `area:map`         | `[Map]`         | maps, routes, GPS display                                                                     |
-| `area:weather`     | `[Weather]`     | weather data and UI                                                                           |
-| `area:core`        | `[Core]`        | app shell, storage, lifecycle, infra                                                          |
-| `area:server`      | `[Server]`      | Vescape backend APIs, relay behavior, server policy, and deployment-facing contracts          |
-| `area:board`       | `[Board]`       | board profiles, board table/settings                                                          |
-| `area:telemetry`   | `[Telemetry]`   | live telemetry ingest/display                                                                 |
-| `area:tunes`       | `[Tunes]`       | VESC tune read/write flows                                                                    |
-| `area:alerts`      | `[Alerts]`      | alert rules, alert feedback, audio/TTS                                                        |
-| `area:battery`     | `[Battery]`     | battery config, SoC estimation, voltage compensation                                          |
-| `area:tech`        | `[Tech]`        | internal refactor, tech upgrades, no user-visible behavior change                             |
-| `area:design`      | `[Design]`      | design system, theme, color tokens, and visual conventions                                    |
-| `area:ios`         | `[iOS]`         | iOS platform port and iOS-specific native code                                                |
-| `area:watch`       | `[Watch]`       | Watch Mirror — live telemetry on the wrist and alert playback, Wear OS / watchOS companions   |
-| `area:group-ride`  | `[GroupRide]`   | Group Rides — live shared rides, Rider presence, nearby discovery, relay server, social panel |
-| `area:legal-mode`  | `[Legal Mode]`  | Legal Mode UI, jurisdiction speed defaults, speed-warning alerts, and legal board constraints |
-| `area:warnings`    | `[Warnings]`    | Board Warnings — native fault-code detection, warning registry, rider-facing warning surface  |
-| `area:diagnostics` | `[Diagnostics]` | Debug Recordings, replay tooling, Diagnostic Events, dev-mode debugging surfaces              |
-| `area:auth`        | `[Auth]`        | Clerk sessions, native Device Tokens, credential lifecycle, and endpoint caller policy        |
-| `area:release`     | `[Release]`     | release automation, Play tracks, versioning, release notes, and GitHub Releases               |
-| `area:assets`      | `[Assets]`      | hosted media, image normalization, upload state, and remote Asset references                  |
-| `area:e2e`         | `[E2E]`         | Maestro E2E flows, screenshot capture tooling, device fixtures and presets                    |
-| `area:navigation`  | `[Navigation]`  | Navigation — path to a Direction Point, Navigation Profile, and the rider-facing route line   |
-| `area:pin-lock`    | `[PIN Lock]`    | VESC PIN write-lock: capability probe, PIN on Board Link, unlock-wrapped firmware commands    |
+| Area label         | Title prefix    | Use for                                                                                                                     |
+| ------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `area:history`     | `[History]`     | ride history, sessions, buckets, graphs                                                                                     |
+| `area:sanitizers`  | `[Sanitizers]`  | metric sanitizers and exclusions                                                                                            |
+| `area:map`         | `[Map]`         | maps, routes, GPS display                                                                                                   |
+| `area:weather`     | `[Weather]`     | weather data and UI                                                                                                         |
+| `area:core`        | `[Core]`        | app shell, storage, lifecycle, infra                                                                                        |
+| `area:server`      | `[Server]`      | Vescape backend APIs, relay behavior, server policy, and deployment-facing contracts                                        |
+| `area:board`       | `[Board]`       | board profiles, board table/settings                                                                                        |
+| `area:telemetry`   | `[Telemetry]`   | live telemetry ingest/display                                                                                               |
+| `area:tunes`       | `[Tunes]`       | VESC tune read/write flows                                                                                                  |
+| `area:alerts`      | `[Alerts]`      | alert rules, alert feedback, audio/TTS                                                                                      |
+| `area:battery`     | `[Battery]`     | battery config, SoC estimation, voltage compensation                                                                        |
+| `area:tech`        | `[Tech]`        | internal refactor, tech upgrades, no user-visible behavior change                                                           |
+| `area:design`      | `[Design]`      | design system, theme, color tokens, and visual conventions                                                                  |
+| `area:ios`         | `[iOS]`         | iOS-only work: the iOS platform port and iOS-specific native code. Not for cross-platform work that merely also touches iOS |
+| `area:watch`       | `[Watch]`       | Watch Mirror — live telemetry on the wrist and alert playback, Wear OS / watchOS companions                                 |
+| `area:group-ride`  | `[GroupRide]`   | Group Rides — live shared rides, Rider presence, nearby discovery, relay server, social panel                               |
+| `area:legal-mode`  | `[Legal Mode]`  | Legal Mode UI, jurisdiction speed defaults, speed-warning alerts, and legal board constraints                               |
+| `area:warnings`    | `[Warnings]`    | Board Warnings — native fault-code detection, warning registry, rider-facing warning surface                                |
+| `area:diagnostics` | `[Diagnostics]` | Debug Recordings, replay tooling, Diagnostic Events, dev-mode debugging surfaces                                            |
+| `area:auth`        | `[Auth]`        | Clerk sessions, native Device Tokens, credential lifecycle, and endpoint caller policy                                      |
+| `area:release`     | `[Release]`     | release automation, Play tracks, versioning, release notes, and GitHub Releases                                             |
+| `area:assets`      | `[Assets]`      | hosted media, image normalization, upload state, and remote Asset references                                                |
+| `area:e2e`         | `[E2E]`         | Maestro E2E flows, screenshot capture tooling, device fixtures and presets                                                  |
+| `area:navigation`  | `[Navigation]`  | Navigation — path to a Direction Point, Navigation Profile, and the rider-facing route line                                 |
+| `area:pin-lock`    | `[PIN Lock]`    | VESC PIN write-lock: capability probe, PIN on Board Link, unlock-wrapped firmware commands                                  |
 
 When a PRD or issue-planning skill creates or starts using a new app-area label, update this table in the same turn. Add the label, title prefix, and a short "Use for" description so future PRDs and implementation issues can reuse the prefix consistently.
 
