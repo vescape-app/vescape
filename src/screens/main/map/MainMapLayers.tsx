@@ -19,6 +19,7 @@ import type { MapPoint, MapPointCategory } from 'vescape-core'
 import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
+import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
@@ -704,6 +705,7 @@ export function MainMapLayers({
       ) : null}
       <RainViewerOverlay visible={weatherActive} />
       {legalLimitsActive ? <LegalLimitsMapLayer onSelectCountry={onSelectLegalCountry} /> : null}
+      <PrivacyZonesMapLayer />
       {historyActive ? (
         <HistoryMapLayers
           rideRouteShape={rideRouteShape}
