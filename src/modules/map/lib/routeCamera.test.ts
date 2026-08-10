@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import { getHistoryRouteCamera, HISTORY_CAMERA } from '@/modules/map/lib/historyCamera'
+import { getRouteFitCamera, ROUTE_CAMERA } from '@/modules/map/lib/routeCamera'
 
 describe('history camera', () => {
   test('uses fixed history route padding', () => {
-    const camera = getHistoryRouteCamera({
+    const camera = getRouteFitCamera({
       route: [
         [19, 50],
         [19.1, 50.1],
@@ -14,15 +14,15 @@ describe('history camera', () => {
     })
 
     expect(camera?.padding).toEqual({
-      paddingTop: HISTORY_CAMERA.routePaddingPx + 90,
-      paddingRight: HISTORY_CAMERA.sidePaddingPx,
-      paddingBottom: HISTORY_CAMERA.routePaddingPx + 180,
-      paddingLeft: HISTORY_CAMERA.sidePaddingPx,
+      paddingTop: ROUTE_CAMERA.routePaddingPx + 90,
+      paddingRight: ROUTE_CAMERA.sidePaddingPx,
+      paddingBottom: ROUTE_CAMERA.routePaddingPx + 180,
+      paddingLeft: ROUTE_CAMERA.sidePaddingPx,
     })
   })
 
   test('keeps route padding stable when bottom interface height changes', () => {
-    const base = getHistoryRouteCamera({
+    const base = getRouteFitCamera({
       route: [
         [19, 50],
         [19.1, 50.1],
@@ -30,7 +30,7 @@ describe('history camera', () => {
       viewport: { width: 390, height: 844 },
       maxZoom: 19,
     })
-    const withInset = getHistoryRouteCamera({
+    const withInset = getRouteFitCamera({
       route: [
         [19, 50],
         [19.1, 50.1],
@@ -43,7 +43,7 @@ describe('history camera', () => {
   })
 
   test('centers route independently from navigation mode camera offsets', () => {
-    const camera = getHistoryRouteCamera({
+    const camera = getRouteFitCamera({
       route: [
         [18, 49],
         [20, 51],
@@ -61,12 +61,12 @@ describe('history camera', () => {
       [18, 49],
       [20, 51],
     ]
-    const large = getHistoryRouteCamera({
+    const large = getRouteFitCamera({
       route,
       viewport: { width: 1000, height: 1000 },
       maxZoom: 19,
     })
-    const small = getHistoryRouteCamera({
+    const small = getRouteFitCamera({
       route,
       viewport: { width: 390, height: 844 },
       maxZoom: 19,

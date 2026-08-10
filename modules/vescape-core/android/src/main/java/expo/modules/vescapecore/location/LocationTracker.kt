@@ -24,6 +24,17 @@ internal class LocationTracker(
         private set
     private var lastGpsPersistedAt = 0L
 
+    /**
+     * Where the rider is, for callers that need a position rather than a *good* position —
+     * Navigation being the one that matters. Freshness beats accuracy here: a weak indoor fix from
+     * a second ago is the right place to start a path from, while the last precise fix can be
+     * yesterday's and kilometres away. Precise only stands in when nothing newer exists at all.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `riderPosition`
+     */
+    val riderPosition: LocationSnapshot?
+        get() = latestLocation ?: latestPreciseLocation
+
     fun onLocationUpdated(location: Location) {
         val accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null
         val snapshot = LocationSnapshot(

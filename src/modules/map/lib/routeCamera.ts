@@ -1,32 +1,37 @@
+/**
+ * Framing a line of coordinates so the whole of it is on screen: a recorded ride in History, a
+ * Navigation path on the map. Both want the same thing — bounds in, centre and zoom out — so the
+ * geometry lives here once rather than per feature.
+ */
 import { getBounds } from '@/helpers/mapGeometry'
 
 const MERCATOR_TILE_SIZE = 512
 const MIN_ZOOM = 0
 const MAX_LATITUDE = 85.05112878
 
-export const HISTORY_CAMERA = {
+export const ROUTE_CAMERA = {
   routePaddingPx: 120,
   sidePaddingPx: 72,
   fallbackZoom: 11.8,
 } as const
 
-export interface HistoryCameraViewport {
+export interface RouteCameraViewport {
   width: number
   height: number
   bottomInset?: number
 }
 
-interface HistoryCameraPadding {
+interface RouteCameraPadding {
   paddingTop: number
   paddingRight: number
   paddingBottom: number
   paddingLeft: number
 }
 
-export interface HistoryCameraSnapshot {
+export interface RouteCameraSnapshot {
   centerCoordinate: [number, number]
   zoomLevel: number
-  padding: HistoryCameraPadding
+  padding: RouteCameraPadding
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -43,24 +48,24 @@ function latitudeFromMercatorY(y: number) {
   return (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI
 }
 
-function historyPadding(viewport: HistoryCameraViewport): HistoryCameraPadding {
+function routePadding(viewport: RouteCameraViewport): RouteCameraPadding {
   return {
-    paddingTop: HISTORY_CAMERA.routePaddingPx + 90,
-    paddingRight: HISTORY_CAMERA.sidePaddingPx,
-    paddingBottom: HISTORY_CAMERA.routePaddingPx + 180,
-    paddingLeft: HISTORY_CAMERA.sidePaddingPx,
+    paddingTop: ROUTE_CAMERA.routePaddingPx + 90,
+    paddingRight: ROUTE_CAMERA.sidePaddingPx,
+    paddingBottom: ROUTE_CAMERA.routePaddingPx + 180,
+    paddingLeft: ROUTE_CAMERA.sidePaddingPx,
   }
 }
 
 function zoomForRouteBounds(
   bounds: ReturnType<typeof getBounds>,
-  viewport: HistoryCameraViewport,
-  padding: HistoryCameraPadding,
+  viewport: RouteCameraViewport,
+  padding: RouteCameraPadding,
   maxZoom: number,
 ) {
   const innerWidth = viewport.width - padding.paddingLeft - padding.paddingRight
   const innerHeight = viewport.height - padding.paddingTop - padding.paddingBottom
-  if (innerWidth <= 0 || innerHeight <= 0) return HISTORY_CAMERA.fallbackZoom
+  if (innerWidth <= 0 || innerHeight <= 0) return ROUTE_CAMERA.fallbackZoom
 
   const longitudeDelta = Math.max(Math.abs(bounds.ne[0] - bounds.sw[0]), 0.000001)
   const yDelta = Math.max(Math.abs(mercatorY(bounds.ne[1]) - mercatorY(bounds.sw[1])), 0.000001)
@@ -69,21 +74,21 @@ function zoomForRouteBounds(
   return clamp(Math.min(zoomX, zoomY), MIN_ZOOM, maxZoom)
 }
 
-export function getHistoryRouteCamera({
+export function getRouteFitCamera({
   route,
   viewport,
   maxZoom,
 }: {
   route: [number, number][]
-  viewport: HistoryCameraViewport
+  viewport: RouteCameraViewport
   maxZoom: number
-}): HistoryCameraSnapshot | null {
+}): RouteCameraSnapshot | null {
   if (route.length === 0) return null
-  const padding = historyPadding(viewport)
+  const padding = routePadding(viewport)
   if (route.length === 1) {
     return {
       centerCoordinate: route[0],
-      zoomLevel: clamp(HISTORY_CAMERA.fallbackZoom, MIN_ZOOM, maxZoom),
+      zoomLevel: clamp(ROUTE_CAMERA.fallbackZoom, MIN_ZOOM, maxZoom),
       padding,
     }
   }

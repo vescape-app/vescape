@@ -300,6 +300,7 @@ export function useCameraControls({
     gpsCamera,
     mapOrientationMode,
     perspectiveEnabled,
+    viewport: historyViewport,
     dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,
     setFollowGps,
@@ -440,6 +441,7 @@ export function useCameraControls({
     stopCameraAnimation,
     setFollowZoomLevel,
     recenterLive,
+    fitRoute: intentCommands.fitRoute,
     getLiveFollowCamera,
     getHistoryPreviewCamera,
   }

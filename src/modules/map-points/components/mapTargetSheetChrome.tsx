@@ -182,7 +182,21 @@ export function MapTargetActionRow({ children }: { children: ReactNode }) {
   return <View style={styles.actionRow}>{children}</View>
 }
 
-export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetAction }) {
+/**
+ * A sheet action button. `compact` is the same button at side-action weight, giving the row's width
+ * to the action the rider is most likely to want; `iconOnly` drops to the icon alone, for actions
+ * whose icon is unambiguous and whose label would otherwise crowd the one that matters. The label
+ * still exists — it stays the accessibility name.
+ */
+export function MapTargetPrimaryAction({
+  action,
+  compact = false,
+  iconOnly = false,
+}: {
+  action: MapTargetSheetAction
+  compact?: boolean
+  iconOnly?: boolean
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -190,21 +204,30 @@ export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetActio
       onPress={action.onPress}
       style={({ pressed }) => [
         styles.actionButton,
+        compact ? styles.actionButtonCompact : styles.actionButtonLead,
+        iconOnly && styles.actionButtonIconOnly,
         { backgroundColor: action.bgColor, borderColor: action.borderColor },
         pressed && mapSheetStyles.mapTargetNavigatePressed,
       ]}
     >
-      <action.Icon size={18} color={action.textColor} weight="bold" />
-      <Text style={[mapSheetStyles.mapTargetNavigateText, { color: action.textColor }]}>
-        {action.label}
-      </Text>
+      <action.Icon size={compact ? 18 : 18} color={action.textColor} weight="bold" />
+      {iconOnly ? null : (
+        <Text
+          style={[
+            mapSheetStyles.mapTargetNavigateText,
+            compact && styles.actionLabelCompact,
+            { color: action.textColor },
+          ]}
+        >
+          {action.label}
+        </Text>
+      )}
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
   actionButton: {
-    flex: 1,
     minWidth: 0,
     height: 46,
     borderRadius: 23,
@@ -215,6 +238,23 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.green.bg,
     borderWidth: 1,
     borderColor: theme.palette.green.border,
+  },
+  actionButtonLead: {
+    flex: 2,
+  },
+  actionButtonCompact: {
+    flex: 1,
+    height: 42,
+    gap: 6,
+  },
+  /** A square button: it holds an icon, so it must not stretch with the row it sits in. */
+  actionButtonIconOnly: {
+    flex: 0,
+    width: 46,
+    gap: 0,
+  },
+  actionLabelCompact: {
+    fontSize: 12,
   },
   actionRow: {
     flexDirection: 'row',

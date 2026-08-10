@@ -1435,6 +1435,88 @@ export interface AppStatusEvent {
 }
 
 /**
+ * The rideable path from the rider to their Direction Point, computed natively. JS renders it and
+ * nothing else: there is no routing logic on this side, and a Navigation never changes on its own.
+ *
+ * `coordinates` are GeoJSON `[longitude, latitude]` pairs — the opposite order from
+ * `setDirectionPoint(latitude, longitude)` — so they feed a `ShapeSource` unmodified.
+ *
+ * It is durable: native stores it and restores it on cold start, so a `computedAtMs` days old is
+ * expected and is not a reason to ask for a new one. Nothing on this side refetches.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `Navigation`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `Navigation`
+ */
+export interface Navigation {
+  target: { latitude: number; longitude: number }
+  /**
+   * Navigation Profile the path was produced under, and the one the switcher shows as current. It
+   * never changes for this Navigation — a different profile produces a new one in its place.
+   */
+  profile: NavigationProfile
+  computedAtMs: number
+  status: NavigationStatus
+  /**
+   * How far the path runs and how long the routing service thinks it takes. Both are `0` unless
+   * `status` is `ready`, and both can be `0` on a path restored from before they were stored.
+   *
+   * The duration is the Navigation Profile's own estimate — a walking path is timed at walking
+   * pace — so it says what shape the ride ahead is, not when an EUC gets there.
+   */
+  distanceMeters: number
+  durationSeconds: number
+  /** Empty unless `status` is `ready`. Never infer failure from this — read `status`. */
+  coordinates: [longitude: number, latitude: number][]
+}
+
+/**
+ * How a Navigation ended up. A Navigation exists for as long as its Direction Point does, so a
+ * request that produced no path is still a Navigation — one that says why instead of drawing a line.
+ *
+ * - `ready` — a usable path was computed.
+ * - `fetchFailed` — could not ask: no signal, timeout, API error. Worth retrying with signal.
+ * - `noPathFound` — asked and answered, but nothing rideable leads there. Retrying from the same
+ *   spot will say the same thing.
+ *
+ * Nothing retries on its own. `recomputeNavigation` is the only way a failed one is recomputed.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationStatus`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationStatus`
+ */
+export type NavigationStatus = 'ready' | 'fetchFailed' | 'noPathFound'
+
+/**
+ * The kind of ways a Navigation may follow. The rider picks it inline on the path view — there is
+ * no settings-screen entry — and the choice sticks as the default for the next Navigation.
+ *
+ * - `walking` — footpaths and forest tracks, which is where Direction Points usually are. The
+ *   default when the rider has never chosen.
+ * - `cycling` — cycleways and roads; refuses footpaths.
+ * - `driving` — roads only.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationProfile`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationProfile`
+ */
+export type NavigationProfile = 'walking' | 'cycling' | 'driving'
+
+/**
+ * Native Navigation changed. Emitted whenever it is computed or cleared, and replayed on subscribe,
+ * so a late listener is immediately consistent. `null` means no Navigation — no Direction Point is
+ * set, or the path could not be computed.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onNavigation`
+ */
+export interface NavigationEvent {
+  navigation: Navigation | null
+  /**
+   * Whether native is computing a path right now. The one part of Navigation state that is not
+   * durable, and the only reason a rider's tap is allowed to look like it did something before a
+   * result exists: a recompute that fails publishes no new Navigation at all.
+   */
+  computing: boolean
+}
+
+/**
  * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt
  */
@@ -1493,6 +1575,8 @@ type VescapeCoreEvents = {
   onBoardWarnings: (event: BoardWarningsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
+  /** Native Navigation, on every change (including clears) and on subscribe. */
+  onNavigation: (event: NavigationEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -1661,6 +1745,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteMapPoint(id: string): Promise<void>
   setMapPointReaction(id: string, reaction: MapPointReaction | null): Promise<void>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
+  recomputeNavigation(): Promise<void>
+  setNavigationProfile(profile: NavigationProfile): Promise<void>
   getSettings(): Promise<AppSettings>
   refreshLegalPolicy(): Promise<void>
   setLegalMode(boardId: string, enabled: boolean): Promise<void>
@@ -2471,6 +2557,38 @@ export async function setDirectionPoint(
   return native.setDirectionPoint(latitude, longitude)
 }
 
+/**
+ * Asks native to compute the Navigation again, from the rider's current position to the Direction
+ * Point they already have. A no-op when no Direction Point is set.
+ *
+ * The rider's own action, and the only way a Navigation is ever replaced: nothing in the app may
+ * call this automatically, on a timer, on reconnect or on a new fix. A path that appears mid-ride
+ * without being asked for is exactly what Navigation is designed not to do.
+ *
+ * A request that finds no path leaves a drawn one in place — asking for a better path never costs
+ * the rider the one they had.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `recomputeNavigation`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
+ */
+export async function recomputeNavigation(): Promise<void> {
+  return native.recomputeNavigation()
+}
+
+/**
+ * Remembers `profile` as the rider's Navigation Profile and recomputes the path under it. The
+ * choice sticks natively and becomes the default for the next Navigation, so nothing on this side
+ * has to carry it between rides.
+ *
+ * Like `recomputeNavigation`, only ever called from a rider's tap.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setNavigationProfile`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
+ */
+export async function setNavigationProfile(profile: NavigationProfile): Promise<void> {
+  return native.setNavigationProfile(profile)
+}
+
 export async function getSettings(): Promise<AppSettings> {
   if (E2E_ENABLED) {
     return e2eFake.getSettings()
@@ -2559,6 +2677,10 @@ export function addBoardWarningsListener(
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {
   return emitter.addListener('onAppStatus', cb)
+}
+
+export function addNavigationListener(cb: (event: NavigationEvent) => void): EventSubscription {
+  return emitter.addListener('onNavigation', cb)
 }
 
 export function addLiveStateListener(cb: (event: LiveStateEvent) => void): EventSubscription {

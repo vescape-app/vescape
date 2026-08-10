@@ -6,6 +6,7 @@ import { LEGAL_LIMIT_MAP_CAMERA } from '@/modules/legal/lib/legalLimits'
 import type { reduceMapCameraIntent } from '@/modules/map/lib/cameraController'
 import { toEngineTarget } from '@/modules/map/lib/cameraEngine/cameraTarget'
 import { getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
+import { getRouteFitCamera, type RouteCameraViewport } from '@/modules/map/lib/routeCamera'
 import { clamp, MIN_ZOOM, type CameraSnapshot } from '@/modules/map/lib/cameraMotion'
 import type { CameraControlRefs } from '@/screens/main/map/cameraControlTypes'
 
@@ -14,6 +15,8 @@ interface UseCameraIntentCommandsParams {
   gpsCamera: Pick<CameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
   mapOrientationMode: MapOrientationMode
   perspectiveEnabled: boolean
+  /** Screen the route has to fit inside. */
+  viewport: RouteCameraViewport
   dispatchCameraIntent: (
     intent: Parameters<typeof reduceMapCameraIntent>[1],
   ) => ReturnType<typeof reduceMapCameraIntent>['effect']
@@ -28,6 +31,7 @@ export function useCameraIntentCommands({
   gpsCamera,
   mapOrientationMode,
   perspectiveEnabled,
+  viewport,
   dispatchCameraIntent,
   getFollowHeadingDeg,
   setFollowGps,
@@ -151,6 +155,36 @@ export function useCameraIntentCommands({
     ],
   )
 
+  /**
+   * Pull the camera back until a whole path fits. Used when a Navigation is drawn and the rider is
+   * deciding whether to ride it: judging a route needs both ends on screen, not a close follow view.
+   */
+  const fitRoute = useCallback(
+    (route: [number, number][]) => {
+      const camera = getRouteFitCamera({ route, viewport, maxZoom: MAP_DEFAULTS.maxZoom })
+      if (!camera) return
+      setFollowGps(false)
+      const effect = dispatchCameraIntent({
+        type: 'FitRoute',
+        camera: {
+          ...camera,
+          heading: 0,
+          pitch: getPitchForZoom(camera.zoomLevel, perspectiveEnabled),
+        },
+      })
+      applyCamera(effect?.camera)
+      onHeadingChange(0)
+    },
+    [
+      applyCamera,
+      dispatchCameraIntent,
+      onHeadingChange,
+      perspectiveEnabled,
+      setFollowGps,
+      viewport,
+    ],
+  )
+
   const focusWeather = useCallback(() => {
     const effect = dispatchCameraIntent({
       type: 'EnterWeatherView',
@@ -181,6 +215,7 @@ export function useCameraIntentCommands({
     setPadding,
     zoomBy,
     focusCoordinate,
+    fitRoute,
     centerCoordinatePreservingCamera,
     focusWeather,
     focusLegalLimits,

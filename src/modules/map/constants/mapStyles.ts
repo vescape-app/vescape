@@ -21,6 +21,7 @@ export const MAP_DEFAULTS = {
   markerInactiveColor: theme.palette.slate.light,
   trailColor: theme.palette.violet.color,
   trailWidth: 3,
+  navigationWidth: 5,
   accuracyFillColor: theme.alpha(theme.palette.violet.color, 0.12),
   trailGradientStart: theme.alpha(theme.palette.violet.color, 0),
   trailGradientEnd: theme.alpha(theme.palette.violet.color, 0.85),

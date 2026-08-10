@@ -18,7 +18,7 @@ import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { type MapSearchResult } from '@/modules/map/lib/search'
-import type { DirectionPoint } from '@/modules/map/store/mapStore'
+import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
 import { routes } from '@/navigation/routes'
@@ -477,6 +477,16 @@ export function MapModeOverlay({
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
+  // Native owns whether a path exists; this only decides what the sheet says about it. Read here
+  // rather than drilled from the screen, because the sheet is its only consumer.
+  const navigationStatus = useMapStore((s) => s.navigation?.status ?? null)
+  const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
+  const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
+  const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
+  const navigationComputing = useMapStore((s) => s.navigationComputing)
+  const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
+  const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
+
   const navigationTarget =
     activeNavigationTarget ??
     (directionPoint
@@ -596,6 +606,20 @@ export function MapModeOverlay({
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
             onCancelNavigation={onCancelNavigation}
+            onConfirmNavigation={onExit}
+            navigationStatus={navigationStatus}
+            navigationPath={
+              navigationStatus === 'ready'
+                ? {
+                    distanceMeters: navigationDistanceMeters,
+                    durationSeconds: navigationDurationSeconds,
+                  }
+                : null
+            }
+            navigationComputing={navigationComputing}
+            navigationProfile={navigationProfile}
+            onRecomputeNavigation={() => void recomputeNavigation()}
+            onSelectNavigationProfile={(profile) => void setNavigationProfile(profile)}
             onDismissSelected={() => {
               setEditingMapPointId(null)
               setAddMenuOpen(false)

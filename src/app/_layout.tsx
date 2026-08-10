@@ -28,6 +28,7 @@ import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
+import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { theme } from '@/constants/theme'
@@ -127,12 +128,14 @@ function RootLayout() {
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
+    const stopNavigationSync = startNavigationSync()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
       stopBoardWarningsSync()
       stopAlertsBoardSync()
       stopAppStatusSync()
+      stopNavigationSync()
     }
   }, [fixturesReady])
 

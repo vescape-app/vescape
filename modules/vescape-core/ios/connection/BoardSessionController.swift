@@ -393,6 +393,16 @@ internal final class BoardSessionController: VescGattListener {
   func gpsActive() -> Bool { gpsMonitor.active }
   func gpsLatestLocation() -> [String: Any?]? { latestLocation?.map }
   func gpsLatestPreciseLocation() -> [String: Any?]? { latestPreciseLocation?.map }
+  /// Where the rider is, for callers that need a position rather than a *good* position —
+  /// Navigation being the one that matters. Freshness beats accuracy here: a weak indoor fix from a
+  /// second ago is the right place to start a path from, while the last precise fix can be
+  /// yesterday's and kilometres away. Precise only stands in when nothing newer exists at all.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `riderPosition`
+  func riderPosition() -> (latitude: Double, longitude: Double)? {
+    guard let location = latestLocation ?? latestPreciseLocation else { return nil }
+    return (location.latitude, location.longitude)
+  }
   func gpsRecentLocations() -> [[String: Any?]] { recentLocations }
   /// Recent raw-tick window for JS live-chart rehydrate. Backed by the live-series buffer.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `recentSnapshot`

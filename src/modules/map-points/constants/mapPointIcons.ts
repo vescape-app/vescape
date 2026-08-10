@@ -14,6 +14,8 @@ import {
 } from '@/modules/map-points/components/MapPointSvgIcons'
 
 const MAP_POINT_KIND_ICONS: Record<MapPinKind, Icon> = {
+  // The pin, the same one the target sheet's header shows: the rider looks between the map and the
+  // sheet while deciding on a path, and two icons for one Direction Point read as two things.
   direction: MapPinIcon,
   drop: DropMapPointIcon,
   bonk: BonkMapPointIcon,

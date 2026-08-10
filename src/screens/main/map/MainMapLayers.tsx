@@ -10,12 +10,13 @@ import {
   ShapeSource,
   SymbolLayer,
 } from '@rnmapbox/maps'
+import { WarningIcon } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
-import type { DirectionPoint } from '@/modules/map/store/mapStore'
+import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { MapPin } from '@/modules/map/components/MapPin'
@@ -78,6 +79,23 @@ const GPS_HEADING_ICON_ID = 'center-gps-heading'
 const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 const HISTORY_ROUTE_HIGHLIGHT_INTERVAL_MS = 50
 const HISTORY_ROUTE_HIGHLIGHT_DELAY_MS = 500
+
+/** The dark halo the dots sit on, so a light path stays readable over a satellite tile. */
+const NAVIGATION_CASING_WIDTH = MAP_DEFAULTS.navigationWidth + 4
+
+/** Distance between two dot centres, in screen pixels. Fixed, so both layers dot in step. */
+const NAVIGATION_DOT_SPACING_PX = 11
+
+/**
+ * A dotted line: a zero-length dash under a round cap draws a circle, and the gap does the spacing.
+ *
+ * Mapbox measures a dash pattern in multiples of the line's own width, so the same pattern on the
+ * casing would space its dots wider than the line's. Dividing by the width converts the spacing back
+ * to pixels and keeps the two layers dot for dot.
+ */
+function navigationDots(lineWidth: number): [number, number] {
+  return [0, NAVIGATION_DOT_SPACING_PX / lineWidth]
+}
 interface MainMapLayersProps {
   historyActive: boolean
   expandSelectedMapPoints: boolean
@@ -631,7 +649,30 @@ export function MainMapLayers({
     activeNavigationTarget?.type === 'mapPoint' ? activeNavigationTarget.point.id : null
   const showDirectionPoint =
     directionPoint != null && activeNavigationTarget?.type !== 'mapPoint' && !historyActive
-  const directionPointIconKind = 'direction' as const
+
+  // Native computes and owns the Navigation; this only draws the coordinates it was handed. They
+  // already arrive as GeoJSON `[longitude, latitude]`, so nothing is reordered here.
+  const navigation = useMapStore((state) => state.navigation)
+  // No path could be computed. The pin stays exactly where the rider put it — it is still their
+  // Direction Point, with a bearing and a distance — but it stops pretending a route is coming.
+  const navigationFailed = navigation != null && navigation.status !== 'ready'
+  const directionPinColor = navigationFailed ? theme.status.warning.color : directionColor
+  const directionPinTextColor = navigationFailed ? theme.status.warning.text : directionTextColor
+  const directionPinIcon = navigationFailed
+    ? WarningIcon
+    : getMapPointKindIcon('direction' as const)
+  const navigationShape = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(
+    () =>
+      navigation && navigation.coordinates.length > 1
+        ? {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: navigation.coordinates },
+            properties: {},
+          }
+        : null,
+    [navigation],
+  )
+  const showNavigation = showDirectionPoint && navigationShape != null
   const mapObjectsInteractive = !weatherActive && !legalLimitsActive && !historyActive
 
   return (
@@ -691,16 +732,42 @@ export function MainMapLayers({
           highContrastRoutes={isSatellite}
         />
       )}
+      {showNavigation && (
+        // Drawn whole, never trimmed or dimmed as the rider advances — deliberate, see #353.
+        // `lineMetrics` is free now and is what a later dimming pass would need.
+        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
+          <LineLayer
+            id="center-navigation-casing"
+            style={{
+              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineWidth: NAVIGATION_CASING_WIDTH,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
+            }}
+          />
+          <LineLayer
+            id="center-navigation-line"
+            style={{
+              lineColor: directionColor,
+              lineWidth: MAP_DEFAULTS.navigationWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
+            }}
+          />
+        </ShapeSource>
+      )}
       {showDirectionPoint && (
         <MapPin
           // Color in the key: PointAnnotation snapshots its children natively, so a
           // rider-color or icon change must remount the pin to re-render.
-          key={`center-direction-position-${directionColor}-${directionPointIconKind}`}
+          key={`center-direction-position-${directionPinColor}-${navigationFailed ? 'failed' : 'direction'}`}
           id="center-direction-position"
           coordinate={[directionPoint.longitude, directionPoint.latitude]}
-          color={directionColor}
-          icon={getMapPointKindIcon(directionPointIconKind)}
-          iconColor={directionTextColor}
+          color={directionPinColor}
+          icon={directionPinIcon}
+          iconColor={directionPinTextColor}
           selected
           navigationActive
           onSelected={onFocusDirectionPoint}

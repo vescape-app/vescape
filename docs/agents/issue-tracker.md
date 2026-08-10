@@ -86,6 +86,7 @@ Use one or more app-area labels for filtering:
 | `area:release`     | `[Release]`     | release automation, Play tracks, versioning, release notes, and GitHub Releases               |
 | `area:assets`      | `[Assets]`      | hosted media, image normalization, upload state, and remote Asset references                  |
 | `area:e2e`         | `[E2E]`         | Maestro E2E flows, screenshot capture tooling, device fixtures and presets                    |
+| `area:navigation`  | `[Navigation]`  | Navigation — path to a Direction Point, Navigation Profile, and the rider-facing route line   |
 | `area:pin-lock`    | `[PIN Lock]`    | VESC PIN write-lock: capability probe, PIN on Board Link, unlock-wrapped firmware commands    |
 
 When a PRD or issue-planning skill creates or starts using a new app-area label, update this table in the same turn. Add the label, title prefix, and a short "Use for" description so future PRDs and implementation issues can reuse the prefix consistently.
