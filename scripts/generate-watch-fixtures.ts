@@ -15,6 +15,10 @@ import { join } from 'path'
  * `BatterySocEstimator` manual mode, since the recording carries no Board battery config.
  * `watch-sweep.jsonl` is synthetic: every lane walked through its full range, including null and
  * stale stretches, so gauge extremes are reachable without hunting for them in a real ride.
+ *
+ * The recording carries no GPS, so the nav lanes in both fixtures are synthetic too: a destination
+ * the rider closes on while the bearing swings around the wrist, ending in a stretch with no nav at
+ * all, so both the navigating and the plain telemetry frame are reachable on an emulator.
  */
 
 const ROOT = join(import.meta.dir, '..')
@@ -53,6 +57,9 @@ type LaneSample = {
   motorTemp: number | null
   ctrlTemp: number | null
   stale?: boolean
+  /** Nav lanes. Omitted entirely on samples with no destination, which is how the watch hides nav. */
+  navBearing?: number
+  navDistance?: number
 }
 
 function crc16(data: Uint8Array): number {
@@ -191,6 +198,22 @@ function decodeRide(): { t: number; telemetry: Telemetry }[] {
   return decoded
 }
 
+/**
+ * Synthetic nav lanes for [progress] through a fixture (0 = start, 1 = end): the rider closes on a
+ * destination 3.2 km out while the bearing swings a full turn around the wrist, so both distance
+ * formats and every chevron angle are seen. Past arrival the lanes are omitted — that is the
+ * no-destination case, and the watch drops the whole nav overlay.
+ */
+function navLanes(progress: number): { navBearing?: number; navDistance?: number } {
+  const ARRIVAL_AT = 0.85
+  if (progress >= ARRIVAL_AT) return {}
+  const remaining = 1 - progress / ARRIVAL_AT
+  return {
+    navBearing: round((progress * 720) % 360),
+    navDistance: round(Math.max(15, remaining * 3200)),
+  }
+}
+
 /** Resamples the decoded ride onto the watch tick grid — latest-sample-wins, like the cold path. */
 function buildRide(): LaneSample[] {
   const decoded = decodeRide()
@@ -205,6 +228,7 @@ function buildRide(): LaneSample[] {
   for (let t = decoded[0].t; t <= endMs; t += SAMPLE_INTERVAL_MS) {
     while (cursor + 1 < decoded.length && decoded[cursor + 1].t <= t) cursor++
     const { telemetry } = decoded[cursor]
+    const progress = (t - decoded[0].t) / Math.max(1, endMs - decoded[0].t)
     samples.push({
       t: t - decoded[0].t,
       speed: round(Math.abs(telemetry.speed)),
@@ -212,6 +236,7 @@ function buildRide(): LaneSample[] {
       battery: round(estimateSoc(telemetry.batteryVoltage, telemetry.batteryCurrent, seriesCount)),
       motorTemp: telemetry.tempMotor === null ? null : round(telemetry.tempMotor),
       ctrlTemp: telemetry.tempMosfet === null ? null : round(telemetry.tempMosfet),
+      ...navLanes(progress),
     })
   }
   console.log(
@@ -238,6 +263,7 @@ function buildSweep(): LaneSample[] {
       battery: round(100 - p * 100),
       motorTemp: round(20 + p * 90),
       ctrlTemp: round(20 + p * 80),
+      ...navLanes(p * 0.5),
     })
   }
   for (let step = rampSteps; step >= 0; step--) {
@@ -248,6 +274,7 @@ function buildSweep(): LaneSample[] {
       battery: round(100 - p * 100),
       motorTemp: round(20 + p * 90),
       ctrlTemp: round(20 + p * 80),
+      ...navLanes(1 - p * 0.5),
     })
   }
   for (let step = 0; step < 10; step++) {

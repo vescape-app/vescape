@@ -1642,6 +1642,11 @@ private var wearAutoLaunchOnConnect = true
             batterySoc = latestBatterySoc,
             motorTemp = current.tempMotor,
             ctrlTemp = current.tempMosfet,
+            // TODO(nav): nav lanes stay null until this controller holds an active destination
+            // (set by a JS intent per route change) and derives bearing + distance here from
+            // locationTracker.riderPosition; the watch hides its nav overlay while they are null.
+            navBearing = null,
+            navDistanceM = null,
         )
     }
 

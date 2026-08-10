@@ -13,4 +13,5 @@ internal val MotorTempColor = Color(0xFFEF4444) // red.color (motorTemp)
 internal val CtrlTempColor = Color(0xFFF97316) // orange.color (controllerTemp)
 internal val BatteryColor = Color(0xFF22C55E) // green.color
 internal val WarningColor = Color(0xFFF97316) // orange.color
+internal val NavColor = Color(0xFFA855F7) // purple.color (navigation)
 internal val AmbientText = Color(0xFFB8C4CE)

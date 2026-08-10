@@ -45,6 +45,8 @@ object ReplayFixtureParser {
                     motorTemp = json.nullableLane("motorTemp"),
                     ctrlTemp = json.nullableLane("ctrlTemp"),
                     stale = json.optBoolean("stale", false),
+                    navBearing = json.nullableLane("navBearing"),
+                    navDistanceM = json.nullableLane("navDistance"),
                 ),
             )
         } catch (e: Exception) {

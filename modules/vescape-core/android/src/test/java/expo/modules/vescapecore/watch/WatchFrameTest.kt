@@ -29,6 +29,8 @@ class WatchFrameTest {
             lane(),
             stale = flags and WATCH_FRAME_FLAG_STALE != 0,
             waiting = flags and WATCH_FRAME_FLAG_WAITING != 0,
+            navBearing = lane(),
+            navDistanceM = lane(),
         )
     }
 
@@ -50,6 +52,37 @@ class WatchFrameTest {
         )
         assertEquals(12.5, frame.speed, 0.0)
         assertEquals(40.0, frame.duty!!, 1e-3)
+    }
+
+    @Test
+    fun `nav lanes round-trip, and stay null when there is no destination`() {
+        val navigating = roundTrip(
+            WatchFrame(
+                speed = 10.0,
+                duty = 30.0,
+                battery = 80.0,
+                motorTemp = 40.0,
+                ctrlTemp = 35.0,
+                stale = false,
+                navBearing = 128.0,
+                navDistanceM = 1350.0,
+            ),
+        )!!
+        assertEquals(128.0, navigating.navBearing!!, 1e-3)
+        assertEquals(1350.0, navigating.navDistanceM!!, 1e-3)
+
+        val idle = roundTrip(
+            WatchFrame(
+                speed = 10.0,
+                duty = 30.0,
+                battery = 80.0,
+                motorTemp = 40.0,
+                ctrlTemp = 35.0,
+                stale = false,
+            ),
+        )!!
+        assertNull(idle.navBearing)
+        assertNull(idle.navDistanceM)
     }
 
     @Test

@@ -6,13 +6,13 @@ import kotlin.math.abs
 
 /**
  * Number of Float32 lanes in a Watch Frame, in this fixed order:
- *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp.
+ *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance.
  *
  * The wrist-side decoder ([app.vescape.wear] `WatchFrameDecoder`) carries the same constant and lane
  * order by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same
  * order, or the decode silently misreads. Keep the two lists adjacent in review.
  */
-internal const val WATCH_FRAME_FIELD_COUNT = 5
+internal const val WATCH_FRAME_FIELD_COUNT = 7
 
 /** Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian. */
 internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -30,6 +30,18 @@ internal data class WatchFrame(
     val ctrlTemp: Double?,
     val stale: Boolean,
     val waiting: Boolean = false,
+    /**
+     * Bearing to the navigation target relative to travel direction, degrees clockwise from ahead.
+     * TODO(nav): always null — nothing feeds these lanes yet. The wrist already renders the nav
+     * overlay when both are present and hides it when either is null. The remaining work is native:
+     * the session holds the active destination coordinate (JS sends it once per route change, as an
+     * intent, and clears it when the route ends) and derives bearing + distance per watch tick from
+     * `LocationTracker.riderPosition` and the current course. Deriving them in JS instead would put
+     * a per-fix computation on the bridge for data native already has.
+     */
+    val navBearing: Double? = null,
+    /** Straight-line distance to the navigation target, metres. TODO(nav): see [navBearing]. */
+    val navDistanceM: Double? = null,
 )
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
@@ -40,6 +52,9 @@ internal data class WatchSnapshot(
     val batterySoc: Double?,
     val motorTemp: Double?,
     val ctrlTemp: Double?,
+    /** Nav target relative bearing (degrees) and distance (metres), derived natively. TODO(nav): see [WatchFrame.navBearing]. */
+    val navBearing: Double? = null,
+    val navDistanceM: Double? = null,
 )
 
 /**
@@ -55,6 +70,8 @@ internal object WatchFrameBuilder {
         motorTemp = snapshot.motorTemp,
         ctrlTemp = snapshot.ctrlTemp,
         stale = stale,
+        navBearing = snapshot.navBearing,
+        navDistanceM = snapshot.navDistanceM,
     )
 
     /**
@@ -84,6 +101,9 @@ internal object WatchFrameBuilder {
             putFloat(frame.battery.toLaneFloat())
             putFloat(frame.motorTemp.toLaneFloat())
             putFloat(frame.ctrlTemp.toLaneFloat())
+            // Nav lanes ride as NaN until a route feeds them, which is how the wrist hides the overlay.
+            putFloat(frame.navBearing.toLaneFloat())
+            putFloat(frame.navDistanceM.toLaneFloat())
         }.array()
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN

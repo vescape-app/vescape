@@ -38,7 +38,8 @@ import kotlin.math.sin
  * top-left, duty top-right (almost touching at top center), battery across the bottom — styled like
  * the phone's DualGauge: thin gray guide, radial gradient fill from the centre, a strong rim line,
  * and a head tick at the current value. Temps + battery % sit inside, with the wall clock
- * ([WatchClock]) at the top rim gap since the fullscreen mirror hides the system time. [muted] dims
+ * ([WatchClock]) at the top rim gap since the fullscreen mirror hides the system time, and the
+ * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
  */
 @Composable
@@ -72,6 +73,14 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
             // Temps: small arcs in the gaps beside the battery gauge, growing from the bottom.
             drawGauge(center, radius, MOTOR_ARC_START, TEMP_SWEEP, motorFrac, motorColor, style = SoftGaugeStyle, drawHead = false, glowStrength = motorGlow)
             drawGauge(center, radius, CTRL_ARC_START, -TEMP_SWEEP, ctrlFrac, ctrlColor, style = SoftGaugeStyle, drawHead = false, glowStrength = ctrlGlow)
+        }
+
+        // Navigation, only while the phone is sending it: chevron on the rim + distance above the
+        // battery %. No destination means no nav lanes, and the frame renders exactly as before.
+        val navBearing = frame.navBearing
+        val navDistance = frame.navDistanceM
+        if (navBearing != null && navDistance != null) {
+            NavPointer(bearingDeg = navBearing, distanceM = navDistance, muted = muted)
         }
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
