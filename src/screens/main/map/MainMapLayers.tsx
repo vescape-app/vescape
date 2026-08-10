@@ -79,6 +79,23 @@ const GPS_HEADING_ICON_ID = 'center-gps-heading'
 const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 const HISTORY_ROUTE_HIGHLIGHT_INTERVAL_MS = 50
 const HISTORY_ROUTE_HIGHLIGHT_DELAY_MS = 500
+
+/** The dark halo the dots sit on, so a light path stays readable over a satellite tile. */
+const NAVIGATION_CASING_WIDTH = MAP_DEFAULTS.navigationWidth + 4
+
+/** Distance between two dot centres, in screen pixels. Fixed, so both layers dot in step. */
+const NAVIGATION_DOT_SPACING_PX = 11
+
+/**
+ * A dotted line: a zero-length dash under a round cap draws a circle, and the gap does the spacing.
+ *
+ * Mapbox measures a dash pattern in multiples of the line's own width, so the same pattern on the
+ * casing would space its dots wider than the line's. Dividing by the width converts the spacing back
+ * to pixels and keeps the two layers dot for dot.
+ */
+function navigationDots(lineWidth: number): [number, number] {
+  return [0, NAVIGATION_DOT_SPACING_PX / lineWidth]
+}
 interface MainMapLayersProps {
   historyActive: boolean
   expandSelectedMapPoints: boolean
@@ -723,9 +740,10 @@ export function MainMapLayers({
             id="center-navigation-casing"
             style={{
               lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
-              lineWidth: MAP_DEFAULTS.navigationWidth + 4,
+              lineWidth: NAVIGATION_CASING_WIDTH,
               lineCap: 'round',
               lineJoin: 'round',
+              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
             }}
           />
           <LineLayer
@@ -735,6 +753,7 @@ export function MainMapLayers({
               lineWidth: MAP_DEFAULTS.navigationWidth,
               lineCap: 'round',
               lineJoin: 'round',
+              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
             }}
           />
         </ShapeSource>
