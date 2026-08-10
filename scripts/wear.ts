@@ -29,8 +29,14 @@ const DEBUG_APK = join(
 const PHONE_KEYSTORE = join(ROOT, 'android', 'app', 'debug.keystore')
 const SIGNED_APK = join(tmpdir(), 'wearos-debug-phone-cert-signed.apk')
 
-const COMMANDS = ['build', 'test', 'install'] as const
+const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay'] as const
 type Command = (typeof COMMANDS)[number]
+
+/** Wear AVD booted by `emulator`. Overridable so the AVD name is not baked into the repo. */
+const WEAR_AVD = process.env.WEAR_AVD ?? 'WearLarge'
+
+/** Lane fixtures the emulator build replays, keyed by the `replay` intent extra MainActivity reads. */
+const REPLAY_FIXTURES = ['ride', 'sweep'] as const
 
 function fail(message: string): never {
   console.error(`\nwear: ${message}`)
@@ -93,9 +99,14 @@ function applicationId() {
   return applicationId
 }
 
-function buildTools() {
+function sdkRoot() {
   const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
   if (!sdk) fail('ANDROID_HOME / ANDROID_SDK_ROOT not set')
+  return sdk
+}
+
+function buildTools() {
+  const sdk = sdkRoot()
 
   const dir = join(sdk, 'build-tools')
   if (!existsSync(dir)) fail(`no build-tools installed under ${dir}`)
@@ -216,10 +227,77 @@ function smokeCheck(serial: string) {
   console.log('\nwear: installed, launched, no crash in the watch log')
 }
 
+/**
+ * Boots the Wear AVD detached, so the shell that started it is free again. A watch emulator is the
+ * only place the Mirror replays fixtures instead of mirroring a phone, so this is the entry point
+ * for working on wrist visuals without a board.
+ */
+function startEmulator() {
+  const binary = join(sdkRoot(), 'emulator', 'emulator')
+  if (!existsSync(binary)) fail(`no emulator installed at ${binary}`)
+
+  const running = capture(['adb', 'devices'])
+    .split('\n')
+    .slice(1)
+    .map((line) => line.split(/\s+/)[0])
+    .filter((serial) => serial?.startsWith('emulator-'))
+    .some((serial) =>
+      capture(['adb', '-s', serial, 'shell', 'getprop', 'ro.build.characteristics']).includes(
+        'watch',
+      ),
+    )
+  if (running) {
+    console.log('wear: a watch emulator is already running')
+    return
+  }
+
+  console.log(`\n> emulator -avd ${WEAR_AVD}\n`)
+  Bun.spawn([binary, '-avd', WEAR_AVD], { stdio: ['ignore', 'ignore', 'ignore'] }).unref()
+  console.log(`wear: booting ${WEAR_AVD} (override with WEAR_AVD)`)
+}
+
+/**
+ * Restarts the Mirror on the chosen lane fixture. `-S` because a running activity keeps the intent
+ * it was started with, so without it the extra is delivered but never read.
+ */
+function startReplay(fixture: string) {
+  const serial = findWatch()
+  const packageName = applicationId()
+  console.log(`\nwear: replaying ${fixture} on ${serial}`)
+  run([
+    'adb',
+    '-s',
+    serial,
+    'shell',
+    'am',
+    'start',
+    '-S',
+    '-n',
+    `${packageName}/${ACTIVITY_CLASS}`,
+    '--es',
+    'replay',
+    fixture,
+  ])
+}
+
 const command = process.argv[2] as Command | undefined
 if (!command || !COMMANDS.includes(command)) {
   console.error(`Usage: bun run scripts/wear.ts <${COMMANDS.join('|')}>`)
   process.exit(1)
+}
+
+if (command === 'emulator') {
+  startEmulator()
+  process.exit(0)
+}
+
+if (command === 'replay') {
+  const fixture = process.argv[3] ?? 'ride'
+  if (!REPLAY_FIXTURES.includes(fixture as (typeof REPLAY_FIXTURES)[number])) {
+    fail(`unknown fixture ${fixture} — expected ${REPLAY_FIXTURES.join(' | ')}`)
+  }
+  startReplay(fixture)
+  process.exit(0)
 }
 
 syncNative()

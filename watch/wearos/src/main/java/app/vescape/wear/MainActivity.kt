@@ -22,6 +22,7 @@ import com.google.android.gms.wearable.Wearable
 class MainActivity : ComponentActivity() {
     private val messageClient by lazy { Wearable.getMessageClient(this) }
     private val phoneLinkMonitor by lazy { PhoneLinkMonitor(this) }
+    private val frameReplayer by lazy { FrameReplayer(this) }
     private val ongoingActivityController by lazy { OngoingActivityController(this) }
     private val isAmbient = mutableStateOf(false)
     private val ambientObserver = AmbientLifecycleObserver(this, AmbientCallback())
@@ -63,17 +64,36 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // An emulator has no phone to mirror, so replayed frames stand in for the real push there.
+        if (ReplayGate.isEnabled(this)) {
+            frameReplayer.start(replayFixture())
+            return
+        }
         messageClient.addListener(listener)
         phoneLinkMonitor.start()
         WatchDiagnostics.recordReceiver(active = true)
     }
 
     override fun onStop() {
+        if (ReplayGate.isEnabled(this)) {
+            frameReplayer.stop()
+            super.onStop()
+            return
+        }
         WatchDiagnostics.recordReceiver(active = false)
         phoneLinkMonitor.stop()
         messageClient.removeListener(listener)
         super.onStop()
     }
+
+    /**
+     * Which fixture the emulator replays. Defaults to the recorded ride; the lane sweep is reachable
+     * without a rebuild:
+     * `adb shell am start -S -n <pkg>/app.vescape.wear.MainActivity --es replay sweep`
+     * (`-S` because a running instance keeps its original intent).
+     */
+    private fun replayFixture(): String =
+        if (intent?.getStringExtra("replay") == "sweep") REPLAY_FIXTURE_SWEEP else REPLAY_FIXTURE_RIDE
 
     override fun onDestroy() {
         lifecycle.removeObserver(ambientObserver)
