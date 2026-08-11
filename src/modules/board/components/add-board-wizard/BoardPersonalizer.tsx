@@ -1,5 +1,6 @@
 /* eslint-disable react-hooks/immutability */
 import * as Haptics from 'expo-haptics'
+import { CaretLeftIcon, CaretRightIcon } from 'phosphor-react-native'
 import { useCallback, useMemo, useState } from 'react'
 import { Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -93,7 +94,7 @@ export const RAIL_COLORS = personalizationColorOptions
 export type RailColorId = (typeof RAIL_COLORS)[number]['id']
 
 const ITEM_WIDTH = 150
-const ITEM_GAP = 2
+const ITEM_GAP = 0
 const ITEM_SPACING = ITEM_WIDTH + ITEM_GAP
 const DEFAULT_INDEX = RAILS.findIndex((rail) => rail.id === 'xr')
 const RAIL_COUNT = RAILS.length
@@ -208,6 +209,21 @@ export function BoardPersonalizer({
     [translateX, updateIndex],
   )
 
+  const selectRenderedIndex = useCallback(
+    (rawIndex: number) => {
+      const index = loopIndex(rawIndex)
+      if (index !== selectedIndex) {
+        liveIndex.value = index
+        tick()
+        selectIndex(index)
+      }
+      translateX.value = withSpring(-rawIndex * ITEM_SPACING, SNAP, (finished) => {
+        if (finished) translateX.value = -(RAIL_COUNT + index) * ITEM_SPACING
+      })
+    },
+    [liveIndex, selectIndex, selectedIndex, tick, translateX],
+  )
+
   const gesture = useMemo(
     () =>
       Gesture.Pan()
@@ -240,33 +256,62 @@ export function BoardPersonalizer({
 
   return (
     <View style={styles.root}>
-      <Text style={styles.label}>Rails</Text>
+      <Text style={styles.label}>Board style</Text>
 
-      <GestureDetector gesture={gesture}>
-        <View
-          style={styles.viewport}
-          onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
-          accessibilityLabel="Rail selector"
-        >
-          <Animated.View
-            style={[styles.railRow, { left: viewportWidth / 2 - ITEM_WIDTH / 2 }, rowStyle]}
+      <View style={styles.selector}>
+        <View style={styles.selectorHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous board style"
+            hitSlop={10}
+            onPress={() => selectRenderedIndex(RAIL_COUNT + selectedIndex - 1)}
+            style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
           >
-            {LOOPED_RAILS.map((rail, index) => (
-              <View key={`${rail.id}-${index}`} style={styles.railItem}>
-                <RailOutline
-                  path={rail.path}
-                  color={selectedColor}
-                  muted={loopIndex(index) !== selectedIndex}
-                />
-              </View>
-            ))}
-          </Animated.View>
+            <CaretLeftIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+          </Pressable>
+          <Text style={styles.railName}>
+            {RAILS[selectedIndex]?.label ?? RAILS[DEFAULT_INDEX].label}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next board style"
+            hitSlop={10}
+            onPress={() => selectRenderedIndex(RAIL_COUNT + selectedIndex + 1)}
+            style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
+          >
+            <CaretRightIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+          </Pressable>
         </View>
-      </GestureDetector>
-
-      <Text style={styles.railName}>
-        {RAILS[selectedIndex]?.label ?? RAILS[DEFAULT_INDEX].label}
-      </Text>
+        <View>
+          <GestureDetector gesture={gesture}>
+            <View
+              style={styles.viewport}
+              onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
+              accessibilityLabel="Board style selector"
+            >
+              <Animated.View
+                style={[styles.railRow, { left: viewportWidth / 2 - ITEM_WIDTH / 2 }, rowStyle]}
+              >
+                {LOOPED_RAILS.map((rail, index) => (
+                  <Pressable
+                    key={`${rail.id}-${index}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${rail.label}`}
+                    onPress={() => selectRenderedIndex(index)}
+                    style={({ pressed }) => [styles.railItem, pressed && styles.railPressed]}
+                  >
+                    <RailOutline
+                      path={rail.path}
+                      color={selectedColor}
+                      muted={loopIndex(index) !== selectedIndex}
+                    />
+                  </Pressable>
+                ))}
+              </Animated.View>
+            </View>
+          </GestureDetector>
+        </View>
+      </View>
 
       <View style={styles.colors} accessibilityRole="radiogroup">
         {RAIL_COLORS.map((color) => {
@@ -310,16 +355,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+    minWidth: 100,
+  },
+  selector: { gap: 6 },
+  selectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  arrow: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   viewport: { height: 86, overflow: 'hidden' },
   railRow: { position: 'absolute', top: 4, flexDirection: 'row', gap: ITEM_GAP },
   railItem: { width: ITEM_WIDTH, alignItems: 'center' },
+  railPressed: { opacity: 0.65 },
   colors: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
-    paddingHorizontal: 4,
+    width: '100%',
+    maxWidth: 300,
+    alignSelf: 'center',
   },
   colorTarget: {
     width: 36,
