@@ -50,6 +50,9 @@ import { watchRouteSpanMeters } from '@/modules/map/lib/nearbyRadius'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
+/** Fastest the wrist route scale follows a live pinch; it eases each change over ~350 ms anyway. */
+const WATCH_ROUTE_SPAN_MIN_INTERVAL_MS = 120
+
 export interface MainMapHandle {
   recenterLive: (options?: { resetPadding?: boolean; animationDuration?: number }) => void
   previewHistorySession: (preview: HistoryPreviewTarget) => void
@@ -182,14 +185,22 @@ export const MainMap = memo(
     const { mapViewRef, mapLayout, handleMapLayout, getViewfinderCoordinateFromMap } =
       useMapViewport()
     const lastWatchRouteSpanRef = useRef<number | null>(null)
+    const lastWatchRouteSpanAtRef = useRef(0)
     const syncWatchRouteSpan = useCallback(
-      (latitude: number, zoom: number) => {
+      (latitude: number, zoom: number, settled = false) => {
         const spanM = watchRouteSpanMeters(zoom, latitude, mapLayout.width)
         const previous = lastWatchRouteSpanRef.current
-        if (spanM == null && previous == null) return
+        if (spanM === previous) return
         if (spanM != null && previous != null && Math.abs(spanM - previous) / previous < 0.02) {
           return
         }
+        // The wrist follows the pinch live, but a gesture emits camera frames far faster than the
+        // watch redraws. Rate-limit the live ones; the settled camera always gets the last word.
+        const now = Date.now()
+        if (!settled && now - lastWatchRouteSpanAtRef.current < WATCH_ROUTE_SPAN_MIN_INTERVAL_MS) {
+          return
+        }
+        lastWatchRouteSpanAtRef.current = now
         lastWatchRouteSpanRef.current = spanM
         setWatchRouteSpanM(spanM)
       },
