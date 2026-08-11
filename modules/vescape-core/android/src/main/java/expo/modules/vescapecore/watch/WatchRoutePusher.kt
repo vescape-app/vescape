@@ -82,9 +82,9 @@ internal class WatchRoutePusher(
     }
 
     /**
-     * Runs [write] in intent order and moves [origin] to [nextOrigin] only if it landed and no newer
-     * mutation has been claimed since. A failed write leaves the previous origin standing, which is
-     * still the route on the wrist.
+     * Runs [write] in intent order and moves [origin] to [nextOrigin] only after it lands. Every
+     * successful write commits its origin even when a newer mutation is waiting: if that successor
+     * fails, this is still the route the wrist actually holds.
      */
     private fun mutate(
         nextOrigin: GeoPoint?,
@@ -100,7 +100,7 @@ internal class WatchRoutePusher(
                 if (synchronized(generationLock) { request != generation }) return@withLock
                 try {
                     write()
-                    synchronized(generationLock) { if (request == generation) origin = nextOrigin }
+                    origin = nextOrigin
                     succeeded?.let { (event, properties) -> record(event, properties) }
                 } catch (error: Exception) {
                     Log.w(VESC_SESSION_TAG, failureMessage, error)
