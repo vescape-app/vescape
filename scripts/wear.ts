@@ -1,8 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
-import { lastFirst, readLastDevice, rememberDevice } from './lib/lastDevice'
-import { select, SelectCancelled } from './lib/select'
+import { listAdbDevices, pickDevice, type AdbDevice } from './lib/devices.ts'
 
 const ROOT = join(import.meta.dir, '..')
 /**
@@ -144,134 +143,37 @@ function signWithPhoneCert() {
   ])
 }
 
-/** Cache key for the last watch picked; see lib/lastDevice. */
+/** Cache keys for the last pick on each side of the pairing; see lib/lastDevice. */
 const LAST_WATCH_KEY = 'wear-device'
+const LAST_PHONE_KEY = 'android-device'
 
-/** Grace period before the remembered watch is taken; any keypress cancels it. */
-const AUTO_PICK_MS = 3000
+const watches = () => listAdbDevices().filter((device) => device.isWatch)
 
-interface Device {
-  serial: string
-  name: string
-  /** Hardware id, so the same device reached over two transports collapses to one entry. */
-  hardware: string
-  isWatch: boolean
-}
-
-/**
- * Devices are picked by what they are, never by a remembered transport id: only a watch reports
- * `ro.build.characteristics=watch`. That still leaves several — the OnePlus Watch 3 shows up twice
- * over mDNS, and a booted Wear AVD is a watch too — so mDNS duplicates collapse by `ro.serialno`
- * and anything left over is a real choice the caller has to make.
- */
-function connectedDevices(): Device[] {
-  const transports = capture(['adb', 'devices'])
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes('\tdevice'))
-    .map((line) => line.split('\t')[0])
-
-  const devices = new Map<string, Device>()
-  for (const serial of transports) {
-    const props = capture(['adb', '-s', serial, 'shell', 'getprop'])
-    const hardware = prop(props, 'ro.serialno') || serial
-    if (devices.has(hardware)) continue
-    devices.set(hardware, {
-      serial,
-      name: prop(props, 'ro.product.model') || hardware,
-      hardware,
-      isWatch: prop(props, 'ro.build.characteristics').includes('watch'),
-    })
-  }
-  return [...devices.values()]
-}
-
-function connectedWatches(): Device[] {
-  return connectedDevices().filter((device) => device.isWatch)
-}
-
-/**
- * The phone side of a pairing: any connected non-watch device. Nothing is remembered here — a
- * pairing bridge is short-lived, and picking the wrong device only costs an unused forward.
- */
-function findPhone(requested: string | null): Device {
-  const phones = connectedDevices().filter((device) => !device.isWatch)
-  if (phones.length === 0) fail('no phone connected (`adb devices` shows none)')
-  if (requested) {
-    const match = phones.find(
-      (phone) =>
-        phone.serial === requested || phone.hardware === requested || phone.name === requested,
-    )
-    if (!match) {
-      fail(
-        `no phone matches "${requested}" — connected: ${phones
-          .map((phone) => `${phone.name} (${phone.hardware})`)
-          .join(', ')}`,
-      )
-    }
-    return match
-  }
-  if (phones.length > 1) {
-    fail(
-      `several phones connected — pass --device <serial|model>: ${phones
-        .map((phone) => `${phone.name} (${phone.hardware})`)
-        .join(', ')}`,
-    )
-  }
-  return phones[0]
-}
-
-/** One `[key]: [value]` line out of `adb shell getprop` output. */
-function prop(props: string, key: string): string {
-  return props.match(new RegExp(`^\\[${key}\\]: \\[(.*)\\]$`, 'm'))?.[1] ?? ''
-}
-
-async function findWatch(requested: string | null): Promise<string> {
-  const watches = connectedWatches()
-  if (watches.length === 0) fail('no Wear OS device connected (`adb devices` shows none)')
-
-  if (requested) {
-    const match = watches.find(
-      (watch) =>
-        watch.serial === requested || watch.hardware === requested || watch.name === requested,
-    )
-    if (!match) {
-      fail(
-        `no watch matches "${requested}" — connected: ${watches
-          .map((watch) => `${watch.name} (${watch.hardware})`)
-          .join(', ')}`,
-      )
-    }
-    return match.serial
-  }
-
-  if (watches.length === 1) return watches[0].serial
-
-  if (!process.stdin.isTTY) {
-    fail(
-      `several watches connected — pass --device <serial|model>: ${watches
-        .map((watch) => `${watch.name} (${watch.hardware})`)
-        .join(', ')}`,
-    )
-  }
-
-  const last = await readLastDevice(LAST_WATCH_KEY)
-  const ordered = lastFirst(watches, (watch) => watch.hardware, last)
-  const chosen = await select(
-    'Wear device',
-    ordered.map((watch) => ({
-      label: watch.name,
-      value: watch,
-      hint: `${watch.hardware}${watch.hardware === last ? ' · last' : ''}`,
-    })),
-    { autoPickMs: last ? AUTO_PICK_MS : undefined },
-  ).catch((error) => {
-    if (error instanceof SelectCancelled) process.exit(1)
-    throw error
+function findWatch(requested: string | null): Promise<AdbDevice> {
+  return pickDevice({
+    title: 'Wear device',
+    items: watches(),
+    id: (watch) => watch.hardware,
+    label: (watch) => watch.name,
+    aliases: (watch) => [watch.serial, watch.expoName],
+    requested,
+    cacheKey: LAST_WATCH_KEY,
+    emptyMessage: 'wear: no Wear OS device connected (`adb devices` shows none)',
   })
+}
 
-  await rememberDevice(LAST_WATCH_KEY, chosen.hardware)
-  return chosen.serial
+/** The phone side of a pairing: any connected non-watch device. */
+function findPhone(requested: string | null): Promise<AdbDevice> {
+  return pickDevice({
+    title: 'Phone',
+    items: listAdbDevices().filter((device) => !device.isWatch),
+    id: (phone) => phone.hardware,
+    label: (phone) => phone.name,
+    aliases: (phone) => [phone.serial, phone.expoName],
+    requested,
+    cacheKey: LAST_PHONE_KEY,
+    emptyMessage: 'wear: no phone connected (`adb devices` shows none)',
+  })
 }
 
 function install(serial: string, packageName: string) {
@@ -373,11 +275,11 @@ const COMPANION_PACKAGE = 'com.google.android.apps.wear.companion'
  * The forward dies with every adb server restart or replug, so this is a re-runnable repair, not a
  * one-time setup: the pairing itself survives, only the tunnel has to come back.
  */
-function pairEmulator(requestedPhone: string | null) {
-  const watch = connectedWatches().find((it) => it.serial.startsWith('emulator-'))
+async function pairEmulator(requestedPhone: string | null) {
+  const watch = watches().find((it) => it.isEmulator)
   if (!watch) fail('no watch emulator running — start one with `bun run wear:emulator`')
 
-  const phone = findPhone(requestedPhone)
+  const phone = await findPhone(requestedPhone)
   run(['adb', '-s', phone.serial, 'forward', `tcp:${PAIR_PORT}`, `tcp:${PAIR_PORT}`])
 
   if (
@@ -415,7 +317,7 @@ function pairEmulator(requestedPhone: string | null) {
  * it was started with, so without it the extra is delivered but never read.
  */
 async function startReplay(fixture: string, requested: string | null) {
-  const serial = await findWatch(requested)
+  const serial = (await findWatch(requested)).serial
   const packageName = applicationId()
   console.log(`\nwear: replaying ${fixture} on ${serial}`)
   run([
@@ -451,7 +353,7 @@ if (!command || !COMMANDS.includes(command)) {
 }
 
 if (command === 'pair') {
-  pairEmulator(requested)
+  await pairEmulator(requested)
   process.exit(0)
 }
 
@@ -469,6 +371,10 @@ if (command === 'replay') {
   process.exit(0)
 }
 
+// Asked before anything is built: a prompt that appears after a minute of Gradle reads as a build
+// that finished, and the answer cannot change what gets built anyway.
+const target = command === 'install' ? await findWatch(requested) : null
+
 syncNative()
 
 if (command === 'test') {
@@ -476,9 +382,9 @@ if (command === 'test') {
 } else {
   gradle(':wearos:assembleDebug')
 
-  if (command === 'install') {
+  if (target) {
     signWithPhoneCert()
-    const serial = await findWatch(requested)
+    const serial = target.serial
     const packageName = applicationId()
     console.log(`\nwear: targeting ${packageName} on ${serial}`)
     install(serial, packageName)

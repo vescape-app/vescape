@@ -28,10 +28,10 @@ prebuild (`withWearMirror`). No manual `rm -rf android/wearos && cp -R`.
 - Generated native target: `android/wearos`. Gitignored. Do not make lasting edits there.
 - Use Gradle for native Android builds. Package manager rules still: no `npm`, `yarn`, `pnpm`, `npx`.
 - `wear` picks the watch by `ro.build.characteristics=watch`, not a remembered transport id.
-- Several watches (real + emulator) -> arrow-key picker, last pick on top, auto-taken after 3s
-  unless a key is pressed. No TTY -> pass
-  `--device <serial|model>`, e.g. `bun run wear --device sdk_gwear_arm64`. Same flag on
-  `wear:replay`. mDNS duplicates of one watch collapse by `ro.serialno`, never prompt.
+- Device choice is the shared picker (`scripts/lib/devices.ts`), same as `ss` and `bun run android`:
+  watches only here, last pick on top, auto-taken after 3s unless a key is pressed. No TTY -> pass
+  `--device <name|serial>`, e.g. `bun run wear --device WearLarge`. Same flag on `wear:replay`.
+  mDNS duplicates of one watch collapse by `ro.serialno`, never prompt.
 - Do not uninstall unless install says `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (the script handles that case itself) or user asks.
 
 ## Known Devices

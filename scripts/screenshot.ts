@@ -10,25 +10,31 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { capture, runOrDie } from './lib/captureDriver.ts'
-import { lastFirst, readLastDevice, rememberDevice } from './lib/lastDevice.ts'
-import { select, SelectCancelled, type SelectOption } from './lib/select.ts'
+import { listAdbDevices, pickDevice } from './lib/devices.ts'
 
 interface Target {
   platform: 'android' | 'ios'
+  /** What gets remembered and what `--device` matches: a hardware id or a simulator udid. */
   id: string
   name: string
+  /** What the capture command addresses: an adb transport id or the same udid. */
+  serial: string
+  /** Extra `--device` spelling: the adb model token for a device, the name for a simulator. */
+  expoName: string
 }
 
-async function androidTargets(): Promise<Target[]> {
-  const out = await capture(['adb', 'devices', '-l'])
-  const lines = out
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes(' device ') || line.includes('\tdevice'))
-  return lines.map((line) => {
-    const id = line.split(/\s+/)[0].trim()
-    return { platform: 'android', id, name: /model:(\S+)/.exec(line)?.[1] ?? id }
-  })
+/**
+ * Every adb device, watches included — grabbing the wrist screen is half of why this exists. The
+ * shared listing is what collapses a watch that advertises itself over mDNS twice.
+ */
+function androidTargets(): Target[] {
+  return listAdbDevices().map((device) => ({
+    platform: 'android',
+    id: device.hardware,
+    name: device.name,
+    serial: device.serial,
+    expoName: device.expoName,
+  }))
 }
 
 async function iosTargets(): Promise<Target[]> {
@@ -40,69 +46,41 @@ async function iosTargets(): Promise<Target[]> {
   }
   return Object.values(parsed.devices)
     .flat()
-    .map(({ udid, name }) => ({ platform: 'ios' as const, id: udid, name }))
+    .map(({ udid, name }) => ({
+      platform: 'ios' as const,
+      id: udid,
+      name,
+      serial: udid,
+      expoName: name,
+    }))
 }
 
 /** Cache key for the last device picked; see lib/lastDevice. */
 const LAST_DEVICE_KEY = 'screenshot-device'
 
-/** Grace period before the remembered device is taken; any keypress cancels it. */
-const AUTO_PICK_MS = 3000
-
-/** `adb-54151FDAS00077-x5XeY4._adb-tls-connect._tcp` → `54151FDAS00077`. */
-function shortId(id: string): string {
-  return id.replace(/^adb-/, '').replace(/-\w+\._adb-tls-connect\._tcp$/, '')
-}
-
 async function resolveTarget(requested: string | null): Promise<Target> {
-  const targets = [...(await androidTargets()), ...(await iosTargets())]
-  if (targets.length === 0) {
-    console.error('No adb device attached and no booted iOS simulator.')
-    process.exit(1)
-  }
-
-  if (requested) {
-    const match = targets.find(
-      (target) =>
-        target.id === requested || target.name === requested || shortId(target.id) === requested,
-    )
-    if (!match) {
-      console.error(`No device matches "${requested}". Available:`)
-      for (const target of targets) console.error(`  ${target.name} (${shortId(target.id)})`)
-      process.exit(1)
-    }
-    return match
-  }
-
-  if (targets.length === 1) return targets[0]
-
-  if (!process.stdin.isTTY) {
-    console.error('Several devices attached — pass --device <serial|udid|name>:')
-    for (const target of targets) {
-      console.error(`  ${target.name} (${shortId(target.id)}, ${target.platform})`)
-    }
-    process.exit(1)
-  }
-
-  const last = await readLastDevice(LAST_DEVICE_KEY)
-  const ordered = lastFirst(targets, (target) => target.id, last)
-  const options: SelectOption<Target>[] = ordered.map((target) => ({
-    label: target.name,
-    value: target,
-    hint: `${target.platform} · ${shortId(target.id)}${target.id === last ? ' · last' : ''}`,
-  }))
-  return select('Screenshot device', options, { autoPickMs: last ? AUTO_PICK_MS : undefined })
+  return pickDevice({
+    title: 'Screenshot device',
+    items: [...androidTargets(), ...(await iosTargets())],
+    id: (target) => target.id,
+    label: (target) => target.name,
+    aliases: (target) => [target.serial, target.expoName],
+    hint: (target) => target.platform,
+    requested,
+    cacheKey: LAST_DEVICE_KEY,
+    emptyMessage: 'No adb device attached and no booted iOS simulator.',
+  })
 }
 
 async function grab(target: Target, localPath: string): Promise<void> {
   if (target.platform === 'ios') {
-    await runOrDie(['xcrun', 'simctl', 'io', target.id, 'screenshot', localPath])
+    await runOrDie(['xcrun', 'simctl', 'io', target.serial, 'screenshot', localPath])
     return
   }
   const remotePath = '/sdcard/screenshot_tmp.png'
-  await runOrDie(['adb', '-s', target.id, 'shell', 'screencap', '-p', remotePath])
-  await runOrDie(['adb', '-s', target.id, 'pull', remotePath, localPath])
-  await runOrDie(['adb', '-s', target.id, 'shell', 'rm', remotePath])
+  await runOrDie(['adb', '-s', target.serial, 'shell', 'screencap', '-p', remotePath])
+  await runOrDie(['adb', '-s', target.serial, 'pull', remotePath, localPath])
+  await runOrDie(['adb', '-s', target.serial, 'shell', 'rm', remotePath])
 }
 
 const args = process.argv.slice(2)
@@ -113,13 +91,8 @@ if (deviceFlag !== -1 && !requested) {
   process.exit(1)
 }
 
-const target = await resolveTarget(requested).catch((error) => {
-  if (error instanceof SelectCancelled) process.exit(1)
-  throw error
-})
-
-await rememberDevice(LAST_DEVICE_KEY, target.id)
-console.log(`Device: ${target.name} (${shortId(target.id)})`)
+const target = await resolveTarget(requested)
+console.log(`Device: ${target.name} (${target.id})`)
 
 const localPath = join(tmpdir(), `screenshot_${Date.now()}.png`)
 await grab(target, localPath)
