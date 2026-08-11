@@ -121,6 +121,9 @@ class MainActivity : ComponentActivity() {
                     precipitationProbability = precips[index],
                 )
             },
+            // An older phone never sends the sun keys; `getInt` would read that absence as midnight.
+            sunriseMinuteOfDay = if (dataMap.containsKey(WEATHER_SUNRISE)) dataMap.getInt(WEATHER_SUNRISE) else null,
+            sunsetMinuteOfDay = if (dataMap.containsKey(WEATHER_SUNSET)) dataMap.getInt(WEATHER_SUNSET) else null,
             fetchedAtMs = dataMap.getLong(WEATHER_FETCHED_AT),
         )
     }

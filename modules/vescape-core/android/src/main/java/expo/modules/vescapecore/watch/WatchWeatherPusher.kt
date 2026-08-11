@@ -58,6 +58,9 @@ internal class WatchWeatherPusher(
                             WATCH_WEATHER_HOUR_PRECIPS,
                             ArrayList(weather.hourPrecips.toList()),
                         )
+                        // Omitted rather than sent as a sentinel: the wrist reads absence directly.
+                        weather.sunriseMinuteOfDay?.let { dataMap.putInt(WATCH_WEATHER_SUNRISE, it) }
+                        weather.sunsetMinuteOfDay?.let { dataMap.putInt(WATCH_WEATHER_SUNSET, it) }
                         dataMap.putLong(WATCH_WEATHER_FETCHED_AT, weather.fetchedAtMs)
                     }.asPutDataRequest().setUrgent()
                     Tasks.await(dataClient.putDataItem(request))

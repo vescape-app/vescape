@@ -32,6 +32,13 @@ internal const val WATCH_WEATHER_HOUR_TEMPS = "hourTemps"
 internal const val WATCH_WEATHER_HOUR_ICONS = "hourIcons"
 internal const val WATCH_WEATHER_HOUR_PRECIPS = "hourPrecips"
 
+/**
+ * Sunrise / sunset as minutes since local midnight, absent when the forecast carried neither (polar
+ * day, or a provider response without daily times). Both or nothing: a lone sunrise reads as a bug.
+ */
+internal const val WATCH_WEATHER_SUNRISE = "sunriseMinuteOfDay"
+internal const val WATCH_WEATHER_SUNSET = "sunsetMinuteOfDay"
+
 /** When the forecast was fetched, so the wrist can age out a reading the phone stopped refreshing. */
 internal const val WATCH_WEATHER_FETCHED_AT = "fetchedAtMs"
 
@@ -49,6 +56,8 @@ internal data class WatchWeather(
     val hourTemps: IntArray,
     val hourIcons: List<String>,
     val hourPrecips: IntArray,
+    val sunriseMinuteOfDay: Int?,
+    val sunsetMinuteOfDay: Int?,
     val fetchedAtMs: Long,
 ) {
     // Arrays make the generated equals() identity-based, which would push an identical forecast on
@@ -62,7 +71,9 @@ internal data class WatchWeather(
             hourMinutes.contentEquals(other.hourMinutes) &&
             hourTemps.contentEquals(other.hourTemps) &&
             hourIcons == other.hourIcons &&
-            hourPrecips.contentEquals(other.hourPrecips)
+            hourPrecips.contentEquals(other.hourPrecips) &&
+            sunriseMinuteOfDay == other.sunriseMinuteOfDay &&
+            sunsetMinuteOfDay == other.sunsetMinuteOfDay
 
     override fun hashCode(): Int {
         var result = temperatureC
@@ -73,6 +84,8 @@ internal data class WatchWeather(
         result = 31 * result + hourTemps.contentHashCode()
         result = 31 * result + hourIcons.hashCode()
         result = 31 * result + hourPrecips.contentHashCode()
+        result = 31 * result + (sunriseMinuteOfDay ?: 0)
+        result = 31 * result + (sunsetMinuteOfDay ?: 0)
         return result
     }
 }
@@ -90,5 +103,7 @@ internal fun Weather.toWatchWeather(): WatchWeather = WatchWeather(
     hourTemps = hourly.map { it.temperatureC }.toIntArray(),
     hourIcons = hourly.map { it.icon.slug },
     hourPrecips = hourly.map { it.precipitationProbability }.toIntArray(),
+    sunriseMinuteOfDay = sunriseMinuteOfDay,
+    sunsetMinuteOfDay = sunsetMinuteOfDay,
     fetchedAtMs = fetchedAtMs,
 )

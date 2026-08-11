@@ -27,6 +27,8 @@ const val WEATHER_HOUR_MINUTES = "hourMinutes"
 const val WEATHER_HOUR_TEMPS = "hourTemps"
 const val WEATHER_HOUR_ICONS = "hourIcons"
 const val WEATHER_HOUR_PRECIPS = "hourPrecips"
+const val WEATHER_SUNRISE = "sunriseMinuteOfDay"
+const val WEATHER_SUNSET = "sunsetMinuteOfDay"
 const val WEATHER_FETCHED_AT = "fetchedAtMs"
 
 /** One forecast hour, as the wrist renders it. [minuteOfDay] is local to the forecast location. */
@@ -47,6 +49,9 @@ data class WatchWeather(
     val label: String,
     val precipitationProbability: Int,
     val hourly: List<WatchWeatherHour>,
+    /** Minutes since local midnight; null when the phone had no daily times to send. */
+    val sunriseMinuteOfDay: Int?,
+    val sunsetMinuteOfDay: Int?,
     val fetchedAtMs: Long,
 )
 
