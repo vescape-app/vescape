@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import org.json.JSONObject
+import java.util.Calendar
 
 /**
  * Emulator-only Watch Frame replay: feeds recorded lane samples into [TelemetryState] on the same
@@ -21,6 +22,14 @@ import org.json.JSONObject
 /** Fixture assets shipped with the watch app. [RIDE] is a real recorded ride, [SWEEP] walks every lane's full range. */
 const val REPLAY_FIXTURE_RIDE = "watch-ride.jsonl"
 const val REPLAY_FIXTURE_SWEEP = "watch-sweep.jsonl"
+
+/**
+ * Fixtures for the two surfaces the phone pushes outside the frame stream: the route the rider lanes
+ * are placed on, and the forecast. Both fixtures are shared by every lane fixture — they describe the
+ * ride's surroundings, not its telemetry.
+ */
+private const val REPLAY_FIXTURE_ROUTE = "watch-route.json"
+private const val REPLAY_FIXTURE_WEATHER = "watch-weather.json"
 
 /** One recorded moment: the frame to show and the recording-relative time to show it at. */
 data class ReplaySample(val atMs: Long, val frame: WatchFrame)
@@ -47,6 +56,9 @@ object ReplayFixtureParser {
                     stale = json.optBoolean("stale", false),
                     navBearing = json.nullableLane("navBearing"),
                     navDistanceM = json.nullableLane("navDistance"),
+                    riderEastM = json.nullableLane("riderEast"),
+                    riderNorthM = json.nullableLane("riderNorth"),
+                    courseDeg = json.nullableLane("course"),
                     routeSpanM = json.nullableLane("routeSpanM"),
                 ),
             )
@@ -57,6 +69,60 @@ object ReplayFixtureParser {
 
     private fun JSONObject.nullableLane(key: String): Double? =
         if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
+}
+
+/**
+ * Parsers for the non-frame fixtures. Both mirror what the phone would have pushed, so replay
+ * exercises the same state the real Data Layer paths feed — [WatchRouteDecoder] and the weather
+ * message listener are the only other way into these two objects.
+ */
+object ReplaySceneParser {
+    /** Route points as metres east/north of the origin, the frame the rider lanes are relative to. */
+    fun parseRoute(json: String): WatchRoute? = try {
+        val points = JSONObject(json).getJSONArray("points")
+        WatchRoute(
+            (0 until points.length()).map { index ->
+                val point = points.getJSONObject(index)
+                RoutePoint(
+                    eastM = point.getDouble("east").toFloat(),
+                    northM = point.getDouble("north").toFloat(),
+                )
+            },
+        ).takeIf { it.points.isNotEmpty() }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * The fixture forecast, anchored to [nowMs]: the fixture carries no clock times, so the hours are
+     * laid out from the next full hour and the reading is stamped as fresh. A fixed clock time would
+     * age out mid-session and read as yesterday's weather.
+     */
+    fun parseWeather(json: String, nowMs: Long, minuteOfDay: Int): WatchWeather? = try {
+        val root = JSONObject(json)
+        val hours = root.getJSONArray("hourly")
+        val firstHour = (minuteOfDay / 60 + 1) * 60
+        WatchWeather(
+            temperatureC = root.getInt("temperatureC"),
+            icon = root.getString("icon"),
+            label = root.getString("label"),
+            precipitationProbability = root.getInt("precipitationProbability"),
+            hourly = (0 until hours.length()).map { index ->
+                val hour = hours.getJSONObject(index)
+                WatchWeatherHour(
+                    minuteOfDay = (firstHour + index * 60) % (24 * 60),
+                    temperatureC = hour.getInt("temperatureC"),
+                    icon = hour.getString("icon"),
+                    precipitationProbability = hour.getInt("precipitationProbability"),
+                )
+            },
+            sunriseMinuteOfDay = root.getInt("sunriseMinuteOfDay"),
+            sunsetMinuteOfDay = root.getInt("sunsetMinuteOfDay"),
+            fetchedAtMs = nowMs,
+        )
+    } catch (e: Exception) {
+        null
+    }
 }
 
 object ReplayGate {
@@ -94,6 +160,7 @@ class FrameReplayer(private val context: Context) {
         samples = load(fixture)
         if (samples.isEmpty()) return
         WatchDiagnostics.recordReplay(fixture, samples.size)
+        loadScene()
         running = true
         restartLoop()
     }
@@ -124,6 +191,23 @@ class FrameReplayer(private val context: Context) {
             },
             (dueAt - SystemClock.elapsedRealtime()).coerceAtLeast(0),
         )
+    }
+
+    /** Route + forecast, the surroundings every lane fixture rides through. */
+    private fun loadScene() {
+        readAsset(REPLAY_FIXTURE_ROUTE)?.let { RouteState.accept(ReplaySceneParser.parseRoute(it)) }
+        readAsset(REPLAY_FIXTURE_WEATHER)?.let {
+            val now = Calendar.getInstance()
+            val minuteOfDay = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+            WeatherState.accept(ReplaySceneParser.parseWeather(it, now.timeInMillis, minuteOfDay))
+        }
+    }
+
+    private fun readAsset(fixture: String): String? = try {
+        context.assets.open(fixture).bufferedReader().use { it.readText() }
+    } catch (e: Exception) {
+        WatchDiagnostics.recordReplayError(fixture, e)
+        null
     }
 
     private fun load(fixture: String): List<ReplaySample> = try {

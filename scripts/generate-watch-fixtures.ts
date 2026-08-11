@@ -16,9 +16,11 @@ import { join } from 'path'
  * `watch-sweep.jsonl` is synthetic: every lane walked through its full range, including null and
  * stale stretches, so gauge extremes are reachable without hunting for them in a real ride.
  *
- * The recording carries no GPS, so the nav lanes in both fixtures are synthetic too: a destination
- * the rider closes on while the bearing swings around the wrist, ending in a stretch with no nav at
- * all, so both the navigating and the plain telemetry frame are reachable on an emulator.
+ * The recording carries no GPS, so navigation is synthetic too: a route polyline
+ * (`watch-route.json`) plus per-sample rider lanes walking it, ending in a stretch with no nav at
+ * all, so both the navigating and the plain telemetry frame are reachable on an emulator. The
+ * forecast (`watch-weather.json`) is synthetic for the same reason — between them the emulator shows
+ * every wrist surface without a phone.
  */
 
 const ROOT = join(import.meta.dir, '..')
@@ -60,7 +62,15 @@ type LaneSample = {
   /** Nav lanes. Omitted entirely on samples with no destination, which is how the watch hides nav. */
   navBearing?: number
   navDistance?: number
+  /** Rider lanes, metres east/north of the route origin, plus course and visible route span. */
+  riderEast?: number
+  riderNorth?: number
+  course?: number
+  routeSpanM?: number
 }
+
+/** A synthetic route point in the wrist's drawing frame: metres east/north of the route origin. */
+type RoutePoint = { east: number; north: number }
 
 function crc16(data: Uint8Array): number {
   let crc = 0
@@ -199,18 +209,164 @@ function decodeRide(): { t: number; telemetry: Telemetry }[] {
 }
 
 /**
- * Synthetic nav lanes for [progress] through a fixture (0 = start, 1 = end): the rider closes on a
- * destination 3.2 km out while the bearing swings a full turn around the wrist, so both distance
- * formats and every chevron angle are seen. Past arrival the lanes are omitted — that is the
- * no-destination case, and the watch drops the whole nav overlay.
+ * The synthetic route the rider follows: ~3 km of straights joined by every turn shape the wrist has
+ * to survive — 30/60/90/120/160°, taken both as sharp corners and as swept arcs, including a
+ * hairpin. Curvature has to live at the scale the wrist actually shows ([ROUTE_SPAN_M]): one long
+ * gentle arc renders as a straight line once it is cropped to the few hundred metres ahead, and a
+ * route with no hard turns never exercises the heading-up rotation.
+ *
+ * Fixed script, not a random source: the fixture is checked in, so every run must produce the same
+ * corners.
  */
-function navLanes(progress: number): { navBearing?: number; navDistance?: number } {
+type RouteSegment =
+  | { straightM: number }
+  /** [radiusM] 0 is a sharp corner; anything larger sweeps the turn as an arc. */
+  | { turnDeg: number; radiusM: number }
+
+const ROUTE_SCRIPT: RouteSegment[] = [
+  { straightM: 200 },
+  { turnDeg: 30, radiusM: 45 },
+  { straightM: 150 },
+  { turnDeg: -60, radiusM: 0 },
+  { straightM: 130 },
+  { turnDeg: 60, radiusM: 35 },
+  { straightM: 180 },
+  { turnDeg: -90, radiusM: 0 },
+  { straightM: 160 },
+  { turnDeg: 90, radiusM: 30 },
+  { straightM: 220 },
+  { turnDeg: -120, radiusM: 25 },
+  { straightM: 140 },
+  { turnDeg: 120, radiusM: 0 },
+  { straightM: 190 },
+  // Hairpin: the worst case for heading-up rotation, since the whole drawing spins nearly halfway.
+  { turnDeg: 160, radiusM: 20 },
+  { straightM: 240 },
+  { turnDeg: -30, radiusM: 0 },
+  { straightM: 210 },
+  { turnDeg: -160, radiusM: 55 },
+  { straightM: 300 },
+]
+
+/** Metres between polyline points on a straight; arcs subdivide by angle instead. */
+const ROUTE_STEP_M = 25
+const ROUTE_ARC_STEP_DEG = 8
+
+function buildRoute(): RoutePoint[] {
+  const points: RoutePoint[] = [{ east: 0, north: 0 }]
+  let headingDeg = 0
+  let east = 0
+  let north = 0
+
+  const advance = (distanceM: number) => {
+    const rad = (headingDeg * Math.PI) / 180
+    east += Math.sin(rad) * distanceM
+    north += Math.cos(rad) * distanceM
+    points.push({ east: round(east), north: round(north) })
+  }
+
+  for (const segment of ROUTE_SCRIPT) {
+    if ('straightM' in segment) {
+      const steps = Math.max(1, Math.round(segment.straightM / ROUTE_STEP_M))
+      for (let step = 0; step < steps; step++) advance(segment.straightM / steps)
+      continue
+    }
+    if (segment.radiusM === 0) {
+      headingDeg += segment.turnDeg
+      continue
+    }
+    // Swept turn: walk the arc in small heading steps, each chord long enough to keep the radius.
+    const steps = Math.max(1, Math.round(Math.abs(segment.turnDeg) / ROUTE_ARC_STEP_DEG))
+    const stepDeg = segment.turnDeg / steps
+    const chordM = 2 * segment.radiusM * Math.sin((Math.abs(stepDeg) * Math.PI) / 360)
+    for (let step = 0; step < steps; step++) {
+      headingDeg += stepDeg
+      advance(chordM)
+    }
+  }
+  return points
+}
+
+const ROUTE = buildRoute()
+const ROUTE_LEGS = ROUTE.slice(1).map((point, index) => distance(ROUTE[index], point))
+const ROUTE_LENGTH_M = ROUTE_LEGS.reduce((sum, leg) => sum + leg, 0)
+
+/** Horizontal route metres the phone map shows; the wrist zooms its route drawing to match. */
+const ROUTE_SPAN_M = 400
+
+function distance(from: RoutePoint, to: RoutePoint): number {
+  return Math.hypot(to.east - from.east, to.north - from.north)
+}
+
+/** Degrees clockwise from north, the convention every rider lane uses. */
+function bearing(from: RoutePoint, to: RoutePoint): number {
+  return ((Math.atan2(to.east - from.east, to.north - from.north) * 180) / Math.PI + 360) % 360
+}
+
+/** The point [alongM] metres into the route, with the course of the leg it sits on. */
+function walkRoute(alongM: number): { point: RoutePoint; courseDeg: number } {
+  let remaining = Math.min(Math.max(alongM, 0), ROUTE_LENGTH_M)
+  for (let index = 0; index < ROUTE_LEGS.length; index++) {
+    const leg = ROUTE_LEGS[index]
+    if (remaining > leg && index < ROUTE_LEGS.length - 1) {
+      remaining -= leg
+      continue
+    }
+    const from = ROUTE[index]
+    const to = ROUTE[index + 1]
+    const fraction = leg === 0 ? 0 : remaining / leg
+    return {
+      point: {
+        east: from.east + (to.east - from.east) * fraction,
+        north: from.north + (to.north - from.north) * fraction,
+      },
+      courseDeg: bearing(from, to),
+    }
+  }
+  return { point: ROUTE[ROUTE.length - 1], courseDeg: 0 }
+}
+
+/**
+ * Synthetic nav + rider lanes for [progress] through a fixture (0 = start, 1 = end): the rider walks
+ * the route towards its far end, so the chevron, the distance and the drawn line all agree instead
+ * of each telling its own story. Past arrival the lanes are omitted — that is the no-destination
+ * case, and the watch drops the whole nav overlay.
+ */
+function navLanes(progress: number): Partial<LaneSample> {
   const ARRIVAL_AT = 0.85
   if (progress >= ARRIVAL_AT) return {}
-  const remaining = 1 - progress / ARRIVAL_AT
+  const alongM = (progress / ARRIVAL_AT) * ROUTE_LENGTH_M
+  const { point, courseDeg } = walkRoute(alongM)
+  const destination = ROUTE[ROUTE.length - 1]
   return {
-    navBearing: round((progress * 720) % 360),
-    navDistance: round(Math.max(15, remaining * 3200)),
+    // Bearing is relative to travel direction: straight ahead is up on the wrist.
+    navBearing: round((bearing(point, destination) - courseDeg + 360) % 360),
+    navDistance: round(Math.max(15, ROUTE_LENGTH_M - alongM)),
+    riderEast: round(point.east),
+    riderNorth: round(point.north),
+    course: round(courseDeg),
+    routeSpanM: ROUTE_SPAN_M,
+  }
+}
+
+/**
+ * Synthetic forecast for the wrist's weather surfaces. Hours carry no clock time: the replayer
+ * anchors them to the emulator's own clock, so the strip always reads as "the hours ahead".
+ */
+function buildWeather() {
+  const icons = ['sun', 'cloud-sun', 'cloud', 'cloud-rain', 'cloud-lightning', 'cloud-snow']
+  return {
+    temperatureC: 17,
+    icon: 'cloud-sun',
+    label: 'Partly cloudy',
+    precipitationProbability: 15,
+    sunriseMinuteOfDay: 5 * 60 + 12,
+    sunsetMinuteOfDay: 20 * 60 + 48,
+    hourly: Array.from({ length: 12 }, (_, hour) => ({
+      temperatureC: 17 + Math.round(6 * Math.sin((hour / 12) * Math.PI)),
+      icon: icons[hour % icons.length],
+      precipitationProbability: (hour * 13) % 90,
+    })),
   }
 }
 
@@ -290,4 +446,6 @@ function buildSweep(): LaneSample[] {
 mkdirSync(OUT_DIR, { recursive: true })
 writeFileSync(join(OUT_DIR, 'watch-ride.jsonl'), serialize(buildRide()))
 writeFileSync(join(OUT_DIR, 'watch-sweep.jsonl'), serialize(buildSweep()))
+writeFileSync(join(OUT_DIR, 'watch-route.json'), JSON.stringify({ points: ROUTE }))
+writeFileSync(join(OUT_DIR, 'watch-weather.json'), JSON.stringify(buildWeather()))
 console.log(`wrote fixtures to ${OUT_DIR}`)
