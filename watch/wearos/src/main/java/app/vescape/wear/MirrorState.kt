@@ -1,7 +1,20 @@
 package app.vescape.wear
 
+/** Cadence assumed until two frames have been seen; matches the phone's default push interval. */
 const val WATCH_FRAME_INTERVAL_MS = 250L
-const val MIRROR_DISCONNECTED_TIMEOUT_MS = WATCH_FRAME_INTERVAL_MS * 3
+
+/**
+ * Three missed frames means disconnected. The phone's push cadence is a rider setting
+ * (`wearMirrorIntervalMs`, 50–10000 ms), so the window is measured from the frames that actually
+ * arrive rather than assumed — a hardcoded window pins the mirror to DISCONNECTED on every cadence
+ * the rider picks above the default. Clamped so neither a burst nor a long stall distorts it.
+ */
+const val MIRROR_DISCONNECTED_MIN_TIMEOUT_MS = 750L
+const val MIRROR_DISCONNECTED_MAX_TIMEOUT_MS = 30_000L
+
+fun mirrorDisconnectedTimeoutMs(frameGapMs: Long?): Long =
+    ((frameGapMs ?: WATCH_FRAME_INTERVAL_MS) * 3)
+        .coerceIn(MIRROR_DISCONNECTED_MIN_TIMEOUT_MS, MIRROR_DISCONNECTED_MAX_TIMEOUT_MS)
 
 enum class MirrorStatus {
     LIVE,
@@ -41,7 +54,7 @@ object MirrorStateReducer {
         frame: WatchFrame?,
         lastFrameAtMs: Long?,
         nowMs: Long,
-        timeoutMs: Long = MIRROR_DISCONNECTED_TIMEOUT_MS,
+        timeoutMs: Long = mirrorDisconnectedTimeoutMs(null),
     ): MirrorState {
         if (frame == null || lastFrameAtMs == null || nowMs - lastFrameAtMs > timeoutMs) {
             return MirrorState(MirrorStatus.DISCONNECTED, null)

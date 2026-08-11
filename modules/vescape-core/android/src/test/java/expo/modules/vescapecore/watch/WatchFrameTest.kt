@@ -28,7 +28,6 @@ class WatchFrameTest {
             lane(),
             lane(),
             stale = flags and WATCH_FRAME_FLAG_STALE != 0,
-            waiting = flags and WATCH_FRAME_FLAG_WAITING != 0,
             navBearing = lane(),
             navDistanceM = lane(),
             riderEastM = lane(),
@@ -161,22 +160,33 @@ class WatchFrameTest {
     }
 
     @Test
-    fun `waiting frame round-trips with empty lanes and degrades to stale for old decoders`() {
-        val decoded = roundTrip(WatchFrameBuilder.waitingFrame())!!
-        assertTrue(decoded.waiting)
-        // Stale is also set so a wrist decoder without the waiting bit dims instead of showing live.
-        assertTrue(decoded.stale)
+    fun `a board-less frame round-trips with empty board lanes`() {
+        val decoded = roundTrip(
+            WatchFrameBuilder.build(
+                WatchSnapshot(
+                    speed = null,
+                    dutyCycle = null,
+                    dutyExcluded = true,
+                    batterySoc = null,
+                    motorTemp = null,
+                    ctrlTemp = null,
+                    navBearing = 42.0,
+                ),
+                stale = false,
+            ),
+        )!!
         assertNull(decoded.speed)
         assertNull(decoded.duty)
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)
         assertNull(decoded.ctrlTemp)
+        assertEquals(42.0, decoded.navBearing!!, 1e-3)
     }
 
     @Test
-    fun `live frame does not carry the waiting bit`() {
-        val decoded = roundTrip(WatchFrame(1.0, 2.0, 3.0, 4.0, 5.0, stale = false))!!
-        assertEquals(false, decoded.waiting)
+    fun `the phone never sets the legacy waiting bit`() {
+        val bytes = WatchFrameBuilder.encode(WatchFrame(1.0, 2.0, 3.0, 4.0, 5.0, stale = true))
+        assertEquals(WATCH_FRAME_FLAG_STALE, bytes[1].toInt())
     }
 
     @Test

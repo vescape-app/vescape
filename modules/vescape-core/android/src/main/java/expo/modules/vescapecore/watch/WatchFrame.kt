@@ -22,9 +22,12 @@ internal const val WATCH_FRAME_FIELD_COUNT = 11
 /** Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian. */
 internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
 
-/** Flags-byte bits. The wrist-side decoder carries the same values by convention (ADR-0018). */
+/**
+ * Flags-byte bits. The wrist-side decoder carries the same values by convention (ADR-0018). Bit 2
+ * ("waiting") is legacy: the tick is service-scoped now and always has a frame worth drawing, so
+ * this side never sets it. The wrist still decodes it for older phone builds.
+ */
 internal const val WATCH_FRAME_FLAG_STALE = 1
-internal const val WATCH_FRAME_FLAG_WAITING = 2
 
 /** The decoded Watch Frame model. Nullable numeric lanes ride as `NaN` over the wire (ADR-0018). */
 internal data class WatchFrame(
@@ -34,7 +37,6 @@ internal data class WatchFrame(
     val motorTemp: Double?,
     val ctrlTemp: Double?,
     val stale: Boolean,
-    val waiting: Boolean = false,
     /**
      * Where the path goes next: absolute degrees clockwise from north, from Route Progress. The
      * wrist rotates its north-up world by [courseDeg], so this is never pre-rotated on the phone.
@@ -92,27 +94,11 @@ internal object WatchFrameBuilder {
         routeSpanM = snapshot.routeSpanM,
     )
 
-    /**
-     * "Session live, no board telemetry yet" frame: the connect phase before the first sample (or
-     * after a telemetry reset). Also flagged stale so an older wrist decoder degrades to a dimmed
-     * zero instead of rendering it as live data.
-     */
-    fun waitingFrame(): WatchFrame = WatchFrame(
-        speed = null,
-        duty = null,
-        battery = null,
-        motorTemp = null,
-        ctrlTemp = null,
-        stale = true,
-        waiting = true,
-    )
-
     fun encode(frame: WatchFrame): ByteArray =
         ByteBuffer.allocate(WATCH_FRAME_BYTES).order(ByteOrder.LITTLE_ENDIAN).apply {
             put(WATCH_FRAME_FIELD_COUNT.toByte())
             var flags = 0
             if (frame.stale) flags = flags or WATCH_FRAME_FLAG_STALE
-            if (frame.waiting) flags = flags or WATCH_FRAME_FLAG_WAITING
             put(flags.toByte())
             putFloat(frame.speed.toLaneFloat())
             putFloat(frame.duty.toLaneFloat())

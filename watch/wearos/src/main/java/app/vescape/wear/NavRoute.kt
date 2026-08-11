@@ -73,9 +73,11 @@ private fun AnimatedRoute(
     routeSpanM: Float,
     color: Color,
 ) {
-    val eastM = remember { Animatable(targetEastM) }
-    val northM = remember { Animatable(targetNorthM) }
-    val courseDeg = remember { Animatable(targetCourseDeg) }
+    // Offsets are metres from *this* route's origin. A new route moves the origin, so the old
+    // animators would glide the rider across a jump that never happened: key them to the route.
+    val eastM = remember(route) { Animatable(targetEastM) }
+    val northM = remember(route) { Animatable(targetNorthM) }
+    val courseDeg = remember(route) { Animatable(targetCourseDeg) }
     val motionSpec = tween<Float>(durationMillis = ROUTE_MOTION_EASE_MS, easing = LinearEasing)
 
     LaunchedEffect(targetEastM) { eastM.animateTo(targetEastM, motionSpec) }
