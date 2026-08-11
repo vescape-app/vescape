@@ -1,4 +1,9 @@
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
+import { distanceMeters } from '@/helpers/mapGeometry'
+
+const SEARCH_FETCH_LIMIT = '10'
+const SEARCH_RESULT_LIMIT = 5
+const LOCAL_RESULT_RADIUS_METERS = 150_000
 
 export interface MapSearchResult {
   id: string
@@ -93,6 +98,20 @@ interface SearchMapResultsOptions {
   signal?: AbortSignal
 }
 
+export function prioritizeNearbySearchResults(
+  results: MapSearchResult[],
+  proximity: { latitude: number; longitude: number } | null | undefined,
+) {
+  if (!proximity) return results.slice(0, SEARCH_RESULT_LIMIT)
+  const nearby: MapSearchResult[] = []
+  const distant: MapSearchResult[] = []
+  for (const result of results) {
+    const group = distanceMeters(proximity, result) <= LOCAL_RESULT_RADIUS_METERS ? nearby : distant
+    group.push(result)
+  }
+  return [...nearby, ...distant].slice(0, SEARCH_RESULT_LIMIT)
+}
+
 export async function searchMapResults(query: string, options: SearchMapResultsOptions = {}) {
   const normalized = normalizeSearchQuery(query)
   if (normalized.length < 2) return []
@@ -101,7 +120,7 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
   const params = new URLSearchParams({
     q: normalized,
     access_token: MAPBOX_ACCESS_TOKEN,
-    limit: '5',
+    limit: SEARCH_FETCH_LIMIT,
   })
   if (options.proximity) {
     params.set('proximity', `${options.proximity.longitude},${options.proximity.latitude}`)
@@ -115,7 +134,8 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
   }
 
   const data = (await response.json()) as MapboxGeocodingResponse
-  return (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
+  const results = (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
+  return prioritizeNearbySearchResults(results, options.proximity)
 }
 
 export async function reverseGeocodeMapCoordinate(
