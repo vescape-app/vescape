@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
+import expo.modules.vescapecore.watch.WatchRouteMirror
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -203,6 +204,17 @@ class NavigationController(
 
   /** Notified on every change, including the clear to `null` and every [computing] transition. */
   var onChange: ((Navigation?) -> Unit)? = null
+
+  /**
+   * Notified with the rideable path of every published Navigation, `null` when there is none to
+   * draw — a failed Navigation is a `null` path, not an empty one. Fired only when the path itself
+   * changes, so a [computing] transition over an unchanged path does not re-push it.
+   *
+   * Separate from [onChange] because the two have different lifetimes: [onChange] belongs to the JS
+   * module and is cleared on every reload, while this one carries the route to the Wear Mirror and
+   * must survive one — see `WatchRouteMirror`.
+   */
+  var onPathChange: ((List<Pair<Double, Double>>?) -> Unit)? = null
 
   /**
    * Where the rider is along the current path. Derived and never stored: recomputed by [onFix] and
@@ -443,6 +455,10 @@ class NavigationController(
 
   private fun claimRequest(): Int = synchronized(lock) { ++generation }
 
+  /** The path a Navigation actually draws, or `null` when it has none — a failure has no line. */
+  private fun ridePath(navigation: Navigation?): List<Pair<Double, Double>>? =
+    navigation?.points?.takeIf { navigation.status == NavigationStatus.READY && it.isNotEmpty() }
+
   /**
    * Commits [navigation] if [request] is still the newest intent — and, when [keepUsablePath] is
    * set, only if it is not a downgrade from a drawn path to a failure — and notifies in that same
@@ -463,6 +479,7 @@ class NavigationController(
       ) {
         return
       }
+      val previousPath = ridePath(state)
       state = navigation
       // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
       // rather than describing a path that is no longer drawn. The next fix refills it.
@@ -470,6 +487,8 @@ class NavigationController(
       progress = null
       onChange?.invoke(navigation)
       if (hadProgress) onProgressChange?.invoke(null)
+      val nextPath = ridePath(navigation)
+      if (previousPath != nextPath) onPathChange?.invoke(nextPath)
     }
     persist(request)
   }
@@ -510,6 +529,10 @@ class NavigationController(
         AppDataNavigationStore(context.applicationContext),
       ).also {
         instance = it
+        // The Wear Mirror follows the path from here rather than from the board session: a route is
+        // Navigation truth and must reach the wrist without waiting for a board. Attached before
+        // restore so the cold-start path pushes itself.
+        WatchRouteMirror.attach(it, context.applicationContext)
         // Restore here rather than from the module, so a JS reload — which recreates the module but
         // not this singleton — cannot re-run it over a Navigation the rider has since replaced.
         it.restore()

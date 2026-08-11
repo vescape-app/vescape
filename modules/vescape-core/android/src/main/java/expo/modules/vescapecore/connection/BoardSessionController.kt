@@ -61,11 +61,15 @@ import expo.modules.vescapecore.replay.ReplayClock
 import expo.modules.vescapecore.replay.ReplayTransport
 import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
+import expo.modules.vescapecore.navigation.NavigationController
+import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WatchMirrorPresence
+import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTelemetryPusher
 import expo.modules.vescapecore.watch.WatchTick
+import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.buildLiveState
 import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
 import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
@@ -1635,6 +1639,20 @@ private var wearAutoLaunchOnConnect = true
     /** Latest cold-path snapshot the watch tick pushes; null until the first sample / after a reset. */
     private fun watchSnapshot(): WatchSnapshot? {
         val current = telemetry ?: return null
+        // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
+        // sending a rider position or a course alone would only place a dot on a route the wrist is
+        // not drawing. All five null is what hides the wrist overlay.
+        val progress = NavigationController.get(service.applicationContext).currentProgress
+        val origin = WatchRouteMirror.origin
+        val rider = locationTracker.riderPosition
+        // Measured from the origin of the route the watch actually holds, not from the current
+        // Navigation's first point: a recompute landing between the push and this tick would
+        // otherwise place the rider against an origin the wrist has never seen.
+        val offset = if (progress != null && origin != null && rider != null) {
+            offsetMeters(origin, GeoPoint(rider.latitude, rider.longitude))
+        } else {
+            null
+        }
         return WatchSnapshot(
             speed = current.speed,
             dutyCycle = current.dutyCycle,
@@ -1642,11 +1660,13 @@ private var wearAutoLaunchOnConnect = true
             batterySoc = latestBatterySoc,
             motorTemp = current.tempMotor,
             ctrlTemp = current.tempMosfet,
-            // TODO(nav): nav lanes stay null until this controller holds an active destination
-            // (set by a JS intent per route change) and derives bearing + distance here from
-            // locationTracker.riderPosition; the watch hides its nav overlay while they are null.
-            navBearing = null,
-            navDistanceM = null,
+            navBearing = progress?.bearingDeg,
+            navDistanceM = progress?.remainingMeters,
+            riderEastM = offset?.first,
+            riderNorthM = offset?.second,
+            // Absolute course, the rotation the wrist applies to its north-up world. Null while the
+            // fix carries no usable heading, which leaves the wrist drawing the route north-up.
+            courseDeg = if (progress != null) rider?.courseDeg else null,
         )
     }
 

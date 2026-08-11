@@ -437,6 +437,29 @@ class NavigationControllerTest {
         synchronized(progress) { assertEquals(listOf(false, true), progress.map { it == null }) }
     }
 
+    /**
+     * The Wear Mirror pushes a whole polyline per path change, so it must hear about the path and
+     * nothing else: a restore fires it, a clear takes the route off the wrist, and a failed
+     * recompute that leaves the drawn path alone must not re-push the same coordinates.
+     */
+    @Test
+    fun `the path listener fires on restore and clear, and not on a failure over a drawn path`() {
+        val store = FakeStore(navigation(), TARGET_LAT to TARGET_LNG)
+        val (controller, _) = controller(FixedRoutes(DirectionsResult.Failed), store)
+        val paths = mutableListOf<List<Pair<Double, Double>>?>()
+        controller.onPathChange = { synchronized(paths) { paths += it } }
+
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        controller.recompute(TARGET_LAT, TARGET_LNG, RIDER_LAT, RIDER_LNG)
+        Thread.sleep(SETTLE_MS)
+        controller.clear()
+
+        synchronized(paths) {
+            assertEquals(listOf(navigation().points, null), paths)
+        }
+    }
+
     @Test
     fun `a fix without a path publishes no Route Progress`() {
         val (controller, _) = controller(GatedRoutes())
