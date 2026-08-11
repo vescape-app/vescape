@@ -6,20 +6,10 @@ import { Input } from '@/components/forms/Input'
 interface BoardInfoFormProps {
   name: string
   onChangeName: (value: string) => void
-  description?: string
-  onChangeDescription?: (value: string) => void
   nameTestID?: string
-  descriptionTestID?: string
 }
 
-export function BoardInfoForm({
-  name,
-  description,
-  onChangeName,
-  onChangeDescription,
-  nameTestID,
-  descriptionTestID,
-}: BoardInfoFormProps) {
+export function BoardInfoForm({ name, onChangeName, nameTestID }: BoardInfoFormProps) {
   return (
     <View style={styles.form}>
       <Text style={styles.label}>Board name</Text>
@@ -31,23 +21,6 @@ export function BoardInfoForm({
         testID={nameTestID}
         accessibilityLabel="Board name"
       />
-      {description != null && onChangeDescription ? (
-        <>
-          <Text style={styles.label}>Description</Text>
-          <Input
-            style={styles.inputMultiline}
-            value={description}
-            onChangeText={onChangeDescription}
-            placeholder="Optional"
-            placeholderTextColor={theme.palette.slate.textDim}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-            testID={descriptionTestID}
-            accessibilityLabel="Board description"
-          />
-        </>
-      ) : null}
     </View>
   )
 }
@@ -62,9 +35,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-  },
-  inputMultiline: {
-    minHeight: 84,
-    paddingTop: 12,
   },
 })

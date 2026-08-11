@@ -115,7 +115,6 @@ export default function EditBoardScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <EditBoardSettings
             name={form.name}
-            description={form.description}
             link={editingBoard.link}
             linkSaving={form.saving === 'link'}
             keepMissingBatteryConfig={form.keepMissingBatteryConfig}
@@ -159,7 +158,8 @@ export default function EditBoardScreen() {
       <BoardInfoEditorModal
         visible={infoModalVisible}
         name={form.name}
-        description={form.description}
+        railId={form.railId}
+        railColorId={form.railColorId}
         saving={form.saving === 'info'}
         onSave={async (value) => {
           await form.saveInfo(value)

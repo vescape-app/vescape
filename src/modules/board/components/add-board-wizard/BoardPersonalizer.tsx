@@ -19,6 +19,17 @@ import { buildRailPath } from '@/modules/board/lib/railProfile'
 
 export const RAILS = [
   {
+    id: 'xr',
+    label: 'XR',
+    path: buildRailPath(
+      [
+        [30, 32],
+        [179, 32],
+      ],
+      [0, 0],
+    ),
+  },
+  {
     id: 'wtf',
     label: 'WTF',
     path: buildRailPath(
@@ -72,17 +83,6 @@ export const RAILS = [
         [179, 27],
       ],
       [0, 0, 0, 0],
-    ),
-  },
-  {
-    id: 'xr',
-    label: 'XR',
-    path: buildRailPath(
-      [
-        [30, 32],
-        [179, 32],
-      ],
-      [0, 0],
     ),
   },
 ] as const
@@ -145,6 +145,27 @@ function RailOutline({
         fill="none"
         stroke={muted ? theme.palette.slate.textDim : color}
         strokeWidth={muted ? 1.2 : 2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  )
+}
+
+export function BoardStyleIcon({ railId, railColorId }: { railId?: string; railColorId?: string }) {
+  const rail = RAILS.find((option) => option.id === railId) ?? RAILS[DEFAULT_INDEX]
+  const color =
+    RAIL_COLORS.find((option) => option.id === railColorId)?.value ?? RAIL_COLORS[0].value
+
+  return (
+    <Svg width={58} height={32} viewBox="0 0 208 70">
+      <Circle cx="104" cy="32" r="30" fill="none" stroke={color} strokeWidth="2" />
+      <Circle cx="104" cy="32" r="15" fill="none" stroke={color} strokeWidth="2" />
+      <Path
+        d={rail.path}
+        fill="none"
+        stroke={color}
+        strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -224,6 +245,14 @@ export function BoardPersonalizer({
     [liveIndex, selectIndex, selectedIndex, tick, translateX],
   )
 
+  const selectAdjacent = useCallback(
+    (direction: -1 | 1) => {
+      const renderedIndex = Math.round(-translateX.value / ITEM_SPACING)
+      selectRenderedIndex(renderedIndex + direction)
+    },
+    [selectRenderedIndex, translateX],
+  )
+
   const gesture = useMemo(
     () =>
       Gesture.Pan()
@@ -264,7 +293,7 @@ export function BoardPersonalizer({
             accessibilityRole="button"
             accessibilityLabel="Previous board style"
             hitSlop={10}
-            onPress={() => selectRenderedIndex(RAIL_COUNT + selectedIndex - 1)}
+            onPress={() => selectAdjacent(-1)}
             style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
           >
             <CaretLeftIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
@@ -276,7 +305,7 @@ export function BoardPersonalizer({
             accessibilityRole="button"
             accessibilityLabel="Next board style"
             hitSlop={10}
-            onPress={() => selectRenderedIndex(RAIL_COUNT + selectedIndex + 1)}
+            onPress={() => selectAdjacent(1)}
             style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
           >
             <CaretRightIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />

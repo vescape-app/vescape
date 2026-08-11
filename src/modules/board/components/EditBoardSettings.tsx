@@ -21,7 +21,6 @@ import type { BatterySummary } from '@/modules/board/lib/boardSetup'
 
 interface EditBoardSettingsProps {
   name: string
-  description: string
   link: BoardLink | null
   linkSaving?: boolean
   keepMissingBatteryConfig: boolean
@@ -42,7 +41,6 @@ interface EditBoardSettingsProps {
 
 export function EditBoardSettings({
   name,
-  description,
   link,
   linkSaving = false,
   keepMissingBatteryConfig,
@@ -62,7 +60,6 @@ export function EditBoardSettings({
       <IconHero
         icon={LightningIcon}
         title={name.trim() || 'Unnamed board'}
-        description={description.trim() || 'No description'}
         iconSize={48}
         iconColor={theme.palette.sky.color}
         iconWeight="duotone"

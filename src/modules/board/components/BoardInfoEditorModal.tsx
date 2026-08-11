@@ -1,24 +1,35 @@
 import { useState } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 
 import { BoardInfoForm } from '@/modules/board/components/BoardInfoForm'
+import {
+  BoardPersonalizer,
+  type RailColorId,
+  type RailId,
+} from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
 import { Button } from '@/components/base/Button'
 import { theme } from '@/constants/theme'
 
 interface BoardInfoEditorModalProps {
   visible: boolean
   name: string
-  description: string
+  railId: RailId
+  railColorId: RailColorId
   saving?: boolean
-  onSave: (value: { name: string; description: string }) => Promise<void> | void
+  onSave: (value: {
+    name: string
+    railId: RailId
+    railColorId: RailColorId
+  }) => Promise<void> | void
   onCancel: () => void
 }
 
 export function BoardInfoEditorModal({
   visible,
   name,
-  description,
+  railId,
+  railColorId,
   saving = false,
   onSave,
   onCancel,
@@ -29,52 +40,68 @@ export function BoardInfoEditorModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Pressable style={styles.backdrop} onPress={handleCancel} disabled={saving} />
         {visible ? (
           <BoardInfoEditorModalContent
             name={name}
-            description={description}
+            railId={railId}
+            railColorId={railColorId}
             saving={saving}
             onSave={onSave}
           />
         ) : null}
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
 
 interface BoardInfoEditorModalContentProps {
   name: string
-  description: string
+  railId: RailId
+  railColorId: RailColorId
   saving: boolean
-  onSave: (value: { name: string; description: string }) => Promise<void> | void
+  onSave: (value: {
+    name: string
+    railId: RailId
+    railColorId: RailColorId
+  }) => Promise<void> | void
 }
 
 function BoardInfoEditorModalContent({
   name,
-  description,
+  railId,
+  railColorId,
   saving,
   onSave,
 }: BoardInfoEditorModalContentProps) {
   const [draftName, setDraftName] = useState(name)
-  const [draftDescription, setDraftDescription] = useState(description)
+  const [draftRailId, setDraftRailId] = useState(railId)
+  const [draftRailColorId, setDraftRailColorId] = useState(railColorId)
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Board info</Text>
+      <Text style={styles.title}>Personalize your board</Text>
       <BoardInfoForm
         name={draftName}
-        description={draftDescription}
         onChangeName={setDraftName}
-        onChangeDescription={setDraftDescription}
         nameTestID="edit-board-name-input"
-        descriptionTestID="edit-board-description-input"
+      />
+      <BoardPersonalizer
+        railId={draftRailId}
+        railColorId={draftRailColorId}
+        onRailChange={setDraftRailId}
+        onRailColorChange={setDraftRailColorId}
       />
       <Button
         label="Save"
         loading={saving}
-        onPress={() => onSave({ name: draftName, description: draftDescription })}
+        onPress={() =>
+          onSave({ name: draftName, railId: draftRailId, railColorId: draftRailColorId })
+        }
         testID="edit-board-info-save"
       />
     </View>
@@ -94,7 +121,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 400,
     backgroundColor: theme.palette.slate.surfaceDeep,
     borderRadius: 16,
     borderWidth: 1,

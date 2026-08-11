@@ -197,6 +197,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     )
     const board = addBoard({
       name: name.trim(),
+      personalization: { railId, railColorId },
       link: draftLink,
       batteryConfig,
       // Persist the draft alert setup onto the new Board (#254), then materialize its preset rules.

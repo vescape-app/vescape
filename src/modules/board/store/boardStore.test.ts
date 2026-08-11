@@ -82,6 +82,16 @@ test('new boards start unlinked (no Board Link)', async () => {
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ link: null }))
 })
 
+test('new boards persist their visual personalization', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  const personalization = { railId: 'x7', railColorId: 'cyan' }
+
+  const board = useBoardStore.getState().addBoard({ name: 'ADV', personalization })
+
+  expect(board.personalization).toEqual(personalization)
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ personalization }))
+})
+
 test('new boards can be created with a draft Board Link', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
 

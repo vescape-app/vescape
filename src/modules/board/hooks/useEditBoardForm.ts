@@ -9,12 +9,19 @@ import {
 } from '@/modules/board/lib/boardSetup'
 import { DEFAULT_BATTERY_CONFIG, deriveBatteryConfig } from '@/modules/battery/lib'
 import type { Board } from '@/modules/board/store/boardStore'
+import {
+  RAIL_COLORS,
+  RAILS,
+  type RailColorId,
+  type RailId,
+} from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
 
 type SaveKind = 'info' | 'battery' | 'link'
 
 export interface BoardInfoDraft {
   name: string
-  description: string
+  railId: RailId
+  railColorId: RailColorId
 }
 
 export interface BoardBatteryDraft {
@@ -36,7 +43,8 @@ export function useEditBoardForm({
   const boardRef = useRef<Board | undefined>(board)
   const syncedBoardIdRef = useRef<string | null>(null)
   const [name, setName] = useState(board?.name ?? '')
-  const [description, setDescription] = useState(board?.description ?? '')
+  const [railId, setRailId] = useState<RailId>(() => railIdFromBoard(board))
+  const [railColorId, setRailColorId] = useState<RailColorId>(() => railColorIdFromBoard(board))
   const [battery, setBattery] = useState(() => batteryDraftFromConfig(board?.batteryConfig))
   const [batteryTouched, setBatteryTouched] = useState(false)
   const [saving, setSaving] = useState<SaveKind | null>(null)
@@ -46,7 +54,8 @@ export function useEditBoardForm({
     if (!board || syncedBoardIdRef.current === board.id) return
 
     setName(board.name)
-    setDescription(board.description ?? '')
+    setRailId(railIdFromBoard(board))
+    setRailColorId(railColorIdFromBoard(board))
     setBattery(batteryDraftFromConfig(board.batteryConfig))
     setBatteryTouched(false)
     syncedBoardIdRef.current = board.id
@@ -54,7 +63,7 @@ export function useEditBoardForm({
 
   const saveBoard = useCallback(
     async (
-      patch: Partial<Pick<Board, 'name' | 'description' | 'batteryConfig' | 'link'>>,
+      patch: Partial<Pick<Board, 'name' | 'personalization' | 'batteryConfig' | 'link'>>,
       kind: SaveKind,
     ) => {
       const current = boardRef.current
@@ -98,11 +107,12 @@ export function useEditBoardForm({
   const saveInfo = useCallback(
     async (value: BoardInfoDraft) => {
       setName(value.name)
-      setDescription(value.description)
+      setRailId(value.railId)
+      setRailColorId(value.railColorId)
       await saveBoard(
         {
           name: value.name.trim(),
-          description: value.description.trim() || null,
+          personalization: { railId: value.railId, railColorId: value.railColorId },
         },
         'info',
       )
@@ -137,7 +147,8 @@ export function useEditBoardForm({
 
   return {
     name,
-    description,
+    railId,
+    railColorId,
     battery,
     batterySummary,
     keepMissingBatteryConfig,
@@ -146,6 +157,16 @@ export function useEditBoardForm({
     saveBattery,
     unlink,
   }
+}
+
+function railIdFromBoard(board: Board | undefined): RailId {
+  const stored = board?.personalization?.railId
+  return RAILS.some((rail) => rail.id === stored) ? (stored as RailId) : 'xr'
+}
+
+function railColorIdFromBoard(board: Board | undefined): RailColorId {
+  const stored = board?.personalization?.railColorId
+  return RAIL_COLORS.some((color) => color.id === stored) ? (stored as RailColorId) : 'cyan'
 }
 
 function batteryDraftFromConfig(config: BatteryConfig | null | undefined): BoardBatteryDraft {

@@ -179,6 +179,13 @@ export interface Board {
   id: string
   name: string
   description: string | null
+  /**
+   * Rider-selected visual identity. Native persists this opaque presentation value; JS owns the
+   * available rail and color catalogs.
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizePersonalization`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizePersonalization`
+   */
+  personalization?: { railId: string; railColorId: string }
   createdAt: number
   batteryConfig: BatteryConfig | null
   /** Last Battery SoC Estimate persisted natively; survives full app kill. `undefined` before first session. */

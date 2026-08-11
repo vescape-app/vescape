@@ -739,6 +739,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "id" to id,
     "name" to name,
     "description" to values["description"],
+    "personalization" to values["personalization"],
     "createdAt" to createdAt,
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
@@ -1001,6 +1002,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   }
 
   putOrDelete("description", (get("description") as? String)?.takeIf { it.isNotBlank() })
+  putOrDelete("personalization", normalizePersonalization(get("personalization")))
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
@@ -1026,6 +1028,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
   }
   return when (key) {
     "description" -> (raw as? String)?.let { key to it }
+    "personalization" -> normalizePersonalization(raw)?.let { key to it }
     "batteryConfig" -> normalizeBatteryConfig(raw)?.let { key to it }
     "transport" -> (raw as? String)?.let {
       key to BoardTransport.toBridge(BoardTransport.decode(it))
@@ -1041,6 +1044,15 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
+}
+
+// @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizePersonalization`
+// @parity /modules/vescape-core/src/index.ts `Board.personalization`
+private fun normalizePersonalization(raw: Any?): Map<String, String>? {
+  val map = raw.asStringKeyMap() ?: return null
+  val railId = (map["railId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+  val railColorId = (map["railColorId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+  return mapOf("railId" to railId, "railColorId" to railColorId)
 }
 
 private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
