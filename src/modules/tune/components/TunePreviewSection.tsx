@@ -9,7 +9,6 @@ import type { TuneProfileFieldValue } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { theme } from '@/constants/theme'
-import { DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS } from '@/modules/tune/lib/tunePreview'
 import { TunePreview, TUNE_PREVIEW_DESCRIPTION } from '@/modules/tune/components/TunePreview'
 import {
   TunePreviewScenarioControls,
@@ -43,9 +42,7 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
   const [hillHeightMeters, setHillHeightMeters] = useState(2.5)
   const [hillSpacingMeters, setHillSpacingMeters] = useState(30)
   const [previewPinnedHeight, setPreviewPinnedHeight] = useState(PREVIEW_PINNED_GRADIENT_HEIGHT)
-  const hillLoadAmps = useSharedValue(0)
   const hillsEnabled = hillsPreset !== 'flat'
-  const [advancedPhysics, setAdvancedPhysics] = useState(DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS)
   const [previewHelpVisible, setPreviewHelpVisible] = useState(false)
 
   if (!visible) return null
@@ -115,11 +112,9 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
               hillsEnabled={hillsEnabled}
               hillHeightMeters={hillHeightMeters}
               hillSpacingMeters={hillSpacingMeters}
-              advancedPhysics={advancedPhysics}
               active={active}
               onDisable={() => setPreviewEnabled(false)}
               onHelp={() => setPreviewHelpVisible(true)}
-              hillLoadAmps={hillLoadAmps}
               speedKmh={previewSpeedKmh}
               groundToBoardAngleDegrees={groundToBoardAngleDegrees}
             />
@@ -128,16 +123,12 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
         <View style={styles.content}>
           {previewEnabled ? (
             <TunePreviewScenarioControls
-              advancedPhysics={advancedPhysics}
-              onAdvancedPhysicsChange={setAdvancedPhysics}
               hillsPreset={hillsPreset}
               onHillsPresetChange={setHillsPreset}
               hillHeightMeters={hillHeightMeters}
               onHillHeightChange={setHillHeightMeters}
               hillSpacingMeters={hillSpacingMeters}
               onHillSpacingChange={setHillSpacingMeters}
-              hillsEnabled={hillsEnabled}
-              hillLoadAmps={hillLoadAmps}
               pitchInputDegrees={pitchInputDegrees}
               pitchInputActive={pitchInputActive}
               speedKmh={previewSpeedKmh}
