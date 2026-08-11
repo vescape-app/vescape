@@ -14,6 +14,7 @@
     "prebuild": "expo prebuild",
     "native:sync": "bun run scripts/native-sync.ts",
     "android": "bun run scripts/android.ts",
+    "android:emulator": "bun run scripts/android-emulator.ts",
     "android:release": "bun run scripts/android.ts --variant release --no-bundler",
     "android:e2e": "EXPO_PUBLIC_E2E=1 bun run android",
     "ios": "bun run native:sync ios && expo run:ios --device",

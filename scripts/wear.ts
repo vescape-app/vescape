@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
+import { sdkRoot } from './lib/androidSdk.ts'
 import { listAdbDevices, pickDevice, type AdbDevice } from './lib/devices.ts'
 
 const ROOT = join(import.meta.dir, '..')
@@ -98,12 +99,6 @@ function applicationId() {
   if (!applicationId) fail(`applicationId missing from ${WEAR_GRADLE}`)
 
   return applicationId
-}
-
-function sdkRoot() {
-  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
-  if (!sdk) fail('ANDROID_HOME / ANDROID_SDK_ROOT not set')
-  return sdk
 }
 
 function buildTools() {
