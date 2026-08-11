@@ -111,6 +111,11 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      - name: Verify native Sentry init in generated project
+        run: |
+          APP_DELEGATE=$(find ios -name AppDelegate.swift | head -n 1)
+          test -n "$APP_DELEGATE"
+          bun run scripts/release/verifySentryNativeInit.ts "$APP_DELEGATE"
       - uses: useblacksmith/cache@v5
         with:
           path: |
