@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { useIsFocused, useNavigation, useRouter } from 'expo-router'
+import { useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import {
   ArrowsClockwiseIcon,
   BluetoothSlashIcon,
@@ -51,6 +51,12 @@ import { theme } from '@/constants/theme'
 import { useTuneModals } from '@/modules/tune/hooks/useTuneModals'
 import type { TuneProfileColorId, TuneProfileIconId } from '@/modules/tune/lib/profileMetadata'
 import { reportTuneCompatibilityIssue } from '@/modules/tune/lib/tuneCompatibilityReporting'
+// PROTOTYPE — throwaway variant switcher, dev builds only. Delete with the prototype folder.
+import {
+  TunePrototypeSwitcher,
+  TunePrototypeVariant,
+  normalizeVariantKey,
+} from '@/modules/tune/components/prototype/TunePrototypeVariants'
 
 // TODO: Split screen orchestration to reduce cyclomatic complexity below 30.
 // eslint-disable-next-line complexity
@@ -85,6 +91,9 @@ export default function TuneScreen() {
     syncBarState,
     tuneCompatibilityIssue,
   } = useTuneScreenData()
+  const searchParams = useLocalSearchParams<{ variant?: string }>()
+  const prototypeVariant = __DEV__ ? normalizeVariantKey(searchParams.variant) : 'current'
+  const setDraftField = useTuneProfileStore((s) => s.setDraftField)
   const reportedCompatibilityIssue = useRef<string | null>(null)
   const [advancedSettingsVisible, setAdvancedSettingsVisible] = useState(false)
   const setActiveProfile = useTuneProfileStore((s) => s.setActiveProfile)
@@ -275,110 +284,130 @@ export default function TuneScreen() {
         </View>
       ) : null}
 
-      <TunePreviewSection fields={profileFields ?? {}} active={isFocused} visible={hasTuneView}>
-        {profileError ? (
-          <View style={styles.errorBanner}>
-            <WarningCircleIcon size={16} color={theme.status.error.color} />
-            <Text style={styles.errorBannerText}>{profileError}</Text>
-          </View>
-        ) : null}
-
-        {schemaMismatchFields ? (
-          <Pressable
-            style={styles.schemaMismatchBar}
-            onPress={() =>
-              modals.showBadgeInfo(
-                'Schema Mismatch',
-                `Profile and board have different field sets.${
-                  schemaMismatchFields.profileOnly.length > 0
-                    ? `\n\nIn profile but not board: ${schemaMismatchFields.profileOnly.join(', ')}`
-                    : ''
-                }${
-                  schemaMismatchFields.boardOnly.length > 0
-                    ? `\n\nIn board but not profile: ${schemaMismatchFields.boardOnly.join(', ')}`
-                    : ''
-                }`,
-              )
-            }
-          >
-            <WarningCircleIcon size={16} color={theme.palette.yellow.color} weight="fill" />
-            <View style={styles.schemaMismatchTextWrap}>
-              <Text style={styles.schemaMismatchTitle}>Schema mismatch</Text>
-              <Text style={styles.schemaMismatchText}>
-                {schemaMismatchFields.profileOnly.length > 0
-                  ? `${schemaMismatchFields.profileOnly.length} field${schemaMismatchFields.profileOnly.length === 1 ? '' : 's'} in profile not on board`
-                  : ''}
-                {schemaMismatchFields.profileOnly.length > 0 &&
-                schemaMismatchFields.boardOnly.length > 0
-                  ? ' · '
-                  : ''}
-                {schemaMismatchFields.boardOnly.length > 0
-                  ? `${schemaMismatchFields.boardOnly.length} new field${schemaMismatchFields.boardOnly.length === 1 ? '' : 's'} on board`
-                  : ''}
-              </Text>
+      {prototypeVariant === 'current' ? (
+        <TunePreviewSection fields={profileFields ?? {}} active={isFocused} visible={hasTuneView}>
+          {profileError ? (
+            <View style={styles.errorBanner}>
+              <WarningCircleIcon size={16} color={theme.status.error.color} />
+              <Text style={styles.errorBannerText}>{profileError}</Text>
             </View>
-          </Pressable>
-        ) : null}
+          ) : null}
 
-        <TuneGroupGrid title="Basic">
-          {basicSliders.map((item) => (
-            <BasicSliderItemCell
-              key={item.id}
-              item={item}
-              editable={activeProfile != null}
-              fullWidth={item.id === 'aggressiveness' || item.id === 'atrIntensity'}
-              onPress={modals.openBasicSliderEditor}
-              onResetFormula={() => modals.handleBasicSliderReset(item.id)}
+          {schemaMismatchFields ? (
+            <Pressable
+              style={styles.schemaMismatchBar}
+              onPress={() =>
+                modals.showBadgeInfo(
+                  'Schema Mismatch',
+                  `Profile and board have different field sets.${
+                    schemaMismatchFields.profileOnly.length > 0
+                      ? `\n\nIn profile but not board: ${schemaMismatchFields.profileOnly.join(', ')}`
+                      : ''
+                  }${
+                    schemaMismatchFields.boardOnly.length > 0
+                      ? `\n\nIn board but not profile: ${schemaMismatchFields.boardOnly.join(', ')}`
+                      : ''
+                  }`,
+                )
+              }
+            >
+              <WarningCircleIcon size={16} color={theme.palette.yellow.color} weight="fill" />
+              <View style={styles.schemaMismatchTextWrap}>
+                <Text style={styles.schemaMismatchTitle}>Schema mismatch</Text>
+                <Text style={styles.schemaMismatchText}>
+                  {schemaMismatchFields.profileOnly.length > 0
+                    ? `${schemaMismatchFields.profileOnly.length} field${schemaMismatchFields.profileOnly.length === 1 ? '' : 's'} in profile not on board`
+                    : ''}
+                  {schemaMismatchFields.profileOnly.length > 0 &&
+                  schemaMismatchFields.boardOnly.length > 0
+                    ? ' · '
+                    : ''}
+                  {schemaMismatchFields.boardOnly.length > 0
+                    ? `${schemaMismatchFields.boardOnly.length} new field${schemaMismatchFields.boardOnly.length === 1 ? '' : 's'} on board`
+                    : ''}
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
+
+          <TuneGroupGrid title="Basic">
+            {basicSliders.map((item) => (
+              <BasicSliderItemCell
+                key={item.id}
+                item={item}
+                editable={activeProfile != null}
+                fullWidth={item.id === 'aggressiveness' || item.id === 'atrIntensity'}
+                onPress={modals.openBasicSliderEditor}
+                onResetFormula={() => modals.handleBasicSliderReset(item.id)}
+              />
+            ))}
+          </TuneGroupGrid>
+
+          <View style={styles.advancedSettingsToggle}>
+            <Button
+              label={advancedSettingsVisible ? 'Hide advanced settings' : 'Show advanced settings'}
+              icon={advancedSettingsVisible ? CaretUpIcon : CaretDownIcon}
+              iconPosition="right"
+              variant="secondary"
+              size="sm"
+              onPress={() => setAdvancedSettingsVisible((visible) => !visible)}
             />
-          ))}
-        </TuneGroupGrid>
+          </View>
 
-        <View style={styles.advancedSettingsToggle}>
-          <Button
-            label={advancedSettingsVisible ? 'Hide advanced settings' : 'Show advanced settings'}
-            icon={advancedSettingsVisible ? CaretUpIcon : CaretDownIcon}
-            iconPosition="right"
-            variant="secondary"
-            size="sm"
-            onPress={() => setAdvancedSettingsVisible((visible) => !visible)}
-          />
-        </View>
+          {advancedSettingsVisible
+            ? displayGroups.map((group) => (
+                <TuneGroupGrid
+                  key={group.id}
+                  title={group.title}
+                  subtitle={
+                    activeProfile
+                      ? `${group.fields.length} profile values${
+                          group.fields.some((field) => boardDiffByField.has(field.id))
+                            ? ` - ${
+                                group.fields.filter((field) => boardDiffByField.has(field.id))
+                                  .length
+                              } changed`
+                            : ''
+                        }`
+                      : `${group.fields.length} read-only values`
+                  }
+                >
+                  {group.fields.map((field) => (
+                    <TuneFieldCell
+                      key={field.id}
+                      field={field}
+                      savedValue={activeProfile?.fields[field.id]}
+                      boardValue={boardDiffByField.get(field.id)?.boardValue}
+                      profileValue={boardDiffByField.get(field.id)?.profileValue}
+                      dirty={Object.prototype.hasOwnProperty.call(dirtyFields, field.id)}
+                      boardChanged={boardDiffByField.has(field.id)}
+                      onPress={modals.openFieldEditor}
+                      onRevert={() => revertField(field.id)}
+                      onAcceptBoard={() => acceptBoardField(field.id)}
+                    />
+                  ))}
+                </TuneGroupGrid>
+              ))
+            : null}
+        </TunePreviewSection>
+      ) : hasTuneView ? (
+        <TunePrototypeVariant
+          variantKey={prototypeVariant}
+          activeProfile={activeProfile}
+          basicSliders={basicSliders}
+          displayGroups={displayGroups}
+          dirtyFields={dirtyFields}
+          boardDiffByField={boardDiffByField}
+          setDraftField={setDraftField}
+          revertField={revertField}
+          acceptBoardField={acceptBoardField}
+          openFieldEditor={modals.openFieldEditor}
+          openBasicSliderEditor={modals.openBasicSliderEditor}
+          resetSliderFormula={modals.handleBasicSliderReset}
+        />
+      ) : null}
 
-        {advancedSettingsVisible
-          ? displayGroups.map((group) => (
-              <TuneGroupGrid
-                key={group.id}
-                title={group.title}
-                subtitle={
-                  activeProfile
-                    ? `${group.fields.length} profile values${
-                        group.fields.some((field) => boardDiffByField.has(field.id))
-                          ? ` - ${
-                              group.fields.filter((field) => boardDiffByField.has(field.id)).length
-                            } changed`
-                          : ''
-                      }`
-                    : `${group.fields.length} read-only values`
-                }
-              >
-                {group.fields.map((field) => (
-                  <TuneFieldCell
-                    key={field.id}
-                    field={field}
-                    savedValue={activeProfile?.fields[field.id]}
-                    boardValue={boardDiffByField.get(field.id)?.boardValue}
-                    profileValue={boardDiffByField.get(field.id)?.profileValue}
-                    dirty={Object.prototype.hasOwnProperty.call(dirtyFields, field.id)}
-                    boardChanged={boardDiffByField.has(field.id)}
-                    onPress={modals.openFieldEditor}
-                    onRevert={() => revertField(field.id)}
-                    onAcceptBoard={() => acceptBoardField(field.id)}
-                  />
-                ))}
-              </TuneGroupGrid>
-            ))
-          : null}
-      </TunePreviewSection>
+      {__DEV__ ? <TunePrototypeSwitcher variantKey={prototypeVariant} /> : null}
 
       {hasTuneView && !modals.editor ? (
         <TuneSyncBar
