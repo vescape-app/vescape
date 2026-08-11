@@ -140,12 +140,47 @@ data class RouteProgress(
         fromLongitude = nextLongitude
       }
 
+      // A rider standing on the end of the path leaves the aim point on top of the projection, and
+      // a bearing between two identical positions is `atan2(0, 0)` — due north, which would swing
+      // the arrow away from the way they are facing exactly as they arrive. The heading of the last
+      // leg they rode is the honest answer instead.
+      val aimOffsetMeters =
+        GeoMath.distanceMeters(latitude, longitude, aimLatitude, aimLongitude)
+      val bearingDeg = if (aimOffsetMeters > DEGENERATE_AIM_METERS) {
+        GeoMath.travelBearingDeg(latitude, longitude, aimLatitude, aimLongitude)
+      } else {
+        lastLegBearingDeg(points) ?: 0.0
+      }
+
       return RouteProgress(
         latitude = latitude,
         longitude = longitude,
         remainingMeters = remainingMeters,
-        bearingDeg = GeoMath.travelBearingDeg(latitude, longitude, aimLatitude, aimLongitude),
+        bearingDeg = bearingDeg,
       )
+    }
+
+    /**
+     * Below this two positions are the same place, and the bearing between them is numerically
+     * meaningless rather than merely imprecise.
+     */
+    private const val DEGENERATE_AIM_METERS = 0.01
+
+    /**
+     * Heading of the last leg of [points] that actually goes anywhere, or null when the whole path
+     * is one repeated position. Reached only once the aim point has run out of path ahead of it.
+     */
+    private fun lastLegBearingDeg(points: List<Pair<Double, Double>>): Double? {
+      for (index in points.size - 1 downTo 1) {
+        val (fromLatitude, fromLongitude) = points[index - 1]
+        val (toLatitude, toLongitude) = points[index]
+        val length =
+          GeoMath.distanceMeters(fromLatitude, fromLongitude, toLatitude, toLongitude)
+        if (length > DEGENERATE_AIM_METERS) {
+          return GeoMath.travelBearingDeg(fromLatitude, fromLongitude, toLatitude, toLongitude)
+        }
+      }
+      return null
     }
 
     /** `max(15 m, 2.5 s x speed)`, capped at 60 m. A missing or nonsense speed takes the floor. */

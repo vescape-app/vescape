@@ -75,6 +75,35 @@ class RouteProgressTest {
     }
 
     @Test
+    fun `standing on the direction point keeps the last leg's heading`() {
+        // Nothing is left to aim at, so the bearing has no aim point to come from. It must not fall
+        // out as due north — the last leg ran north, and on the corner path that is the answer.
+        val progress = RouteProgress.compute(cornerPath, 0.002, 0.002, speedMps = null)!!
+
+        assertEquals(NORTH, progress.bearingDeg, 1.0)
+
+        // Same path ridden the other way round: arriving westbound must not read as north either.
+        val westward = listOf(0.0 to 0.002, 0.0 to 0.0)
+        val arrived = RouteProgress.compute(westward, 0.0, 0.0, speedMps = null)!!
+
+        assertEquals(WEST, arrived.bearingDeg, 1.0)
+    }
+
+    @Test
+    fun `a path that goes nowhere still yields a bearing`() {
+        // Degenerate but not crashing: every point identical leaves no leg to take a heading from.
+        val progress = RouteProgress.compute(
+            listOf(0.0 to 0.0, 0.0 to 0.0),
+            0.0,
+            0.0,
+            speedMps = null,
+        )!!
+
+        assertEquals(0.0, progress.bearingDeg, 1e-9)
+        assertEquals(0.0, progress.remainingMeters, 1e-9)
+    }
+
+    @Test
     fun `aim distance falls back to its floor without a speed`() {
         assertEquals(RouteProgress.MIN_AIM_METERS, RouteProgress.aimDistanceMeters(null), 1e-9)
         // A standing or crawling rider is on the floor too — 2.5 s of 2 m/s is only 5 m.
@@ -111,6 +140,7 @@ class RouteProgressTest {
         const val LEG_METERS = 0.002 * METERS_PER_DEGREE
         const val HALF_LEG_METERS = LEG_METERS / 2
         const val NORTH = 0.0
+        const val WEST = 270.0
         const val AROUND_THE_CORNER = 56.3
     }
 }

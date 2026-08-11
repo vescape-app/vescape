@@ -86,6 +86,40 @@ final class RouteProgressTests: XCTestCase {
     XCTAssertEqual(progress.bearingDeg, 0, accuracy: 1.0)
   }
 
+  func testStandingOnTheDirectionPointKeepsTheLastLegsHeading() throws {
+    // Nothing is left to aim at, so the bearing has no aim point to come from. It must not fall out
+    // as due north — the last leg ran north, and on the corner path that is the answer.
+    let progress = try XCTUnwrap(
+      RouteProgress.compute(
+        points: cornerPath, riderLatitude: 0.002, riderLongitude: 0.002, speedMps: nil
+      )
+    )
+
+    XCTAssertEqual(progress.bearingDeg, 0, accuracy: 1.0)
+
+    // Same path ridden the other way round: arriving westbound must not read as north either.
+    let westward: [(latitude: Double, longitude: Double)] = [(0.0, 0.002), (0.0, 0.0)]
+    let arrived = try XCTUnwrap(
+      RouteProgress.compute(
+        points: westward, riderLatitude: 0.0, riderLongitude: 0.0, speedMps: nil
+      )
+    )
+
+    XCTAssertEqual(arrived.bearingDeg, 270, accuracy: 1.0)
+  }
+
+  func testAPathThatGoesNowhereStillYieldsABearing() throws {
+    // Degenerate but not crashing: every point identical leaves no leg to take a heading from.
+    let progress = try XCTUnwrap(
+      RouteProgress.compute(
+        points: [(0.0, 0.0), (0.0, 0.0)], riderLatitude: 0, riderLongitude: 0, speedMps: nil
+      )
+    )
+
+    XCTAssertEqual(progress.bearingDeg, 0, accuracy: 1e-9)
+    XCTAssertEqual(progress.remainingMeters, 0, accuracy: 1e-9)
+  }
+
   func testAimDistanceFallsBackToItsFloorWithoutASpeed() {
     XCTAssertEqual(RouteProgress.aimDistanceMeters(nil), RouteProgress.minAimMeters)
     // A standing or crawling rider is on the floor too — 2.5 s of 2 m/s is only 5 m.

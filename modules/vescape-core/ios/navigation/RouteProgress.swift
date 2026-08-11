@@ -132,12 +132,43 @@ struct RouteProgress: Equatable {
       }
     }
 
+    // A rider standing on the end of the path leaves the aim point on top of the projection, and a
+    // bearing between two identical positions is `atan2(0, 0)` — due north, which would swing the
+    // arrow away from the way they are facing exactly as they arrive. The heading of the last leg
+    // they rode is the honest answer instead.
+    let aimOffsetMeters = GeoMath.distanceMeters(latitude, longitude, aimLatitude, aimLongitude)
+    let bearingDeg = aimOffsetMeters > degenerateAimMeters
+      ? GeoMath.travelBearingDeg(latitude, longitude, aimLatitude, aimLongitude)
+      : (lastLegBearingDeg(points) ?? 0)
+
     return RouteProgress(
       latitude: latitude,
       longitude: longitude,
       remainingMeters: remainingMeters,
-      bearingDeg: GeoMath.travelBearingDeg(latitude, longitude, aimLatitude, aimLongitude)
+      bearingDeg: bearingDeg
     )
+  }
+
+  /// Below this two positions are the same place, and the bearing between them is numerically
+  /// meaningless rather than merely imprecise.
+  private static let degenerateAimMeters = 0.01
+
+  /// Heading of the last leg of `points` that actually goes anywhere, or nil when the whole path is
+  /// one repeated position. Reached only once the aim point has run out of path ahead of it.
+  private static func lastLegBearingDeg(
+    _ points: [(latitude: Double, longitude: Double)]
+  ) -> Double? {
+    for index in stride(from: points.count - 1, through: 1, by: -1) {
+      let from = points[index - 1]
+      let to = points[index]
+      let length = GeoMath.distanceMeters(
+        from.latitude, from.longitude, to.latitude, to.longitude
+      )
+      if length > degenerateAimMeters {
+        return GeoMath.travelBearingDeg(from.latitude, from.longitude, to.latitude, to.longitude)
+      }
+    }
+    return nil
   }
 
   /// `max(15 m, 2.5 s x speed)`, capped at 60 m. A missing or nonsense speed takes the floor.
