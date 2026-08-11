@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics'
 import { useRouter } from 'expo-router'
-import { ArrowLeftIcon, MagnifyingGlassIcon, MapPinIcon, XIcon } from 'phosphor-react-native'
+import { ArrowLeftIcon, MagnifyingGlassIcon, XIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import Animated, { FadeOut, withTiming } from 'react-native-reanimated'
@@ -11,6 +11,7 @@ import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
+import { getPlaceCategoryIcon } from '@/modules/map-points/constants/mapPointIcons'
 import { MapPointAddMenu } from '@/modules/map-points/components/MapPointAddMenu'
 import { MapPointFilterMenu } from '@/modules/map-points/components/MapPointFilterMenu'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
@@ -50,6 +51,11 @@ interface MapModeOverlayProps {
   updateMapPoint: (id: string, patch: MapPointPatch) => Promise<MapPoint | null>
   setMapPointReaction: (id: string, reaction: 'up' | 'down' | null) => void
   onRemoveMapPoint: (id: string) => void
+}
+
+function MapSearchResultIcon({ category }: { category: string | null }) {
+  const IconComponent = getPlaceCategoryIcon(category)
+  return <IconComponent size={16} color={theme.palette.green.text} weight="duotone" />
 }
 
 function clearPlacementTimeoutRef(ref: { current: ReturnType<typeof setTimeout> | null }) {
@@ -170,6 +176,7 @@ function FullMapControls({
     searchLoading,
     searchError,
     handleSearchQueryChange,
+    submitSearch,
     resetSearch,
   } = useMapSearch({ searchOpen, proximityLocation: searchProximity })
 
@@ -233,16 +240,21 @@ function FullMapControls({
         longitude: result.longitude,
         title: result.title,
         subtitle: result.subtitle,
-        category: null,
+        category: result.category,
       })
     },
     [mapRef, onSelectNavigationTarget, setSearchQuery],
   )
 
-  const handleSearchSubmit = useCallback(() => {
+  const handleSearchSubmit = useCallback(async () => {
     const first = searchResults[0]
-    if (first) handleSearchSelect(first)
-  }, [handleSearchSelect, searchResults])
+    if (first) {
+      handleSearchSelect(first)
+      return
+    }
+    const submittedResult = await submitSearch()
+    if (submittedResult) handleSearchSelect(submittedResult)
+  }, [handleSearchSelect, searchResults, submitSearch])
 
   const showNoResults =
     !searchLoading && !searchError && searchQuery.trim().length >= 2 && searchResults.length === 0
@@ -345,7 +357,7 @@ function FullMapControls({
               selectTextOnFocus
               value={searchQuery}
               onChangeText={handleSearchQueryChange}
-              onSubmitEditing={handleSearchSubmit}
+              onSubmitEditing={() => void handleSearchSubmit()}
               placeholder="Address or place"
               placeholderTextColor={theme.palette.slate.textMuted}
               returnKeyType="search"
@@ -392,7 +404,7 @@ function FullMapControls({
                   onPress={() => handleSearchSelect(result)}
                 >
                   <View style={styles.mapSearchResultIcon}>
-                    <MapPinIcon size={16} color={theme.palette.green.text} weight="duotone" />
+                    <MapSearchResultIcon category={result.category} />
                   </View>
                   <View style={styles.mapSearchResultText}>
                     <Text style={styles.mapSearchResultTitle} numberOfLines={1}>

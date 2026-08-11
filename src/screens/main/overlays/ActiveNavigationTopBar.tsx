@@ -1,6 +1,6 @@
 import { createElement, type ReactNode, useCallback, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { XIcon } from 'phosphor-react-native'
+import { XIcon, type Icon } from 'phosphor-react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   interpolate,
@@ -11,8 +11,6 @@ import Animated, {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import type { MapPinKind } from '@/modules/map-points/constants/mapPoints'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 
 interface ActiveNavigationTopBarProps {
   boardPill: ReactNode
@@ -20,7 +18,7 @@ interface ActiveNavigationTopBarProps {
   boardName: string
   connected: boolean
   targetTitle: string
-  targetKind: MapPinKind
+  targetIcon: Icon
   distanceLabel: string
   riderColor: string
   onCancel: () => void
@@ -68,16 +66,8 @@ function CompactBoardPill({
   )
 }
 
-function TargetIcon({
-  kind,
-  color,
-  size = 16,
-}: {
-  kind: MapPinKind
-  color: string
-  size?: number
-}) {
-  return createElement(getMapPointKindIcon(kind), { size, color, weight: 'bold' })
+function TargetIcon({ icon, color, size = 16 }: { icon: Icon; color: string; size?: number }) {
+  return createElement(icon, { size, color, weight: 'bold' })
 }
 
 function CancelButton({ color, onPress }: { color: string; onPress: () => void }) {
@@ -101,7 +91,7 @@ export function ActiveNavigationTopBar({
   boardName,
   connected,
   targetTitle,
-  targetKind,
+  targetIcon,
   distanceLabel,
   riderColor,
   onCancel,
@@ -179,7 +169,7 @@ export function ActiveNavigationTopBar({
               ]}
             >
               <View style={[styles.targetIcon, { borderColor: targetBorder }]}>
-                <TargetIcon kind={targetKind} color={riderColor} />
+                <TargetIcon icon={targetIcon} color={riderColor} />
               </View>
               <View style={styles.targetCopy}>
                 <Text numberOfLines={1} style={styles.targetTitle}>
@@ -198,7 +188,7 @@ export function ActiveNavigationTopBar({
                 { borderColor: targetBorder, backgroundColor: targetTint },
               ]}
             >
-              <TargetIcon kind={targetKind} color={riderColor} size={12} />
+              <TargetIcon icon={targetIcon} color={riderColor} size={12} />
               <Text style={[styles.navigationMiniDistance, { color: riderColor }]}>
                 {distanceLabel}
               </Text>

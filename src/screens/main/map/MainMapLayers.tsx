@@ -24,7 +24,10 @@ import { MapPin } from '@/modules/map/components/MapPin'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 import {
   getMapPointKindColor,
   getMapPointKindLabel,
@@ -46,6 +49,7 @@ import type {
   HistoryMetricHotRanges,
 } from '@/modules/history/lib/metricColorScale'
 import { isMapPinKindVisible } from '@/modules/map-points/lib/mapPointVisibility'
+import { getPlaceCategoryIconKey } from '@/modules/map-points/constants/placeCategoryIcon'
 import type {
   HistoryGpsSample,
   HistoryMarker,
@@ -409,6 +413,15 @@ function PendingNavigationTargetPin({
   )
 }
 
+function getNavigationTargetIcon(target: MapSelection | null) {
+  if (target?.type === 'place') return getPlaceCategoryIcon(target.category)
+  return getMapPointKindIcon('direction')
+}
+
+function getNavigationTargetIconKey(target: MapSelection | null) {
+  return target?.type === 'place' ? getPlaceCategoryIconKey(target.category) : 'direction'
+}
+
 const pendingNavigationTargetEntering = () => {
   'worklet'
   return {
@@ -661,7 +674,7 @@ export function MainMapLayers({
   const directionPinTextColor = navigationFailed ? theme.status.warning.text : directionTextColor
   const directionPinIcon = navigationFailed
     ? WarningIcon
-    : getMapPointKindIcon('direction' as const)
+    : getNavigationTargetIcon(activeNavigationTarget)
   const navigationShape = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(
     () =>
       navigation && navigation.coordinates.length > 1
@@ -764,7 +777,7 @@ export function MainMapLayers({
         <MapPin
           // Color in the key: PointAnnotation snapshots its children natively, so a
           // rider-color or icon change must remount the pin to re-render.
-          key={`center-direction-position-${directionPinColor}-${navigationFailed ? 'failed' : 'direction'}`}
+          key={`center-direction-position-${directionPinColor}-${navigationFailed ? 'failed' : getNavigationTargetIconKey(activeNavigationTarget)}`}
           id="center-direction-position"
           coordinate={[directionPoint.longitude, directionPoint.latitude]}
           color={directionPinColor}

@@ -40,6 +40,10 @@ import { DASH, fmtDistance } from '@/helpers/format'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
 import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 
 interface TopBarProps {
   boards: Board[]
@@ -178,10 +182,12 @@ export function TopBar({
   const hasWeather = weatherCode != null && weatherTemp != null
   const now = new Date()
   const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
-  const navigationTargetKind =
+  const navigationTargetIcon =
     activeNavigationTarget?.type === 'mapPoint'
-      ? activeNavigationTarget.point.category
-      : 'direction'
+      ? getMapPointKindIcon(activeNavigationTarget.point.category)
+      : activeNavigationTarget?.type === 'place'
+        ? getPlaceCategoryIcon(activeNavigationTarget.category)
+        : getMapPointKindIcon('direction')
   const navigationDistance =
     activeNavigationTarget && currentLocation
       ? fmtDistance(distanceMeters(currentLocation, activeNavigationTarget))
@@ -218,7 +224,7 @@ export function TopBar({
               boardName={activeBoard?.name ?? 'No board'}
               connected={bleStatus === 'connected' || bleStatus === 'stale'}
               targetTitle={activeNavigationTarget.title}
-              targetKind={navigationTargetKind}
+              targetIcon={navigationTargetIcon}
               distanceLabel={navigationDistance}
               riderColor={riderColor}
               onCancel={onCancelNavigation}

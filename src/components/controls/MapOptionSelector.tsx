@@ -235,7 +235,7 @@ function getSelectorWidth(
 ) {
   'worklet'
   if (!expanded) return metrics.collapsedWidth
-  return metrics.activeWidth + metrics.optionWidth * (optionCount - 1) + 2
+  return metrics.activeWidth + metrics.optionWidth * (optionCount - 1) + 4
 }
 
 function getOptionWidth(
@@ -281,9 +281,10 @@ const styles = StyleSheet.create({
   },
   options: {
     position: 'absolute',
-    top: 1,
-    right: 1,
-    bottom: 1,
+    top: 2,
+    right: 2,
+    bottom: 2,
+    left: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },

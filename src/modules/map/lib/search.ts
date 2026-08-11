@@ -6,6 +6,7 @@ export interface MapSearchResult {
   subtitle: string
   latitude: number
   longitude: number
+  category: string | null
 }
 
 export interface MapReverseGeocodeResult {
@@ -25,6 +26,8 @@ interface MapboxGeocodingFeature {
     name?: string
     full_address?: string
     place_formatted?: string
+    poi_category?: unknown
+    maki?: unknown
   }
 }
 
@@ -56,6 +59,18 @@ function getFeatureSubtitle(feature: MapboxGeocodingFeature) {
     : fullAddress || place || feature.place_name || 'Mapbox result'
 }
 
+export function getMapSearchCategory(properties: MapboxGeocodingFeature['properties'], title = '') {
+  const categories = properties?.poi_category
+  const categoryWords = Array.isArray(categories)
+    ? categories.filter((value): value is string => typeof value === 'string')
+    : []
+  const maki = typeof properties?.maki === 'string' ? properties.maki.replaceAll('-', ' ') : null
+  const classification = [...categoryWords, ...(maki && maki !== 'marker' ? [maki] : []), title]
+    .filter(Boolean)
+    .join(' ')
+  return classification || null
+}
+
 function toMapSearchResult(feature: MapboxGeocodingFeature): MapSearchResult | null {
   const coordinate = getFeatureCoordinates(feature)
   if (!coordinate) return null
@@ -69,6 +84,7 @@ function toMapSearchResult(feature: MapboxGeocodingFeature): MapSearchResult | n
     subtitle: getFeatureSubtitle(feature),
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
+    category: getMapSearchCategory(feature.properties, getFeatureTitle(feature)),
   }
 }
 

@@ -7,7 +7,10 @@ import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 import {
   getMapPointKindColor,
   getMapPointKindLabel,
@@ -50,11 +53,12 @@ export function MapTargetSheetFrame({
   const isMapPoint = target.type === 'mapPoint'
   const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
   const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
-  const icon = createElement(isMapPoint ? getMapPointKindIcon(target.point.category) : MapPinIcon, {
-    size: 18,
-    color: textColor,
-    weight: 'duotone',
-  })
+  const IconComponent = isMapPoint
+    ? getMapPointKindIcon(target.point.category)
+    : target.type === 'place'
+      ? getPlaceCategoryIcon(target.category)
+      : MapPinIcon
+  const icon = createElement(IconComponent, { size: 18, color: textColor, weight: 'duotone' })
   const headerContent = (
     <>
       <View style={[mapSheetStyles.mapTargetIcon, { borderColor: color }]}>{icon}</View>
@@ -250,7 +254,9 @@ const styles = StyleSheet.create({
   /** A square button: it holds an icon, so it must not stretch with the row it sits in. */
   actionButtonIconOnly: {
     flex: 0,
-    width: 46,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     gap: 0,
   },
   actionLabelCompact: {
