@@ -29,7 +29,6 @@ public class VescapeCoreModule: Module {
   /// Dev-setting request: capture a raw debug Session Recorder for the next Board Session.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `requestedDebugRecordingEnabled`
   private var requestedDebugRecordingEnabled = false
-  private let manualDisconnectSuppressedBoardKey = "vesc_manual_disconnect_auto_start_board_id"
 
   /// Retains the in-flight Board Probe across its async BLE lifecycle. Only one runs at a time —
   /// the probe owns the single BLE link (see Android `probeBoardLink`).
@@ -471,9 +470,10 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("stopBoard") { (promise: Promise) in
-      self.suppressAutoStartAfterManualDisconnect()
-      self.coordinator.stopBoard()
-      promise.resolve(nil)
+      DispatchQueue.main.async {
+        BoardSessionCommands.stopRide()
+        promise.resolve(nil)
+      }
     }
 
     AsyncFunction("probeBoardLink") { (bleId: String, probeId: String, promise: Promise) in
@@ -1149,7 +1149,7 @@ public class VescapeCoreModule: Module {
     let settings = appData.getSettings()
     guard settings["autoConnect"] as? Bool ?? true else { return }
     guard let boardId = settings["selectedBoardId"] as? String, !boardId.isEmpty else { return }
-    guard !isAutoStartSuppressedAfterManualDisconnect(boardId: boardId) else { return }
+    guard !ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return }
     DispatchQueue.main.async {
       guard let config = self.connectConfig(boardId: boardId) else { return }
       self.selectedBoardId = boardId
@@ -1185,18 +1185,8 @@ public class VescapeCoreModule: Module {
     )
   }
 
-  private func suppressAutoStartAfterManualDisconnect() {
-    let boardId = selectedBoardId ?? (appData.getSettings()["selectedBoardId"] as? String)
-    guard let boardId, !boardId.isEmpty else { return }
-    UserDefaults.standard.set(boardId, forKey: manualDisconnectSuppressedBoardKey)
-  }
-
-  private func isAutoStartSuppressedAfterManualDisconnect(boardId: String) -> Bool {
-    UserDefaults.standard.string(forKey: manualDisconnectSuppressedBoardKey) == boardId
-  }
-
   private func clearManualDisconnectAutoStartGate() {
-    UserDefaults.standard.removeObject(forKey: manualDisconnectSuppressedBoardKey)
+    ManualBoardStop.clearAutoStartSuppression()
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`

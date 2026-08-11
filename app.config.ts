@@ -116,6 +116,7 @@ const config: ExpoConfig = {
           minSdkVersion: 30,
         },
         ios: {
+          // Clerk's native iOS SDK requires 17.0. Keep app, pods, and widget aligned.
           deploymentTarget: '17.0',
         },
       },
