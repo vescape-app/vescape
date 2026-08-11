@@ -73,7 +73,7 @@ internal fun FrameLayout(
 
         // Rim gauges on one shared screen-centred circle.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = size.minDimension / 2f - HEAD_W.toPx()
+            val radius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx()
             val center = Offset(size.width / 2f, size.height / 2f)
             val speedFrac = ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
             val dutyFrac = ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
@@ -279,7 +279,8 @@ private const val TOP_GAP = 2f
 private const val QUARTER_SWEEP = 90f - TOP_GAP
 private const val BATTERY_SWEEP = 100f
 
-private val HEAD_W = 3.dp
+/** Distance from the layout edge to the gauge circle every rim arc is drawn on. */
+internal val GAUGE_RIM_INSET = 3.dp
 
 private const val SPEED_MAX = 50.0
 
@@ -298,7 +299,7 @@ private const val HERO_FOCUS_SHRINK = 0.12f
 private val BATTERY_FOCUS_DROP = 18.dp
 private const val TEMP_FOCUS_SPREAD = 0.06f
 
-// Curved temp text: clears the rim line (HEAD_W) with a small gap so it reads above the arc.
+// Curved temp text: clears the rim line with a small gap so it reads above the arc.
 private val TEMP_LABEL_GAP = 7.dp
 private val TEMP_FONT_SIZE = 15.sp
 private val TEMP_LABEL_FONT_SIZE = 7.sp

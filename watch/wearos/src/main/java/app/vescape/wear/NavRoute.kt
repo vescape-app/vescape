@@ -7,6 +7,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,13 +92,30 @@ private fun AnimatedRoute(
         )
     }
 
+    // A route runs for kilometres and Compose does not clip by default, so without this the line
+    // reaches past the frame and draws over whatever page sits next to it. On a round watch the
+    // bounds are still square, so it stops inside the gauge ring instead: the line belongs under the
+    // gauges, never crossing them out to the bezel.
+    val isRound = LocalConfiguration.current.isScreenRound
     Canvas(modifier = Modifier.fillMaxSize()) {
         val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
         val scale = (size.minDimension - ROUTE_EDGE_INSET.toPx()) / routeSpanM
         val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
-        // Heading-up, taking the shortest turn across the 0°/360° boundary.
-        rotate(degrees = -courseDeg.value, pivot = center) {
-            drawRoute(path, color)
+        val faceCenter = Offset(size.width / 2f, size.height / 2f)
+        // One pixel inside the gauge circle's guide line, so the route stops just short of it.
+        val faceRadius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx() - GUIDE_HALF_WIDTH.toPx() - 1f
+        val faceClip = Path().apply {
+            if (isRound) {
+                addOval(Rect(faceCenter, faceRadius))
+            } else {
+                addRect(Rect(Offset.Zero, size))
+            }
+        }
+        clipPath(faceClip) {
+            // Heading-up, taking the shortest turn across the 0°/360° boundary.
+            rotate(degrees = -courseDeg.value, pivot = center) {
+                drawRoute(path, color)
+            }
         }
     }
 }
@@ -136,6 +156,8 @@ private const val ROUTE_ZOOM_EASE_MS = 350
 private const val ROUTE_MOTION_EASE_MS = 300
 
 private val ROUTE_EDGE_INSET = 24.dp
+/** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */
+private val GUIDE_HALF_WIDTH = 1.dp
 private val ROUTE_W = 2.dp
 private val ROUTE_CASING_W = 6.dp
 private val RIDER_DOT_R = 2.5.dp
