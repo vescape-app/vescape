@@ -1660,13 +1660,13 @@ private var wearAutoLaunchOnConnect = true
             batterySoc = latestBatterySoc,
             motorTemp = current.tempMotor,
             ctrlTemp = current.tempMosfet,
-            navBearing = progress?.bearingDeg,
-            navDistanceM = progress?.remainingMeters,
+            navBearing = if (offset != null) progress?.bearingDeg else null,
+            navDistanceM = if (offset != null) progress?.remainingMeters else null,
             riderEastM = offset?.first,
             riderNorthM = offset?.second,
             // Absolute course, the rotation the wrist applies to its north-up world. Null while the
             // fix carries no usable heading, which leaves the wrist drawing the route north-up.
-            courseDeg = if (progress != null) rider?.courseDeg else null,
+            courseDeg = if (offset != null) rider?.courseDeg else null,
         )
     }
 
