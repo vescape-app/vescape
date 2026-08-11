@@ -415,6 +415,37 @@ class NavigationControllerTest {
         assertEquals(NavigationProfile.DRIVING, store.storedProfile)
     }
 
+    @Test
+    fun `a fix fills Route Progress, and clearing the Navigation takes it away`() {
+        val store = FakeStore(navigation(), TARGET_LAT to TARGET_LNG)
+        val (controller, _) = controller(GatedRoutes(), store)
+        val progress = mutableListOf<RouteProgress?>()
+        controller.onProgressChange = { synchronized(progress) { progress += it } }
+
+        controller.restore()
+        Thread.sleep(SETTLE_MS)
+        controller.onFix(RIDER_LAT, RIDER_LNG, speedMps = 5.0)
+
+        // The rider is standing on the path's first point, so that is what they project onto.
+        assertEquals(RIDER_LAT, controller.currentProgress?.latitude)
+
+        controller.clear()
+
+        // Route Progress belongs to exactly one Navigation and ends with it — no last known place
+        // left over to describe a path that is no longer drawn.
+        assertNull(controller.currentProgress)
+        synchronized(progress) { assertEquals(listOf(false, true), progress.map { it == null }) }
+    }
+
+    @Test
+    fun `a fix without a path publishes no Route Progress`() {
+        val (controller, _) = controller(GatedRoutes())
+
+        controller.onFix(RIDER_LAT, RIDER_LNG, speedMps = 5.0)
+
+        assertNull(controller.currentProgress)
+    }
+
     private companion object {
         const val RIDER_LAT = 52.2
         const val RIDER_LNG = 21.0

@@ -1529,6 +1529,44 @@ export interface NavigationEvent {
 }
 
 /**
+ * Where the rider is along their Navigation right now, computed natively on every GPS Fix. JS reads
+ * it and derives nothing: there is no projection, no along-path arithmetic and no straight-line
+ * fallback on this side.
+ *
+ * Attachment is unconditional — there is no off-route state — so on a path that passes near itself
+ * `remainingMeters` can jump as the projection snaps between legs. That is known and accepted.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/RouteProgress.kt `RouteProgress`
+ * @parity /modules/vescape-core/ios/navigation/RouteProgress.swift `RouteProgress`
+ */
+export interface RouteProgress {
+  /** The point on the path nearest to the rider. */
+  latitude: number
+  longitude: number
+  /** Metres left to the Direction Point measured along the path, not as the crow flies. */
+  remainingMeters: number
+  /**
+   * Absolute degrees clockwise from north, aimed a short way further along the path. Absolute, not
+   * relative to where the rider is pointing — rotate it yourself if a view needs it rider-up.
+   */
+  bearingDeg: number
+}
+
+/**
+ * Native Route Progress changed. Emitted on every GPS Fix that moves it, replayed on subscribe, and
+ * `null` whenever there is no Navigation to be along — including the moment one is replaced, before
+ * the next fix refills it.
+ *
+ * Separate from `onNavigation` because this fires at ~1 Hz and the path itself does not change.
+ *
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onRouteProgress`
+ */
+export interface RouteProgressEvent {
+  progress: RouteProgress | null
+}
+
+/**
  * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt
  */
@@ -1589,6 +1627,8 @@ type VescapeCoreEvents = {
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
   onNavigation: (event: NavigationEvent) => void
+  /** Native Route Progress, on every GPS Fix that moves it, on clears, and on subscribe. */
+  onRouteProgress: (event: RouteProgressEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2693,6 +2733,12 @@ export function addAppStatusListener(cb: (event: AppStatusEvent) => void): Event
 
 export function addNavigationListener(cb: (event: NavigationEvent) => void): EventSubscription {
   return emitter.addListener('onNavigation', cb)
+}
+
+export function addRouteProgressListener(
+  cb: (event: RouteProgressEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onRouteProgress', cb)
 }
 
 export function addLiveStateListener(cb: (event: LiveStateEvent) => void): EventSubscription {

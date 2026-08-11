@@ -205,6 +205,35 @@ class NavigationController(
   var onChange: ((Navigation?) -> Unit)? = null
 
   /**
+   * Where the rider is along the current path. Derived and never stored: recomputed by [onFix] and
+   * dropped whenever the Navigation it belongs to changes, so there is no cache to expire by hand.
+   */
+  private var progress: RouteProgress? = null
+
+  val currentProgress: RouteProgress? get() = synchronized(lock) { progress }
+
+  /** Notified on every Route Progress change, including the clear to `null`. */
+  var onProgressChange: ((RouteProgress?) -> Unit)? = null
+
+  /**
+   * A GPS Fix arrived. Recomputes Route Progress against the current path and notifies when it
+   * moved. This is the *only* thing a fix does to a Navigation: it does not recompute, reroute or
+   * retry the path itself.
+   *
+   * A fix with no usable path publishes `null` rather than keeping the last position, so nothing
+   * downstream can show progress along a path that is gone.
+   */
+  fun onFix(latitude: Double, longitude: Double, speedMps: Double?) {
+    synchronized(lock) {
+      val points = state?.takeIf { it.status == NavigationStatus.READY }?.points
+      val next = points?.let { RouteProgress.compute(it, latitude, longitude, speedMps) }
+      if (progress == next) return
+      progress = next
+      onProgressChange?.invoke(next)
+    }
+  }
+
+  /**
    * Ordering token. Every intent claims one *synchronously*, before any network work starts, so the
    * rider's last action always wins: a fetch that resolves late finds its token stale and is
    * dropped rather than resurrecting a path over a newer target or over a clear.
@@ -435,7 +464,12 @@ class NavigationController(
         return
       }
       state = navigation
+      // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
+      // rather than describing a path that is no longer drawn. The next fix refills it.
+      val hadProgress = progress != null
+      progress = null
       onChange?.invoke(navigation)
+      if (hadProgress) onProgressChange?.invoke(null)
     }
     persist(request)
   }

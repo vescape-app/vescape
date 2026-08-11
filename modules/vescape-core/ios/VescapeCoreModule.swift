@@ -76,7 +76,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -122,6 +122,12 @@ public class VescapeCoreModule: Module {
       ])
     }
     OnStopObserving("onNavigation") { self.observedEvents.remove("onNavigation") }
+    OnStartObserving("onRouteProgress") {
+      self.observedEvents.insert("onRouteProgress")
+      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
+      self.sendEvent("onRouteProgress", ["progress": NavigationController.shared.currentProgress?.toMap()])
+    }
+    OnStopObserving("onRouteProgress") { self.observedEvents.remove("onRouteProgress") }
 
     OnCreate {
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
@@ -130,6 +136,11 @@ public class VescapeCoreModule: Module {
 
       // Navigation is native-owned; JS only renders the coordinates it is handed.
       NavigationController.shared.onChange = { [weak self] navigation in self?.sendNavigation(navigation) }
+      // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
+      // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
+      NavigationController.shared.onProgressChange = { [weak self] progress in
+        self?.sendRouteProgress(progress)
+      }
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
@@ -162,6 +173,7 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.onChange = nil
       AppStatusCoordinator.shared.onChange = nil
       NavigationController.shared.onChange = nil
+      NavigationController.shared.onProgressChange = nil
       self.frontendActive = false
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
@@ -1292,6 +1304,18 @@ public class VescapeCoreModule: Module {
         "navigation": navigation?.toMap(),
         "computing": NavigationController.shared.computing,
       ])
+    }
+  }
+
+  /// Emit `onRouteProgress` with the rider's place along the current path (`nil` while there is no
+  /// Navigation to be along). `sendEvent` must run on the main thread; drop the emit when no JS
+  /// listener is attached — the replay on subscribe self-heals it, as does the next fix.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onRouteProgress`
+  /// @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
+  private func sendRouteProgress(_ progress: RouteProgress?) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onRouteProgress") else { return }
+      self.sendEvent("onRouteProgress", ["progress": progress?.toMap()])
     }
   }
 

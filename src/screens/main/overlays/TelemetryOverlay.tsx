@@ -58,7 +58,6 @@ interface TelemetryOverlayProps {
   onEnterHistory: () => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
   activeNavigationTarget: MapSelection | null
-  currentLocation: { latitude: number; longitude: number } | null
   onCancelNavigation: () => void
 }
 
@@ -87,7 +86,6 @@ export function TelemetryOverlay({
   onEnterHistory,
   onOffscreenIndicatorPress,
   activeNavigationTarget,
-  currentLocation,
   onCancelNavigation,
 }: TelemetryOverlayProps) {
   const insets = useSafeAreaInsets()
@@ -203,7 +201,6 @@ export function TelemetryOverlay({
           onDisconnect={onStopScan}
           onWeatherPress={onEnterWeather}
           activeNavigationTarget={activeNavigationTarget}
-          currentLocation={currentLocation}
           onCancelNavigation={onCancelNavigation}
         />
         <FloatingBar

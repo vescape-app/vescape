@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import {
   addNavigationListener,
+  addRouteProgressListener,
   getSettings,
   recomputeNavigation,
   setDirectionPoint as persistDirectionPoint,
   setNavigationProfile as persistNavigationProfile,
   type Navigation,
   type NavigationProfile,
+  type RouteProgress,
 } from 'vescape-core'
 
 /**
@@ -32,6 +34,12 @@ interface MapState {
    * also the only thing that can say when it stopped.
    */
   navigationComputing: boolean
+  /**
+   * Where the rider is along the path, mirrored from native on every GPS Fix. `null` whenever there
+   * is no Navigation to be along. Nothing on this side derives it — native projects onto the path
+   * and measures along it, and a straight-line stand-in would be a second, wrong opinion.
+   */
+  routeProgress: RouteProgress | null
   /** Last direction point write failure, in rider-facing words. Cleared by the next success. */
   error: string | null
 }
@@ -41,6 +49,7 @@ interface MapActions {
   setDirectionPoint(latitude: number, longitude: number): Promise<void>
   clearDirectionPoint(): Promise<void>
   replaceNavigation(navigation: Navigation | null, computing: boolean): void
+  replaceRouteProgress(progress: RouteProgress | null): void
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
 }
@@ -66,6 +75,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
     directionPoint: null,
     navigation: null,
     navigationComputing: false,
+    routeProgress: null,
     error: null,
 
     async loadDirectionPoint() {
@@ -90,6 +100,10 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
 
     replaceNavigation(navigation, computing) {
       set({ navigation, navigationComputing: computing })
+    },
+
+    replaceRouteProgress(progress) {
+      set({ routeProgress: progress })
     },
 
     /**
@@ -122,5 +136,12 @@ export function startNavigationSync(): () => void {
   const sub = addNavigationListener((event) =>
     useMapStore.getState().replaceNavigation(event.navigation, event.computing),
   )
-  return () => sub.remove()
+  // Route Progress arrives on its own event: it moves with every fix while the path stays put.
+  const progressSub = addRouteProgressListener((event) =>
+    useMapStore.getState().replaceRouteProgress(event.progress),
+  )
+  return () => {
+    sub.remove()
+    progressSub.remove()
+  }
 }

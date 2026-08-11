@@ -35,8 +35,8 @@ import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { distanceMeters } from '@/helpers/mapGeometry'
 import { DASH, fmtDistance } from '@/helpers/format'
+import { useMapStore } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
 import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
@@ -51,7 +51,6 @@ interface TopBarProps {
   onDisconnect: () => void
   onWeatherPress?: () => void
   activeNavigationTarget: MapSelection | null
-  currentLocation: { latitude: number; longitude: number } | null
   onCancelNavigation: () => void
 }
 
@@ -141,7 +140,6 @@ export function TopBar({
   onDisconnect,
   onWeatherPress,
   activeNavigationTarget,
-  currentLocation,
   onCancelNavigation,
 }: TopBarProps) {
   const insets = useSafeAreaInsets()
@@ -152,6 +150,7 @@ export function TopBar({
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
+  const routeProgress = useMapStore((s) => s.routeProgress)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
   const nearbyBadge = useGroupRideStore((s) => s.badge)
@@ -179,10 +178,11 @@ export function TopBar({
     activeNavigationTarget?.type === 'mapPoint'
       ? activeNavigationTarget.point.category
       : 'direction'
+  // Along the path, from native. A straight line here claimed 679 m for a ride that is 2 km around
+  // the river; the dash while native has no Route Progress is the honest answer, not a reason to
+  // fall back to one.
   const navigationDistance =
-    activeNavigationTarget && currentLocation
-      ? fmtDistance(distanceMeters(currentLocation, activeNavigationTarget))
-      : DASH
+    routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
 
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">

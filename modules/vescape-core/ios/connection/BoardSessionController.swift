@@ -1543,6 +1543,15 @@ internal final class BoardSessionController: VescGattListener {
     }
     recordingCoordinator.recordLocation(location)
     latestLocation = location
+    // Every fix moves Route Progress, approximate ones included: the same rule as `riderPosition`,
+    // where freshness beats accuracy. The bearing comes off the path rather than off the fix, so a
+    // noisy position cannot spin it.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `onLocationUpdated`
+    NavigationController.shared.onFix(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      speedMps: location.speedMps
+    )
     if location.precise {
       latestPreciseLocation = location
       recentLocations.append(location.map)

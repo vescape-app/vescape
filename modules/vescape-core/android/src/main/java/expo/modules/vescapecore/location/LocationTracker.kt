@@ -4,6 +4,7 @@ import expo.modules.vescapecore.protocol.LocationSnapshot
 
 import android.content.Context
 import android.location.Location
+import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
@@ -67,6 +68,12 @@ internal class LocationTracker(
             courseSourceTimestamp = course?.sourceTimestamp,
         )
         latestLocation = snapshot
+        // Every fix moves Route Progress, approximate ones included: the same rule as
+        // [riderPosition], where freshness beats accuracy. The bearing comes off the path rather
+        // than off the fix, so a noisy position cannot spin it.
+        // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onLocationUpdated`
+        NavigationController.get(applicationContext)
+            .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
         if (!snapshot.precise) {
             emitEvent("onLocation", snapshot.toMap())
             return
