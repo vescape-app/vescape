@@ -12,7 +12,7 @@ import { finite, absolute } from '@/helpers/finite'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 /**
- * TEMPORARY perf switch (https://github.com/KacperKozak/vesc-app-poc/issues/114).
+ * TEMPORARY perf switch (https://github.com/KacperKozak/vescape/issues/114).
  *
  * `true`  — `/control` detail charts stream raw full samples (`onTelemetryHistory`
  *           firehose) for full-resolution, scrubbable lines + excluded-range bands.

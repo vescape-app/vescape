@@ -7,6 +7,7 @@ import {
   type AppSettings,
 } from 'vescape-core'
 import { DEFAULT_HISTORY_METRIC_HOT_RANGES } from '@/modules/history/lib/metricColorScale'
+import { DEFAULT_RIDE_SPLIT_GAP_MINUTES } from '@/modules/history/lib/sessions'
 import {
   DEFAULT_SATELLITE_IMAGERY_OPACITY,
   DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
@@ -16,7 +17,7 @@ import {
 const DEFAULTS: AppSettings = {
   liveHistoryLimit: 5,
   autoConnect: true,
-  autoRecording: false,
+  autoRecording: true,
   selectedBoardId: null,
   lastGpsLatitude: null,
   lastGpsLongitude: null,
@@ -25,16 +26,18 @@ const DEFAULTS: AppSettings = {
   movingSpeedThresholdKmh: 3,
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
+  rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
   satelliteImageryOpacity: DEFAULT_SATELLITE_IMAGERY_OPACITY,
   satelliteMapImageryOpacity: DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
   satelliteImagerySaturation: DEFAULT_SATELLITE_IMAGERY_SATURATION,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'northUp',
+  mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: DEFAULT_HISTORY_METRIC_HOT_RANGES,
   socEstimateWindowSeconds: 20,
+  boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
@@ -42,8 +45,9 @@ const DEFAULTS: AppSettings = {
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
   telemetryPollRateHz: 20,
-  wearMirrorIntervalMs: 500,
+  wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
+  wearNavArrowEnabled: false,
   riderId: null,
   riderName: null,
   riderColor: null,

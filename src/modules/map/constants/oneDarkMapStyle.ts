@@ -370,60 +370,96 @@ export const ONE_DARK_MAP_STYLE = JSON.stringify({
       },
     },
     {
-      id: 'poi-icon',
+      id: 'poi-label',
       type: 'symbol',
       source: 'composite',
       'source-layer': 'poi_label',
       minzoom: 6,
+      filter: ['<=', ['get', 'filterrank'], ['+', ['step', ['zoom'], 0, 16, 1, 17, 2], 3]],
       layout: {
         'icon-image': [
-          'case',
-          ['has', 'maki_beta'],
-          ['coalesce', ['image', ['get', 'maki_beta']], ['image', ['get', 'maki']]],
-          ['image', ['get', 'maki']],
+          'coalesce',
+          [
+            'case',
+            ['has', 'maki_beta'],
+            ['coalesce', ['image', ['get', 'maki_beta']], ['image', ['get', 'maki']]],
+            ['image', ['get', 'maki']],
+          ],
+          [
+            'image',
+            [
+              'match',
+              ['get', 'class'],
+              'park_like',
+              'park',
+              'education',
+              'school',
+              'medical',
+              'hospital',
+              'parking',
+              'parking',
+              'place_of_worship',
+              'place-of-worship',
+              'sport_and_leisure',
+              'pitch',
+              '',
+            ],
+          ],
         ],
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.56, 18, 0.76],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.75, 18, 1],
         'icon-allow-overlap': false,
         'icon-padding': 3,
+        'text-field': ['get', 'name'],
+        'text-font': ['DIN Pro Regular', 'Arial Unicode MS Regular'],
+        'text-size': 11,
+        'text-offset': ['literal', [0, 1.15]],
+        'text-anchor': 'top',
       },
       paint: {
-        'icon-color': '#74859a',
-        'icon-halo-color': '#172033',
-        'icon-halo-width': 0.5,
-        'icon-opacity': 0.48,
+        'icon-color': '#8ba4bf',
+        'icon-halo-width': 0,
+        'icon-opacity': 0.76,
+        'text-color': '#7890a8',
+        'text-halo-color': '#172033',
+        'text-halo-width': 1,
       },
     },
     {
-      id: 'transit-stop-icon',
+      id: 'transit-label',
       type: 'symbol',
       source: 'composite',
       'source-layer': 'transit_stop_label',
       minzoom: 13,
       layout: {
-        'icon-image': ['get', 'network'],
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.58, 18, 0.8],
+        'icon-image': [
+          'image',
+          [
+            'match',
+            ['get', 'mode'],
+            'bus',
+            'bus',
+            'tram',
+            'rail-light',
+            ['literal', ['rail', 'metro_rail']],
+            'rail',
+            'ferry',
+            'ferry',
+            'bus',
+          ],
+        ],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.75, 18, 1],
         'icon-allow-overlap': false,
         'icon-padding': 3,
-      },
-      paint: {
-        'icon-color': '#74859a',
-        'icon-halo-color': '#172033',
-        'icon-halo-width': 0.5,
-        'icon-opacity': 0.48,
-      },
-    },
-    {
-      id: 'poi-label',
-      type: 'symbol',
-      source: 'composite',
-      'source-layer': 'poi_label',
-      minzoom: 14,
-      layout: {
         'text-field': ['get', 'name'],
         'text-font': ['DIN Pro Regular', 'Arial Unicode MS Regular'],
         'text-size': 11,
+        'text-offset': ['literal', [0, 1.15]],
+        'text-anchor': 'top',
       },
       paint: {
+        'icon-color': '#8ba4bf',
+        'icon-halo-width': 0,
+        'icon-opacity': 0.76,
         'text-color': '#7890a8',
         'text-halo-color': '#172033',
         'text-halo-width': 1,
@@ -585,14 +621,15 @@ export const ONE_DARK_MAP_STYLE = JSON.stringify({
   ],
 } as const)
 
-const ONE_DARK_MAP_STYLE_OBJECT = JSON.parse(ONE_DARK_MAP_STYLE) as {
-  layers?: { id?: string }[]
+interface OneDarkStyleLayer {
+  id?: string
+  layout?: Record<string, unknown>
+  [key: string]: unknown
 }
 
-const ONE_DARK_MAP_STYLE_WITHOUT_POI = JSON.stringify({
-  ...ONE_DARK_MAP_STYLE_OBJECT,
-  layers: ONE_DARK_MAP_STYLE_OBJECT.layers?.filter((layer) => layer.id !== 'poi-label') ?? [],
-})
+const ONE_DARK_MAP_STYLE_OBJECT = JSON.parse(ONE_DARK_MAP_STYLE) as {
+  layers?: OneDarkStyleLayer[]
+}
 
 const DISTRICT_LABEL_LAYER_IDS = new Set([
   'place-label-region',
@@ -602,7 +639,7 @@ const DISTRICT_LABEL_LAYER_IDS = new Set([
   'place-label-hamlet',
 ])
 
-const POI_ICON_LAYER_IDS = new Set(['poi-icon', 'transit-stop-icon'])
+const POI_LAYER_IDS = new Set(['poi-label', 'transit-label'])
 
 function filterOneDarkLabels(
   showPoiLabels: boolean,
@@ -612,12 +649,25 @@ function filterOneDarkLabels(
   return JSON.stringify({
     ...ONE_DARK_MAP_STYLE_OBJECT,
     layers:
-      ONE_DARK_MAP_STYLE_OBJECT.layers?.filter((layer) => {
-        if (!showPoiLabels && layer.id === 'poi-label') return false
-        if (!showPoiIcons && layer.id && POI_ICON_LAYER_IDS.has(layer.id)) return false
-        if (!showDistrictLabels && layer.id && DISTRICT_LABEL_LAYER_IDS.has(layer.id)) return false
-        return true
-      }) ?? [],
+      ONE_DARK_MAP_STYLE_OBJECT.layers
+        ?.filter((layer) => {
+          if (!showPoiLabels && !showPoiIcons && layer.id && POI_LAYER_IDS.has(layer.id))
+            return false
+          if (!showDistrictLabels && layer.id && DISTRICT_LABEL_LAYER_IDS.has(layer.id))
+            return false
+          return true
+        })
+        .map((layer) => {
+          if (!layer.id || !POI_LAYER_IDS.has(layer.id)) return layer
+          return {
+            ...layer,
+            layout: {
+              ...layer.layout,
+              ...(!showPoiLabels && { 'text-field': '' }),
+              ...(!showPoiIcons && { 'icon-image': '' }),
+            },
+          }
+        }) ?? [],
   })
 }
 
@@ -627,6 +677,5 @@ export function getOneDarkMapStyle(
   showDistrictLabels = true,
 ) {
   if (showPoiLabels && showPoiIcons && showDistrictLabels) return ONE_DARK_MAP_STYLE
-  if (!showPoiLabels && showPoiIcons && showDistrictLabels) return ONE_DARK_MAP_STYLE_WITHOUT_POI
   return filterOneDarkLabels(showPoiLabels, showPoiIcons, showDistrictLabels)
 }

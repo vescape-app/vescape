@@ -1,10 +1,6 @@
+import type { ReactNode } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import {
-  useAnimatedProps,
-  useAnimatedStyle,
-  useDerivedValue,
-  type SharedValue,
-} from 'react-native-reanimated'
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
@@ -23,13 +19,13 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import {
   AlertMarker,
-  AnimatedTextInput,
   BG_ARC_COLOR,
   gaugeRampColor,
+  GaugeReadout,
   GlowGradient,
   LABEL_FONT_SIZE,
-  useCanvasSize,
 } from '@/modules/board/components/gauge/gaugeShared'
+import { useCanvasSize } from '@/hooks/useCanvasSize'
 
 interface SingleGaugeProps {
   value: SharedValue<number | null>
@@ -39,6 +35,8 @@ interface SingleGaugeProps {
   unit: string
   decimals?: number
   label?: string
+  /** Optional action aligned with the gauge label in the chart's top-right corner. */
+  headerRight?: ReactNode
   alerts?: DualGaugeAlert[]
   hotRange?: MetricHotRange | null
   /** Draw the live needle + numeric readout. Off for static, offline previews. */
@@ -56,6 +54,12 @@ const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
 
 const BG_ARC = svgPath(arcPath(HALF_ARC, 1))
 
+// Readout box: explicit line height keeps the drawn value at the vertical
+// footprint the readout view used to reserve.
+const HALF_VALUE_FONT_SIZE = 52
+const HALF_VALUE_LINE_HEIGHT = 58
+const HALF_UNIT_FONT_SIZE = 12
+
 function HalfArc({
   value,
   min,
@@ -72,15 +76,10 @@ function HalfArc({
   const scale = size.w > 0 ? size.w / HALF_VB_W : 0
   const labelFont = useSkiaFont('700', LABEL_FONT_SIZE)
 
-  const animatedValueProps = useAnimatedProps(() => {
+  const valueText = useDerivedValue(() => {
     const current = value.value
-    const text =
-      current != null
-        ? decimals === 0
-          ? Math.round(current).toString()
-          : current.toFixed(decimals)
-        : '—'
-    return { text, value: text }
+    if (current == null) return '—'
+    return decimals === 0 ? Math.round(current).toString() : current.toFixed(decimals)
   })
 
   const arc = useDerivedValue(() =>
@@ -96,9 +95,7 @@ function HalfArc({
     return radialTickPath(HALF_ARC, normalizeFraction(value.value, min, max), MARKER_INSET)
   })
 
-  const animatedValueStyle = useAnimatedStyle(() => ({
-    color: gaugeRampColor(value.value, color, hotRange),
-  }))
+  const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
 
   return (
     <View style={styles.halfWrap}>
@@ -148,20 +145,25 @@ function HalfArc({
                 />
               ) : null}
             </Group>
+            {showValue ? (
+              <GaugeReadout
+                text={valueText}
+                color={valueColor}
+                unit={unit}
+                box={{
+                  x: size.w * 0.18,
+                  y: size.h * 0.36,
+                  width: size.w * 0.64,
+                  height: size.h * 0.6,
+                }}
+                valueSize={HALF_VALUE_FONT_SIZE}
+                valueLineHeight={HALF_VALUE_LINE_HEIGHT}
+                unitSize={HALF_UNIT_FONT_SIZE}
+              />
+            ) : null}
           </Canvas>
         ) : null}
       </View>
-
-      {showValue ? (
-        <View style={styles.halfBowl} pointerEvents="none">
-          <AnimatedTextInput
-            editable={false}
-            animatedProps={animatedValueProps}
-            style={[styles.halfValue, animatedValueStyle]}
-          />
-          <Text style={styles.halfUnit}>{unit}</Text>
-        </View>
-      ) : null}
     </View>
   )
 }
@@ -174,6 +176,7 @@ export function SingleGauge({
   unit,
   decimals,
   label,
+  headerRight,
   alerts = [],
   hotRange,
   showValue = true,
@@ -181,7 +184,12 @@ export function SingleGauge({
 }: SingleGaugeProps) {
   return (
     <View style={[styles.singleWrap, containerStyle]}>
-      {label ? <Text style={styles.singleLabel}>{label}</Text> : null}
+      {label || headerRight ? (
+        <View style={styles.singleHeader}>
+          {label ? <Text style={styles.singleLabel}>{label}</Text> : <View />}
+          {headerRight}
+        </View>
+      ) : null}
       <HalfArc
         value={value}
         min={min}
@@ -222,28 +230,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  halfBowl: {
-    position: 'absolute',
-    left: '18%',
-    right: '18%',
-    top: '36%',
-    bottom: '4%',
+  singleHeader: {
+    minHeight: 28,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  halfValue: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 52,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    lineHeight: 58,
-    padding: 0,
-    textAlign: 'center',
-  },
-  halfUnit: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 2,
+    justifyContent: 'space-between',
+    gap: 8,
   },
 })

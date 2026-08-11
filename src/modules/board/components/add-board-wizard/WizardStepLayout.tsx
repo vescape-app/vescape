@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import type { Icon } from 'phosphor-react-native'
+import { ArrowLeftIcon, ArrowRightIcon, type Icon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
 import { theme } from '@/constants/theme'
 
 interface WizardStepLayoutProps {
   title: string
+  description?: ReactNode
   icon: Icon
   color: string
   headerRight?: ReactNode
@@ -17,6 +18,7 @@ interface WizardStepLayoutProps {
 
 export function WizardStepLayout({
   title,
+  description,
   icon: IconComponent,
   color,
   headerRight,
@@ -25,19 +27,28 @@ export function WizardStepLayout({
 }: WizardStepLayoutProps) {
   return (
     <View style={styles.fill}>
-      {headerRight ? <View style={styles.topBar}>{headerRight}</View> : null}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <IconComponent size={20} color={color} weight="duotone" />
-          <Text style={styles.title}>{title}</Text>
+        <View style={styles.topContent}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitle}>
+              <IconComponent size={20} color={color} weight="duotone" />
+              <Text style={styles.title} numberOfLines={2}>
+                {title}
+              </Text>
+            </View>
+            {headerRight ? <View style={styles.headerRight}>{headerRight}</View> : null}
+          </View>
+          {description ? <Text style={styles.description}>{description}</Text> : null}
         </View>
-        {children}
+        <View style={styles.mainContent}>
+          <View style={styles.contentStack}>{children}</View>
+        </View>
       </ScrollView>
-      {footer}
+      {footer ? <View style={styles.footer}>{footer}</View> : null}
     </View>
   )
 }
@@ -63,12 +74,15 @@ export function WizardNavActions({
         style={styles.action}
         label="Back"
         variant="secondary"
+        icon={ArrowLeftIcon}
         onPress={onBack}
         testID={`${testIDPrefix}-back`}
       />
       <Button
         style={styles.action}
         label={nextLabel}
+        icon={ArrowRightIcon}
+        iconPosition="right"
         onPress={onNext}
         disabled={!canContinue}
         testID={`${testIDPrefix}-next`}
@@ -87,27 +101,56 @@ const styles = StyleSheet.create({
   },
   body: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 14,
+    paddingBottom: 4,
   },
-  topBar: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  header: {
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  headerRight: {
+    flexShrink: 0,
+  },
+  topContent: {
+    gap: 6,
+  },
+  mainContent: {
+    flex: 1,
+    minHeight: 0,
+    justifyContent: 'center',
+  },
+  contentStack: {
+    gap: 14,
+    paddingBottom: 6,
+  },
   title: {
+    flexShrink: 1,
     color: theme.palette.slate.textPrimary,
     fontSize: 20,
     fontWeight: '800',
   },
+  description: {
+    color: theme.palette.slate.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
   actions: {
     flexDirection: 'row',
     gap: 10,
+  },
+  footer: {
+    paddingBottom: 4,
   },
   action: {
     flex: 1,

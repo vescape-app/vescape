@@ -1,4 +1,4 @@
-import { CaretDownIcon, CloudArrowUpIcon, ImagesSquareIcon } from 'phosphor-react-native'
+import { CaretDownIcon, CloudArrowUpIcon, ImagesSquareIcon, StarIcon } from 'phosphor-react-native'
 import type { RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 
@@ -6,21 +6,29 @@ import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
 import { interaction, theme } from '@/constants/theme'
+import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { formatRideMeta, formatRideTime } from '@/modules/history/lib/rideFormat'
 
 interface HistoryPanelNavProps {
   titleStartMs: number
   titleEndMs: number
   deviceName: string
+  title?: string
+  subtitle?: string
   canPrevious: boolean
   canNext: boolean
+  favoriteMode: boolean
+  favorited: boolean
+  actionDisabled: boolean
   mediaCount: number
   mediaLoading: boolean
   mediaButtonRef: RefObject<View | null>
+  listButtonRef: RefObject<View | null>
   onPrevious: () => void
   onNext: () => void
   onOpenList: () => void
   onOpenMediaDrawer: () => void
+  onToggleFavorite: () => void
   onOpenShareInfo: () => void
 }
 
@@ -28,35 +36,50 @@ export function HistoryPanelNav({
   titleStartMs,
   titleEndMs,
   deviceName,
+  title,
+  subtitle,
   canPrevious,
   canNext,
+  favoriteMode,
+  favorited,
+  actionDisabled,
   mediaCount,
   mediaLoading,
   mediaButtonRef,
+  listButtonRef,
   onPrevious,
   onNext,
   onOpenList,
   onOpenMediaDrawer,
+  onToggleFavorite,
   onOpenShareInfo,
 }: HistoryPanelNavProps) {
+  const primaryLabel = title ?? formatRideTime(titleStartMs, titleEndMs)
+  const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, deviceName)
+
   return (
     <View style={styles.navControls}>
       <View ref={mediaButtonRef} style={styles.navSide}>
-        <IconButton
-          icon={ImagesSquareIcon}
-          onPress={onOpenMediaDrawer}
-          loading={mediaLoading}
-          size="lg"
-          style={mediaCount > 0 ? styles.mediaEnabled : undefined}
-        />
-        {mediaCount > 0 ? (
-          <View style={styles.mediaCountBadge} pointerEvents="none">
-            <Text style={styles.mediaCountText}>{mediaCount > 99 ? '99+' : mediaCount}</Text>
-          </View>
+        {favoriteMode ? (
+          <>
+            <IconButton
+              icon={ImagesSquareIcon}
+              onPress={onOpenMediaDrawer}
+              loading={mediaLoading}
+              size="lg"
+              style={mediaCount > 0 ? styles.mediaEnabled : undefined}
+              accessibilityLabel="Favorite media"
+            />
+            {mediaCount > 0 ? (
+              <View style={styles.mediaCountBadge} pointerEvents="none">
+                <Text style={styles.mediaCountText}>{mediaCount > 99 ? '99+' : mediaCount}</Text>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </View>
       <PrevNextSelector
-        label={formatRideTime(titleStartMs, titleEndMs)}
+        label={primaryLabel}
         previousDisabled={!canPrevious}
         nextDisabled={!canNext}
         onPrevious={onPrevious}
@@ -66,25 +89,39 @@ export function HistoryPanelNav({
         style={styles.navSelector}
         selectControl={
           <Pressable
+            ref={listButtonRef}
+            collapsable={false}
             testID="history-ride-list-button"
             style={({ pressed }) => [styles.titleButton, pressed && styles.titleButtonPressed]}
             android_ripple={interaction.ripple}
             onPress={onOpenList}
           >
-            <View style={styles.titleContent}>
-              <Text style={styles.titleTime} numberOfLines={1}>
-                {formatRideTime(titleStartMs, titleEndMs)}
-              </Text>
-              <Text style={styles.titleMeta} numberOfLines={1}>
-                {formatRideMeta(titleStartMs, titleEndMs, deviceName)}
-              </Text>
-            </View>
+            <HistoryRideLabel title={primaryLabel} subtitle={secondaryLabel} compact />
             <CaretDownIcon size={12} color={theme.palette.slate.textSecondary} weight="bold" />
           </Pressable>
         }
       />
       <View style={styles.navSide}>
-        <IconButton icon={CloudArrowUpIcon} onPress={onOpenShareInfo} size="lg" />
+        {favoriteMode ? (
+          <IconButton
+            icon={CloudArrowUpIcon}
+            onPress={onOpenShareInfo}
+            size="lg"
+            testID="history-share-favorite"
+            disabled={actionDisabled}
+            accessibilityLabel="Share Favorite"
+          />
+        ) : (
+          <IconButton
+            icon={StarIcon}
+            onPress={onToggleFavorite}
+            size="lg"
+            testID="history-favorite-ride"
+            accent={favorited ? theme.palette.amber.color : undefined}
+            disabled={actionDisabled}
+            accessibilityLabel={favorited ? 'Edit Favorite' : 'Create Favorite'}
+          />
+        )}
       </View>
     </View>
   )
@@ -122,11 +159,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: theme.palette.slate.surfaceDeep,
-    backgroundColor: theme.palette.purple.color,
+    borderColor: theme.palette.purple.border,
+    backgroundColor: theme.palette.purple.bg,
   },
   mediaCountText: {
-    color: theme.palette.slate.bg,
+    color: theme.palette.purple.text,
     fontSize: 9,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
@@ -143,20 +180,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-  },
-  titleContent: {
-    flex: 1,
-    minWidth: 0,
-    gap: 1,
-  },
-  titleTime: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  titleMeta: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 9,
-    fontWeight: '600',
   },
 })

@@ -96,18 +96,18 @@ class ConnectionLogicTest {
     // --- isPollingCapable ---
 
     @Test
-    fun `polling capable when canId set`() {
-        assertTrue(isPollingCapable(canId = 1, directConnection = false))
+    fun `polling capable on a CAN transport`() {
+        assertTrue(isPollingCapable(BoardTransport.Can(1)))
     }
 
     @Test
-    fun `polling capable when direct connection`() {
-        assertTrue(isPollingCapable(canId = null, directConnection = true))
+    fun `polling capable on a direct transport`() {
+        assertTrue(isPollingCapable(BoardTransport.Direct))
     }
 
     @Test
-    fun `not polling capable when neither`() {
-        assertFalse(isPollingCapable(canId = null, directConnection = false))
+    fun `not polling capable when the link has no detected transport`() {
+        assertFalse(isPollingCapable(null))
     }
 
     // --- shouldStartPollingOnReady ---
@@ -115,28 +115,28 @@ class ConnectionLogicTest {
     @Test
     fun `start polling when no pollRunnable and capable`() {
         assertTrue(
-            shouldStartPollingOnReady(canId = null, directConnection = true, pollRunnable = null),
+            shouldStartPollingOnReady(BoardTransport.Direct, pollRunnable = null),
         )
     }
 
     @Test
     fun `no start polling when already polling`() {
         assertFalse(
-            shouldStartPollingOnReady(canId = null, directConnection = true, pollRunnable = Any()),
+            shouldStartPollingOnReady(BoardTransport.Direct, pollRunnable = Any()),
         )
     }
 
     @Test
     fun `no start polling when not capable`() {
         assertFalse(
-            shouldStartPollingOnReady(canId = null, directConnection = false, pollRunnable = null),
+            shouldStartPollingOnReady(null, pollRunnable = null),
         )
     }
 
     @Test
-    fun `start polling via canId even without direct`() {
+    fun `start polling on a CAN transport`() {
         assertTrue(
-            shouldStartPollingOnReady(canId = 2, directConnection = false, pollRunnable = null),
+            shouldStartPollingOnReady(BoardTransport.Can(2), pollRunnable = null),
         )
     }
 

@@ -87,6 +87,13 @@ export const FIXTURE_RIDE_GPS_SAMPLES: HistoryGpsSample[] = rideRouteCoordinates
   },
 )
 
+export const FIXTURE_FAVORITE_RANGES = [
+  {
+    startMs: FIXTURE_RIDE_GPS_SAMPLES[3].capturedAtMs,
+    endMs: FIXTURE_RIDE_GPS_SAMPLES[8].capturedAtMs,
+  },
+]
+
 export const FIXTURE_RIDE_TELEMETRY_SAMPLES: TelemetrySample[] = FIXTURE_RIDE_GPS_SAMPLES.map(
   (gps, index) => {
     const t = index / (ROUTE_POINT_COUNT - 1)

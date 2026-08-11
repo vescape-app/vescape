@@ -1,0 +1,15 @@
+appId: ${APP_ID}
+---
+- runFlow: _launch.yaml
+- openLink: 'vescape://settings/components/modals'
+- scrollUntilVisible:
+    element:
+      id: edge-drawer-focus-open
+    direction: DOWN
+- tapOn:
+    id: edge-drawer-focus-open
+- extendedWaitUntil:
+    visible: Focused list expanded
+    timeout: 5000
+- assertVisible:
+    id: edge-drawer-focused-row

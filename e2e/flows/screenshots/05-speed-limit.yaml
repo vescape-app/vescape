@@ -1,0 +1,9 @@
+appId: ${APP_ID}
+---
+- runFlow: ../fixture/_map-mode.yaml
+- tapOn:
+    id: map-mode-legal-limits
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/05-speed-limit
+- runFlow: ../fixture/_home.yaml

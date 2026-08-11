@@ -22,12 +22,41 @@ describe('Legal Policy derivation', () => {
     expect(normalizeLegalPolicyReference(null)).toBeNull()
   })
 
+  test('classifies Czech self-balancing transporters as restricted rather than prohibited', () => {
+    expect(legalPolicyFromReference({ jurisdictionCode: 'CZ' })).toMatchObject({
+      code: 'CZ',
+      legalSpeedKmh: null,
+      referenceSpeedKmh: null,
+      status: 'restricted',
+      confidence: 'high',
+    })
+  })
+
+  test('keeps audited one-wheel classifications for Bulgaria, Iceland and Malta', () => {
+    expect(legalPolicyFromReference({ jurisdictionCode: 'BG' })).toMatchObject({
+      legalSpeedKmh: 25,
+      status: 'likelyLegal',
+      confidence: 'high',
+    })
+    expect(legalPolicyFromReference({ jurisdictionCode: 'IS' })).toMatchObject({
+      legalSpeedKmh: 25,
+      status: 'likelyLegal',
+      confidence: 'high',
+    })
+    expect(legalPolicyFromReference({ jurisdictionCode: 'MT' })).toMatchObject({
+      legalSpeedKmh: 6,
+      status: 'restricted',
+      confidence: 'high',
+    })
+  })
+
   test('catalog country codes are unique and warning speeds stay below legal limits', () => {
     const codes = LEGAL_LIMIT_COUNTRIES.map((country) => country.code)
 
     expect(new Set(codes).size).toBe(codes.length)
     for (const country of LEGAL_LIMIT_COUNTRIES) {
       expect(country.code).toMatch(/^[A-Z]{2}$/)
+      expect(country.checkedAt).toBe('2026-07-30')
       if (country.legalSpeedKmh != null && country.warningSpeedKmh != null) {
         expect(country.warningSpeedKmh).toBeLessThan(country.legalSpeedKmh)
       }

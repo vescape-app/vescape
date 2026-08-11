@@ -6,6 +6,7 @@ import android.util.Log
 import expo.modules.kotlin.jni.NativeArrayBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.UUID
 import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,6 +91,7 @@ class TelemetryRepository private constructor(context: Context) {
   private val appContext = context.applicationContext
   private val db = TelemetryDatabase.get(context)
   private val dao = db.telemetryDao()
+  private val favoriteMediaStore = FavoriteMediaStore(appContext, dao)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val lock = Any()
   private val pending = ArrayDeque<PendingFrame>()
@@ -525,7 +527,163 @@ class TelemetryRepository private constructor(context: Context) {
   suspend fun deleteRange(options: Map<String, Any?>): Int = withContext(Dispatchers.IO) {
     val query = RangeMutationOptions.from(options)
     flushNow()
-    dao.deleteRange(query.fromMs, query.toMs, query.deviceId)
+    val requested = TelemetryTimeRange(query.fromMs, query.toMs)
+    val protected = favoriteTelemetryRanges()
+    promoteProtectedRangeStarts(protected, query.deviceId)
+    val deleted = subtractProtectedTelemetryRanges(requested, protected).sumOf { range ->
+      dao.deleteRange(range.startMs, range.endMs, query.deviceId)
+    }
+    deleted
+  }
+
+  // Favorites (ADR 0029)
+
+  /**
+   * Board names are resolved here, not stored on the row: a Favorite outlives board renames, and a
+   * snapshot would drift.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `getFavorites`
+   */
+  suspend fun getFavorites(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
+    favoriteMediaStore.reconcileAll()
+    val boardNames = dao.getBoards().associate { it.id to it.name }
+    dao.getFavorites().map { it.toMap(boardNames[it.boardId]) }
+  }
+
+  /**
+   * Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
+   * optional name are the only things JS gets to supply. Summary stats come from the raw samples
+   * inside the range, so a range that cuts mid-bucket still gets exact numbers.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `createFavorite`
+   */
+  suspend fun createFavorite(options: Map<String, Any?>): Map<String, Any?>? = withContext(Dispatchers.IO) {
+    val range = favoriteRange(options) ?: return@withContext null
+    val startMs = range.startMs
+    val endMs = range.endMs
+    val deviceId = options["deviceId"] as? String
+    val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
+    flushNow()
+
+    val states = getSampleStates(startMs, endMs, deviceId, Int.MAX_VALUE)
+    val summary = favoriteSummary(states)
+    val boards = dao.getBoards()
+    // The ble id is a transport key — it changes on re-link and differs per install — so the
+    // Favorite keeps the durable `boards.id` instead.
+    // @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `boardId`
+    val boardId = deviceId?.let { ble -> boards.firstOrNull { it.bleId == ble }?.id }
+    val nowMs = System.currentTimeMillis()
+    val favorite = FavoriteEntity(
+      id = UUID.randomUUID().toString(),
+      boardId = boardId,
+      name = name,
+      startMs = startMs,
+      endMs = endMs,
+      createdAt = nowMs,
+      updatedAt = nowMs,
+      sampleCount = summary.sampleCount,
+      gpsPointCount = summary.gpsPointCount,
+      distanceCm = summary.distanceCm,
+      movingDurationMs = summary.movingDurationMs,
+      avgSpeedCentiKmh = summary.avgSpeedCentiKmh,
+      maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
+      batteryUsedWhMilli = summary.batteryUsedWhMilli,
+    )
+    dao.insertFavorite(favorite)
+    favorite.toMap(boards.firstOrNull { it.id == boardId }?.name)
+  }
+
+  /**
+   * Re-trim/rename a Favorite in place. Identity, creation time and Favorite Media stay attached;
+   * summary stats are rebuilt from raw samples for the new exact range.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `updateFavorite`
+   */
+  suspend fun updateFavorite(
+    id: String,
+    options: Map<String, Any?>,
+  ): Map<String, Any?>? = withContext(Dispatchers.IO) {
+    val existing = dao.getFavorite(id) ?: return@withContext null
+    val range = favoriteRange(options) ?: return@withContext null
+    val startMs = range.startMs
+    val endMs = range.endMs
+    val deviceId = options["deviceId"] as? String
+    val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
+    flushNow()
+
+    val summary = favoriteSummary(getSampleStates(startMs, endMs, deviceId, Int.MAX_VALUE))
+    val updated = existing.copy(
+      name = name,
+      startMs = startMs,
+      endMs = endMs,
+      updatedAt = System.currentTimeMillis(),
+      sampleCount = summary.sampleCount,
+      gpsPointCount = summary.gpsPointCount,
+      distanceCm = summary.distanceCm,
+      movingDurationMs = summary.movingDurationMs,
+      avgSpeedCentiKmh = summary.avgSpeedCentiKmh,
+      maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
+      batteryUsedWhMilli = summary.batteryUsedWhMilli,
+    )
+    if (dao.updateFavorite(updated) == 0) return@withContext null
+    updated.toMap(dao.getBoards().firstOrNull { it.id == updated.boardId }?.name)
+  }
+
+  /**
+   * Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `deleteFavorite`
+   */
+  suspend fun deleteFavorite(id: String): Boolean = withContext(Dispatchers.IO) {
+    val deleted = dao.deleteFavorite(id) > 0
+    if (deleted) favoriteMediaStore.deleteDirectory(id)
+    deleted
+  }
+
+  /**
+   * Read and reconcile Favorite Media. Missing files remove their manifest rows; temp/orphan files
+   * are deleted and never published to JS.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `getFavoriteMedia`
+   */
+  suspend fun getFavoriteMedia(favoriteId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
+    favoriteMediaStore.list(favoriteId)
+  }
+
+  /**
+   * Copy picker bytes into canonical app storage, hashing as they stream, then publish the
+   * immutable manifest only after the final file exists.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `importFavoriteMedia`
+   */
+  suspend fun importFavoriteMedia(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
+    favoriteMediaStore.importMedia(options)
+  }
+
+  /**
+   * Run the raw samples of a Favorite range through the same Metric Sanitizers the recording flush
+   * applies, then collapse the resulting buckets into one denormalized summary. Exclusion ranges are
+   * deliberately not persisted: creating a Favorite is a read of Ride History, not a rewrite.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteSummary`
+   */
+  private fun favoriteSummary(states: List<HistoryTelemetryState>): FavoriteSummary {
+    if (states.isEmpty()) return FavoriteSummary()
+    val telemetryPoints = states.map { it.state.toBucketPoint() }
+    val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+    val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
+      point.copy(
+        excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
+        excludedFromMaxSpeed = sanitization.samples[index].excludedFromMaxSpeed,
+        excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
+      )
+    }
+    return buildFavoriteSummary(
+      buildTelemetryBuckets(
+        telemetryPoints = sanitizedPoints,
+        locationPoints = states.toBucketLocationPoints(),
+      ),
+    )
   }
 
   suspend fun rebuildBuckets(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
@@ -573,7 +731,18 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   suspend fun clearAll() = withContext(Dispatchers.IO) {
-    dao.clearAll()
+    flushNow()
+    val protected = favoriteTelemetryRanges()
+    if (protected.isEmpty()) {
+      dao.clearAll()
+    } else {
+      promoteProtectedRangeStarts(protected, deviceId = null)
+      val requested = TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)
+      for (range in subtractProtectedTelemetryRanges(requested, protected)) {
+        dao.deleteRangeAllDevices(range.startMs, range.endMs)
+      }
+      dao.clearDiagnosticEvents()
+    }
     synchronized(lock) {
       pending.clear()
       pendingMarkers.clear()
@@ -582,6 +751,50 @@ class TelemetryRepository private constructor(context: Context) {
       lastHistoryAtMs = null
       lastKeyframeAtMs = null
       forceNextKeyframe = true
+    }
+  }
+
+  /**
+   * Favorites protect time ranges globally. A Board can be re-linked after a Favorite is created,
+   * so its current BLE id cannot safely identify the historical telemetry device id.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteTelemetryRanges`
+   */
+  private suspend fun favoriteTelemetryRanges(): List<TelemetryTimeRange> =
+    dao.getFavorites().map {
+      expandTelemetryRangeToBuckets(TelemetryTimeRange(it.startMs, it.endMs))
+    }
+
+  /**
+   * Android stores delta frames. Promote the first retained frame in each protected island before
+   * deleting its predecessor, otherwise the Favorite could survive in SQLite but become undecodable.
+   *
+   * iOS stores full keyframe rows for every sample and needs no promotion.
+   */
+  private suspend fun promoteProtectedRangeStarts(
+    protected: Collection<TelemetryTimeRange>,
+    deviceId: String?,
+  ) {
+    for (range in protected) {
+      val devices = if (deviceId != null) {
+        listOf(deviceId)
+      } else {
+        dao.getDeviceIdsInRange(range.startMs, range.endMs)
+      }
+      for (protectedDeviceId in devices) {
+        val firstFrame = dao.getFirstFrameInRange(
+          range.startMs,
+          range.endMs,
+          protectedDeviceId,
+        ) ?: continue
+        val first = getSampleStates(
+          range.startMs,
+          firstFrame.capturedAtMs,
+          protectedDeviceId,
+          Int.MAX_VALUE,
+        ).firstOrNull { it.id == firstFrame.id } ?: continue
+        dao.updateFrame(first.state.toFrame(previous = null, keyframe = true).copy(id = first.id))
+      }
     }
   }
 
@@ -1079,6 +1292,18 @@ private fun sanitizeDiagnosticProperties(properties: Map<String, Any?>): Map<Str
 private fun Map<String, Any?>.long(key: String): Long? = (this[key] as? Number)?.toLong()
 
 private fun Map<String, Any?>.int(key: String): Int? = (this[key] as? Number)?.toInt()
+
+/**
+ * Favorite ranges are required bridge input. Invalid bounds return through the module's controlled
+ * `ERR_CREATE_FAVORITE` / `ERR_UPDATE_FAVORITE` path instead of leaking IllegalArgumentException.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteRange`
+ */
+internal fun favoriteRange(options: Map<String, Any?>): TelemetryTimeRange? {
+  val startMs = options.long("startMs") ?: return null
+  val endMs = options.long("endMs") ?: return null
+  return if (endMs >= startMs) TelemetryTimeRange(startMs, endMs) else null
+}
 
 private fun Map<String, Any?>.requiredLong(key: String): Long =
   long(key) ?: throw IllegalArgumentException("$key is required")

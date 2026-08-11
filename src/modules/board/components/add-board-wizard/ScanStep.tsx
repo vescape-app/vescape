@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
+  ArrowRightIcon,
   BluetoothIcon,
   CaretDownIcon,
   CaretRightIcon,
@@ -151,13 +152,27 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
         <Text style={styles.title}>Pair your board</Text>
         <View style={styles.headerSpacer} />
         {wizard.draftLink ? (
-          <Pressable onPress={wizard.next} hitSlop={8} testID="add-board-pair-next">
-            <Text style={styles.skipLink}>Next →</Text>
-          </Pressable>
+          <Button
+            label="Next"
+            variant="accent"
+            size="sm"
+            icon={ArrowRightIcon}
+            iconPosition="right"
+            onPress={wizard.next}
+            testID="add-board-pair-next"
+            style={styles.headerActionButton}
+          />
         ) : (
-          <Pressable onPress={wizard.continueOffline} hitSlop={8} testID="add-board-skip-pairing">
-            <Text style={styles.skipLink}>Skip</Text>
-          </Pressable>
+          <Button
+            label="Skip"
+            variant="accent"
+            size="sm"
+            icon={ArrowRightIcon}
+            iconPosition="right"
+            onPress={wizard.continueOffline}
+            testID="add-board-skip-pairing"
+            style={styles.headerActionButton}
+          />
         )}
       </View>
 
@@ -262,10 +277,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
-  skipLink: {
-    color: theme.palette.cyan.text,
-    fontSize: 13,
-    fontWeight: '700',
+  headerActionButton: {
+    height: 28,
+    paddingHorizontal: 10,
   },
   scanHeader: {
     flexDirection: 'row',

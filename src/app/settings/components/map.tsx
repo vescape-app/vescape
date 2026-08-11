@@ -3,13 +3,14 @@ import { SlidersHorizontalIcon } from 'phosphor-react-native'
 import { useCallback, useRef, useState, type ElementRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import type { MapPoint } from 'vescape-core'
+import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
+import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
@@ -22,6 +23,7 @@ import {
   FIXTURE_CAMERA_CENTER,
   FIXTURE_CAMERA_ZOOM,
   FIXTURE_DIRECTION_POINT,
+  FIXTURE_FAVORITE_RANGES,
   FIXTURE_GPS_PUCK_BEARING_DEG,
   FIXTURE_HISTORY_METRIC_HOT_RANGES,
   FIXTURE_LIVE_TRAIL_SHAPE,
@@ -53,11 +55,12 @@ export default function MapComponentsShowcase() {
   const [styleExpanded, setStyleExpanded] = useState(false)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
-  const [mapPoints, setMapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
+  const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
   const [selectedMapPointId, setSelectedMapPointId] = useState<string | null>(null)
   const [activeHistoryMapMetric, setActiveHistoryMapMetric] = useState<HistoryMetricKey>('speed')
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
   const cameraRef = useRef<ElementRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
 
@@ -128,6 +131,7 @@ export default function MapComponentsShowcase() {
           rideMarkers={[]}
           rideGpsSamples={[]}
           mediaAssets={[]}
+          favoriteRanges={[]}
           mapZoom={FIXTURE_CAMERA_ZOOM}
           historyMetricGradientsEnabled
           historyMetricHotRanges={FIXTURE_HISTORY_METRIC_HOT_RANGES}
@@ -156,6 +160,7 @@ export default function MapComponentsShowcase() {
           rideMarkers={FIXTURE_RIDE_MARKERS}
           rideGpsSamples={FIXTURE_RIDE_GPS_SAMPLES}
           mediaAssets={FIXTURE_MEDIA_ASSETS}
+          favoriteRanges={FIXTURE_FAVORITE_RANGES}
           mapZoom={FIXTURE_CAMERA_ZOOM}
           historyMetricGradientsEnabled
           historyMetricHotRanges={FIXTURE_HISTORY_METRIC_HOT_RANGES}
@@ -174,6 +179,22 @@ export default function MapComponentsShowcase() {
           onSelect={(key) => {
             setStyleKey(key)
             setStyleExpanded(false)
+          }}
+        />
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile: ${profile}`)
+          }}
+        />
+        {/* Open variant: what the navigation sheet shows while a path is on screen. */}
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          open
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile (open): ${profile}`)
           }}
         />
         <View ref={moreTriggerRef} collapsable={false}>

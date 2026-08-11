@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
-import { Text } from '@/components/base/Text'
-import { BellRingingIcon, type Icon } from 'phosphor-react-native'
+import { useCallback, type Dispatch, type SetStateAction } from 'react'
+import { StyleSheet } from 'react-native'
+import { ArrowRightIcon, SpeedometerIcon, type Icon } from 'phosphor-react-native'
 
+import { Button } from '@/components/base/Button'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
 import { MetricAlerts } from '@/modules/alerts/components/MetricAlerts'
 import { ALERT_PRESET_METRIC_UNITS } from '@/modules/alerts/constants/metricLabels'
@@ -23,42 +23,51 @@ interface AlertSubstep {
 }
 
 const ALERT_SUBSTEPS: AlertSubstep[] = [
-  { key: 'board-top-speed', title: 'Board top speed', icon: BellRingingIcon },
+  { key: 'board-top-speed', title: 'Board top speed', icon: SpeedometerIcon },
   ...ALERT_PRESET_METRICS.map((metric) => ({
     key: metric,
-    title: `${ALERT_METRIC_META[metric].name} alerts`,
+    title: `${ALERT_METRIC_META[metric].name} alert`,
     icon: ALERT_METRIC_META[metric].icon,
   })),
 ]
 
-export function AlertsStep({ wizard }: { wizard: UseAddBoardWizard }) {
-  const [index, setIndex] = useState(0)
-  const substep = ALERT_SUBSTEPS[index]!
-  const isFirst = index === 0
-  const isLast = index === ALERT_SUBSTEPS.length - 1
-  const onBack = () => (isFirst ? wizard.back() : setIndex((current) => current - 1))
-  const onNext = () => (isLast ? wizard.next() : setIndex((current) => current + 1))
+export const ALERT_SUBSTEP_COUNT = ALERT_SUBSTEPS.length
+
+export function AlertsStep({
+  wizard,
+  substepIndex,
+  onSubstepIndexChange,
+}: {
+  wizard: UseAddBoardWizard
+  substepIndex: number
+  onSubstepIndexChange: Dispatch<SetStateAction<number>>
+}) {
+  const substep = ALERT_SUBSTEPS[substepIndex]!
+  const isFirst = substepIndex === 0
+  const isLast = substepIndex === ALERT_SUBSTEPS.length - 1
+  const onBack = () => (isFirst ? wizard.back() : onSubstepIndexChange((current) => current - 1))
+  const onNext = () => (isLast ? wizard.next() : onSubstepIndexChange((current) => current + 1))
+  const description = isFirst
+    ? 'The fastest you consider yourself capable of riding. Scales the speed gauge and alerts.'
+    : 'Pick how loudly this metric warns you. Adjust it any time from its control on the main screen.'
 
   return (
     <WizardStepLayout
       title={substep.title}
+      description={description}
       icon={substep.icon}
       color={theme.palette.amber.color}
       headerRight={
-        <>
-          <Text style={styles.counter}>
-            {index + 1}/{ALERT_SUBSTEPS.length}
-          </Text>
-          <SubstepProgress total={ALERT_SUBSTEPS.length} index={index} />
-          <Pressable
-            style={styles.skip}
-            onPress={wizard.next}
-            hitSlop={8}
-            testID="add-board-skip-alerts"
-          >
-            <Text style={styles.skipLink}>Skip</Text>
-          </Pressable>
-        </>
+        <Button
+          label="Skip"
+          variant="accent"
+          size="sm"
+          icon={ArrowRightIcon}
+          iconPosition="right"
+          onPress={wizard.next}
+          testID="add-board-skip-alerts"
+          style={styles.skipButton}
+        />
       }
       footer={
         <WizardNavActions
@@ -71,20 +80,9 @@ export function AlertsStep({ wizard }: { wizard: UseAddBoardWizard }) {
       }
     >
       {isFirst ? (
-        <>
-          <Text style={styles.hint}>
-            The fastest you consider yourself capable of riding. Scales the speed gauge and alerts.
-          </Text>
-          <BoardTopSpeedCard value={wizard.topSpeedKmh} onChange={wizard.setTopSpeedKmh} />
-        </>
+        <BoardTopSpeedCard value={wizard.topSpeedKmh} onChange={wizard.setTopSpeedKmh} />
       ) : (
-        <>
-          <Text style={styles.hint}>
-            Pick how loudly this metric warns you. Adjust it any time from its control on the main
-            screen.
-          </Text>
-          <DraftMetricAlerts wizard={wizard} metric={substep.key as AlertPresetMetric} />
-        </>
+        <DraftMetricAlerts wizard={wizard} metric={substep.key as AlertPresetMetric} />
       )}
     </WizardStepLayout>
   )
@@ -112,51 +110,9 @@ function DraftMetricAlerts({
   return <MetricAlerts controller={controller} unit={ALERT_PRESET_METRIC_UNITS[metric]} />
 }
 
-function SubstepProgress({ total, index }: { total: number; index: number }) {
-  return (
-    <View style={styles.bar}>
-      {Array.from({ length: total }, (_, segmentIndex) => (
-        <View
-          key={segmentIndex}
-          style={[styles.segment, segmentIndex <= index && styles.segmentActive]}
-        />
-      ))}
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
-  counter: {
-    flex: 1,
-    color: theme.palette.slate.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  skip: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  skipLink: {
-    color: theme.palette.cyan.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  bar: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  segment: {
-    width: 12,
-    height: 2,
-    backgroundColor: theme.palette.slate.border,
-  },
-  segmentActive: {
-    backgroundColor: theme.palette.amber.color,
-  },
-  hint: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 18,
+  skipButton: {
+    height: 28,
+    paddingHorizontal: 10,
   },
 })

@@ -51,7 +51,14 @@ modules/vescape-core/android/src/main/assets/data/
 modules/vescape-core/android/src/test/resources/data/
 modules/vescape-core/android/src/test/resources/fixtures/
 modules/vescape-core/android/src/main/assets/fixtures/
+modules/vescape-core/ios/fixtures/
 modules/vescape-core/.build/
+modules/vescape-core/*.d
+modules/vescape-core/*.dia
+modules/vescape-core/*.swiftdeps
+
+# generated from canonical release-notes/*.md
+/src/modules/release/generated/releaseNotes.ts
 
 # other stuff
 /reports/*
@@ -62,6 +69,11 @@ modules/vescape-core/.build/
 
 # perf harness output
 perf-results/
+
+# store screenshot harness output. Anchored: an unanchored `screenshots/` also swallows
+# `e2e/flows/screenshots/`, the flow set itself. (The fixture database is committed now —
+# `scripts/sanitize-db-fixture.ts` strips a real backup down to what may be published.)
+/screenshots/
 
 # fastlane build reports (generated, not source)
 fastlane/report.xml

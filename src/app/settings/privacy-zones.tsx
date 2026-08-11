@@ -380,42 +380,46 @@ export default function PrivacyZonesScreen() {
       </View>
 
       <View style={[styles.pillsFloating, { top: pillsTop }]}>
-        <PillSelector activeId={selectedId}>
-          {pills.map((pill) => (
-            <PillSelectorItem
-              key={pill.id}
-              id={pill.id}
-              label={pill.name}
-              icon={pill.icon}
-              testID={`privacy-zone-pill-${pill.id}`}
-              badge={
-                <PillSelectorDot
-                  status={!pill.isSaved ? 'draft' : pill.enabled ? 'enabled' : 'disabled'}
-                />
-              }
-              color={theme.palette.green}
-              onPress={() => handleSelectPill(pill.id)}
-            >
-              {!pill.isBuiltIn ? (
-                <PillSelectorMenuItem
-                  icon={PencilSimpleIcon}
-                  label="Rename"
-                  testID={`privacy-zone-menu-rename-${pill.id}`}
-                  onPress={() => handleRenamePress(pill.id, pill.name)}
-                />
-              ) : null}
-              {pill.isSaved ? (
-                <PillSelectorMenuItem
-                  icon={TrashIcon}
-                  label="Delete"
-                  testID={`privacy-zone-menu-delete-${pill.id}`}
-                  onPress={() => handleDeletePress(pill.id)}
-                  danger
-                  separator={!pill.isBuiltIn}
-                />
-              ) : null}
-            </PillSelectorItem>
-          ))}
+        <PillSelector activeId={selectedId} centered>
+          {pills.map((pill) => {
+            const testIdSuffix = !pill.isSaved && !pill.isBuiltIn ? 'pending-custom' : pill.id
+            return (
+              <PillSelectorItem
+                key={pill.id}
+                id={pill.id}
+                label={pill.name}
+                icon={pill.icon}
+                labelBehavior="always"
+                testID={`privacy-zone-pill-${testIdSuffix}`}
+                badge={
+                  <PillSelectorDot
+                    status={!pill.isSaved ? 'draft' : pill.enabled ? 'enabled' : 'disabled'}
+                  />
+                }
+                color={theme.palette.green}
+                onPress={() => handleSelectPill(pill.id)}
+              >
+                {!pill.isBuiltIn ? (
+                  <PillSelectorMenuItem
+                    icon={PencilSimpleIcon}
+                    label="Rename"
+                    testID={`privacy-zone-menu-rename-${testIdSuffix}`}
+                    onPress={() => handleRenamePress(pill.id, pill.name)}
+                  />
+                ) : null}
+                {pill.isSaved || !pill.isBuiltIn ? (
+                  <PillSelectorMenuItem
+                    icon={TrashIcon}
+                    label="Delete"
+                    testID={`privacy-zone-menu-delete-${testIdSuffix}`}
+                    onPress={() => handleDeletePress(pill.id)}
+                    danger
+                    separator={!pill.isBuiltIn}
+                  />
+                ) : null}
+              </PillSelectorItem>
+            )
+          })}
           <PillSelectorAdd testID="privacy-zone-add-button" onPress={handleAddPress} />
         </PillSelector>
       </View>

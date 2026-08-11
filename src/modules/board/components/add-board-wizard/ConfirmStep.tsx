@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
+  ArrowLeftIcon,
   BatteryFullIcon,
   BellRingingIcon,
   BluetoothIcon,
@@ -48,6 +49,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             style={styles.action}
             label="Back"
             variant="secondary"
+            icon={ArrowLeftIcon}
             onPress={wizard.back}
             testID="add-board-confirm-back"
           />
@@ -55,6 +57,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             style={styles.action}
             label="Save"
             icon={CheckCircleIcon}
+            iconPosition="right"
             onPress={wizard.save}
             disabled={!wizard.canSave}
             testID="add-board-save"

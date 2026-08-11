@@ -63,6 +63,10 @@ public class VescapeCoreModule: Module {
   /// `alertSoundPresetMaps()`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `alertSoundPresetMaps`
   private let alertPresets: [[String: Any]] = alertSoundPresetMaps()
+  /// UI alert tests never share evaluator or audio state with the live Board Session.
+  private var alertTestPlayer: AlertAudioPlayer?
+  private var alertTestCoordinator: AlertCoordinator?
+  private var alertTestControlId: String?
 
   // MARK: - Module definition
 
@@ -71,7 +75,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -108,11 +112,44 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onAppStatus", ["status": AppStatusCoordinator.shared.current?.toMap()])
     }
     OnStopObserving("onAppStatus") { self.observedEvents.remove("onAppStatus") }
+    OnStartObserving("onNavigation") {
+      self.observedEvents.insert("onNavigation")
+      // Late subscriber: replay the current Navigation so JS is immediately consistent.
+      self.sendEvent("onNavigation", [
+        "navigation": NavigationController.shared.current?.toMap(),
+        "computing": NavigationController.shared.computing,
+      ])
+    }
+    OnStopObserving("onNavigation") { self.observedEvents.remove("onNavigation") }
+    OnStartObserving("onRouteProgress") {
+      self.observedEvents.insert("onRouteProgress")
+      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
+      self.sendEvent("onRouteProgress", ["progress": NavigationController.shared.currentProgress?.toMap()])
+    }
+    OnStopObserving("onRouteProgress") { self.observedEvents.remove("onRouteProgress") }
+    OnStartObserving("onWeather") {
+      self.observedEvents.insert("onWeather")
+      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
+      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
+      self.sendEvent("onWeather", ["weather": WeatherCoordinator.shared.current?.map])
+    }
+    OnStopObserving("onWeather") { self.observedEvents.remove("onWeather") }
 
     OnCreate {
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
       // subscribers replay above and through `getAppStatus`).
       AppStatusCoordinator.shared.onChange = { [weak self] status in self?.sendAppStatus(status) }
+
+      // The forecast is native-owned too; JS mirrors whatever the coordinator resolves.
+      WeatherCoordinator.shared.onChange = { [weak self] weather in self?.sendWeather(weather) }
+
+      // Navigation is native-owned; JS only renders the coordinates it is handed.
+      NavigationController.shared.onChange = { [weak self] navigation in self?.sendNavigation(navigation) }
+      // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
+      // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
+      NavigationController.shared.onProgressChange = { [weak self] progress in
+        self?.sendRouteProgress(progress)
+      }
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
@@ -144,9 +181,12 @@ public class VescapeCoreModule: Module {
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
       AppStatusCoordinator.shared.onChange = nil
+      NavigationController.shared.onChange = nil
+      NavigationController.shared.onProgressChange = nil
       self.frontendActive = false
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
+      self.stopAlertTest()
     }
 
     // MARK: Scan
@@ -269,12 +309,43 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopGeigerSimulation()
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startAlertTest`
+    // @parity /modules/vescape-core/src/index.ts `startAlertTest`
+    Function("startAlertTest") { (ruleMaps: [[String: Any]]) in
+      self.startAlertTest(ruleMaps)
+    }
+
+    Function("updateAlertTest") { (value: Double) in
+      guard let controlId = self.alertTestControlId else { return }
+      _ = self.alertTestCoordinator?.evaluateValues(
+        // Battery thresholds compare synthetic SoC, while message `{voltage}` keeps a plausible
+        // raw sample instead of incorrectly speaking the percentage as volts.
+        [controlId: controlId == "battery" ? 48.0 : value],
+        batteryPercent: controlId == "battery" ? value : nil,
+        onDiagnostic: { _, _ in }
+      )
+    }
+
+    Function("stopAlertTest") {
+      self.stopAlertTest()
+    }
+
     // MARK: App Status
 
     // Last successful App Status for this process, or nil while none has been fetched (fail-open).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAppStatus`
     Function("getAppStatus") { () -> [String: Any?]? in
       AppStatusCoordinator.shared.current?.toMap()
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeather`
+    Function("getWeather") { () -> [String: Any?]? in
+      WeatherCoordinator.shared.current?.map
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
+    Function("refreshWeather") {
+      WeatherCoordinator.shared.refresh()
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `provisionDeviceCredential`
@@ -360,13 +431,23 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("startDebugReplay") { (name: String, promise: Promise) in
+    AsyncFunction("startDebugReplay") { (name: String, options: [String: Any]?, promise: Promise) in
       self.coordinator.startReplay(
         recordingName: name,
+        warmupMs: (options?["warmupMs"] as? NSNumber)?.int64Value ?? 0,
+        warmupSpeed: (options?["warmupSpeed"] as? NSNumber)?.doubleValue ?? 1.0,
         onSuccess: { promise.resolve(nil) },
         onError: { code, message in promise.reject(code, message) }
       )
     }
+
+    Function("recordPhoneHeading") { (headingDeg: Double) in
+      self.coordinator.recordPhoneHeading(headingDeg)
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
+    // @platform-diff Wear Mirror is Android-only; keep the shared TS contract callable on iOS.
+    Function("setWatchRouteSpanM") { (_: Double?) in }
 
     AsyncFunction("stopDebugReplay") { (promise: Promise) in
       self.coordinator.stopBoard()
@@ -525,6 +606,14 @@ public class VescapeCoreModule: Module {
       false
     }
 
+    AsyncFunction("startBoardMove") { (input: Int) -> Bool in
+      self.coordinator.startBoardMove(input: input)
+    }
+
+    AsyncFunction("stopBoardMove") { () -> Bool in
+      self.coordinator.stopBoardMove()
+    }
+
     // MARK: - Tune Profiles (#161)
     // DB-backed per-board VESC tune configs with Tune History, matching Android 1:1. `TuneProfileStore`
     // owns the transactional semantics; mutations reject with Android's error vocabulary.
@@ -617,6 +706,45 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("getProfileStatMonths") { (promise: Promise) in
       promise.resolve(ProfileStatsRepository.shared.getProfileStatMonths())
+    }
+
+    // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
+    // and the denormalized summary are native.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFavorites`
+    AsyncFunction("getFavorites") { (promise: Promise) in
+      promise.resolve(TelemetryRepository.shared.getFavorites())
+    }
+
+    AsyncFunction("createFavorite") { (options: [String: Any], promise: Promise) in
+      guard let favorite = TelemetryRepository.shared.createFavorite(options) else {
+        promise.reject("ERR_CREATE_FAVORITE", "favorite range is invalid or could not be stored")
+        return
+      }
+      promise.resolve(favorite)
+    }
+
+    AsyncFunction("updateFavorite") { (id: String, options: [String: Any], promise: Promise) in
+      guard let favorite = TelemetryRepository.shared.updateFavorite(id, options: options) else {
+        promise.reject("ERR_UPDATE_FAVORITE", "favorite does not exist or could not be stored")
+        return
+      }
+      promise.resolve(favorite)
+    }
+
+    AsyncFunction("deleteFavorite") { (id: String, promise: Promise) in
+      promise.resolve(TelemetryRepository.shared.deleteFavorite(id))
+    }
+
+    AsyncFunction("getFavoriteMedia") { (favoriteId: String, promise: Promise) in
+      promise.resolve(TelemetryRepository.shared.getFavoriteMedia(favoriteId))
+    }
+
+    AsyncFunction("importFavoriteMedia") { (options: [String: Any], promise: Promise) in
+      do {
+        promise.resolve(try TelemetryRepository.shared.importFavoriteMedia(options))
+      } catch {
+        promise.reject("ERR_IMPORT_FAVORITE_MEDIA", error.localizedDescription)
+      }
     }
 
     AsyncFunction("deleteTelemetryBefore") { (beforeMs: Double, promise: Promise) in
@@ -757,6 +885,41 @@ public class VescapeCoreModule: Module {
     // The direction target is personal client state, never a Map Point.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in
       self.appData.setDirectionPoint(latitude: latitude, longitude: longitude)
+
+      // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
+      // one ends it. The Directions call runs off the promise so the pin lands immediately.
+      if let latitude, let longitude {
+        let origin = self.navigationOrigin()
+        NavigationController.shared.setTarget(
+          toLatitude: latitude,
+          toLongitude: longitude,
+          fromLatitude: origin?.latitude,
+          fromLongitude: origin?.longitude
+        )
+      } else {
+        NavigationController.shared.clear()
+      }
+      promise.resolve(nil)
+    }
+
+    // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
+    // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
+    // by then they have usually ridden somewhere with signal, or somewhere a path exists.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `recomputeNavigation`
+    // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
+    AsyncFunction("recomputeNavigation") { (promise: Promise) in
+      self.recomputeNavigation()
+      promise.resolve(nil)
+    }
+
+    // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
+    // path is computed again under it. The stored profile moves even with no Direction Point set —
+    // the rider chose, and the next Navigation honours it.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setNavigationProfile`
+    // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
+    AsyncFunction("setNavigationProfile") { (profile: String, promise: Promise) in
+      NavigationController.shared.selectProfile(NavigationProfile.fromWire(profile))
+      self.recomputeNavigation()
       promise.resolve(nil)
     }
 
@@ -828,6 +991,50 @@ public class VescapeCoreModule: Module {
         self.coordinator.reloadTelemetrySettings()
       }
     }
+  }
+
+  private func startAlertTest(_ ruleMaps: [[String: Any]]) {
+    stopAlertTest()
+    let rules = ruleMaps.compactMap(Self.alertTestRule)
+    guard let controlId = rules.first?.controlId else { return }
+    guard rules.allSatisfy({ $0.controlId == controlId }) else { return }
+
+    let player = AlertAudioPlayer()
+    let coordinator = AlertCoordinator(player: player, vibrateSingles: false)
+    coordinator.replaceRules(rules)
+    alertTestPlayer = player
+    alertTestCoordinator = coordinator
+    alertTestControlId = controlId
+  }
+
+  private func stopAlertTest() {
+    alertTestCoordinator?.stopAllGeiger()
+    alertTestCoordinator = nil
+    alertTestControlId = nil
+    alertTestPlayer?.release()
+    alertTestPlayer = nil
+  }
+
+  private static func alertTestRule(_ value: [String: Any]) -> AlertRule? {
+    guard
+      let id = value["id"] as? String,
+      let controlId = value["controlId"] as? String,
+      let threshold = (value["threshold"] as? NSNumber)?.doubleValue,
+      let soundType = value["soundType"] as? String
+    else { return nil }
+    return AlertRule(
+      boardId: "alert-test",
+      id: id,
+      controlId: controlId,
+      threshold: threshold,
+      thresholdMax: (value["thresholdMax"] as? NSNumber)?.doubleValue,
+      enabled: true,
+      soundType: soundType,
+      createdAt: 0,
+      repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
+      beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
+      source: nil
+    )
   }
 
   // MARK: - Board Probe
@@ -1062,10 +1269,75 @@ public class VescapeCoreModule: Module {
   /// replay on subscribe and the next successful refresh self-heal it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onAppStatus`
   /// @parity /modules/vescape-core/src/index.ts `AppStatusEvent`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onWeatherChanged`
+  private func sendWeather(_ weather: Weather?) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onWeather") else { return }
+      self.sendEvent("onWeather", ["weather": weather?.map])
+    }
+  }
+
   private func sendAppStatus(_ status: AppStatus?) {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onAppStatus") else { return }
       self.sendEvent("onAppStatus", ["status": status?.toMap()])
+    }
+  }
+
+  /// Asks for the path again, to the Direction Point the rider already has and from where they are
+  /// now. A no-op with no Direction Point: there is nothing to compute a path to.
+  private func recomputeNavigation() {
+    guard let directionPoint = appData.getDirectionPoint() else { return }
+    let origin = navigationOrigin()
+    NavigationController.shared.recompute(
+      toLatitude: directionPoint.latitude,
+      toLongitude: directionPoint.longitude,
+      fromLatitude: origin?.latitude,
+      fromLongitude: origin?.longitude
+    )
+  }
+
+  /// Where a path starts: the rider's live fix, however weak, falling back to the last GPS position
+  /// in app data only when the phone has produced nothing at all this run.
+  ///
+  /// The stored row is a survivor of the last session, so on a cold start indoors it is easily
+  /// yesterday's position kilometres away. A live approximate fix is the rider; the stored one only
+  /// claims to be.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `navigationOrigin`
+  private func navigationOrigin() -> (latitude: Double, longitude: Double)? {
+    if let live = coordinator.riderPosition() { return live }
+    let settings = appData.getSettings()
+    guard let latitude = settings["lastGpsLatitude"] as? Double,
+          let longitude = settings["lastGpsLongitude"] as? Double
+    else { return nil }
+    return (latitude, longitude)
+  }
+
+  /// Emit `onNavigation` with the process's current Navigation (`nil` while none is computed).
+  /// `sendEvent` must run on the main thread; drop the emit when no JS listener is attached — the
+  /// replay on subscribe and `getNavigation` self-heal it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onNavigation`
+  /// @parity /modules/vescape-core/src/index.ts `NavigationEvent`
+  private func sendNavigation(_ navigation: Navigation?) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onNavigation") else { return }
+      self.sendEvent("onNavigation", [
+        "navigation": navigation?.toMap(),
+        "computing": NavigationController.shared.computing,
+      ])
+    }
+  }
+
+  /// Emit `onRouteProgress` with the rider's place along the current path (`nil` while there is no
+  /// Navigation to be along). `sendEvent` must run on the main thread; drop the emit when no JS
+  /// listener is attached — the replay on subscribe self-heals it, as does the next fix.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onRouteProgress`
+  /// @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
+  private func sendRouteProgress(_ progress: RouteProgress?) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onRouteProgress") else { return }
+      self.sendEvent("onRouteProgress", ["progress": progress?.toMap()])
     }
   }
 

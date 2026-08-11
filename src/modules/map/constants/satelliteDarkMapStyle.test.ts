@@ -40,10 +40,10 @@ describe('satellite dark map style', () => {
     const style = JSON.parse(
       getSatelliteDarkMapStyle(0.2, false, false, false, true, -0.35, 2),
     ) as {
-      layers: Array<{
+      layers: {
         id: string
         paint?: Record<string, unknown>
-      }>
+      }[]
     }
 
     expect(style.layers.find((layer) => layer.id === 'satellite')?.paint).toMatchObject({

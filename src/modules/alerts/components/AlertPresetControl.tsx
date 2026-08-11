@@ -1,6 +1,13 @@
-import { useEffect, useMemo } from 'react'
+import { type ReactNode, useEffect, useMemo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { PencilSimpleIcon, SlidersHorizontalIcon, TrashIcon } from 'phosphor-react-native'
+import {
+  PencilSimpleIcon,
+  SlidersHorizontalIcon,
+  SpeakerHighIcon,
+  StopIcon,
+  TrashIcon,
+} from 'phosphor-react-native'
+import type { AlertTestRule } from 'vescape-core'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -9,6 +16,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { IconButton } from '@/components/base/IconButton'
+import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
@@ -20,6 +28,7 @@ import {
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
 import { theme } from '@/constants/theme'
+import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 
 /**
  * The shared preset control: an Off/Safe/Normal/Minimal level slider over an enlarged,
@@ -124,6 +133,10 @@ interface AlertPresetControlProps {
   hotRange?: PresetGaugeHotRange | null
   /** Blocks slider interaction and dims it (e.g. battery without a valid config). */
   disabled?: boolean
+  /** Exact visible rules to evaluate while the synthetic needle sweeps the gauge. */
+  testRules?: AlertTestRule[]
+  /** Detail-screen Alerts heading, placed directly below the gauge. */
+  controlsHeader?: ReactNode
   /** Take ownership of this level's rules. Omitted where custom rules aren't offered (the gauge
    * preview in board settings), which also hides the action button. */
   onCustomize?: () => void
@@ -141,6 +154,8 @@ export function AlertPresetControl({
   customAlerts,
   hotRange,
   disabled,
+  testRules = [],
+  controlsHeader,
   onCustomize,
   onDiscardCustom,
 }: AlertPresetControlProps) {
@@ -161,6 +176,7 @@ export function AlertPresetControl({
       id: `${metric}-${index}`,
       threshold: spec.threshold,
       thresholdMax: spec.thresholdMax,
+      repeats: spec.repeatEverySeconds != null,
       label: gauge.formatMarker(spec.threshold),
       labelMax: spec.thresholdMax == null ? undefined : gauge.formatMarker(spec.thresholdMax),
     }))
@@ -184,22 +200,44 @@ export function AlertPresetControl({
 
   const isCustom = level === 'custom'
   const editAction = isCustom ? onDiscardCustom : onCustomize
+  const alertTest = useAlertTest({
+    rules: testRules,
+    min: gauge.min,
+    max,
+    alertAbove: metric !== 'battery',
+    lingerNearMax: metric === 'speed' || metric === 'duty',
+    slowForMessages: metric === 'motor-temp' || metric === 'controller-temp',
+  })
+  const gaugeValue = alertTest.running ? alertTest.value : liveValue
 
   return (
     <View style={styles.container}>
       <SingleGauge
-        value={liveValue ?? placeholder}
+        value={gaugeValue ?? placeholder}
         min={gauge.min}
         max={max}
         color={gauge.color}
         unit={gauge.unit}
         decimals={gauge.decimals}
         label={gauge.title.toUpperCase()}
+        headerRight={
+          <Button
+            label={alertTest.running ? 'Stop test' : 'Run test'}
+            icon={alertTest.running ? StopIcon : SpeakerHighIcon}
+            variant="secondary"
+            size="sm"
+            disabled={disabled || !alertTest.canRun}
+            onPress={alertTest.running ? alertTest.stop : alertTest.start}
+            testID={`alert-test-${metric}`}
+            style={styles.testButton}
+          />
+        }
         alerts={alerts}
         hotRange={hotRange}
-        showValue={liveValue != null}
+        showValue={gaugeValue != null}
         containerStyle={styles.gauge}
       />
+      {controlsHeader}
       <View style={styles.levelRow}>
         {isCustom ? (
           <CustomLabel />
@@ -275,9 +313,14 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
     progress.value = withTiming(activeIndex, SLIDER_ANIMATION)
   }, [activeIndex, progress])
 
-  const highlightStyle = useAnimatedStyle(
+  const highlightPositionStyle = useAnimatedStyle(
     () => ({
       left: `${(progress.value / LEVEL_OPTIONS.length) * 100}%`,
+    }),
+    [],
+  )
+  const highlightColorStyle = useAnimatedStyle(
+    () => ({
       backgroundColor: tone.bg,
       borderColor: tone.border,
     }),
@@ -286,7 +329,9 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
 
   return (
     <View style={[styles.slider, disabled && styles.sliderDisabled]}>
-      <Animated.View style={[styles.sliderHighlight, highlightStyle]} />
+      <Animated.View style={[styles.sliderHighlightSlot, highlightPositionStyle]}>
+        <Animated.View style={[styles.sliderHighlight, highlightColorStyle]} />
+      </Animated.View>
       {LEVEL_OPTIONS.map((option) => {
         const active = option.id === value
         return (
@@ -328,6 +373,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  testButton: {
+    height: 28,
+    paddingHorizontal: 10,
+    flexShrink: 0,
+  },
   customLabel: {
     flex: 1,
     flexDirection: 'row',
@@ -345,18 +395,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 38,
     borderRadius: 19,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    borderWidth: 1,
+    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
     position: 'relative',
     overflow: 'hidden',
   },
   sliderDisabled: {
     opacity: 0.45,
   },
-  sliderHighlight: {
+  sliderHighlightSlot: {
     position: 'absolute',
-    top: 3,
-    bottom: 3,
+    top: 2,
+    bottom: 2,
     width: `${100 / LEVEL_OPTIONS.length}%`,
+  },
+  sliderHighlight: {
+    flex: 1,
+    marginHorizontal: 1,
     borderRadius: 16,
     borderWidth: 1,
   },

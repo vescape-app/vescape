@@ -81,10 +81,6 @@ export function deadBandPhoneHeading(previous: number | null, next: number): num
   return smoothed
 }
 
-export function phoneHeadingAnimationDuration(): number {
-  return 0
-}
-
 export function phoneHeadingUpdateIntervalMs(): number {
   return PHONE_HEADING_INTERVAL_MS
 }

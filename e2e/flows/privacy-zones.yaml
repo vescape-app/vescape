@@ -93,6 +93,37 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: Gym
     timeout: 5000
+- longPressOn:
+    id: privacy-zone-pill-pending-custom
+- extendedWaitUntil:
+    visible:
+      id: privacy-zone-menu-delete-pending-custom
+    timeout: 5000
+- tapOn:
+    id: privacy-zone-menu-delete-pending-custom
+- extendedWaitUntil:
+    visible: Delete zone
+    timeout: 5000
+- tapOn: Delete
+- extendedWaitUntil:
+    notVisible: Gym
+    timeout: 5000
+
+# Add again and save the custom zone.
+- tapOn:
+    id: privacy-zone-add-button
+- extendedWaitUntil:
+    visible:
+      id: privacy-zone-name-input
+    timeout: 5000
+- tapOn:
+    id: privacy-zone-name-input
+- inputText: 'Gym'
+- tapOn:
+    id: privacy-zone-name-add-button
+- extendedWaitUntil:
+    visible: Gym
+    timeout: 5000
 - tapOn:
     id: privacy-zone-save-button
 - extendedWaitUntil:

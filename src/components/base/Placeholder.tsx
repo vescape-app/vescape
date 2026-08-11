@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { StyleSheet, View, type ViewStyle } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
@@ -8,6 +9,7 @@ interface PlaceholderProps {
   title?: string
   description: string
   iconColor?: string
+  action?: ReactNode
   style?: ViewStyle
 }
 
@@ -16,6 +18,7 @@ export function Placeholder({
   title,
   description,
   iconColor = theme.palette.slate.textMuted,
+  action,
   style,
 }: PlaceholderProps) {
   return (
@@ -25,6 +28,7 @@ export function Placeholder({
         {title ? <Text style={styles.title}>{title}</Text> : null}
         <Text style={styles.description}>{description}</Text>
       </View>
+      {action}
     </View>
   )
 }

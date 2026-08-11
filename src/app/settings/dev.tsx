@@ -1,19 +1,11 @@
 import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import {
-  RecordIcon,
-  CompassIcon,
-  SwatchesIcon,
-  ToolboxIcon,
-  CodeIcon,
-  DatabaseIcon,
-} from 'phosphor-react-native'
+import { RecordIcon, CompassIcon, SwatchesIcon, ToolboxIcon, CodeIcon } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
-import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 
@@ -40,11 +32,11 @@ const devPages = [
     iconColor: theme.palette.sky.color,
   },
   {
-    label: 'Database',
-    hint: 'Back up, restore, and rebuild history',
-    route: routes.settingsDatabase,
-    icon: DatabaseIcon,
-    iconColor: theme.status.warning.color,
+    label: 'Camera playground',
+    hint: 'Tune the spring camera engine against fake GPS',
+    route: routes.devMapPlayground,
+    icon: CompassIcon,
+    iconColor: theme.palette.violet.color,
   },
   {
     label: 'Other',

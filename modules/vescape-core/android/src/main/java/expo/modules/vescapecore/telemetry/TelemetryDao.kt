@@ -73,6 +73,9 @@ interface TelemetryDao {
   @Insert
   suspend fun insertFrames(frames: List<TelemetryFrameEntity>): List<Long>
 
+  @Update
+  suspend fun updateFrame(frame: TelemetryFrameEntity)
+
   @Insert
   suspend fun insertMarkers(markers: List<TelemetryMarkerEntity>)
 
@@ -214,6 +217,33 @@ interface TelemetryDao {
   )
   suspend fun getFrames(fromMs: Long, toMs: Long, deviceId: String?, limit: Int): List<TelemetryFrameEntity>
 
+  @Query(
+    """
+    SELECT DISTINCT device_id FROM telemetry_frames
+    WHERE captured_at_ms >= :fromMs
+      AND captured_at_ms <= :toMs
+      AND device_id IS NOT NULL
+    ORDER BY device_id ASC
+    """,
+  )
+  suspend fun getDeviceIdsInRange(fromMs: Long, toMs: Long): List<String>
+
+  @Query(
+    """
+    SELECT * FROM telemetry_frames
+    WHERE captured_at_ms >= :fromMs
+      AND captured_at_ms <= :toMs
+      AND device_id = :deviceId
+    ORDER BY captured_at_ms ASC
+    LIMIT 1
+    """,
+  )
+  suspend fun getFirstFrameInRange(
+    fromMs: Long,
+    toMs: Long,
+    deviceId: String,
+  ): TelemetryFrameEntity?
+
   @Query("SELECT COUNT(*) FROM telemetry_frames")
   suspend fun countFrames(): Long
 
@@ -289,6 +319,30 @@ interface TelemetryDao {
     val frames = deleteFramesRange(fromMs, toMs, deviceId)
     deleteMarkersRange(fromMs, toMs, deviceId)
     deleteBucketsRange(fromMs, toMs, deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID)
+    deleteExclusionsRange(fromMs, toMs)
+    return frames
+  }
+
+  @Query("DELETE FROM telemetry_frames WHERE captured_at_ms >= :fromMs AND captured_at_ms <= :toMs")
+  suspend fun deleteFramesRangeAllDevices(fromMs: Long, toMs: Long): Int
+
+  @Query("DELETE FROM telemetry_markers WHERE occurred_at_ms >= :fromMs AND occurred_at_ms <= :toMs")
+  suspend fun deleteMarkersRangeAllDevices(fromMs: Long, toMs: Long): Int
+
+  @Query(
+    """
+    DELETE FROM telemetry_minute_buckets
+    WHERE last_sample_at_ms >= :fromMs
+      AND first_sample_at_ms <= :toMs
+    """,
+  )
+  suspend fun deleteBucketsRangeAllDevices(fromMs: Long, toMs: Long): Int
+
+  @Transaction
+  suspend fun deleteRangeAllDevices(fromMs: Long, toMs: Long): Int {
+    val frames = deleteFramesRangeAllDevices(fromMs, toMs)
+    deleteMarkersRangeAllDevices(fromMs, toMs)
+    deleteBucketsRangeAllDevices(fromMs, toMs)
     deleteExclusionsRange(fromMs, toMs)
     return frames
   }
@@ -507,6 +561,51 @@ interface TelemetryDao {
 
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
+
+  // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
+  // inside the range is never touched here.
+  // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift
+
+  @Query("SELECT * FROM favorites ORDER BY start_ms DESC")
+  suspend fun getFavorites(): List<FavoriteEntity>
+
+  @Insert
+  suspend fun insertFavorite(favorite: FavoriteEntity)
+
+  @Query("SELECT * FROM favorites WHERE id = :id")
+  suspend fun getFavorite(id: String): FavoriteEntity?
+
+  /** Re-trim/rename one row in place so its identity and Favorite Media remain stable. */
+  @Update
+  suspend fun updateFavorite(favorite: FavoriteEntity): Int
+
+  @Query("DELETE FROM favorites WHERE id = :id")
+  suspend fun deleteFavoriteRow(id: String): Int
+
+  // Favorite Media — native manifest metadata truth (ADR 0030).
+  // @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStore.swift
+
+  @Query("SELECT * FROM favorite_media WHERE favorite_id = :favoriteId ORDER BY created_at, id")
+  suspend fun getFavoriteMedia(favoriteId: String): List<FavoriteMediaEntity>
+
+  @Insert
+  suspend fun insertFavoriteMedia(media: FavoriteMediaEntity)
+
+  @Query("DELETE FROM favorite_media WHERE id = :id")
+  suspend fun deleteFavoriteMedia(id: String): Int
+
+  @Query("DELETE FROM favorite_media WHERE favorite_id = :favoriteId")
+  suspend fun deleteFavoriteMediaForFavorite(favoriteId: String): Int
+
+  @Query("DELETE FROM favorite_media WHERE favorite_id NOT IN (SELECT id FROM favorites)")
+  suspend fun deleteOrphanFavoriteMedia(): Int
+
+  /** Parent-covered raw cascade: media rows and Favorite disappear in one SQLite transaction. */
+  @Transaction
+  suspend fun deleteFavorite(id: String): Int {
+    deleteFavoriteMediaForFavorite(id)
+    return deleteFavoriteRow(id)
+  }
 }
 
 private fun TelemetryMinuteBucketEntity.merge(next: TelemetryMinuteBucketEntity): TelemetryMinuteBucketEntity {

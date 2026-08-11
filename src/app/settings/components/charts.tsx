@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
 
 import { ChartLineUpIcon } from 'phosphor-react-native'
+import { Text } from '@/components/base/Text'
 import { LinearGauge } from '@/components/charts/LinearGauge'
 import { IconHero } from '@/components/settings/IconHero'
 import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
 import { computeAutoRange, type TelemetryChartPoint } from '@/components/charts/chartMath'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
+import { DualGauge } from '@/modules/board/components/DualGauge'
 import { Sparkline, type SparklinePoint } from '@/components/charts/Sparkline'
 import { BmsCellVoltagesView } from '@/modules/battery/components/BmsCellVoltages'
 import { summarizeBms, summarizeBmsWindow } from '@/modules/battery/lib'
@@ -192,6 +194,45 @@ function AnimatedSingleGaugeShowcase() {
   )
 }
 
+function AnimatedDualGaugeShowcase() {
+  const [compact, setCompact] = useState(false)
+  const speed = useSharedValue<number | null>(0)
+  const duty = useSharedValue<number | null>(0)
+
+  const speedSeries = useMemo(() => generateSparklineData(60, 28, 6, 11), [])
+  const dutySeries = useMemo(() => generateSparklineData(60, 55, 14, 23), [])
+
+  useEffect(() => {
+    speed.value = withRepeat(
+      withTiming(50, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    )
+    duty.value = withRepeat(
+      withTiming(100, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    )
+  }, [duty, speed])
+
+  return (
+    <ShowcaseCard
+      name="DualGauge / animated ramp"
+      controls={<ToggleRow label="compact" value={compact} onToggle={setCompact} />}
+    >
+      <DualGauge
+        speedValue={speed}
+        dutyValue={duty}
+        speedSeries={speedSeries}
+        dutySeries={dutySeries}
+        compact={compact}
+        speedAlerts={[{ id: 'speed-warn', threshold: 42, thresholdMax: null }]}
+        dutyAlerts={[{ id: 'duty-warn', threshold: 80, thresholdMax: 95 }]}
+      />
+    </ShowcaseCard>
+  )
+}
+
 function LinearGaugeShowcase() {
   const [empty, setEmpty] = useState(false)
   const [charging, setCharging] = useState(false)
@@ -232,8 +273,11 @@ function LinearGaugeShowcase() {
         aux={empty ? undefined : mode === 'stale old' ? `${voltageText} · 2h ago` : voltageText}
         charging={charging}
         alerts={[
-          { id: 'low', threshold: 20, thresholdMax: null },
-          { id: 'band', threshold: 40, thresholdMax: 60 },
+          // One of each rule flavor: one-shot (tick only), geiger and repeating (both band the
+          // rest of the scale, since both keep making noise above where their marks stop).
+          { id: 'one-shot', threshold: 20, thresholdMax: null },
+          { id: 'geiger', threshold: 40, thresholdMax: 60 },
+          { id: 'repeating', threshold: 90, thresholdMax: null, repeats: true },
         ]}
         hint={empty ? 'Set battery config in board settings' : undefined}
       />
@@ -312,10 +356,59 @@ function RandomLineChartsShowcase() {
             getPointColor={
               colorRange ? (value) => getMetricRampColor(value, colorRange) : undefined
             }
+            alertThresholds={chart.key === 'duty' ? [75, 90] : undefined}
             containerStyle={styles.chartExample}
           />
         )
       })}
+    </ShowcaseCard>
+  )
+}
+
+function TrimChartShowcase() {
+  const points = useMemo(
+    () => generateChartData({ count: 160, base: 18, variance: 5, seed: 21, spikeEvery: 29 }),
+    [],
+  )
+  const domainStartMs = points[0]?.date.getTime() ?? 0
+  const domainEndMs = points.at(-1)?.date.getTime() ?? 0
+  const span = domainEndMs - domainStartMs
+  const seed = useMemo(
+    () => ({ startMs: domainStartMs + span * 0.15, endMs: domainStartMs + span * 0.85 }),
+    [domainStartMs, span],
+  )
+  const [range, setRange] = useState(seed)
+  const currentPoint = points.at(-1) ?? null
+  const chartRange = computeAutoRange(points, { includeZero: true, minSpan: 10, paddingRatio: 0.1 })
+  const selectedSeconds = Math.round((range.endMs - range.startMs) / 1000)
+
+  return (
+    <ShowcaseCard name="TelemetryLineChart / trim range">
+      <TelemetryLineChart
+        label="Trim / drag either amber half"
+        value={currentPoint ? telemetry.speed.formatWithUnit(currentPoint.value) : '-'}
+        points={points}
+        currentPoint={currentPoint}
+        color={telemetry.speed.color}
+        range={chartRange}
+        height={70}
+        formatValue={telemetry.speed.formatWithUnit}
+        containerStyle={styles.chartExample}
+        trim={{
+          startMs: seed.startMs,
+          endMs: seed.endMs,
+          onChange: (startMs, endMs) => setRange({ startMs, endMs }),
+          onCommit: (startMs, endMs) => setRange({ startMs, endMs }),
+        }}
+        timeRangeHighlights={[
+          {
+            startMs: domainStartMs + span * 0.3,
+            endMs: domainStartMs + span * 0.55,
+            color: theme.alpha(theme.status.favorite.color, 0.12),
+          },
+        ]}
+      />
+      <Text style={styles.trimReadout}>Selected span: {selectedSeconds}s</Text>
     </ShowcaseCard>
   )
 }
@@ -397,12 +490,14 @@ export default function ChartsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ChartLineUpIcon}
-          description="Sparkline, LinearGauge, SingleGauge, TelemetryLineChart, BmsCellVoltages."
+          description="Sparkline, LinearGauge, SingleGauge, DualGauge, TelemetryLineChart, BmsCellVoltages."
         />
         <SparklineShowcase />
         <LinearGaugeShowcase />
         <AnimatedSingleGaugeShowcase />
+        <AnimatedDualGaugeShowcase />
         <RandomLineChartsShowcase />
+        <TrimChartShowcase />
         <BmsCellVoltagesShowcase />
       </ScrollView>
     </SafeAreaView>
@@ -413,4 +508,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.palette.slate.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   chartExample: { marginBottom: 10 },
+  trimReadout: {
+    color: theme.palette.slate.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 })

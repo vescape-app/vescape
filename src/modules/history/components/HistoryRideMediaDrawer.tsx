@@ -34,7 +34,7 @@ export function HistoryRideMediaDrawer({
       visible={visible}
       triggerRef={triggerRef}
       onClose={onClose}
-      title="Ride Media"
+      title="Favorite Media"
       icon={ImagesSquareIcon}
     >
       <MediaHistoryGallery

@@ -15,10 +15,20 @@ export const inputBase = {
   fontFamily: theme.font('600'),
 }
 
-interface InputProps extends TextInputProps {}
+type InputProps = TextInputProps
 
-export const Input = forwardRef<TextInput, InputProps>(function Input({ style, ...props }, ref) {
-  return <TextInput ref={ref} style={[styles.input, style]} {...props} />
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  { style, placeholderTextColor = theme.palette.slate.textMuted, ...props },
+  ref,
+) {
+  return (
+    <TextInput
+      ref={ref}
+      style={[styles.input, style]}
+      placeholderTextColor={placeholderTextColor}
+      {...props}
+    />
+  )
 })
 
 const styles = StyleSheet.create({

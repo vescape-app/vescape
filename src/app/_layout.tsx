@@ -14,19 +14,21 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { configureReanimatedLogger } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { Text } from '@/components/base/Text'
+import { DevBadge } from '@/components/dev/DevBadge'
 import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBoundary'
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
-import { isDevelopmentApp } from '@/config/appVariant'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
+import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
+import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
+import { startWeatherSync } from '@/modules/weather/store/weatherStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
@@ -37,49 +39,6 @@ function requireClerkPublishableKey(): string {
   const key = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (!key) throw new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured')
   return key
-}
-
-function DevelopmentBadge() {
-  const insets = useSafeAreaInsets()
-  if (!isDevelopmentApp) return null
-
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: Math.max(2, insets.top - 6),
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        alignItems: 'center',
-      }}
-    >
-      <View
-        style={{
-          paddingHorizontal: 5,
-          paddingVertical: 1,
-          borderWidth: 1,
-          borderColor: theme.status.warning.color,
-          borderRadius: 999,
-          backgroundColor: theme.status.warning.bg,
-        }}
-      >
-        <Text
-          style={{
-            color: theme.status.warning.text,
-            fontSize: 8,
-            lineHeight: 10,
-            fontWeight: '800',
-            letterSpacing: 0.6,
-            textTransform: 'uppercase',
-          }}
-        >
-          dev
-        </Text>
-      </View>
-    </View>
-  )
 }
 
 // Keep the native splash visible until Raleway loads so there is no font-flash
@@ -94,6 +53,7 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
+  const insets = useSafeAreaInsets()
   const [fontsLoaded, fontError] = useFonts({
     'Raleway-300': require('../../assets/fonts/Raleway-300.ttf'),
     'Raleway-400': require('../../assets/fonts/Raleway-400.ttf'),
@@ -102,13 +62,22 @@ function RootLayout() {
     'Raleway-700': require('../../assets/fonts/Raleway-700.ttf'),
     'Raleway-800': require('../../assets/fonts/Raleway-800.ttf'),
     'Raleway-900': require('../../assets/fonts/Raleway-900.ttf'),
+    'JetBrainsMono-500': require('../../assets/fonts/JetBrainsMono-500.ttf'),
+    'JetBrainsMono-600': require('../../assets/fonts/JetBrainsMono-600.ttf'),
+    'JetBrainsMono-700': require('../../assets/fonts/JetBrainsMono-700.ttf'),
+    'JetBrainsMono-800': require('../../assets/fonts/JetBrainsMono-800.ttf'),
   })
 
   useEffect(() => {
     if (fontsLoaded || fontError) void SplashScreen.hideAsync()
   }, [fontsLoaded, fontError])
 
+  // A fixture build (screenshots, smoke) restores a database before anything reads it; every other
+  // build is ready on the first render.
+  const fixturesReady = useSessionFixtures()
+
   useEffect(() => {
+    if (!fixturesReady) return
     void useSettingsStore.getState().load()
     void useRiderStore.getState().load()
     useGroupRideStore.getState().startObserving()
@@ -116,18 +85,23 @@ function RootLayout() {
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
+    const stopNavigationSync = startNavigationSync()
+    const stopWeatherSync = startWeatherSync()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
       stopBoardWarningsSync()
       stopAlertsBoardSync()
       stopAppStatusSync()
+      stopNavigationSync()
+      stopWeatherSync()
     }
-  }, [])
+  }, [fixturesReady])
 
   // Hold the splash until Raleway is ready (or fails to load). Returning null
   // keeps the native splash up without an unmount/mount churn.
   if (!fontsLoaded && !fontError) return null
+  if (!fixturesReady) return null
 
   return (
     <ClerkProvider
@@ -200,10 +174,18 @@ function RootLayout() {
             />
             <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
-            <Stack.Screen name={stackScreens.settingsFilters} options={{ title: 'Filters' }} />
+            <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
             <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
             <Stack.Screen name={stackScreens.settingsDatabase} options={{ title: 'Database' }} />
             <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
+            <Stack.Screen
+              name={stackScreens.settingsReleaseNotes}
+              options={{ title: 'Release notes' }}
+            />
+            <Stack.Screen
+              name={stackScreens.devMapPlayground}
+              options={{ title: 'Camera playground' }}
+            />
             <Stack.Screen name={stackScreens.controlBatteryRaw} options={{ title: 'Raw BMS' }} />
             <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
             <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
@@ -214,7 +196,19 @@ function RootLayout() {
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />
-          <DevelopmentBadge />
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              top: Math.max(2, insets.top - 6),
+              left: 0,
+              right: 0,
+              zIndex: 100,
+              alignItems: 'center',
+            }}
+          >
+            <DevBadge />
+          </View>
           <StatusBar style="light" />
         </GestureHandlerRootView>
       </DiagnosticErrorBoundary>

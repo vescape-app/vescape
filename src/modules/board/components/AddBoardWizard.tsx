@@ -1,7 +1,10 @@
-import type { RefObject } from 'react'
+import { useState, type RefObject } from 'react'
 import type { ScrollView } from 'react-native'
 
-import { AlertsStep } from '@/modules/board/components/add-board-wizard/AlertsStep'
+import {
+  ALERT_SUBSTEP_COUNT,
+  AlertsStep,
+} from '@/modules/board/components/add-board-wizard/AlertsStep'
 import { BatteryStep } from '@/modules/board/components/add-board-wizard/BatteryStep'
 import { ConfirmStep } from '@/modules/board/components/add-board-wizard/ConfirmStep'
 import { NameStep } from '@/modules/board/components/add-board-wizard/NameStep'
@@ -16,9 +19,19 @@ interface Props {
 }
 
 export function AddBoardWizard({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
+  const [alertSubstepIndex, setAlertSubstepIndex] = useState(0)
+
   return (
     <>
-      <WizardProgress steps={wizard.steps} step={wizard.step} />
+      <WizardProgress
+        steps={wizard.steps}
+        step={wizard.step}
+        alertSubstep={
+          wizard.stepId === 'presets'
+            ? { index: alertSubstepIndex, total: ALERT_SUBSTEP_COUNT }
+            : undefined
+        }
+      />
       {wizard.stepId === 'scan' && (
         <ScanStep
           wizard={wizard}
@@ -28,7 +41,13 @@ export function AddBoardWizard({ wizard, onLinkActiveStepIndexChange, scrollRef 
       )}
       {wizard.stepId === 'name' && <NameStep wizard={wizard} />}
       {wizard.stepId === 'battery' && <BatteryStep wizard={wizard} />}
-      {wizard.stepId === 'presets' && <AlertsStep wizard={wizard} />}
+      {wizard.stepId === 'presets' && (
+        <AlertsStep
+          wizard={wizard}
+          substepIndex={alertSubstepIndex}
+          onSubstepIndexChange={setAlertSubstepIndex}
+        />
+      )}
       {wizard.stepId === 'confirm' && <ConfirmStep wizard={wizard} />}
     </>
   )

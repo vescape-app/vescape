@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/immutability */
 import { useCallback, useRef, useState } from 'react'
-import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { AtomIcon, CaretDownIcon, MountainsIcon, WaveSineIcon } from 'phosphor-react-native'
 import Animated, {
@@ -9,12 +9,13 @@ import Animated, {
   FadeOut,
   cancelAnimation,
   useAnimatedReaction,
-  useAnimatedProps,
+  useDerivedValue,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
+import { MonoValue } from '@/components/base/MonoValue'
 import { Select, type SelectOption } from '@/components/forms/Select'
 import { SelectCard } from '@/components/forms/SelectCard'
 import { PitchInputControl } from '@/modules/tune/components/PitchInputControl'
@@ -29,8 +30,6 @@ import {
   type TunePreviewAdvancedPhysics,
   type TunePreviewMotorPresetId,
 } from '@/modules/tune/lib/tunePreview'
-
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput)
 
 const MOTOR_OPTIONS: SelectOption<TunePreviewMotorPresetId>[] = Object.entries(
   TUNE_PREVIEW_MOTOR_PRESETS,
@@ -350,7 +349,7 @@ export function TunePreviewScenarioControls({
             exiting={FadeOut.duration(100)}
             style={styles.physicsControls}
           >
-            <Text style={styles.valueSummary}>
+            <Text style={styles.summaryText}>
               10% grade requires approximately {tenPercentGradeCurrent.toFixed(1)} A
             </Text>
             {hillsEnabled ? <HillLoadReadout value={hillLoadAmps} /> : null}
@@ -469,6 +468,8 @@ export function TunePreviewScenarioControls({
   )
 }
 
+const SUMMARY_FONT_SIZE = 11
+
 const styles = StyleSheet.create({
   stack: {
     gap: 8,
@@ -486,32 +487,28 @@ const styles = StyleSheet.create({
   title: { color: theme.palette.slate.textPrimary, fontSize: 13, fontWeight: '900' },
   description: { color: theme.palette.slate.textMuted, fontSize: 10, fontWeight: '600' },
   physicsControls: { gap: 4 },
-  valueSummary: {
+  summaryText: {
     color: theme.telemetry.motorCurrent,
-    fontSize: 11,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-    padding: 0,
-    margin: 0,
-    fontVariant: ['tabular-nums'],
+    fontSize: SUMMARY_FONT_SIZE,
+    fontFamily: theme.mono('800'),
+  },
+  valueSummary: {
+    alignSelf: 'stretch',
   },
 })
 
 function HillLoadReadout({ value }: { value: SharedValue<number> }) {
-  const animatedProps = useAnimatedProps(() => {
-    'worklet'
+  const text = useDerivedValue(() => {
     const v = value.value
-    const text = `Hill load ${v >= 0 ? '+' : ''}${v.toFixed(1)} A`
-    return { text, defaultValue: text }
+    return `Hill load ${v >= 0 ? '+' : ''}${v.toFixed(1)} A`
   })
   return (
-    <AnimatedTextInput
-      editable={false}
-      caretHidden
-      pointerEvents="none"
-      underlineColorAndroid="transparent"
-      animatedProps={animatedProps}
-      style={[styles.valueSummary]}
+    <MonoValue
+      text={text}
+      size={SUMMARY_FONT_SIZE}
+      weight="800"
+      color={theme.telemetry.motorCurrent}
+      style={styles.valueSummary}
     />
   )
 }

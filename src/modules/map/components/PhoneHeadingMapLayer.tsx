@@ -1,34 +1,52 @@
-import { Images, ShapeSource, SymbolLayer, type Camera } from '@rnmapbox/maps'
-import { memo, useEffect, useRef, type RefObject } from 'react'
+import { Images, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
+import { memo, useEffect, useRef } from 'react'
+import { recordPhoneHeading } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
 
-import type { CameraSnapshot } from '@/modules/map/lib/cameraMotion'
 import {
   deadBandPhoneHeading,
   startPhoneHeadingUpdates,
+  type PhoneHeadingAdapter,
   type PhoneHeadingStatus,
 } from '@/modules/map/lib/phoneHeading'
-import { deviceMotionPhoneHeadingAdapter } from '@/modules/map/lib/deviceMotionPhoneHeadingAdapter'
+
+/**
+ * How often a compass reading is offered to a running Debug Recording. The sensor streams at ~60Hz;
+ * a replay reproduces the ride convincingly at a fraction of that, and every sample is a bridge call
+ * plus a line in the recording.
+ */
+const PHONE_HEADING_RECORD_INTERVAL_MS = 100
 
 const GPS_HEADING_ICON_ID = 'center-phone-heading'
 const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 
 interface PhoneHeadingMapLayerProps {
   active: boolean
+  /** Compass source. The caller picks it so a replay can supply the recorded stream instead. */
+  adapter: PhoneHeadingAdapter
   followCamera: boolean
   approximateFix: boolean
   coordinate: { longitude: number; latitude: number } | null
-  cameraRef: RefObject<Camera | null>
-  currentCameraRef: RefObject<CameraSnapshot | null>
+  /** Called with each compass heading while the camera follows the phone. */
+  onFollowHeading: (headingDeg: number) => void
   onHeadingChange: (headingDeg: number | null) => void
   onStatusChange: (status: PhoneHeadingStatus | 'idle') => void
 }
 
+/**
+ * The cone's on-screen angle is the heading minus the camera bearing. While the camera follows the
+ * heading those two are the same number, but they reach the map by different routes — the bearing
+ * through `setCameraDirect`, the icon through a shape update — and land a frame apart, so a
+ * continuously moving heading leaves the cone wobbling a few degrees around the puck. Following
+ * means the answer is a constant: pin the icon to the viewport pointing up and the skew cannot
+ * show. Only a camera that is not tracking the heading needs the map-space bearing.
+ */
 function phoneHeadingShape(
   coordinate: PhoneHeadingMapLayerProps['coordinate'],
   headingDeg: number | null,
   approximateFix: boolean,
+  followCamera: boolean,
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -41,7 +59,7 @@ function phoneHeadingShape(
                 type: 'Point',
                 coordinates: [coordinate.longitude, coordinate.latitude],
               },
-              properties: { bearing: headingDeg },
+              properties: { bearing: followCamera ? 0 : headingDeg },
             },
           ]
         : [],
@@ -50,11 +68,11 @@ function phoneHeadingShape(
 
 export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   active,
+  adapter,
   followCamera,
   approximateFix,
   coordinate,
-  cameraRef,
-  currentCameraRef,
+  onFollowHeading,
   onHeadingChange,
   onStatusChange,
 }: PhoneHeadingMapLayerProps) {
@@ -70,7 +88,9 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
     followCameraRef.current = followCamera
     sourceRef.current?.setNativeProps({
       id: 'center-phone-heading-source',
-      shape: JSON.stringify(phoneHeadingShape(coordinate, headingDegRef.current, approximateFix)),
+      shape: JSON.stringify(
+        phoneHeadingShape(coordinate, headingDegRef.current, approximateFix, followCamera),
+      ),
     })
   }, [approximateFix, coordinate, followCamera])
 
@@ -81,16 +101,25 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       onStatusChange('idle')
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
-        shape: JSON.stringify(phoneHeadingShape(null, null, false)),
+        shape: JSON.stringify(phoneHeadingShape(null, null, false, false)),
       })
       return
     }
 
     let disposed = false
     let remove: (() => void) | null = null
+    let recordedAt = 0
 
-    void startPhoneHeadingUpdates(deviceMotionPhoneHeadingAdapter, (rawHeadingDeg) => {
+    void startPhoneHeadingUpdates(adapter, (rawHeadingDeg) => {
       if (disposed) return
+      // Offer the raw reading — pre-smoothing, so a replay runs it through the same filters a live
+      // one goes through — to any Debug Recording that is running. Native drops it when none is, and
+      // a replay session never records, so playing a recording cannot feed its own headings back in.
+      const now = Date.now()
+      if (now - recordedAt >= PHONE_HEADING_RECORD_INTERVAL_MS) {
+        recordedAt = now
+        recordPhoneHeading(rawHeadingDeg)
+      }
       const headingDeg = deadBandPhoneHeading(headingDegRef.current, rawHeadingDeg)
       if (headingDeg === headingDegRef.current) return
 
@@ -99,14 +128,17 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
         shape: JSON.stringify(
-          phoneHeadingShape(coordinateRef.current, headingDeg, approximateFixRef.current),
+          phoneHeadingShape(
+            coordinateRef.current,
+            headingDeg,
+            approximateFixRef.current,
+            followCameraRef.current,
+          ),
         ),
       })
 
       if (!followCameraRef.current) return
-      const currentCamera = currentCameraRef.current
-      if (currentCamera) currentCameraRef.current = { ...currentCamera, heading: headingDeg }
-      cameraRef.current?.setCameraDirect({ heading: headingDeg })
+      onFollowHeading(headingDeg)
     }).then((subscription) => {
       if (disposed) {
         subscription.remove()
@@ -120,7 +152,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       disposed = true
       remove?.()
     }
-  }, [active, cameraRef, currentCameraRef, onHeadingChange, onStatusChange])
+  }, [active, adapter, onFollowHeading, onHeadingChange, onStatusChange])
 
   return (
     <>
@@ -128,7 +160,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       <ShapeSource
         ref={sourceRef}
         id="center-phone-heading-source"
-        shape={phoneHeadingShape(coordinate, headingDegRef.current, approximateFix)}
+        shape={phoneHeadingShape(coordinate, headingDegRef.current, approximateFix, followCamera)}
       >
         <SymbolLayer
           id="center-phone-heading-outline"
@@ -137,7 +169,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
             iconRotate: ['get', 'bearing'],
             iconAllowOverlap: true,
             iconIgnorePlacement: true,
-            iconRotationAlignment: 'map',
+            iconRotationAlignment: followCamera ? 'viewport' : 'map',
             iconSize: 0.95,
             iconOffset: [0, -10],
             iconColor: theme.palette.mono.white,

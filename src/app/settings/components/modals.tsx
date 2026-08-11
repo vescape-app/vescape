@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { InfoIcon, SquaresFourIcon, UsersThreeIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
@@ -269,6 +269,33 @@ function TextPromptModalShowcase() {
   )
 }
 
+/** Clearable variant: confirm stays enabled with an empty field, for optional names. */
+function TextPromptModalClearableShowcase() {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <ShowcaseCard
+      name="TextPromptModal (clearable)"
+      controls={<OpenButton onPress={() => setVisible(true)} />}
+    >
+      <Text style={styles.previewHint}>Tap &quot;Open Modal&quot; below</Text>
+      <TextPromptModal
+        visible={visible}
+        title="Rename Favorite"
+        placeholder="Dolina single track"
+        initialValue="Dolina"
+        confirmLabel="Save"
+        allowEmpty
+        onConfirm={(value) => {
+          setVisible(false)
+          console.log(value)
+        }}
+        onDismiss={() => setVisible(false)}
+      />
+    </ShowcaseCard>
+  )
+}
+
 interface EdgeDrawerPositionShowcaseProps {
   edge: 'auto' | 'top' | 'bottom'
   name: string
@@ -317,7 +344,7 @@ function EdgeDrawerPositionShowcase({ edge, name, description }: EdgeDrawerPosit
 const LONG_CONTENT_SECTIONS = [
   {
     title: 'How the gesture works',
-    body: 'This drawer contains ordinary text instead of a stack of controls. Swipe upward to read it exactly like a regular scroll view. The content should remain under your finger and preserve normal momentum.',
+    body: 'This drawer contains ordinary text instead of a stack of controls. Scroll it exactly like a regular scroll view. The content should remain under your finger and preserve normal momentum.',
   },
   {
     title: 'Scrolling through content',
@@ -325,7 +352,7 @@ const LONG_CONTENT_SECTIONS = [
   },
   {
     title: 'Reaching the boundary',
-    body: 'At the end of the article there is nowhere left for the content to scroll. Continue dragging upward from that boundary and the gesture transfers to the complete drawer instead.',
+    body: 'At the end of the article there is nowhere left for the content to scroll. Keep dragging toward the edge the drawer opened from and the gesture transfers to the complete drawer instead.',
   },
   {
     title: 'Moving the window',
@@ -333,13 +360,22 @@ const LONG_CONTENT_SECTIONS = [
   },
   {
     title: 'Fling behavior',
-    body: 'Release with enough upward velocity and the drawer continues off-screen. Release early with little velocity and it returns to its open position. This is the same interaction model used by system notification panels.',
+    body: 'Release with enough velocity and the drawer continues off-screen. Release early with little velocity and it returns to its open position. This is the same interaction model used by system notification panels.',
   },
   {
     title: 'End of example',
-    body: 'You are now at the dismiss boundary. Keep dragging upward to push the entire window out of view and close it.',
+    body: 'You are now at the dismiss boundary. Keep dragging to push the entire window out of view and close it.',
   },
 ] as const
+
+/** Enough repeats that the article is several screens tall on a phone, not barely one. */
+const LONG_CONTENT_PASSES = 4
+const LONG_CONTENT_ARTICLE = Array.from({ length: LONG_CONTENT_PASSES }, (_pass, passIndex) =>
+  LONG_CONTENT_SECTIONS.map((section) => ({
+    key: `${passIndex}-${section.title}`,
+    ...section,
+  })),
+).flat()
 
 function EdgeDrawerLongContentShowcase() {
   const triggerRef = useTriggerRef()
@@ -355,25 +391,98 @@ function EdgeDrawerLongContentShowcase() {
       }
     >
       <Text style={styles.previewHint}>
-        Regular text scrolls first; an upward drag at the end moves the complete drawer out.
+        Regular text scrolls first; a drag at the end moves the complete drawer out.
       </Text>
       <EdgeDrawer
         visible={visible}
         triggerRef={triggerRef}
-        edge="top"
         title="Gesture guide"
         onClose={() => setVisible(false)}
       >
         <View style={styles.article}>
           <Text style={styles.articleLead}>
-            Scroll this full article, then continue the same upward motion at the end.
+            Scroll this full article, then continue the same motion at the end.
           </Text>
-          {LONG_CONTENT_SECTIONS.map((section) => (
-            <View key={section.title} style={styles.articleSection}>
+          {LONG_CONTENT_ARTICLE.map((section) => (
+            <View key={section.key} style={styles.articleSection}>
               <Text style={styles.articleTitle}>{section.title}</Text>
               <Text style={styles.articleBody}>{section.body}</Text>
             </View>
           ))}
+        </View>
+      </EdgeDrawer>
+    </ShowcaseCard>
+  )
+}
+
+function EdgeDrawerInitialFocusShowcase() {
+  const triggerRef = useTriggerRef()
+  const focusedRowRef = useRef<View>(null)
+  const [visible, setVisible] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!visible) return
+    const timer = setTimeout(() => setExpanded(true), 300)
+    return () => clearTimeout(timer)
+  }, [visible])
+
+  return (
+    <ShowcaseCard
+      name="EdgeDrawer — initial focus"
+      controls={
+        <View
+          ref={triggerRef}
+          collapsable={false}
+          testID="edge-drawer-focus-open"
+          style={styles.trigger}
+        >
+          <OpenButton
+            label="Open focused content"
+            onPress={() => {
+              setExpanded(false)
+              setVisible(true)
+            }}
+          />
+        </View>
+      }
+    >
+      <Text style={styles.previewHint}>
+        A long bottom drawer opens with row 1 inside the visible area. Automatic close remains
+        committed if another gesture reaches the drawer while it is moving.
+      </Text>
+      <EdgeDrawer
+        visible={visible}
+        triggerRef={triggerRef}
+        edge="bottom"
+        title={expanded ? 'Focused list expanded' : 'Focused list'}
+        initialFocusRef={focusedRowRef}
+        onClose={() => setVisible(false)}
+      >
+        <Button
+          label="Close automatically"
+          variant="secondary"
+          size="sm"
+          onPress={() => setVisible(false)}
+        />
+        <View style={styles.focusList}>
+          {Array.from({ length: expanded ? 24 : 12 }, (_, index) => {
+            const focused = index === 0
+            return (
+              <View
+                ref={focused ? focusedRowRef : undefined}
+                key={index}
+                style={[styles.tile, focused && styles.focusedTile]}
+              >
+                <Text
+                  testID={focused ? 'edge-drawer-focused-row' : undefined}
+                  style={styles.tileText}
+                >
+                  {focused ? 'Selected row 1' : `Row ${index + 1}`}
+                </Text>
+              </View>
+            )
+          })}
         </View>
       </EdgeDrawer>
     </ShowcaseCard>
@@ -427,6 +536,7 @@ export default function ModalsPage() {
         <CommunityMessageModalShowcase />
         <AppBlockScreenShowcase />
         <TextPromptModalShowcase />
+        <TextPromptModalClearableShowcase />
         <EdgeDrawerPositionShowcase
           edge="auto"
           name="EdgeDrawer — automatic edge"
@@ -443,6 +553,7 @@ export default function ModalsPage() {
           description="Always opens from the bottom. The complete drawer follows a downward drag."
         />
         <EdgeDrawerLongContentShowcase />
+        <EdgeDrawerInitialFocusShowcase />
         <FloatingSheetShowcase />
       </ScrollView>
     </SafeAreaView>
@@ -462,6 +573,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   tileText: { color: theme.palette.slate.textSecondary, fontSize: 14 },
+  focusList: { gap: 8 },
+  focusedTile: { borderColor: theme.palette.sky.color },
   article: { gap: 28, paddingHorizontal: 10, paddingBottom: 24 },
   articleLead: {
     color: theme.palette.slate.textPrimary,

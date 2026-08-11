@@ -53,17 +53,20 @@ const LEGAL_LIMIT_COUNTRY_DETAILS: Record<string, LegalLimitCountryDetail> = {
   },
   BG: {
     vehicleScope:
-      'Authoritative material located describes handlebar e-scooters, not OneWheel-style boards or electric unicycles.',
-    where: 'No reliable national route rule for a handlebarless one-wheel device was confirmed.',
-    equipment: 'Not confirmed.',
-    insurance: 'Not confirmed.',
-    notes: 'Status is intentionally unknown rather than borrowing scooter rules.',
+      'Bulgarian law expressly defines a self-balancing vehicle as a motor-driven one-wheel or two-parallel-wheel device with design speed no more than 25 km/h. The broader individual-electric-vehicle category is limited to 50 kg.',
+    where:
+      'Use cycling infrastructure; where none exists, keep as close as possible to the right edge of the carriageway, subject to national and municipal restrictions.',
+    equipment:
+      'Minimum age 16; helmet is mandatory; lights and reflective clothing/elements are required in reduced visibility. The device must be registered.',
+    insurance: 'Compulsory motor third-party liability insurance is required.',
+    notes:
+      'The device must be design-limited to 25 km/h and may not exceed the 50 kg unladen-mass ceiling.',
   },
   HR: {
     vehicleScope:
       'Electric monocyles and self-balancing vehicles are expressly included as personal transport devices if they have no seat, continuous rated power no more than 0.6 kW and design speed no more than 25 km/h.',
     where:
-      'Use cycle paths/lanes; where none exists, use roads with a speed limit up to 50 km/h as allowed by the traffic rules. Pedestrian areas require pedestrian-safe speed.',
+      'Use cycle paths/lanes. Where none exists, use pedestrian areas and traffic-calmed zones without endangering pedestrians. A carriageway section limited to 50 km/h may be used only exceptionally where an installed traffic sign permits it.',
     equipment:
       'Minimum age 14; helmet is mandatory; visibility requirements apply at night or in poor visibility.',
     insurance:
@@ -82,20 +85,23 @@ const LEGAL_LIMIT_COUNTRY_DETAILS: Record<string, LegalLimitCountryDetail> = {
   },
   CZ: {
     vehicleScope:
-      'A powered vehicle must retain the normal character of a bicycle or scooter to use the simplified 25 km/h category. A OneWheel/EUC does not.',
+      'Czech courts classify a self-balancing electric unicycle as an “osobní přepravník” under § 2(nn) and § 60a. A OneWheel-style board uses the same fore-aft self-balancing mechanism and is treated here as the analogous device covered by the statute.',
     where:
-      'Ordinary public-road use requires the vehicle to fit an approved motor-vehicle or category-Z route; typical consumer devices do not have that approval.',
+      'Use pedestrian routes and undivided pedestrian/cycle paths only at walking pace. Dedicated cycle lanes and paths follow the applicable cycling rules. Use the carriageway only when the listed pedestrian or cycle infrastructure is unavailable or the pavement is impassable, then stay on the left shoulder or edge. Signposted local bans may apply.',
     equipment:
-      'Technical approval and, depending on classification, registration, licence and insurance would be required.',
-    insurance: 'Insurance does not itself legalise an unapproved device.',
-    notes: 'Only a specifically technically approved model could have a different result.',
+      'The personal-transporter rules do not set one nationwide design-speed cap. Follow route-specific and local limits, and do not endanger pedestrians or cyclists.',
+    insurance:
+      'Motor-liability insurance is required when maximum design speed exceeds 25 km/h, or when operating weight exceeds 25 kg and maximum design speed exceeds 14 km/h.',
+    notes:
+      'The 25 km/h bicycle/e-scooter approval category does not determine the road status of a self-balancing personal transporter. A selected software riding mode does not change the vehicle’s maximum design speed.',
   },
   DK: {
     vehicleScope:
       'The self-balancing-vehicle and motorised-skateboard scheme expressly covers one-person, self-balancing or board-type electric devices without conventional steering.',
     where:
-      'Use bicycle infrastructure and bicycle traffic rules; pavements and pedestrian crossings are not riding areas.',
-    equipment: 'Maximum design speed 20 km/h; helmet and required lights/reflectors apply.',
+      'Use bicycle infrastructure and bicycle traffic rules. Where no cycle path exists, the carriageway may be used only in a built-up area on a road limited to no more than 50 km/h. Pavements and pedestrian crossings are not riding areas.',
+    equipment:
+      'Maximum design speed 20 km/h; minimum age 15 unless accompanied by an adult; helmet, all-day lights and required reflectors apply. Maximum weight is 25 kg.',
     insurance:
       'No general compulsory third-party insurance requirement was identified for a compliant device.',
     notes: 'The 20 km/h limit is a design requirement, not merely the speed selected in an app.',
@@ -152,12 +158,13 @@ const LEGAL_LIMIT_COUNTRY_DETAILS: Record<string, LegalLimitCountryDetail> = {
     equipment: 'Helmet and prescribed lighting/visibility equipment apply.',
     insurance:
       'No general compulsory insurance requirement was confirmed for an ordinary compliant device.',
-    notes: 'Municipal restrictions and signs may narrow where the device can be used.',
+    notes:
+      'The 2026 proposal for new insurance and age restrictions was not yet enacted at the audit date. Municipal restrictions and signs may narrow where the device can be used.',
   },
   HU: {
     vehicleScope:
       'The current KRESZ does not provide a sufficiently clear, stable national category for ordinary OneWheel/EUC use.',
-    where: 'No reliable nationwide route rule was confirmed as of 17 July 2026.',
+    where: 'No reliable nationwide route rule was confirmed as of 30 July 2026.',
     equipment: 'Not confirmed.',
     insurance: 'Not confirmed.',
     notes:
@@ -165,11 +172,15 @@ const LEGAL_LIMIT_COUNTRY_DETAILS: Record<string, LegalLimitCountryDetail> = {
   },
   IS: {
     vehicleScope:
-      'Official guidance located clearly regulates electric scooters/small vehicles but does not clearly state that handlebarless one-wheel devices are included.',
-    where: 'No reliable public-road route rule for a OneWheel/EUC was confirmed.',
-    equipment: 'Not confirmed for this device form.',
-    insurance: 'Not confirmed for this device form.',
-    notes: 'Status remains unknown rather than importing the e-scooter rules.',
+      'The statutory small-motor-vehicle category covers a motorised vehicle without a seat that is neither a moped nor a bicycle and is designed for 6–25 km/h; it is not limited to handlebars or a minimum number of wheels.',
+    where:
+      'Bicycle rules apply. Cycle paths and other bicycle-permitted infrastructure may be used; carriageway use is permitted on roads limited to no more than 30 km/h, subject to local signs.',
+    equipment:
+      'Minimum age 13; the vehicle must remain design-limited to 25 km/h. Bicycle lighting and visibility rules apply; a helmet is recommended.',
+    insurance:
+      'Official guidance states that compulsory insurance does not apply to compliant small motor vehicles.',
+    notes:
+      'A software mode does not make a device designed for more than 25 km/h compliant, and modifying it beyond that limit makes its use unlawful.',
   },
   IE: {
     vehicleScope:
@@ -207,29 +218,32 @@ const LEGAL_LIMIT_COUNTRY_DETAILS: Record<string, LegalLimitCountryDetail> = {
     where:
       'Use cycle infrastructure and permitted road areas under micromobility rules; operating speed is generally limited to 20 km/h and to 7 km/h near or while passing pedestrians.',
     equipment:
-      'Helmet and lighting/visibility requirements apply, with stricter duties for minors.',
+      'Since 1 January 2026, a fastened bicycle, skateboard or motorcycle helmet is mandatory for every rider. Brake, audible warning, lights and reflectors are required.',
     insurance:
       'No general compulsory motor-insurance requirement was identified for an ordinary compliant device.',
     notes: 'Both the 1 kW power ceiling and 25 km/h construction ceiling matter.',
   },
   LU: {
     vehicleScope:
-      'A micro electric vehicle may have one or more wheels, be solely electric, have no more than 1 kW and a design speed above 6 but no more than 25 km/h; hoverboard-type devices are included.',
+      'A micro electric vehicle may have one or more wheels, be solely electric, have no more than 250 W and a design speed above 6 but no more than 25 km/h; monowheels are expressly included.',
     where:
       'Bicycle-oriented route rules apply, with pedestrian-speed duties in pedestrian contexts.',
     equipment: 'Required braking, warning, lighting and reflector equipment applies.',
     insurance:
       'No registration or compulsory motor-insurance requirement was identified for the compliant category; civil-liability cover is advisable.',
-    notes: 'Devices over 1 kW or 25 km/h fall outside the category.',
+    notes: 'Devices over 250 W or 25 km/h fall outside the category.',
   },
   MT: {
     vehicleScope:
-      'The Maltese approval, registration and licensing scheme located is for e-kickscooters, not ordinary handlebarless one-wheel devices.',
-    where: 'No public-road approval route for a OneWheel/EUC was confirmed.',
-    equipment: 'Not applicable without approval and registration.',
+      'Maltese regulations expressly define self-balancing vehicles to include powered one-wheel vehicles.',
+    where:
+      'A registered self-balancing vehicle may use footpaths, promenades and pedestrian zones at no more than 6 km/h. Carriageway use is allowed only on a Tour Route formally designated by the Authority.',
+    equipment:
+      'Registration is mandatory. Minimum age 14; a fastened bicycle helmet, front white light, rear red light and horn or bell are required for road use.',
     insurance:
-      'The e-kickscooter insurance framework should not be assumed to cover an unapproved device form.',
-    notes: 'Treat as private-property only unless Transport Malta issues model-specific approval.',
+      'The cited self-balancing-vehicle provisions require registration but do not state a separate compulsory-insurance requirement.',
+    notes:
+      'This is a narrow public-use permission, not the ordinary e-kickscooter route scheme; Tour Route restrictions may be more specific.',
   },
   NL: {
     vehicleScope:
@@ -259,7 +273,7 @@ const LEGAL_LIMIT_COUNTRY_DETAILS: Record<string, LegalLimitCountryDetail> = {
     where:
       'Use bicycle paths/lanes. If none is available, a pavement/footpath may be used at pedestrian speed while yielding to pedestrians. UTO riding on the carriageway is prohibited.',
     equipment:
-      'The device must meet the UTO construction limits; a helmet is recommended but not generally mandatory.',
+      'The device must meet the UTO construction limits. Since 3 June 2026, a helmet is mandatory for riders under 16; since 3 March 2026, children under 13 may ride only in a residential zone under adult supervision. Riders under 18 need the prescribed cycling entitlement.',
     insurance:
       'No compulsory third-party motor insurance is required for an ordinary compliant UTO.',
     notes: 'The road-up-to-30-km/h exception applies to e-scooters, not to UTO devices.',

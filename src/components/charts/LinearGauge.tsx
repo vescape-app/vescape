@@ -19,7 +19,7 @@ import {
 } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { interaction, theme } from '@/constants/theme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
 
@@ -31,6 +31,14 @@ const TICK_W = LINE_THICK * 0.35
 const TICK_LEN = LINE_THICK * 2
 const MARKER_W = LINE_THICK * 1.5
 const MARKER_RATIO = 0.5
+// Band tint fades in over the first stretch past the threshold so the edge reads as a soft entry
+// rather than a wall, then holds flat: nothing about the rule escalates further along the scale.
+const ALERT_BAND_COLORS = [
+  theme.alpha(theme.palette.yellow.color, 0),
+  theme.alpha(theme.palette.yellow.color, 0.12),
+  theme.alpha(theme.palette.yellow.color, 0.12),
+]
+const ALERT_BAND_STOPS = [0, 0.3, 1]
 const VALUE_GAP = 6
 const BAR_H = 40
 const BAR_H_COMPACT = 32
@@ -204,11 +212,12 @@ function GaugeBar({ width, height, fraction, color, alerts, min, max, charging }
         color={TRACK_COLOR}
       />
 
-      {/* Alert range bands — faint highlight tint hugging the line */}
+      {/* Alert bands — faint highlight tint hugging the line, fading in at the threshold edge */}
       {alerts.map((a) => {
-        if (a.thresholdMax == null) return null
-        const from = fractionOf(a.threshold, min, max) * width
-        const to = fractionOf(a.thresholdMax, min, max) * width
+        const band = alertBandFractions(a, (value) => fractionOf(value, min, max))
+        if (!band) return null
+        const from = band.from * width
+        const to = band.to * width
         if (to <= from) return null
         return (
           <Rect
@@ -217,8 +226,14 @@ function GaugeBar({ width, height, fraction, color, alerts, min, max, charging }
             y={lineY - bandH}
             width={to - from}
             height={bandH + LINE_THICK}
-            color={theme.alpha(theme.palette.yellow.color, 0.12)}
-          />
+          >
+            <LinearGradient
+              start={vec(from, 0)}
+              end={vec(to, 0)}
+              colors={ALERT_BAND_COLORS}
+              positions={ALERT_BAND_STOPS}
+            />
+          </Rect>
         )
       })}
 

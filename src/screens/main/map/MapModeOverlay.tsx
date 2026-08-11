@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics'
 import { useRouter } from 'expo-router'
-import { ArrowLeftIcon, MagnifyingGlassIcon, MapPinIcon, XIcon } from 'phosphor-react-native'
+import { ArrowLeftIcon, MagnifyingGlassIcon, XIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import Animated, { FadeOut, withTiming } from 'react-native-reanimated'
@@ -11,6 +11,7 @@ import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
+import { getPlaceCategoryIcon } from '@/modules/map-points/constants/mapPointIcons'
 import { MapPointAddMenu } from '@/modules/map-points/components/MapPointAddMenu'
 import { MapPointFilterMenu } from '@/modules/map-points/components/MapPointFilterMenu'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
@@ -18,7 +19,7 @@ import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { type MapSearchResult } from '@/modules/map/lib/search'
-import type { DirectionPoint } from '@/modules/map/store/mapStore'
+import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
 import { routes } from '@/navigation/routes'
@@ -50,6 +51,11 @@ interface MapModeOverlayProps {
   updateMapPoint: (id: string, patch: MapPointPatch) => Promise<MapPoint | null>
   setMapPointReaction: (id: string, reaction: 'up' | 'down' | null) => void
   onRemoveMapPoint: (id: string) => void
+}
+
+function MapSearchResultIcon({ category }: { category: string | null }) {
+  const IconComponent = getPlaceCategoryIcon(category)
+  return <IconComponent size={16} color={theme.palette.green.text} weight="duotone" />
 }
 
 function clearPlacementTimeoutRef(ref: { current: ReturnType<typeof setTimeout> | null }) {
@@ -170,6 +176,7 @@ function FullMapControls({
     searchLoading,
     searchError,
     handleSearchQueryChange,
+    submitSearch,
     resetSearch,
   } = useMapSearch({ searchOpen, proximityLocation: searchProximity })
 
@@ -233,16 +240,21 @@ function FullMapControls({
         longitude: result.longitude,
         title: result.title,
         subtitle: result.subtitle,
-        category: null,
+        category: result.category,
       })
     },
     [mapRef, onSelectNavigationTarget, setSearchQuery],
   )
 
-  const handleSearchSubmit = useCallback(() => {
+  const handleSearchSubmit = useCallback(async () => {
     const first = searchResults[0]
-    if (first) handleSearchSelect(first)
-  }, [handleSearchSelect, searchResults])
+    if (first) {
+      handleSearchSelect(first)
+      return
+    }
+    const submittedResult = await submitSearch()
+    if (submittedResult) handleSearchSelect(submittedResult)
+  }, [handleSearchSelect, searchResults, submitSearch])
 
   const showNoResults =
     !searchLoading && !searchError && searchQuery.trim().length >= 2 && searchResults.length === 0
@@ -328,6 +340,7 @@ function FullMapControls({
       <IconButton
         icon={ArrowLeftIcon}
         size="sm"
+        testID="map-exit"
         onPress={handleExitMapFocus}
         style={[styles.mapTopBackButton, { top }]}
       />
@@ -344,7 +357,7 @@ function FullMapControls({
               selectTextOnFocus
               value={searchQuery}
               onChangeText={handleSearchQueryChange}
-              onSubmitEditing={handleSearchSubmit}
+              onSubmitEditing={() => void handleSearchSubmit()}
               placeholder="Address or place"
               placeholderTextColor={theme.palette.slate.textMuted}
               returnKeyType="search"
@@ -391,7 +404,7 @@ function FullMapControls({
                   onPress={() => handleSearchSelect(result)}
                 >
                   <View style={styles.mapSearchResultIcon}>
-                    <MapPinIcon size={16} color={theme.palette.green.text} weight="duotone" />
+                    <MapSearchResultIcon category={result.category} />
                   </View>
                   <View style={styles.mapSearchResultText}>
                     <Text style={styles.mapSearchResultTitle} numberOfLines={1}>
@@ -475,6 +488,16 @@ export function MapModeOverlay({
   const [signInPromptVisible, setSignInPromptVisible] = useState(false)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+
+  // Native owns whether a path exists; this only decides what the sheet says about it. Read here
+  // rather than drilled from the screen, because the sheet is its only consumer.
+  const navigationStatus = useMapStore((s) => s.navigation?.status ?? null)
+  const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
+  const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
+  const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
+  const navigationComputing = useMapStore((s) => s.navigationComputing)
+  const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
+  const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
 
   const navigationTarget =
     activeNavigationTarget ??
@@ -595,6 +618,20 @@ export function MapModeOverlay({
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
             onCancelNavigation={onCancelNavigation}
+            onConfirmNavigation={onExit}
+            navigationStatus={navigationStatus}
+            navigationPath={
+              navigationStatus === 'ready'
+                ? {
+                    distanceMeters: navigationDistanceMeters,
+                    durationSeconds: navigationDurationSeconds,
+                  }
+                : null
+            }
+            navigationComputing={navigationComputing}
+            navigationProfile={navigationProfile}
+            onRecomputeNavigation={() => void recomputeNavigation()}
+            onSelectNavigationProfile={(profile) => void setNavigationProfile(profile)}
             onDismissSelected={() => {
               setEditingMapPointId(null)
               setAddMenuOpen(false)

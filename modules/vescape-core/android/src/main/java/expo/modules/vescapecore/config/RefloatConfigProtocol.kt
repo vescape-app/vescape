@@ -36,7 +36,7 @@ internal sealed class RefloatConfigProtocolResult<out T> {
 }
 
 internal object RefloatConfigProtocol {
-  private val baseVersionPattern = Regex("""\b(\d+\.\d+\.\d+)\b""")
+  private val baseVersionPattern = Regex("""\b(\d+\.\d+(?:\.\d+)?)\b""")
 
   fun normalizeBaseVersion(version: String?): String? =
     version

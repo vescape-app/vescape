@@ -8,6 +8,7 @@ import type {
   TelemetryChartRange,
 } from '@/components/charts/chartMath'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
+import { useMetricDetailAlertThresholds } from '@/modules/board/components/metricDetailAlertContext'
 import { DASH } from '@/helpers/format'
 
 interface SecondaryMetricSeries {
@@ -62,6 +63,7 @@ export function MetricDetailChart({
   onScrubTimeChange,
   reserveRightAxis,
 }: MetricDetailChartProps) {
+  const alertThresholds = useMetricDetailAlertThresholds(metric.controlId)
   // Live charts never persist a selection: while scrubbing the marker follows the
   // cursor, on release it snaps back to the newest point to signal "live".
   const currentPoint = points.at(-1) ?? null
@@ -98,6 +100,7 @@ export function MetricDetailChart({
       scrubTimeMs={scrubTimeMs}
       onScrubTimeChange={onScrubTimeChange}
       reserveRightAxis={reserveRightAxis}
+      alertThresholds={alertThresholds}
     />
   )
 }

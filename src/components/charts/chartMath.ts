@@ -7,10 +7,40 @@ export interface TelemetryChartRange {
   y: { min: number; max: number }
 }
 
+export interface ChartAlertMarker {
+  value: number
+  y: number
+}
+
 export interface ExcludedRange {
   startMs: number
   endMs: number
   reason: string
+}
+
+export type ChartTimeMode = 'relative' | 'clock'
+
+export function getChartTimeLabels(
+  points: TelemetryChartPoint[],
+  windowMs: number | undefined,
+  mode: ChartTimeMode,
+): { start: string; end: string } | null {
+  if (points.length < 2) return null
+  const now = points[points.length - 1].date
+  const start = windowMs ? new Date(now.getTime() - windowMs) : points[0].date
+  if (mode === 'clock') {
+    return { start: formatClockTime(start), end: formatClockTime(now) }
+  }
+  const diffMs = now.getTime() - start.getTime()
+  const diffSec = Math.round(diffMs / 1000)
+  const startLabel = diffSec < 60 ? `-${diffSec}s` : `-${Math.round(diffSec / 60)}m`
+  return { start: startLabel, end: 'now' }
+}
+
+function formatClockTime(date: Date): string {
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  return `${hours}:${minutes}`
 }
 
 const DEFAULT_GAP_MULTIPLIER = 3
@@ -88,17 +118,42 @@ export function getChartPosition(
   const xMax = points[points.length - 1].date.getTime()
   const xMin = windowMs ? xMax - windowMs : points[0].date.getTime()
   const xSpan = xMax - xMin
-  const ySpan = range.y.max - range.y.min
-  if (xSpan <= 0 || ySpan <= 0) return null
+  const y = getChartYPosition(point.value, range, height)
+  if (xSpan <= 0 || y == null) return null
 
-  const inset = 2
   const x = width * ((point.date.getTime() - xMin) / xSpan)
-  const t = (point.value - range.y.min) / ySpan
-  const y = height - inset - (height - inset * 2) * t
   return {
     x: Math.max(0, Math.min(width, x)),
-    y: Math.max(0, Math.min(height, y)),
+    y,
   }
+}
+
+/** Map one metric value onto the same inset Y scale used by telemetry points. */
+export function getChartYPosition(
+  value: number,
+  range: { y: { min: number; max: number } },
+  height: number,
+): number | null {
+  const ySpan = range.y.max - range.y.min
+  if (!Number.isFinite(value) || ySpan <= 0 || height <= 0) return null
+
+  const inset = 2
+  const t = (value - range.y.min) / ySpan
+  const y = height - inset - (height - inset * 2) * t
+  return Math.max(0, Math.min(height, y))
+}
+
+/** Position visible alert lines exactly; omit thresholds outside the chart range. */
+export function getChartAlertMarkers(
+  values: number[],
+  range: { y: { min: number; max: number } },
+  height: number,
+): ChartAlertMarker[] {
+  return [...new Set(values)]
+    .filter((value) => value >= range.y.min && value <= range.y.max)
+    .map((value) => ({ value, y: getChartYPosition(value, range, height) }))
+    .filter((marker): marker is { value: number; y: number } => marker.y != null)
+    .sort((a, b) => a.y - b.y)
 }
 
 export function getXPosition(
@@ -116,13 +171,39 @@ export function getXPosition(
   return Math.max(0, Math.min(width, x))
 }
 
+export interface ChartTimeRange {
+  startMs: number
+  endMs: number
+}
+
+export function getChartTimeRangeBands<T extends ChartTimeRange>(
+  points: TelemetryChartPoint[],
+  ranges: readonly T[],
+  width: number,
+  windowMs?: number,
+): (T & { x: number; width: number })[] {
+  if (points.length < 2 || width <= 0) return []
+  const domainEndMs = points.at(-1)!.date.getTime()
+  const domainStartMs = windowMs ? domainEndMs - windowMs : points[0].date.getTime()
+
+  return ranges.flatMap((range) => {
+    const startMs = Math.max(domainStartMs, Math.min(range.startMs, range.endMs))
+    const endMs = Math.min(domainEndMs, Math.max(range.startMs, range.endMs))
+    if (endMs <= startMs) return []
+    const x1 = getXPosition(points, startMs, width, windowMs)
+    const x2 = getXPosition(points, endMs, width, windowMs)
+    if (x1 == null || x2 == null || x2 <= x1) return []
+    return [{ ...range, x: x1, width: x2 - x1 }]
+  })
+}
+
 export function toExcludedRanges(
-  exclusions: Array<{
+  exclusions: {
     startMs: number
     endMs: number
     reason: string
     metrics: Record<string, boolean>
-  }>,
+  }[],
   metric: string | string[],
   mergeGapMs = 2000,
 ): ExcludedRange[] {
@@ -185,11 +266,11 @@ export function splitChartLineSegments(
   height: number,
   windowMs?: number,
   gapMultiplier = DEFAULT_GAP_MULTIPLIER,
-): Array<Array<{ x: number; y: number }>> {
+): { x: number; y: number }[][] {
   if (points.length === 0 || width <= 0) return []
   const gapThresholdMs = resolveGapThresholdMs(points, gapMultiplier)
-  const segments: Array<Array<{ x: number; y: number }>> = []
-  let current: Array<{ x: number; y: number }> = []
+  const segments: { x: number; y: number }[][] = []
+  let current: { x: number; y: number }[] = []
 
   for (let i = 0; i < points.length; i += 1) {
     const point = points[i]

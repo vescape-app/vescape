@@ -10,7 +10,7 @@
     "labelCoordinate": [14.4, 47.6],
     "sourceUrl": "https://www.oesterreich.gv.at/de/themen/mobilitaet/spielen_auf_der_strasse",
     "warningText": "Walking pace only (shown as 5 km/h because the rule has no fixed numeric value); not a road or cycle-lane vehicle.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 5,
     "speedLimitBasis": "Walking-pace play/sports-device rule"
   },
@@ -25,7 +25,7 @@
     "labelCoordinate": [4.7, 50.7],
     "sourceUrl": "https://mobilit.belgium.be/fr/mobilite-durable/trottinettes-et-monoroues",
     "warningText": null,
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -33,16 +33,16 @@
     "name": "Bulgaria",
     "code": "BG",
     "alpha3": "BGR",
-    "legalSpeedKmh": null,
-    "warningSpeedKmh": null,
+    "legalSpeedKmh": 25,
+    "warningSpeedKmh": 20,
     "referenceSpeedKmh": 25,
-    "status": "unknown",
-    "confidence": "low",
+    "status": "likelyLegal",
+    "confidence": "high",
     "labelCoordinate": [25.2, 42.7],
-    "sourceUrl": "https://www.evz.de/en/travelling-motor-vehicles/e-mobility/two-wheelers/e-scooter-regulations-in-europe.html",
-    "warningText": "No authoritative rule explicitly covering handlebarless one-wheel devices was located.",
-    "checkedAt": "2026-07-17",
-    "speedLimitBasis": "Nearest regulated micromobility reference limit"
+    "sourceUrl": "https://mvr.bg/opp/%D0%BF%D0%BE%D0%BB%D0%B5%D0%B7%D0%BD%D0%B0-%D0%B8%D0%BD%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%86%D0%B8%D1%8F1/%D1%83%D1%8F%D0%B7%D0%B2%D0%B8%D0%BC%D0%B8-%D1%83%D1%87%D0%B0%D1%81%D1%82%D0%BD%D0%B8%D1%86%D0%B8/%D0%B2%D0%BE%D0%B4%D0%B0%D1%87%D0%B8-%D0%BD%D0%B0-%D0%B8%D0%B5%D0%BF%D1%81",
+    "warningText": "The device must be design-limited to 25 km/h, weigh no more than 50 kg, and be registered and insured; helmet and minimum-age rules apply.",
+    "checkedAt": "2026-07-30",
+    "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
   {
     "name": "Croatia",
@@ -54,8 +54,8 @@
     "confidence": "high",
     "labelCoordinate": [16.4, 45.1],
     "sourceUrl": "https://mup.gov.hr/u-modi-su-nova-pravila/288945",
-    "warningText": "Only devices with continuous rated power up to 600 W qualify.",
-    "checkedAt": "2026-07-17",
+    "warningText": "Only devices with continuous rated power up to 600 W qualify; carriageway use additionally requires a permitting traffic sign.",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -71,7 +71,7 @@
     "labelCoordinate": [33.2, 35],
     "sourceUrl": "https://www.mcw.gov.cy/mtcw/pwd/pwd.nsf/all/F7C5047A7194BB0FC2258B4E002650DD",
     "warningText": "The legal e-scooter category requires handlebars and at least two wheels.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference limit"
   },
   {
@@ -80,14 +80,14 @@
     "alpha3": "CZE",
     "legalSpeedKmh": null,
     "warningSpeedKmh": null,
-    "referenceSpeedKmh": 25,
-    "status": "notRoadLegal",
-    "confidence": "medium",
+    "referenceSpeedKmh": null,
+    "status": "restricted",
+    "confidence": "high",
     "labelCoordinate": [15.5, 49.8],
-    "sourceUrl": "https://md.gov.cz/Media/Na-pravou-miru/Elektricka-vozitka-Pravidla-a-regulace?returl=%2FZajimave-stranky",
-    "warningText": "Ordinary consumer OneWheels/EUCs lack the technical approval required for this vehicle form.",
-    "checkedAt": "2026-07-17",
-    "speedLimitBasis": "E-scooter/bicycle-equivalent reference limit"
+    "sourceUrl": "https://nalus.usoud.cz/Search/GetText.aspx?sz=2-1129-26_1",
+    "warningText": "Self-balancing personal transporters are permitted under route-specific rules: walking pace on pedestrian routes, cycling rules on dedicated cycle facilities, and carriageway use only as a fallback.",
+    "checkedAt": "2026-07-30",
+    "speedLimitBasis": "Route-dependent personal-transporter rules"
   },
   {
     "name": "Denmark",
@@ -98,9 +98,9 @@
     "status": "likelyLegal",
     "confidence": "high",
     "labelCoordinate": [10, 56.1],
-    "sourceUrl": "https://www.retsinformation.dk/eli/lta/2019/40",
+    "sourceUrl": "https://www.retsinformation.dk/eli/lta/2019/41",
     "warningText": null,
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 20,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -115,7 +115,7 @@
     "labelCoordinate": [25, 58.7],
     "sourceUrl": "https://www.riigiteataja.ee/en/eli/ee/502012026001/consolide/current",
     "warningText": null,
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -128,9 +128,9 @@
     "status": "likelyLegal",
     "confidence": "high",
     "labelCoordinate": [26, 64.6],
-    "sourceUrl": "https://traficom.fi/en/transport/road/electric-personal-transportation-devices",
+    "sourceUrl": "https://www.traficom.fi/en/drivers-and-vehicles/tips-traffic/vehicle-categories",
     "warningText": "Maximum rated power is 1 kW; faster or more powerful devices need another approval category.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -145,7 +145,7 @@
     "labelCoordinate": [2.2, 46.6],
     "sourceUrl": "https://www.masecurite.interieur.gouv.fr/fr/fiches-pratiques/securite-routiere-et-transport/regles-route",
     "warningText": null,
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -161,7 +161,7 @@
     "labelCoordinate": [10.4, 51.1],
     "sourceUrl": "https://www.gesetze-im-internet.de/ekfv/",
     "warningText": "The eKFV approval route requires a steering or holding bar and therefore excludes ordinary monowheels/OneWheels.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "eKFV small-electric-vehicle reference limit"
   },
   {
@@ -173,9 +173,9 @@
     "status": "likelyLegal",
     "confidence": "medium",
     "labelCoordinate": [22.9, 39],
-    "sourceUrl": "https://europa.eu/youreurope/citizens/vehicles/cars/road-rules-and-safety/index_en.htm",
+    "sourceUrl": "https://europa.eu/youreurope/citizens/travel/driving-abroad/road-rules-and-safety/greece/index_en.htm",
     "warningText": null,
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -191,23 +191,23 @@
     "labelCoordinate": [19.4, 47.1],
     "sourceUrl": "https://net.jogtar.hu/jogszabaly?docid=97500001.KPM",
     "warningText": "A 2026 draft traffic code is not yet the law; the current national classification remains unclear.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference fallback"
   },
   {
     "name": "Iceland",
     "code": "IS",
     "alpha3": "ISL",
-    "legalSpeedKmh": null,
-    "warningSpeedKmh": null,
+    "legalSpeedKmh": 25,
+    "warningSpeedKmh": 20,
     "referenceSpeedKmh": 25,
-    "status": "unknown",
-    "confidence": "low",
+    "status": "likelyLegal",
+    "confidence": "high",
     "labelCoordinate": [-18.8, 64.9],
-    "sourceUrl": "https://www.evz.de/en/travelling-motor-vehicles/e-mobility/two-wheelers/e-scooter-regulations-in-europe.html",
-    "warningText": "The official guidance located covers electric scooters but does not clearly include handlebarless one-wheel devices.",
-    "checkedAt": "2026-07-17",
-    "speedLimitBasis": "E-scooter reference fallback"
+    "sourceUrl": "https://www.althingi.is/altext/stjt/2024.092.html",
+    "warningText": "The small-motor-vehicle category is limited by design to 25 km/h; bicycle rules apply and carriageway use is generally limited to roads up to 30 km/h.",
+    "checkedAt": "2026-07-30",
+    "speedLimitBasis": "Small-motor-vehicle category limit"
   },
   {
     "name": "Ireland",
@@ -219,9 +219,9 @@
     "status": "notRoadLegal",
     "confidence": "high",
     "labelCoordinate": [-8.2, 53.2],
-    "sourceUrl": "https://www.irishstatutebook.ie/eli/2024/si/199/made/en/print",
+    "sourceUrl": "https://www.irishstatutebook.ie/eli/2024/si/224/made/en/print",
     "warningText": "Public use of powered personal transporters is prohibited except for compliant two-or-more-wheel e-scooters.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference limit"
   },
   {
@@ -236,7 +236,7 @@
     "labelCoordinate": [12.6, 42.7],
     "sourceUrl": "https://www.normattiva.it/uri-res/N2Ls?urn%3Anir%3Astato%3Adecreto.legge%3A2019-12-30%3B162~art33bis=",
     "warningText": "Historic municipal experimentation for monowheels should not be treated as current nationwide permission.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference limit"
   },
   {
@@ -251,7 +251,7 @@
     "labelCoordinate": [24.9, 56.9],
     "sourceUrl": "https://likumi.lv/ta/en/en/id/45467-road-traffic-law",
     "warningText": "The statutory electric-scooter category requires two wheels and handlebars.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference limit"
   },
   {
@@ -264,8 +264,8 @@
     "confidence": "high",
     "labelCoordinate": [23.9, 55.2],
     "sourceUrl": "https://e-seimas.lrs.lt/portal/legalAct/lt/TAD/TAIS.111999/asr",
-    "warningText": "The device must be no more than 1 kW and no more than 25 km/h by design.",
-    "checkedAt": "2026-07-17",
+    "warningText": "The device must be no more than 1 kW and no more than 25 km/h by design; a helmet is mandatory for every rider.",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 20,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -278,9 +278,9 @@
     "status": "likelyLegal",
     "confidence": "high",
     "labelCoordinate": [6.1, 49.8],
-    "sourceUrl": "https://police.public.lu/en/legislation/code-de-la-route/micro-vehicules-electriques.html",
-    "warningText": "The category is limited to 1 kW and a design speed of 6–25 km/h.",
-    "checkedAt": "2026-07-17",
+    "sourceUrl": "https://transports.public.lu/fr/se-deplacer/micro-mobilite/micro-vehicule-electrique.html",
+    "warningText": "The category is limited to 250 W and a design speed above 6 km/h and no more than 25 km/h.",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -288,16 +288,16 @@
     "name": "Malta",
     "code": "MT",
     "alpha3": "MLT",
-    "legalSpeedKmh": null,
-    "warningSpeedKmh": null,
-    "referenceSpeedKmh": 20,
-    "status": "notRoadLegal",
-    "confidence": "medium",
+    "legalSpeedKmh": 6,
+    "warningSpeedKmh": 5,
+    "referenceSpeedKmh": 6,
+    "status": "restricted",
+    "confidence": "high",
     "labelCoordinate": [14.4, 35.9],
-    "sourceUrl": "https://www.transport.gov.mt/land/roadsafety/e-kickscooters-4704",
-    "warningText": "The registration scheme located is for e-kickscooters; no public-road approval path for ordinary one-wheel devices was identified.",
-    "checkedAt": "2026-07-17",
-    "speedLimitBasis": "E-kickscooter reference limit"
+    "sourceUrl": "https://legislation.mt/eli/sl/65.26/eng/pdf",
+    "warningText": "Registered self-balancing one-wheel vehicles may use footpaths, promenades and pedestrian zones only up to 6 km/h; road use is limited to designated Tour Routes.",
+    "checkedAt": "2026-07-30",
+    "speedLimitBasis": "Restricted self-balancing-vehicle route limit"
   },
   {
     "name": "Netherlands",
@@ -311,7 +311,7 @@
     "labelCoordinate": [5.3, 52.2],
     "sourceUrl": "https://www.rijksoverheid.nl/themas/verkeer-en-vervoer/voertuigen-op-de-weg/verboden-voertuigen-op-de-weg",
     "warningText": "The Dutch government expressly lists monowheels and Onewheels among vehicles prohibited on roads and pavements.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "Approved special-moped reference limit"
   },
   {
@@ -325,7 +325,7 @@
     "labelCoordinate": [8.5, 61.4],
     "sourceUrl": "https://lovdata.no/dokument/SF/forskrift/2022-05-25-918",
     "warningText": "The device must be permanently design-limited to 20 km/h and meet size/weight limits.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 20,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -338,9 +338,9 @@
     "status": "likelyLegal",
     "confidence": "high",
     "labelCoordinate": [19.1, 52.1],
-    "sourceUrl": "https://www.gov.pl/web/infrastruktura/nowe-przepisy-dotyczace-hulajnog-elektrycznych-i-urzadzen-transportu-osobistego2",
-    "warningText": "UTO devices may not use the carriageway; this differs from the rule for e-scooters.",
-    "checkedAt": "2026-07-17",
+    "sourceUrl": "https://isap.sejm.gov.pl/isap.nsf/download.xsp/WDU20240001251/U/D20241251Lj.pdf",
+    "warningText": "UTO devices may not use the carriageway; riders under 16 must wear a helmet and children under 13 may ride only under supervision in a residential zone.",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 20,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -355,7 +355,7 @@
     "labelCoordinate": [-8, 39.6],
     "sourceUrl": "https://diariodarepublica.pt/dr/legislacao-consolidada/decreto-lei/2013-116041830",
     "warningText": "Only self-balancing devices up to 250 W continuous power and 25 km/h are bicycle-equivalent.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "Restricted one-wheel/self-balancing category limit"
   },
@@ -369,9 +369,9 @@
     "status": "notRoadLegal",
     "confidence": "medium",
     "labelCoordinate": [24.9, 45.9],
-    "sourceUrl": "https://legislatie.just.ro/Public/DetaliiDocument/74028",
+    "sourceUrl": "https://legislatie.just.ro/Public/DetaliiDocument/41006",
     "warningText": "The statutory e-scooter definition requires two or three wheels and handlebars.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference limit"
   },
   {
@@ -385,7 +385,7 @@
     "labelCoordinate": [19.5, 48.7],
     "sourceUrl": "https://static.slov-lex.sk/static/SK/ZZ/2009/8/20260101.print.html",
     "warningText": "Current rules explicitly cover self-balancing vehicles; a revised small-electric-vehicle regime starts 1 September 2026.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -399,9 +399,9 @@
     "status": "notRoadLegal",
     "confidence": "high",
     "labelCoordinate": [14.9, 46.1],
-    "sourceUrl": "https://www.policija.si/eng/prevention/traffic-safety/traffic-safety-advice-for-users-of-electric-scooters",
+    "sourceUrl": "https://pisrs.si/pregledPredpisa?id=ZAKO8469",
     "warningText": "Light motor vehicles without handlebars are not permitted in road traffic.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter/light-motor-vehicle reference limit"
   },
   {
@@ -415,7 +415,7 @@
     "labelCoordinate": [-3.6, 40.2],
     "sourceUrl": "https://www.dgt.es/nuestros-servicios/tu-vehiculo/vehiculos-de-movilidad-personal-vmp/",
     "warningText": "Registration, an identifying label and compulsory insurance are required; non-certified legacy VMPs may circulate only until 22 January 2027.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 25,
     "speedLimitBasis": "Restricted one-wheel/self-balancing category limit"
   },
@@ -429,9 +429,9 @@
     "status": "notRoadLegal",
     "confidence": "high",
     "labelCoordinate": [8.2, 46.8],
-    "sourceUrl": "https://www.astra.admin.ch/astra/en/home/topics/vehicles/vehicles-without-type-approval.html",
+    "sourceUrl": "https://blog.astra.admin.ch/elektrische-trendfahrzeuge/",
     "warningText": "ASTRA states mono-wheel/smart-wheel devices may be used only on private property.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "E-scooter reference limit"
   },
   {
@@ -445,7 +445,7 @@
     "labelCoordinate": [15, 62],
     "sourceUrl": "https://www.transportstyrelsen.se/sv/vagtrafik/fordon/fordonsregler/regler-for-olika-fordonsslag/cykel/",
     "warningText": "A self-balancing device qualifies as a bicycle only when designed for no more than 20 km/h.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "referenceSpeedKmh": 20,
     "speedLimitBasis": "One-wheel/self-balancing category limit"
   },
@@ -461,7 +461,7 @@
     "labelCoordinate": [-2.6, 54.3],
     "sourceUrl": "https://www.gov.uk/government/publications/powered-transporters/information-sheet-guidance-on-powered-transporters",
     "warningText": "Powered unicycles and similar devices are motor vehicles but cannot ordinarily meet public-road licensing, registration and insurance requirements.",
-    "checkedAt": "2026-07-17",
+    "checkedAt": "2026-07-30",
     "speedLimitBasis": "Rental e-scooter trial reference limit"
   }
 ]

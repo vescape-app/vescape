@@ -18,3 +18,8 @@ test('control id lookup resolves alert-enabled metrics', () => {
   expect(telemetryByControlId['motor-current']).toBe(telemetry.motorCurrent)
   expect(telemetryByControlId.battery).toBe(telemetry.battVoltage)
 })
+
+test('current metrics cover the full alert threshold range', () => {
+  expect(telemetry.motorCurrent.chartRange).toEqual({ min: -300, max: 300 })
+  expect(telemetry.battCurrent.chartRange).toEqual({ min: -300, max: 300 })
+})

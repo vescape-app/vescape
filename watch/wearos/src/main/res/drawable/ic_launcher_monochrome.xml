@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome layer for themed icons. The system tints this by alpha, so the fill colour only has
+     to be opaque. Geometry is kept identical to ic_launcher_foreground so the themed and full-colour
+     icons sit in the same place. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="667"
+    android:viewportHeight="667">
+    <group
+        android:pivotX="333.5"
+        android:pivotY="333.5"
+        android:scaleX="0.53"
+        android:scaleY="0.53"
+        android:translateY="26">
+        <path
+            android:pathData="@string/sygnet_path"
+            android:fillColor="#FF000000"/>
+    </group>
+</vector>

@@ -1,12 +1,11 @@
 import { PauseIcon, PlayIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native'
+import { LayoutChangeEvent, StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
@@ -14,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { IconButton } from '@/components/base/IconButton'
+import { MonoValue } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
@@ -22,7 +22,7 @@ import {
 } from '@/modules/weather/store/rainViewerRadarStore'
 
 const FRAME_INTERVAL_MS = 450
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput)
+const TIME_FONT_SIZE = 12
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
   'worklet'
@@ -174,11 +174,6 @@ export function WeatherRadarTimeline() {
     left: `${progress.value * 100}%`,
   }))
 
-  const frameLabelProps = useAnimatedProps(() => ({
-    text: frameLabel.value,
-    value: frameLabel.value,
-  }))
-
   return (
     <View style={styles.container}>
       <IconButton
@@ -190,13 +185,7 @@ export function WeatherRadarTimeline() {
       />
       <View style={styles.timeline}>
         <View style={styles.timelineHeader}>
-          <AnimatedTextInput
-            animatedProps={frameLabelProps}
-            defaultValue="Radar"
-            editable={false}
-            pointerEvents="none"
-            style={styles.timeText}
-          />
+          <MonoValue text={frameLabel} size={TIME_FONT_SIZE} weight="800" style={styles.timeText} />
           <Text style={styles.rangeText}>{frameWindowLabel}</Text>
         </View>
         <GestureDetector gesture={scrubGesture}>
@@ -240,12 +229,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   timeText: {
-    color: theme.palette.slate.textPrimary,
-    fontFamily: theme.font('800'),
-    fontSize: 12,
-    margin: 0,
-    minWidth: 48,
-    padding: 0,
+    width: 64,
   },
   rangeText: {
     color: theme.palette.slate.textSecondary,

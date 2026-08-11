@@ -24,6 +24,7 @@ android {
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 26)
     targetSdkVersion safeExtGet("targetSdkVersion", 35)
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
   buildTypes {
@@ -49,7 +50,6 @@ repositories {
 
 dependencies {
   implementation project(':expo-modules-core')
-  implementation "com.posthog:posthog-android:3.44.2"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation "com.google.android.gms:play-services-wearable:18.2.0"
   implementation "androidx.wear:wear-remote-interactions:1.1.0"
@@ -59,4 +59,7 @@ dependencies {
   testImplementation "junit:junit:4.13.2"
   testImplementation "org.json:json:20231013"
   testImplementation "androidx.room:room-testing:2.8.4"
+  androidTestImplementation "androidx.test:core:1.6.1"
+  androidTestImplementation "androidx.test.ext:junit:1.2.1"
+  androidTestImplementation "androidx.test:runner:1.6.2"
 }

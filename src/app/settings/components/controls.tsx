@@ -15,6 +15,8 @@ import {
   BriefcaseIcon,
   CameraIcon,
   CloudSunIcon,
+  FadersIcon,
+  GaugeIcon,
   HeartIcon,
   HouseIcon,
   LightningIcon,
@@ -27,9 +29,12 @@ import {
   SpeedometerIcon,
   StopIcon,
   SwatchesIcon,
+  SlidersHorizontalIcon,
   TrashIcon,
+  WrenchIcon,
 } from 'phosphor-react-native'
 
+import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 import { IconHero } from '@/components/settings/IconHero'
 import { CircleButton } from '@/components/controls/CircleButton'
 import {
@@ -48,6 +53,7 @@ import {
 } from '@/components/controls/PillSelector'
 import { MapOptionSelector } from '@/components/controls/MapOptionSelector'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
+import { buildAlertTestRules } from '@/modules/alerts/lib/alertTest'
 import type { AlertPresetLevel, AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
@@ -56,12 +62,31 @@ import { theme } from '@/constants/theme'
 function ZonePillsShowcase() {
   const [selectedId, setSelectedId] = useState('home')
   const [wideSelectedId, setWideSelectedId] = useState('trail')
+  const [regularScrollId, setRegularScrollId] = useState('home')
+  const [tunePresetId, setTunePresetId] = useState('street')
+  const [mapModeId, setMapModeId] = useState('legalLimits')
   const iconOptions = [
     { id: 'trail', label: 'Trail', icon: MapPinIcon, color: theme.palette.violet },
     { id: 'street', label: 'Street', icon: NavigationArrowIcon, color: theme.palette.sky },
     { id: 'boost', label: 'Boost', icon: LightningIcon, color: theme.palette.amber },
     { id: 'camera', label: 'Camera', icon: CameraIcon, color: theme.palette.purple },
     { id: 'favorites', label: 'Favorites', icon: HeartIcon, color: theme.palette.red },
+  ]
+  const regularScrollOptions = [
+    { id: 'home', label: 'Home', icon: HouseIcon, color: theme.palette.green },
+    { id: 'work', label: 'Work', icon: BriefcaseIcon, color: theme.palette.sky },
+    { id: 'gym', label: 'Gym', icon: LightningIcon, color: theme.palette.amber },
+    { id: 'parents', label: 'Parents', icon: HeartIcon, color: theme.palette.red },
+    { id: 'garage', label: 'Garage', icon: WrenchIcon, color: theme.palette.orange },
+    { id: 'trailhead', label: 'Trailhead', icon: MapPinIcon, color: theme.palette.violet },
+  ]
+  const tunePresetOptions = [
+    { id: 'street', label: 'Street', icon: SlidersHorizontalIcon, color: theme.palette.sky },
+    { id: 'trail', label: 'Trail', icon: MapPinIcon, color: theme.palette.violet },
+    { id: 'race', label: 'Race', icon: GaugeIcon, color: theme.palette.red },
+    { id: 'commute', label: 'Commute', icon: BriefcaseIcon, color: theme.palette.green },
+    { id: 'flow', label: 'Flow', icon: FadersIcon, color: theme.palette.purple },
+    { id: 'torque', label: 'Torque', icon: LightningIcon, color: theme.palette.amber },
   ]
   const renderIconOptions = (includeAdd = false) => (
     <PillSelector activeId={wideSelectedId}>
@@ -91,6 +116,7 @@ function ZonePillsShowcase() {
               id="home"
               label="Home"
               icon={HouseIcon}
+              labelBehavior="always"
               badge={<PillSelectorDot status="enabled" />}
               color={theme.palette.green}
               onPress={() => setSelectedId('home')}
@@ -106,6 +132,7 @@ function ZonePillsShowcase() {
               id="work"
               label="Work"
               icon={BriefcaseIcon}
+              labelBehavior="always"
               badge={<PillSelectorDot status="disabled" />}
               color={theme.palette.green}
               onPress={() => setSelectedId('work')}
@@ -120,6 +147,7 @@ function ZonePillsShowcase() {
             <PillSelectorItem
               id="custom"
               label="Custom"
+              labelBehavior="always"
               badge={<PillSelectorDot status="draft" />}
               color={theme.palette.green}
               onPress={() => setSelectedId('custom')}
@@ -152,8 +180,50 @@ function ZonePillsShowcase() {
         </View>
 
         <View style={styles.selectorVariant}>
+          <Text style={styles.selectorCaption}>regular labels, six items, horizontal scroll</Text>
+          <View style={styles.narrowPreviewWide}>
+            <PillSelector activeId={regularScrollId}>
+              {regularScrollOptions.map((option) => (
+                <PillSelectorItem
+                  key={option.id}
+                  id={option.id}
+                  label={option.label}
+                  icon={option.icon}
+                  labelBehavior="always"
+                  color={option.color}
+                  onPress={() => setRegularScrollId(option.id)}
+                />
+              ))}
+              <PillSelectorAdd onPress={() => undefined} />
+            </PillSelector>
+          </View>
+        </View>
+
+        <View style={styles.selectorVariant}>
+          <Text style={styles.selectorCaption}>
+            tune presets, default collapsing labels, add button
+          </Text>
+          <View style={styles.narrowPreviewWide}>
+            <PillSelector activeId={tunePresetId} contained>
+              {tunePresetOptions.map((option) => (
+                <PillSelectorItem
+                  key={option.id}
+                  id={option.id}
+                  label={option.label}
+                  icon={option.icon}
+                  color={option.color}
+                  activeWidth={118}
+                  onPress={() => setTunePresetId(option.id)}
+                />
+              ))}
+              <PillSelectorAdd onPress={() => undefined} />
+            </PillSelector>
+          </View>
+        </View>
+
+        <View style={styles.selectorVariant}>
           <Text style={styles.selectorCaption}>map mode tabs, active label only</Text>
-          <PillSelector activeId="weather" contained fitContent style={styles.mapModeTabsPreview}>
+          <PillSelector activeId={mapModeId} contained fitContent style={styles.mapModeTabsPreview}>
             <PillSelectorItem
               id="map"
               label="Explore"
@@ -161,7 +231,7 @@ function ZonePillsShowcase() {
               activeLabelOnly
               color={theme.palette.violet}
               activeWidth={116}
-              onPress={() => undefined}
+              onPress={() => setMapModeId('map')}
             />
             <PillSelectorItem
               id="weather"
@@ -171,7 +241,10 @@ function ZonePillsShowcase() {
               color={theme.palette.sky}
               activeWidth={142}
               inactiveWidth={58}
-              onPress={() => undefined}
+              hint={<Text style={styles.mapModeHint}>23°</Text>}
+              hintVisibility="inactive"
+              hintGap={2}
+              onPress={() => setMapModeId('weather')}
             />
             <PillSelectorItem
               id="legalLimits"
@@ -181,7 +254,7 @@ function ZonePillsShowcase() {
               color={theme.palette.green}
               activeWidth={136}
               inactiveWidth={44}
-              onPress={() => undefined}
+              onPress={() => setMapModeId('legalLimits')}
             />
           </PillSelector>
         </View>
@@ -470,6 +543,29 @@ function AlertPresetControlShowcase() {
   const [editable, setEditable] = useState(true)
   const [disabled, setDisabled] = useState(false)
   const liveValue = useSharedValue<number | null>(null)
+  const testRules = useMemo(
+    () =>
+      buildAlertTestRules({
+        metric,
+        level,
+        boardTopSpeedKmh: 50,
+        hasBatteryConfig: true,
+        customRules:
+          level === 'custom'
+            ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
+                ...rule,
+                controlId: metric,
+                thresholdMax: null,
+                enabled: true,
+                soundType: metric === 'speed' || metric === 'duty' ? 'preset:tick' : 'preset:beep',
+                repeatEverySeconds: null,
+                beepCount: ALERT_BEEP_COUNT_DEFAULT,
+                createdAt: 0,
+              }))
+            : [],
+      }),
+    [level, metric],
+  )
 
   useEffect(() => {
     if (!live) {
@@ -516,6 +612,7 @@ function AlertPresetControlShowcase() {
             : undefined
         }
         disabled={disabled}
+        testRules={testRules}
         onCustomize={editable ? () => setLevel('custom') : undefined}
         onDiscardCustom={editable ? () => setLevel('normal') : undefined}
       />
@@ -580,7 +677,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingVertical: 10,
   },
+  narrowPreviewWide: {
+    width: 260,
+    alignSelf: 'center',
+    overflow: 'hidden',
+    paddingVertical: 10,
+  },
   mapModeTabsPreview: {
     alignSelf: 'center',
+  },
+  mapModeHint: {
+    color: theme.palette.sky.color,
+    fontSize: 11,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
 })

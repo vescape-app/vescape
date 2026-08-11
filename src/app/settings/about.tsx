@@ -1,4 +1,4 @@
-import { Linking, ScrollView, StyleSheet, View } from 'react-native'
+import { Linking, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CrownIcon, PaletteIcon, ShieldCheckIcon, UsersIcon } from 'phosphor-react-native'
 

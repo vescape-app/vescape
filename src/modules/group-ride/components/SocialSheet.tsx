@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
@@ -41,15 +41,13 @@ import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { theme } from '@/constants/theme'
 
 interface SocialSheetProps {
-  accountWidget: ReactNode
   /** Called before navigating away so the host can dismiss the sheet. */
   onNavigate: () => void
 }
 
-export function SocialSheet({ accountWidget, onNavigate }: SocialSheetProps) {
+export function SocialSheet({ onNavigate }: SocialSheetProps) {
   return (
-    <View style={styles.list}>
-      {accountWidget}
+    <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
       <GroupRideWidget />
       <LinkWidget

@@ -1,11 +1,12 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { type TelemetryChartPoint } from '@/components/charts/chartMath'
-import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
+import { TelemetryLineChart, type ChartTrimConfig } from '@/components/charts/TelemetryLineChart'
 import { InfoModal } from '@/components/modals/InfoModal'
+import { theme } from '@/constants/theme'
 import {
   OPTIONAL_CHART_METRICS,
   SPEED_CHART_DEF,
@@ -35,21 +36,31 @@ interface HistoryTelemetryPanelProps {
   movingStartAtMs: number | null
   movingEndAtMs: number | null
   deviceName: string
+  navigationTitle?: string
+  navigationSubtitle?: string
   samples: TelemetrySample[]
   canPrevious: boolean
   canNext: boolean
+  favoriteMode: boolean
+  favoriteRanges: { startMs: number; endMs: number }[]
+  favorited: boolean
+  actionDisabled: boolean
   mediaAssets: MediaHistoryAsset[]
   mediaUnmatched: MediaAssetInput[]
   mediaLoading: boolean
   mediaError: string | null
+  listButtonRef: RefObject<View | null>
   onPrevious: () => void
   onNext: () => void
   onOpenList: () => void
   onAddMedia: () => void
   onOpenMedia: (asset: MediaAssetInput) => void
+  onToggleFavorite: () => void
   onSeek?: (timeMs: number) => void
   onMetricInteraction?: (metric: HistoryMetricKey) => void
   onHeightChange?: (height: number) => void
+  /** When set, the primary chart becomes a Favorite range trimmer and scrubbing is suspended. */
+  trim?: ChartTrimConfig
 }
 
 const MAP_SEEK_THROTTLE_MS = 33
@@ -60,21 +71,30 @@ export function HistoryTelemetryPanel({
   movingStartAtMs,
   movingEndAtMs,
   deviceName,
+  navigationTitle,
+  navigationSubtitle,
   samples,
   canPrevious,
   canNext,
+  favoriteMode,
+  favoriteRanges,
+  favorited,
+  actionDisabled,
   mediaAssets,
   mediaUnmatched,
   mediaLoading,
   mediaError,
+  listButtonRef,
   onPrevious,
   onNext,
   onOpenList,
   onAddMedia,
   onOpenMedia,
+  onToggleFavorite,
   onSeek,
   onMetricInteraction,
   onHeightChange,
+  trim,
 }: HistoryTelemetryPanelProps) {
   const insets = useSafeAreaInsets()
   const [headTimeMs, setHeadTimeMs] = useState<number | null>(null)
@@ -103,6 +123,14 @@ export function HistoryTelemetryPanel({
     pointColors,
     excludedRanges,
   })
+  const favoriteChartHighlights = useMemo(
+    () =>
+      favoriteRanges.map((range) => ({
+        ...range,
+        color: theme.alpha(theme.status.favorite.color, 0.12),
+      })),
+    [favoriteRanges],
+  )
 
   const rideWindow = rideMovingWindow({ movingStartAtMs, movingEndAtMs })
   const titleStartMs = rideWindow?.startMs ?? startAtMs
@@ -146,21 +174,30 @@ export function HistoryTelemetryPanel({
       style={[styles.panel, { bottom: bottomInset }]}
       onLayout={(e) => onHeightChange?.(e.nativeEvent.layout.height)}
     >
-      <HistoryPanelNav
-        titleStartMs={titleStartMs}
-        titleEndMs={titleEndMs}
-        deviceName={deviceName}
-        canPrevious={canPrevious}
-        canNext={canNext}
-        mediaCount={mediaAssets.length + mediaUnmatched.length}
-        mediaLoading={mediaLoading}
-        mediaButtonRef={mediaButtonRef}
-        onPrevious={onPrevious}
-        onNext={onNext}
-        onOpenList={onOpenList}
-        onOpenMediaDrawer={() => setMediaDrawerVisible(true)}
-        onOpenShareInfo={() => setShareInfoVisible(true)}
-      />
+      {!trim ? (
+        <HistoryPanelNav
+          titleStartMs={titleStartMs}
+          titleEndMs={titleEndMs}
+          deviceName={deviceName}
+          title={navigationTitle}
+          subtitle={navigationSubtitle}
+          canPrevious={canPrevious}
+          canNext={canNext}
+          favoriteMode={favoriteMode}
+          favorited={favorited}
+          actionDisabled={actionDisabled}
+          mediaCount={mediaAssets.length + mediaUnmatched.length}
+          mediaLoading={mediaLoading}
+          mediaButtonRef={mediaButtonRef}
+          listButtonRef={listButtonRef}
+          onPrevious={onPrevious}
+          onNext={onNext}
+          onOpenList={onOpenList}
+          onOpenMediaDrawer={() => setMediaDrawerVisible(true)}
+          onToggleFavorite={onToggleFavorite}
+          onOpenShareInfo={() => setShareInfoVisible(true)}
+        />
+      ) : null}
       {hasChartData && headPoint && optionalChartConfig && headSample != null && (
         <>
           <TelemetryLineChart
@@ -172,13 +209,16 @@ export function HistoryTelemetryPanel({
             currentPoint={headPoint}
             height={48}
             containerStyle={styles.chart}
+            timeMode="clock"
             formatValue={SPEED_CHART_DEF.formatValue}
             getPointColor={pointColors.speed}
             onGestureStart={() => onMetricInteraction?.('speed')}
-            onPointSelected={handlePointSelected}
+            onPointSelected={trim ? undefined : handlePointSelected}
             scrubTimeMs={scrubTimeMs}
-            onScrubTimeChange={handleScrubTimeChange}
+            onScrubTimeChange={trim ? undefined : handleScrubTimeChange}
             excludedRanges={excludedRanges.speed}
+            timeRangeHighlights={favoriteChartHighlights}
+            trim={trim}
           />
 
           {OPTIONAL_CHART_METRICS.filter((m) => activeCharts.has(m.key)).map((metric) => {
@@ -194,12 +234,13 @@ export function HistoryTelemetryPanel({
                 currentPoint={{ date: new Date(headSample.capturedAtMs), value: cfg.headValue }}
                 height={40}
                 containerStyle={styles.chart}
+                timeMode="clock"
                 formatValue={cfg.formatValue}
                 getPointColor={cfg.getPointColor}
                 onGestureStart={() => onMetricInteraction?.(metric.key)}
-                onPointSelected={handlePointSelected}
+                onPointSelected={trim ? undefined : handlePointSelected}
                 scrubTimeMs={scrubTimeMs}
-                onScrubTimeChange={handleScrubTimeChange}
+                onScrubTimeChange={trim ? undefined : handleScrubTimeChange}
                 excludedRanges={cfg.excludedRanges}
                 secondary={cfg.secondary}
               />
@@ -210,17 +251,19 @@ export function HistoryTelemetryPanel({
           <HistoryMetricLegend />
         </>
       )}
-      <HistoryRideMediaDrawer
-        visible={mediaDrawerVisible}
-        triggerRef={mediaButtonRef}
-        assets={mediaAssets}
-        unmatched={mediaUnmatched}
-        loading={mediaLoading}
-        error={mediaError}
-        onClose={() => setMediaDrawerVisible(false)}
-        onAdd={onAddMedia}
-        onOpenMedia={onOpenMedia}
-      />
+      {favoriteMode ? (
+        <HistoryRideMediaDrawer
+          visible={mediaDrawerVisible}
+          triggerRef={mediaButtonRef}
+          assets={mediaAssets}
+          unmatched={mediaUnmatched}
+          loading={mediaLoading}
+          error={mediaError}
+          onClose={() => setMediaDrawerVisible(false)}
+          onAdd={onAddMedia}
+          onOpenMedia={onOpenMedia}
+        />
+      ) : null}
       <InfoModal
         visible={shareInfoVisible}
         title="Share Ride"

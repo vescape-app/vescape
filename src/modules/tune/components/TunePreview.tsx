@@ -23,7 +23,7 @@ import {
 import type { TuneProfileFieldValue } from 'vescape-core'
 
 import { interaction, theme } from '@/constants/theme'
-import { useSkiaFont } from '@/hooks/useSkiaFont'
+import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import {
   DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
   MAX_PITCH_INPUT_DEGREES,
@@ -266,9 +266,9 @@ export function TunePreview({
     return path
   })
 
-  const readoutFont = useSkiaFont('500', READOUT_FONT_SIZE)
-  const readoutBoldFont = useSkiaFont('700', READOUT_FONT_SIZE)
-  const speedFont = useSkiaFont('700', SPEED_FONT_SIZE)
+  const readoutFont = useSkiaMonoFont('500', READOUT_FONT_SIZE)
+  const readoutBoldFont = useSkiaMonoFont('700', READOUT_FONT_SIZE)
+  const speedFont = useSkiaMonoFont('700', SPEED_FONT_SIZE)
   const currentX = useDerivedValue(() =>
     readoutFont ? CURRENT_WIDTH - readoutFont.getTextWidth(currentStr.value) : 0,
   )

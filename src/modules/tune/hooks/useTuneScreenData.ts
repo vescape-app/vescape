@@ -17,12 +17,13 @@ import {
 import { isDisplayableFieldValue } from '@/modules/tune/lib/fieldValues'
 import { basicSlidersFromGroups } from '@/modules/tune/lib/sliderDefinitions'
 import { getSyncBarState } from '@/modules/tune/lib/syncBarState'
+import { getTuneCompatibilityIssue } from '@/modules/tune/lib/tuneCompatibility'
 
 type ProfileState =
   | { phase: 'loading'; error: null }
   | { phase: 'ready'; error: null }
   | { phase: 'empty'; error: null }
-  | { phase: 'error'; error: string }
+  | { phase: 'error'; error: string; retry: 'online' | 'offline' }
 
 export async function refreshBoardSnapshotAndProfiles({
   boardConnected,
@@ -115,6 +116,13 @@ export function useTuneScreenData() {
       : null
   const tuneCompatibility =
     currentBoardSnapshot?.refloatBaseVersion ?? selectedBoard?.link?.refloatBaseVersion ?? null
+  const tuneCompatibilityIssue = useMemo(
+    () =>
+      boardSnapshotStatus === 'ready'
+        ? getTuneCompatibilityIssue(currentBoardSnapshot, tuneCompatibility)
+        : null,
+    [boardSnapshotStatus, currentBoardSnapshot, tuneCompatibility],
+  )
   const boardsLoaded = useBoardStore((s) => s.hasLoaded)
   const loadBoards = useBoardStore((s) => s.load)
   const profiles = useTuneProfileStore((s) => s.profiles)
@@ -207,9 +215,14 @@ export function useTuneScreenData() {
     }
     if (profileLoading && !activeProfile) return { phase: 'loading', error: null }
     if (boardConnected && boardSnapshotError && !activeProfile) {
-      return { phase: 'error', error: boardSnapshotError }
+      return { phase: 'error', error: boardSnapshotError, retry: 'online' }
     }
-    if (profileError && !activeProfile) return { phase: 'error', error: profileError }
+    if (boardConnected && tuneCompatibilityIssue && !activeProfile) {
+      return { phase: 'error', error: tuneCompatibilityIssue.message, retry: 'online' }
+    }
+    if (profileError && !activeProfile) {
+      return { phase: 'error', error: profileError, retry: 'offline' }
+    }
     if (profileBoardId === selectedBoardId && profiles.length === 0) {
       return { phase: 'empty', error: null }
     }
@@ -225,6 +238,7 @@ export function useTuneScreenData() {
     profileLoading,
     profiles.length,
     selectedBoardId,
+    tuneCompatibilityIssue,
   ])
 
   const displayGroups = useMemo(() => {
@@ -317,5 +331,6 @@ export function useTuneScreenData() {
     schemaMismatchFields,
     selectedBoardId,
     syncBarState,
+    tuneCompatibilityIssue,
   }
 }

@@ -12,11 +12,15 @@ import Foundation
 internal final class LiveSeriesEmitter {
   private static let intervalMs = 1_000
   private static let buckets = 64
+  /// One display frame — the fastest an emit can usefully arrive. See `scaledIntervalMs`.
+  private static let minIntervalMs = 16
 
   /// Send a native event to JS. Wired by the coordinator.
   var emit: ((String, [String: Any?]) -> Void)?
   /// Current connection generation, stamped onto each emit so JS can drop stale series.
   var generation: () -> Int64 = { 0 }
+  /// How fast session time is running; see `scaledIntervalMs`. Wired by the coordinator.
+  var speed: () -> Double = { 1.0 }
 
   private var windowMs: Int64 = 5 * 60_000
   /// Guards `samples`: appended/pruned on the main (BLE callback) queue, but read via
@@ -83,6 +87,20 @@ internal final class LiveSeriesEmitter {
     }
   }
 
+  /// The interval is a wall-clock throttle on bridge traffic, not a description of the ride, so it
+  /// stays on wall time. What it does have to track is the *rate* of the data feeding it: a replay
+  /// warming up delivers a minute of ride every couple of seconds, and a fixed 1s timer would hand
+  /// JS that minute in a couple of frames — the sparklines jump rather than fast-forward. Dividing
+  /// by the session speed keeps each emit as current as it would be live.
+  ///
+  /// Floored at one display frame: emitting faster than the screen refreshes is pure waste, and it
+  /// bounds the cost of an extreme speed.
+  private func scaledIntervalMs() -> Int {
+    let currentSpeed = speed()
+    guard currentSpeed > 1.0 else { return Self.intervalMs }
+    return max(Self.minIntervalMs, Int(Double(Self.intervalMs) / currentSpeed))
+  }
+
   private func scheduleTick() {
     guard active else { return }
     tickSeq &+= 1
@@ -92,7 +110,7 @@ internal final class LiveSeriesEmitter {
       self.emitSeries()
       self.scheduleTick()
     }
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(Self.intervalMs) / 1000.0, execute: work)
+    DispatchQueue.main.asyncAfter(deadline: .now() + Double(scaledIntervalMs()) / 1000.0, execute: work)
   }
 
   private func emitSeries() {

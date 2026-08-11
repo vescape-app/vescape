@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { useIsFocused, useNavigation, useRouter } from 'expo-router'
@@ -41,13 +41,13 @@ import { TunePreviewSection } from '@/modules/tune/components/TunePreviewSection
 import { routes } from '@/navigation/routes'
 import { TextPromptModal } from '@/components/modals/TextPromptModal'
 import { BoardPickerModal } from '@/modules/tune/components/BoardPickerModal'
-import { InfoBadge } from '@/components/base/InfoBadge'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import type { BasicSliderItem } from '@/modules/tune/lib/sliderDefinitions'
 import { useTuneScreenData } from '@/modules/tune/hooks/useTuneScreenData'
 import { theme } from '@/constants/theme'
 import { useTuneModals } from '@/modules/tune/hooks/useTuneModals'
 import type { TuneProfileColorId, TuneProfileIconId } from '@/modules/tune/lib/profileMetadata'
+import { reportTuneCompatibilityIssue } from '@/modules/tune/lib/tuneCompatibilityReporting'
 
 // TODO: Split screen orchestration to reduce cyclomatic complexity below 30.
 // eslint-disable-next-line complexity
@@ -80,7 +80,9 @@ export default function TuneScreen() {
     schemaMismatchFields,
     selectedBoardId,
     syncBarState,
+    tuneCompatibilityIssue,
   } = useTuneScreenData()
+  const reportedCompatibilityIssue = useRef<string | null>(null)
   const setActiveProfile = useTuneProfileStore((s) => s.setActiveProfile)
   const revertField = useTuneProfileStore((s) => s.revertField)
   const acceptBoardField = useTuneProfileStore((s) => s.acceptBoardField)
@@ -90,6 +92,16 @@ export default function TuneScreen() {
   const syncToBoard = useTuneProfileStore((s) => s.syncToBoard)
 
   const modals = useTuneModals(activeProfile, basicSliders, draftFields, allBoards, selectedBoardId)
+
+  useEffect(() => {
+    if (!tuneCompatibilityIssue || !boardSnapshot) return
+    const reportKey = [selectedBoardId, boardSnapshot.refloatVersion, boardSnapshot.fwVersion].join(
+      ':',
+    )
+    if (reportedCompatibilityIssue.current === reportKey) return
+    reportedCompatibilityIssue.current = reportKey
+    reportTuneCompatibilityIssue(tuneCompatibilityIssue, boardSnapshot)
+  }, [boardSnapshot, selectedBoardId, tuneCompatibilityIssue])
 
   const openHistory = useCallback(() => {
     router.push(routes.tuneHistory)
@@ -217,25 +229,38 @@ export default function TuneScreen() {
               firmwareCommandBlockReason ??
               'Connect to your board to read its current configuration and create your first Tune Profile'
             }
+            action={
+              boardSnapshot?.refloatBaseVersion && firmwareCommandsTrusted ? (
+                <Button
+                  label="Create first profile"
+                  icon={FadersIcon}
+                  variant="tune"
+                  size="lg"
+                  style={styles.firstProfileAction}
+                  onPress={() => void modals.storeCreateProfile('Main', '', '')}
+                />
+              ) : null
+            }
           />
-          {boardSnapshot?.refloatBaseVersion && firmwareCommandsTrusted ? (
-            <Button
-              label="Create tune"
-              icon={FadersIcon}
-              onPress={() => void modals.storeCreateProfile('Main', '', '')}
-            />
-          ) : null}
         </View>
       ) : null}
 
       {profileState.phase === 'error' && !hasTuneView ? (
         <View style={styles.mainState}>
           <WarningCircleIcon size={28} color={theme.status.error.text} />
-          <Text style={styles.errorText}>{profileState.error}</Text>
+          <Text selectable style={styles.errorText}>
+            {profileState.error}
+          </Text>
           <Button
             label="Retry"
             icon={ArrowsClockwiseIcon}
-            onPress={() => (selectedBoardId ? void loadOffline(selectedBoardId) : undefined)}
+            onPress={() => {
+              if (profileState.retry === 'online') {
+                void loadOnline()
+              } else if (selectedBoardId) {
+                void loadOffline(selectedBoardId)
+              }
+            }}
           />
         </View>
       ) : null}
@@ -283,72 +308,6 @@ export default function TuneScreen() {
               </Text>
             </View>
           </Pressable>
-        ) : null}
-
-        {boardSnapshot ? (
-          <View style={styles.metaRow}>
-            <View style={styles.metaBadges}>
-              {boardSnapshot.fwVersion ? (
-                <InfoBadge
-                  label={boardSnapshot.fwVersion}
-                  onPress={() =>
-                    modals.showBadgeInfo(
-                      'Firmware',
-                      'Firmware reported by the connected controller. This is useful diagnostic context, but the config decoder uses the board XML schema as the source of truth.',
-                    )
-                  }
-                />
-              ) : null}
-              {boardSnapshot.refloatVersion ? (
-                <InfoBadge
-                  label={boardSnapshot.refloatVersion}
-                  onPress={() =>
-                    modals.showBadgeInfo(
-                      'Refloat',
-                      'Refloat package version reported by the connected controller.',
-                    )
-                  }
-                />
-              ) : null}
-              <InfoBadge
-                label={`CAN ${boardSnapshot.canId}`}
-                onPress={() =>
-                  modals.showBadgeInfo(
-                    'CAN ID',
-                    `Controller CAN ID ${boardSnapshot.canId}. Refloat config commands are forwarded to this controller before reading the schema and binary config.`,
-                  )
-                }
-              />
-              <InfoBadge
-                label={`${boardSnapshot.rawConfigLength} bytes`}
-                onPress={() =>
-                  modals.showBadgeInfo(
-                    'Config Size',
-                    `${boardSnapshot.rawConfigLength} bytes is the size of the raw Refloat custom config payload read from the controller. The app decodes only known tune fields from that binary struct.`,
-                  )
-                }
-              />
-              {boardSnapshot.missingFieldIds.length > 0 ? (
-                <InfoBadge
-                  label={`${boardSnapshot.missingFieldIds.length} missing`}
-                  danger
-                  onPress={() =>
-                    modals.showBadgeInfo(
-                      'Missing Fields',
-                      `These allowlisted fields were not present in the board schema: ${boardSnapshot.missingFieldIds.join(', ')}`,
-                    )
-                  }
-                />
-              ) : null}
-            </View>
-            {boardConnected ? (
-              <IconButton
-                icon={ArrowsClockwiseIcon}
-                onPress={() => void loadOnline()}
-                loading={boardSnapshotStatus === 'loading'}
-              />
-            ) : null}
-          </View>
         ) : null}
 
         <TuneGroupGrid title="Basic">
@@ -592,6 +551,9 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 24,
   },
+  firstProfileAction: {
+    minWidth: 240,
+  },
   stateText: {
     color: theme.palette.slate.textSecondary,
     fontSize: 15,
@@ -638,18 +600,5 @@ const styles = StyleSheet.create({
     color: theme.palette.yellow.color,
     fontSize: 11,
     fontWeight: '700',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  metaBadges: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
   },
 })

@@ -113,9 +113,8 @@ struct LinkIdentity {
   var refloatVersion: String?
   var refloatBaseVersion: String?
 
-  // refloatBaseVersion is derived from refloatVersion and legitimately absent
-  // for two-part versions (e.g. "Refloat 1.1"), so it is not required here —
-  // matches/mismatches still compare it when present.
+  // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
+  // version strings, so it is not required here; matches/mismatches still compare it when present.
   var isComplete: Bool {
     linkVersion == 3 &&
       hasBms != nil &&
@@ -141,7 +140,7 @@ struct LinkIdentity {
     guard let version = version?.trimmingCharacters(in: .whitespacesAndNewlines), !version.isEmpty else {
       return nil
     }
-    guard let match = version.range(of: #"\b\d+\.\d+\.\d+\b"#, options: .regularExpression) else {
+    guard let match = version.range(of: #"\b\d+\.\d+(?:\.\d+)?\b"#, options: .regularExpression) else {
       return nil
     }
     return String(version[match])

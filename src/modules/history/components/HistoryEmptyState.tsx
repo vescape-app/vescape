@@ -1,6 +1,6 @@
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Canvas, Group, RadialGradient, Rect, vec } from '@shopify/react-native-skia'
-import { ClockCounterClockwiseIcon } from 'phosphor-react-native'
+import { ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
 
 import { Placeholder } from '@/components/base/Placeholder'
 import { theme } from '@/constants/theme'
@@ -31,14 +31,22 @@ function CenterDim() {
   )
 }
 
-export function HistoryEmptyState() {
+interface HistoryEmptyStateProps {
+  favoriteMode?: boolean
+}
+
+export function HistoryEmptyState({ favoriteMode = false }: HistoryEmptyStateProps) {
   return (
     <View pointerEvents="none" style={styles.wrap}>
       <CenterDim />
       <Placeholder
-        icon={ClockCounterClockwiseIcon}
-        title="No rides yet"
-        description="Record your first ride and its stats will show up here"
+        icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
+        title={favoriteMode ? 'No favorites yet' : 'No rides yet'}
+        description={
+          favoriteMode
+            ? 'Star a ride in History to keep it here'
+            : 'Record your first ride and its stats will show up here'
+        }
       />
     </View>
   )

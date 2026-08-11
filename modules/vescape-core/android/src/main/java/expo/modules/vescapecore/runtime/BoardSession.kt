@@ -91,9 +91,8 @@ data class LinkIdentity(
     val refloatVersion: String? = null,
     val refloatBaseVersion: String? = null,
 ) {
-    // refloatBaseVersion is derived from refloatVersion and legitimately absent
-    // for two-part versions (e.g. "Refloat 1.1"), so it is not required here —
-    // matches/mismatches still compare it when present.
+    // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
+    // version strings, so it is not required here; matches/mismatches still compare it when present.
     val isComplete: Boolean
         get() = linkVersion == 3 &&
             hasBms != null &&
@@ -117,6 +116,6 @@ data class LinkIdentity(
             version
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
-                ?.let { Regex("""\b(\d+\.\d+\.\d+)\b""").find(it)?.groupValues?.get(1) }
+                ?.let { Regex("""\b(\d+\.\d+(?:\.\d+)?)\b""").find(it)?.groupValues?.get(1) }
     }
 }

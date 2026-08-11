@@ -17,14 +17,9 @@ fun interface LocalDiagnosticSink {
     fun record(eventName: String, properties: Map<String, Any?>)
 }
 
-fun interface RemoteDiagnosticSink {
-    fun capture(eventName: String, properties: Map<String, Any?>)
-}
-
 // @parity /modules/vescape-core/ios/diagnostics/DiagnosticsRecorder.swift
 class DiagnosticsRecorder(
     private val local: LocalDiagnosticSink,
-    private val remote: RemoteDiagnosticSink,
     private val context: () -> DiagnosticContext,
 ) {
     private var telemetryParseFailedReported = false
@@ -39,7 +34,6 @@ class DiagnosticsRecorder(
 
     fun captureDiagnostic(eventName: String, properties: Map<String, Any?>) {
         local.record(eventName, properties)
-        remote.capture(eventName, properties)
     }
 
     fun recordLocalDiagnostic(

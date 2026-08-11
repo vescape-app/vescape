@@ -60,7 +60,7 @@ You write one function and the framework manages when and how it executes.
 | `unstable_useServerRendering`   | Required                       | Not required                          |
 | Loader runs on                  | Live server (every request)    | Build time (static generation)        |
 | `request` object                | Full access (headers, cookies) | Not available                         |
-| Hosting                         | Node.js server (EAS Hosting)   | Any static host (Netlify, Vercel, S3) |
+| Hosting                         | Any Node.js host               | Any static host (Netlify, Vercel, S3) |
 
 ## Imports
 
@@ -321,7 +321,7 @@ When a loader throws (including `StatusError`), the nearest `ErrorBoundary` catc
 | **When loader runs** | Every request (live)            | At build time (`npx expo export`) |
 | **Data freshness**   | Fresh on initial server request | Stale until next build            |
 | **`request` object** | Full access                     | Not available                     |
-| **Hosting**          | Node.js server (EAS Hosting)    | Any static host                   |
+| **Hosting**          | Any Node.js host                | Any static host                   |
 | **Use case**         | Personalized/dynamic content    | Marketing pages, blogs, docs      |
 
 **Choose server** when data changes frequently or content is personalized (cookies, auth, headers).

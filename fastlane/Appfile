@@ -1,8 +1,8 @@
 json_key_file(ENV["SUPPLY_JSON_KEY"])
 package_name("app.vescape")
 
-# iOS — uncomment once ready:
-# for_platform(:ios) do
-#   app_identifier("app.vescape")
-#   apple_id("your@email.com")
-# end
+for_platform(:ios) do
+  app_identifier("app.vescape")
+  apple_id("6796812206")
+  itc_team_id("6796812206")
+end

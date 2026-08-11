@@ -18,6 +18,7 @@ import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 const FOOTPAD_ACTIVE_V = 0.8
+const VALUE_FONT_SIZE = 13
 export const STRIP_CONTENT_HEIGHT = 160
 
 interface MetricSparklineProps {
@@ -105,6 +106,9 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               value={tick.motorTemp}
               decimals={telemetry.motorTemp.decimals}
               unit={telemetry.motorTemp.unit}
+              size={VALUE_FONT_SIZE}
+              weight="800"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -124,6 +128,9 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               value={tick.controllerTemp}
               decimals={telemetry.controllerTemp.decimals}
               unit={telemetry.controllerTemp.unit}
+              size={VALUE_FONT_SIZE}
+              weight="800"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -143,6 +150,9 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               value={tick.motorCurrent}
               decimals={telemetry.motorCurrent.decimals}
               unit={telemetry.motorCurrent.unit}
+              size={VALUE_FONT_SIZE}
+              weight="800"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -162,6 +172,9 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               value={tick.batteryCurrent}
               decimals={telemetry.battCurrent.decimals}
               unit={telemetry.battCurrent.unit}
+              size={VALUE_FONT_SIZE}
+              weight="800"
+              align="left"
               style={styles.value}
             />
             <MetricSparkline
@@ -244,10 +257,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   value: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 13,
-    fontFamily: 'monospace',
-    fontWeight: '800',
+    alignSelf: 'stretch',
   },
   bottomRow: {
     flexDirection: 'row',

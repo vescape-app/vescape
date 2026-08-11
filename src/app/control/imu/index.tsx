@@ -19,6 +19,9 @@ import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { theme } from '@/constants/theme'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
+const ATTITUDE_FONT_SIZE = 11
+const LIVE_FONT_SIZE = 24
+
 const pitchCfg = telemetry.pitch
 const rollCfg = telemetry.roll
 const balanceCfg = telemetry.balancePitch
@@ -36,7 +39,16 @@ function AttitudeView({ title, value, unit, accentColor, children }: AttitudeVie
     <View style={styles.attitudeView}>
       <View style={styles.attitudeHeader}>
         <Text style={styles.attitudeTitle}>{title}</Text>
-        <TickText value={value} decimals={1} unit={unit} style={styles.attitudeValue} />
+        <TickText
+          value={value}
+          decimals={1}
+          unit={unit}
+          size={ATTITUDE_FONT_SIZE}
+          weight="600"
+          color={theme.palette.slate.textSecondary}
+          align="right"
+          style={styles.attitudeValue}
+        />
       </View>
       <View style={[styles.attitudeAccent, { backgroundColor: accentColor }]} />
       <View style={styles.attitudeCanvas}>{children}</View>
@@ -60,7 +72,10 @@ function LiveMetricReadout({ label, value, decimals, unit, color }: LiveMetricRe
         value={value}
         decimals={decimals}
         unit={unit}
-        style={[styles.liveValue, { color }]}
+        size={LIVE_FONT_SIZE}
+        weight="800"
+        color={color}
+        style={styles.liveValue}
       />
     </View>
   )
@@ -241,10 +256,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
   liveValue: {
-    fontSize: 24,
-    fontFamily: 'monospace',
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
+    alignSelf: 'stretch',
   },
   attitudePanel: {
     gap: 10,
@@ -288,10 +300,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
   attitudeValue: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 11,
-    fontFamily: 'monospace',
-    fontWeight: '600',
+    minWidth: 56,
   },
   attitudeAccent: {
     height: 2,

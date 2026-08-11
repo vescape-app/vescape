@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { dutyPercent, fmtDutyPercent, fmtTimeAgo } from './format'
+import { dutyPercent, fmtCompactCount, fmtDutyPercent, fmtRideDuration, fmtTimeAgo } from './format'
 
 describe('dutyPercent', () => {
   test('hides ReFloat idle quantization', () => {
@@ -27,5 +27,36 @@ describe('fmtTimeAgo', () => {
 
   test('clock skew never yields negative age', () => {
     expect(fmtTimeAgo(now + 60_000, now)).toBe('now')
+  })
+})
+
+describe('fmtCompactCount', () => {
+  test('keeps small counts exact and abbreviates larger ones', () => {
+    expect(fmtCompactCount(0)).toBe('0')
+    expect(fmtCompactCount(999)).toBe('999')
+    expect(fmtCompactCount(1000)).toBe('1.0k')
+    expect(fmtCompactCount(1240)).toBe('1.2k')
+    expect(fmtCompactCount(12_400)).toBe('12k')
+    expect(fmtCompactCount(100_000)).toBe('100k')
+    expect(fmtCompactCount(999_999)).toBe('1.0M')
+    expect(fmtCompactCount(2_500_000)).toBe('2.5M')
+  })
+
+  test('never renders a negative or fractional count', () => {
+    expect(fmtCompactCount(-5)).toBe('0')
+    expect(fmtCompactCount(3.7)).toBe('4')
+  })
+})
+
+describe('fmtRideDuration', () => {
+  test('rounds up so a short ride is never zero minutes', () => {
+    expect(fmtRideDuration(0)).toBe('< 1 min')
+    expect(fmtRideDuration(40)).toBe('1 min')
+    expect(fmtRideDuration(3540)).toBe('59 min')
+  })
+
+  test('drops the empty minutes on a whole hour', () => {
+    expect(fmtRideDuration(3600)).toBe('1 h')
+    expect(fmtRideDuration(4800)).toBe('1 h 20 min')
   })
 })

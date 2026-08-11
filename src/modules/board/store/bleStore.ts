@@ -222,12 +222,18 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   const shouldSeedLiveState = hasRecentTelemetry || hasRecentLocations
   let live
 
+  // Every live state carries the authoritative generation, and `ingestTick` drops any tick that
+  // disagrees with it. Syncing only on the seeding paths left a hole: a session that connects
+  // before the UI mounts and has no telemetry or GPS to seed from yet (a replay, or a board that
+  // connects faster than its first frame) leaves the runtime on the previous generation, so every
+  // later tick is discarded and the gauges read "—" while the store-fed sparklines keep updating.
+  liveTelemetryRuntime.syncConnectionSeq(state.board.connectionSeq)
+
   if (isBoardConnected) {
     live = shouldSeedLiveState
       ? liveTelemetryRuntime.seedFromLiveState(state)
       : liveTelemetryRuntime.getSnapshot()
   } else {
-    liveTelemetryRuntime.syncConnectionSeq(state.board.connectionSeq)
     useLiveSeriesStore.getState().clear()
     live = liveTelemetryRuntime.clearBoardTelemetry()
   }

@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: gauge-speed
+- extendedWaitUntil:
+    visible: 'Speed'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/02-speed
+- runFlow: ../fixture/_home.yaml

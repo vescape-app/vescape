@@ -10,6 +10,8 @@ interface TextPromptModalContentProps {
   placeholder?: string
   initialValue: string
   confirmLabel: string
+  /** Allow confirming with an empty value, for fields that can be cleared (e.g. optional names). */
+  allowEmpty?: boolean
   onConfirm: (value: string) => void
   onDismiss: () => void
 }
@@ -19,6 +21,7 @@ function TextPromptModalContent({
   placeholder,
   initialValue,
   confirmLabel,
+  allowEmpty,
   onConfirm,
   onDismiss,
 }: TextPromptModalContentProps) {
@@ -42,7 +45,7 @@ function TextPromptModalContent({
           </Pressable>
           <Pressable
             style={styles.promptConfirmBtn}
-            onPress={() => text.trim() && onConfirm(text.trim())}
+            onPress={() => (allowEmpty || text.trim()) && onConfirm(text.trim())}
           >
             <CheckIcon size={15} color={theme.palette.slate.surfaceDeep} weight="bold" />
             <Text style={styles.promptConfirmText}>{confirmLabel}</Text>
@@ -59,6 +62,7 @@ interface TextPromptModalProps {
   placeholder?: string
   initialValue: string
   confirmLabel: string
+  allowEmpty?: boolean
   onConfirm: (value: string) => void
   onDismiss: () => void
 }
@@ -69,6 +73,7 @@ export function TextPromptModal({
   placeholder,
   initialValue,
   confirmLabel,
+  allowEmpty,
   onConfirm,
   onDismiss,
 }: TextPromptModalProps) {
@@ -80,6 +85,7 @@ export function TextPromptModal({
           placeholder={placeholder}
           initialValue={initialValue}
           confirmLabel={confirmLabel}
+          allowEmpty={allowEmpty}
           onConfirm={onConfirm}
           onDismiss={onDismiss}
         />

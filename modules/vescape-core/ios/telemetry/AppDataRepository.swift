@@ -39,14 +39,27 @@ final class AppDataRepository {
     Self.onDataChanged?(scope.rawValue)
   }
 
+  /// Degrading to `fallback` is deliberate — a database failure must not crash the bridge — but it
+  /// is indistinguishable from "no rows" at the call site. `getBoards` returning `[]` because
+  /// `boards` was missing a column read on screen exactly like a rider with no boards, so log it:
+  /// a swallowed error still gets to say what it was.
   private func read<T>(_ fallback: T, _ body: (Database) throws -> T) -> T {
     guard let pool else { return fallback }
-    return (try? pool.read(body)) ?? fallback
+    do {
+      return try pool.read(body)
+    } catch {
+      NSLog("[vescape] AppDataRepository read failed: \(error)")
+      return fallback
+    }
   }
 
   private func write(_ body: @escaping (Database) throws -> Void) {
     guard let pool else { return }
-    try? pool.write(body)
+    do {
+      try pool.write(body)
+    } catch {
+      NSLog("[vescape] AppDataRepository write failed: \(error)")
+    }
   }
 
   private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
@@ -269,6 +282,8 @@ final class AppDataRepository {
           "enabled": (row["enabled"] as Int64) != 0,
           "soundType": row["sound_type"] as String,
           "createdAt": row["created_at"] as Int64,
+          "repeatEverySeconds": row["repeat_every_seconds"] as Int64?,
+          "beepCount": row["beep_count"] as Int? ?? alertBeepCountDefault,
           "source": row["source"] as String?,
         ]
       }
@@ -295,6 +310,8 @@ final class AppDataRepository {
           enabled: (row["enabled"] as Int64) != 0,
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
+          repeatEverySeconds: row["repeat_every_seconds"] as Int64?,
+          beepCount: row["beep_count"] as Int? ?? alertBeepCountDefault,
           source: row["source"] as String?
         )
       }
@@ -312,14 +329,16 @@ final class AppDataRepository {
     let enabled = (rule["enabled"] as? Bool) ?? false
     let soundType = rule["soundType"] as? String ?? "default"
     let createdAt = Self.longValue(rule["createdAt"] ?? nil) ?? nowMs()
+    let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
+    let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
     write { db in
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, source]
+        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source]
       )
     }
   }
@@ -411,13 +430,90 @@ final class AppDataRepository {
     updateSetting(Self.directionPointLongitudeKey, rawValue: longitude)
   }
 
+  func getDirectionPoint() -> (latitude: Double, longitude: Double)? {
+    let settings = getSettings()
+    guard
+      let latitude = Self.doubleValue(settings[Self.directionPointLatitudeKey] ?? nil),
+      let longitude = Self.doubleValue(settings[Self.directionPointLongitudeKey] ?? nil)
+    else { return nil }
+    return (latitude, longitude)
+  }
+
+  // MARK: - Navigation
+
+  /// The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately excluded
+  /// from `getSettings` below: it is native-owned, JS receives it through `onNavigation` instead,
+  /// and it is by far the largest value here (~14 KB for a long path) so it must not ride along on
+  /// every settings read.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationPath`
+  static let navigationPathKey = "navigationPath"
+
+  func getNavigationPath() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationPathKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationPath(_ json: String?) {
+    let key = Self.navigationPathKey
+    guard let json, let encoded = Self.encodeJson(json) else {
+      write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
+      return
+    }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [key, encoded, updatedAt]
+      )
+    }
+  }
+
+  /// The rider's last chosen Navigation Profile, as its wire string. App data rather than a
+  /// user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
+  /// switching profile while looking at a path.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationProfile`
+  static let navigationProfileKey = "navigationProfile"
+
+  func getNavigationProfile() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationProfileKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationProfile(_ profile: String) {
+    guard let encoded = Self.encodeJson(profile) else { return }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [Self.navigationProfileKey, encoded, updatedAt]
+      )
+    }
+  }
+
   // MARK: - Settings
 
   func getSettings() -> [String: Any?] {
     let rows: [String: Any] = read([:]) { db in
       var stored: [String: Any] = [:]
       for row in try Row.fetchAll(db, sql: "SELECT key, value_json FROM app_settings") {
-        if let decoded = Self.decodeJson(row["value_json"]) { stored[row["key"]] = decoded }
+        let key: String = row["key"]
+        // Native-owned; JS gets the Navigation through `onNavigation`, never here — and the path
+        // is large besides. (Android's projection is a typed whitelist, so it drops these keys
+        // without an exclusion.)
+        guard key != Self.navigationPathKey, key != Self.navigationProfileKey else { continue }
+        if let decoded = Self.decodeJson(row["value_json"]) { stored[key] = decoded }
       }
       return stored
     }
@@ -433,7 +529,12 @@ final class AppDataRepository {
 
   func updateSetting(_ key: String, rawValue: Any?) {
     // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
-    guard key != "legalPolicy", key != "legalMode" else { return }
+    // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the
+    // profile through `setNavigationProfile`, never by writing these rows.
+    guard
+      key != "legalPolicy", key != "legalMode",
+      key != Self.navigationPathKey, key != Self.navigationProfileKey
+    else { return }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
       write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
@@ -458,6 +559,12 @@ final class AppDataRepository {
       // persist a malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
       value = flag
+    } else if key == "boardMoveStrengthPercent" {
+      guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
+      value = percent
+    } else if key == "rideSplitGapMinutes" {
+      guard let minutes = Self.rideSplitGapMinutes(rawValue) else { return }
+      value = minutes
     } else if key == "dismissedCommunityMessageIds" {
       guard let ids = Self.dismissedCommunityMessageIds(rawValue) else { return }
       value = ids
@@ -501,7 +608,7 @@ final class AppDataRepository {
   static let defaultSettings: [String: Any] = [
     "liveHistoryLimit": 5,
     "autoConnect": true,
-    "autoRecording": false,
+    "autoRecording": true,
     "companionPresenceEnabled": false,
     "boardWarningsEnabled": true,
     "companionPresenceCooldownMinutes": 60,
@@ -519,6 +626,7 @@ final class AppDataRepository {
     "directionPointLongitude": NSNull(),
     "legalPolicy": NSNull(),
     "movingSpeedThresholdKmh": 3,
+    "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
     "satelliteOverlayEnabled": true,
@@ -527,6 +635,7 @@ final class AppDataRepository {
     "satelliteImagerySaturation": -0.35,
     "hideTelemetryMapDetails": true,
     "telemetryPollRateHz": 20,
+    "boardMoveStrengthPercent": 60,
     "historyMetricGradientsEnabled": true,
     "historyMetricHotRanges": [
       "speed": ["start": 30, "end": 40],
@@ -549,11 +658,30 @@ final class AppDataRepository {
       satelliteImageryOpacity(settings["satelliteMapImageryOpacity"]) ?? defaultSettings["satelliteMapImageryOpacity"]
     normalized["satelliteImagerySaturation"] =
       satelliteImagerySaturation(settings["satelliteImagerySaturation"]) ?? defaultSettings["satelliteImagerySaturation"]
+    normalized["boardMoveStrengthPercent"] =
+      boardMoveStrengthPercent(settings["boardMoveStrengthPercent"]) ?? defaultSettings["boardMoveStrengthPercent"]
+    normalized["rideSplitGapMinutes"] =
+      rideSplitGapMinutes(settings["rideSplitGapMinutes"]) ?? defaultSettings["rideSplitGapMinutes"]
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
     normalized["dismissedCommunityMessageIds"] =
       dismissedCommunityMessageIds(settings["dismissedCommunityMessageIds"]) ?? [String]()
     normalized["legalPolicy"] = normalizeLegalPolicy(settings["legalPolicy"]) ?? NSNull()
     return normalized
+  }
+
+  /// Board Move strength, percent of full remote input. Floored so a stored `0` cannot mean
+  /// "no move", and a negative value cannot invert the direction buttons.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validBoardMoveStrengthPercent`
+  static func boardMoveStrengthPercent(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(100, max(10, number.intValue))
+  }
+
+  /// Ride split gap in minutes; at least 1 so every ride can still end, capped at 24h.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validRideSplitGapMinutes`
+  static func rideSplitGapMinutes(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(1440, max(1, number.intValue))
   }
 
   /// Acknowledged Community Message IDs: a de-duplicated list of non-empty ID strings, or `nil` when

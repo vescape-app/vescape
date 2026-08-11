@@ -22,7 +22,6 @@ interface MainMapSceneProps {
   onTouchStart: ComponentProps<typeof Animated.View>['onTouchStart']
   mapViewRef: RefObject<ElementRef<typeof Mapbox.MapView> | null>
   cameraRef: RefObject<Camera | null>
-  currentCameraRef: ComponentProps<typeof PhoneHeadingMapLayer>['currentCameraRef']
   mapStyle: ReturnType<typeof useResolvedMapStyle>
   rotationLocked: boolean
   onDidFinishLoadingMap: MapViewProps['onDidFinishLoadingMap']
@@ -35,9 +34,10 @@ interface MainMapSceneProps {
   gpsHeadingMode: boolean
   phoneHeadingMode: boolean
   followGps: boolean
-  phoneHeadingCameraSuspended: boolean
   approximateGpsPuckActive: boolean
   accuracyFix: LayerProps['accuracyFix']
+  onPhoneFollowHeading: ComponentProps<typeof PhoneHeadingMapLayer>['onFollowHeading']
+  phoneHeadingAdapter: ComponentProps<typeof PhoneHeadingMapLayer>['adapter']
   onPhoneHeadingChange: ComponentProps<typeof PhoneHeadingMapLayer>['onHeadingChange']
   onPhoneHeadingStatusChange: ComponentProps<typeof PhoneHeadingMapLayer>['onStatusChange']
   mode: MainViewState
@@ -70,7 +70,6 @@ export function MainMapScene({
   onTouchStart,
   mapViewRef,
   cameraRef,
-  currentCameraRef,
   mapStyle,
   rotationLocked,
   onDidFinishLoadingMap,
@@ -83,9 +82,10 @@ export function MainMapScene({
   gpsHeadingMode,
   phoneHeadingMode,
   followGps,
-  phoneHeadingCameraSuspended,
   approximateGpsPuckActive,
   accuracyFix,
+  onPhoneFollowHeading,
+  phoneHeadingAdapter,
   onPhoneHeadingChange,
   onPhoneHeadingStatusChange,
   mode,
@@ -126,8 +126,10 @@ export function MainMapScene({
         rotateEnabled={!rotationLocked}
         compassEnabled={false}
         scaleBarEnabled={false}
-        logoEnabled={false}
-        attributionEnabled={false}
+        logoEnabled={mapStyle.mapDetailsVisible}
+        logoPosition={{ bottom: 8, left: 8 }}
+        attributionEnabled={mapStyle.mapDetailsVisible}
+        attributionPosition={{ bottom: 8, left: 92 }}
         onDidFinishLoadingMap={onDidFinishLoadingMap}
         onPress={onPress}
         onLongPress={onLongPress}
@@ -152,11 +154,11 @@ export function MainMapScene({
         />
         <PhoneHeadingMapLayer
           active={!historyActive && !gpsHeadingMode}
-          followCamera={phoneHeadingMode && followGps && !phoneHeadingCameraSuspended}
+          adapter={phoneHeadingAdapter}
+          followCamera={phoneHeadingMode && followGps}
           approximateFix={approximateGpsPuckActive}
           coordinate={accuracyFix}
-          cameraRef={cameraRef}
-          currentCameraRef={currentCameraRef}
+          onFollowHeading={onPhoneFollowHeading}
           onHeadingChange={onPhoneHeadingChange}
           onStatusChange={onPhoneHeadingStatusChange}
         />
@@ -181,6 +183,7 @@ export function MainMapScene({
           rideMarkers={history.markers}
           rideGpsSamples={history.gpsSamples}
           mediaAssets={history.mediaAssets}
+          favoriteRanges={history.favoriteRanges}
           mapZoom={cameraZoom}
           historyMetricGradientsEnabled={historyMetricGradientsEnabled}
           historyMetricHotRanges={historyMetricHotRanges}

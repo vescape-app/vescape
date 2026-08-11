@@ -7,12 +7,13 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 import java.io.File
 
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 29
+internal const val TELEMETRY_DATABASE_VERSION = 32
 
 @Database(
   entities = [
@@ -29,6 +30,8 @@ internal const val TELEMETRY_DATABASE_VERSION = 29
     DiagnosticEventEntity::class,
     PrivacyZoneEntity::class,
     BoardWarningEntity::class,
+    FavoriteEntity::class,
+    FavoriteMediaEntity::class,
   ],
   version = TELEMETRY_DATABASE_VERSION,
   exportSchema = false,
@@ -503,6 +506,90 @@ abstract class TelemetryDatabase : RoomDatabase() {
     }
 
     /**
+     * Favorites (#287). Durable, optionally named time ranges over Ride History (ADR 0029). The row
+     * carries a native-minted UUID id, native-owned timestamps, and the summary stats computed once
+     * from the raw samples inside the range.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v30_favorites`
+     */
+    internal val MIGRATION_29_30 = object : Migration(29, 30) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS favorites (
+            id TEXT NOT NULL PRIMARY KEY,
+            board_id TEXT,
+            name TEXT,
+            start_ms INTEGER NOT NULL,
+            end_ms INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            sample_count INTEGER NOT NULL,
+            gps_point_count INTEGER NOT NULL,
+            distance_cm INTEGER,
+            moving_duration_ms INTEGER NOT NULL,
+            avg_speed_centi_kmh INTEGER NOT NULL,
+            max_speed_centi_kmh INTEGER NOT NULL,
+            battery_used_wh_milli INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_favorites_start_ms_end_ms ON favorites(start_ms, end_ms)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_favorites_board_id ON favorites(board_id)")
+      }
+    }
+
+    /**
+     * Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
+     * app storage (ADR 0030).
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v31_favorite_media`
+     */
+    internal val MIGRATION_30_31 = object : Migration(30, 31) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS favorite_media (
+            id TEXT NOT NULL PRIMARY KEY,
+            favorite_id TEXT NOT NULL,
+            captured_at INTEGER,
+            mime_type TEXT NOT NULL,
+            media_kind TEXT NOT NULL,
+            byte_count INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          """
+          CREATE INDEX IF NOT EXISTS index_favorite_media_favorite_id_created_at
+          ON favorite_media(favorite_id, created_at)
+          """.trimIndent(),
+        )
+      }
+    }
+
+    /**
+     * Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
+     * former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v32_alert_repeat`
+     */
+    internal val MIGRATION_31_32 = object : Migration(31, 32) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        if (!hasColumn(db, "alerts", "repeat_every_seconds")) {
+          db.execSQL("ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
+        }
+        if (!hasColumn(db, "alerts", "beep_count")) {
+          db.execSQL("ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT $ALERT_BEEP_COUNT_DEFAULT")
+        }
+      }
+    }
+
+    /**
      * One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
      * the whole database lives in the main file, then renames it in place. Idempotent: once the new
      * file exists (or no legacy file is present) this is a no-op.
@@ -558,6 +645,9 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_26_27,
             MIGRATION_27_28,
             MIGRATION_28_29,
+            MIGRATION_29_30,
+            MIGRATION_30_31,
+            MIGRATION_31_32,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

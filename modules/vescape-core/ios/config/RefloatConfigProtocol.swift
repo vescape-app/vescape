@@ -30,7 +30,7 @@ enum RefloatConfigProtocol {
     guard let version = version?.trimmingCharacters(in: .whitespacesAndNewlines), !version.isEmpty else {
       return nil
     }
-    guard let match = version.range(of: #"\b\d+\.\d+\.\d+\b"#, options: .regularExpression) else {
+    guard let match = version.range(of: #"\b\d+\.\d+(?:\.\d+)?\b"#, options: .regularExpression) else {
       return nil
     }
     return String(version[match])

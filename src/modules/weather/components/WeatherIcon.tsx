@@ -10,11 +10,11 @@ import {
   SunIcon,
   type Icon,
 } from 'phosphor-react-native'
+import type { WeatherIconSlug } from 'vescape-core'
 
-import { weatherCodeToIconName, type WeatherIconName } from '@/modules/weather/lib/weather'
 import { theme } from '@/constants/theme'
 
-const ICON_MAP: Record<WeatherIconName, Icon> = {
+const ICON_MAP: Record<WeatherIconSlug, Icon> = {
   sun: SunIcon,
   moon: MoonStarsIcon,
   'cloud-sun': CloudSunIcon,
@@ -27,23 +27,19 @@ const ICON_MAP: Record<WeatherIconName, Icon> = {
 }
 
 interface WeatherIconProps {
-  code: number
-  hour?: number
-  isNight?: boolean
+  icon: WeatherIconSlug
   size?: number
   color?: string
   weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 }
 
+/** The pictogram for a condition slug. Native decided which slug; this only draws it. */
 export function WeatherIcon({
-  code,
-  hour,
-  isNight,
+  icon,
   size = 20,
   color = theme.palette.slate.textSecondary,
   weight = 'duotone',
 }: WeatherIconProps) {
-  const name = weatherCodeToIconName(code, hour, isNight)
-  const IconComponent = ICON_MAP[name]
+  const IconComponent = ICON_MAP[icon] ?? CloudIcon
   return <IconComponent size={size} color={color} weight={weight} />
 }

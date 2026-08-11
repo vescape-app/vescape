@@ -5,6 +5,7 @@ import expo.modules.vescapecore.connection.displayText
 import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Before
 import org.junit.Test
 
@@ -118,31 +119,84 @@ class NotificationPresenterTest {
     }
 
     @Test
-    fun `stale presentation ignores cached battery progress`() {
+    fun `stale presentation ignores cached battery progress and keeps disconnect`() {
         val presentation = NotificationPresentation.resolve(
             phase = BoardPhase.Stale,
             telemetry = telemetry(batteryVoltage = 75.13),
             batteryPercent = 45.0,
         )
 
-        assertEquals("Board not connected", presentation.text)
+        assertEquals("Telemetry stale", presentation.text)
         assertEquals("⚠", presentation.shortCriticalText)
         assertEquals(null, presentation.batteryProgressPercent)
-        assertEquals(false, presentation.canDisconnect)
+        assertEquals(true, presentation.canDisconnect)
     }
 
     @Test
-    fun `reconnecting presentation is disconnected for notification`() {
+    fun `reconnecting presentation shows the live phase, not idle`() {
         val presentation = NotificationPresentation.resolve(
             phase = BoardPhase.Reconnecting,
             telemetry = telemetry(batteryVoltage = 75.13),
             batteryPercent = 45.0,
         )
 
-        assertEquals("Board not connected", presentation.text)
+        assertEquals("Reconnecting…", presentation.text)
         assertEquals("…", presentation.shortCriticalText)
         assertEquals(null, presentation.batteryProgressPercent)
-        assertEquals(false, presentation.canDisconnect)
+        assertEquals(true, presentation.canDisconnect)
+    }
+
+    /**
+     * Whole-phase contract in one table: a new [BoardPhase] fails here until its notification
+     * rendering is decided, and flipping an existing phase's text or Disconnect availability shows
+     * up as an explicit diff instead of riding along with an unrelated change.
+     */
+    @Test
+    fun `every phase renders its own text and a session-ownership disconnect`() {
+        val expected = mapOf(
+            BoardPhase.Idle to ("Board not connected" to false),
+            BoardPhase.Connecting to ("Connecting…" to true),
+            BoardPhase.Discovering to ("Discovering…" to true),
+            BoardPhase.Subscribing to ("Subscribing…" to true),
+            BoardPhase.WaitingForTelemetry to ("Waiting for telemetry…" to true),
+            BoardPhase.Connected to ("Connected" to true),
+            BoardPhase.Stale to ("Telemetry stale" to true),
+            BoardPhase.Reconnecting to ("Reconnecting…" to true),
+            BoardPhase.Rescanning to ("Searching…" to true),
+            BoardPhase.Disconnecting to ("Disconnecting…" to false),
+            BoardPhase.Error to ("Connection error" to true),
+        )
+
+        assertEquals(BoardPhase.entries.toSet(), expected.keys)
+        for ((phase, contract) in expected) {
+            val (text, canDisconnect) = contract
+            val presentation = NotificationPresentation.resolve(phase = phase)
+            assertEquals("text for $phase", text, presentation.text)
+            assertEquals("canDisconnect for $phase", canDisconnect, presentation.canDisconnect)
+        }
+    }
+
+    /** Only Idle may say "not connected" — every other phase must not impersonate an idle service. */
+    @Test
+    fun `no phase borrows the idle text`() {
+        for (phase in BoardPhase.entries - BoardPhase.Idle) {
+            val presentation = NotificationPresentation.resolve(phase = phase)
+            assertNotEquals("text for $phase", BoardPhase.Idle.displayText(), presentation.text)
+        }
+    }
+
+    /** Telemetry numbers belong to a live link only, so a dead link can never show stale values. */
+    @Test
+    fun `only connected renders telemetry values`() {
+        for (phase in BoardPhase.entries - BoardPhase.Connected) {
+            val presentation = NotificationPresentation.resolve(
+                phase = phase,
+                telemetry = telemetry(batteryVoltage = 75.13),
+                batteryPercent = 45.0,
+            )
+            assertEquals("battery progress for $phase", null, presentation.batteryProgressPercent)
+            assertEquals("text for $phase", phase.displayText(), presentation.text)
+        }
     }
 
     @Test

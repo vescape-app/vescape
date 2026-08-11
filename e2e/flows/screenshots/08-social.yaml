@@ -1,0 +1,16 @@
+# Group ride data comes from the live relay; a rerun may be needed to catch a populated drawer.
+# The wait is on the sheet's testID, not its "Social" title: the drawer opens on iOS but Maestro's
+# iOS hierarchy does not expose that header text, so a text assertion fails on a drawer that is
+# plainly on screen.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: social-drawer-trigger
+- extendedWaitUntil:
+    visible:
+      id: social-sheet
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/08-social
+- runFlow: ../fixture/_home.yaml

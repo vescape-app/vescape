@@ -16,14 +16,14 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { Canvas, LinearGradient, Rect, vec } from '@shopify/react-native-skia'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Reanimated, {
-  FadeIn,
-  Keyframe,
+  Easing as ReanimatedEasing,
+  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Icon } from 'phosphor-react-native'
@@ -33,6 +33,14 @@ import {
   measureTrigger,
   type TriggerLayout,
 } from '@/components/overlays/measureTrigger'
+import {
+  DRAWER_INITIAL_OPEN_FRACTION,
+  edgeDrawerDismissOpacity,
+  edgeDrawerHasCommitted,
+  edgeDrawerRestoreOffset,
+  edgeDrawerScrollEndAction,
+  edgeDrawerVisibleFraction,
+} from '@/components/overlays/edgeDrawerDismiss'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
 import { theme } from '@/constants/theme'
 
@@ -41,22 +49,13 @@ const CLOSE_DURATION = 180
 const SCREEN_EDGE_PADDING = 10
 /** Fraction of the screen height a sheet is allowed to occupy. */
 const HEIGHT_FRACTION = 0.75
-/** Continue closing automatically once this many pixels of the drawer remain visible. */
-const DRAWER_AUTO_CLOSE_VISIBLE_PX = 200
 /** Approximate native fling travel from Android's release velocity in points/ms. */
 const DRAWER_FLING_PROJECTION_MS = 250
 const DRAWER_OPEN_TRANSLATE_Y = 42
-const DRAWER_OPEN_DURATION = 280
+const DRAWER_OPEN_DURATION = 200
+/** Dismissal is a fast fade back toward the drawer's own edge, not a scroll home. */
+const DRAWER_CLOSE_DURATION = 170
 const DRAWER_BOTTOM_CONTENT_PADDING = 32
-const DRAWER_INITIAL_OPEN_FRACTION = 0.75
-const DRAWER_ENTER_FROM_TOP = new Keyframe({
-  0: { opacity: 0, transform: [{ translateY: -DRAWER_OPEN_TRANSLATE_Y }] },
-  100: { opacity: 1, transform: [{ translateY: 0 }] },
-}).duration(DRAWER_OPEN_DURATION)
-const DRAWER_ENTER_FROM_BOTTOM = new Keyframe({
-  0: { opacity: 0, transform: [{ translateY: DRAWER_OPEN_TRANSLATE_Y }] },
-  100: { opacity: 1, transform: [{ translateY: 0 }] },
-}).duration(DRAWER_OPEN_DURATION)
 
 const EdgeDrawerScrollContext = createContext<(() => void) | null>(null)
 
@@ -264,7 +263,7 @@ interface EdgeDrawerProps {
   visible: boolean
   triggerRef: React.RefObject<View | null>
   onClose: () => void
-  /** Override edge selection. `auto` chooses the edge nearest the trigger. */
+  /** Which edge the drawer opens from. `auto` picks the edge nearest the trigger. */
   edge?: 'auto' | 'top' | 'bottom'
   title?: string
   /** Optional glyph shown left of a centred title. */
@@ -272,12 +271,19 @@ interface EdgeDrawerProps {
   iconColor?: string
   /** Scroll newly expanded content into view when the drawer grows. */
   autoScrollOnContentExpand?: boolean
+  /** Bring one child into the initially visible drawer area after opening. */
+  initialFocusRef?: React.RefObject<View | null>
+  /** Called after scrolling settles near the end of the drawer content. */
+  onReachContentEnd?: () => void
+  contentEndThreshold?: number
+  backdropTestID?: string
   children: React.ReactNode
 }
 
 /**
- * A full-width edge drawer. It opens from the edge nearest its trigger and can
- * be dragged back toward that edge to dismiss.
+ * A full-width edge drawer, dismissed by dragging it back toward the edge it opened from. It comes
+ * from the bottom unless told otherwise: that is where a thumb rests, and top drawers are the rare
+ * exception rather than something every caller should have to opt out of.
  */
 // Reanimated shared values are mutable handles by design. React's immutability
 // lint cannot distinguish their UI-thread writes from React-owned state.
@@ -286,27 +292,37 @@ export function EdgeDrawer({
   visible,
   triggerRef,
   onClose,
-  edge = 'auto',
+  edge = 'bottom',
   title,
   icon: IconComponent,
   iconColor = theme.palette.slate.textSecondary,
   autoScrollOnContentExpand = false,
+  initialFocusRef,
+  onReachContentEnd,
+  contentEndThreshold = 80,
+  backdropTestID,
   children,
 }: EdgeDrawerProps) {
   const insets = useSafeAreaInsets()
-  const { width, height } = useWindowDimensions()
+  const { height } = useWindowDimensions()
   const [mounted, setMounted] = useState(false)
+  const [closeRequested, setCloseRequested] = useState(false)
   const [opensFromTop, setOpensFromTop] = useState(true)
   const [dismissRange, setDismissRange] = useState(0)
   const [keyboardInset, setKeyboardInset] = useState(0)
   const scrollRef = useRef<ScrollView>(null)
   const positionedRef = useRef(false)
+  const openStartedRef = useRef(false)
   const dismissRangeRef = useRef(0)
   const previousContentHeightRef = useRef(0)
   const scrollOffsetRef = useRef(0)
   const scrollOffset = useSharedValue(0)
+  /** 0 hidden at the drawer's own edge, 1 fully present. Drives both open and close. */
+  const presence = useSharedValue(0)
+  /** Scroll-driven dismissal only arms once the drawer has taken its opening position. */
+  const dismissArmed = useSharedValue(false)
+  const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
-  const animatedGradientFullStrengthRange = useSharedValue(1)
   const nativeScrollGesture = useMemo(() => Gesture.Native(), [])
 
   useEffect(() => {
@@ -316,13 +332,17 @@ export function EdgeDrawer({
       setOpensFromTop(fromTop)
       setMounted(true)
       setDismissRange(0)
+      setCloseRequested(false)
       dismissRangeRef.current = 0
       positionedRef.current = false
       previousContentHeightRef.current = 0
       setKeyboardInset(0)
       scrollOffsetRef.current = 0
       scrollOffset.value = 0
-      animatedGradientFullStrengthRange.value = Math.max(1, height * DRAWER_INITIAL_OPEN_FRACTION)
+      openStartedRef.current = false
+      dismissArmed.value = false
+      dismissTriggered.value = false
+      presence.value = 0
     }
 
     if (edge !== 'auto') {
@@ -333,7 +353,20 @@ export function EdgeDrawer({
     void measureTrigger(triggerRef).then((trigger) => {
       openFrom(trigger.y + trigger.height / 2 < height / 2)
     })
-  }, [animatedGradientFullStrengthRange, edge, height, scrollOffset, triggerRef, visible])
+  }, [dismissArmed, dismissTriggered, edge, height, presence, scrollOffset, triggerRef, visible])
+
+  /**
+   * The Modal window appears a frame or more after mount, so the opening animation is started by
+   * `onShow` — kicked off any earlier it would already be over by the time anything is on screen.
+   */
+  const startOpen = useCallback(() => {
+    if (openStartedRef.current) return
+    openStartedRef.current = true
+    presence.value = withTiming(1, {
+      duration: DRAWER_OPEN_DURATION,
+      easing: ReanimatedEasing.out(ReanimatedEasing.quad),
+    })
+  }, [presence])
 
   useEffect(() => {
     if (!mounted) return
@@ -350,42 +383,85 @@ export function EdgeDrawer({
   }, [mounted])
 
   const finishClose = useCallback(() => {
+    setCloseRequested(false)
     setMounted(false)
     setDismissRange(0)
     onClose()
   }, [onClose])
 
+  const closing = closeRequested || (!visible && mounted)
+
   const close = useCallback(() => {
-    if (dismissRange <= 0) {
-      requestAnimationFrame(finishClose)
-      return
-    }
-    scrollRef.current?.scrollTo({
-      y: opensFromTop ? dismissRange : 0,
-      animated: true,
-    })
-  }, [dismissRange, finishClose, opensFromTop])
+    setCloseRequested(true)
+  }, [])
 
   useEffect(() => {
-    if (!visible && mounted) close()
-  }, [close, mounted, visible])
+    if (!closing || !mounted) return
+
+    presence.value = withTiming(
+      0,
+      { duration: DRAWER_CLOSE_DURATION, easing: ReanimatedEasing.in(ReanimatedEasing.quad) },
+      (finished) => {
+        if (finished) runOnJS(finishClose)()
+      },
+    )
+  }, [closing, finishClose, mounted, presence])
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      scrollOffset.value = event.contentOffset.y
+      const offset = event.contentOffset.y
+      scrollOffset.value = offset
+
+      if (!dismissArmed.value || dismissTriggered.value) return
+
+      // Commit to closing mid-drag, the moment the drawer passes the point of no return.
+      const fraction = edgeDrawerVisibleFraction({
+        offset,
+        range: animatedDismissRange.value,
+        height,
+        opensFromTop,
+      })
+      if (edgeDrawerHasCommitted(fraction)) {
+        dismissTriggered.value = true
+        runOnJS(close)()
+      }
     },
   })
 
+  // The scrim rides the same curve as the panel. Left on the raw fraction it is still half dark at
+  // the commit mark, and killing that in one timed step reads as the whole overlay popping out.
   const backdropStyle = useAnimatedStyle(() => {
     'worklet'
-    const screenDismissRange = Math.min(
-      animatedDismissRange.value,
-      animatedGradientFullStrengthRange.value,
+    const dismissed = edgeDrawerDismissOpacity(
+      edgeDrawerVisibleFraction({
+        offset: scrollOffset.value,
+        range: animatedDismissRange.value,
+        height,
+        opensFromTop,
+      }),
     )
-    const visibleFraction = opensFromTop
-      ? 1 - scrollOffset.value / screenDismissRange
-      : scrollOffset.value / screenDismissRange
-    return { opacity: Math.max(0, Math.min(1, visibleFraction)) }
+    return { opacity: presence.value * dismissed }
+  })
+
+  const presenceStyle = useAnimatedStyle(() => {
+    'worklet'
+    const hidden = 1 - presence.value
+    const dismissed = edgeDrawerDismissOpacity(
+      edgeDrawerVisibleFraction({
+        offset: scrollOffset.value,
+        range: animatedDismissRange.value,
+        height,
+        opensFromTop,
+      }),
+    )
+    return {
+      opacity: presence.value * dismissed,
+      transform: [
+        {
+          translateY: hidden * (opensFromTop ? -DRAWER_OPEN_TRANSLATE_Y : DRAWER_OPEN_TRANSLATE_Y),
+        },
+      ],
+    }
   })
 
   const handleContentSizeChange = useCallback(
@@ -397,8 +473,6 @@ export function EdgeDrawer({
       setDismissRange(range)
       dismissRangeRef.current = range
       animatedDismissRange.value = range
-      animatedGradientFullStrengthRange.value = Math.max(1, height * DRAWER_INITIAL_OPEN_FRACTION)
-
       if (!positionedRef.current) {
         positionedRef.current = true
         const initialOpenOffset = Math.min(range, height * DRAWER_INITIAL_OPEN_FRACTION)
@@ -407,12 +481,32 @@ export function EdgeDrawer({
         scrollOffset.value = initialOffset
         requestAnimationFrame(() => {
           scrollRef.current?.scrollTo({ y: initialOffset, animated: false })
+          dismissArmed.value = true
+          if (!initialFocusRef?.current) return
+          requestAnimationFrame(() => {
+            const nativeScrollRef = scrollRef.current?.getNativeScrollRef()
+            if (!initialFocusRef.current || !nativeScrollRef) return
+            initialFocusRef.current.measureLayout(
+              nativeScrollRef,
+              (_x, focusY, _width, focusHeight) => {
+                const visibleCenter = height * (opensFromTop ? 0.375 : 0.625)
+                const minimumOffset = opensFromTop ? 0 : initialOffset
+                const focusedOffset = Math.max(
+                  minimumOffset,
+                  Math.min(range, focusY + focusHeight / 2 - visibleCenter),
+                )
+                scrollOffsetRef.current = focusedOffset
+                scrollOffset.value = focusedOffset
+                scrollRef.current?.scrollTo({ y: focusedOffset, animated: false })
+              },
+            )
+          })
         })
         return
       }
 
       const bottomDrawerWasFullyOpen = !opensFromTop && scrollOffsetRef.current >= previousRange - 1
-      if (bottomDrawerWasFullyOpen && range > previousRange) {
+      if (!initialFocusRef && bottomDrawerWasFullyOpen && range > previousRange) {
         requestAnimationFrame(() => {
           scrollRef.current?.scrollTo({ y: range, animated: true })
         })
@@ -428,29 +522,22 @@ export function EdgeDrawer({
     },
     [
       animatedDismissRange,
-      animatedGradientFullStrengthRange,
       autoScrollOnContentExpand,
+      dismissArmed,
       height,
+      initialFocusRef,
       opensFromTop,
       scrollOffset,
     ],
   )
 
-  const shouldAutoCloseAtOffset = useCallback(
-    (offset: number) => {
-      const visiblePixels = opensFromTop ? dismissRange - offset : offset
-      const autoCloseThreshold = Math.min(DRAWER_AUTO_CLOSE_VISIBLE_PX, dismissRange / 2)
-      return visiblePixels <= autoCloseThreshold
-    },
-    [dismissRange, opensFromTop],
-  )
-
-  const scrollFullyOut = useCallback(() => {
+  /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
+  const restoreFullyVisible = useCallback(() => {
     scrollRef.current?.scrollTo({
-      y: opensFromTop ? dismissRange : 0,
+      y: edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop),
       animated: true,
     })
-  }, [dismissRange, opensFromTop])
+  }, [height, opensFromTop])
 
   const scrollToOpenEdge = useCallback(() => {
     scrollRef.current?.scrollTo({
@@ -463,15 +550,40 @@ export function EdgeDrawer({
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offset = event.nativeEvent.contentOffset.y
       scrollOffsetRef.current = offset
+      // A dismissal fade is already running; let it finish rather than cutting to an unmount.
+      if (closing) return
       const fullyHidden = opensFromTop ? offset >= dismissRange - 1 : offset <= 1
-      if (fullyHidden) {
+      const action = edgeDrawerScrollEndAction({
+        fullyHidden,
+        visibleFraction: edgeDrawerVisibleFraction({
+          offset,
+          range: dismissRange,
+          height,
+          opensFromTop,
+        }),
+      })
+      if (action === 'finish') {
         finishClose()
         return
       }
 
-      if (shouldAutoCloseAtOffset(offset)) scrollFullyOut()
+      const distanceFromEnd =
+        event.nativeEvent.contentSize.height - (offset + event.nativeEvent.layoutMeasurement.height)
+      if (distanceFromEnd <= contentEndThreshold) onReachContentEnd?.()
+      if (action === 'close') close()
+      if (action === 'restore') restoreFullyVisible()
     },
-    [dismissRange, finishClose, opensFromTop, scrollFullyOut, shouldAutoCloseAtOffset],
+    [
+      close,
+      closing,
+      contentEndThreshold,
+      dismissRange,
+      finishClose,
+      height,
+      onReachContentEnd,
+      opensFromTop,
+      restoreFullyVisible,
+    ],
   )
 
   const handleScrollEndDrag = useCallback(
@@ -480,15 +592,26 @@ export function EdgeDrawer({
       scrollOffsetRef.current = contentOffset.y
       const projectedOffset =
         targetContentOffset?.y ?? contentOffset.y - (velocity?.y ?? 0) * DRAWER_FLING_PROJECTION_MS
+      const fullyHidden = opensFromTop ? contentOffset.y >= dismissRange - 1 : contentOffset.y <= 1
+      const action = edgeDrawerScrollEndAction({
+        fullyHidden,
+        visibleFraction: edgeDrawerVisibleFraction({
+          offset: projectedOffset,
+          range: dismissRange,
+          height,
+          opensFromTop,
+        }),
+      })
 
-      if (shouldAutoCloseAtOffset(projectedOffset)) {
-        scrollFullyOut()
+      // Judge the fling by where it is headed instead of waiting for momentum to land.
+      if (action === 'close') {
+        close()
         return
       }
 
       handleScrollEnd(event)
     },
-    [handleScrollEnd, scrollFullyOut, shouldAutoCloseAtOffset],
+    [close, dismissRange, handleScrollEnd, height, opensFromTop],
   )
 
   if (!mounted) return null
@@ -496,25 +619,6 @@ export function EdgeDrawer({
   const edgePadding = opensFromTop
     ? insets.top
     : insets.bottom + DRAWER_BOTTOM_CONTENT_PADDING + keyboardInset
-  const gradientFullStrengthPoint =
-    height > 0
-      ? Math.min(DRAWER_INITIAL_OPEN_FRACTION, Math.max(0, dismissRange / height))
-      : DRAWER_INITIAL_OPEN_FRACTION
-  const vignetteColor = theme.palette.slate.surfaceDeep
-  const gradientColors = opensFromTop
-    ? [
-        theme.alpha(vignetteColor, 1),
-        theme.alpha(vignetteColor, 1),
-        theme.alpha(vignetteColor, 0.6),
-      ]
-    : [
-        theme.alpha(vignetteColor, 0.6),
-        theme.alpha(vignetteColor, 1),
-        theme.alpha(vignetteColor, 1),
-      ]
-  const gradientPositions = opensFromTop
-    ? [0, gradientFullStrengthPoint, 1]
-    : [0, 1 - gradientFullStrengthPoint, 1]
   const emptyDismissArea = <Pressable style={{ height }} onPress={close} accessible={false} />
 
   return (
@@ -526,27 +630,15 @@ export function EdgeDrawer({
       navigationBarTranslucent
       presentationStyle="overFullScreen"
       onRequestClose={close}
+      onShow={startOpen}
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
-        <Reanimated.View entering={FadeIn.duration(DRAWER_OPEN_DURATION)} style={styles.drawer}>
-          <Reanimated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-            <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-              <Rect x={0} y={0} width={width} height={height}>
-                <LinearGradient
-                  start={vec(0, 0)}
-                  end={vec(0, height)}
-                  colors={gradientColors}
-                  positions={gradientPositions}
-                />
-              </Rect>
-            </Canvas>
-            <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+        <View style={styles.drawer}>
+          <Reanimated.View style={[StyleSheet.absoluteFill, styles.drawerScrim, backdropStyle]}>
+            <Pressable testID={backdropTestID} style={StyleSheet.absoluteFill} onPress={close} />
           </Reanimated.View>
-        </Reanimated.View>
-        <Reanimated.View
-          entering={opensFromTop ? DRAWER_ENTER_FROM_TOP : DRAWER_ENTER_FROM_BOTTOM}
-          style={styles.drawer}
-        >
+        </View>
+        <Reanimated.View style={[styles.drawer, presenceStyle]}>
           <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
             <GestureDetector gesture={nativeScrollGesture}>
               <Reanimated.ScrollView
@@ -555,6 +647,7 @@ export function EdgeDrawer({
                 onScroll={scrollHandler}
                 onScrollEndDrag={handleScrollEndDrag}
                 onMomentumScrollEnd={handleScrollEnd}
+                scrollEnabled={!closing}
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
                 bounces={false}
@@ -666,6 +759,14 @@ const styles = StyleSheet.create({
   },
   modalGestureRoot: {
     flex: 1,
+  },
+  /**
+   * A flat translucent scrim rather than a vignette gradient. The gradient was there to fake a panel
+   * edge, but its falloff never lined up with where the drawer actually ended, and the dismissal
+   * fade is what conveys the drawer leaving.
+   */
+  drawerScrim: {
+    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,

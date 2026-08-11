@@ -76,6 +76,8 @@ function location(overrides: Partial<LocationEvent> = {}): LocationEvent {
     longitude: 19,
     speedMps: 4,
     bearingDeg: 90,
+    courseDeg: null,
+    courseSourceTimestamp: null,
     accuracyM: 3,
     altitudeM: 250,
     timestamp: 10_000,

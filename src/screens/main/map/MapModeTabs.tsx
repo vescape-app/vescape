@@ -5,15 +5,13 @@ import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { theme } from '@/constants/theme'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
-import { useMapWeather } from '@/modules/weather/hooks/useMapWeather'
-import { isNightAtTime, weatherCodeToColor } from '@/modules/weather/lib/weather'
+import { weatherIconColor } from '@/modules/weather/lib/weather'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
 
 interface MapModeTabsProps {
   mode: MainViewState
   top: number
-  weatherLocation: { latitude: number; longitude: number } | null
   onEnterMap: () => void
   onEnterWeather: () => void
   onEnterLegalLimits: () => void
@@ -23,20 +21,12 @@ interface MapModeTabsProps {
 export function MapModeTabs({
   mode,
   top,
-  weatherLocation,
   onEnterMap,
   onEnterWeather,
   onEnterLegalLimits,
 }: MapModeTabsProps) {
-  const weather = useMapWeather(weatherLocation)
-  const sunrise = useWeatherStore((s) => s.sunrise)
-  const sunset = useWeatherStore((s) => s.sunset)
-  const now = new Date()
-  const hour = now.getHours()
-  const isNight = isNightAtTime(hour, now.getMinutes(), sunrise, sunset)
-  const weatherColor = weather
-    ? weatherCodeToColor(weather.weatherCode, hour, isNight)
-    : theme.palette.sky.color
+  const weather = useWeatherStore((s) => s.weather)
+  const weatherColor = weather ? weatherIconColor(weather.icon) : theme.palette.sky.color
   const weatherSelection = {
     bg: theme.alpha(weatherColor, 0.12),
     border: theme.alpha(weatherColor, 0.4),
@@ -47,14 +37,7 @@ export function MapModeTabs({
   const WeatherModeIcon: Icon = ({ color, size, weight }) => {
     const iconSize = typeof size === 'number' ? size : 18
     return weather ? (
-      <WeatherIcon
-        code={weather.weatherCode}
-        hour={hour}
-        isNight={isNight}
-        size={iconSize}
-        color={weatherColor}
-        weight={weight}
-      />
+      <WeatherIcon icon={weather.icon} size={iconSize} color={weatherColor} weight={weight} />
     ) : (
       <CloudSunIcon size={size} color={color} weight={weight} />
     )
@@ -71,6 +54,7 @@ export function MapModeTabs({
       >
         <PillSelectorItem
           id="map"
+          testID="map-mode-explore"
           label="Explore"
           icon={MapTrifoldIcon}
           activeLabelOnly
@@ -82,25 +66,27 @@ export function MapModeTabs({
         />
         <PillSelectorItem
           id="weather"
+          testID="map-mode-weather"
           label="Weather"
           icon={WeatherModeIcon}
           activeLabelOnly
           color={weatherSelection}
           activeWidth={142}
           inactiveWidth={58}
-          badge={
-            weather && activeId !== 'weather' ? (
-              <View style={styles.mapModeBadge}>
-                <Text style={[styles.mapModeBadgeText, { color: weatherColor }]}>
-                  {weather.temperature}°
-                </Text>
-              </View>
+          hint={
+            weather ? (
+              <Text style={[styles.mapModeBadgeText, { color: weatherColor }]}>
+                {weather.temperatureC}°
+              </Text>
             ) : null
           }
+          hintVisibility="inactive"
+          hintGap={2}
           onPress={onEnterWeather}
         />
         <PillSelectorItem
           id="legalLimits"
+          testID="map-mode-legal-limits"
           label="Legal limits"
           icon={SpeedometerIcon}
           activeLabelOnly
@@ -127,11 +113,6 @@ const styles = StyleSheet.create({
   },
   mapModePillsContent: {
     justifyContent: 'center',
-  },
-  mapModeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
   },
   mapModeBadgeText: {
     fontSize: 11,

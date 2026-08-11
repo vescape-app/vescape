@@ -18,7 +18,7 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
-import { UpdateAvailablePill } from '@/modules/release/components/UpdateAvailablePill'
+import { ReleaseActionPill } from '@/modules/release/components/ReleaseActionPill'
 
 export default function SettingsPage() {
   const [darkMode, setDarkMode] = useState(true)
@@ -34,7 +34,8 @@ export default function SettingsPage() {
             icon={GearSixIcon}
             description="IconHero with a large thin icon and centered description."
           >
-            <UpdateAvailablePill latestVersion="0.81.0" onPress={() => {}} />
+            <ReleaseActionPill latestVersion="0.81.0" onPress={() => {}} />
+            <ReleaseActionPill onPress={() => {}} />
           </IconHero>
 
           <SettingsSectionTitle>Account</SettingsSectionTitle>

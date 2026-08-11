@@ -2,9 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { AnimatedValueText } from '@/components/base/AnimatedValueText'
+import {
+  ChartHeaderReadout,
+  ChartTooltipReadout,
+  TOOLTIP_WIDTH,
+} from '@/components/charts/TelemetryLineChartReadouts'
 import { Text } from '@/components/base/Text'
-import Animated, {
+import {
   runOnJS,
   useAnimatedStyle,
   useDerivedValue,
@@ -18,6 +22,7 @@ import {
   Line,
   LinearGradient,
   Path,
+  Rect,
   RoundedRect,
   Skia,
   vec,
@@ -26,19 +31,31 @@ import {
 import { theme } from '@/constants/theme'
 import {
   getChartPosition,
+  getChartTimeRangeBands,
+  getChartTimeLabels,
   getXPosition,
+  getChartAlertMarkers,
   splitChartPointSegments,
   splitChartLineSegments,
   type ExcludedRange,
+  type ChartTimeMode,
   type TelemetryChartPoint,
 } from '@/components/charts/chartMath'
+import {
+  TelemetryChartTrimOverlay,
+  useChartTrim,
+  type ChartTrimConfig,
+} from '@/components/charts/TelemetryChartTrim'
+
+export type { ChartTrimConfig } from '@/components/charts/TelemetryChartTrim'
 
 const DEFAULT_HEIGHT = 54
 const Y_AXIS_WIDTH = 34
-const TOOLTIP_WIDTH = 94
 const CARD_HORIZONTAL_PADDING = 8
 const EXCLUSION_MARKER_HEIGHT = 1
 const EXCLUSION_MARKER_INSET = 1
+const ALERT_LINE_COLOR = theme.alpha(theme.palette.yellow.color, 0.1)
+const NO_ALERT_THRESHOLDS: number[] = []
 const EMPTY_MARKER_TABLE: MarkerTable = {
   ts: [],
   xs: [],
@@ -62,20 +79,20 @@ function setSharedValue<T>(shared: SharedValue<T>, value: T) {
   shared.value = value
 }
 
-function pickMarkerIndexByX(table: MarkerTable, x: number): number {
+function pickNearestSortedIndex(values: number[], target: number): number {
   'worklet'
-  const count = table.xs.length
+  const count = values.length
   if (count === 0) return -1
   let lo = 0
   let hi = count - 1
   while (lo < hi) {
     const mid = Math.floor((lo + hi) / 2)
-    if (table.xs[mid] < x) lo = mid + 1
+    if (values[mid] < target) lo = mid + 1
     else hi = mid
   }
   if (lo === 0) return 0
   const prev = lo - 1
-  return Math.abs(table.xs[prev] - x) <= Math.abs(table.xs[lo] - x) ? prev : lo
+  return Math.abs(values[prev] - target) <= Math.abs(values[lo] - target) ? prev : lo
 }
 
 /**
@@ -104,7 +121,7 @@ function createScrubGesture({
     .enabled(enabled)
     .onBegin((event) => {
       'worklet'
-      const idx = pickMarkerIndexByX(markerTableSV.value, event.x)
+      const idx = pickNearestSortedIndex(markerTableSV.value.xs, event.x)
       if (idx < 0) return
       const timeMs = markerTableSV.value.ts[idx]
       activeScrubTimeMs.value = timeMs
@@ -113,7 +130,7 @@ function createScrubGesture({
     })
     .onUpdate((event) => {
       'worklet'
-      const idx = pickMarkerIndexByX(markerTableSV.value, event.x)
+      const idx = pickNearestSortedIndex(markerTableSV.value.xs, event.x)
       if (idx < 0) return
       const timeMs = markerTableSV.value.ts[idx]
       if (timeMs === activeScrubTimeMs.value) return
@@ -128,37 +145,12 @@ function createScrubGesture({
     })
 }
 
-function pickMarkerIndex(table: MarkerTable, timeMs: number | null): number {
-  'worklet'
-  const count = table.ts.length
-  if (count === 0 || timeMs == null) return -1
-  let lo = 0
-  let hi = count - 1
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2)
-    if (table.ts[mid] < timeMs) lo = mid + 1
-    else hi = mid
-  }
-  if (lo === 0) return 0
-  const prev = lo - 1
-  return Math.abs(table.ts[prev] - timeMs) <= Math.abs(table.ts[lo] - timeMs) ? prev : lo
-}
-
 function exclusionColor(reason: string): string {
-  if (reason === 'free_spin') return theme.palette.yellow.color
-  return theme.palette.slate.textSecondary
+  return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
 }
 
 function formatTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
-}
-
-function formatRelativeTime(date: Date, now: Date): string {
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.round(diffMs / 1000)
-  if (diffSec < 60) return `-${diffSec}s`
-  const diffMin = Math.round(diffSec / 60)
-  return `-${diffMin}m`
 }
 
 function formatAxisNumber(value: number): string {
@@ -171,15 +163,6 @@ function buildLinePath(coords: { x: number; y: number }[]) {
   const builder = Skia.PathBuilder.Make().moveTo(coords[0].x, coords[0].y)
   for (let i = 1; i < coords.length; i += 1) builder.lineTo(coords[i].x, coords[i].y)
   return builder.detach()
-}
-
-function resolveActiveChartColor(
-  currentPoint: TelemetryChartPoint | null,
-  baseColor: string,
-  getPointColor?: (value: number) => string,
-): string {
-  if (!currentPoint || !getPointColor) return baseColor
-  return getPointColor(currentPoint.value)
 }
 
 function valueAtTime(points: TelemetryChartPoint[], timeMs: number): TelemetryChartPoint | null {
@@ -260,6 +243,12 @@ export interface SecondaryChartSeries {
   formatValue?: (value: number) => string
 }
 
+export interface ChartTimeRangeHighlight {
+  startMs: number
+  endMs: number
+  color: string
+}
+
 interface TelemetryLineChartProps {
   label?: string
   value: string
@@ -274,6 +263,8 @@ interface TelemetryLineChartProps {
   formatValue?: (value: number) => string
   getPointColor?: (value: number) => string
   windowMs?: number
+  /** Live charts count back from now; history charts show local wall-clock endpoints. */
+  timeMode?: ChartTimeMode
   excludedRanges?: ExcludedRange[]
   /** Optional second line plotted on a right-side axis with its own range. */
   secondary?: SecondaryChartSeries
@@ -283,6 +274,12 @@ interface TelemetryLineChartProps {
   scrubbable?: boolean
   /** Reserve the right-axis gutter so charts with and without a secondary axis align. */
   reserveRightAxis?: boolean
+  /** Alert starts and range ceilings drawn as faint horizontal reference lines. */
+  alertThresholds?: number[]
+  /** When set, the chart is a range trimmer instead of a scrubber. */
+  trim?: ChartTrimConfig
+  /** Solid translucent bands rendered behind the chart lines. */
+  timeRangeHighlights?: ChartTimeRangeHighlight[]
 }
 
 interface ChartLineSegmentsProps {
@@ -384,12 +381,16 @@ export function TelemetryLineChart({
   formatValue,
   getPointColor,
   windowMs,
+  timeMode = 'relative',
   excludedRanges,
   secondary,
   scrubTimeMs,
   onScrubTimeChange,
   scrubbable = false,
   reserveRightAxis = false,
+  alertThresholds = NO_ALERT_THRESHOLDS,
+  trim,
+  timeRangeHighlights,
 }: TelemetryLineChartProps) {
   'use no memo'
   const [chartWidth, setChartWidth] = useState(0)
@@ -400,8 +401,7 @@ export function TelemetryLineChart({
   const onPointSelectedRef = useRef(onPointSelected)
   const onGestureStartRef = useRef(onGestureStart)
   const onScrubTimeChangeRef = useRef(onScrubTimeChange)
-  // Live charts keep streaming while the user scrubs; rebuilding paths and the marker
-  // table mid-gesture starves the JS thread. Freeze the series for the drag instead.
+  // Freeze live series while dragging so path and marker-table rebuilds do not starve JS.
   const liveSeriesRef = useRef({ points, secondary })
   const [frozenSeries, setFrozenSeries] = useState<{
     points: TelemetryChartPoint[]
@@ -456,9 +456,10 @@ export function TelemetryLineChart({
     setSharedValue(markerTableSV, markerTable)
   }, [markerTable, markerTableSV])
 
-  const liveIdx = useDerivedValue(() =>
-    pickMarkerIndex(markerTableSV.value, activeScrubTimeMs.value ?? currentTimeMs.value),
-  )
+  const liveIdx = useDerivedValue(() => {
+    const timeMs = activeScrubTimeMs.value ?? currentTimeMs.value
+    return timeMs == null ? -1 : pickNearestSortedIndex(markerTableSV.value.ts, timeMs)
+  })
   const markerX = useDerivedValue(() => {
     const idx = liveIdx.value
     return idx >= 0 ? markerTableSV.value.xs[idx] : -100
@@ -498,10 +499,6 @@ export function TelemetryLineChart({
     if (left + TOOLTIP_WIDTH > cardChartRight) left = cardChartRight - TOOLTIP_WIDTH
     return { left }
   })
-  const liveValueColorStyle = useAnimatedStyle(() => ({
-    color: markerColor.value,
-  }))
-
   // JS-side gesture bookkeeping: one call at drag start (tooltip + freeze) and one at
   // release. The per-move path stays entirely on the UI thread.
   const startDrag = useCallback(() => {
@@ -522,7 +519,10 @@ export function TelemetryLineChart({
   }, [])
 
   const scrubEnabled =
-    points.length > 0 && chartWidth > 0 && (scrubbable || !!onPointSelected || !!onScrubTimeChange)
+    !trim &&
+    points.length > 0 &&
+    chartWidth > 0 &&
+    (scrubbable || !!onPointSelected || !!onScrubTimeChange)
 
   const hasScrubCallback = !!onScrubTimeChange
   const panGesture = useMemo(
@@ -548,57 +548,60 @@ export function TelemetryLineChart({
     ],
   )
 
+  // Trim shares the chart's own time domain: first→last plotted sample maps to [0, chartWidth].
+  const trimDomainStartMs = displayPoints[0]?.date.getTime() ?? 0
+  const trimDomainEndMs = displayPoints.at(-1)?.date.getTime() ?? 0
+  const trimState = useChartTrim({
+    trim,
+    chartWidth,
+    domainStartMs: trimDomainStartMs,
+    domainEndMs: trimDomainEndMs,
+  })
+  const activeGesture = trim ? trimState.gesture : panGesture
+
   const yMid = (range.y.min + range.y.max) / 2
   const secondaryYMid = secondary ? (secondary.range.y.min + secondary.range.y.max) / 2 : 0
+  const alertMarkers = useMemo(
+    () => getChartAlertMarkers(alertThresholds, range, height),
+    [alertThresholds, height, range],
+  )
 
   const timeLabels = useMemo(() => {
-    const points = displayPoints
-    if (points.length < 2) return null
-    const now = points[points.length - 1].date
-    const start = windowMs ? new Date(now.getTime() - windowMs) : points[0].date
-    return {
-      start: formatRelativeTime(start, now),
-      end: 'now',
-    }
-  }, [displayPoints, windowMs])
+    return getChartTimeLabels(displayPoints, windowMs, timeMode)
+  }, [displayPoints, timeMode, windowMs])
+  const timeRangeBands = useMemo(
+    () => getChartTimeRangeBands(displayPoints, timeRangeHighlights ?? [], chartWidth, windowMs),
+    [chartWidth, displayPoints, timeRangeHighlights, windowMs],
+  )
 
-  const activeColor = resolveActiveChartColor(currentPoint, color, getPointColor)
-  const valueColorStyle = getPointColor && currentPoint ? { color: activeColor } : undefined
+  // Header readout: the live marker color wins whenever points carry their own
+  // color, otherwise the secondary series color, otherwise the neutral token.
+  const headerValueColor = secondary
+    ? color
+    : getPointColor
+      ? markerColor
+      : theme.palette.slate.textPrimary
   const hasMarker = markerTable.ts.length > 0
 
   return (
     <View style={[styles.card, containerStyle]}>
-      <View style={styles.header}>
-        {label ? <Text style={styles.label}>{label}</Text> : <View />}
-        <View style={styles.headerRight}>
-          {isDragging && <AnimatedValueText text={liveTimeText} style={styles.headerTime} />}
-          <AnimatedValueText
-            text={liveValueText}
-            style={[
-              styles.value,
-              secondary ? { color } : valueColorStyle,
-              getPointColor && !secondary ? liveValueColorStyle : undefined,
-            ]}
-          />
-        </View>
-      </View>
+      <ChartHeaderReadout
+        label={label}
+        showTime={isDragging}
+        timeText={liveTimeText}
+        valueText={liveValueText}
+        valueColor={headerValueColor}
+      />
 
       {isDragging && hasMarker && (
-        <Animated.View style={[styles.tooltip, tooltipAnimatedStyle]}>
-          <View style={styles.tooltipValues}>
-            <AnimatedValueText
-              text={liveValueText}
-              style={[styles.tooltipValue, { color: activeColor }, liveValueColorStyle]}
-            />
-            {secondary && (
-              <AnimatedValueText
-                text={liveSecondaryValueText}
-                style={[styles.tooltipValue, { color: secondary.color }]}
-              />
-            )}
-          </View>
-          <AnimatedValueText text={liveTimeText} style={styles.tooltipTime} />
-        </Animated.View>
+        <ChartTooltipReadout
+          style={tooltipAnimatedStyle}
+          timeText={liveTimeText}
+          valueText={liveValueText}
+          valueColor={markerColor}
+          secondaryValueText={secondary ? liveSecondaryValueText : undefined}
+          secondaryColor={secondary?.color}
+        />
       )}
 
       <View style={styles.chartBody}>
@@ -608,10 +611,20 @@ export function TelemetryLineChart({
           <Text style={styles.yLabel}>{formatAxisNumber(range.y.min)}</Text>
         </View>
 
-        <GestureDetector gesture={panGesture}>
+        <GestureDetector gesture={activeGesture}>
           <View style={[styles.graphWrap, { height }]} onLayout={onGraphLayout}>
             {chartWidth > 0 && (
               <Canvas style={{ width: chartWidth, height }}>
+                {timeRangeBands.map((band) => (
+                  <Rect
+                    key={`${band.startMs}-${band.endMs}-${band.color}`}
+                    x={band.x}
+                    y={0}
+                    width={band.width}
+                    height={height}
+                    color={band.color}
+                  />
+                ))}
                 <Line
                   p1={vec(0, 0.5)}
                   p2={vec(chartWidth, 0.5)}
@@ -632,6 +645,16 @@ export function TelemetryLineChart({
                   color={theme.palette.slate.surface}
                   strokeWidth={0.5}
                 />
+
+                {alertMarkers.map((marker) => (
+                  <Line
+                    key={marker.value}
+                    p1={vec(0, marker.y)}
+                    p2={vec(chartWidth, marker.y)}
+                    color={ALERT_LINE_COLOR}
+                    strokeWidth={1}
+                  />
+                ))}
 
                 {excludedRanges?.map((range) => {
                   const x1 = getXPosition(displayPoints, range.startMs, chartWidth, windowMs)
@@ -674,7 +697,7 @@ export function TelemetryLineChart({
                 />
               </Canvas>
             )}
-            {chartWidth > 0 && hasMarker && (
+            {chartWidth > 0 && hasMarker && !trim && (
               <Canvas style={[styles.markerCanvas, { width: chartWidth, height }]}>
                 {isDragging && (
                   <Line
@@ -697,6 +720,13 @@ export function TelemetryLineChart({
                   strokeWidth={2}
                 />
               </Canvas>
+            )}
+            {trim && chartWidth > 0 && (
+              <TelemetryChartTrimOverlay
+                height={height}
+                chartWidth={chartWidth}
+                trimState={trimState}
+              />
             )}
           </View>
         </GestureDetector>
@@ -740,34 +770,6 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 4,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerTime: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 9,
-    fontVariant: ['tabular-nums'],
-  },
-  label: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  value: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 11,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
   chartBody: {
     flexDirection: 'row',
   },
@@ -776,6 +778,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     paddingRight: 4,
+    position: 'relative',
   },
   rightAxis: {
     width: Y_AXIS_WIDTH,
@@ -812,36 +815,5 @@ const styles = StyleSheet.create({
   },
   xLabelHidden: {
     opacity: 0,
-  },
-  tooltip: {
-    position: 'absolute',
-    top: 2,
-    width: TOOLTIP_WIDTH,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 1,
-  },
-  tooltipValues: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  tooltipValue: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 9,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  tooltipTime: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 8,
-    fontVariant: ['tabular-nums'],
   },
 })

@@ -20,6 +20,9 @@ zsh -lc 'bun run e2e --all'
 - `bun run e2e --flow connect-board` runs one flow by name from `e2e/flows/connect-board.yaml`.
 - `bun run e2e` opens a simple interactive selector.
 - Helper flows start with `_` and are hidden from the selector.
+- `bun run smoke` is the separate fixture-backed run: real native, restored database, replayed
+  recording, no `e2eFake`. Needs its own build (`EXPO_PUBLIC_SMOKE=1`, produced by the runner), so it
+  cannot share a device install with `bun run e2e`. See `e2e/README.md`.
 - Keep project code clean: do not patch `package.json` or source files to solve local tool/env problems.
 
 ## Fast Loop

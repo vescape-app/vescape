@@ -149,6 +149,17 @@ final class TuneProfileStoreTests: XCTestCase {
     XCTAssertEqual(profiles.map { $0["id"] as! String }, [current["id"] as! String])
   }
 
+  func testAcceptsLegacyTwoPartRefloatCompatibility() throws {
+    _ = try createProfile(
+      boardId: "board-1",
+      name: "Legacy",
+      fields: ["speed": 44],
+      refloatBaseVersion: "1.1"
+    )
+
+    XCTAssertEqual(store.getTuneProfiles("board-1", refloatBaseVersion: "1.1").count, 1)
+  }
+
   func testUnscopedProfilesAreIgnored() throws {
     try queue.write { db in
       try db.execute(

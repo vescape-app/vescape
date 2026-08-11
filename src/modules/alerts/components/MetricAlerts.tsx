@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { type SharedValue } from 'react-native-reanimated'
+import type { AlertTestRule } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
@@ -11,6 +12,7 @@ import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
 import { type MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
+import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /** Structural mirror of the gauge hot-range span; keeps this module clear of the history module. */
@@ -25,6 +27,10 @@ interface MetricAlertsProps {
   /** Live telemetry value driving the gauge needle; absent renders the offline preview. */
   liveValue?: SharedValue<number | null>
   hotRange?: MetricAlertsHotRange | null
+  /** Detail-screen Alerts heading, placed directly below the gauge. */
+  controlsHeader?: ReactNode
+  /** Optional precomputed snapshot shared with the screen's chart markers. */
+  ruleSnapshot?: AlertTestRule[]
 }
 
 /**
@@ -35,7 +41,14 @@ interface MetricAlertsProps {
  * A `null` controller means no Board: Alert Rules are board-owned (#254), so instead of controls
  * that would silently write nowhere, the block explains that and offers the way forward.
  */
-export function MetricAlerts({ controller, unit, liveValue, hotRange }: MetricAlertsProps) {
+export function MetricAlerts({
+  controller,
+  unit,
+  liveValue,
+  hotRange,
+  controlsHeader,
+  ruleSnapshot,
+}: MetricAlertsProps) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
 
   const batteryConfig = useBatteryConfig(controller?.controlId)
@@ -47,9 +60,24 @@ export function MetricAlerts({ controller, unit, liveValue, hotRange }: MetricAl
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [controller?.rules],
   )
+  const derivedRuleSnapshot = useMemo(
+    () =>
+      controller
+        ? buildMetricAlertRuleSnapshot({
+            metric: controller.metric,
+            level: controller.level,
+            rules: controller.rules,
+            boardTopSpeedKmh: controller.topSpeedKmh,
+            hasBatteryConfig: controller.hasBatteryConfig,
+          })
+        : [],
+    [controller],
+  )
+  const visibleRuleSnapshot = ruleSnapshot ?? derivedRuleSnapshot
 
   if (!controller) return <NoBoardNotice />
 
@@ -71,6 +99,8 @@ export function MetricAlerts({ controller, unit, liveValue, hotRange }: MetricAl
           customAlerts={customMarkers}
           hotRange={hotRange}
           disabled={batteryBlocked}
+          testRules={visibleRuleSnapshot}
+          controlsHeader={controlsHeader}
           onCustomize={controller.customize}
           onDiscardCustom={() => setConfirmingDiscard(true)}
         />

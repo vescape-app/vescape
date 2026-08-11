@@ -82,4 +82,16 @@ describe('mainScreenStore', () => {
     expect(state.historySheetVisible).toBe(false)
     expect(state.seekTimeMs).toBe(null)
   })
+
+  test('ends Favorite trimming when the ride context changes', () => {
+    const store = useMainScreenStore.getState()
+
+    store.beginTrim({ startMs: 1_000, endMs: 2_000 })
+    store.setHistoryTab('favorites')
+    expect(useMainScreenStore.getState().trimRange).toBe(null)
+
+    useMainScreenStore.getState().beginTrim({ startMs: 3_000, endMs: 4_000 })
+    useMainScreenStore.getState().openFavorite('favorite-1')
+    expect(useMainScreenStore.getState().trimRange).toBe(null)
+  })
 })

@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: battery-bar
+- extendedWaitUntil:
+    visible: 'Battery'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/03-battery
+- runFlow: ../fixture/_home.yaml

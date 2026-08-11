@@ -3,7 +3,7 @@ package expo.modules.vescapecore.config
 import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
-import expo.modules.vescapecore.connection.boardTransport
+import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.isPollingCapable
 import expo.modules.vescapecore.diagnostics.newOperationId
 import expo.modules.vescapecore.warnings.ConfigSafetyValues
@@ -28,8 +28,7 @@ internal data class PendingConfigWrite(
 internal data class ConfigConnectionSnapshot(
     val config: SessionConfig?,
     val phase: BoardPhase,
-    val canId: Int?,
-    val directConnection: Boolean,
+    val transport: BoardTransport?,
     val fwVersion: String?,
     val linkIntegrity: LinkIntegrity,
 )
@@ -65,11 +64,11 @@ internal class ConfigRWController(
         val connection = port.connection()
         if (!connection.connected()) return pending.notConnected()
         if (!connection.trusted()) return pending.linkNotTrusted()
-        val transport = boardTransport(connection.canId, connection.directConnection) ?: return pending.noCanId("read")
+        val transport = connection.transport ?: return pending.noCanId("read")
         val wasPolling = port.isPollingActive()
         port.stopPolling()
         readCallbacks = pending
-        dispatch(ConfigRWEvent.StartRead(newOperationId(), connection.canId, transport, wasPolling, connection.config?.appBoardId, connection.fwVersion))
+        dispatch(ConfigRWEvent.StartRead(newOperationId(), connection.canIdOrNull(), transport, wasPolling, connection.config?.appBoardId, connection.fwVersion))
     }
 
     fun consumeWrite(pending: PendingConfigWrite) {
@@ -77,7 +76,7 @@ internal class ConfigRWController(
         val initial = port.connection()
         if (!initial.connected()) return pending.notConnected()
         if (!initial.trusted()) return pending.linkNotTrusted()
-        if (boardTransport(initial.canId, initial.directConnection) == null) return pending.noCanId("push")
+        if (initial.transport == null) return pending.noCanId("push")
         appDataScope.launch {
             val profile = try { repository().getTuneProfile(pending.profileId) } catch (_: Exception) { null }
             if (profile == null) {
@@ -92,7 +91,7 @@ internal class ConfigRWController(
                 val connection = port.connection()
                 if (!connection.connected()) return@post pending.notConnected()
                 if (!connection.trusted()) return@post pending.linkNotTrusted()
-                val transport = boardTransport(connection.canId, connection.directConnection) ?: return@post pending.noCanId("push")
+                val transport = connection.transport ?: return@post pending.noCanId("push")
                 val profileBoardId = profile["boardId"] as? String
                 val profileRefloatBaseVersion = profile["refloatBaseVersion"] as? String
                 val connectedBoardId = connection.config?.appBoardId
@@ -106,7 +105,7 @@ internal class ConfigRWController(
                 val wasPolling = port.isPollingActive()
                 port.stopPolling()
                 writeCallbacks = pending
-                dispatch(ConfigRWEvent.StartWrite(newOperationId(), connection.canId, transport, wasPolling, fields, connectedBoardId, connection.fwVersion))
+                dispatch(ConfigRWEvent.StartWrite(newOperationId(), connection.canIdOrNull(), transport, wasPolling, fields, connectedBoardId, connection.fwVersion))
             }
         }
     }
@@ -140,7 +139,7 @@ internal class ConfigRWController(
 
     private fun resumePolling(resume: Boolean) {
         val connection = port.connection()
-        if (resume && connection.config != null && isPollingCapable(connection.canId, connection.directConnection)) port.startPolling()
+        if (resume && connection.config != null && isPollingCapable(connection.transport)) port.startPolling()
     }
 
     private fun completeRead(effect: ConfigRWEffect.EmitReadComplete) {
@@ -165,6 +164,8 @@ internal class ConfigRWController(
         port.captureDiagnostic("profile_push_failed", port.diagnosticProperties(port.connection().config, "profile_push") + mapOf("operation_id" to effect.opId, "message" to effect.message, "error_code" to effect.code.name, "phase" to effect.phase.name, "firmware" to port.connection().fwVersion) + DiagnosticReporter.configBlobProperties(effect.rawConfig))
         callbacks?.onError?.invoke(effect.code.name, effect.message)
     }
+    private fun ConfigConnectionSnapshot.canIdOrNull() = (transport as? BoardTransport.Can)?.canId
+
     private fun ConfigConnectionSnapshot.connected() = config != null && phase == BoardPhase.Connected
     private fun ConfigConnectionSnapshot.trusted() = linkIntegrity == LinkIntegrity.Trusted
     private fun PendingConfigRead.inFlight() = onError(RefloatConfigErrorCode.CONFIG_REQUEST_IN_FLIGHT.name, "Config operation already in flight")

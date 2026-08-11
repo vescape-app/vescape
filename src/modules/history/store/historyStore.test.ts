@@ -44,6 +44,7 @@ const getSettings = mock(async () => ({
   lastGpsLatitude: null,
   lastGpsLongitude: null,
   movingSpeedThresholdKmh: 3,
+  rideSplitGapMinutes: 30,
   freeSpinMaxSpeedDeltaKmh: 10,
   freeSpinStationaryBoardCapKmh: 15,
   mapStyleKey: 'onedark',
@@ -52,7 +53,7 @@ const getSettings = mock(async () => ({
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'northUp',
+  mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
 }))
@@ -112,13 +113,13 @@ beforeEach(async () => {
 test('removes selected session from history and selects next ride', async () => {
   const newest = block({
     id: 'newest',
-    startAtMs: 3_000_000,
-    endAtMs: 3_060_000,
+    startAtMs: 9_000_000,
+    endAtMs: 9_060_000,
   })
   const selected = block({
     id: 'selected',
-    startAtMs: 2_000_000,
-    endAtMs: 2_060_000,
+    startAtMs: 5_000_000,
+    endAtMs: 5_060_000,
   })
   const oldest = block({
     id: 'oldest',
@@ -126,6 +127,7 @@ test('removes selected session from history and selects next ride', async () => 
     endAtMs: 1_060_000,
   })
   getTelemetryHistory.mockResolvedValueOnce([newest, selected, oldest])
+  getTelemetryHistory.mockResolvedValueOnce([newest, oldest])
 
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
@@ -149,8 +151,8 @@ test('removes selected session from history and selects next ride', async () => 
 test('selects ride immediately while loading its full route', async () => {
   const current = block({
     id: 'current',
-    startAtMs: 2_000_000,
-    endAtMs: 2_060_000,
+    startAtMs: 5_000_000,
+    endAtMs: 5_060_000,
   })
   const next = block({
     id: 'next',
@@ -389,13 +391,13 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
 test('loads older history pages and merges sessions', async () => {
   const newest = block({
     id: 'newest',
-    startAtMs: 3_000_000,
-    endAtMs: 3_060_000,
+    startAtMs: 9_000_000,
+    endAtMs: 9_060_000,
   })
   const oldestLoaded = block({
     id: 'oldest-loaded',
-    startAtMs: 2_000_000,
-    endAtMs: 2_060_000,
+    startAtMs: 5_000_000,
+    endAtMs: 5_060_000,
   })
   const older = block({
     id: 'older',
@@ -431,18 +433,18 @@ test('loads older history pages and merges sessions', async () => {
 test('keeps selected session addressable when older page expands it', async () => {
   const newest = block({
     id: 'newest',
-    startAtMs: 3_000_000,
-    endAtMs: 3_060_000,
+    startAtMs: 9_000_000,
+    endAtMs: 9_060_000,
   })
   const partial = block({
     id: 'partial',
-    startAtMs: 2_000_000,
-    endAtMs: 2_060_000,
+    startAtMs: 5_000_000,
+    endAtMs: 5_060_000,
   })
   const olderSameRide = block({
     id: 'older-same-ride',
-    startAtMs: 1_960_000,
-    endAtMs: 1_999_000,
+    startAtMs: 4_960_000,
+    endAtMs: 4_999_000,
   })
   getTelemetryHistory.mockResolvedValueOnce([newest, partial])
   getTelemetryHistory.mockResolvedValueOnce([olderSameRide])
@@ -457,6 +459,32 @@ test('keeps selected session addressable when older page expands it', async () =
   await useHistoryStore.getState().loadMore()
 
   expect(useHistoryStore.getState().sessions).toHaveLength(2)
-  expect(useHistoryStore.getState().selectedSession?.startAtMs).toBe(1_960_000)
-  expect(useHistoryStore.getState().selectedSession?.endAtMs).toBe(2_060_000)
+  expect(useHistoryStore.getState().selectedSession?.startAtMs).toBe(4_960_000)
+  expect(useHistoryStore.getState().selectedSession?.endAtMs).toBe(5_060_000)
+})
+
+test('clearHistory invalidates an in-flight live refresh', async () => {
+  const stale = block({
+    id: 'stale',
+    startAtMs: 1_000_000,
+    endAtMs: 1_060_000,
+  })
+  let resolveRefresh: (blocks: TelemetryMinuteBucket[]) => void = () => {}
+  getTelemetryHistory.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveRefresh = resolve
+      }),
+  )
+  getTelemetryHistory.mockResolvedValueOnce([])
+  const { useHistoryStore } = await import('@/modules/history/store/historyStore')
+
+  const refresh = useHistoryStore.getState().refreshLive()
+  await Promise.resolve()
+  await useHistoryStore.getState().clearHistory()
+  resolveRefresh([stale])
+  await refresh
+
+  expect(useHistoryStore.getState().blocks).toEqual([])
+  expect(useHistoryStore.getState().liveBlocks).toEqual([])
 })

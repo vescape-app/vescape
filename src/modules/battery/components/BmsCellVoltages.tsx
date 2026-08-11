@@ -1,46 +1,38 @@
 import { useEffect } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { BmsEvent, BmsSeriesFrame } from 'vescape-core'
-import Animated, {
-  useAnimatedStyle,
+import {
   useDerivedValue,
   useSharedValue,
   type DerivedValue,
   type SharedValue,
 } from 'react-native-reanimated'
-import { AnimatedValueText } from '@/components/base/AnimatedValueText'
 import { Text } from '@/components/base/Text'
 
 import {
   cellBarScale,
   summarizeBms,
   summarizeBmsWindow,
-  type BmsCellGroup,
   type BmsSummary,
   type BmsWindowStats,
 } from '@/modules/battery/lib'
+import {
+  BmsCellRows,
+  BmsStatValues,
+  COL_GAP,
+  type BmsStatValue,
+} from '@/modules/battery/components/bmsCellCanvas'
+import { useCanvasSize } from '@/hooks/useCanvasSize'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { theme } from '@/constants/theme'
-
-const COLOR_MIN = theme.status.warning.color
-const COLOR_MAX = theme.palette.yellow.color
-const COLOR_NORMAL = theme.palette.green.color
-
-const formatCell = (v: number) => `${v.toFixed(3)}V`
-const formatSpread = (v: number) => `${v.toFixed(3)}V`
 
 function formatWindowLabel(windowMs: number | null | undefined): string {
   if (!windowMs) return 'WINDOW'
   const minutes = Math.round(windowMs / 60_000)
   if (minutes >= 1) return `${minutes} MIN`
   return `${Math.round(windowMs / 1000)} SEC`
-}
-
-function groupColor(extreme: BmsCellGroup['extreme']): string {
-  'worklet'
-  return extreme === 'min' ? COLOR_MIN : extreme === 'max' ? COLOR_MAX : COLOR_NORMAL
 }
 
 function nearestTimeIndex(times: number[], timeMs: number): number {
@@ -62,9 +54,9 @@ function nearestTimeIndex(times: number[], timeMs: number): number {
 /**
  * Fully UI-thread-driven cell card: BMS frames stream straight into shared values
  * (one write per store event), the displayed summary is derived in worklets from the
- * shared scrub cursor, and every bar/number is an animated style or animated text.
- * React renders the row skeleton once per cell-count change — scrubbing and live
- * updates cause zero re-renders.
+ * shared scrub cursor, and every bar/number is drawn on Skia. React renders the
+ * skeleton once per cell-count change — scrubbing and live updates cause zero
+ * re-renders.
  */
 export function BmsCellVoltages({
   scrubTimeMs,
@@ -147,37 +139,6 @@ export function BmsCellVoltages({
     }
     return summarizeBms({ cellVoltages, balancing })
   })
-  const scaleSV = useDerivedValue(() => {
-    const summary = summarySV.value
-    return summary ? cellBarScale(summary.minVoltage, summary.maxVoltage) : { low: 0, high: 1 }
-  })
-
-  const spreadText = useDerivedValue(() => {
-    const s = summarySV.value
-    return s ? `${s.spread.toFixed(3)}V` : '--'
-  })
-  const minText = useDerivedValue(() => {
-    const s = summarySV.value
-    return s ? `${s.minVoltage.toFixed(3)}V` : '--'
-  })
-  const avgText = useDerivedValue(() => {
-    const s = summarySV.value
-    return s ? `${s.average.toFixed(3)}V` : '--'
-  })
-  const maxText = useDerivedValue(() => {
-    const s = summarySV.value
-    return s ? `${s.maxVoltage.toFixed(3)}V` : '--'
-  })
-  const peakSpreadText = useDerivedValue(() => {
-    const stats = windowStatsSV.value
-    return stats ? `${stats.peakSpread.toFixed(3)}V` : '--'
-  })
-  const worstGroupText = useDerivedValue(() => {
-    const stats = windowStatsSV.value
-    return stats?.worstGroupIndex == null ? '--' : `G${stats.worstGroupIndex + 1}`
-  })
-
-  const windowLabel = formatWindowLabel(bmsSeriesWindowMs ?? windowMs)
 
   if (groupCount === 0) {
     return (
@@ -193,93 +154,12 @@ export function BmsCellVoltages({
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>CELL GROUPS · {groupCount}S</Text>
-      </View>
-      <View style={styles.summaryRow}>
-        <LiveStat label="Δ SPREAD" text={spreadText} tone="spread" />
-        <LiveStat label="MIN" text={minText} tone="min" />
-        <LiveStat label="AVG" text={avgText} tone="neutral" />
-        <LiveStat label="MAX" text={maxText} tone="max" />
-      </View>
-      <View style={styles.windowStatsRow}>
-        <LiveStat label={`PEAK Δ (${windowLabel})`} text={peakSpreadText} tone="spread" />
-        <LiveStat label="WORST GROUP" text={worstGroupText} tone="min" />
-      </View>
-      <View style={styles.rows}>
-        {Array.from({ length: groupCount }, (_, index) => (
-          <LiveCellRow key={index} index={index} summary={summarySV} scale={scaleSV} />
-        ))}
-      </View>
-    </View>
-  )
-}
-
-function LiveCellRow({
-  index,
-  summary,
-  scale,
-}: {
-  index: number
-  summary: DerivedValue<BmsSummary | null>
-  scale: DerivedValue<{ low: number; high: number }>
-}) {
-  const barStyle = useAnimatedStyle(() => {
-    const group = summary.value?.groups[index]
-    if (!group) return { width: '0%', backgroundColor: COLOR_NORMAL }
-    const { low, high } = scale.value
-    const span = high - low
-    const fraction = Math.max(0, Math.min(1, (group.voltage - low) / (span > 0 ? span : 1)))
-    return { width: `${fraction * 100}%`, backgroundColor: groupColor(group.extreme) }
-  })
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: summary.value?.groups[index]?.balancing ? 1 : 0,
-  }))
-  const voltageText = useDerivedValue(() => {
-    const group = summary.value?.groups[index]
-    return group ? `${group.voltage.toFixed(3)}V` : ''
-  })
-  const voltageStyle = useAnimatedStyle(() => ({
-    color: groupColor(summary.value?.groups[index]?.extreme ?? null),
-  }))
-
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowIndex}>{index + 1}</Text>
-      <View style={styles.barTrack}>
-        <Animated.View style={[styles.barLine, barStyle]} />
-        <Animated.View style={[styles.balanceDot, dotStyle]} />
-      </View>
-      <AnimatedValueText text={voltageText} style={[styles.rowValue, voltageStyle]} />
-    </View>
-  )
-}
-
-function statColor(tone: 'min' | 'max' | 'neutral' | 'spread'): string {
-  return tone === 'min'
-    ? theme.status.warning.text
-    : tone === 'max'
-      ? theme.palette.yellow.text
-      : tone === 'spread'
-        ? theme.palette.green.text
-        : theme.palette.slate.textPrimary
-}
-
-function LiveStat({
-  label,
-  text,
-  tone,
-}: {
-  label: string
-  text: DerivedValue<string>
-  tone: 'min' | 'max' | 'neutral' | 'spread'
-}) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <AnimatedValueText text={text} style={[styles.statValue, { color: statColor(tone) }]} />
-    </View>
+    <BmsCellCard
+      groupCount={groupCount}
+      summary={summarySV}
+      windowStats={windowStatsSV}
+      windowLabel={formatWindowLabel(bmsSeriesWindowMs ?? windowMs)}
+    />
   )
 }
 
@@ -293,74 +173,123 @@ export function BmsCellVoltagesView({
   windowStats?: BmsWindowStats | null
   windowMs?: number | null
 }) {
-  const scale = cellBarScale(summary.minVoltage, summary.maxVoltage)
-  const windowLabel = formatWindowLabel(windowMs)
+  const summarySV = useDerivedValue<BmsSummary | null>(() => summary)
+  const windowStatsSV = useDerivedValue<BmsWindowStats | null>(() => windowStats ?? null)
 
   return (
-    <View style={styles.container}>
+    <BmsCellCard
+      groupCount={summary.cellCount}
+      summary={summarySV}
+      windowStats={windowStatsSV}
+      windowLabel={formatWindowLabel(windowMs)}
+    />
+  )
+}
+
+function statColor(tone: 'min' | 'max' | 'neutral' | 'spread'): string {
+  return tone === 'min'
+    ? theme.status.warning.text
+    : tone === 'max'
+      ? theme.palette.yellow.text
+      : tone === 'spread'
+        ? theme.palette.green.text
+        : theme.palette.slate.textPrimary
+}
+
+interface BmsCellCardProps {
+  groupCount: number
+  summary: DerivedValue<BmsSummary | null>
+  windowStats: DerivedValue<BmsWindowStats | null>
+  windowLabel: string
+}
+
+/**
+ * The card body, shared by the live and the precomputed entry points so the
+ * layout exists once. Everything that moves is drawn on two canvases; the
+ * labels stay real text (they never tick, and Skia has no letter spacing).
+ */
+function BmsCellCard({ groupCount, summary, windowStats, windowLabel }: BmsCellCardProps) {
+  // The card has no inner horizontal padding, so one measurement sizes every canvas.
+  const { size, onLayout } = useCanvasSize()
+
+  const scale = useDerivedValue(() => {
+    const s = summary.value
+    return s ? cellBarScale(s.minVoltage, s.maxVoltage) : { low: 0, high: 1 }
+  })
+
+  const spreadText = useDerivedValue(() => {
+    const s = summary.value
+    return s ? `${s.spread.toFixed(3)}V` : '--'
+  })
+  const minText = useDerivedValue(() => {
+    const s = summary.value
+    return s ? `${s.minVoltage.toFixed(3)}V` : '--'
+  })
+  const avgText = useDerivedValue(() => {
+    const s = summary.value
+    return s ? `${s.average.toFixed(3)}V` : '--'
+  })
+  const maxText = useDerivedValue(() => {
+    const s = summary.value
+    return s ? `${s.maxVoltage.toFixed(3)}V` : '--'
+  })
+  const peakSpreadText = useDerivedValue(() => {
+    const stats = windowStats.value
+    return stats ? `${stats.peakSpread.toFixed(3)}V` : '--'
+  })
+  const worstGroupText = useDerivedValue(() => {
+    const stats = windowStats.value
+    return stats?.worstGroupIndex == null ? '--' : `G${stats.worstGroupIndex + 1}`
+  })
+
+  const summaryStats: BmsStatValue[] = [
+    { text: spreadText, color: statColor('spread') },
+    { text: minText, color: statColor('min') },
+    { text: avgText, color: statColor('neutral') },
+    { text: maxText, color: statColor('max') },
+  ]
+  const windowStatValues: BmsStatValue[] = [
+    { text: peakSpreadText, color: statColor('spread') },
+    { text: worstGroupText, color: statColor('min') },
+  ]
+
+  return (
+    <View style={styles.container} onLayout={onLayout}>
       <View style={styles.header}>
-        <Text style={styles.title}>CELL GROUPS · {summary.cellCount}S</Text>
+        <Text style={styles.title}>CELL GROUPS · {groupCount}S</Text>
       </View>
-      <View style={styles.summaryRow}>
-        <Stat label="Δ SPREAD" value={`${summary.spread.toFixed(3)}V`} tone="spread" />
-        <Stat label="MIN" value={formatCell(summary.minVoltage)} tone="min" />
-        <Stat label="AVG" value={formatCell(summary.average)} tone="neutral" />
-        <Stat label="MAX" value={formatCell(summary.maxVoltage)} tone="max" />
-      </View>
-      <View style={styles.windowStatsRow}>
-        <Stat
-          label={`PEAK Δ (${windowLabel})`}
-          value={windowStats ? formatSpread(windowStats.peakSpread) : '--'}
-          tone="spread"
-        />
-        <Stat
-          label="WORST GROUP"
-          value={
-            windowStats?.worstGroupIndex == null ? '--' : `G${windowStats.worstGroupIndex + 1}`
-          }
-          tone="min"
-        />
-      </View>
-      <View style={styles.rows}>
-        {summary.groups.map((group) => (
-          <CellRow key={group.index} group={group} low={scale.low} high={scale.high} />
-        ))}
-      </View>
+      <StatBlock labels={['Δ SPREAD', 'MIN', 'AVG', 'MAX']} values={summaryStats} width={size.w} />
+      <StatBlock
+        labels={[`PEAK Δ (${windowLabel})`, 'WORST GROUP']}
+        values={windowStatValues}
+        width={size.w}
+      />
+      {size.w > 0 ? (
+        <BmsCellRows groupCount={groupCount} summary={summary} scale={scale} width={size.w} />
+      ) : null}
     </View>
   )
 }
 
-function CellRow({ group, low, high }: { group: BmsCellGroup; low: number; high: number }) {
-  const fraction = Math.max(0, Math.min(1, (group.voltage - low) / (high - low)))
-  const color = groupColor(group.extreme)
-
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowIndex}>{group.index + 1}</Text>
-      <View style={styles.barTrack}>
-        <View style={[styles.barLine, { width: `${fraction * 100}%`, backgroundColor: color }]} />
-        {group.balancing ? <View style={styles.balanceDot} /> : null}
-      </View>
-      <Text style={[styles.rowValue, { color }]} numberOfLines={1}>
-        {formatCell(group.voltage)}
-      </Text>
-    </View>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  tone,
+function StatBlock({
+  labels,
+  values,
+  width,
 }: {
-  label: string
-  value: string
-  tone: 'min' | 'max' | 'neutral' | 'spread'
+  labels: string[]
+  values: BmsStatValue[]
+  width: number
 }) {
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, { color: statColor(tone) }]}>{value}</Text>
+    <View style={styles.statBlock}>
+      <View style={styles.statLabelRow}>
+        {labels.map((label) => (
+          <Text key={label} style={styles.statLabel}>
+            {label}
+          </Text>
+        ))}
+      </View>
+      {width > 0 ? <BmsStatValues values={values} width={width} /> : null}
     </View>
   )
 }
@@ -385,68 +314,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  windowStatsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
+  statBlock: {
     gap: 2,
   },
+  statLabelRow: {
+    flexDirection: 'row',
+    gap: COL_GAP,
+  },
   statLabel: {
+    flex: 1,
+    textAlign: 'center',
     color: theme.palette.slate.textMuted,
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: '800',
-    fontFamily: 'monospace',
-  },
-  rows: {
-    gap: 3,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rowIndex: {
-    color: theme.palette.slate.textDim,
-    fontSize: 8,
-    fontWeight: '600',
-    fontFamily: 'monospace',
-    width: 14,
-    textAlign: 'right',
-  },
-  barTrack: {
-    flex: 1,
-    height: 9,
-    justifyContent: 'center',
-  },
-  barLine: {
-    height: 2,
-    borderRadius: 1,
-  },
-  balanceDot: {
-    position: 'absolute',
-    right: 0,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.palette.green.color,
-  },
-  rowValue: {
-    fontSize: 9,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    width: 42,
-    textAlign: 'right',
   },
 })

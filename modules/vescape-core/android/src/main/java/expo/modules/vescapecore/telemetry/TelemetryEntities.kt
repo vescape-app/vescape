@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
@@ -283,6 +284,15 @@ data class AlertRuleEntity(
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
   /**
+   * Repeat cadence in seconds for a single-threshold rule; null is one-shot. Ignored for range
+   * rules. Mirrors TS `AlertRule.repeatEverySeconds`.
+   */
+  @ColumnInfo(name = "repeat_every_seconds")
+  val repeatEverySeconds: Long? = null,
+  /** Sound repeats per announcement. Mirrors TS `AlertRule.beepCount`. */
+  @ColumnInfo(name = "beep_count")
+  val beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
+  /**
    * Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or null) or `preset`.
    * JS authors and regenerates preset rules; native only persists the string.
    */
@@ -350,7 +360,7 @@ data class AppSettingEntity(
 data class AppSettings(
   val liveHistoryLimit: Int = 5,
   val autoConnect: Boolean = true,
-  val autoRecording: Boolean = false,
+  val autoRecording: Boolean = true,
   val selectedBoardId: String? = null,
   val lastGpsLatitude: Double? = null,
   val lastGpsLongitude: Double? = null,
@@ -359,20 +369,23 @@ data class AppSettings(
   val movingSpeedThresholdKmh: Double = 3.0,
   val freeSpinMaxSpeedDeltaKmh: Double = DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
   val freeSpinStationaryBoardCapKmh: Double = DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
+  val rideSplitGapMinutes: Int = DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   val mapStyleKey: String = "onedark",
   val satelliteOverlayEnabled: Boolean = true,
   val satelliteImageryOpacity: Double = 0.2,
   val satelliteMapImageryOpacity: Double = 1.0,
   val satelliteImagerySaturation: Double = -0.35,
   val hideTelemetryMapDetails: Boolean = true,
-  val mapNavigationMode: String = "northUp",
+  val mapOrientationMode: String = "northUp",
   val historyMetricGradientsEnabled: Boolean = true,
   val historyMetricHotRanges: Map<String, Map<String, Double>> = DEFAULT_HISTORY_METRIC_HOT_RANGES,
   val socEstimateWindowSeconds: Int = 20,
+  val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
   val telemetryPollRateHz: Int = 20,
-  val wearMirrorIntervalMs: Int = 500,
+  val wearPushRateHz: Int = 4,
   val wearAutoLaunchOnConnect: Boolean = true,
+  val wearNavArrowEnabled: Boolean = false,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
   val companionPresenceCooldownMinutes: Int = 60,
@@ -454,3 +467,123 @@ data class BoardWarningEntity(
   @ColumnInfo(name = "payload_json")
   val payloadJson: String,
 )
+
+/**
+ * One Favorite: a durable, optionally named time range over Ride History (ADR 0029). Identity and
+ * timestamps are native-minted — JS may only supply the range and the name.
+ *
+ * Summary stats are denormalized at creation/update from raw Telemetry Samples (ADR 0005 style)
+ * because minute buckets are too coarse for a range that cuts mid-bucket.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `Favorite`
+ * @parity /modules/vescape-core/src/index.ts `Favorite`
+ */
+@Entity(
+  tableName = "favorites",
+  indices = [
+    Index(value = ["start_ms", "end_ms"]),
+    Index(value = ["board_id"]),
+  ],
+)
+data class FavoriteEntity(
+  @PrimaryKey
+  val id: String,
+  /**
+   * Owning Board (`boards.id`), or null when the recorded samples match no saved Board. Never the
+   * BLE peripheral id: that changes on re-link and differs per install, so it is not an identity.
+   */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  val name: String?,
+  @ColumnInfo(name = "start_ms")
+  val startMs: Long,
+  @ColumnInfo(name = "end_ms")
+  val endMs: Long,
+  @ColumnInfo(name = "created_at")
+  val createdAt: Long,
+  @ColumnInfo(name = "updated_at")
+  val updatedAt: Long,
+  @ColumnInfo(name = "sample_count")
+  val sampleCount: Int,
+  @ColumnInfo(name = "gps_point_count")
+  val gpsPointCount: Int,
+  /** Odometer delta across the range, or null when the range carries no odometer readings. */
+  @ColumnInfo(name = "distance_cm")
+  val distanceCm: Long?,
+  @ColumnInfo(name = "moving_duration_ms")
+  val movingDurationMs: Long,
+  @ColumnInfo(name = "avg_speed_centi_kmh")
+  val avgSpeedCentiKmh: Int,
+  @ColumnInfo(name = "max_speed_centi_kmh")
+  val maxSpeedCentiKmh: Int,
+  @ColumnInfo(name = "battery_used_wh_milli")
+  val batteryUsedWhMilli: Long,
+) {
+  /**
+   * Board name is resolved on read from `boards`, not snapshotted, so renames propagate.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `Favorite.toMap`
+   */
+  fun toMap(boardName: String?): Map<String, Any?> = mapOf(
+    "id" to id,
+    "boardId" to boardId,
+    "boardName" to boardName,
+    "name" to name,
+    "startMs" to startMs,
+    "endMs" to endMs,
+    "createdAtMs" to createdAt,
+    "updatedAtMs" to updatedAt,
+    "sampleCount" to sampleCount,
+    "gpsPointCount" to gpsPointCount,
+    "distanceM" to distanceCm?.let { it / 100.0 },
+    "movingDurationMs" to movingDurationMs,
+    "avgSpeedKmh" to avgSpeedCentiKmh / 100.0,
+    "maxSpeedKmh" to maxSpeedCentiKmh / 100.0,
+    "batteryUsedWh" to batteryUsedWhMilli / 1000.0,
+  )
+}
+
+/**
+ * One immutable Favorite Media manifest row. SQLite owns metadata; the canonical file path is
+ * derived only from the Favorite and media ids plus the stored MIME type (ADR 0030).
+ *
+ * @parity /modules/vescape-core/ios/telemetry/FavoriteMediaStore.swift `FavoriteMedia`
+ * @parity /modules/vescape-core/src/index.ts `FavoriteMedia`
+ */
+@Entity(
+  tableName = "favorite_media",
+  indices = [
+    Index(value = ["favorite_id", "created_at"]),
+  ],
+)
+data class FavoriteMediaEntity(
+  @PrimaryKey
+  val id: String,
+  @ColumnInfo(name = "favorite_id")
+  val favoriteId: String,
+  @ColumnInfo(name = "captured_at")
+  val capturedAt: Long?,
+  @ColumnInfo(name = "mime_type")
+  val mimeType: String,
+  @ColumnInfo(name = "media_kind")
+  val mediaKind: String,
+  @ColumnInfo(name = "byte_count")
+  val byteCount: Long,
+  @ColumnInfo(name = "content_hash")
+  val contentHash: String,
+  @ColumnInfo(name = "created_at")
+  val createdAt: Long,
+) {
+  fun toMap(uri: String, filename: String): Map<String, Any?> = mapOf(
+    "id" to id,
+    "favoriteId" to favoriteId,
+    "capturedAtMs" to capturedAt,
+    "mimeType" to mimeType,
+    "mediaKind" to mediaKind,
+    "byteCount" to byteCount,
+    "contentHash" to contentHash,
+    "createdAtMs" to createdAt,
+    "uri" to uri,
+    "filename" to filename,
+  )
+}

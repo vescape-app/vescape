@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { ListIcon } from 'phosphor-react-native'
 import { ColorPicker } from '@/components/forms/ColorPicker'

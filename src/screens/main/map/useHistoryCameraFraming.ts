@@ -1,21 +1,13 @@
 import { useCallback, useEffect } from 'react'
 
-import { distanceMeters } from '@/helpers/mapGeometry'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { reduceMapCameraIntent } from '@/modules/map/lib/cameraController'
+import { toEngineTarget } from '@/modules/map/lib/cameraEngine/cameraTarget'
 import { getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
-import { getHistoryRouteCamera, type HistoryCameraViewport } from '@/modules/map/lib/historyCamera'
+import { getRouteFitCamera, type RouteCameraViewport } from '@/modules/map/lib/routeCamera'
 import {
-  cameraDistanceTo,
-  clamp,
   getHistoryPreviewBounds,
   getHistoryPreviewZoom,
-  historyBucketPreviewDuration,
-  HISTORY_BUCKET_PREVIEW_ZOOM_OUT_DELTA,
-  HISTORY_ROUTE_REFINEMENT_DURATION_MS,
-  historyMoveDuration,
-  INSTANT_JUMP_DISTANCE_M,
-  MIN_ZOOM,
   type HistoryPreviewTarget,
 } from '@/modules/map/lib/cameraMotion'
 import type { CameraControlRefs } from '@/screens/main/map/cameraControlTypes'
@@ -27,7 +19,7 @@ interface UseHistoryCameraFramingParams {
   preview: ({ key: string } & HistoryPreviewTarget) | null
   previewRoute: [number, number][]
   rideRoute: [number, number][]
-  viewport: HistoryCameraViewport
+  viewport: RouteCameraViewport
   perspectiveEnabled: boolean
   dispatchCameraIntent: (
     intent: Parameters<typeof reduceMapCameraIntent>[1],
@@ -53,10 +45,10 @@ export function useHistoryCameraFraming({
   setCameraModeRef,
   onHeadingChange,
 }: UseHistoryCameraFramingParams) {
-  const { cameraRef, controllerStateRef, currentCameraRef, historyPreviewTargetRef } = cameraRefs
+  const { controllerStateRef, engine } = cameraRefs
   const getHistoryPreviewCamera = useCallback(
     (coordinate: { latitude: number; longitude: number }) => {
-      const camera = getHistoryRouteCamera({
+      const camera = getRouteFitCamera({
         route: [[coordinate.longitude, coordinate.latitude]],
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,
@@ -72,8 +64,6 @@ export function useHistoryCameraFraming({
         heading: 0,
         pitch: getPitchForZoom(zoomLevel, perspectiveEnabled),
         padding: camera?.padding,
-        animationDuration: MAP_DEFAULTS.animationDuration,
-        animationMode: 'easeTo' as const,
       }
     },
     [perspectiveEnabled, viewport],
@@ -81,20 +71,12 @@ export function useHistoryCameraFraming({
 
   const fitRide = useCallback(
     (nextSelectionKey: string | null) => {
-      const historyCamera = getHistoryRouteCamera({
+      const historyCamera = getRouteFitCamera({
         route: rideRoute,
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,
       })
       if (!historyCamera) return
-      const routeCenter = {
-        longitude: historyCamera.centerCoordinate[0],
-        latitude: historyCamera.centerCoordinate[1],
-      }
-      const duration =
-        cameraDistanceTo(currentCameraRef.current, routeCenter) > INSTANT_JUMP_DISTANCE_M
-          ? 0
-          : HISTORY_ROUTE_REFINEMENT_DURATION_MS
       const effect = dispatchCameraIntent({
         type: 'RefineRideHistoryRoute',
         selectionKey: nextSelectionKey,
@@ -105,37 +87,17 @@ export function useHistoryCameraFraming({
         },
       })
       if (!effect) return
-      cameraRef.current?.setCamera({
-        ...effect.camera,
-        animationDuration: duration,
-        animationMode: 'easeTo',
-      })
+      engine.setTarget(toEngineTarget(effect.camera))
       onHeadingChange(0)
     },
-    [
-      cameraRef,
-      currentCameraRef,
-      dispatchCameraIntent,
-      onHeadingChange,
-      perspectiveEnabled,
-      rideRoute,
-      viewport,
-    ],
+    [dispatchCameraIntent, engine, onHeadingChange, perspectiveEnabled, rideRoute, viewport],
   )
 
   const previewHistorySession = useCallback(
     (nextPreview: HistoryPreviewTarget & { key?: string }) => {
-      const lastTarget = historyPreviewTargetRef.current
-      historyPreviewTargetRef.current = nextPreview
-      const currentCamera = currentCameraRef.current
-      const currentDistanceM = cameraDistanceTo(currentCamera, nextPreview)
-      const lastTargetDistanceM = lastTarget
-        ? distanceMeters(lastTarget, nextPreview)
-        : currentDistanceM
-      const duration = historyMoveDuration(Math.max(currentDistanceM, lastTargetDistanceM))
       const bounds = getHistoryPreviewBounds(nextPreview)
       if (bounds) {
-        const historyCamera = getHistoryRouteCamera({
+        const historyCamera = getRouteFitCamera({
           route: [bounds.ne, bounds.sw],
           viewport,
           maxZoom: MAP_DEFAULTS.maxZoom,
@@ -153,11 +115,7 @@ export function useHistoryCameraFraming({
             },
           })
           if (!effect) return
-          cameraRef.current?.setCamera({
-            ...effect.camera,
-            animationDuration: duration,
-            animationMode: 'easeTo',
-          })
+          engine.setTarget(toEngineTarget(effect.camera))
         }
       } else {
         const previewCamera = getHistoryPreviewCamera(nextPreview)
@@ -167,19 +125,14 @@ export function useHistoryCameraFraming({
           camera: previewCamera,
         })
         if (!effect) return
-        cameraRef.current?.setCamera({
-          ...effect.camera,
-          animationDuration: duration,
-        })
+        engine.setTarget(toEngineTarget(effect.camera))
       }
       onHeadingChange(0)
     },
     [
-      cameraRef,
-      currentCameraRef,
       dispatchCameraIntent,
+      engine,
       getHistoryPreviewCamera,
-      historyPreviewTargetRef,
       onHeadingChange,
       perspectiveEnabled,
       viewport,
@@ -188,49 +141,26 @@ export function useHistoryCameraFraming({
 
   const previewHistoryRoute = useCallback(
     (nextSelectionKey: string, route: [number, number][]) => {
-      const historyCamera = getHistoryRouteCamera({
+      const historyCamera = getRouteFitCamera({
         route,
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,
       })
       if (!historyCamera) return
-      const zoomLevel = clamp(
-        historyCamera.zoomLevel - HISTORY_BUCKET_PREVIEW_ZOOM_OUT_DELTA,
-        MIN_ZOOM,
-        MAP_DEFAULTS.maxZoom,
-      )
-      const routeCenter = {
-        longitude: historyCamera.centerCoordinate[0],
-        latitude: historyCamera.centerCoordinate[1],
-      }
       const effect = dispatchCameraIntent({
         type: 'FrameRideHistoryPreview',
         selectionKey: nextSelectionKey,
         camera: {
           ...historyCamera,
-          zoomLevel,
           heading: 0,
-          pitch: getPitchForZoom(zoomLevel, perspectiveEnabled),
+          pitch: getPitchForZoom(historyCamera.zoomLevel, perspectiveEnabled),
         },
       })
       if (!effect) return
-      cameraRef.current?.setCamera({
-        ...effect.camera,
-        animationDuration: historyBucketPreviewDuration(
-          cameraDistanceTo(currentCameraRef.current, routeCenter),
-        ),
-        animationMode: 'easeTo',
-      })
+      engine.setTarget(toEngineTarget(effect.camera))
       onHeadingChange(0)
     },
-    [
-      cameraRef,
-      currentCameraRef,
-      dispatchCameraIntent,
-      onHeadingChange,
-      perspectiveEnabled,
-      viewport,
-    ],
+    [dispatchCameraIntent, engine, onHeadingChange, perspectiveEnabled, viewport],
   )
 
   useEffect(() => {
@@ -247,7 +177,6 @@ export function useHistoryCameraFraming({
 
     const frame = requestAnimationFrame(() => {
       if (rideRoute.length > 0) {
-        historyPreviewTargetRef.current = null
         fitRide(selectionKey)
         return
       }
@@ -264,7 +193,6 @@ export function useHistoryCameraFraming({
     active,
     controllerStateRef,
     fitRide,
-    historyPreviewTargetRef,
     preview,
     previewHistoryRoute,
     previewHistorySession,

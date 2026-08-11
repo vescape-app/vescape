@@ -1,6 +1,6 @@
 import { StyleSheet, ScrollView, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ClockCountdownIcon, WatchIcon } from 'phosphor-react-native'
+import { ClockCountdownIcon, NavigationArrowIcon, WatchIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { theme } from '@/constants/theme'
@@ -11,10 +11,11 @@ import { IconHero } from '@/components/settings/IconHero'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function WatchSettingsScreen() {
-  const { wearAutoLaunchOnConnect, wearMirrorIntervalMs, set } = useSettingsStore(
+  const { wearAutoLaunchOnConnect, wearPushRateHz, wearNavArrowEnabled, set } = useSettingsStore(
     useShallow((s) => ({
       wearAutoLaunchOnConnect: s.wearAutoLaunchOnConnect,
-      wearMirrorIntervalMs: s.wearMirrorIntervalMs,
+      wearPushRateHz: s.wearPushRateHz,
+      wearNavArrowEnabled: s.wearNavArrowEnabled,
       set: s.set,
     })),
   )
@@ -24,14 +25,14 @@ export default function WatchSettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={WatchIcon}
-          description="Watch Mirror shows live telemetry on your Wear OS watch while you ride."
+          description="Live telemetry on your Wear OS watch while you ride."
         />
         <SettingsCard>
           <SettingsRow
             icon={WatchIcon}
             iconColor={theme.palette.amber.color}
-            label="Open watch app on connect"
-            hint="Launch the Watch Mirror when the board connects"
+            label="Open on connect"
+            hint="Bring the watch app to the front when the board connects"
             right={
               <Switch
                 value={wearAutoLaunchOnConnect}
@@ -46,21 +47,37 @@ export default function WatchSettingsScreen() {
           <SettingsRow
             icon={ClockCountdownIcon}
             iconColor={theme.palette.cyan.color}
-            label="Watch push interval"
-            hint="Watch Mirror update cadence. Lower = faster wrist updates (stress test)"
+            label="Push rate"
+            hint="Frames per second sent to the wrist. Higher = faster updates (stress test)"
             right={
               <Stepper
-                value={wearMirrorIntervalMs}
-                unit="ms"
-                min={50}
-                max={10000}
-                step={(v, dir) => (dir === 1 ? (v < 500 ? 50 : 100) : v <= 500 ? 50 : 100)}
+                value={wearPushRateHz}
+                unit="Hz"
+                min={1}
+                max={20}
+                step={() => 1}
                 onChange={(nextValue) => {
-                  const clampedValue = Math.min(10000, Math.max(50, nextValue))
-                  if (clampedValue !== wearMirrorIntervalMs) {
-                    void set('wearMirrorIntervalMs', clampedValue)
+                  const clampedValue = Math.min(20, Math.max(1, nextValue))
+                  if (clampedValue !== wearPushRateHz) {
+                    void set('wearPushRateHz', clampedValue)
                   }
                 }}
+              />
+            }
+          />
+          <SettingsRow
+            icon={NavigationArrowIcon}
+            iconColor={theme.palette.violet.color}
+            label="Navigation arrow"
+            hint="Draw the direction chevron over the route. Route and distance show either way"
+            right={
+              <Switch
+                value={wearNavArrowEnabled}
+                onValueChange={(v) => void set('wearNavArrowEnabled', v)}
+                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
+                thumbColor={
+                  wearNavArrowEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
+                }
               />
             }
           />

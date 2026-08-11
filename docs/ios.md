@@ -55,12 +55,14 @@ symlink; this is verified to compile on device.
   pbxproj plugin.
 - `app.config.ts`: `ios.infoPlist.NSSupportsLiveActivities = true`.
 - `ios.appleTeamId` (via `APPLE_TEAM_ID` env) is **required** — apple-targets needs it to sign the
-  extension. Set it in `.env` / EAS secrets or prebuild warns and device builds fail to sign.
+  extension. Set it in `.env`, EAS secrets, or the build environment; otherwise prebuild warns and
+  device builds fail to sign.
 - App, widget, and `VescapeCore.podspec` deployment targets are `17.0`, required by Clerk's native
   iOS SDK. Keep all three aligned; lowering only Vescape/Widget config makes prebuild produce an
-  invalid mixed-target project and CocoaPods rejects `ClerkExpo`.
+  invalid mixed-target project and CocoaPods rejects `ClerkExpo`. ActivityKit needs 16.1+, so the
+  app's 17.0 floor also means its ActivityKit code needs no `@available` gating.
 - The `widget` target adds an App Group entitlement by default. It is unused (local `update`s pass
-  `ContentState` directly, no shared storage) but harmless; EAS auto-registers it.
+  `ContentState` directly, no shared storage) but harmless; signing provisioning must cover it.
 
 ### Stop ride control
 

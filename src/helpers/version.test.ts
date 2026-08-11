@@ -13,4 +13,12 @@ describe('androidVersionCode', () => {
       expect(() => androidVersionCode(version)).toThrow(`Invalid version "${version}"`)
     },
   )
+
+  test('uses a validated release allocation when supplied', () => {
+    expect(androidVersionCode('0.83.1', '100000042')).toBe(100_000_042)
+    expect(() => androidVersionCode('0.83.1', '0')).toThrow('Invalid Android release version code')
+    expect(() => androidVersionCode('0.83.1', '2100000001')).toThrow(
+      'Invalid Android release version code',
+    )
+  })
 })

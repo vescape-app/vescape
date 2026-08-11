@@ -35,36 +35,30 @@ class DiagnosticsRecorderTest {
 
     private fun recorder(
         local: MutableList<CapturedEvent>,
-        remote: MutableList<CapturedEvent>,
         ctx: DiagnosticContext = staticContext,
     ) = DiagnosticsRecorder(
         local = { name, props -> local.add(CapturedEvent(name, props)) },
-        remote = { name, props -> remote.add(CapturedEvent(name, props)) },
         context = { ctx },
     )
 
     @Test
-    fun `captureDiagnostic writes to local before remote`() {
+    fun `captureDiagnostic writes to the local sink`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         r.captureDiagnostic("event", mapOf("k" to "v"))
 
         assertEquals(listOf(CapturedEvent("event", mapOf("k" to "v"))), local)
-        assertEquals(listOf(CapturedEvent("event", mapOf("k" to "v"))), remote)
     }
 
     @Test
-    fun `recordLocalDiagnostic skips remote sink`() {
+    fun `recordLocalDiagnostic decorates the event with session context`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         r.recordLocalDiagnostic("gatt_ready", session, "connect", mapOf("message" to "ok"))
 
         assertEquals(1, local.size)
-        assertTrue(remote.isEmpty())
         assertEquals("gatt_ready", local[0].name)
         assertEquals("connect", local[0].properties["operation"])
         assertEquals("AA:BB", local[0].properties["ble_id"])
@@ -74,32 +68,30 @@ class DiagnosticsRecorderTest {
     @Test
     fun `telemetry parse failure reports once across repeated calls`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
         val payload = ByteArray(4) { it.toByte() }
 
         repeat(5) { r.captureTelemetryParseFailed(payload, session) }
 
         assertEquals(5, r.telemetryParseFailedCount())
-        assertEquals(1, remote.size)
         assertEquals(1, local.size)
-        assertEquals("telemetry_parse_failed", remote[0].name)
-        assertEquals(1, remote[0].properties["telemetry_parse_failed_count"])
-        assertEquals("Invalid Refloat telemetry payload", remote[0].properties["message"])
+        assertEquals(1, local.size)
+        assertEquals("telemetry_parse_failed", local[0].name)
+        assertEquals(1, local[0].properties["telemetry_parse_failed_count"])
+        assertEquals("Invalid Refloat telemetry payload", local[0].properties["message"])
     }
 
     @Test
     fun `flush emits aggregate event with total count then resets`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         repeat(4) { r.captureTelemetryParseFailed(ByteArray(2), session) }
         r.flushTelemetryDiagnostics("reconnect", session)
 
         assertEquals(0, r.telemetryParseFailedCount())
-        assertEquals(2, remote.size)
-        val flushEvent = remote[1]
+        assertEquals(2, local.size)
+        val flushEvent = local[1]
         assertEquals("telemetry_parse_failed", flushEvent.name)
         assertEquals(4, flushEvent.properties["telemetry_parse_failed_count"])
         assertEquals("reconnect", flushEvent.properties["reason"])
@@ -109,51 +101,47 @@ class DiagnosticsRecorderTest {
     @Test
     fun `flush is noop when no failures recorded`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         r.flushTelemetryDiagnostics("stop", session)
 
         assertTrue(local.isEmpty())
-        assertTrue(remote.isEmpty())
+        assertTrue(local.isEmpty())
     }
 
     @Test
     fun `parse failure reports again after flush`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         r.captureTelemetryParseFailed(ByteArray(2), session)
         r.flushTelemetryDiagnostics("reconnect", session)
         r.captureTelemetryParseFailed(ByteArray(2), session)
 
-        assertEquals(3, remote.size)
+        assertEquals(3, local.size)
         assertEquals(1, r.telemetryParseFailedCount())
-        assertEquals(1, remote[2].properties["telemetry_parse_failed_count"])
+        assertEquals(1, local[2].properties["telemetry_parse_failed_count"])
     }
 
     @Test
     fun `reset clears count without emitting`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         r.captureTelemetryParseFailed(ByteArray(2), session)
         r.resetTelemetryParseFailedCounters()
 
         assertEquals(0, r.telemetryParseFailedCount())
-        assertEquals(1, remote.size)
+        assertEquals(1, local.size)
 
         r.captureTelemetryParseFailed(ByteArray(2), session)
-        assertEquals(2, remote.size)
+        assertEquals(2, local.size)
     }
 
     @Test
     fun `diagnosticProperties pulls from context provider`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         val props = r.diagnosticProperties(session, "telemetry")
 
@@ -169,8 +157,7 @@ class DiagnosticsRecorderTest {
     @Test
     fun `diagnosticProperties omits last telemetry timestamp when never observed`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote, staticContext.copy(lastTelemetryAt = 0L))
+        val r = recorder(local, staticContext.copy(lastTelemetryAt = 0L))
 
         val props = r.diagnosticProperties(session, "connect")
 
@@ -180,8 +167,7 @@ class DiagnosticsRecorderTest {
     @Test
     fun `diagnosticProperties tolerates null session`() {
         val local = mutableListOf<CapturedEvent>()
-        val remote = mutableListOf<CapturedEvent>()
-        val r = recorder(local, remote)
+        val r = recorder(local)
 
         val props = r.diagnosticProperties(null, "connect")
 

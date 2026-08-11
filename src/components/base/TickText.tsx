@@ -1,14 +1,12 @@
-import { StyleSheet, TextInput, type StyleProp, type TextStyle } from 'react-native'
-import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated'
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput)
+import { MonoValue, type MonoValueProps } from '@/components/base/MonoValue'
 
-interface TickTextProps {
+interface TickTextProps extends Omit<MonoValueProps, 'text'> {
   /** Live value driven off the UI thread; updates without re-rendering React. */
   value: SharedValue<number | null>
   decimals: number
   unit?: string
-  style?: StyleProp<TextStyle>
 }
 
 /**
@@ -16,37 +14,15 @@ interface TickTextProps {
  * triggering React re-renders. Formatting runs on the UI thread, so only `decimals`/`unit`
  * (worklet-serializable primitives) are supported — keep it to plain numbers.
  */
-export function TickText({ value, decimals, unit, style }: TickTextProps) {
-  const animatedProps = useAnimatedProps(() => {
-    'worklet'
+export function TickText({ value, decimals, unit, ...monoProps }: TickTextProps) {
+  const text = useDerivedValue(() => {
     const v = value.value
-    let text: string
-    if (v == null || !Number.isFinite(v)) {
-      text = '-'
-    } else {
-      const n = decimals === 0 ? Math.round(v).toString() : v.toFixed(decimals)
-      // No separator: the monospace font renders any space at full cell width, so the unit is
-      // appended directly to the number.
-      text = unit ? `${n}${unit}` : n
-    }
-    return { text, defaultValue: text }
+    if (v == null || !Number.isFinite(v)) return '-'
+    const n = decimals === 0 ? Math.round(v).toString() : v.toFixed(decimals)
+    // No separator: the monospace font renders any space at full cell width, so the unit is
+    // appended directly to the number.
+    return unit ? `${n}${unit}` : n
   })
 
-  return (
-    <AnimatedTextInput
-      editable={false}
-      caretHidden
-      pointerEvents="none"
-      underlineColorAndroid="transparent"
-      style={[styles.reset, style]}
-      animatedProps={animatedProps}
-    />
-  )
+  return <MonoValue text={text} {...monoProps} />
 }
-
-const styles = StyleSheet.create({
-  reset: {
-    padding: 0,
-    margin: 0,
-  },
-})

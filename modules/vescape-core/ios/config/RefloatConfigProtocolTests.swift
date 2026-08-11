@@ -45,10 +45,11 @@ final class RefloatConfigProtocolTests: XCTestCase {
     XCTAssertEqual("1.3.0", RefloatConfigProtocol.normalizeBaseVersion("Refloat 1.3.0-preview2"))
     XCTAssertEqual("2.4.1", RefloatConfigProtocol.normalizeBaseVersion("Float Package 2.4.1 fork-a"))
     XCTAssertEqual("3.0.7", RefloatConfigProtocol.normalizeBaseVersion("vesc-tool-refloat-3.0.7+local"))
+    XCTAssertEqual("1.1", RefloatConfigProtocol.normalizeBaseVersion("Refloat 1.1"))
   }
 
-  func testNormalizeRefloatBaseVersionReturnsNilWhenMissingPatchVersion() {
-    XCTAssertNil(RefloatConfigProtocol.normalizeBaseVersion("Refloat 1.2"))
+  func testNormalizeRefloatBaseVersionReturnsNilWhenVersionIsIncomplete() {
+    XCTAssertNil(RefloatConfigProtocol.normalizeBaseVersion("Refloat 1"))
     XCTAssertNil(RefloatConfigProtocol.normalizeBaseVersion(""))
     XCTAssertNil(RefloatConfigProtocol.normalizeBaseVersion(nil))
   }

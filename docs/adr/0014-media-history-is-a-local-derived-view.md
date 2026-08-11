@@ -1,5 +1,7 @@
 # Media History is a local derived view
 
+> **Superseded by ADR 0030.** Google Play policy blocked broad gallery reads; media moved to an explicit picker flow with copied, Favorite-owned storage.
+
 Media History displays phone photos and videos alongside a selected Ride Recording without making those assets part of durable Ride History. The OS photo library remains durable media truth; native Ride Recording storage remains durable ride truth. Matching is recomputed when Media History is read for a selected ride and is not persisted.
 
 ## Matching Contract

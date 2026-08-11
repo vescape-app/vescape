@@ -1,8 +1,7 @@
 import { readdirSync } from 'fs'
 import { basename, join } from 'path'
-import { createInterface } from 'readline/promises'
-import { stdin as input, stdout as output } from 'process'
 import { applicationId } from '../src/config/appVariant.ts'
+import { select, SelectCancelled } from './lib/select.ts'
 
 const ROOT = join(import.meta.dir, '..')
 const FLOWS_DIR = join(ROOT, 'e2e', 'flows')
@@ -50,25 +49,10 @@ function listFlows(): string[] {
 }
 
 async function chooseFlow(flows: string[]): Promise<string> {
-  console.log('Select E2E flow:')
-  console.log('0. all')
-  flows.forEach((flow, index) => {
-    console.log(`${index + 1}. ${flow}`)
-  })
-
-  const rl = createInterface({ input, output })
-  try {
-    const answer = (await rl.question('Flow: ')).trim()
-    if (answer === '0' || answer === 'all') return 'all'
-    const selectedIndex = Number.parseInt(answer, 10)
-    if (Number.isFinite(selectedIndex) && selectedIndex >= 1 && selectedIndex <= flows.length) {
-      return flows[selectedIndex - 1]
-    }
-    if (flows.includes(answer)) return answer
-    throw new Error(`Unknown flow: ${answer}`)
-  } finally {
-    rl.close()
-  }
+  return select('E2E flow', [
+    { label: 'all', value: 'all', hint: `${flows.length} flows` },
+    ...flows.map((flow) => ({ label: flow, value: flow })),
+  ])
 }
 
 function flowPath(flow: string): string {
@@ -104,7 +88,13 @@ try {
 }
 
 const flows = listFlows()
-const flow = args.all ? 'all' : args.flow ? args.flow : await chooseFlow(flows)
+let flow: string
+try {
+  flow = args.all ? 'all' : (args.flow ?? (await chooseFlow(flows)))
+} catch (error) {
+  if (error instanceof SelectCancelled) process.exit(130)
+  throw error
+}
 
 if (flow === 'all') {
   await runAll(flows)

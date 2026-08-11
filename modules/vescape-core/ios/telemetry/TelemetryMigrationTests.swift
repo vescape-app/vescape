@@ -81,7 +81,8 @@ final class TelemetryMigrationTests: XCTestCase {
     let tables = [
       "boards", "board_settings", "alerts", "app_settings", "telemetry_frames",
       "telemetry_minute_buckets", "telemetry_markers", "metric_exclusion_ranges",
-      "diagnostic_events", "tune_profiles", "tune_history_entries", "board_warnings",
+      "diagnostic_events", "tune_profiles", "tune_history_entries", "board_warnings", "favorites",
+      "favorite_media",
     ]
     for table in tables {
       XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
@@ -131,6 +132,92 @@ final class TelemetryMigrationTests: XCTestCase {
 
   /// A rider whose database already has the board-owned table must keep their rules: the migration
   /// must not rebuild the table a second time.
+  // MARK: - Restoring a database GRDB has never migrated
+
+  /// An Android backup carries the schema but not GRDB's ledger. Drop it to reproduce that.
+  private func dropMigrationLedger() throws {
+    try queue.write { db in try db.execute(sql: "DROP TABLE grdb_migrations") }
+  }
+
+  private func stamp(schemaVersion: Int) throws {
+    try queue.write { db in
+      try TelemetryDatabase.stampAppliedMigrations(db, schemaVersion: schemaVersion)
+    }
+  }
+
+  private func applied() throws -> Set<String> {
+    try queue.read { db in try TelemetryDatabase.migrator.appliedIdentifiers(db) }
+  }
+
+  /// Restoring an Android backup used to fail outright: no ledger meant `v1` replayed, and
+  /// `CREATE TABLE boards` on a database that already has `boards` rolled the whole restore back.
+  func testCurrentBackupIsStampedRatherThanReplayed() throws {
+    try migrate()
+    try dropMigrationLedger()
+
+    try stamp(schemaVersion: TELEMETRY_SCHEMA_VERSION)
+    try migrate()
+
+    XCTAssertEqual(try applied(), Set(TelemetryDatabase.migrator.migrations))
+  }
+
+  /// A backup from an older build must still get the migrations it is missing — stamping is a claim
+  /// about what the incoming schema already has, not a way to skip work.
+  func testOlderBackupRunsOnlyTheMigrationsItIsMissing() throws {
+    try migrate(upTo: "v25_board_warnings")
+    try dropMigrationLedger()
+
+    try stamp(schemaVersion: 25)
+    let stamped = try applied()
+    XCTAssertTrue(stamped.contains("v25_board_warnings"))
+    XCTAssertFalse(stamped.contains("v26_alert_source"))
+
+    try migrate()
+    XCTAssertEqual(try applied(), Set(TelemetryDatabase.migrator.migrations))
+  }
+
+  /// Android files a Board's proven transport as a `board_settings` row; iOS keeps it as a column on
+  /// `boards`. Rebuild the table without it, the way a restored Room database arrives.
+  private func replaceBoardsWithAndroidShape() throws {
+    try queue.write { db in
+      try db.execute(sql: "DROP TABLE boards")
+      try db.execute(sql: """
+        CREATE TABLE boards (
+          id TEXT NOT NULL PRIMARY KEY,
+          name TEXT NOT NULL,
+          ble_id TEXT,
+          created_at INTEGER NOT NULL
+        )
+        """)
+      try db.execute(
+        sql: "INSERT INTO boards (id, name, ble_id, created_at) VALUES ('board-1', 'Thor301', 'A1:B2', 1000)"
+      )
+      try db.execute(sql: """
+        INSERT INTO board_settings (board_id, key, value_json, updated_at)
+        VALUES ('board-1', 'transport', '"98"', 1000)
+        """)
+    }
+  }
+
+  /// Without this the restore "succeeded" and every board query threw on the missing column —
+  /// swallowed by the repository's fallback, so the app showed "No board" with a full database.
+  func testAndroidBoardsGainTheTransportColumnFromItsSetting() throws {
+    try migrate()
+    try replaceBoardsWithAndroidShape()
+    try dropMigrationLedger()
+
+    try queue.write { db in
+      try TelemetryDatabase.stampAppliedMigrations(db, schemaVersion: TELEMETRY_SCHEMA_VERSION)
+      try TelemetryDatabase.reconcileForeignSchema(db)
+    }
+
+    XCTAssertTrue(try columnNames("boards").contains("transport"))
+    let transport = try queue.read { db in
+      try String.fetchOne(db, sql: "SELECT transport FROM boards WHERE id = 'board-1'")
+    }
+    XCTAssertEqual(transport, "98")
+  }
+
   func testBoardIdMigrationKeepsAlreadyBoardOwnedRules() throws {
     try migrate(upTo: "v26_alert_source")
     try queue.write { db in

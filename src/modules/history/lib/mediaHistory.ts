@@ -68,36 +68,6 @@ export function resolvePickedAssetCreationTime({
   return toEpochMs(match.slice(1).map(Number), filename.startsWith('PXL_'))
 }
 
-// Ride media persists as plain files under rideMedia/<sessionId>/ with all metadata encoded
-// in the filename — there is no database record. `x` marks an unrecoverable creation time.
-const RIDE_MEDIA_FILENAME_RE = /^(\d+|x)_(photo|video)_[0-9a-z]+\.\w+$/
-
-function shortHash(value: string): string {
-  let hash = 5381
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) + hash + value.charCodeAt(index)) >>> 0
-  }
-  return hash.toString(36)
-}
-
-export function encodeRideMediaFilename(asset: MediaAssetInput): string {
-  const time = Number.isFinite(asset.creationTime) ? String(asset.creationTime) : 'x'
-  const extension =
-    /\.(\w+)$/.exec(asset.uri)?.[1]?.toLowerCase() ?? (asset.mediaType === 'video' ? 'mp4' : 'jpg')
-  return `${time}_${asset.mediaType}_${shortHash(asset.id)}.${extension}`
-}
-
-export function decodeRideMediaFilename(
-  filename: string,
-): { creationTime: number; mediaType: 'photo' | 'video' } | null {
-  const match = RIDE_MEDIA_FILENAME_RE.exec(filename)
-  if (!match) return null
-  return {
-    creationTime: match[1] === 'x' ? Number.NaN : Number(match[1]),
-    mediaType: match[2] as 'photo' | 'video',
-  }
-}
-
 function hasBreakBetween(markers: readonly HistoryMarker[], fromMs: number, toMs: number) {
   return markers.some(
     (marker) =>

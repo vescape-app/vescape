@@ -48,7 +48,7 @@ function MediaGrid({
 }
 
 /**
- * Ride media gallery shown inside the history media drawer: matched assets as a
+ * Favorite Media gallery shown inside the detail drawer: matched assets as a
  * thumbnail grid, assets outside the ride in their own section, and the picker
  * entry point.
  */
@@ -77,7 +77,7 @@ export function MediaHistoryGallery({
         <View style={styles.empty}>
           <ImagesSquareIcon size={28} color={theme.palette.slate.textMuted} weight="duotone" />
           <Text style={styles.emptyText}>
-            Add photos and videos captured during this ride to see them on the map.
+            Add photos and videos captured during this Favorite to see them on the map.
           </Text>
         </View>
       ) : (
@@ -85,9 +85,9 @@ export function MediaHistoryGallery({
       )}
       {unmatched.length > 0 ? (
         <>
-          <Text style={styles.sectionTitle}>Outside this ride</Text>
+          <Text style={styles.sectionTitle}>Outside this Favorite</Text>
           <Text style={styles.note}>
-            No creation time inside the ride — shown here but not on the map.
+            No capture time inside the Favorite. Shown here, but not on the map.
           </Text>
           <MediaGrid assets={unmatched} tileSize={tileSize} onOpenAsset={onOpenAsset} />
         </>

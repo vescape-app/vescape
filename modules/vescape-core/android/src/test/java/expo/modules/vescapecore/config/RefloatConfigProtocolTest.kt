@@ -75,11 +75,12 @@ class RefloatConfigProtocolTest {
     assertEquals("1.3.0", RefloatConfigProtocol.normalizeBaseVersion("Refloat 1.3.0-preview2"))
     assertEquals("2.4.1", RefloatConfigProtocol.normalizeBaseVersion("Float Package 2.4.1 fork-a"))
     assertEquals("3.0.7", RefloatConfigProtocol.normalizeBaseVersion("vesc-tool-refloat-3.0.7+local"))
+    assertEquals("1.1", RefloatConfigProtocol.normalizeBaseVersion("Refloat 1.1"))
   }
 
   @Test
-  fun normalizeRefloatBaseVersionReturnsNullWhenMissingPatchVersion() {
-    assertNull(RefloatConfigProtocol.normalizeBaseVersion("Refloat 1.2"))
+  fun normalizeRefloatBaseVersionReturnsNullWhenVersionIsIncomplete() {
+    assertNull(RefloatConfigProtocol.normalizeBaseVersion("Refloat 1"))
     assertNull(RefloatConfigProtocol.normalizeBaseVersion(""))
     assertNull(RefloatConfigProtocol.normalizeBaseVersion(null))
   }

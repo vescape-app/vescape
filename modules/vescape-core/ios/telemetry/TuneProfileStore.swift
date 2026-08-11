@@ -361,7 +361,7 @@ struct TuneProfileStore {
   private static func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
   private static func validRefloatBaseVersion(_ value: String?) -> String? {
-    guard let value, value.range(of: #"^\d+\.\d+\.\d+$"#, options: .regularExpression) != nil else {
+    guard let value, value.range(of: #"^\d+\.\d+(?:\.\d+)?$"#, options: .regularExpression) != nil else {
       return nil
     }
     return value

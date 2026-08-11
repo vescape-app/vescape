@@ -23,21 +23,43 @@ const STEP_META: Record<WizardStepId, { label: string; icon: Icon; color: string
 interface Props {
   steps: readonly WizardStepId[]
   step: number
+  alertSubstep?: {
+    index: number
+    total: number
+  }
 }
 
-export function WizardProgress({ steps, step }: Props) {
+export function WizardProgress({ steps, step, alertSubstep }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.bar}>
-        {steps.map((id, index) => (
-          <View
-            key={id}
-            style={[
-              styles.segment,
-              index <= step ? { backgroundColor: STEP_META[id].color } : undefined,
-            ]}
-          />
-        ))}
+        {steps.map((id, index) => {
+          const showAlertSubsteps = id === 'presets' && alertSubstep != null
+          return (
+            <View
+              key={id}
+              style={[
+                styles.segment,
+                index <= step && !showAlertSubsteps
+                  ? { backgroundColor: STEP_META[id].color }
+                  : undefined,
+                showAlertSubsteps && styles.alertSegment,
+              ]}
+            >
+              {showAlertSubsteps
+                ? Array.from({ length: alertSubstep.total }, (_, segmentIndex) => (
+                    <View
+                      key={segmentIndex}
+                      style={[
+                        styles.alertSubsegment,
+                        segmentIndex <= alertSubstep.index && styles.alertSubsegmentActive,
+                      ]}
+                    />
+                  ))
+                : null}
+            </View>
+          )
+        })}
       </View>
       <View style={styles.labels}>
         {steps.map((id, index) => {
@@ -75,6 +97,20 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
     backgroundColor: theme.palette.slate.border,
+  },
+  alertSegment: {
+    flexDirection: 'row',
+    gap: 2,
+    backgroundColor: 'transparent',
+  },
+  alertSubsegment: {
+    flex: 1,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: theme.palette.slate.border,
+  },
+  alertSubsegmentActive: {
+    backgroundColor: theme.palette.amber.color,
   },
   labels: {
     flexDirection: 'row',

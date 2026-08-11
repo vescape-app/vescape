@@ -12,11 +12,10 @@ import {
 } from 'vescape-core'
 
 import { DEFAULT_BATTERY_CONFIG } from '@/modules/battery/lib'
+import { generateId } from '@/helpers/id'
 
 export type { Board } from 'vescape-core'
 export { DEFAULT_BATTERY_CONFIG } from '@/modules/battery/lib'
-
-import { generateId } from '@/helpers/id'
 
 interface BoardState {
   boards: Board[]

@@ -9,11 +9,13 @@ import Foundation
 internal final class AlertCoordinator {
   private let engine = AlertEngine()
   private let player: AlertAudioPlayer
+  private let vibrateSingles: Bool
   private var rules: [AlertRule] = []
   private var activeGeigerRuleIds: Set<String> = []
 
-  init(player: AlertAudioPlayer) {
+  init(player: AlertAudioPlayer, vibrateSingles: Bool = true) {
     self.player = player
+    self.vibrateSingles = vibrateSingles
   }
 
   func replaceRules(_ value: [AlertRule]) {
@@ -23,7 +25,7 @@ internal final class AlertCoordinator {
     }
     activeGeigerRuleIds.formIntersection(geigerRuleIds)
     rules = value
-    engine.resetDebounce()
+    engine.resetAlertState()
   }
 
   func evaluate(
@@ -32,14 +34,46 @@ internal final class AlertCoordinator {
     onDiagnostic: @escaping DiagnosticSink
   ) -> [[String: Any?]] {
     let fired = engine.evaluate(rules: rules, telemetry: telemetry, batteryPercent: batteryPercent)
+    return deliver(
+      fired: fired,
+      batteryPercent: batteryPercent,
+      batteryVoltage: telemetry.batteryVoltage,
+      batteryCurrent: telemetry.batteryCurrent,
+      onDiagnostic: onDiagnostic
+    )
+  }
+
+  /// Isolated alert tests call the same evaluator + feedback path with synthetic metric values.
+  func evaluateValues(
+    _ values: [String: Double],
+    batteryPercent: Double?,
+    onDiagnostic: @escaping DiagnosticSink
+  ) -> [[String: Any?]] {
+    let fired = engine.evaluateValues(rules: rules, values: values, batteryPercent: batteryPercent)
+    return deliver(
+      fired: fired,
+      batteryPercent: batteryPercent,
+      batteryVoltage: values["battery"],
+      batteryCurrent: nil,
+      onDiagnostic: onDiagnostic
+    )
+  }
+
+  private func deliver(
+    fired: [FiredAlert],
+    batteryPercent: Double?,
+    batteryVoltage: Double?,
+    batteryCurrent: Double?,
+    onDiagnostic: @escaping DiagnosticSink
+  ) -> [[String: Any?]] {
 
     for alert in fired where alert.controlId == "battery" && alert.rangeDepth == nil {
       onDiagnostic("battery_alert_fired", [
         "rule_id": alert.ruleId,
         "used_ir_compensated_percent": (batteryPercent != nil) as Any,
         "battery_percent": batteryPercent as Any,
-        "battery_voltage": telemetry.batteryVoltage,
-        "battery_current": telemetry.batteryCurrent,
+        "battery_voltage": batteryVoltage as Any,
+        "battery_current": batteryCurrent as Any,
         "threshold": alert.threshold,
         "threshold_max": alert.thresholdMax as Any,
       ])
@@ -63,9 +97,9 @@ internal final class AlertCoordinator {
         if !text.isEmpty { player.speakMessage(text) }
       }
       for alert in single where !alert.soundType.hasPrefix("tts:") {
-        player.playSingle(soundType: alert.soundType)
+        player.playSingle(soundType: alert.soundType, beepCount: alert.beepCount)
       }
-      player.vibrate(rangeDepth: nil)
+      if vibrateSingles { player.vibrate(rangeDepth: nil) }
     }
 
     return fired.map { $0.toMap() }
