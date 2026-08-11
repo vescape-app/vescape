@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 
 import { BoardInfoForm } from '@/modules/board/components/BoardInfoForm'
 import {
@@ -40,21 +41,23 @@ export function BoardInfoEditorModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <Pressable style={styles.backdrop} onPress={handleCancel} disabled={saving} />
-        {visible ? (
-          <BoardInfoEditorModalContent
-            name={name}
-            railId={railId}
-            railColorId={railColorId}
-            saving={saving}
-            onSave={onSave}
-          />
-        ) : null}
-      </KeyboardAvoidingView>
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <KeyboardAvoidingView
+          style={styles.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable style={styles.backdrop} onPress={handleCancel} disabled={saving} />
+          {visible ? (
+            <BoardInfoEditorModalContent
+              name={name}
+              railId={railId}
+              railColorId={railColorId}
+              saving={saving}
+              onSave={onSave}
+            />
+          ) : null}
+        </KeyboardAvoidingView>
+      </GestureHandlerRootView>
     </Modal>
   )
 }
@@ -109,6 +112,9 @@ function BoardInfoEditorModalContent({
 }
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     alignItems: 'center',
