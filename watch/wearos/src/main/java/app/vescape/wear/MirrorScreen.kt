@@ -43,6 +43,11 @@ fun MirrorScreen(
     // A hold must not be interpreted as a page swipe, and must never end because the page moved.
     var moveHeld by remember { mutableStateOf(false) }
     val weatherPagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
+    // Nav focus is a page of its own so the drag is a real gesture, but nothing new is drawn there:
+    // the gauges pin themselves in place (see [navFocus]) and shed their readouts on the way.
+    val navPagerState = rememberPagerState(pageCount = { 2 })
+    val navFocus = { (navPagerState.currentPage + navPagerState.currentPageOffsetFraction).coerceIn(0f, 1f) }
+    val navFocused = navPagerState.currentPage != 0
     val scope = rememberCoroutineScope()
     val weatherVisible = !isAmbient && weatherPagerState.currentPage == 0
 
@@ -54,7 +59,10 @@ fun MirrorScreen(
     BackHandler(enabled = !showClosePrompt && weatherVisible) {
         scope.launch { weatherPagerState.animateScrollToPage(1) }
     }
-    BackHandler(enabled = !showClosePrompt && !weatherVisible) {
+    BackHandler(enabled = !showClosePrompt && !weatherVisible && navFocused) {
+        scope.launch { navPagerState.animateScrollToPage(0) }
+    }
+    BackHandler(enabled = !showClosePrompt && !weatherVisible && !navFocused) {
         showClosePrompt = true
     }
 
@@ -99,9 +107,9 @@ fun MirrorScreen(
                                 pagerState.currentPageOffsetFraction == 0f
                         // PagerState.settledPage can change before the snap reaches offset zero.
                         // Changing the parent modifier then cancels that animation mid-page.
-                        LaunchedEffect(pagerState.isScrollInProgress) {
+                        LaunchedEffect(pagerState.isScrollInProgress, navFocused) {
                             if (!pagerState.isScrollInProgress && pagerState.currentPageOffsetFraction == 0f) {
-                                dismissEnabled = pagerState.currentPage == 0
+                                dismissEnabled = pagerState.currentPage == 0 && !navFocused
                             }
                         }
                         BasicSwipeToDismissBox(
@@ -115,7 +123,7 @@ fun MirrorScreen(
                                 } else {
                                     HorizontalPager(
                                         state = pagerState,
-                                        userScrollEnabled = !moveHeld,
+                                        userScrollEnabled = !moveHeld && !navFocused,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .then(
@@ -131,16 +139,29 @@ fun MirrorScreen(
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             when (page) {
-                                                0 -> MirrorContent(
-                                                    state = state,
-                                                    phoneLink = phoneLink,
-                                                    isAmbient = false,
-                                                    onWeatherClick = {
-                                                        scope.launch {
-                                                            weatherPagerState.animateScrollToPage(0)
-                                                        }
-                                                    },
-                                                )
+                                                0 -> Box(modifier = Modifier.fillMaxSize()) {
+                                                    MirrorContent(
+                                                        state = state,
+                                                        phoneLink = phoneLink,
+                                                        isAmbient = false,
+                                                        focus = navFocus,
+                                                        onWeatherClick = {
+                                                            scope.launch {
+                                                                weatherPagerState.animateScrollToPage(0)
+                                                            }
+                                                        },
+                                                    )
+                                                    // Gesture-only pager over the gauges: both its
+                                                    // pages are empty, and its drag offset is the
+                                                    // nav-focus progress. Keeping the gauges out of
+                                                    // it is what makes this a transition rather
+                                                    // than a page swap — a pager clips its pages,
+                                                    // so content inside would slide away instead.
+                                                    VerticalPager(
+                                                        state = navPagerState,
+                                                        modifier = Modifier.fillMaxSize(),
+                                                    ) {}
+                                                }
                                                 1 -> MoveScreen(
                                                     sender = sender,
                                                     interactionEnabled = moveInteractionEnabled,
@@ -165,6 +186,7 @@ private fun MirrorContent(
     state: MirrorState,
     phoneLink: PhoneLink,
     isAmbient: Boolean,
+    focus: () -> Float = { 0f },
     onWeatherClick: () -> Unit = {},
 ) {
     when (state.status) {
@@ -174,23 +196,23 @@ private fun MirrorContent(
             } else if (isAmbient) {
                 AmbientLayout(EMPTY_FRAME)
             } else {
-                FrameLayout(EMPTY_FRAME, muted = false, onWeatherClick = onWeatherClick)
+                FrameLayout(EMPTY_FRAME, muted = false, focus = focus, onWeatherClick = onWeatherClick)
             }
         }
         MirrorStatus.WAITING -> if (isAmbient) {
             AmbientLayout(state.frame!!)
         } else {
-            FrameLayout(state.frame!!, muted = false, onWeatherClick = onWeatherClick)
+            FrameLayout(state.frame!!, muted = false, focus = focus, onWeatherClick = onWeatherClick)
         }
         MirrorStatus.STALE -> if (isAmbient) {
             AmbientLayout(state.frame!!)
         } else {
-            FrameLayout(state.frame!!, muted = true, onWeatherClick = onWeatherClick)
+            FrameLayout(state.frame!!, muted = true, focus = focus, onWeatherClick = onWeatherClick)
         }
         MirrorStatus.LIVE -> if (isAmbient) {
             AmbientLayout(state.frame!!)
         } else {
-            FrameLayout(state.frame!!, muted = false, onWeatherClick = onWeatherClick)
+            FrameLayout(state.frame!!, muted = false, focus = focus, onWeatherClick = onWeatherClick)
         }
     }
 }

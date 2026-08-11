@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
@@ -33,20 +34,36 @@ import kotlin.math.sin
  * remaining distance above the battery %. Nav has no slot of its own — it floats over the gauges,
  * and the whole overlay is absent unless the phone actually sent nav lanes, so a rider without a
  * destination sees the plain telemetry frame.
+ *
+ * [focus] is the nav-focus progress (see [FrameLayout]): as the telemetry readouts leave, the
+ * chevron and the distance grow into the room they free up.
  */
 @Composable
-internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean) {
+internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean, focus: () -> Float = { 0f }) {
     val color = if (muted) DimText else navColor()
 
     Canvas(modifier = Modifier.fillMaxSize()) {
+        // Read inside the draw scope: focus changes redraw the chevron without recomposing.
+        val grow = 1f + CHEVRON_FOCUS_GROWTH * focus()
         val center = Offset(size.width / 2f, size.height / 2f)
         val ring = size.minDimension / 2f - NAV_RIM_INSET.toPx()
         val at = pointOnCircle(center, ring, bearingDeg.toFloat() - 90f)
-        rotate(bearingDeg.toFloat(), at) { drawChevron(at, CHEVRON_W.toPx(), CHEVRON_H.toPx(), color) }
+        rotate(bearingDeg.toFloat(), at) {
+            drawChevron(at, CHEVRON_W.toPx() * grow, CHEVRON_H.toPx() * grow, color)
+        }
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(bottom = NAV_READOUT_BOTTOM_PAD),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = NAV_READOUT_BOTTOM_PAD)
+            .graphicsLayer {
+                val f = focus()
+                // Rises into the band the battery % vacates, and grows there.
+                translationY = -f * READOUT_FOCUS_LIFT.toPx()
+                scaleX = 1f + READOUT_FOCUS_GROWTH * f
+                scaleY = scaleX
+            },
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -116,6 +133,9 @@ private fun distanceLabel(meters: Double): String =
 private val NAV_RIM_INSET = 30.dp
 // Sits in the band between the rider dot and the battery %.
 private val NAV_READOUT_BOTTOM_PAD = 46.dp
+private const val CHEVRON_FOCUS_GROWTH = 0.18f
+private val READOUT_FOCUS_LIFT = 26.dp
+private const val READOUT_FOCUS_GROWTH = 0.25f
 private val CHEVRON_W = 26.dp
 private val CHEVRON_H = 22.dp
 private val PIN_BOX = 11.dp

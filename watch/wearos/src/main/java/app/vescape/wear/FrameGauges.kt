@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -42,9 +43,18 @@ import kotlin.math.sin
  * hides the system time and the rider cannot see the phone's weather pill, and the
  * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
+ *
+ * [focus] is the nav-focus progress (0 = full telemetry, 1 = navigation only), read as a lambda so
+ * dragging never recomposes the layout: the numeric readouts fade and slide away in a graphics
+ * layer while the rim gauges, clock, forecast and the whole nav stack stay put.
  */
 @Composable
-internal fun FrameLayout(frame: WatchFrame, muted: Boolean, onWeatherClick: () -> Unit = {}) {
+internal fun FrameLayout(
+    frame: WatchFrame,
+    muted: Boolean,
+    focus: () -> Float = { 0f },
+    onWeatherClick: () -> Unit = {},
+) {
     val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
     val dutyColor = if (muted || frame.duty == null) DimText else DutyColor
     val battColor = if (muted || frame.battery == null) DimText else batteryColor(frame.battery)
@@ -88,13 +98,13 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean, onWeatherClick: () -
         // Navigation, only while the phone is sending it: chevron on the rim + distance above the
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
         if (hasNav) {
-            NavPointer(bearingDeg = navBearing!!, distanceM = navDistance!!, muted = muted)
+            NavPointer(bearingDeg = navBearing!!, distanceM = navDistance!!, muted = muted, focus = focus)
         }
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
         // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
-        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor)
-        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor)
+        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor, focus)
+        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor, focus)
 
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
@@ -106,7 +116,19 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean, onWeatherClick: () -
             WeatherReadout(muted = muted, onClick = onWeatherClick)
 
             Row(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(start = 32.dp, end = 32.dp, bottom = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(start = 32.dp, end = 32.dp, bottom = 8.dp)
+                    .graphicsLayer {
+                        val f = focus()
+                        alpha = fadeOut(f)
+                        // Values retreat into the arcs they belong to: speed/duty up to the top
+                        // rim, battery down to the bottom one.
+                        translationY = -f * HERO_FOCUS_RISE.toPx()
+                        scaleX = 1f - HERO_FOCUS_SHRINK * f
+                        scaleY = scaleX
+                    },
                 verticalAlignment = Alignment.Bottom,
             ) {
                 LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: DASH, "km/h", speedColor)
@@ -115,7 +137,15 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean, onWeatherClick: () -
 
             // ── Bottom: battery % above the bottom gauge ──
             Box(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(bottom = 16.dp)
+                    .graphicsLayer {
+                        val f = focus()
+                        alpha = fadeOut(f)
+                        translationY = f * BATTERY_FOCUS_DROP.toPx()
+                    },
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 Text(
@@ -146,9 +176,18 @@ internal fun AmbientLayout(frame: WatchFrame) {
  * Counter-clockwise angular direction keeps bottom-half text upright.
  */
 @Composable
-private fun CurvedTemp(anchorDeg: Float, value: String, label: String, color: Color) {
+private fun CurvedTemp(anchorDeg: Float, value: String, label: String, color: Color, focus: () -> Float) {
     CurvedLayout(
-        modifier = Modifier.fillMaxSize().padding(TEMP_LABEL_GAP),
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val f = focus()
+                alpha = fadeOut(f)
+                // Nudged outward into the rim, the same direction the heroes leave in.
+                scaleX = 1f + TEMP_FOCUS_SPREAD * f
+                scaleY = scaleX
+            }
+            .padding(TEMP_LABEL_GAP),
         anchor = anchorDeg,
         anchorType = AnchorType.Center,
         angularDirection = CurvedDirection.Angular.CounterClockwise,
@@ -249,6 +288,15 @@ private const val TEMP_MAX = 80.0
 private const val TEMP_SWEEP = 32f
 private const val MOTOR_ARC_START = 144f
 private const val CTRL_ARC_START = 36f
+
+/** Telemetry readouts clear out ahead of the drag, so nav is alone well before the page settles. */
+internal fun fadeOut(focus: Float): Float = (1f - focus * FOCUS_FADE_RATE).coerceIn(0f, 1f)
+
+internal const val FOCUS_FADE_RATE = 1.8f
+private val HERO_FOCUS_RISE = 30.dp
+private const val HERO_FOCUS_SHRINK = 0.12f
+private val BATTERY_FOCUS_DROP = 18.dp
+private const val TEMP_FOCUS_SPREAD = 0.06f
 
 // Curved temp text: clears the rim line (HEAD_W) with a small gap so it reads above the arc.
 private val TEMP_LABEL_GAP = 7.dp
