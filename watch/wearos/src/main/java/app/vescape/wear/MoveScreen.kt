@@ -44,11 +44,13 @@ private const val DIRECTION_BACKWARD = -1
 @Composable
 fun MoveScreen(
     sender: CommandSender,
+    interactionEnabled: Boolean = true,
     onHoldChanged: (Boolean) -> Unit = {},
 ) {
     val state by TelemetryState.mirrorState
     val settings by SettingsState.settings
     val enabled = state.status == MirrorStatus.LIVE
+    val canMove = enabled && interactionEnabled
     val haptics = LocalHapticFeedback.current
 
     // Press state, not a raw pointer gesture: a hold that turns into a horizontal drag is a page
@@ -61,7 +63,7 @@ fun MoveScreen(
     val held = when {
         // Losing the mirror ends the hold: a stream started while LIVE must not keep ticking
         // against a phone that can no longer show what the board is doing.
-        !enabled -> 0
+        !canMove -> 0
         forwardPressed -> DIRECTION_FORWARD
         backwardPressed -> DIRECTION_BACKWARD
         else -> 0
@@ -92,13 +94,13 @@ fun MoveScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             MoveHalf(
                 glyph = "\u25B2",
-                enabled = enabled,
+                enabled = canMove,
                 interactionSource = forward,
                 modifier = Modifier.weight(1f),
             )
             MoveHalf(
                 glyph = "\u25BC",
-                enabled = enabled,
+                enabled = canMove,
                 interactionSource = backward,
                 modifier = Modifier.weight(1f),
             )

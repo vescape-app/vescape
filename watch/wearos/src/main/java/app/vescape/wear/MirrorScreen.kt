@@ -82,9 +82,23 @@ fun MirrorScreen(
                 // prompt) stays on the left edge via edgeSwipeToDismiss; interior swipes page.
                 val dismissState = rememberSwipeToDismissBoxState()
                 val pagerState = rememberPagerState(pageCount = { 3 })
+                var dismissEnabled by remember { mutableStateOf(true) }
+                val moveInteractionEnabled =
+                    pagerState.currentPage == 1 &&
+                        !pagerState.isScrollInProgress &&
+                        pagerState.currentPageOffsetFraction == 0f
+                // PagerState.settledPage can change before the snap animation reaches offset zero.
+                // Changing the parent's swipe modifier then cancels that animation mid-page, so
+                // latch dismiss ownership only after the pager is physically at rest.
+                LaunchedEffect(pagerState.isScrollInProgress) {
+                    if (!pagerState.isScrollInProgress && pagerState.currentPageOffsetFraction == 0f) {
+                        dismissEnabled = pagerState.currentPage == 0
+                    }
+                }
                 BasicSwipeToDismissBox(
                     onDismissed = { showClosePrompt = true },
                     state = dismissState,
+                    userSwipeEnabled = dismissEnabled,
                 ) { isBackground ->
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (isBackground) {
@@ -93,7 +107,15 @@ fun MirrorScreen(
                             HorizontalPager(
                                 state = pagerState,
                                 userScrollEnabled = !moveHeld,
-                                modifier = Modifier.fillMaxSize().edgeSwipeToDismiss(dismissState),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .then(
+                                        if (dismissEnabled) {
+                                            Modifier.edgeSwipeToDismiss(dismissState)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
                             ) { page ->
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     when (page) {
@@ -103,7 +125,11 @@ fun MirrorScreen(
                                             isAmbient = false,
                                             onWeatherClick = { showWeather = true },
                                         )
-                                        1 -> MoveScreen(sender = sender, onHoldChanged = { moveHeld = it })
+                                        1 -> MoveScreen(
+                                            sender = sender,
+                                            interactionEnabled = moveInteractionEnabled,
+                                            onHoldChanged = { moveHeld = it },
+                                        )
                                         else -> DiagnosticsScreen()
                                     }
                                 }
