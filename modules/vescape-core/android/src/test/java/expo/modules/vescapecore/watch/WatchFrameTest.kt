@@ -22,7 +22,7 @@ class WatchFrameTest {
         val flags = buf.get().toInt()
         fun lane(): Double? = buf.float.let { if (it.isNaN()) null else it.toDouble() }
         return WatchFrame(
-            buf.float.toDouble(),
+            lane(),
             lane(),
             lane(),
             lane(),
@@ -50,7 +50,7 @@ class WatchFrameTest {
             ),
             stale = false,
         )
-        assertEquals(12.5, frame.speed, 0.0)
+        assertEquals(12.5, frame.speed!!, 0.0)
         assertEquals(40.0, frame.duty!!, 1e-3)
     }
 
@@ -112,7 +112,7 @@ class WatchFrameTest {
             stale = false,
         )
         val decoded = roundTrip(frame)!!
-        assertEquals(frame.speed, decoded.speed, 1e-3)
+        assertEquals(frame.speed!!, decoded.speed!!, 1e-3)
         assertEquals(frame.duty!!, decoded.duty!!, 1e-3)
         assertEquals(frame.battery!!, decoded.battery!!, 1e-3)
         assertEquals(frame.motorTemp!!, decoded.motorTemp!!, 1e-3)
@@ -131,7 +131,7 @@ class WatchFrameTest {
             stale = true,
         )
         val decoded = roundTrip(frame)!!
-        assertEquals(0.0, decoded.speed, 0.0)
+        assertEquals(0.0, decoded.speed!!, 0.0)
         assertNull(decoded.duty)
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)
@@ -145,7 +145,7 @@ class WatchFrameTest {
         assertTrue(decoded.waiting)
         // Stale is also set so a wrist decoder without the waiting bit dims instead of showing live.
         assertTrue(decoded.stale)
-        assertEquals(0.0, decoded.speed, 0.0)
+        assertNull(decoded.speed)
         assertNull(decoded.duty)
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)

@@ -33,6 +33,7 @@ fun MirrorScreen(
     onRequestClose: () -> Unit = {},
 ) {
     val state by TelemetryState.mirrorState
+    val phoneLink by TelemetryState.phoneLink
     val keepScreenAwake = state.status == MirrorStatus.LIVE && !isAmbient
     var showClosePrompt by remember { mutableStateOf(false) }
 
@@ -62,7 +63,7 @@ fun MirrorScreen(
             }
             // Ambient bypasses the pager: always the dim hero, never the diagnostics page.
             isAmbient -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                MirrorContent(state = state, isAmbient = true)
+                MirrorContent(state = state, phoneLink = phoneLink, isAmbient = true)
             }
             else -> {
                 // Page 0 = gauges, page 1 = diagnostics. Dismiss (close prompt) stays on the left
@@ -83,7 +84,7 @@ fun MirrorScreen(
                             ) { page ->
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     when (page) {
-                                        0 -> MirrorContent(state = state, isAmbient = false)
+                                        0 -> MirrorContent(state = state, phoneLink = phoneLink, isAmbient = false)
                                         else -> DiagnosticsScreen()
                                     }
                                 }
@@ -97,13 +98,31 @@ fun MirrorScreen(
 }
 
 @Composable
-private fun MirrorContent(state: MirrorState, isAmbient: Boolean) {
+private fun MirrorContent(state: MirrorState, phoneLink: PhoneLink, isAmbient: Boolean) {
     when (state.status) {
-        MirrorStatus.DISCONNECTED -> DisconnectedLayout(isAmbient)
-        MirrorStatus.WAITING -> WaitingLayout(isAmbient)
+        MirrorStatus.DISCONNECTED -> {
+            if (phoneLink == PhoneLink.NO_PHONE) {
+                DisconnectedLayout(isAmbient)
+            } else if (isAmbient) {
+                AmbientLayout(EMPTY_FRAME)
+            } else {
+                FrameLayout(EMPTY_FRAME, muted = false)
+            }
+        }
+        MirrorStatus.WAITING -> if (isAmbient) AmbientLayout(state.frame!!) else FrameLayout(state.frame!!, muted = false)
         MirrorStatus.STALE -> if (isAmbient) AmbientLayout(state.frame!!) else FrameLayout(state.frame!!, muted = true)
         MirrorStatus.LIVE -> if (isAmbient) AmbientLayout(state.frame!!) else FrameLayout(state.frame!!, muted = false)
     }
 }
+
+/** Stable gauge shell shown before the first phone frame; every board lane renders as disabled. */
+private val EMPTY_FRAME = WatchFrame(
+    speed = null,
+    duty = null,
+    battery = null,
+    motorTemp = null,
+    ctrlTemp = null,
+    stale = false,
+)
 
 private const val AMBIENT_REFRESH_INTERVAL_MS = 60_000L

@@ -228,9 +228,8 @@ function smokeCheck(serial: string) {
 }
 
 /**
- * Boots the Wear AVD detached, so the shell that started it is free again. A watch emulator is the
- * only place the Mirror replays fixtures instead of mirroring a phone, so this is the entry point
- * for working on wrist visuals without a board.
+ * Boots the Wear AVD detached, so the shell that started it is free again. A normal emulator launch
+ * mirrors its paired phone; fixture playback is entered explicitly through `wear:replay`.
  */
 function startEmulator() {
   const binary = join(sdkRoot(), 'emulator', 'emulator')

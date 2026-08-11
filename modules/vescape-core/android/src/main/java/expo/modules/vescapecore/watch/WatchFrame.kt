@@ -28,7 +28,7 @@ internal const val WATCH_FRAME_FLAG_WAITING = 2
 
 /** The decoded Watch Frame model. Nullable numeric lanes ride as `NaN` over the wire (ADR-0018). */
 internal data class WatchFrame(
-    val speed: Double,
+    val speed: Double?,
     val duty: Double?,
     val battery: Double?,
     val motorTemp: Double?,
@@ -53,8 +53,8 @@ internal data class WatchFrame(
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
 internal data class WatchSnapshot(
-    val speed: Double,
-    val dutyCycle: Double,
+    val speed: Double?,
+    val dutyCycle: Double?,
     val dutyExcluded: Boolean,
     val batterySoc: Double?,
     val motorTemp: Double?,
@@ -75,8 +75,8 @@ internal data class WatchSnapshot(
  */
 internal object WatchFrameBuilder {
     fun build(snapshot: WatchSnapshot, stale: Boolean): WatchFrame = WatchFrame(
-        speed = abs(snapshot.speed),
-        duty = if (snapshot.dutyExcluded) null else abs(snapshot.dutyCycle) * 100,
+        speed = snapshot.speed?.let(::abs),
+        duty = if (snapshot.dutyExcluded) null else snapshot.dutyCycle?.let { abs(it) * 100 },
         battery = snapshot.batterySoc,
         motorTemp = snapshot.motorTemp,
         ctrlTemp = snapshot.ctrlTemp,
@@ -94,7 +94,7 @@ internal object WatchFrameBuilder {
      * zero instead of rendering it as live data.
      */
     fun waitingFrame(): WatchFrame = WatchFrame(
-        speed = 0.0,
+        speed = null,
         duty = null,
         battery = null,
         motorTemp = null,
@@ -110,7 +110,7 @@ internal object WatchFrameBuilder {
             if (frame.stale) flags = flags or WATCH_FRAME_FLAG_STALE
             if (frame.waiting) flags = flags or WATCH_FRAME_FLAG_WAITING
             put(flags.toByte())
-            putFloat(frame.speed.toFloat())
+            putFloat(frame.speed.toLaneFloat())
             putFloat(frame.duty.toLaneFloat())
             putFloat(frame.battery.toLaneFloat())
             putFloat(frame.motorTemp.toLaneFloat())

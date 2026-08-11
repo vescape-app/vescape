@@ -27,7 +27,7 @@ class WatchFrameDecoderTest {
     fun `an older phone's shorter frame still decodes, just without nav`() {
         val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f))!!
 
-        assertEquals(12.0, frame.speed, 0.001)
+        assertEquals(12.0, frame.speed!!, 0.001)
         assertEquals(5.0, frame.ctrlTemp!!, 0.001)
         assertNull(frame.navBearing)
     }

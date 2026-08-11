@@ -32,7 +32,7 @@ private const val FLAG_WAITING = 2
  * a "session live, no board telemetry yet" frame — the lanes carry no data and must not be rendered.
  */
 data class WatchFrame(
-    val speed: Double,
+    val speed: Double?,
     val duty: Double?,
     val battery: Double?,
     val motorTemp: Double?,
@@ -66,7 +66,7 @@ object WatchFrameDecoder {
             if (index < lanes.size) lanes[index] = value.toDouble()
         }
         return WatchFrame(
-            speed = lanes[0],
+            speed = lanes[0].orNull(),
             duty = lanes[1].orNull(),
             battery = lanes[2].orNull(),
             motorTemp = lanes[3].orNull(),
