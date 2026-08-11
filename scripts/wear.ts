@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
+import { lastFirst, readLastDevice, rememberDevice } from './lib/lastDevice'
+import { select, SelectCancelled } from './lib/select'
 
 const ROOT = join(import.meta.dir, '..')
 /**
@@ -142,30 +144,98 @@ function signWithPhoneCert() {
   ])
 }
 
+/** Cache key for the last watch picked; see lib/lastDevice. */
+const LAST_WATCH_KEY = 'wear-device'
+
+/** Grace period before the remembered watch is taken; any keypress cancels it. */
+const AUTO_PICK_MS = 3000
+
+interface Watch {
+  serial: string
+  name: string
+  /** Hardware id, so the same watch reached over two transports collapses to one entry. */
+  hardware: string
+}
+
 /**
- * The OnePlus Watch 3 shows up twice over mDNS, so pick devices by what they are rather than by a
- * remembered transport id: only a watch reports `ro.build.characteristics=watch`.
+ * Devices are picked by what they are, never by a remembered transport id: only a watch reports
+ * `ro.build.characteristics=watch`. That still leaves several — the OnePlus Watch 3 shows up twice
+ * over mDNS, and a booted Wear AVD is a watch too — so mDNS duplicates collapse by `ro.serialno`
+ * and anything left over is a real choice the caller has to make.
  */
-function findWatch() {
-  const lines = capture(['adb', 'devices'])
+function connectedWatches(): Watch[] {
+  const transports = capture(['adb', 'devices'])
     .split('\n')
     .slice(1)
     .filter((line) => line.includes('\tdevice'))
-
-  const watches = lines
     .map((line) => line.split('\t')[0])
-    .filter((serial) =>
-      capture(['adb', '-s', serial, 'shell', 'getprop', 'ro.build.characteristics']).includes(
-        'watch',
-      ),
-    )
 
+  const watches = new Map<string, Watch>()
+  for (const serial of transports) {
+    const props = capture(['adb', '-s', serial, 'shell', 'getprop'])
+    if (!prop(props, 'ro.build.characteristics').includes('watch')) continue
+    const hardware = prop(props, 'ro.serialno') || serial
+    if (watches.has(hardware)) continue
+    watches.set(hardware, {
+      serial,
+      name: prop(props, 'ro.product.model') || hardware,
+      hardware,
+    })
+  }
+  return [...watches.values()]
+}
+
+/** One `[key]: [value]` line out of `adb shell getprop` output. */
+function prop(props: string, key: string): string {
+  return props.match(new RegExp(`^\\[${key}\\]: \\[(.*)\\]$`, 'm'))?.[1] ?? ''
+}
+
+async function findWatch(requested: string | null): Promise<string> {
+  const watches = connectedWatches()
   if (watches.length === 0) fail('no Wear OS device connected (`adb devices` shows none)')
-  if (watches.length > 1) {
-    console.log(`wear: ${watches.length} watch transports (mDNS duplicate), using ${watches[0]}`)
+
+  if (requested) {
+    const match = watches.find(
+      (watch) =>
+        watch.serial === requested || watch.hardware === requested || watch.name === requested,
+    )
+    if (!match) {
+      fail(
+        `no watch matches "${requested}" — connected: ${watches
+          .map((watch) => `${watch.name} (${watch.hardware})`)
+          .join(', ')}`,
+      )
+    }
+    return match.serial
   }
 
-  return watches[0]
+  if (watches.length === 1) return watches[0].serial
+
+  if (!process.stdin.isTTY) {
+    fail(
+      `several watches connected — pass --device <serial|model>: ${watches
+        .map((watch) => `${watch.name} (${watch.hardware})`)
+        .join(', ')}`,
+    )
+  }
+
+  const last = await readLastDevice(LAST_WATCH_KEY)
+  const ordered = lastFirst(watches, (watch) => watch.hardware, last)
+  const chosen = await select(
+    'Wear device',
+    ordered.map((watch) => ({
+      label: watch.name,
+      value: watch,
+      hint: `${watch.hardware}${watch.hardware === last ? ' · last' : ''}`,
+    })),
+    { autoPickMs: last ? AUTO_PICK_MS : undefined },
+  ).catch((error) => {
+    if (error instanceof SelectCancelled) process.exit(1)
+    throw error
+  })
+
+  await rememberDevice(LAST_WATCH_KEY, chosen.hardware)
+  return chosen.serial
 }
 
 function install(serial: string, packageName: string) {
@@ -259,8 +329,8 @@ function startEmulator() {
  * Restarts the Mirror on the chosen lane fixture. `-S` because a running activity keeps the intent
  * it was started with, so without it the extra is delivered but never read.
  */
-function startReplay(fixture: string) {
-  const serial = findWatch()
+async function startReplay(fixture: string, requested: string | null) {
+  const serial = await findWatch(requested)
   const packageName = applicationId()
   console.log(`\nwear: replaying ${fixture} on ${serial}`)
   run([
@@ -279,9 +349,19 @@ function startReplay(fixture: string) {
   ])
 }
 
-const command = process.argv[2] as Command | undefined
+const args = process.argv.slice(2)
+
+// `--device` skips the picker, and is the only way to choose a watch without a TTY.
+const deviceFlag = args.findIndex((arg) => arg === '--device' || arg === '-d')
+const requested = deviceFlag === -1 ? null : (args[deviceFlag + 1] ?? null)
+if (deviceFlag !== -1) {
+  if (!requested) fail('--device needs a serial or model')
+  args.splice(deviceFlag, 2)
+}
+
+const command = args[0] as Command | undefined
 if (!command || !COMMANDS.includes(command)) {
-  console.error(`Usage: bun run scripts/wear.ts <${COMMANDS.join('|')}>`)
+  console.error(`Usage: bun run scripts/wear.ts <${COMMANDS.join('|')}> [--device <serial|model>]`)
   process.exit(1)
 }
 
@@ -291,11 +371,11 @@ if (command === 'emulator') {
 }
 
 if (command === 'replay') {
-  const fixture = process.argv[3] ?? 'ride'
+  const fixture = args[1] ?? 'ride'
   if (!REPLAY_FIXTURES.includes(fixture as (typeof REPLAY_FIXTURES)[number])) {
     fail(`unknown fixture ${fixture} — expected ${REPLAY_FIXTURES.join(' | ')}`)
   }
-  startReplay(fixture)
+  await startReplay(fixture, requested)
   process.exit(0)
 }
 
@@ -308,7 +388,7 @@ if (command === 'test') {
 
   if (command === 'install') {
     signWithPhoneCert()
-    const serial = findWatch()
+    const serial = await findWatch(requested)
     const packageName = applicationId()
     console.log(`\nwear: targeting ${packageName} on ${serial}`)
     install(serial, packageName)

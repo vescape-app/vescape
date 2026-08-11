@@ -19,7 +19,7 @@
     "ios": "bun run native:sync ios && expo run:ios --device",
     "wear:build": "bun run scripts/wear.ts build",
     "wear:test": "bun run scripts/wear.ts test",
-    "wear:install": "bun run scripts/wear.ts install",
+    "wear": "bun run scripts/wear.ts install",
     "wear:fixtures": "bun run scripts/generate-watch-fixtures.ts",
     "icons:port": "bun run scripts/phosphor-to-vector.ts",
     "wear:emulator": "bun run scripts/wear.ts emulator",

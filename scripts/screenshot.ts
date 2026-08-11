@@ -6,10 +6,11 @@
  * whatever is on an attached Android device or a booted iOS simulator. With more than one target
  * it asks; agents and other non-TTY callers pass `--device <serial|udid|name>` instead.
  */
-import { homedir, tmpdir } from 'os'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { capture, runOrDie } from './lib/captureDriver.ts'
+import { lastFirst, readLastDevice, rememberDevice } from './lib/lastDevice.ts'
 import { select, SelectCancelled, type SelectOption } from './lib/select.ts'
 
 interface Target {
@@ -42,23 +43,11 @@ async function iosTargets(): Promise<Target[]> {
     .map(({ udid, name }) => ({ platform: 'ios' as const, id: udid, name }))
 }
 
-/**
- * Last pick, remembered per machine rather than per checkout: it is a property of which phone is on
- * the desk, not of the repo. A stale or unreadable file is not an error — the device it names is
- * simply gone, and the list falls back to its natural order.
- */
-const LAST_DEVICE_FILE = join(homedir(), '.cache', 'vescape', 'screenshot-device')
+/** Cache key for the last device picked; see lib/lastDevice. */
+const LAST_DEVICE_KEY = 'screenshot-device'
 
-async function readLastDevice(): Promise<string | null> {
-  const text = await Bun.file(LAST_DEVICE_FILE)
-    .text()
-    .catch(() => '')
-  return text.trim() || null
-}
-
-async function rememberDevice(id: string): Promise<void> {
-  await Bun.write(LAST_DEVICE_FILE, `${id}\n`).catch(() => {})
-}
+/** Grace period before the remembered device is taken; any keypress cancels it. */
+const AUTO_PICK_MS = 3000
 
 /** `adb-54151FDAS00077-x5XeY4._adb-tls-connect._tcp` → `54151FDAS00077`. */
 function shortId(id: string): string {
@@ -95,14 +84,14 @@ async function resolveTarget(requested: string | null): Promise<Target> {
     process.exit(1)
   }
 
-  const last = await readLastDevice()
-  const ordered = [...targets].sort((a, b) => Number(b.id === last) - Number(a.id === last))
+  const last = await readLastDevice(LAST_DEVICE_KEY)
+  const ordered = lastFirst(targets, (target) => target.id, last)
   const options: SelectOption<Target>[] = ordered.map((target) => ({
     label: target.name,
     value: target,
     hint: `${target.platform} · ${shortId(target.id)}${target.id === last ? ' · last' : ''}`,
   }))
-  return select('Screenshot device', options)
+  return select('Screenshot device', options, { autoPickMs: last ? AUTO_PICK_MS : undefined })
 }
 
 async function grab(target: Target, localPath: string): Promise<void> {
@@ -129,7 +118,7 @@ const target = await resolveTarget(requested).catch((error) => {
   throw error
 })
 
-await rememberDevice(target.id)
+await rememberDevice(LAST_DEVICE_KEY, target.id)
 console.log(`Device: ${target.name} (${shortId(target.id)})`)
 
 const localPath = join(tmpdir(), `screenshot_${Date.now()}.png`)
