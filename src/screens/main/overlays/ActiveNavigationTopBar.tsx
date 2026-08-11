@@ -21,6 +21,7 @@ interface ActiveNavigationTopBarProps {
   targetIcon: Icon
   distanceLabel: string
   riderColor: string
+  onNavigationPress: () => void
   onCancel: () => void
 }
 
@@ -94,6 +95,7 @@ export function ActiveNavigationTopBar({
   targetIcon,
   distanceLabel,
   riderColor,
+  onNavigationPress,
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
@@ -161,7 +163,7 @@ export function ActiveNavigationTopBar({
           {navigationPrimary ? (
             <Pressable
               accessibilityLabel={`Navigation target: ${targetTitle}`}
-              onPress={() => swapPrimary(false)}
+              onPress={onNavigationPress}
               style={[
                 styles.targetPill,
                 { minWidth: Math.min(166, maxWidth), maxWidth },

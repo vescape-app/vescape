@@ -204,6 +204,7 @@ export function TelemetryOverlay({
           onWeatherPress={onEnterWeather}
           activeNavigationTarget={activeNavigationTarget}
           currentLocation={currentLocation}
+          onNavigationPress={onEnterMapFocus}
           onCancelNavigation={onCancelNavigation}
         />
         <FloatingBar

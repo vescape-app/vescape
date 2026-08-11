@@ -56,6 +56,7 @@ interface TopBarProps {
   onWeatherPress?: () => void
   activeNavigationTarget: MapSelection | null
   currentLocation: { latitude: number; longitude: number } | null
+  onNavigationPress: () => void
   onCancelNavigation: () => void
 }
 
@@ -147,6 +148,7 @@ export function TopBar({
   onWeatherPress,
   activeNavigationTarget,
   currentLocation,
+  onNavigationPress,
   onCancelNavigation,
 }: TopBarProps) {
   const insets = useSafeAreaInsets()
@@ -227,6 +229,7 @@ export function TopBar({
               targetIcon={navigationTargetIcon}
               distanceLabel={navigationDistance}
               riderColor={riderColor}
+              onNavigationPress={onNavigationPress}
               onCancel={onCancelNavigation}
             />
           </View>
