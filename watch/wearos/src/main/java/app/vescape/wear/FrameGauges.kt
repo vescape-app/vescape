@@ -1,12 +1,14 @@
 package app.vescape.wear
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +20,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -28,6 +31,7 @@ import androidx.wear.compose.foundation.CurvedDirection
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedTextStyle
 import androidx.wear.compose.foundation.curvedColumn
+import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.curvedText
@@ -99,6 +103,10 @@ internal fun FrameLayout(
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
         if (hasNav) {
             NavPointer(bearingDeg = navBearing!!, distanceM = navDistance!!, muted = muted, focus = focus)
+        } else {
+            // Nav focus with nothing to show would be a blank circle. Say why, but only once the
+            // drag is nearly done, so it never flickers under the departing readouts.
+            NavAbsentHint(focus)
         }
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
@@ -161,6 +169,43 @@ internal fun FrameLayout(
                 )
             }
         }
+    }
+}
+
+/**
+ * What the nav focus page shows when the phone is not navigating: a centred, dim two-liner that
+ * fades in as the readouts leave. Alpha is read inside the graphics layer so the drag never
+ * recomposes.
+ */
+@Composable
+private fun NavAbsentHint(focus: () -> Float) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp)
+            .graphicsLayer { alpha = fadeIn(focus()) },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_ph_map_pin),
+            contentDescription = null,
+            tint = DimText,
+            modifier = Modifier.size(HINT_ICON_SIZE),
+        )
+        Text(
+            text = "No navigation",
+            style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
+            color = SecondaryText,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text(
+            text = "Set a destination on your phone",
+            style = MaterialTheme.typography.caption2.copy(fontSize = HINT_FONT_SIZE),
+            color = DimText,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 
@@ -299,6 +344,15 @@ private const val CTRL_ARC_START = 36f
 internal fun fadeOut(focus: Float): Float = (1f - focus * FOCUS_FADE_RATE).coerceIn(0f, 1f)
 
 internal const val FOCUS_FADE_RATE = 1.8f
+
+/** The no-nav hint arrives only after the readouts are gone, so the two never overlap. */
+private fun fadeIn(focus: Float): Float =
+    ((focus - HINT_FADE_ONSET) / (1f - HINT_FADE_ONSET)).coerceIn(0f, 1f)
+
+private const val HINT_FADE_ONSET = 0.6f
+private val HINT_FONT_SIZE = 11.sp
+private val HINT_ICON_SIZE = 22.dp
+
 private val HERO_FOCUS_RISE = 30.dp
 private const val HERO_FOCUS_SHRINK = 0.12f
 private val BATTERY_FOCUS_DROP = 18.dp
