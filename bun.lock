@@ -73,7 +73,6 @@
     "@shopify/react-native-skia",
   ],
   "patchedDependencies": {
-    "expo-modules-autolinking@57.0.9": "patches/expo-modules-autolinking@57.0.9.patch",
     "@bacons/apple-targets@4.0.7": "patches/@bacons%2Fapple-targets@4.0.7.patch",
     "@rnmapbox/maps@10.3.2": "patches/@rnmapbox%2Fmaps@10.3.2.patch",
   },
