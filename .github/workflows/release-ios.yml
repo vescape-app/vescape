@@ -111,6 +111,13 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      - name: Verify native Sentry init in generated project
+        run: |
+          # Derive the main app target from the generated .xcodeproj rather than picking the first
+          # AppDelegate.swift on disk — app extensions must not be able to satisfy this gate.
+          PROJECT=$(ls -d ios/*.xcodeproj)
+          APP_DELEGATE="ios/$(basename "$PROJECT" .xcodeproj)/AppDelegate.swift"
+          bun run scripts/release/verifySentryNativeInit.ts "$APP_DELEGATE"
       - uses: useblacksmith/cache@v5
         with:
           path: |
