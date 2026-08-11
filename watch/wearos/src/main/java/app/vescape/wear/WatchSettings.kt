@@ -19,8 +19,15 @@ const val SETTINGS_PATH = "/settings"
 /** Rider colour as a `#RRGGBB` string; blank means the rider has not chosen one. */
 const val SETTING_RIDER_COLOR = "riderColor"
 
+/** Board Move strength, percent of full scale. Displayed on the wrist; the phone applies it. */
+const val SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
+
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
-data class WatchSettings(val riderColor: Color? = null)
+data class WatchSettings(
+    val riderColor: Color? = null,
+    /** Null until a phone new enough to send it has pushed; the wrist then shows no number. */
+    val boardMoveStrengthPercent: Int? = null,
+)
 
 /** Latest settings pushed from the phone. Defaults apply until the first push arrives. */
 object SettingsState {

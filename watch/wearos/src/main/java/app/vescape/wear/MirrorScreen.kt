@@ -21,13 +21,14 @@ import androidx.wear.compose.material.MaterialTheme
 import kotlinx.coroutines.delay
 
 /**
- * Screen shell around the live Watch Frame: routes between the gauges ([FrameLayout]), the
- * diagnostics pager page ([DiagnosticsScreen]), the waiting/disconnected status layouts, the
- * ambient hero, and the close prompt. Also owns the refresh tick that ages a stopped stream into
+ * Screen shell around the live Watch Frame: routes between the gauges ([FrameLayout]), the Board
+ * Move page ([MoveScreen]), the diagnostics pager page ([DiagnosticsScreen]), the
+ * waiting/disconnected status layouts, the ambient hero, and the close prompt. Also owns the refresh tick that ages a stopped stream into
  * DISCONNECTED and the keep-screen-awake flag while telemetry is LIVE.
  */
 @Composable
 fun MirrorScreen(
+    sender: CommandSender,
     isAmbient: Boolean = false,
     onKeepScreenAwakeChanged: (Boolean) -> Unit = {},
     onRequestClose: () -> Unit = {},
@@ -37,6 +38,8 @@ fun MirrorScreen(
     val keepScreenAwake = state.status == MirrorStatus.LIVE && !isAmbient
     var showClosePrompt by remember { mutableStateOf(false) }
     var showWeather by remember { mutableStateOf(false) }
+    // A hold must not be interpreted as a page swipe, and must never end because the page moved.
+    var moveHeld by remember { mutableStateOf(false) }
 
     // Mutually exclusive by `enabled`: back closes the innermost thing that is open, and only the
     // gauges themselves treat back as "leave the mirror".
@@ -75,10 +78,10 @@ fun MirrorScreen(
                 WeatherScreen()
             }
             else -> {
-                // Page 0 = gauges, page 1 = diagnostics. Dismiss (close prompt) stays on the left
-                // edge via edgeSwipeToDismiss; interior swipes page between the two.
+                // Page 0 = gauges, page 1 = Board Move, page 2 = diagnostics. Dismiss (close
+                // prompt) stays on the left edge via edgeSwipeToDismiss; interior swipes page.
                 val dismissState = rememberSwipeToDismissBoxState()
-                val pagerState = rememberPagerState(pageCount = { 2 })
+                val pagerState = rememberPagerState(pageCount = { 3 })
                 BasicSwipeToDismissBox(
                     onDismissed = { showClosePrompt = true },
                     state = dismissState,
@@ -89,6 +92,7 @@ fun MirrorScreen(
                         } else {
                             HorizontalPager(
                                 state = pagerState,
+                                userScrollEnabled = !moveHeld,
                                 modifier = Modifier.fillMaxSize().edgeSwipeToDismiss(dismissState),
                             ) { page ->
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -99,6 +103,7 @@ fun MirrorScreen(
                                             isAmbient = false,
                                             onWeatherClick = { showWeather = true },
                                         )
+                                        1 -> MoveScreen(sender = sender, onHoldChanged = { moveHeld = it })
                                         else -> DiagnosticsScreen()
                                     }
                                 }

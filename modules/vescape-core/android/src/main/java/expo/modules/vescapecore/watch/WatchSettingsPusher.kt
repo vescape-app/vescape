@@ -47,6 +47,7 @@ internal class WatchSettingsPusher(
                         // Blank, not absent: an absent key would leave a cleared colour looking
                         // like an older phone that never sent one, and the wrist could not tell.
                         dataMap.putString(WATCH_SETTING_RIDER_COLOR, settings.riderColor ?: "")
+                        dataMap.putInt(WATCH_SETTING_BOARD_MOVE_STRENGTH, settings.boardMoveStrengthPercent)
                     }.asPutDataRequest().setUrgent()
                     Tasks.await(dataClient.putDataItem(request))
                 } catch (error: Exception) {

@@ -65,6 +65,7 @@ import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WatchMirrorPresence
+import expo.modules.vescapecore.watch.WatchMoveRelay
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.WatchSnapshot
@@ -308,6 +309,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var weatherUnsubscribe: (() -> Unit)? = null
     private val watchMirrorPresence by lazy {
         WatchMirrorPresence(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    }
+    private val watchMoveRelay by lazy {
+        WatchMoveRelay(
+            scheduler = scheduler,
+            strengthPercent = { boardMoveStrengthPercent },
+            startMove = ::startBoardMove,
+            stopMove = ::stopBoardMove,
+            record = ::recordWatchDiagnostic,
+        )
     }
     private val watchMirrorLauncher by lazy {
         WatchMirrorLauncher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
@@ -626,6 +636,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
 private var wearAutoLaunchOnConnect = true
     private var watchLaunchFiredSessionId = 0L
     /**
+     * Board Move strength the wrist inherits: the wrist sends a direction, the phone owns the scale.
+     * Written from the settings load (`appDataScope`), read on the session scheduler by the relay.
+     */
+    @Volatile
+    private var boardMoveStrengthPercent = AppSettings().boardMoveStrengthPercent
+    /**
      * Board Warnings master switch (kill switch, #219). Off ⇒ no detector evaluation, no registry
      * writes, no session-end clean pass. Cached from settings by [applyTelemetrySettings] so the
      * BMS hot path never re-reads settings; @Volatile because evals run on BLE callbacks while
@@ -812,6 +828,7 @@ private var wearAutoLaunchOnConnect = true
         weatherUnsubscribe = null
         watchTick.stop()
         watchMirrorPresence.stop()
+        watchMoveRelay.cancel()
         autoCloseHandle?.cancel()
         autoCloseHandle = null
         if (!isStoppingService) {
@@ -1833,6 +1850,12 @@ private var wearAutoLaunchOnConnect = true
 
     fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
 
+    /**
+     * A wrist Board Move tick (ADR-0033). Direction only — the phone applies the rider's strength
+     * setting — and a missing tick stops the board, see [WatchMoveRelay].
+     */
+    fun watchMove(direction: Int) = watchMoveRelay.accept(direction)
+
     // Deliberately ungated: a stop must reach the board even if the link lost trust mid-hold,
     // otherwise the rider's release does nothing and the board coasts to the firmware timeout.
     fun stopBoardMove(): Boolean = boardMoveController.stop()
@@ -2470,6 +2493,7 @@ private var wearAutoLaunchOnConnect = true
         watchTick.setIntervalMs(settings.wearMirrorIntervalMs.toLong())
         watchSettingsPusher.push(settings.toWatchSettings())
         wearAutoLaunchOnConnect = settings.wearAutoLaunchOnConnect
+        boardMoveStrengthPercent = settings.boardMoveStrengthPercent
         autoCloseEnabled = settings.autoCloseEnabled
         autoCloseDelayMinutes = settings.autoCloseDelayMinutes
         // May run off-main (appDataScope); the countdown state lives on the main-handler scheduler.

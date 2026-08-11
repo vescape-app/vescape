@@ -231,6 +231,11 @@ class CoreForegroundService : Service() {
 
         fun stopBoardMove(): Boolean = instance?.controller?.stopBoardMove() ?: false
 
+        /** Wrist Board Move tick (ADR-0033). Dropped when no session is running — nothing to move. */
+        fun watchMove(direction: Int) {
+            instance?.controller?.watchMove(direction)
+        }
+
         fun pushProfileToBoard(
             context: Context,
             profileId: String,
