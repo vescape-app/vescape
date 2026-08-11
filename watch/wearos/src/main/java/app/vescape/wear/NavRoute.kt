@@ -61,9 +61,15 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Rider sits below the screen centre so more of the frame is "ahead" than behind.
         val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
-        // "You are here": filled dot with a halo, at the rider anchor.
-        drawCircle(color.copy(alpha = 0.20f), radius = RIDER_DOT_R.toPx() * 2.2f, center = center)
-        drawCircle(color, radius = RIDER_DOT_R.toPx(), center = center)
+        // "You are here": a ring in the route's own colour, punched out to black so the line
+        // passing under it never reads as passing through the rider.
+        drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), center = center)
+        drawCircle(
+            color,
+            radius = RIDER_DOT_R.toPx(),
+            center = center,
+            style = Stroke(width = RIDER_RING_W.toPx()),
+        )
     }
 }
 
@@ -135,9 +141,8 @@ private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: F
         },
     )
 
-/** Casing under the line keeps it readable where it crosses a gauge fill. */
+/** One flat stroke: a casing glow under the line only muddied it against the gauge fills. */
 private fun DrawScope.drawRoute(path: Path, color: Color) {
-    drawPath(path, color.copy(alpha = 0.16f), style = routeStroke(ROUTE_CASING_W.toPx()))
     drawPath(path, color.copy(alpha = 0.55f), style = routeStroke(ROUTE_W.toPx()))
 }
 
@@ -159,6 +164,7 @@ private val ROUTE_EDGE_INSET = 24.dp
 /** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */
 private val GUIDE_HALF_WIDTH = 1.dp
 private val ROUTE_W = 2.dp
-private val ROUTE_CASING_W = 6.dp
-private val RIDER_DOT_R = 2.5.dp
+private val RIDER_DOT_R = 4.dp
+/** Same weight as the route line, so the rider reads as part of it rather than an added marker. */
+private val RIDER_RING_W = ROUTE_W
 private val RIDER_DROP = 34.dp

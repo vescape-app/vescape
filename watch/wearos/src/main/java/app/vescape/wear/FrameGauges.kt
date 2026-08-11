@@ -112,8 +112,13 @@ internal fun FrameLayout(
         ) {
             // ── Top: wall clock at the rim gap, then speed + duty values ──
             WatchClock(modifier = Modifier.padding(top = 8.dp), color = if (muted) DimText else SecondaryText)
-            // Forecast under the clock — absent entirely until the phone pushes one.
-            WeatherReadout(muted = muted, onClick = onWeatherClick)
+            // Forecast under the clock — absent entirely until the phone pushes one, and gone
+            // again in nav focus, where only the clock and the nav stack survive.
+            WeatherReadout(
+                muted = muted,
+                onClick = onWeatherClick,
+                modifier = Modifier.graphicsLayer { alpha = fadeOut(focus()) },
+            )
 
             Row(
                 modifier = Modifier

@@ -59,8 +59,8 @@ internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean, f
             .padding(bottom = NAV_READOUT_BOTTOM_PAD)
             .graphicsLayer {
                 val f = focus()
-                // Rises into the band the battery % vacates, and grows there.
-                translationY = -f * READOUT_FOCUS_LIFT.toPx()
+                // Drops into the band the battery % vacates, and grows there.
+                translationY = f * READOUT_FOCUS_DROP.toPx()
                 scaleX = 1f + READOUT_FOCUS_GROWTH * f
                 scaleY = scaleX
             },
@@ -134,7 +134,7 @@ private val NAV_RIM_INSET = 30.dp
 // Sits in the band between the rider dot and the battery %.
 private val NAV_READOUT_BOTTOM_PAD = 46.dp
 private const val CHEVRON_FOCUS_GROWTH = 0.18f
-private val READOUT_FOCUS_LIFT = 26.dp
+private val READOUT_FOCUS_DROP = 6.dp
 private const val READOUT_FOCUS_GROWTH = 0.25f
 private val CHEVRON_W = 26.dp
 private val CHEVRON_H = 22.dp
