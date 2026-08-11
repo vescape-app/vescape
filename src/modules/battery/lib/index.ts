@@ -10,7 +10,6 @@ export {
   isBmsCharging,
   summarizeBms,
   summarizeBmsWindow,
-  nearestBmsFrameAtTime,
   cellBarScale,
   type BmsCellGroup,
   type BmsSummary,
