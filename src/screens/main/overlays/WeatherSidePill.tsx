@@ -2,6 +2,7 @@ import { DropIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Canvas, Circle, Path, Skia, useClock } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
+import type { WeatherIconSlug } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -22,14 +23,6 @@ const SNOWFLAKES = [
   { x: 33, phase: 0.58, speed: 10, drift: 1.5, radius: 0.7 },
   { x: 23, phase: 0.88, speed: 7, drift: 2.5, radius: 1.1 },
 ] as const
-
-function isRainCode(code: number) {
-  return (code >= 51 && code <= 67) || (code >= 80 && code <= 82)
-}
-
-function isSnowCode(code: number) {
-  return [71, 73, 75, 77, 85, 86].includes(code)
-}
 
 function Snowflake({
   clock,
@@ -101,19 +94,15 @@ function RainWaterFill({ probability }: { probability: number }) {
 
 /** Compact weather control aligned opposite the map selectors on the home overlay. */
 export function WeatherSidePill({
-  code,
+  icon,
   temperature,
   precipProbability,
-  hour,
-  isNight,
   verticalOffset,
   onPress,
 }: {
-  code: number
+  icon: WeatherIconSlug
   temperature: number
   precipProbability: number | null
-  hour: number
-  isNight: boolean
   verticalOffset: number
   onPress?: () => void
 }) {
@@ -123,15 +112,13 @@ export function WeatherSidePill({
       onPress={onPress}
       style={[styles.pill, { transform: [{ translateY: verticalOffset }] }]}
     >
-      {isRainCode(code) && precipProbability != null ? (
+      {icon === 'cloud-rain' && precipProbability != null ? (
         <RainWaterFill probability={precipProbability} />
       ) : null}
-      {isSnowCode(code) ? <Snowfall /> : null}
+      {icon === 'cloud-snow' ? <Snowfall /> : null}
       <View pointerEvents="none" style={styles.content}>
         <WeatherIcon
-          code={code}
-          hour={hour}
-          isNight={isNight}
+          icon={icon}
           size={18}
           color={theme.palette.slate.textSecondary}
           weight="duotone"

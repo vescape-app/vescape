@@ -17,7 +17,7 @@ class ReplayFixtureParserTest {
 
         assertEquals(2, samples.size)
         assertEquals(0L, samples[0].atMs)
-        assertEquals(8.3, samples[0].frame.speed, 0.001)
+        assertEquals(8.3, samples[0].frame.speed!!, 0.001)
         assertEquals(17.0, samples[0].frame.duty!!, 0.001)
         assertEquals(500L, samples[1].atMs)
     }

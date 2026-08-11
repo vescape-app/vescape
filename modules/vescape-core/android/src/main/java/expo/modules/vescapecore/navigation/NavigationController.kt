@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
+import expo.modules.vescapecore.watch.WatchRouteMirror
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -203,6 +204,46 @@ class NavigationController(
 
   /** Notified on every change, including the clear to `null` and every [computing] transition. */
   var onChange: ((Navigation?) -> Unit)? = null
+
+  /**
+   * Notified with the rideable path of every published Navigation, `null` when there is none to
+   * draw — a failed Navigation is a `null` path, not an empty one. Fired only when the path itself
+   * changes, so a [computing] transition over an unchanged path does not re-push it.
+   *
+   * Separate from [onChange] because the two have different lifetimes: [onChange] belongs to the JS
+   * module and is cleared on every reload, while this one carries the route to the Wear Mirror and
+   * must survive one — see `WatchRouteMirror`.
+   */
+  var onPathChange: ((List<Pair<Double, Double>>?) -> Unit)? = null
+
+  /**
+   * Where the rider is along the current path. Derived and never stored: recomputed by [onFix] and
+   * dropped whenever the Navigation it belongs to changes, so there is no cache to expire by hand.
+   */
+  private var progress: RouteProgress? = null
+
+  val currentProgress: RouteProgress? get() = synchronized(lock) { progress }
+
+  /** Notified on every Route Progress change, including the clear to `null`. */
+  var onProgressChange: ((RouteProgress?) -> Unit)? = null
+
+  /**
+   * A GPS Fix arrived. Recomputes Route Progress against the current path and notifies when it
+   * moved. This is the *only* thing a fix does to a Navigation: it does not recompute, reroute or
+   * retry the path itself.
+   *
+   * A fix with no usable path publishes `null` rather than keeping the last position, so nothing
+   * downstream can show progress along a path that is gone.
+   */
+  fun onFix(latitude: Double, longitude: Double, speedMps: Double?) {
+    synchronized(lock) {
+      val points = state?.takeIf { it.status == NavigationStatus.READY }?.points
+      val next = points?.let { RouteProgress.compute(it, latitude, longitude, speedMps) }
+      if (progress == next) return
+      progress = next
+      onProgressChange?.invoke(next)
+    }
+  }
 
   /**
    * Ordering token. Every intent claims one *synchronously*, before any network work starts, so the
@@ -414,6 +455,10 @@ class NavigationController(
 
   private fun claimRequest(): Int = synchronized(lock) { ++generation }
 
+  /** The path a Navigation actually draws, or `null` when it has none — a failure has no line. */
+  private fun ridePath(navigation: Navigation?): List<Pair<Double, Double>>? =
+    navigation?.points?.takeIf { navigation.status == NavigationStatus.READY && it.isNotEmpty() }
+
   /**
    * Commits [navigation] if [request] is still the newest intent — and, when [keepUsablePath] is
    * set, only if it is not a downgrade from a drawn path to a failure — and notifies in that same
@@ -434,8 +479,16 @@ class NavigationController(
       ) {
         return
       }
+      val previousPath = ridePath(state)
       state = navigation
+      // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
+      // rather than describing a path that is no longer drawn. The next fix refills it.
+      val hadProgress = progress != null
+      progress = null
       onChange?.invoke(navigation)
+      if (hadProgress) onProgressChange?.invoke(null)
+      val nextPath = ridePath(navigation)
+      if (previousPath != nextPath) onPathChange?.invoke(nextPath)
     }
     persist(request)
   }
@@ -475,6 +528,12 @@ class NavigationController(
         MapboxDirectionsApi(MapboxDirectionsApi.accessToken(context.applicationContext)),
         AppDataNavigationStore(context.applicationContext),
       ).also {
+        // The Wear Mirror follows the path from here rather than from the board session: a route is
+        // Navigation truth and must reach the wrist without waiting for a board. Attached *before*
+        // the instance is published, or a caller taking the lock-free fast path could publish a
+        // Navigation through a controller nothing is listening to, and that route would never reach
+        // the wrist.
+        WatchRouteMirror.attach(it, context.applicationContext)
         instance = it
         // Restore here rather than from the module, so a JS reload — which recreates the module but
         // not this singleton — cannot re-run it over a Navigation the rider has since replaced.

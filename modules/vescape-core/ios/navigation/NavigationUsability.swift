@@ -20,8 +20,6 @@ enum NavigationUsability {
   /// rounds a building a 10x detour — so short paths are simply accepted.
   private static let minCheckedDirectMeters = 50.0
 
-  private static let earthRadiusMeters = 6_371_000.0
-
   /// Path points as `(latitude, longitude)`, in the order they are ridden.
   static func isUsable(
     _ points: [(latitude: Double, longitude: Double)],
@@ -29,7 +27,7 @@ enum NavigationUsability {
     targetLongitude: Double
   ) -> Bool {
     guard points.count >= 2, let origin = points.first else { return false }
-    let direct = distanceMeters(
+    let direct = GeoMath.distanceMeters(
       origin.latitude, origin.longitude, targetLatitude, targetLongitude
     )
     if direct < minCheckedDirectMeters { return true }
@@ -41,24 +39,10 @@ enum NavigationUsability {
     for index in 1..<points.count {
       let previous = points[index - 1]
       let point = points[index]
-      total += distanceMeters(
+      total += GeoMath.distanceMeters(
         previous.latitude, previous.longitude, point.latitude, point.longitude
       )
     }
     return total
-  }
-
-  private static func distanceMeters(
-    _ fromLatitude: Double,
-    _ fromLongitude: Double,
-    _ toLatitude: Double,
-    _ toLongitude: Double
-  ) -> Double {
-    let deltaLatitude = (toLatitude - fromLatitude) * .pi / 180
-    let deltaLongitude = (toLongitude - fromLongitude) * .pi / 180
-    let a = sin(deltaLatitude / 2) * sin(deltaLatitude / 2)
-      + cos(fromLatitude * .pi / 180) * cos(toLatitude * .pi / 180)
-      * sin(deltaLongitude / 2) * sin(deltaLongitude / 2)
-    return 2 * earthRadiusMeters * asin(min(1.0, sqrt(a)))
   }
 }

@@ -23,7 +23,6 @@ import { BoardWarningControl } from '@/modules/board/components/BoardWarningCont
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
-import { isNightAtTime } from '@/modules/weather/lib/weather'
 import { routes } from '@/navigation/routes'
 import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
@@ -35,8 +34,8 @@ import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { distanceMeters } from '@/helpers/mapGeometry'
 import { DASH, fmtDistance } from '@/helpers/format'
+import { useMapStore } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
 import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
@@ -55,7 +54,6 @@ interface TopBarProps {
   onDisconnect: () => void
   onWeatherPress?: () => void
   activeNavigationTarget: MapSelection | null
-  currentLocation: { latitude: number; longitude: number } | null
   onNavigationPress: () => void
   onCancelNavigation: () => void
 }
@@ -147,7 +145,6 @@ export function TopBar({
   onDisconnect,
   onWeatherPress,
   activeNavigationTarget,
-  currentLocation,
   onNavigationPress,
   onCancelNavigation,
 }: TopBarProps) {
@@ -161,13 +158,12 @@ export function TopBar({
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
+  const routeProgress = useMapStore((s) => s.routeProgress)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
-  const weatherCode = useWeatherStore((s) => s.weatherCode)
-  const weatherTemp = useWeatherStore((s) => s.temperature)
-  const weatherPrecip = useWeatherStore((s) => s.precipitationProbability)
+  const weather = useWeatherStore((s) => s.weather)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -179,21 +175,17 @@ export function TopBar({
     updateAvailable: availableUpdate !== null,
     backup,
   })
-  const sunrise = useWeatherStore((s) => s.sunrise)
-  const sunset = useWeatherStore((s) => s.sunset)
-  const hasWeather = weatherCode != null && weatherTemp != null
-  const now = new Date()
-  const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
   const navigationTargetIcon =
     activeNavigationTarget?.type === 'mapPoint'
       ? getMapPointKindIcon(activeNavigationTarget.point.category)
       : activeNavigationTarget?.type === 'place'
         ? getPlaceCategoryIcon(activeNavigationTarget.category)
         : getMapPointKindIcon('direction')
+  // Along the path, from native. A straight line here claimed 679 m for a ride that is 2 km around
+  // the river; the dash while native has no Route Progress is the honest answer, not a reason to
+  // fall back to one.
   const navigationDistance =
-    activeNavigationTarget && currentLocation
-      ? fmtDistance(distanceMeters(currentLocation, activeNavigationTarget))
-      : DASH
+    routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
 
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
@@ -267,13 +259,11 @@ export function TopBar({
           />
         </View>
       </View>
-      {hasWeather ? (
+      {weather ? (
         <WeatherSidePill
-          code={weatherCode!}
-          temperature={weatherTemp!}
-          precipProbability={weatherPrecip ?? null}
-          hour={now.getHours()}
-          isNight={isNight}
+          icon={weather.icon}
+          temperature={weather.temperatureC}
+          precipProbability={weather.precipitationProbability}
           verticalOffset={insets.top / 2}
           onPress={onWeatherPress}
         />

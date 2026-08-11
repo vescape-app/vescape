@@ -5,6 +5,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
@@ -22,6 +23,7 @@ import expo.modules.vescapecore.connection.buildSessionConfig
 
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
+import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -167,6 +169,8 @@ class VescapeCoreModule : Module() {
       "onBoardWarnings",
       "onAppStatus",
       "onNavigation",
+      "onRouteProgress",
+      "onWeather",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -193,6 +197,16 @@ class VescapeCoreModule : Module() {
             "computing" to NavigationController.get(context).computing,
           ),
         )
+      }
+    }
+
+    // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
+    // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
+    // @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
+    NavigationController.get(context).onProgressChange = { progress ->
+      if (shouldEmitToFrontend("onRouteProgress")) {
+        sendEvent("onRouteProgress", mapOf("progress" to progress?.toMap()))
       }
     }
 
@@ -273,6 +287,22 @@ class VescapeCoreModule : Module() {
       )
     }
     OnStopObserving("onNavigation") { stopObserving("onNavigation") }
+    OnStartObserving("onRouteProgress") {
+      startObserving("onRouteProgress")
+      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
+      sendEvent(
+        "onRouteProgress",
+        mapOf("progress" to NavigationController.get(context).currentProgress?.toMap()),
+      )
+    }
+    OnStopObserving("onRouteProgress") { stopObserving("onRouteProgress") }
+    OnStartObserving("onWeather") {
+      startObserving("onWeather")
+      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
+      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
+      sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
+    }
+    OnStopObserving("onWeather") { stopObserving("onWeather") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -300,6 +330,7 @@ class VescapeCoreModule : Module() {
       // its own definition().
       BoardWarningRegistry.get(context).onChange = null
       NavigationController.get(context).onChange = null
+      NavigationController.get(context).onProgressChange = null
       appStatusUnsub?.invoke()
       appStatusUnsub = null
       previewAlertFeedback?.release()
@@ -336,6 +367,9 @@ class VescapeCoreModule : Module() {
     }
     Function("recordPhoneHeading") { headingDeg: Double ->
       CoreForegroundService.recordPhoneHeading(context.applicationContext, headingDeg)
+    }
+    Function("setWatchRouteSpanM") { spanM: Double? ->
+      WatchRouteMirror.viewportSpanM = spanM
     }
     Function("setTelemetryRecordingEnabled") { enabled: Boolean -> setTelemetryRecordingEnabled(enabled) }
     Function("setBmsSeriesFocused") { focused: Boolean ->
@@ -383,6 +417,14 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAppStatus`
     Function("getAppStatus") {
       AppStatusCoordinator.get(context).current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
+    Function("getWeather") {
+      WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
+    Function("refreshWeather") {
+      WeatherCoordinator.get().refresh()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `provisionDeviceCredential`
     AsyncFunction("provisionDeviceCredential") Coroutine {
@@ -846,6 +888,8 @@ class VescapeCoreModule : Module() {
         key == "telemetryPollRateHz" ||
         key == "wearMirrorIntervalMs" ||
 key == "wearAutoLaunchOnConnect" ||
+        // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
+        key == "riderColor" ||
         key == "boardWarningsEnabled"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)

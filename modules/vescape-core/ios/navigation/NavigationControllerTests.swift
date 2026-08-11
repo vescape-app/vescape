@@ -548,6 +548,50 @@ final class NavigationControllerTests: XCTestCase {
     XCTAssertEqual(store.storedProfile, .driving)
   }
 
+  func testFixFillsRouteProgressAndClearingTheNavigationTakesItAway() {
+    let store = FakeStore(
+      stored: navigation(targetLatitude: targetLatitude),
+      directionPoint: (targetLatitude, targetLongitude)
+    )
+    let controller = NavigationController(api: GatedRoutes(), store: store)
+    let progress = ProgressLog()
+    controller.onProgressChange = { progress.append($0) }
+
+    controller.restore()
+    settle()
+    controller.onFix(latitude: riderLatitude, longitude: riderLongitude, speedMps: 5)
+
+    // The rider is standing on the path's first point, so that is what they project onto.
+    XCTAssertEqual(controller.currentProgress?.latitude, riderLatitude)
+
+    controller.clear()
+
+    // Route Progress belongs to exactly one Navigation and ends with it — no last known place left
+    // over to describe a path that is no longer drawn.
+    XCTAssertNil(controller.currentProgress)
+    XCTAssertEqual(progress.values.map { $0 == nil }, [false, true])
+  }
+
+  func testFixWithoutAPathPublishesNoRouteProgress() {
+    let controller = NavigationController(api: GatedRoutes(), store: FakeStore())
+
+    controller.onFix(latitude: riderLatitude, longitude: riderLongitude, speedMps: 5)
+
+    XCTAssertNil(controller.currentProgress)
+  }
+
+  /// `onProgressChange` fires from whichever thread published, so the log needs its own guard.
+  private final class ProgressLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [RouteProgress?] = []
+
+    func append(_ progress: RouteProgress?) {
+      lock.withLock { storage.append(progress) }
+    }
+
+    var values: [RouteProgress?] { lock.withLock { storage } }
+  }
+
   /// `onChange` fires from whichever thread published, so the log needs its own guard.
   private final class EmissionLog: @unchecked Sendable {
     private let lock = NSLock()

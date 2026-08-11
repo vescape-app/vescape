@@ -27,9 +27,31 @@ class WatchFrameDecoderTest {
     fun `an older phone's shorter frame still decodes, just without nav`() {
         val frame = WatchFrameDecoder.decode(encode(12.0, 20f, 80f, 33f, 5f))!!
 
-        assertEquals(12.0, frame.speed, 0.001)
+        assertEquals(12.0, frame.speed!!, 0.001)
         assertEquals(5.0, frame.ctrlTemp!!, 0.001)
         assertNull(frame.navBearing)
+        assertNull(frame.routeSpanM)
+    }
+
+    @Test
+    fun `reads route span appended after rider and course lanes`() {
+        val frame = WatchFrameDecoder.decode(
+            encode(
+                12.0,
+                20f,
+                80f,
+                33f,
+                5f,
+                42f,
+                1350f,
+                10f,
+                20f,
+                90f,
+                725f,
+            ),
+        )!!
+
+        assertEquals(725.0, frame.routeSpanM!!, 0.001)
     }
 
     @Test

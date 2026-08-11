@@ -38,24 +38,34 @@ import kotlin.math.sin
  * top-left, duty top-right (almost touching at top center), battery across the bottom — styled like
  * the phone's DualGauge: thin gray guide, radial gradient fill from the centre, a strong rim line,
  * and a head tick at the current value. Temps + battery % sit inside, with the wall clock
- * ([WatchClock]) at the top rim gap since the fullscreen mirror hides the system time, and the
+ * ([WatchClock]) and the forecast ([WeatherReadout]) at the top rim gap since the fullscreen mirror
+ * hides the system time and the rider cannot see the phone's weather pill, and the
  * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
  */
 @Composable
-internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
-    val speedColor = if (muted) DimText else SpeedColor
-    val dutyColor = if (muted) DimText else DutyColor
-    val battColor = if (muted) DimText else batteryColor(frame.battery)
-    val motorColor = if (muted) DimText else MotorTempColor
-    val ctrlColor = if (muted) DimText else CtrlTempColor
+internal fun FrameLayout(frame: WatchFrame, muted: Boolean, onWeatherClick: () -> Unit = {}) {
+    val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
+    val dutyColor = if (muted || frame.duty == null) DimText else DutyColor
+    val battColor = if (muted || frame.battery == null) DimText else batteryColor(frame.battery)
+    val motorColor = if (muted || frame.motorTemp == null) DimText else MotorTempColor
+    val ctrlColor = if (muted || frame.ctrlTemp == null) DimText else CtrlTempColor
+
+    val navBearing = frame.navBearing
+    val navDistance = frame.navDistanceM
+    val hasNav = navBearing != null && navDistance != null
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Bottom layer: route ahead + rider dot, under every gauge and readout.
+        if (hasNav) {
+            NavRoute(frame = frame, muted = muted)
+        }
+
         // Rim gauges on one shared screen-centred circle.
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = size.minDimension / 2f - HEAD_W.toPx()
             val center = Offset(size.width / 2f, size.height / 2f)
-            val speedFrac = (frame.speed / SPEED_MAX).toFloat().coerceIn(0f, 1f)
+            val speedFrac = ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
             val dutyFrac = ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
             val battFrac = ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
             val motorFrac = tempFraction(frame.motorTemp)
@@ -77,10 +87,8 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
 
         // Navigation, only while the phone is sending it: chevron on the rim + distance above the
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
-        val navBearing = frame.navBearing
-        val navDistance = frame.navDistanceM
-        if (navBearing != null && navDistance != null) {
-            NavPointer(bearingDeg = navBearing, distanceM = navDistance, muted = muted)
+        if (hasNav) {
+            NavPointer(bearingDeg = navBearing!!, distanceM = navDistance!!, muted = muted)
         }
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
@@ -94,13 +102,15 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
         ) {
             // ── Top: wall clock at the rim gap, then speed + duty values ──
             WatchClock(modifier = Modifier.padding(top = 8.dp), color = if (muted) DimText else SecondaryText)
+            // Forecast under the clock — absent entirely until the phone pushes one.
+            WeatherReadout(muted = muted, onClick = onWeatherClick)
 
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(start = 32.dp, end = 32.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                LargeGaugeValue(Modifier.weight(1f), format(frame.speed, 0), "km/h", speedColor)
-                LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: "--", "%", dutyColor)
+                LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: DASH, "km/h", speedColor)
+                LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: DASH, "%", dutyColor)
             }
 
             // ── Bottom: battery % above the bottom gauge ──
@@ -110,7 +120,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
             ) {
                 Text(
                     // Same size as the curved temp values so the three secondary readouts match.
-                    text = frame.battery?.let { "${format(it, 0)}%" } ?: "--",
+                    text = frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
                     style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
                     color = battColor,
                 )
@@ -123,7 +133,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
 @Composable
 internal fun AmbientLayout(frame: WatchFrame) {
     Text(
-        text = format(frame.speed, 0),
+        text = frame.speed?.let { format(it, 0) } ?: DASH,
         style = MaterialTheme.typography.display1,
         color = AmbientText,
         textAlign = TextAlign.Center,
@@ -217,7 +227,7 @@ private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, col
 
 private fun format(value: Double, decimals: Int): String = String.format("%.${decimals}f", value)
 
-private fun temp(value: Double?): String = value?.let { "${format(it, 0)}°" } ?: "--"
+private fun temp(value: Double?): String = value?.let { "${format(it, 0)}°" } ?: DASH
 
 private fun batteryColor(value: Double?): Color = when {
     value == null -> SecondaryText

@@ -21,6 +21,7 @@
     "wear:test": "bun run scripts/wear.ts test",
     "wear:install": "bun run scripts/wear.ts install",
     "wear:fixtures": "bun run scripts/generate-watch-fixtures.ts",
+    "icons:port": "bun run scripts/phosphor-to-vector.ts",
     "wear:emulator": "bun run scripts/wear.ts emulator",
     "wear:replay": "bun run scripts/wear.ts replay",
     "relay:reverse": "bun run scripts/relay-reverse.ts",
@@ -94,6 +95,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "^2.1.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^26.1.1",
     "@types/react": "19.2.17",

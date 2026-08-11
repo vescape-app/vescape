@@ -1,7 +1,12 @@
 import Mapbox from '@rnmapbox/maps'
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, View } from 'react-native'
-import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
+import {
+  setWatchRouteSpanM,
+  type LocationEvent,
+  type MapPoint,
+  type MapPointCategory,
+} from 'vescape-core'
 
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
@@ -41,6 +46,7 @@ import { useNavigationDiagnosticsSync } from '@/screens/main/map/useNavigationDi
 import { useNavigationPathFraming } from '@/screens/main/map/useNavigationPathFraming'
 import { useOffscreenMapIndicators } from '@/screens/main/map/useOffscreenMapIndicators'
 import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
+import { watchRouteSpanMeters } from '@/modules/map/lib/nearbyRadius'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
@@ -175,6 +181,25 @@ export const MainMap = memo(
     const [cameraZoom, setCameraZoom] = useState<number>(MAP_DEFAULTS.fallbackZoom)
     const { mapViewRef, mapLayout, handleMapLayout, getViewfinderCoordinateFromMap } =
       useMapViewport()
+    const lastWatchRouteSpanRef = useRef<number | null>(null)
+    const syncWatchRouteSpan = useCallback(
+      (latitude: number, zoom: number) => {
+        const spanM = watchRouteSpanMeters(zoom, latitude, mapLayout.width)
+        const previous = lastWatchRouteSpanRef.current
+        if (spanM === previous) return
+        if (spanM != null && previous != null && Math.abs(spanM - previous) / previous < 0.02) {
+          return
+        }
+        // Sent on every camera frame on purpose: this only writes a native field, and the value
+        // travels on the next Watch Frame. Throttling here would just hand the wrist a coarser
+        // step to ease over, which reads as jerk rather than as a saving.
+        lastWatchRouteSpanRef.current = spanM
+        setWatchRouteSpanM(spanM)
+      },
+      [mapLayout.width],
+    )
+
+    useEffect(() => () => setWatchRouteSpanM(null), [])
     const {
       gpsFix,
       cameraFix,
@@ -182,7 +207,7 @@ export const MainMap = memo(
       accuracyShape,
       approximateGpsPuckActive,
       directionBearingDeg,
-      retainedGpsBearing,
+      retainedGpsBearingSourceTimestamp,
       riderFocusRows,
       mapRiders,
       trackedMapPoints,
@@ -354,7 +379,8 @@ export const MainMap = memo(
 
     useNavigationDiagnosticsSync({
       gpsFix,
-      retainedGpsBearing,
+      courseDeg: directionBearingDeg,
+      courseSourceTimestamp: retainedGpsBearingSourceTimestamp,
       phoneHeadingDegRef,
       phoneHeadingStatus,
       gpsPinBearingDeg,
@@ -402,6 +428,7 @@ export const MainMap = memo(
       setFollowGps,
       setFollowZoomLevel,
       onCameraSettled: mapPointProps.onCameraSettled,
+      onWatchRouteSpanChange: syncWatchRouteSpan,
       onHeadingChange,
       repositionOffscreenIndicatorsForCamera,
       scheduleOffscreenMapIndicatorRefresh,

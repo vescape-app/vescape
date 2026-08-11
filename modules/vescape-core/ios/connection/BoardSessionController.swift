@@ -154,6 +154,7 @@ internal final class BoardSessionController: VescGattListener {
   private let liveTelemetryRefreshMinMs: Int64 = 1000
   private var latestLocation: TelemetryLocationCapture?
   private var latestPreciseLocation: TelemetryLocationCapture?
+  private let courseDeriver = GpsCourseDeriver()
   private var recentLocations: [[String: Any?]] = []
   private var gpsError: String?
 
@@ -696,6 +697,7 @@ internal final class BoardSessionController: VescGattListener {
     lastTelemetryAt = nil
     latestLocation = nil
     latestPreciseLocation = nil
+    courseDeriver.reset()
     recentLocations.removeAll(keepingCapacity: true)
     endLiveActivity()
     settleConnect(success: false, code: error == nil ? nil : "DISCONNECTED", message: error)
@@ -1524,14 +1526,39 @@ internal final class BoardSessionController: VescGattListener {
     recordingCoordinator.currentRecorder()?.recordPhoneHeading(headingDeg)
   }
 
-  private func onLocationUpdated(_ location: TelemetryLocationCapture) {
+  private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
+    var location = incoming
+    // Approximate fixes never feed the course: they are metres of noise apart and would spin a
+    // derived bearing, and they are not what the map's GPS heading mode follows either.
+    if location.precise {
+      let course = courseDeriver.derive(
+        latitude: location.latitude,
+        longitude: location.longitude,
+        speedMps: location.speedMps,
+        bearingDeg: location.bearingDeg,
+        timestamp: location.timestamp
+      )
+      location.courseDeg = course?.bearingDeg
+      location.courseSourceTimestamp = course?.sourceTimestamp
+    }
     recordingCoordinator.recordLocation(location)
     latestLocation = location
+    // Every fix moves Route Progress, approximate ones included: the same rule as `riderPosition`,
+    // where freshness beats accuracy. The bearing comes off the path rather than off the fix, so a
+    // noisy position cannot spin it.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `onLocationUpdated`
+    NavigationController.shared.onFix(
+      latitude: location.latitude,
+      longitude: location.longitude,
+      speedMps: location.speedMps
+    )
     if location.precise {
       latestPreciseLocation = location
       recentLocations.append(location.map)
       pruneRecentLocations(now: location.timestamp)
     }
+    // Offered on every Fix; the coordinator owns the freshness and distance gates.
+    WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     emit?("onLocation", location.map)
   }
 

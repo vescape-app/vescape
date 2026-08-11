@@ -47,6 +47,7 @@ internal class WatchMirrorLauncher(
             val intent = Intent(Intent.ACTION_VIEW)
                 .addCategory(Intent.CATEGORY_BROWSABLE)
                 .setData(Uri.parse(WATCH_MIRROR_URI))
+                .setPackage(context.packageName)
             for (node in nodes) {
                 val future = remoteActivityHelper.startRemoteActivity(intent, node.id)
                 future.addListener({

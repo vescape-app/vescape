@@ -514,7 +514,6 @@ export function MainScreen({
           exitWeather: controller.exitWeatherMode,
           enterLegalLimits: controller.enterLegalLimitsMode,
           exitLegalLimits: controller.exitLegalLimitsMode,
-          refreshWeather: controller.refreshWeather,
           weatherLocation: controller.liveLocations.at(-1) ?? controller.latestApproximateLocation,
           directionPoint: controller.directionPoint,
           activeNavigationTarget,

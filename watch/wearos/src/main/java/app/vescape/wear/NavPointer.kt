@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import kotlin.math.cos
@@ -34,7 +36,7 @@ import kotlin.math.sin
  */
 @Composable
 internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean) {
-    val color = if (muted) DimText else NavColor
+    val color = if (muted) DimText else navColor()
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val center = Offset(size.width / 2f, size.height / 2f)
@@ -48,15 +50,18 @@ internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean) {
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Glyph is inset inside its canvas so the stroke never clips at the edges.
-        Canvas(modifier = Modifier.size(PIN_BOX)) {
-            drawMapPin(Offset(size.width / 2f, size.height / 2f), size.minDimension * 0.74f, color)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Glyph is inset inside its canvas so the stroke never clips at the edges.
+            Canvas(modifier = Modifier.size(PIN_BOX)) {
+                drawMapPin(Offset(size.width / 2f, size.height / 2f), size.minDimension * 0.74f, color)
+            }
+            Text(
+                text = distanceLabel(distanceM),
+                modifier = Modifier.padding(start = PIN_GAP),
+                style = MaterialTheme.typography.caption2.copy(fontSize = DISTANCE_FONT_SIZE),
+                color = color,
+            )
         }
-        Text(
-            text = distanceLabel(distanceM),
-            style = MaterialTheme.typography.caption1,
-            color = color,
-        )
     }
 }
 
@@ -109,7 +114,10 @@ private fun distanceLabel(meters: Double): String =
     if (meters < 1000) "${meters.roundToInt()} m" else String.format("%.1f km", meters / 1000.0)
 
 private val NAV_RIM_INSET = 30.dp
-private val NAV_READOUT_BOTTOM_PAD = 64.dp
+// Sits in the band between the rider dot and the battery %.
+private val NAV_READOUT_BOTTOM_PAD = 46.dp
 private val CHEVRON_W = 26.dp
 private val CHEVRON_H = 22.dp
-private val PIN_BOX = 14.dp
+private val PIN_BOX = 11.dp
+private val PIN_GAP = 3.dp
+private val DISTANCE_FONT_SIZE = 12.sp
