@@ -55,6 +55,24 @@ final class WeatherTests: XCTestCase {
     XCTAssertEqual(weather?.sunsetMinuteOfDay, 21 * 60 + 15)
   }
 
+  func testDropsHoursWhoseParallelArraysRanShortInsteadOfInventingValues() {
+    let hours = parse("""
+      {
+        "current": {"time":"2026-06-10T12:00","temperature_2m":20.0,"weather_code":3},
+        "hourly": {
+          "time": ["2026-06-10T12:00", "2026-06-10T13:00", "2026-06-10T14:00"],
+          "temperature_2m": [20.0, null],
+          "weather_code": [3]
+        }
+      }
+      """)?.hourly ?? []
+
+    // Only the first hour has every required field. A missing code would otherwise read as a clear
+    // sky and a missing temperature as 0 °C, both indistinguishable from real weather.
+    XCTAssertEqual(hours.map(\.minuteOfDay), [12 * 60])
+    XCTAssertEqual(hours.first?.temperatureC, 20)
+  }
+
   func testRefusesAPayloadWithoutUsableCurrentConditions() {
     XCTAssertNil(parse(#"{"hourly":{"time":[]}}"#))
     XCTAssertNil(parse("not json"))

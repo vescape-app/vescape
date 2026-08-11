@@ -45,17 +45,19 @@ final class WeatherCoordinator {
   var onChange: ((Weather?) -> Void)?
 
   private let transport: WeatherTransport
-  private let timeZoneId: () -> String
   private let nowMs: () -> Int64
   private var fetching = false
 
+  /// Where the rider was when a Fix arrived mid-fetch. A ride moves during the seconds a request
+  /// takes, and dropping those Fixes outright would leave the forecast pinned to wherever the ride
+  /// started if GPS then stops. Re-evaluated once the in-flight request lands.
+  private var pendingPosition: (latitude: Double, longitude: Double)?
+
   init(
     transport: @escaping WeatherTransport,
-    timeZoneId: @escaping () -> String = { TimeZone.current.identifier },
     nowMs: @escaping () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
   ) {
     self.transport = transport
-    self.timeZoneId = timeZoneId
     self.nowMs = nowMs
   }
 
@@ -84,10 +86,12 @@ final class WeatherCoordinator {
   /// Fetch now for an explicit position, ignoring the freshness gate. A refresh asked for while one
   /// is already in flight is dropped: the in-flight request answers it.
   func refresh(latitude: Double, longitude: Double) {
-    guard !fetching else { return }
+    guard !fetching else {
+      pendingPosition = (latitude, longitude)
+      return
+    }
     fetching = true
-    transport(Self.forecastUrl(latitude: latitude, longitude: longitude, timeZoneId: timeZoneId())) {
-      [weak self] body in
+    transport(Self.forecastUrl(latitude: latitude, longitude: longitude)) { [weak self] body in
       self?.onFetched(body, latitude: latitude, longitude: longitude)
     }
   }
@@ -95,31 +99,38 @@ final class WeatherCoordinator {
   private func onFetched(_ body: Data?, latitude: Double, longitude: Double) {
     fetching = false
     // Silent on failure by design: expected offline, and it must never clear a known forecast.
-    guard let body,
-          let weather = parseOpenMeteoWeather(
-            body,
-            latitude: latitude,
-            longitude: longitude,
-            fetchedAtMs: nowMs()
-          )
-    else { return }
-    current = weather
-    onChange?(weather)
+    if let body,
+       let weather = parseOpenMeteoWeather(
+         body,
+         latitude: latitude,
+         longitude: longitude,
+         fetchedAtMs: nowMs()
+       ) {
+      current = weather
+      onChange?(weather)
+    }
+    // The ride moved while this request was in flight. Re-offer the newest position through the
+    // normal gate, so it refetches only if it actually left the area this forecast describes.
+    guard let pending = pendingPosition else { return }
+    pendingPosition = nil
+    onPosition(latitude: pending.latitude, longitude: pending.longitude)
   }
 
   /// Open-Meteo forecast endpoint. Public and keyless, which is why it is called directly rather
   /// than through `VescapeApi`.
+  ///
+  /// `timezone=auto` resolves the zone of the **forecast location**, which is what the hour labels
+  /// claim to be. The device zone would be a different thing the moment a rider crosses a border or
+  /// turns automatic time off.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/WeatherCoordinator.kt `forecastUrl`
-  static func forecastUrl(latitude: Double, longitude: Double, timeZoneId: String) -> String {
-    let encodedZone = timeZoneId.addingPercentEncoding(withAllowedCharacters: .alphanumerics)
-      ?? "UTC"
-    return "https://api.open-meteo.com/v1/forecast"
+  static func forecastUrl(latitude: Double, longitude: Double) -> String {
+    "https://api.open-meteo.com/v1/forecast"
       + "?latitude=\(latitude)&longitude=\(longitude)"
       + "&current=temperature_2m,weather_code,precipitation_probability"
       + "&hourly=temperature_2m,weather_code,precipitation_probability"
       + "&daily=sunrise,sunset"
       + "&forecast_hours=\(forecastHours)&forecast_days=1"
-      + "&timezone=\(encodedZone)"
+      + "&timezone=auto"
   }
 
   /// Default transport: one short-timeout GET, result handed back on the main thread.

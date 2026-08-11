@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -25,8 +24,7 @@ import androidx.wear.compose.material.Text
  */
 @Composable
 internal fun WeatherReadout(muted: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val weather by WeatherState.weather
-    val forecast = weather ?: return
+    val forecast = freshWeather() ?: return
     val iconColor = if (muted) DimText else weatherColor(forecast.icon)
     val textColor = if (muted) DimText else SecondaryText
 

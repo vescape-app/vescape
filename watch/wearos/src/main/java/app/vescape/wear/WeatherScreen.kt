@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -29,8 +28,7 @@ import androidx.wear.compose.material.Text
  */
 @Composable
 fun WeatherScreen() {
-    val weather by WeatherState.weather
-    val forecast = weather
+    val forecast = freshWeather()
 
     if (forecast == null) {
         Column(
@@ -39,7 +37,7 @@ fun WeatherScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "No forecast yet",
+                text = "No forecast",
                 style = MaterialTheme.typography.body2,
                 color = SecondaryText,
                 textAlign = TextAlign.Center,

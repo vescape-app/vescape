@@ -1,7 +1,14 @@
 package app.vescape.wear
 
 import androidx.annotation.DrawableRes
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 
 /**
  * Data Layer path the phone publishes the forecast on. Must match the phone-side
@@ -51,6 +58,39 @@ object WeatherState {
         this.weather.value = weather
     }
 }
+
+/**
+ * How long a pushed forecast is worth showing. The Data Layer keeps the last item forever, so a
+ * phone that stopped refreshing (app killed, out of range, GPS off) would otherwise leave yesterday's
+ * conditions on the wrist looking current. Generous next to the phone's ten-minute refresh: this is
+ * the line between "a bit old" and "not weather any more".
+ */
+const val WEATHER_STALE_MS = 3 * 60 * 60 * 1_000L
+
+/**
+ * The pushed forecast while it is still worth believing, else null. Recomposes on its own clock so
+ * an aged-out reading disappears without waiting for a push that is never coming.
+ */
+@Composable
+fun freshWeather(): WatchWeather? {
+    val weather by WeatherState.weather
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(STALENESS_TICK_MS)
+            nowMs = System.currentTimeMillis()
+        }
+    }
+
+    val forecast = weather ?: return null
+    // A clock that jumped backwards (timezone/NTP correction) must not read as "from the future" and
+    // hide a forecast that is fine; only real age hides it.
+    return if (nowMs - forecast.fetchedAtMs > WEATHER_STALE_MS) null else forecast
+}
+
+/** Coarse: the readout only has to drop within a minute or so of the forecast ageing out. */
+private const val STALENESS_TICK_MS = 60_000L
 
 /**
  * Condition slug into the ported Phosphor drawable. The phone resolves the slug from the WMO code,

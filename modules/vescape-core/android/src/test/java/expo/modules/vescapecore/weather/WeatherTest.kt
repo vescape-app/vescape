@@ -63,6 +63,26 @@ class WeatherTest {
   }
 
   @Test
+  fun `drops hours whose parallel arrays ran short instead of inventing values`() {
+    val json = """
+      {
+        "current": {"time":"2026-06-10T12:00","temperature_2m":20.0,"weather_code":3},
+        "hourly": {
+          "time": ["2026-06-10T12:00", "2026-06-10T13:00", "2026-06-10T14:00"],
+          "temperature_2m": [20.0, null],
+          "weather_code": [3]
+        }
+      }
+    """
+    val hours = parseOpenMeteoWeather(json, 0.0, 0.0, fetchedAtMs = 1_000)!!.hourly
+
+    // Only the first hour has every required field. A missing code would otherwise read as 0 — a
+    // clear sky — and a missing temperature as 0 °C, both indistinguishable from real weather.
+    assertEquals(listOf(12 * 60), hours.map { it.minuteOfDay })
+    assertEquals(20, hours.single().temperatureC)
+  }
+
+  @Test
   fun `refuses a payload without usable current conditions`() {
     assertNull(parseOpenMeteoWeather("""{"hourly":{"time":[]}}""", 0.0, 0.0, 1_000))
     assertNull(parseOpenMeteoWeather("not json", 0.0, 0.0, 1_000))

@@ -9,8 +9,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
-import java.net.URLEncoder
-import java.util.TimeZone
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
@@ -40,7 +38,6 @@ fun interface WeatherTransport {
  */
 class WeatherCoordinator internal constructor(
     private val transport: WeatherTransport,
-    private val timeZoneId: () -> String = { TimeZone.getDefault().id },
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
     /** Last successful forecast for this process, or `null` while none has landed. */
@@ -51,6 +48,13 @@ class WeatherCoordinator internal constructor(
     private val listeners = CopyOnWriteArrayList<(Weather?) -> Unit>()
 
     private var fetching = false
+
+    /**
+     * Where the rider was when a Fix arrived mid-fetch. A ride moves during the seconds a request
+     * takes, and dropping those Fixes outright would leave the forecast pinned to wherever the ride
+     * started if GPS then stops. Re-evaluated once the in-flight request lands.
+     */
+    private var pendingPosition: Pair<Double, Double>? = null
 
     /** Register a change listener (the JS mirror and the wrist pusher); returns a remover. */
     fun addChangeListener(listener: (Weather?) -> Unit): () -> Unit {
@@ -89,9 +93,12 @@ class WeatherCoordinator internal constructor(
      * is already in flight is dropped: the in-flight request answers it.
      */
     fun refresh(latitude: Double, longitude: Double) {
-        if (fetching) return
+        if (fetching) {
+            pendingPosition = latitude to longitude
+            return
+        }
         fetching = true
-        transport.fetch(forecastUrl(latitude, longitude, timeZoneId())) { body ->
+        transport.fetch(forecastUrl(latitude, longitude)) { body ->
             onFetched(body, latitude, longitude)
         }
     }
@@ -99,9 +106,16 @@ class WeatherCoordinator internal constructor(
     private fun onFetched(body: String?, latitude: Double, longitude: Double) {
         fetching = false
         // Silent on failure by design: expected offline, and it must never clear a known forecast.
-        val weather = body?.let { parseOpenMeteoWeather(it, latitude, longitude, nowMs()) } ?: return
-        current = weather
-        listeners.forEach { it(weather) }
+        val weather = body?.let { parseOpenMeteoWeather(it, latitude, longitude, nowMs()) }
+        if (weather != null) {
+            current = weather
+            listeners.forEach { it(weather) }
+        }
+        // The ride moved while this request was in flight. Re-offer the newest position through the
+        // normal gate, so it refetches only if it actually left the area this forecast describes.
+        val pending = pendingPosition ?: return
+        pendingPosition = null
+        onPosition(pending.first, pending.second)
     }
 
     companion object {
@@ -126,16 +140,20 @@ class WeatherCoordinator internal constructor(
         /**
          * Open-Meteo forecast endpoint. Public and keyless, which is why it is called directly
          * rather than through [expo.modules.vescapecore.api.VescapeApi].
+         *
+         * `timezone=auto` resolves the zone of the **forecast location**, which is what the hour
+         * labels claim to be. The device zone would be a different thing the moment a rider crosses
+         * a border or turns automatic time off.
          * @parity /modules/vescape-core/ios/weather/WeatherCoordinator.swift `forecastUrl`
          */
-        fun forecastUrl(latitude: Double, longitude: Double, timeZoneId: String): String =
+        fun forecastUrl(latitude: Double, longitude: Double): String =
             "https://api.open-meteo.com/v1/forecast" +
                 "?latitude=$latitude&longitude=$longitude" +
                 "&current=temperature_2m,weather_code,precipitation_probability" +
                 "&hourly=temperature_2m,weather_code,precipitation_probability" +
                 "&daily=sunrise,sunset" +
                 "&forecast_hours=$FORECAST_HOURS&forecast_days=1" +
-                "&timezone=${URLEncoder.encode(timeZoneId, "UTF-8")}"
+                "&timezone=auto"
 
         @Volatile
         private var instance: WeatherCoordinator? = null

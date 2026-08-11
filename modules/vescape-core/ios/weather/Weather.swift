@@ -157,17 +157,24 @@ func parseOpenMeteoWeather(
 
   let hourlyJson = root["hourly"] as? [String: Any]
   let times = (hourlyJson?["time"] as? [String]) ?? []
-  let temps = (hourlyJson?["temperature_2m"] as? [Double]) ?? []
-  let codes = (hourlyJson?["weather_code"] as? [Int]) ?? []
+  // Optional element types throughout: a single null anywhere would fail a `[Double]` cast and drop
+  // the whole day, where the parallel-array contract only loses the hour that is actually missing.
+  let temps = (hourlyJson?["temperature_2m"] as? [Double?]) ?? []
+  let codes = (hourlyJson?["weather_code"] as? [Int?]) ?? []
   let precips = (hourlyJson?["precipitation_probability"] as? [Int?]) ?? []
   var hourly: [WeatherHour] = []
   for (index, time) in times.enumerated() {
-    guard let minute = minuteOfDay(time), index < codes.count else { continue }
-    let code = codes[index]
+    // Every required field must be present at this index. The arrays are parallel but independent,
+    // and a short one would otherwise read as 0 — a fabricated clear sky at 0 °C, which looks like
+    // real weather rather than like missing data.
+    guard let minute = minuteOfDay(time),
+          index < codes.count, let code = codes[index],
+          index < temps.count, let temperature = temps[index]
+    else { continue }
     hourly.append(
       WeatherHour(
         minuteOfDay: minute,
-        temperatureC: Int((index < temps.count ? temps[index] : 0).rounded()),
+        temperatureC: Int(temperature.rounded()),
         weatherCode: code,
         icon: weatherIcon(
           code: code,

@@ -169,12 +169,17 @@ fun parseOpenMeteoWeather(
     val precips = hourlyJson?.optJSONArray("precipitation_probability")
     val hourly = buildList {
         for (index in 0 until (times?.length() ?: 0)) {
+            // Every required field must be present at this index. The arrays are parallel but
+            // independent, and a short one would otherwise read as 0 — a fabricated clear sky at
+            // 0 °C, which looks like real weather rather than like missing data.
             val minute = minuteOfDay(times!!.optString(index)) ?: continue
-            val code = codes?.optInt(index) ?: continue
+            if (codes == null || index >= codes.length() || codes.isNull(index)) continue
+            if (temps == null || index >= temps.length() || temps.isNull(index)) continue
+            val code = codes.optInt(index)
             add(
                 WeatherHour(
                     minuteOfDay = minute,
-                    temperatureC = Math.round(temps?.optDouble(index) ?: 0.0).toInt(),
+                    temperatureC = Math.round(temps.optDouble(index)).toInt(),
                     weatherCode = code,
                     icon = weatherIcon(code, isNight(minute, sunriseMinute, sunsetMinute)),
                     precipitationProbability = precips?.optInt(index) ?: 0,
