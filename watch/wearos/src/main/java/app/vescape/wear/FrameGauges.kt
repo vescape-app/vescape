@@ -114,61 +114,56 @@ internal fun FrameLayout(
         CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor, focus)
         CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor, focus)
 
+        // ── Top: wall clock at the rim gap, forecast under it ──
+        // Its own stack, so the heroes below never move when the forecast appears or disappears.
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // ── Top: wall clock at the rim gap, then speed + duty values ──
-            WatchClock(modifier = Modifier.padding(top = 8.dp), color = if (muted) DimText else SecondaryText)
-            // Forecast under the clock — absent entirely until the phone pushes one, and gone
-            // again in nav focus, where only the clock and the nav stack survive.
+            WatchClock(color = if (muted) DimText else SecondaryText)
             WeatherReadout(
                 muted = muted,
                 onClick = onWeatherClick,
                 modifier = Modifier.graphicsLayer { alpha = fadeOut(focus()) },
             )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(start = 32.dp, end = 32.dp, bottom = 8.dp)
-                    .graphicsLayer {
-                        val f = focus()
-                        alpha = fadeOut(f)
-                        // Values retreat into the arcs they belong to: speed/duty up to the top
-                        // rim, battery down to the bottom one.
-                        translationY = -f * HERO_FOCUS_RISE.toPx()
-                        scaleX = 1f - HERO_FOCUS_SHRINK * f
-                        scaleY = scaleX
-                    },
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: DASH, "km/h", speedColor)
-                LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: DASH, "%", dutyColor)
-            }
-
-            // ── Bottom: battery % above the bottom gauge ──
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(bottom = 16.dp)
-                    .graphicsLayer {
-                        val f = focus()
-                        alpha = fadeOut(f)
-                        translationY = f * BATTERY_FOCUS_DROP.toPx()
-                    },
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Text(
-                    // Same size as the curved temp values so the three secondary readouts match.
-                    text = frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
-                    style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
-                    color = battColor,
-                )
-            }
         }
+
+        // ── Speed + duty: pinned to the rim, not stacked under the clock ──
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(start = 32.dp, end = 32.dp, top = HERO_TOP_INSET)
+                .graphicsLayer {
+                    val f = focus()
+                    alpha = fadeOut(f)
+                    // Values retreat into the arcs they belong to: speed/duty up to the top
+                    // rim, battery down to the bottom one.
+                    translationY = -f * HERO_FOCUS_RISE.toPx()
+                    scaleX = 1f - HERO_FOCUS_SHRINK * f
+                    scaleY = scaleX
+                },
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: DASH, "km/h", speedColor)
+            LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: DASH, "%", dutyColor)
+        }
+
+        // ── Bottom: battery % above the bottom gauge ──
+        Text(
+            // Same size as the curved temp values so the three secondary readouts match.
+            text = frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
+            style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
+            color = battColor,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+                .graphicsLayer {
+                    val f = focus()
+                    alpha = fadeOut(f)
+                    translationY = f * BATTERY_FOCUS_DROP.toPx()
+                },
+        )
     }
 }
 
@@ -353,6 +348,8 @@ private const val HINT_FADE_ONSET = 0.6f
 private val HINT_FONT_SIZE = 11.sp
 private val HINT_ICON_SIZE = 22.dp
 
+/** Heroes sit on a fixed rim offset; the clock/forecast stack floats above them independently. */
+private val HERO_TOP_INSET = 56.dp
 private val HERO_FOCUS_RISE = 30.dp
 private const val HERO_FOCUS_SHRINK = 0.12f
 private val BATTERY_FOCUS_DROP = 18.dp
