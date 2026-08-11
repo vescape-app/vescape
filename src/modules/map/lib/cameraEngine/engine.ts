@@ -159,6 +159,8 @@ interface EngineSprings {
 }
 
 export interface CameraEngine {
+  /** React development remounts effects while preserving state; make the retained engine usable again. */
+  resume: () => void
   /** Initialize springs at rest on a known camera. Until called, targets snap. */
   reset: (camera: EngineCamera) => void
   /** Retarget springs; motion continues from current position and velocity. */
@@ -569,6 +571,9 @@ export function createCameraEngine(config: CameraEngineConfig): CameraEngine {
   }
 
   return {
+    resume: () => {
+      destroyed = false
+    },
     reset,
     setTarget,
     snap,

@@ -88,7 +88,12 @@ export function useCameraControls({
       },
     }),
   )
-  useEffect(() => () => engine.destroy(), [engine])
+  useEffect(() => {
+    // Fast Refresh and React's development effect checks preserve hook state while cleaning up
+    // effects. Reactivate that retained engine before camera commands can reach it again.
+    engine.resume()
+    return () => engine.destroy()
+  }, [engine])
   const cameraRefs = useMemo(
     () => ({
       cameraRef,
@@ -237,9 +242,8 @@ export function useCameraControls({
   const recenterLive = useCallback(
     (options?: { resetPadding?: boolean; animationDuration?: number }) => {
       enterCameraMode({ kind: 'liveFollow' })
-      if (!cameraFix) return
       const followCamera = getLiveFollowCamera()
-      lastFollowKeyRef.current = liveFollowKey(cameraFix.timestamp, followCamera)
+      lastFollowKeyRef.current = cameraFix ? liveFollowKey(cameraFix.timestamp, followCamera) : null
       const target = {
         center: followCamera.centerCoordinate,
         zoom: followCamera.zoomLevel,
