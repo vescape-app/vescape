@@ -18,6 +18,11 @@ class WatchSettingsTest {
     }
 
     @Test
+    fun `board move strength rides along so the wrist can show what a hold will do`() {
+        assertEquals(35, AppSettings(boardMoveStrengthPercent = 35).toWatchSettings().boardMoveStrengthPercent)
+    }
+
+    @Test
     fun `settings equality is what decides whether a push is worth a round trip`() {
         val settings = AppSettings(riderColor = "#38bdf8")
         assertEquals(settings.toWatchSettings(), settings.copy(telemetryPollRateHz = 5).toWatchSettings())

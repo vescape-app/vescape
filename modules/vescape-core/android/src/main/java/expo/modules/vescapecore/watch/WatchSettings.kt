@@ -20,8 +20,14 @@ internal const val WATCH_SETTINGS_PATH = "/settings"
 /** Rider colour as the phone stores it: a `#RRGGBB` string, or blank for "no colour chosen". */
 internal const val WATCH_SETTING_RIDER_COLOR = "riderColor"
 
+/** Board Move strength as a percentage of full scale; the wrist displays it but never applies it. */
+internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
+
 /** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
-internal data class WatchSettings(val riderColor: String?)
+internal data class WatchSettings(
+    val riderColor: String?,
+    val boardMoveStrengthPercent: Int,
+)
 
 /**
  * Everything the wrist mirrors from the phone's settings. Adding a setting means adding a field
@@ -30,4 +36,5 @@ internal data class WatchSettings(val riderColor: String?)
 internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     // Sent verbatim; the wrist is the one place that parses the colour, so garbage degrades there.
     riderColor = riderColor?.trim()?.takeIf { it.isNotEmpty() },
+    boardMoveStrengthPercent = boardMoveStrengthPercent,
 )

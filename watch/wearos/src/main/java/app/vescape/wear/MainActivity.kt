@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
     private val phoneLinkMonitor by lazy { PhoneLinkMonitor(this) }
     private val frameReplayer by lazy { FrameReplayer(this) }
     private val ongoingActivityController by lazy { OngoingActivityController(this) }
+    private val commandSender by lazy { CommandSender(this) }
     private val isAmbient = mutableStateOf(false)
     private val ambientObserver = AmbientLifecycleObserver(this, AmbientCallback())
     private val replayEnabled by lazy {
@@ -82,11 +83,18 @@ class MainActivity : ComponentActivity() {
         events.release()
     }
 
-    private fun readSettings(item: DataItem): WatchSettings = WatchSettings(
-        riderColor = parseRiderColor(
-            DataMapItem.fromDataItem(item).dataMap.getString(SETTING_RIDER_COLOR),
-        ),
-    )
+    private fun readSettings(item: DataItem): WatchSettings {
+        val dataMap = DataMapItem.fromDataItem(item).dataMap
+        return WatchSettings(
+            riderColor = parseRiderColor(dataMap.getString(SETTING_RIDER_COLOR)),
+            // An older phone never sends the key; `getInt` would read that absence as 0 %.
+            boardMoveStrengthPercent = if (dataMap.containsKey(SETTING_BOARD_MOVE_STRENGTH)) {
+                dataMap.getInt(SETTING_BOARD_MOVE_STRENGTH)
+            } else {
+                null
+            },
+        )
+    }
 
     /**
      * The forecast, or null when the phone sent a payload this build cannot use. Hours ride as
@@ -123,6 +131,7 @@ class MainActivity : ComponentActivity() {
         lifecycle.addObserver(ambientObserver)
         setContent {
             MirrorScreen(
+                sender = commandSender,
                 isAmbient = isAmbient.value,
                 onKeepScreenAwakeChanged = ::setKeepScreenAwake,
                 onRequestClose = { finishAndRemoveTask() },
@@ -183,6 +192,8 @@ class MainActivity : ComponentActivity() {
         phoneLinkMonitor.shutdown()
         ongoingActivityController.stop()
         super.onDestroy()
+        // After super: composition disposal runs there, and MoveScreen's dispose sends its stop.
+        commandSender.shutdown()
     }
 
     private fun startOngoingActivityWhenAllowed() {
