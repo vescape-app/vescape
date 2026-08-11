@@ -299,10 +299,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val watchTick by lazy {
         WatchTick(
             scheduler = scheduler,
-            session = { boardSession },
-            isCurrentSession = ::isCurrentBoardSession,
             snapshot = ::watchSnapshot,
-            isStale = { isTelemetryStale() },
+            isStale = { telemetry != null && isTelemetryStale() },
             canPush = { watchMirrorPresence.present },
             push = watchPusher::pushFrame,
             intervalMs = WATCH_FRAME_INTERVAL_MS,
@@ -637,6 +635,10 @@ private var wearAutoLaunchOnConnect = true
         DiagnosticReporter.initialize(service)
         notificationController.createChannel()
         refreshSelectedBoardName()
+        // The wrist mirrors the phone, not the board session. Keep presence + frames alive while
+        // this service owns GPS/navigation even when no board is selected or connected.
+        watchMirrorPresence.start()
+        watchTick.start()
         // Arm Auto close even when the service starts without a session (companion/GPS-only):
         // applyTelemetrySettings caches the auto-close config and (re)schedules the countdown.
         CoreForegroundService.appDataScope.launch { loadTelemetrySettings(service.applicationContext) }
@@ -786,6 +788,8 @@ private var wearAutoLaunchOnConnect = true
     }
 
     fun onServiceDestroy() {
+        watchTick.stop()
+        watchMirrorPresence.stop()
         autoCloseHandle?.cancel()
         autoCloseHandle = null
         if (!isStoppingService) {
@@ -1610,8 +1614,6 @@ private var wearAutoLaunchOnConnect = true
         idlePauseDetector.reset()
         pollingLoop.start(session, sessionToken, transport)
         liveSeriesEmitter.start()
-        watchMirrorPresence.start()
-        watchTick.start()
     }
 
     /**
@@ -1632,13 +1634,11 @@ private var wearAutoLaunchOnConnect = true
         idlePauseDetector.reset()
         telemetryPipeline.cancelStaleWatchdog()
         liveSeriesEmitter.stop()
-        watchTick.stop()
-        watchMirrorPresence.stop()
     }
 
-    /** Latest cold-path snapshot the watch tick pushes; null until the first sample / after a reset. */
-    private fun watchSnapshot(): WatchSnapshot? {
-        val current = telemetry ?: return null
+    /** Latest cold-path snapshot: board lanes are empty without telemetry; navigation stays live. */
+    private fun watchSnapshot(): WatchSnapshot {
+        val current = telemetry
         // Nav lanes are all-or-nothing: without Route Progress there is nothing to navigate by, and
         // sending a rider position or a course alone would only place a dot on a route the wrist is
         // not drawing. All five null is what hides the wrist overlay.
@@ -1654,12 +1654,12 @@ private var wearAutoLaunchOnConnect = true
             null
         }
         return WatchSnapshot(
-            speed = current.speed,
-            dutyCycle = current.dutyCycle,
-            dutyExcluded = latestDutyExcluded,
-            batterySoc = latestBatterySoc,
-            motorTemp = current.tempMotor,
-            ctrlTemp = current.tempMosfet,
+            speed = current?.speed,
+            dutyCycle = current?.dutyCycle,
+            dutyExcluded = current == null || latestDutyExcluded,
+            batterySoc = if (current != null) latestBatterySoc else null,
+            motorTemp = current?.tempMotor,
+            ctrlTemp = current?.tempMosfet,
             navBearing = if (offset != null) progress?.bearingDeg else null,
             navDistanceM = if (offset != null) progress?.remainingMeters else null,
             riderEastM = offset?.first,

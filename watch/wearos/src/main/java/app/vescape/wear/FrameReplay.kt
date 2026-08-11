@@ -60,10 +60,13 @@ object ReplayFixtureParser {
 
 object ReplayGate {
     /**
-     * Replay runs only where there is nothing real to mirror. Emulator detection reads [Build]
-     * rather than `ro.kernel.qemu`, which is not readable from the SDK.
+     * Replay is an explicit emulator dev mode, entered by `bun run wear:replay`. A normal emulator
+     * launch listens to its paired phone like a real watch instead of silently replacing those
+     * frames with a fixture. Emulator detection reads [Build] rather than `ro.kernel.qemu`, which
+     * is not readable from the SDK.
      */
-    fun isEnabled(context: Context): Boolean = isDebuggable(context) && isEmulator()
+    fun isEnabled(context: Context, requested: Boolean): Boolean =
+        requested && isDebuggable(context) && isEmulator()
 
     private fun isDebuggable(context: Context): Boolean =
         context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0

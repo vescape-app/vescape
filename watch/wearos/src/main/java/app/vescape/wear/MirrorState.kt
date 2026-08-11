@@ -7,7 +7,7 @@ enum class MirrorStatus {
     LIVE,
     STALE,
 
-    /** Phone session is live and pushing, but the board has no telemetry yet (connect phase). */
+    /** Legacy phone frame; retained for compatibility with older phone builds. */
     WAITING,
 
     /** No fresh frames at all — see [PhoneLink] for why. */
@@ -48,7 +48,16 @@ object MirrorStateReducer {
         }
 
         if (frame.waiting) {
-            return MirrorState(MirrorStatus.WAITING, null)
+            return MirrorState(
+                MirrorStatus.WAITING,
+                frame.copy(
+                    speed = null,
+                    duty = null,
+                    battery = null,
+                    motorTemp = null,
+                    ctrlTemp = null,
+                ),
+            )
         }
 
         return MirrorState(

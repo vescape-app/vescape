@@ -44,11 +44,11 @@ import kotlin.math.sin
  */
 @Composable
 internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
-    val speedColor = if (muted) DimText else SpeedColor
-    val dutyColor = if (muted) DimText else DutyColor
-    val battColor = if (muted) DimText else batteryColor(frame.battery)
-    val motorColor = if (muted) DimText else MotorTempColor
-    val ctrlColor = if (muted) DimText else CtrlTempColor
+    val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
+    val dutyColor = if (muted || frame.duty == null) DimText else DutyColor
+    val battColor = if (muted || frame.battery == null) DimText else batteryColor(frame.battery)
+    val motorColor = if (muted || frame.motorTemp == null) DimText else MotorTempColor
+    val ctrlColor = if (muted || frame.ctrlTemp == null) DimText else CtrlTempColor
 
     val navBearing = frame.navBearing
     val navDistance = frame.navDistanceM
@@ -64,7 +64,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = size.minDimension / 2f - HEAD_W.toPx()
             val center = Offset(size.width / 2f, size.height / 2f)
-            val speedFrac = (frame.speed / SPEED_MAX).toFloat().coerceIn(0f, 1f)
+            val speedFrac = ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
             val dutyFrac = ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
             val battFrac = ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
             val motorFrac = tempFraction(frame.motorTemp)
@@ -106,7 +106,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(start = 32.dp, end = 32.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                LargeGaugeValue(Modifier.weight(1f), format(frame.speed, 0), "km/h", speedColor)
+                LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: "--", "km/h", speedColor)
                 LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: "--", "%", dutyColor)
             }
 
@@ -130,7 +130,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
 @Composable
 internal fun AmbientLayout(frame: WatchFrame) {
     Text(
-        text = format(frame.speed, 0),
+        text = frame.speed?.let { format(it, 0) } ?: "--",
         style = MaterialTheme.typography.display1,
         color = AmbientText,
         textAlign = TextAlign.Center,

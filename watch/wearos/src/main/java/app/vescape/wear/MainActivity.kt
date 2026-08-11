@@ -29,6 +29,9 @@ class MainActivity : ComponentActivity() {
     private val ongoingActivityController by lazy { OngoingActivityController(this) }
     private val isAmbient = mutableStateOf(false)
     private val ambientObserver = AmbientLifecycleObserver(this, AmbientCallback())
+    private val replayEnabled by lazy {
+        ReplayGate.isEnabled(this, intent?.hasExtra("replay") == true)
+    }
     private val requestPostNotifications = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { isGranted ->
@@ -83,8 +86,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // An emulator has no phone to mirror, so replayed frames stand in for the real push there.
-        if (ReplayGate.isEnabled(this)) {
+        // Fixture replay is opt-in via `bun run wear:replay`; an ordinary emulator mirrors its
+        // paired phone exactly like physical Wear OS hardware.
+        if (replayEnabled) {
             frameReplayer.start(replayFixture())
             return
         }
@@ -101,7 +105,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        if (ReplayGate.isEnabled(this)) {
+        if (replayEnabled) {
             frameReplayer.stop()
             super.onStop()
             return
