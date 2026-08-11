@@ -120,7 +120,7 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
             />
           </View>
         ) : null}
-        <View style={styles.content}>
+        <View style={[styles.content, previewEnabled && styles.contentWithPreview]}>
           {previewEnabled ? (
             <TunePreviewScenarioControls
               hillsPreset={hillsPreset}
@@ -210,5 +210,10 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 16,
+  },
+  contentWithPreview: {
+    marginTop: -18,
+    paddingTop: 0,
+    zIndex: 2,
   },
 })
