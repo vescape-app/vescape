@@ -1,8 +1,8 @@
 /* eslint-disable react-hooks/immutability */
-import { useCallback, useEffect, useMemo } from 'react'
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
+import { useEffect, useMemo } from 'react'
+import { Pressable, StyleSheet, Switch, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { ArrowCounterClockwiseIcon, QuestionIcon } from 'phosphor-react-native'
+import { EyeIcon, QuestionIcon } from 'phosphor-react-native'
 import {
   Canvas,
   Circle,
@@ -14,7 +14,6 @@ import {
   vec,
 } from '@shopify/react-native-skia'
 import {
-  runOnUI,
   useDerivedValue,
   useFrameCallback,
   useSharedValue,
@@ -22,7 +21,7 @@ import {
 } from 'react-native-reanimated'
 import type { TuneProfileFieldValue } from 'vescape-core'
 
-import { interaction, theme } from '@/constants/theme'
+import { theme } from '@/constants/theme'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import {
   DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
@@ -34,7 +33,6 @@ import {
   createTunePreviewModel,
   createTunePreviewState,
   groundTravelToVisualOffset,
-  resetTunePreviewSpeed,
   stepTunePreview,
   type TunePreviewAdvancedPhysics,
   type TunePreviewParameters,
@@ -56,6 +54,7 @@ interface TunePreviewProps {
   hillSpacingMeters?: number
   advancedPhysics?: TunePreviewAdvancedPhysics
   active?: boolean
+  onDisable?: () => void
   onHelp: () => void
   hillLoadAmps?: SharedValue<number>
   speedKmh?: SharedValue<number>
@@ -69,6 +68,8 @@ interface TunePreviewScenario {
   hillSpacingMeters: number
   advancedPhysics: TunePreviewAdvancedPhysics
 }
+
+export const TUNE_PREVIEW_DESCRIPTION = 'Simulation for comparing Tune settings'
 
 const GROUND_Y = 58
 const WHEEL_RADIUS = TUNE_PREVIEW_WHEEL_RADIUS_PIXELS
@@ -91,11 +92,10 @@ const READOUT_FONT_SIZE = 9
 const READOUT_BASELINE = 9
 const READOUT_HEIGHT = 12
 const LEGEND_VALUE_WIDTH = 44
-const CURRENT_WIDTH = 80
-const SPEED_FONT_SIZE = 28
-const SPEED_BASELINE = 26
-const SPEED_HEIGHT = 32
-const SPEED_WIDTH = 70
+const SPEED_FONT_SIZE = 16
+const SPEED_BASELINE = 17
+const SPEED_WIDTH = 38
+const SPEED_HEIGHT = 20
 const GROUND_TO_BOARD_BASELINE_Y = CANVAS_HEIGHT - 32
 
 export function TunePreview({
@@ -107,6 +107,7 @@ export function TunePreview({
   hillSpacingMeters = 30,
   advancedPhysics = DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
   active = true,
+  onDisable,
   onHelp,
   hillLoadAmps,
   speedKmh,
@@ -134,7 +135,7 @@ export function TunePreview({
   const targetAngleStr = useSharedValue('0.0°')
   const groundToBoardAngleStr = useSharedValue('0.0°')
   const speedStr = useSharedValue(TUNE_PREVIEW_RESET_SPEED_KMH.toFixed(1))
-  const currentStr = useSharedValue('Motor 0 A')
+  const currentStr = useSharedValue('0 A')
 
   useEffect(() => {
     scenario.value = {
@@ -179,7 +180,7 @@ export function TunePreview({
     targetAngleStr.value = formatSignedDegrees(next.targetAngleDegrees)
     groundToBoardAngleStr.value = formatSignedDegrees(groundToBoardAngle)
     speedStr.value = next.syntheticSpeedKmh.toFixed(1)
-    currentStr.value = `Motor ${current > 0 ? '+' : ''}${current.toFixed(0)} A`
+    currentStr.value = `${current > 0 ? '+' : ''}${current.toFixed(0)} A`
     if (hillLoadAmps) hillLoadAmps.value = next.terrainLoadCurrentAmps
   }, false)
 
@@ -188,19 +189,6 @@ export function TunePreview({
     frameCallback.setActive(running)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running])
-
-  const handleResetSpeed = useCallback(() => {
-    runOnUI(() => {
-      state.value = resetTunePreviewSpeed(
-        state.value,
-        TUNE_PREVIEW_RESET_SPEED_KMH,
-        scenario.value.advancedPhysics,
-      )
-      speedStr.value = TUNE_PREVIEW_RESET_SPEED_KMH.toFixed(1)
-      if (hillLoadAmps) hillLoadAmps.value = 0
-      if (speedKmh) speedKmh.value = TUNE_PREVIEW_RESET_SPEED_KMH
-    })()
-  }, [state, scenario, speedStr, hillLoadAmps, speedKmh])
 
   const deckPath = useDerivedValue(() => {
     const line = tunePreviewDeckLine(
@@ -269,9 +257,6 @@ export function TunePreview({
   const readoutFont = useSkiaMonoFont('500', READOUT_FONT_SIZE)
   const readoutBoldFont = useSkiaMonoFont('700', READOUT_FONT_SIZE)
   const speedFont = useSkiaMonoFont('700', SPEED_FONT_SIZE)
-  const currentX = useDerivedValue(() =>
-    readoutFont ? CURRENT_WIDTH - readoutFont.getTextWidth(currentStr.value) : 0,
-  )
   const groundToBoardAngleX = useDerivedValue(() =>
     readoutBoldFont ? centerX - readoutBoldFont.getTextWidth(groundToBoardAngleStr.value) / 2 : 0,
   )
@@ -280,11 +265,45 @@ export function TunePreview({
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.titleBlock}>
-          <View style={styles.titleRow}>
-            <Text style={styles.title}>Tune Preview</Text>
-            <Pressable hitSlop={8} onPress={onHelp}>
-              <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
-            </Pressable>
+          <View style={styles.identityRow}>
+            <EyeIcon size={16} color={theme.tune.color} weight="duotone" />
+            <View style={styles.identityText}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>Tune Preview</Text>
+                <Pressable hitSlop={8} onPress={onHelp}>
+                  <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+                </Pressable>
+              </View>
+              <Text style={styles.subtitle}>{TUNE_PREVIEW_DESCRIPTION}</Text>
+            </View>
+            <View style={styles.speedReadout}>
+              <Canvas style={styles.speedCanvas}>
+                {speedFont && (
+                  <SkiaText
+                    x={0}
+                    y={SPEED_BASELINE}
+                    text={speedStr}
+                    font={speedFont}
+                    color={theme.telemetry.speed}
+                  />
+                )}
+              </Canvas>
+              <Text style={styles.speedUnit}>km/h</Text>
+            </View>
+            {onDisable ? (
+              <Switch
+                value
+                onValueChange={(enabled) => {
+                  if (!enabled) onDisable()
+                }}
+                trackColor={{
+                  false: theme.palette.slate.border,
+                  true: theme.alpha(theme.tune.color, 0.6),
+                }}
+                thumbColor={theme.tune.color}
+                accessibilityLabel="Disable Tune Preview"
+              />
+            ) : null}
           </View>
           <View style={styles.legend}>
             <View style={styles.legendItem}>
@@ -318,52 +337,22 @@ export function TunePreview({
               </Canvas>
             </View>
           </View>
-        </View>
-        <View style={styles.headerMetrics}>
-          <Pressable
-            onPress={handleResetSpeed}
-            accessibilityLabel="Reset preview speed to 15 kilometers per hour"
-            accessibilityRole="button"
-            testID="tune-preview-reset-speed"
-            style={({ pressed }) => [
-              styles.speedReadout,
-              pressed && { opacity: interaction.pressedOpacity },
-            ]}
-          >
-            <ArrowCounterClockwiseIcon
-              size={13}
-              color={theme.palette.slate.textMuted}
-              weight="bold"
-            />
-            <View style={styles.speedValueGroup}>
-              <Canvas style={styles.speedCanvas}>
-                {speedFont && (
-                  <SkiaText
-                    x={0}
-                    y={SPEED_BASELINE}
-                    text={speedStr}
-                    font={speedFont}
-                    color={theme.telemetry.speed}
-                  />
-                )}
-              </Canvas>
-              <Text style={styles.speedUnit}>km/h</Text>
-            </View>
-          </Pressable>
-          <Canvas style={styles.currentCanvas}>
-            {readoutFont && (
-              <SkiaText
-                x={currentX}
-                y={READOUT_BASELINE}
-                text={currentStr}
-                font={readoutFont}
-                color={theme.palette.slate.textMuted}
-              />
-            )}
-          </Canvas>
+          <View style={styles.motorReadout}>
+            <Text style={styles.motorLabel}>Motor</Text>
+            <Canvas style={styles.legendValueCanvas}>
+              {readoutFont && (
+                <SkiaText
+                  x={0}
+                  y={READOUT_BASELINE}
+                  text={currentStr}
+                  font={readoutFont}
+                  color={theme.telemetry.motorCurrent}
+                />
+              )}
+            </Canvas>
+          </View>
         </View>
       </View>
-
       {model.status === 'unsupported' ? (
         <View style={styles.unsupported}>
           <Text style={styles.unsupportedTitle}>Preview unavailable</Text>
@@ -525,11 +514,19 @@ const styles = StyleSheet.create({
   card: {},
   header: {
     paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  titleBlock: { flex: 1, gap: 2 },
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
   },
-  titleBlock: { gap: 2 },
+  identityText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: {
     color: theme.palette.slate.textMuted,
@@ -538,7 +535,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  headerMetrics: { alignItems: 'flex-end', gap: 1 },
+  subtitle: {
+    color: theme.palette.slate.textMuted,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  speedReadout: {
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  speedCanvas: {
+    width: SPEED_WIDTH,
+    height: SPEED_HEIGHT,
+  },
+  speedUnit: {
+    color: theme.palette.slate.textMuted,
+    fontSize: 8,
+    fontWeight: '700',
+  },
 
   unsupported: { height: CANVAS_HEIGHT, alignItems: 'center', justifyContent: 'center', gap: 5 },
   unsupportedTitle: { color: theme.palette.slate.textPrimary, fontSize: 13, fontWeight: '800' },
@@ -561,29 +575,14 @@ const styles = StyleSheet.create({
     color: theme.palette.purple.light,
     fontSize: 9,
   },
-  currentCanvas: {
-    width: CURRENT_WIDTH,
-    height: READOUT_HEIGHT,
-  },
-  speedReadout: {
+  motorReadout: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
-  speedValueGroup: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  speedCanvas: {
-    width: SPEED_WIDTH,
-    height: SPEED_HEIGHT,
-  },
-  speedUnit: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
-    marginBottom: 4,
+  motorLabel: {
+    color: theme.telemetry.motorCurrent,
+    fontSize: 9,
   },
   legendValueCanvas: {
     width: LEGEND_VALUE_WIDTH,

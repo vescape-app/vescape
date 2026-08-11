@@ -55,7 +55,7 @@ const HILLS_OPTIONS: SelectOption<HillsPresetId>[] = [
   { value: 'custom', label: 'Enter your own' },
 ]
 
-type MovementPresetId = 'none' | 'manual' | 'slow' | 'rapid' | 'frontBack' | 'custom'
+type MovementPresetId = 'manual' | 'slow' | 'rapid' | 'frontBack' | 'custom'
 type MovementDirection = 'nose' | 'tail'
 
 const RAPID_MOVEMENT_RATE_DEGREES_PER_SECOND = 125
@@ -69,12 +69,11 @@ const AUTO_MOVEMENT_SMOOTH_MS = 1400
 const AUTO_MOVEMENT_RELEASE_MS = 700
 
 const MOVEMENT_OPTIONS: SelectOption<MovementPresetId>[] = [
-  { value: 'none', label: 'Off' },
+  { value: 'manual', label: 'Manual pitch slider' },
   { value: 'slow', label: 'Wide speed range · 5-35 km/h' },
   { value: 'rapid', label: 'Quick speed range · 15-30 km/h' },
   { value: 'frontBack', label: 'Forward/back range · -10-10 km/h' },
   { value: 'custom', label: 'Custom range' },
-  { value: 'manual', label: 'Manual pitch slider' },
 ]
 
 interface TunePreviewScenarioControlsProps {
@@ -111,12 +110,12 @@ export function TunePreviewScenarioControls({
   groundToBoardAngleDegrees,
 }: TunePreviewScenarioControlsProps) {
   const [advancedExpanded, setAdvancedExpanded] = useState(false)
-  const [movementPreset, setMovementPreset] = useState<MovementPresetId>('slow')
+  const [movementPreset, setMovementPreset] = useState<MovementPresetId>('manual')
   const [customLowSpeedKmh, setCustomLowSpeedKmh] = useState(10)
   const [customHighSpeedKmh, setCustomHighSpeedKmh] = useState(25)
   const [customRateDegreesPerSecond, setCustomRateDegreesPerSecond] = useState(100)
   const movementDirectionRef = useRef<MovementDirection>('nose')
-  const movementPresetRef = useRef<MovementPresetId>('slow')
+  const movementPresetRef = useRef<MovementPresetId>('manual')
   const physics = resolveTunePreviewPhysics(advancedPhysics)
   const tenPercentGradeCurrent = calculateTerrainLoadCurrentAmps(0.1, physics)
   const updatePhysics = (patch: Partial<TunePreviewAdvancedPhysics>) =>
@@ -136,7 +135,7 @@ export function TunePreviewScenarioControls({
   const applyMovementSample = useCallback(
     (speed: number, groundAngleDegrees: number) => {
       const activeMovementPreset = movementPresetRef.current
-      if (activeMovementPreset === 'manual' || activeMovementPreset === 'none') return
+      if (activeMovementPreset === 'manual') return
 
       const groundAngleMagnitude = Math.abs(groundAngleDegrees)
       if (groundAngleMagnitude >= MOVEMENT_BOARD_MAX_GROUND_ANGLE_DEGREES) {
@@ -206,7 +205,7 @@ export function TunePreviewScenarioControls({
     movementPresetRef.current = preset
     setMovementPreset(preset)
     movementDirectionRef.current = 'nose'
-    if (preset === 'manual' || preset === 'none') {
+    if (preset === 'manual') {
       cancelAnimation(pitchInputDegrees)
       pitchInputActive.value = false
       pitchInputDegrees.value = 0
