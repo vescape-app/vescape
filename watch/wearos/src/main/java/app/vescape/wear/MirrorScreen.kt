@@ -36,11 +36,17 @@ fun MirrorScreen(
     val phoneLink by TelemetryState.phoneLink
     val keepScreenAwake = state.status == MirrorStatus.LIVE && !isAmbient
     var showClosePrompt by remember { mutableStateOf(false) }
+    var showWeather by remember { mutableStateOf(false) }
 
+    // Mutually exclusive by `enabled`: back closes the innermost thing that is open, and only the
+    // gauges themselves treat back as "leave the mirror".
     BackHandler(enabled = showClosePrompt) {
         showClosePrompt = false
     }
-    BackHandler(enabled = !showClosePrompt) {
+    BackHandler(enabled = !showClosePrompt && showWeather) {
+        showWeather = false
+    }
+    BackHandler(enabled = !showClosePrompt && !showWeather) {
         showClosePrompt = true
     }
 
@@ -65,6 +71,9 @@ fun MirrorScreen(
             isAmbient -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 MirrorContent(state = state, phoneLink = phoneLink, isAmbient = true)
             }
+            showWeather -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                WeatherScreen()
+            }
             else -> {
                 // Page 0 = gauges, page 1 = diagnostics. Dismiss (close prompt) stays on the left
                 // edge via edgeSwipeToDismiss; interior swipes page between the two.
@@ -84,7 +93,12 @@ fun MirrorScreen(
                             ) { page ->
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     when (page) {
-                                        0 -> MirrorContent(state = state, phoneLink = phoneLink, isAmbient = false)
+                                        0 -> MirrorContent(
+                                            state = state,
+                                            phoneLink = phoneLink,
+                                            isAmbient = false,
+                                            onWeatherClick = { showWeather = true },
+                                        )
                                         else -> DiagnosticsScreen()
                                     }
                                 }
@@ -98,7 +112,12 @@ fun MirrorScreen(
 }
 
 @Composable
-private fun MirrorContent(state: MirrorState, phoneLink: PhoneLink, isAmbient: Boolean) {
+private fun MirrorContent(
+    state: MirrorState,
+    phoneLink: PhoneLink,
+    isAmbient: Boolean,
+    onWeatherClick: () -> Unit = {},
+) {
     when (state.status) {
         MirrorStatus.DISCONNECTED -> {
             if (phoneLink == PhoneLink.NO_PHONE) {
@@ -106,12 +125,24 @@ private fun MirrorContent(state: MirrorState, phoneLink: PhoneLink, isAmbient: B
             } else if (isAmbient) {
                 AmbientLayout(EMPTY_FRAME)
             } else {
-                FrameLayout(EMPTY_FRAME, muted = false)
+                FrameLayout(EMPTY_FRAME, muted = false, onWeatherClick = onWeatherClick)
             }
         }
-        MirrorStatus.WAITING -> if (isAmbient) AmbientLayout(state.frame!!) else FrameLayout(state.frame!!, muted = false)
-        MirrorStatus.STALE -> if (isAmbient) AmbientLayout(state.frame!!) else FrameLayout(state.frame!!, muted = true)
-        MirrorStatus.LIVE -> if (isAmbient) AmbientLayout(state.frame!!) else FrameLayout(state.frame!!, muted = false)
+        MirrorStatus.WAITING -> if (isAmbient) {
+            AmbientLayout(state.frame!!)
+        } else {
+            FrameLayout(state.frame!!, muted = false, onWeatherClick = onWeatherClick)
+        }
+        MirrorStatus.STALE -> if (isAmbient) {
+            AmbientLayout(state.frame!!)
+        } else {
+            FrameLayout(state.frame!!, muted = true, onWeatherClick = onWeatherClick)
+        }
+        MirrorStatus.LIVE -> if (isAmbient) {
+            AmbientLayout(state.frame!!)
+        } else {
+            FrameLayout(state.frame!!, muted = false, onWeatherClick = onWeatherClick)
+        }
     }
 }
 

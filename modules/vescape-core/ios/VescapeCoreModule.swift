@@ -76,7 +76,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -128,11 +128,21 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onRouteProgress", ["progress": NavigationController.shared.currentProgress?.toMap()])
     }
     OnStopObserving("onRouteProgress") { self.observedEvents.remove("onRouteProgress") }
+    OnStartObserving("onWeather") {
+      self.observedEvents.insert("onWeather")
+      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
+      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
+      self.sendEvent("onWeather", ["weather": WeatherCoordinator.shared.current?.map])
+    }
+    OnStopObserving("onWeather") { self.observedEvents.remove("onWeather") }
 
     OnCreate {
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
       // subscribers replay above and through `getAppStatus`).
       AppStatusCoordinator.shared.onChange = { [weak self] status in self?.sendAppStatus(status) }
+
+      // The forecast is native-owned too; JS mirrors whatever the coordinator resolves.
+      WeatherCoordinator.shared.onChange = { [weak self] weather in self?.sendWeather(weather) }
 
       // Navigation is native-owned; JS only renders the coordinates it is handed.
       NavigationController.shared.onChange = { [weak self] navigation in self?.sendNavigation(navigation) }
@@ -327,6 +337,16 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getAppStatus`
     Function("getAppStatus") { () -> [String: Any?]? in
       AppStatusCoordinator.shared.current?.toMap()
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getWeather`
+    Function("getWeather") { () -> [String: Any?]? in
+      WeatherCoordinator.shared.current?.map
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshWeather`
+    Function("refreshWeather") {
+      WeatherCoordinator.shared.refresh()
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `provisionDeviceCredential`
@@ -1259,6 +1279,14 @@ public class VescapeCoreModule: Module {
   /// replay on subscribe and the next successful refresh self-heal it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onAppStatus`
   /// @parity /modules/vescape-core/src/index.ts `AppStatusEvent`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onWeatherChanged`
+  private func sendWeather(_ weather: Weather?) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onWeather") else { return }
+      self.sendEvent("onWeather", ["weather": weather?.map])
+    }
+  }
+
   private func sendAppStatus(_ status: AppStatus?) {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onAppStatus") else { return }

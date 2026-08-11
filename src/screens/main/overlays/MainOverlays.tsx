@@ -49,7 +49,6 @@ interface MainMapOverlayProps {
   exitWeather: () => void
   enterLegalLimits: () => void
   exitLegalLimits: () => void
-  refreshWeather: () => void
   weatherLocation: { latitude: number; longitude: number } | null
   directionPoint: DirectionPoint | null
   activeNavigationTarget: MapSelection | null
@@ -144,7 +143,6 @@ export function MainOverlays({
         <MapModeTabs
           mode={mode}
           top={mapModeTabsTop}
-          weatherLocation={map.weatherLocation}
           onEnterMap={map.enterMapFocus}
           onEnterWeather={map.enterWeather}
           onEnterLegalLimits={map.enterLegalLimits}
@@ -193,9 +191,7 @@ export function MainOverlays({
         visible={mode === 'weather'}
         top={mapModeTabsTop}
         pillTop={belowMapModeTabsTop}
-        location={map.weatherLocation}
         onExit={map.exitWeather}
-        onRefreshForecast={map.refreshWeather}
       />
 
       <LegalLimitsMapOverlay

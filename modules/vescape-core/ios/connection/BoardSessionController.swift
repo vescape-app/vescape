@@ -1557,6 +1557,8 @@ internal final class BoardSessionController: VescGattListener {
       recentLocations.append(location.map)
       pruneRecentLocations(now: location.timestamp)
     }
+    // Offered on every Fix; the coordinator owns the freshness and distance gates.
+    WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     emit?("onLocation", location.map)
   }
 

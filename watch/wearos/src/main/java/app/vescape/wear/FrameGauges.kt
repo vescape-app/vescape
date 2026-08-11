@@ -38,12 +38,13 @@ import kotlin.math.sin
  * top-left, duty top-right (almost touching at top center), battery across the bottom — styled like
  * the phone's DualGauge: thin gray guide, radial gradient fill from the centre, a strong rim line,
  * and a head tick at the current value. Temps + battery % sit inside, with the wall clock
- * ([WatchClock]) at the top rim gap since the fullscreen mirror hides the system time, and the
+ * ([WatchClock]) and the forecast ([WeatherReadout]) at the top rim gap since the fullscreen mirror
+ * hides the system time and the rider cannot see the phone's weather pill, and the
  * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
  */
 @Composable
-internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
+internal fun FrameLayout(frame: WatchFrame, muted: Boolean, onWeatherClick: () -> Unit = {}) {
     val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
     val dutyColor = if (muted || frame.duty == null) DimText else DutyColor
     val battColor = if (muted || frame.battery == null) DimText else batteryColor(frame.battery)
@@ -101,6 +102,8 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
         ) {
             // ── Top: wall clock at the rim gap, then speed + duty values ──
             WatchClock(modifier = Modifier.padding(top = 8.dp), color = if (muted) DimText else SecondaryText)
+            // Forecast under the clock — absent entirely until the phone pushes one.
+            WeatherReadout(muted = muted, onClick = onWeatherClick)
 
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(start = 32.dp, end = 32.dp, bottom = 8.dp),

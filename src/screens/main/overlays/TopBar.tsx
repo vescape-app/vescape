@@ -23,7 +23,6 @@ import { BoardWarningControl } from '@/modules/board/components/BoardWarningCont
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
-import { isNightAtTime } from '@/modules/weather/lib/weather'
 import { routes } from '@/navigation/routes'
 import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
@@ -155,9 +154,7 @@ export function TopBar({
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
-  const weatherCode = useWeatherStore((s) => s.weatherCode)
-  const weatherTemp = useWeatherStore((s) => s.temperature)
-  const weatherPrecip = useWeatherStore((s) => s.precipitationProbability)
+  const weather = useWeatherStore((s) => s.weather)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -169,11 +166,6 @@ export function TopBar({
     updateAvailable: availableUpdate !== null,
     backup,
   })
-  const sunrise = useWeatherStore((s) => s.sunrise)
-  const sunset = useWeatherStore((s) => s.sunset)
-  const hasWeather = weatherCode != null && weatherTemp != null
-  const now = new Date()
-  const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
   const navigationTargetKind =
     activeNavigationTarget?.type === 'mapPoint'
       ? activeNavigationTarget.point.category
@@ -252,13 +244,11 @@ export function TopBar({
           />
         </View>
       </View>
-      {hasWeather ? (
+      {weather ? (
         <WeatherSidePill
-          code={weatherCode!}
-          temperature={weatherTemp!}
-          precipProbability={weatherPrecip ?? null}
-          hour={now.getHours()}
-          isNight={isNight}
+          icon={weather.icon}
+          temperature={weather.temperatureC}
+          precipProbability={weather.precipitationProbability}
           verticalOffset={insets.top / 2}
           onPress={onWeatherPress}
         />

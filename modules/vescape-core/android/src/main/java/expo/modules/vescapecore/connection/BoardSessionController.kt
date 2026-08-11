@@ -70,6 +70,10 @@ import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTelemetryPusher
 import expo.modules.vescapecore.watch.WatchTick
+import expo.modules.vescapecore.watch.WatchWeatherPusher
+import expo.modules.vescapecore.watch.toWatchWeather
+import expo.modules.vescapecore.weather.Weather
+import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.buildLiveState
@@ -295,6 +299,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val watchSettingsPusher by lazy {
         WatchSettingsPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
     }
+    private val watchWeatherPusher by lazy {
+        WatchWeatherPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    }
+    private val weatherCoordinator = WeatherCoordinator.get()
+
+    /** Removes this controller's weather subscription; a restarted service must not stack them. */
+    private var weatherUnsubscribe: (() -> Unit)? = null
     private val watchMirrorPresence by lazy {
         WatchMirrorPresence(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
     }
@@ -644,6 +655,10 @@ private var wearAutoLaunchOnConnect = true
         // this service owns GPS/navigation even when no board is selected or connected.
         watchMirrorPresence.start()
         watchTick.start()
+        weatherUnsubscribe = weatherCoordinator.addChangeListener(::onWeatherChanged)
+        // The forecast survives a service restart, so replay what is already known rather than
+        // leaving the wrist blank until the rider moves a kilometre.
+        weatherCoordinator.current?.let(::onWeatherChanged)
         // Arm Auto close even when the service starts without a session (companion/GPS-only):
         // applyTelemetrySettings caches the auto-close config and (re)schedules the countdown.
         CoreForegroundService.appDataScope.launch { loadTelemetrySettings(service.applicationContext) }
@@ -793,6 +808,8 @@ private var wearAutoLaunchOnConnect = true
     }
 
     fun onServiceDestroy() {
+        weatherUnsubscribe?.invoke()
+        weatherUnsubscribe = null
         watchTick.stop()
         watchMirrorPresence.stop()
         autoCloseHandle?.cancel()
@@ -2200,6 +2217,20 @@ private var wearAutoLaunchOnConnect = true
     private fun onLocationUpdated(location: Location) {
         locationTracker.onLocationUpdated(location)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
+        // Offered on every Fix; the coordinator owns the freshness and distance gates.
+        weatherCoordinator.onPosition(location.latitude, location.longitude)
+    }
+
+    /**
+     * A new forecast: mirror it to JS and to the wrist. Runs on the main thread.
+     *
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendWeather`
+     * @platform-diff The wrist push is Android-only — Wear OS has no iOS peer (ADR-0019).
+     */
+    private fun onWeatherChanged(weather: Weather?) {
+        if (weather == null) return
+        emitEvent("onWeather", mapOf("weather" to weather.toMap()))
+        watchWeatherPusher.push(weather.toWatchWeather())
     }
 
     private fun latestRiderPresence(): RiderPresence? {

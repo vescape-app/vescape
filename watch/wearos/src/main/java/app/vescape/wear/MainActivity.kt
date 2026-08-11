@@ -73,6 +73,10 @@ class MainActivity : ComponentActivity() {
                     val settings = if (deleted) WatchSettings() else readSettings(event.dataItem)
                     runOnUiThread { SettingsState.accept(settings) }
                 }
+                WEATHER_PATH -> {
+                    val weather = if (deleted) null else readWeather(event.dataItem)
+                    runOnUiThread { WeatherState.accept(weather) }
+                }
             }
         }
         events.release()
@@ -83,6 +87,35 @@ class MainActivity : ComponentActivity() {
             DataMapItem.fromDataItem(item).dataMap.getString(SETTING_RIDER_COLOR),
         ),
     )
+
+    /**
+     * The forecast, or null when the phone sent a payload this build cannot use. Hours ride as
+     * parallel arrays, so a truncated set is read to the shortest one rather than trusted blindly.
+     */
+    private fun readWeather(item: DataItem): WatchWeather? {
+        val dataMap = DataMapItem.fromDataItem(item).dataMap
+        if (!dataMap.containsKey(WEATHER_TEMP_C)) return null
+        val minutes = dataMap.getIntegerArrayList(WEATHER_HOUR_MINUTES) ?: emptyList<Int>()
+        val temps = dataMap.getIntegerArrayList(WEATHER_HOUR_TEMPS) ?: emptyList<Int>()
+        val icons = dataMap.getStringArray(WEATHER_HOUR_ICONS) ?: emptyArray()
+        val precips = dataMap.getIntegerArrayList(WEATHER_HOUR_PRECIPS) ?: emptyList<Int>()
+        val hourCount = minOf(minutes.size, temps.size, icons.size, precips.size)
+        return WatchWeather(
+            temperatureC = dataMap.getInt(WEATHER_TEMP_C),
+            icon = dataMap.getString(WEATHER_ICON).orEmpty(),
+            label = dataMap.getString(WEATHER_LABEL).orEmpty(),
+            precipitationProbability = dataMap.getInt(WEATHER_PRECIP),
+            hourly = (0 until hourCount).map { index ->
+                WatchWeatherHour(
+                    minuteOfDay = minutes[index],
+                    temperatureC = temps[index],
+                    icon = icons[index],
+                    precipitationProbability = precips[index],
+                )
+            },
+            fetchedAtMs = dataMap.getLong(WEATHER_FETCHED_AT),
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -114,6 +147,8 @@ class MainActivity : ComponentActivity() {
             RouteState.accept(route?.data?.let(WatchRouteDecoder::decode))
             val settings = items.firstOrNull { it.uri.path == SETTINGS_PATH }
             SettingsState.accept(settings?.let(::readSettings) ?: WatchSettings())
+            val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }
+            WeatherState.accept(weather?.let(::readWeather))
             items.release()
         }
         phoneLinkMonitor.start()
