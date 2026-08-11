@@ -71,8 +71,8 @@ export function useMainMapCameraEvents({
   setFollowGps: (follow: boolean) => void
   setFollowZoomLevel: (zoom: number) => void
   onCameraSettled: (latitude: number, longitude: number, zoom: number) => void
-  /** Wrist route scale. Called live per camera frame and again with `settled` once the map rests. */
-  onWatchRouteSpanChange: (latitude: number, zoom: number, settled?: boolean) => void
+  /** Wrist route scale, per camera frame and once more when the map comes to rest. */
+  onWatchRouteSpanChange: (latitude: number, zoom: number) => void
   onHeadingChange: (heading: number) => void
   repositionOffscreenIndicatorsForCamera: (camera: CameraSnapshot) => void
   scheduleOffscreenMapIndicatorRefresh: () => void
@@ -152,7 +152,6 @@ export function useMainMapCameraEvents({
         heading: state.properties.heading,
         pitch: state.properties.pitch,
       } satisfies CameraSnapshot
-      // Live during the gesture; the callee rate-limits and map idle sends the settled value.
       onWatchRouteSpanChange(latitude, state.properties.zoom)
       // The reveal gesture writes the camera and drives the engine itself; its
       // echoes arrive a frame late and would only add phantom velocity.
@@ -265,7 +264,7 @@ export function useMainMapCameraEvents({
     if (camera) {
       const [longitude, latitude] = camera.centerCoordinate
       onCameraSettled(latitude, longitude, camera.zoomLevel)
-      onWatchRouteSpanChange(latitude, camera.zoomLevel, true)
+      onWatchRouteSpanChange(latitude, camera.zoomLevel)
     }
   }, [
     currentCameraRef,
