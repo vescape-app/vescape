@@ -14,211 +14,74 @@ import Svg, { Circle, Path } from 'react-native-svg'
 import { scheduleOnRN } from 'react-native-worklets'
 
 import { personalizationColorOptions, theme } from '@/constants/theme'
-
-type RailPoint = readonly [x: number, y: number]
-
-/** Builds a faceted rail around a centerline. Slanted end faces represent the bumper interface. */
-function railPath(points: readonly RailPoint[], thickness = 10): string {
-  const first = points[0]!
-  const last = points[points.length - 1]!
-  const half = thickness / 2
-  const cap = 8
-  const inner = points.slice(1, -1)
-  const top = inner.map(([x, y]) => `L${x} ${y - half}`).join(' ')
-  const bottom = [...inner]
-    .reverse()
-    .map(([x, y]) => `L${x} ${y + half}`)
-    .join(' ')
-
-  return `M${first[0]} ${first[1] - half} ${top} L${last[0]} ${last[1] - half} L${last[0] - cap} ${last[1] + half} ${bottom} L${first[0] + cap} ${first[1] + half} Z`
-}
+import { buildRailPath } from '@/modules/board/lib/railProfile'
 
 export const RAILS = [
   {
-    id: 'adv',
-    label: 'Floatwheel ADV',
-    path: railPath([
-      [14, 25],
-      [76, 30],
-      [94, 32],
-      [114, 32],
-      [132, 30],
-      [194, 25],
-    ]),
-  },
-  {
-    id: 'cyber-xl',
-    label: 'CyberRails XL 10°',
-    path: railPath([
-      [14, 25],
-      [76, 31],
-      [94, 32],
-      [114, 32],
-      [132, 31],
-      [194, 25],
-    ]),
-  },
-  {
-    id: 'cyber',
-    label: 'CyberRails 7°',
-    path: railPath([
-      [14, 27],
-      [76, 31],
-      [94, 32],
-      [114, 32],
-      [132, 31],
-      [194, 27],
-    ]),
-  },
-  {
-    id: 'wtf-extended-steep',
-    label: 'WTF Extended Steep & Deep · 5°/5°',
-    path: railPath([
-      [4, 25],
-      [72, 31],
-      [92, 32],
-      [116, 32],
-      [136, 31],
-      [204, 25],
-    ]),
-  },
-  {
-    id: 'wtf-extended',
-    label: 'WTF Extended',
-    path: railPath([
-      [4, 27],
-      [72, 31],
-      [92, 32],
-      [116, 32],
-      [136, 31],
-      [204, 27],
-    ]),
-  },
-  {
-    id: 'wtf-steep',
-    label: 'WTF Steep & Deep · 5°/5°',
-    path: railPath([
-      [14, 25],
-      [74, 31],
-      [92, 32],
-      [116, 32],
-      [134, 31],
-      [194, 25],
-    ]),
-  },
-  {
     id: 'wtf',
-    label: 'WTF Standard',
-    path: railPath([
-      [14, 27],
-      [74, 31],
-      [92, 32],
-      [116, 32],
-      [134, 31],
-      [194, 27],
-    ]),
+    label: 'WTF',
+    path: buildRailPath(
+      [
+        [29, 32],
+        [81, 37],
+        [96, 32],
+        [112, 32],
+        [129, 37],
+        [178, 32],
+      ],
+      [0, 0, 0, 0, 0, 0],
+    ),
+  },
+  {
+    id: 'x7',
+    label: 'X7',
+    path: buildRailPath(
+      [
+        [29, 29],
+        [81, 37],
+        [96, 29],
+        [114, 36],
+        [129, 37],
+        [178, 28],
+      ],
+      [0, 0, 0, 0, 0, 0],
+    ),
   },
   {
     id: 'tail',
     label: 'Tail Rails',
-    path: railPath([
-      [14, 32],
-      [124, 32],
-      [194, 24],
-    ]),
+    path: buildRailPath(
+      [
+        [29, 31],
+        [119, 32],
+        [154, 30],
+        [179, 27],
+      ],
+      [0, 0, 0, 0],
+    ),
   },
   {
-    id: 'thunder',
-    label: 'Fungineers Thunder · 3°/3°',
-    path: railPath([
-      [14, 28],
-      [76, 31],
-      [94, 32],
-      [114, 32],
-      [132, 31],
-      [194, 28],
-    ]),
-  },
-  {
-    id: 'x11',
-    label: 'Fungineers X11',
-    path: railPath([
-      [14, 24],
-      [70, 29],
-      [89, 34],
-      [104, 32],
-      [119, 34],
-      [138, 29],
-      [194, 24],
-    ]),
-  },
-  {
-    id: 'x10',
-    label: 'Fungineers X10 · 7°/3°',
-    path: railPath([
-      [4, 22],
-      [70, 30],
-      [92, 32],
-      [116, 32],
-      [138, 30],
-      [204, 28],
-    ]),
-  },
-  {
-    id: 'x7',
-    label: 'Fungineers X7 · 4.2°/4.2°',
-    path: railPath([
-      [14, 26],
-      [72, 30],
-      [90, 34],
-      [104, 32],
-      [118, 34],
-      [136, 30],
-      [194, 26],
-    ]),
+    id: 'moustache',
+    label: 'Moustache',
+    path: buildRailPath(
+      [
+        [30, 29],
+        [79, 34],
+        [128, 34],
+        [179, 27],
+      ],
+      [0, 0, 0, 0],
+    ),
   },
   {
     id: 'xr',
-    label: 'XR Stock · straight',
-    path: railPath(
+    label: 'XR',
+    path: buildRailPath(
       [
-        [14, 32],
-        [194, 32],
+        [30, 32],
+        [179, 32],
       ],
-      9,
-    ),
-  },
-  {
-    id: 'gt',
-    label: 'GT Stock · straight',
-    path: railPath(
-      [
-        [14, 32],
-        [194, 32],
-      ],
-      12,
-    ),
-  },
-  {
-    id: 'pint-x',
-    label: 'Pint X Stock · straight',
-    path: railPath(
-      [
-        [20, 32],
-        [188, 32],
-      ],
-      11,
-    ),
-  },
-  {
-    id: 'pint',
-    label: 'Pint Stock · straight',
-    path: railPath(
-      [
-        [25, 32],
-        [183, 32],
-      ],
-      10,
+      [0, 0],
     ),
   },
 ] as const
@@ -229,8 +92,7 @@ export const RAIL_COLORS = personalizationColorOptions
 
 export type RailColorId = (typeof RAIL_COLORS)[number]['id']
 
-const ITEM_WIDTH = 108
-const WHEEL_WIDTH = 168
+const ITEM_WIDTH = 150
 const ITEM_GAP = 2
 const ITEM_SPACING = ITEM_WIDTH + ITEM_GAP
 const DEFAULT_INDEX = RAILS.findIndex((rail) => rail.id === 'xr')
@@ -261,11 +123,27 @@ function RailOutline({
 }) {
   return (
     <Svg width={ITEM_WIDTH} height={70} viewBox="0 0 208 70">
+      <Circle
+        cx="104"
+        cy="32"
+        r="30"
+        fill="none"
+        stroke={muted ? theme.palette.slate.border : color}
+        strokeWidth="1"
+      />
+      <Circle
+        cx="104"
+        cy="32"
+        r="15"
+        fill="none"
+        stroke={muted ? theme.palette.slate.textDim : color}
+        strokeWidth="1"
+      />
       <Path
         d={path}
         fill="none"
         stroke={muted ? theme.palette.slate.textDim : color}
-        strokeWidth={muted ? 1 : 1.8}
+        strokeWidth={muted ? 1.2 : 2.2}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -370,18 +248,6 @@ export function BoardPersonalizer({
           onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
           accessibilityLabel="Rail selector"
         >
-          <View pointerEvents="none" style={styles.fixedWheel}>
-            <Svg width={WHEEL_WIDTH} height={70} viewBox="0 0 208 70">
-              <Circle
-                cx="104"
-                cy="32"
-                r="27"
-                fill="none"
-                stroke={theme.alpha(selectedColor, 0.4)}
-                strokeWidth="1"
-              />
-            </Svg>
-          </View>
           <Animated.View
             style={[styles.railRow, { left: viewportWidth / 2 - ITEM_WIDTH / 2 }, rowStyle]}
           >
@@ -446,14 +312,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   viewport: { height: 86, overflow: 'hidden' },
-  fixedWheel: {
-    position: 'absolute',
-    top: 4,
-    left: '50%',
-    marginLeft: -WHEEL_WIDTH / 2,
-    zIndex: 0,
-  },
-  railRow: { position: 'absolute', top: 4, zIndex: 1, flexDirection: 'row', gap: ITEM_GAP },
+  railRow: { position: 'absolute', top: 4, flexDirection: 'row', gap: ITEM_GAP },
   railItem: { width: ITEM_WIDTH, alignItems: 'center' },
   colors: {
     flexDirection: 'row',

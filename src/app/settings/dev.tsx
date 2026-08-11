@@ -1,7 +1,14 @@
 import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { RecordIcon, CompassIcon, SwatchesIcon, ToolboxIcon, CodeIcon } from 'phosphor-react-native'
+import {
+  RecordIcon,
+  CompassIcon,
+  SwatchesIcon,
+  ToolboxIcon,
+  CodeIcon,
+  PathIcon,
+} from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -37,6 +44,13 @@ const devPages = [
     route: routes.devMapPlayground,
     icon: CompassIcon,
     iconColor: theme.palette.violet.color,
+  },
+  {
+    label: 'Rail generator prototype',
+    hint: 'Build and copy rail profile point presets',
+    route: routes.devRailGeneratorPrototype,
+    icon: PathIcon,
+    iconColor: theme.palette.cyan.color,
   },
   {
     label: 'Other',
