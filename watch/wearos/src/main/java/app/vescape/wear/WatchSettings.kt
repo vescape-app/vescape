@@ -22,9 +22,14 @@ const val SETTING_RIDER_COLOR = "riderColor"
 /** Board Move strength, percent of full scale. Displayed on the wrist; the phone applies it. */
 const val SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 
+/** Whether to draw the direction arrow over the route. The route itself is never affected. */
+const val SETTING_NAV_ARROW = "navArrowEnabled"
+
 /** Phone settings the wrist mirrors. Every field defaults to the wrist's own look. */
 data class WatchSettings(
     val riderColor: Color? = null,
+    /** Off by default: an older phone never sends the key, and the arrow is opt-in until it works. */
+    val navArrowEnabled: Boolean = false,
     /** Null until a phone new enough to send it has pushed; the wrist then shows no number. */
     val boardMoveStrengthPercent: Int? = null,
 )

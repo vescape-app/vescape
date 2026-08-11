@@ -23,6 +23,7 @@
     "wear:fixtures": "bun run scripts/generate-watch-fixtures.ts",
     "icons:port": "bun run scripts/phosphor-to-vector.ts",
     "wear:emulator": "bun run scripts/wear.ts emulator",
+    "wear:pair": "bun run scripts/wear.ts pair",
     "wear:replay": "bun run scripts/wear.ts replay",
     "relay:reverse": "bun run scripts/relay-reverse.ts",
     "lint": "oxlint src",

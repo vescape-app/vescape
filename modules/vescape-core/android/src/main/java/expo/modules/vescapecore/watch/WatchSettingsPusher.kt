@@ -48,6 +48,7 @@ internal class WatchSettingsPusher(
                         // like an older phone that never sent one, and the wrist could not tell.
                         dataMap.putString(WATCH_SETTING_RIDER_COLOR, settings.riderColor ?: "")
                         dataMap.putInt(WATCH_SETTING_BOARD_MOVE_STRENGTH, settings.boardMoveStrengthPercent)
+                        dataMap.putBoolean(WATCH_SETTING_NAV_ARROW, settings.navArrowEnabled)
                     }.asPutDataRequest().setUrgent()
                     Tasks.await(dataClient.putDataItem(request))
                 } catch (error: Exception) {

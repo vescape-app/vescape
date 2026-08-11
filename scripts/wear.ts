@@ -31,7 +31,7 @@ const DEBUG_APK = join(
 const PHONE_KEYSTORE = join(ROOT, 'android', 'app', 'debug.keystore')
 const SIGNED_APK = join(tmpdir(), 'wearos-debug-phone-cert-signed.apk')
 
-const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay'] as const
+const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay', 'pair'] as const
 type Command = (typeof COMMANDS)[number]
 
 /** Wear AVD booted by `emulator`. Overridable so the AVD name is not baked into the repo. */
@@ -150,11 +150,12 @@ const LAST_WATCH_KEY = 'wear-device'
 /** Grace period before the remembered watch is taken; any keypress cancels it. */
 const AUTO_PICK_MS = 3000
 
-interface Watch {
+interface Device {
   serial: string
   name: string
-  /** Hardware id, so the same watch reached over two transports collapses to one entry. */
+  /** Hardware id, so the same device reached over two transports collapses to one entry. */
   hardware: string
+  isWatch: boolean
 }
 
 /**
@@ -163,26 +164,61 @@ interface Watch {
  * over mDNS, and a booted Wear AVD is a watch too — so mDNS duplicates collapse by `ro.serialno`
  * and anything left over is a real choice the caller has to make.
  */
-function connectedWatches(): Watch[] {
+function connectedDevices(): Device[] {
   const transports = capture(['adb', 'devices'])
     .split('\n')
     .slice(1)
     .filter((line) => line.includes('\tdevice'))
     .map((line) => line.split('\t')[0])
 
-  const watches = new Map<string, Watch>()
+  const devices = new Map<string, Device>()
   for (const serial of transports) {
     const props = capture(['adb', '-s', serial, 'shell', 'getprop'])
-    if (!prop(props, 'ro.build.characteristics').includes('watch')) continue
     const hardware = prop(props, 'ro.serialno') || serial
-    if (watches.has(hardware)) continue
-    watches.set(hardware, {
+    if (devices.has(hardware)) continue
+    devices.set(hardware, {
       serial,
       name: prop(props, 'ro.product.model') || hardware,
       hardware,
+      isWatch: prop(props, 'ro.build.characteristics').includes('watch'),
     })
   }
-  return [...watches.values()]
+  return [...devices.values()]
+}
+
+function connectedWatches(): Device[] {
+  return connectedDevices().filter((device) => device.isWatch)
+}
+
+/**
+ * The phone side of a pairing: any connected non-watch device. Nothing is remembered here — a
+ * pairing bridge is short-lived, and picking the wrong device only costs an unused forward.
+ */
+function findPhone(requested: string | null): Device {
+  const phones = connectedDevices().filter((device) => !device.isWatch)
+  if (phones.length === 0) fail('no phone connected (`adb devices` shows none)')
+  if (requested) {
+    const match = phones.find(
+      (phone) =>
+        phone.serial === requested || phone.hardware === requested || phone.name === requested,
+    )
+    if (!match) {
+      fail(
+        `no phone matches "${requested}" — connected: ${phones
+          .map((phone) => `${phone.name} (${phone.hardware})`)
+          .join(', ')}`,
+      )
+    }
+    return match
+  }
+  if (phones.length > 1) {
+    fail(
+      `several phones connected — pass --device <serial|model>: ${phones
+        .map((phone) => `${phone.name} (${phone.hardware})`)
+        .join(', ')}`,
+    )
+  }
+  return phones[0]
 }
 
 /** One `[key]: [value]` line out of `adb shell getprop` output. */
@@ -325,6 +361,55 @@ function startEmulator() {
   console.log(`wear: booting ${WEAR_AVD} (override with WEAR_AVD)`)
 }
 
+/** Wear companion pairing port. The companion looks for an emulator behind this forward. */
+const PAIR_PORT = 5601
+
+/** The Wear OS companion on the phone; `pair` opens it once the forward is up. */
+const COMPANION_PACKAGE = 'com.google.android.apps.wear.companion'
+
+/**
+ * Bridges a watch emulator to a phone. The Data Layer has no radio between an AVD and a phone, so
+ * the companion reaches the emulator through an adb forward on the *phone's* port 5601 instead.
+ * The forward dies with every adb server restart or replug, so this is a re-runnable repair, not a
+ * one-time setup: the pairing itself survives, only the tunnel has to come back.
+ */
+function pairEmulator(requestedPhone: string | null) {
+  const watch = connectedWatches().find((it) => it.serial.startsWith('emulator-'))
+  if (!watch) fail('no watch emulator running — start one with `bun run wear:emulator`')
+
+  const phone = findPhone(requestedPhone)
+  run(['adb', '-s', phone.serial, 'forward', `tcp:${PAIR_PORT}`, `tcp:${PAIR_PORT}`])
+
+  if (
+    !capture(['adb', '-s', phone.serial, 'shell', 'pm', 'list', 'packages']).includes(
+      COMPANION_PACKAGE,
+    )
+  ) {
+    fail(`no Wear OS companion on ${phone.name} — install "Wear OS" from Play, then re-run`)
+  }
+  run([
+    'adb',
+    '-s',
+    phone.serial,
+    'shell',
+    'monkey',
+    '-p',
+    COMPANION_PACKAGE,
+    '-c',
+    'android.intent.category.LAUNCHER',
+    '1',
+  ])
+
+  console.log(`\nwear: ${watch.name} bridged to ${phone.name}`)
+  console.log('wear: already paired once? the companion reconnects on its own — nothing to do')
+  console.log(
+    'wear: first time? in the companion: menu > Pair with emulator, then clear every permission it asks for',
+  )
+  console.log(
+    `wear: verify with \`adb -s ${watch.serial} shell dumpsys activity service WearableService | grep NodeInfo\``,
+  )
+}
+
 /**
  * Restarts the Mirror on the chosen lane fixture. `-S` because a running activity keeps the intent
  * it was started with, so without it the extra is delivered but never read.
@@ -363,6 +448,11 @@ const command = args[0] as Command | undefined
 if (!command || !COMMANDS.includes(command)) {
   console.error(`Usage: bun run scripts/wear.ts <${COMMANDS.join('|')}> [--device <serial|model>]`)
   process.exit(1)
+}
+
+if (command === 'pair') {
+  pairEmulator(requested)
+  process.exit(0)
 }
 
 if (command === 'emulator') {

@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
         val dataMap = DataMapItem.fromDataItem(item).dataMap
         return WatchSettings(
             riderColor = parseRiderColor(dataMap.getString(SETTING_RIDER_COLOR)),
+            navArrowEnabled = dataMap.getBoolean(SETTING_NAV_ARROW, false),
             // An older phone never sends the key; `getInt` would read that absence as 0 %.
             boardMoveStrengthPercent = if (dataMap.containsKey(SETTING_BOARD_MOVE_STRENGTH)) {
                 dataMap.getInt(SETTING_BOARD_MOVE_STRENGTH)

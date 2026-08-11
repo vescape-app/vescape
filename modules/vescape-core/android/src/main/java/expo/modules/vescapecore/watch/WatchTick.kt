@@ -6,7 +6,7 @@ import expo.modules.vescapecore.runtime.Scheduler
 /**
  * Dedicated watch tick (ADR-0013/0019): a service-scoped scheduler, independent of the board
  * session and poll rate, that reads the latest cold-path [WatchSnapshot] and pushes an encoded
- * Watch Frame at a configurable cadence (`wearMirrorIntervalMs` App Setting). Board lanes may be
+ * Watch Frame at a configurable cadence (`wearPushRateHz` App Setting). Board lanes may be
  * empty while GPS/navigation lanes stay live.
  *
  * Capability-gated: [canPush] is a cached flag ([WatchMirrorPresence]) checked before building the

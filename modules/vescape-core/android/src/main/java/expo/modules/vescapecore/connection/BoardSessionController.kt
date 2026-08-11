@@ -1872,7 +1872,7 @@ private var wearAutoLaunchOnConnect = true
     @Volatile
     private var watchWakeLevelAtMs: Long = 0L
 
-    /** The rider's `wearMirrorIntervalMs`, held so ambient can hand the cadence back to it. */
+    /** The rider's `wearPushRateHz` as an interval, held so ambient can hand the cadence back to it. */
     @Volatile
     private var configuredWatchIntervalMs: Long = WATCH_FRAME_INTERVAL_MS
 
@@ -1905,7 +1905,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * Single owner of the push cadence. Two inputs set it — the rider's `wearMirrorIntervalMs` and
+     * Single owner of the push cadence. Two inputs set it — the rider's `wearPushRateHz` and
      * the wrist's wake level — so both must resolve here: applying either one directly lets a
      * settings reload silently drop the ambient rate back to the live one, where the level-change
      * early-return then leaves it for the rest of the ambient stretch.
@@ -2554,7 +2554,7 @@ private var wearAutoLaunchOnConnect = true
         configuredPollIntervalMs = pollIntervalMsForHz(settings.telemetryPollRateHz)
         movingThresholdCentiKmh = settings.toMetricSanitizerConfig().movingSpeedThresholdCentiKmh
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
-        configuredWatchIntervalMs = settings.wearMirrorIntervalMs.toLong()
+        configuredWatchIntervalMs = pollIntervalMsForHz(settings.wearPushRateHz)
         applyWatchInterval()
         watchSettingsPusher.push(settings.toWatchSettings())
         wearAutoLaunchOnConnect = settings.wearAutoLaunchOnConnect

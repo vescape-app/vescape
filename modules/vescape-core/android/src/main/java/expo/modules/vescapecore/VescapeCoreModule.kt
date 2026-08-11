@@ -886,8 +886,9 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
-        key == "wearMirrorIntervalMs" ||
+        key == "wearPushRateHz" ||
 key == "wearAutoLaunchOnConnect" ||
+        key == "wearNavArrowEnabled" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key == "riderColor" ||
         key == "boardWarningsEnabled"

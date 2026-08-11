@@ -23,10 +23,14 @@ internal const val WATCH_SETTING_RIDER_COLOR = "riderColor"
 /** Board Move strength as a percentage of full scale; the wrist displays it but never applies it. */
 internal const val WATCH_SETTING_BOARD_MOVE_STRENGTH = "boardMoveStrengthPercent"
 
+/** Whether the wrist draws the direction arrow over the route. Off hides the arrow, not the route. */
+internal const val WATCH_SETTING_NAV_ARROW = "navArrowEnabled"
+
 /** The wrist-relevant slice of [AppSettings]. Equality is what decides whether a push is needed. */
 internal data class WatchSettings(
     val riderColor: String?,
     val boardMoveStrengthPercent: Int,
+    val navArrowEnabled: Boolean,
 )
 
 /**
@@ -37,4 +41,5 @@ internal fun AppSettings.toWatchSettings(): WatchSettings = WatchSettings(
     // Sent verbatim; the wrist is the one place that parses the colour, so garbage degrades there.
     riderColor = riderColor?.trim()?.takeIf { it.isNotEmpty() },
     boardMoveStrengthPercent = boardMoveStrengthPercent,
+    navArrowEnabled = wearNavArrowEnabled,
 )

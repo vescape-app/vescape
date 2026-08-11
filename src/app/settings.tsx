@@ -132,7 +132,7 @@ export default function SettingsScreen() {
               <SettingsRow
                 icon={WatchIcon}
                 iconColor={theme.settingsIcon.watch}
-                label="Watch Mirror"
+                label="Watch"
                 hint="Auto open and telemetry push rate"
                 onPress={() => router.push(routes.settingsWatch)}
               />

@@ -27,7 +27,7 @@ const ROOT = join(import.meta.dir, '..')
 const SOURCE = join(ROOT, 'shared', 'fixtures', 'replay-thor301.jsonl')
 const OUT_DIR = join(ROOT, 'watch', 'wearos', 'src', 'main', 'assets')
 
-/** Watch tick cadence (`wearMirrorIntervalMs` default), so a replayed lane stream is paced like a real push. */
+/** Watch tick cadence (`wearPushRateHz` default), so a replayed lane stream is paced like a real push. */
 const SAMPLE_INTERVAL_MS = 500
 
 const COMM_CUSTOM_APP_DATA = 36

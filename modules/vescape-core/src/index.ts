@@ -1074,17 +1074,23 @@ export interface AppSettings {
    */
   telemetryPollRateHz: number
   /**
-   * Watch Mirror push interval in ms — the cadence of the dedicated watch tick,
-   * independent of the board poll rate. Lower values increase wrist update rate
-   * for stress-testing the link. Floored at 50ms (20Hz), capped at 10s.
+   * Watch push rate in Hz — the cadence of the dedicated watch tick, independent
+   * of the board poll rate. Higher values increase the wrist update rate for
+   * stress-testing the link. Clamped to 1–20 Hz.
    */
-  wearMirrorIntervalMs: number
+  wearPushRateHz: number
   /**
    * Android-only: bring the Watch Mirror to the foreground on the paired watch when a fresh
    * board session connects (never on mid-ride auto-reconnects). No-op unless the Mirror app
    * is installed and reachable.
    */
   wearAutoLaunchOnConnect: boolean
+  /**
+   * Android-only, off by default: draw the direction chevron on the Watch Mirror. Only the
+   * chevron — the wrist keeps drawing the route, rider dot and remaining distance either way.
+   * Mirrored to the wrist over the settings path.
+   */
+  wearNavArrowEnabled: boolean
   /**
    * Persistent device-scoped anonymous Group Ride Rider id. Generated once on
    * first use and stored locally; sent to the relay server as the Rider's

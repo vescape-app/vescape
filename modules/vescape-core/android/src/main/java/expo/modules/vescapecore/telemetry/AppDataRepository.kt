@@ -106,11 +106,11 @@ internal fun validTopSpeedKmh(value: Any?): Double? =
     ?.takeIf { it.isFinite() }
     ?.coerceIn(5.0, 150.0)
 
-/** Watch Mirror push interval in ms; floored at 50ms (20Hz), capped at 10s. */
-internal fun validWearMirrorIntervalMs(value: Any?): Int? =
+/** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
+internal fun validWearPushRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
-    ?.coerceIn(50, 10_000)
+    ?.coerceIn(1, 20)
 
 val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
   "speed" to mapOf("start" to 30.0, "end" to 40.0),
@@ -278,8 +278,9 @@ class AppDataRepository private constructor(private val context: Context) {
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
-      wearMirrorIntervalMs = req("wearMirrorIntervalMs", 250, ::validWearMirrorIntervalMs),
+      wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
+      wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
       companionPresenceCooldownMinutes = req("companionPresenceCooldownMinutes", 60, ::validCompanionCooldownMinutes),
@@ -354,9 +355,10 @@ class AppDataRepository private constructor(private val context: Context) {
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
-      "wearMirrorIntervalMs" ->
-        validWearMirrorIntervalMs(value) ?: return@withContext
+      "wearPushRateHz" ->
+        validWearPushRateHz(value) ?: return@withContext
       "wearAutoLaunchOnConnect" -> value as? Boolean ?: return@withContext
+      "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceCooldownMinutes" ->
@@ -405,8 +407,9 @@ class AppDataRepository private constructor(private val context: Context) {
         "boardMoveStrengthPercent" -> d.boardMoveStrengthPercent
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
         "telemetryPollRateHz" -> d.telemetryPollRateHz
-        "wearMirrorIntervalMs" -> d.wearMirrorIntervalMs
+        "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
+        "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
         "companionPresenceCooldownMinutes" -> d.companionPresenceCooldownMinutes
@@ -779,8 +782,9 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "boardMoveStrengthPercent" to boardMoveStrengthPercent,
   "connectionSoundsEnabled" to connectionSoundsEnabled,
   "telemetryPollRateHz" to telemetryPollRateHz,
-  "wearMirrorIntervalMs" to wearMirrorIntervalMs,
+  "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
+  "wearNavArrowEnabled" to wearNavArrowEnabled,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
   "companionPresenceCooldownMinutes" to companionPresenceCooldownMinutes,

@@ -42,14 +42,18 @@ import kotlin.math.sin
 internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean, focus: () -> Float = { 0f }) {
     val color = if (muted) DimText else navColor()
 
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        // Read inside the draw scope: focus changes redraw the chevron without recomposing.
-        val grow = 1f + CHEVRON_FOCUS_GROWTH * focus()
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val ring = size.minDimension / 2f - NAV_RIM_INSET.toPx()
-        val at = pointOnCircle(center, ring, bearingDeg.toFloat() - 90f)
-        rotate(bearingDeg.toFloat(), at) {
-            drawChevron(at, CHEVRON_W.toPx() * grow, CHEVRON_H.toPx() * grow, color)
+    // The chevron alone is opt-in (phone: Settings > Watch) while its bearing is being worked on.
+    // Everything else nav draws — route, rider dot, pin, distance — is untouched by the switch.
+    if (SettingsState.settings.value.navArrowEnabled) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            // Read inside the draw scope: focus changes redraw the chevron without recomposing.
+            val grow = 1f + CHEVRON_FOCUS_GROWTH * focus()
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val ring = size.minDimension / 2f - NAV_RIM_INSET.toPx()
+            val at = pointOnCircle(center, ring, bearingDeg.toFloat() - 90f)
+            rotate(bearingDeg.toFloat(), at) {
+                drawChevron(at, CHEVRON_W.toPx() * grow, CHEVRON_H.toPx() * grow, color)
+            }
         }
     }
 

@@ -5,7 +5,7 @@ const val WATCH_FRAME_INTERVAL_MS = 250L
 
 /**
  * Three missed frames means disconnected. The phone's push cadence is a rider setting
- * (`wearMirrorIntervalMs`, 50–10000 ms), so the window is measured from the frames that actually
+ * (`wearPushRateHz`, 1–20 Hz), so the window is measured from the frames that actually
  * arrive rather than assumed — a hardcoded window pins the mirror to DISCONNECTED on every cadence
  * the rider picks above the default. Clamped so neither a burst nor a long stall distorts it.
  */
