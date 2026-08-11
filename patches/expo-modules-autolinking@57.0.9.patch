@@ -1,0 +1,30 @@
+diff --git a/build/index.js b/build/index.js
+--- a/build/index.js
++++ b/build/index.js
+@@ -12,7 +12,7 @@ const searchCommand_1 = require("./commands/searchCommand");
+ const verifyCommand_1 = require("./commands/verifyCommand");
+ const memoize_1 = require("./memoize");
+ async function main(args) {
+-    const cli = commander_1.default
++    const cli = (commander_1.default.program || commander_1.default)
+         .version(require('expo-modules-autolinking/package.json').version)
+         .description('CLI command that searches for native modules to autolink them.');
+     (0, verifyCommand_1.verifyCommand)(cli);
+diff --git a/build/commands/verifyCommand.js b/build/commands/verifyCommand.js
+--- a/build/commands/verifyCommand.js
++++ b/build/commands/verifyCommand.js
+@@ -15,9 +15,12 @@ const INCLUDE_PACKAGES = ['react-native', 'react-native-tvos'];
+ const AUTOLINKING_PLATFORMS = ['android', 'ios', 'web'];
+ function verifyCommand(cli) {
+-    return (0, autolinkingOptions_1.registerAutolinkingArguments)(cli.command('verify'))
++    const command = (0, autolinkingOptions_1.registerAutolinkingArguments)(cli.command('verify'));
++    const platformOption = command.options.find((option) => option.long === '--platform');
++    platformOption.description = `The platform to validate native modules for. Available options: ${[...AUTOLINKING_PLATFORMS, 'native', 'all'].map((x) => `"${x}"`).join(', ')}`;
++    platformOption.defaultValue = 'all';
++    return command
+         .option('-v, --verbose', 'Output all results instead of just warnings.', () => true, false)
+         .option('-j, --json', 'Output results in the plain JSON format.', () => true, false)
+-        .option('-p, --platform [platform]', `The platform to validate native modules for. Available options: ${[...AUTOLINKING_PLATFORMS, 'native', 'all'].map((x) => `"${x}"`).join(', ')}`, 'all')
+         .action(async (commandArguments) => {
+         let platforms;
+         // NOTE(@kitten): Preserve `both` for backwards-compatibility
