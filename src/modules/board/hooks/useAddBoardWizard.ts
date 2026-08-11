@@ -22,6 +22,10 @@ import {
   parseVoltage,
 } from '@/modules/board/lib/boardSetup'
 import { useBoardStore } from '@/modules/board/store/boardStore'
+import type {
+  RailColorId,
+  RailId,
+} from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
 
 /** The wizard's buffered alert setup for every preset metric, flushed onto the Board on save. */
 export type DraftAlertSetupBag = Record<AlertPresetMetric, DraftAlertSetup>
@@ -57,7 +61,8 @@ interface AddBoardWizardState {
   bleName: string
   draftLink: BoardLink | null
   name: string
-  description: string
+  railId: RailId
+  railColorId: RailColorId
   batteryMode: BatteryMode
   cellPresetId: string
   seriesCount: number
@@ -83,7 +88,8 @@ interface AddBoardWizardActions {
   onDeviceProbed: (link: BoardLink) => void
   continueOffline: () => void
   setName: (v: string) => void
-  setDescription: (v: string) => void
+  setRailId: (v: RailId) => void
+  setRailColorId: (v: RailColorId) => void
   setBatteryMode: (v: BatteryMode) => void
   setCellPresetId: (v: string) => void
   setSeriesCount: (v: number) => void
@@ -111,7 +117,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const [bleName, setBleName] = useState('')
   const [draftLink, setDraftLink] = useState<BoardLink | null>(null)
   const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const [railId, setRailId] = useState<RailId>('xr')
+  const [railColorId, setRailColorId] = useState<RailColorId>('cyan')
   const [batteryMode, setBatteryMode] = useState<BatteryMode>(DEFAULT_BATTERY_CONFIG.mode)
   const [cellPresetId, setCellPresetId] = useState(DEFAULT_BATTERY_CONFIG.cellPresetId)
   const [seriesCount, setSeriesCount] = useState(DEFAULT_BATTERY_CONFIG.seriesCount)
@@ -190,7 +197,6 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     )
     const board = addBoard({
       name: name.trim(),
-      description: description.trim() || undefined,
       link: draftLink,
       batteryConfig,
       // Persist the draft alert setup onto the new Board (#254), then materialize its preset rules.
@@ -222,7 +228,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     bleName,
     draftLink,
     name,
-    description,
+    railId,
+    railColorId,
     batteryMode,
     cellPresetId,
     seriesCount,
@@ -243,7 +250,8 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     onDeviceProbed,
     continueOffline,
     setName,
-    setDescription,
+    setRailId,
+    setRailColorId,
     setBatteryMode,
     setCellPresetId,
     setSeriesCount,

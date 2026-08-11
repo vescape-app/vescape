@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { ScrollView, StyleSheet, View } from 'react-native'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Keyboard, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ArrowLeftIcon, ArrowRightIcon, type Icon } from 'phosphor-react-native'
 
@@ -13,6 +13,7 @@ interface WizardStepLayoutProps {
   color: string
   headerRight?: ReactNode
   footer?: ReactNode
+  revealBottomOnKeyboard?: boolean
   children: ReactNode
 }
 
@@ -23,13 +24,30 @@ export function WizardStepLayout({
   color,
   headerRight,
   footer,
+  revealBottomOnKeyboard = false,
   children,
 }: WizardStepLayoutProps) {
+  const scrollRef = useRef<ScrollView>(null)
+
+  useEffect(() => {
+    if (!revealBottomOnKeyboard) return
+
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: true })
+      })
+    })
+    return () => subscription.remove()
+  }, [revealBottomOnKeyboard])
+
   return (
     <View style={styles.fill}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.body}
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.topContent}>

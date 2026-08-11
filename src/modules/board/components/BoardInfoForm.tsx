@@ -5,9 +5,9 @@ import { Input } from '@/components/forms/Input'
 
 interface BoardInfoFormProps {
   name: string
-  description: string
   onChangeName: (value: string) => void
-  onChangeDescription: (value: string) => void
+  description?: string
+  onChangeDescription?: (value: string) => void
   nameTestID?: string
   descriptionTestID?: string
 }
@@ -31,19 +31,23 @@ export function BoardInfoForm({
         testID={nameTestID}
         accessibilityLabel="Board name"
       />
-      <Text style={styles.label}>Description</Text>
-      <Input
-        style={styles.inputMultiline}
-        value={description}
-        onChangeText={onChangeDescription}
-        placeholder="Optional"
-        placeholderTextColor={theme.palette.slate.textDim}
-        multiline
-        numberOfLines={3}
-        textAlignVertical="top"
-        testID={descriptionTestID}
-        accessibilityLabel="Board description"
-      />
+      {description != null && onChangeDescription ? (
+        <>
+          <Text style={styles.label}>Description</Text>
+          <Input
+            style={styles.inputMultiline}
+            value={description}
+            onChangeText={onChangeDescription}
+            placeholder="Optional"
+            placeholderTextColor={theme.palette.slate.textDim}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+            testID={descriptionTestID}
+            accessibilityLabel="Board description"
+          />
+        </>
+      ) : null}
     </View>
   )
 }

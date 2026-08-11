@@ -261,6 +261,24 @@ export const interaction = {
   pressedOpacity: 0.55,
 } as const
 
+/** Shared rider/board personalization choices. Keep Social and board identity in sync. */
+export const personalizationColorOptions = [
+  { id: 'sky', value: palette.sky.color },
+  { id: 'cyan', value: palette.cyan.color },
+  { id: 'teal', value: palette.teal.color },
+  { id: 'group-ride', value: palette.groupRide.color },
+  { id: 'green', value: palette.green.color },
+  { id: 'beige', value: palette.beige.color },
+  { id: 'yellow', value: palette.yellow.color },
+  { id: 'amber', value: palette.amber.color },
+  { id: 'orange', value: palette.orange.color },
+  { id: 'red', value: palette.red.color },
+  { id: 'pink', value: palette.pink.color },
+  { id: 'fuchsia', value: palette.fuchsia.color },
+  { id: 'purple', value: palette.purple.color },
+  { id: 'violet', value: palette.violet.color },
+] as const
+
 /** Weights shipped as static Raleway instances in `assets/fonts/`. Android ignores the
  *  `wght` variation axis of a custom variable font (it renders the file's default
  *  instance), so each weight is its own font file and family name. */
@@ -294,6 +312,7 @@ export const theme = {
   weather,
   zone,
   interaction,
+  personalizationColorOptions,
   font,
   mono,
 } as const

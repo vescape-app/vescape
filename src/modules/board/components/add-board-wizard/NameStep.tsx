@@ -7,13 +7,15 @@ import {
   WizardStepLayout,
 } from '@/modules/board/components/add-board-wizard/WizardStepLayout'
 import type { UseAddBoardWizard } from '@/modules/board/hooks/useAddBoardWizard'
+import { BoardPersonalizer } from '@/modules/board/components/add-board-wizard/BoardPersonalizer'
 
 export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
   return (
     <WizardStepLayout
-      title="Name your board"
+      title="Personalize your board"
       icon={TextTIcon}
       color={theme.palette.yellow.color}
+      revealBottomOnKeyboard
       footer={
         <WizardNavActions
           canContinue={Boolean(wizard.name.trim())}
@@ -25,11 +27,14 @@ export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
     >
       <BoardInfoForm
         name={wizard.name}
-        description={wizard.description}
         onChangeName={wizard.setName}
-        onChangeDescription={wizard.setDescription}
         nameTestID="add-board-name-input"
-        descriptionTestID="add-board-description-input"
+      />
+      <BoardPersonalizer
+        railId={wizard.railId}
+        railColorId={wizard.railColorId}
+        onRailChange={wizard.setRailId}
+        onRailColorChange={wizard.setRailColorId}
       />
     </WizardStepLayout>
   )

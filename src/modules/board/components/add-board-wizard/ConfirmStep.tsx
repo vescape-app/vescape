@@ -83,17 +83,6 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
           label="Name"
           value={wizard.name.trim() || 'Unnamed board'}
         />
-        {wizard.description.trim() ? (
-          <>
-            <View style={styles.divider} />
-            <ConfirmRow
-              icon={TextTIcon}
-              iconColor={theme.palette.yellow.color}
-              label="Description"
-              value={wizard.description.trim()}
-            />
-          </>
-        ) : null}
         <View style={styles.divider} />
         <ConfirmRow
           icon={BatteryFullIcon}
