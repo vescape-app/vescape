@@ -48,6 +48,8 @@ android.buildTypes.release.manifestPlaceholders += [sentryEnvironment: "producti
 `
 
 const APP_DELEGATE_ANCHOR = 'let delegate = ReactNativeDelegate()'
+// Trailing newline matters: without it this also matches `import ReactAppDependencyProvider`.
+const IMPORT_ANCHOR = 'import React\n'
 const SENTRY_START_MARKER = 'SentrySDK.start'
 
 // Injected in place of the anchor line, which already carries its own indentation.
@@ -114,8 +116,16 @@ const withSentryNativeInit: ConfigPlugin = (config) => {
     }
 
     cfg.modResults.contents = cfg.modResults.contents
-      .replace('import React\n', 'import React\nimport Sentry\n')
+      .replace(IMPORT_ANCHOR, `${IMPORT_ANCHOR}import Sentry\n`)
       .replace(APP_DELEGATE_ANCHOR, `${sentryStartSwift(dsn)}\n\n    ${APP_DELEGATE_ANCHOR}`)
+
+    // The import is positional like the anchor, but its failure mode is a Swift compile error long
+    // after prebuild, so it is worth its own check rather than the anchor's.
+    if (!cfg.modResults.contents.includes('import Sentry')) {
+      throw new Error(
+        `withSentryNativeInit: could not add "import Sentry" — "${IMPORT_ANCHOR}" not found in the AppDelegate.`,
+      )
+    }
     return cfg
   })
 }

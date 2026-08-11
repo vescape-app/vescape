@@ -96,6 +96,13 @@ describe('sentryAppDelegateInitProblems', () => {
     ])
   })
 
+  it('rejects an AppDelegate with no recognisable boot call', () => {
+    const source = appDelegate().replace('factory.startReactNative', 'factory.bootSomethingElse')
+    expect(sentryAppDelegateInitProblems(source)).toEqual([
+      'startReactNative is missing — cannot verify Sentry starts first',
+    ])
+  })
+
   it('rejects an empty DSN', () => {
     const source = appDelegate().replace('https://key@sentry.io/1', '')
     expect(sentryAppDelegateInitProblems(source)).toEqual(['options.dsn is missing'])

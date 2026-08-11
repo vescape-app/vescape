@@ -58,7 +58,12 @@ export const sentryAppDelegateInitProblems = (appDelegate: string): SentryNative
 
   if (start < 0) {
     problems.push('SentrySDK.start is missing')
-  } else if (reactNative >= 0 && start > reactNative) {
+  }
+  // No boot marker means the ordering claim cannot be checked at all — treat that as a failure
+  // rather than passing an artifact whose init order is unknown.
+  if (reactNative < 0) {
+    problems.push('startReactNative is missing — cannot verify Sentry starts first')
+  } else if (start >= 0 && start > reactNative) {
     problems.push('SentrySDK.start runs after startReactNative')
   }
   if (!/options\.dsn = "https:\/\/[^"]+"/.test(appDelegate)) problems.push('options.dsn is missing')
