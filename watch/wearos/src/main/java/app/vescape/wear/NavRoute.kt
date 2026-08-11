@@ -1,12 +1,16 @@
 package app.vescape.wear
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -40,25 +44,62 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean) {
         label = "routeZoom",
     )
 
+    if (route != null && east != null && north != null) {
+        AnimatedRoute(
+            route = route,
+            targetEastM = east.toFloat(),
+            targetNorthM = north.toFloat(),
+            targetCourseDeg = (frame.courseDeg ?: 0.0).toFloat(),
+            routeSpanM = routeSpanM,
+            color = color,
+        )
+    }
+
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Rider sits below the screen centre so more of the frame is "ahead" than behind.
         val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
-
-        if (route != null && east != null && north != null) {
-            val scale = (size.minDimension - ROUTE_EDGE_INSET.toPx()) / routeSpanM
-            val rider = Offset(east.toFloat(), north.toFloat())
-            val path = routePath(route, rider, center, scale)
-            // Heading-up: rotate the whole map so the current course points at the top of the watch.
-            rotate(degrees = -(frame.courseDeg ?: 0.0).toFloat(), pivot = center) {
-                drawRoute(path, color)
-            }
-        }
-
         // "You are here": filled dot with a halo, at the rider anchor.
         drawCircle(color.copy(alpha = 0.20f), radius = RIDER_DOT_R.toPx() * 2.2f, center = center)
         drawCircle(color, radius = RIDER_DOT_R.toPx(), center = center)
     }
 }
+
+@Composable
+private fun AnimatedRoute(
+    route: WatchRoute,
+    targetEastM: Float,
+    targetNorthM: Float,
+    targetCourseDeg: Float,
+    routeSpanM: Float,
+    color: Color,
+) {
+    val eastM = remember { Animatable(targetEastM) }
+    val northM = remember { Animatable(targetNorthM) }
+    val courseDeg = remember { Animatable(targetCourseDeg) }
+    val motionSpec = tween<Float>(durationMillis = ROUTE_MOTION_EASE_MS, easing = LinearEasing)
+
+    LaunchedEffect(targetEastM) { eastM.animateTo(targetEastM, motionSpec) }
+    LaunchedEffect(targetNorthM) { northM.animateTo(targetNorthM, motionSpec) }
+    LaunchedEffect(targetCourseDeg) {
+        courseDeg.animateTo(
+            courseDeg.value + shortestAngleDelta(courseDeg.value, targetCourseDeg),
+            motionSpec,
+        )
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
+        val scale = (size.minDimension - ROUTE_EDGE_INSET.toPx()) / routeSpanM
+        val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
+        // Heading-up, taking the shortest turn across the 0°/360° boundary.
+        rotate(degrees = -courseDeg.value, pivot = center) {
+            drawRoute(path, color)
+        }
+    }
+}
+
+internal fun shortestAngleDelta(fromDeg: Float, toDeg: Float): Float =
+    (((toDeg - fromDeg + 180f) % 360f + 360f) % 360f) - 180f
 
 /** Route points (metres east/north of the route origin) into screen pixels around the rider. */
 private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: Float): Path =
@@ -90,6 +131,7 @@ private const val DEFAULT_ROUTE_SPAN_M = 600.0
 private const val MIN_ROUTE_SPAN_M = 150f
 private const val MAX_ROUTE_SPAN_M = 2_000f
 private const val ROUTE_ZOOM_EASE_MS = 350
+private const val ROUTE_MOTION_EASE_MS = 300
 
 private val ROUTE_EDGE_INSET = 24.dp
 private val ROUTE_W = 2.dp
