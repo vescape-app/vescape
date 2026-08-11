@@ -22,6 +22,7 @@ import expo.modules.vescapecore.connection.buildSessionConfig
 
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
+import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -357,6 +358,9 @@ class VescapeCoreModule : Module() {
     }
     Function("recordPhoneHeading") { headingDeg: Double ->
       CoreForegroundService.recordPhoneHeading(context.applicationContext, headingDeg)
+    }
+    Function("setWatchRouteSpanM") { spanM: Double? ->
+      WatchRouteMirror.viewportSpanM = spanM
     }
     Function("setTelemetryRecordingEnabled") { enabled: Boolean -> setTelemetryRecordingEnabled(enabled) }
     Function("setBmsSeriesFocused") { focused: Boolean ->

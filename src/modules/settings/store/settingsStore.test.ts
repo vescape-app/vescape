@@ -34,7 +34,7 @@ const BASE: AppSettings = {
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
   telemetryPollRateHz: 20,
-  wearMirrorIntervalMs: 500,
+  wearMirrorIntervalMs: 250,
   wearAutoLaunchOnConnect: true,
   riderId: null,
   riderName: null,

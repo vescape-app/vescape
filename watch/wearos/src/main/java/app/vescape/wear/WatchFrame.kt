@@ -6,7 +6,7 @@ import java.nio.ByteOrder
 /**
  * Float32 lane count + order of a Watch Frame:
  *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
- *   7 riderEast, 8 riderNorth, 9 course.
+ *   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan.
  *
  * Lanes 7-9 place the rider on the route pushed over [ROUTE_PATH]: metres east/north of that route's
  * origin plus the course, degrees clockwise from north.
@@ -19,7 +19,7 @@ import java.nio.ByteOrder
  * different app versions still talk: an older phone's shorter frame keeps rendering, it just carries
  * no nav. Only the first [WATCH_FRAME_MIN_FIELD_COUNT] lanes are required.
  */
-private const val WATCH_FRAME_FIELD_COUNT = 10
+private const val WATCH_FRAME_FIELD_COUNT = 11
 private const val WATCH_FRAME_MIN_FIELD_COUNT = 5
 private const val WATCH_FRAME_HEADER_BYTES = 2
 
@@ -49,6 +49,8 @@ data class WatchFrame(
     val riderNorthM: Double? = null,
     /** Travel course, degrees clockwise from north. */
     val courseDeg: Double? = null,
+    /** Horizontal route metres visible on the phone map. */
+    val routeSpanM: Double? = null,
 )
 
 /** Pure bytes -> [WatchFrame] decoder. Returns null on a short buffer or too few lanes. */
@@ -78,6 +80,7 @@ object WatchFrameDecoder {
             riderEastM = lanes[7].orNull(),
             riderNorthM = lanes[8].orNull(),
             courseDeg = lanes[9].orNull(),
+            routeSpanM = lanes[10].orNull(),
         )
     }
 

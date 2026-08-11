@@ -7,7 +7,7 @@ import kotlin.math.abs
 /**
  * Number of Float32 lanes in a Watch Frame, in this fixed order:
  *   0 speed, 1 duty, 2 battery, 3 motorTemp, 4 ctrlTemp, 5 navBearing, 6 navDistance,
- *   7 riderEast, 8 riderNorth, 9 course.
+ *   7 riderEast, 8 riderNorth, 9 course, 10 routeSpan.
  *
  * Lanes 7-9 place the rider against the route pushed on [WATCH_ROUTE_PATH]: metres east/north of
  * that route's origin (see `offsetMeters`) plus the current course, degrees clockwise from north.
@@ -17,7 +17,7 @@ import kotlin.math.abs
  * order by convention (ADR-0018). Adding or reordering a lane means editing both sides in the same
  * order, or the decode silently misreads. Keep the two lists adjacent in review.
  */
-internal const val WATCH_FRAME_FIELD_COUNT = 10
+internal const val WATCH_FRAME_FIELD_COUNT = 11
 
 /** Header (1 byte field-count + 1 byte flags) + Float32 lanes, little-endian. */
 internal const val WATCH_FRAME_BYTES = 2 + WATCH_FRAME_FIELD_COUNT * 4
@@ -49,6 +49,8 @@ internal data class WatchFrame(
     val riderNorthM: Double? = null,
     /** Travel course, degrees clockwise from north. Null when the fix carries no usable heading. */
     val courseDeg: Double? = null,
+    /** Horizontal metres visible on the phone map; wrist route uses the same world span. */
+    val routeSpanM: Double? = null,
 )
 
 /** The latest cold-path values the watch tick reads to build a frame. `stale` is decided at tick time. */
@@ -66,6 +68,7 @@ internal data class WatchSnapshot(
     val riderEastM: Double? = null,
     val riderNorthM: Double? = null,
     val courseDeg: Double? = null,
+    val routeSpanM: Double? = null,
 )
 
 /**
@@ -86,6 +89,7 @@ internal object WatchFrameBuilder {
         riderEastM = snapshot.riderEastM,
         riderNorthM = snapshot.riderNorthM,
         courseDeg = snapshot.courseDeg,
+        routeSpanM = snapshot.routeSpanM,
     )
 
     /**
@@ -122,6 +126,7 @@ internal object WatchFrameBuilder {
             putFloat(frame.riderEastM.toLaneFloat())
             putFloat(frame.riderNorthM.toLaneFloat())
             putFloat(frame.courseDeg.toLaneFloat())
+            putFloat(frame.routeSpanM.toLaneFloat())
         }.array()
 
     private fun Double?.toLaneFloat(): Float = this?.toFloat() ?: Float.NaN

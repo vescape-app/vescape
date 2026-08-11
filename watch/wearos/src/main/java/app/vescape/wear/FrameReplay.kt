@@ -47,6 +47,7 @@ object ReplayFixtureParser {
                     stale = json.optBoolean("stale", false),
                     navBearing = json.nullableLane("navBearing"),
                     navDistanceM = json.nullableLane("navDistance"),
+                    routeSpanM = json.nullableLane("routeSpanM"),
                 ),
             )
         } catch (e: Exception) {

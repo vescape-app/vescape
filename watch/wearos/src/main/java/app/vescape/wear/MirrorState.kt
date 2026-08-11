@@ -1,6 +1,6 @@
 package app.vescape.wear
 
-const val WATCH_FRAME_INTERVAL_MS = 500L
+const val WATCH_FRAME_INTERVAL_MS = 250L
 const val MIRROR_DISCONNECTED_TIMEOUT_MS = WATCH_FRAME_INTERVAL_MS * 3
 
 enum class MirrorStatus {

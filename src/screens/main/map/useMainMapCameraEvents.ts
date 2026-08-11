@@ -39,6 +39,7 @@ export function useMainMapCameraEvents({
   setFollowGps,
   setFollowZoomLevel,
   onCameraSettled,
+  onWatchRouteSpanChange,
   onHeadingChange,
   repositionOffscreenIndicatorsForCamera,
   scheduleOffscreenMapIndicatorRefresh,
@@ -70,6 +71,7 @@ export function useMainMapCameraEvents({
   setFollowGps: (follow: boolean) => void
   setFollowZoomLevel: (zoom: number) => void
   onCameraSettled: (latitude: number, longitude: number, zoom: number) => void
+  onWatchRouteSpanChange: (latitude: number, zoom: number) => void
   onHeadingChange: (heading: number) => void
   repositionOffscreenIndicatorsForCamera: (camera: CameraSnapshot) => void
   scheduleOffscreenMapIndicatorRefresh: () => void
@@ -149,6 +151,7 @@ export function useMainMapCameraEvents({
         heading: state.properties.heading,
         pitch: state.properties.pitch,
       } satisfies CameraSnapshot
+      onWatchRouteSpanChange(latitude, state.properties.zoom)
       // The reveal gesture writes the camera and drives the engine itself; its
       // echoes arrive a frame late and would only add phantom velocity.
       const previewPanActive = previewPanActiveRef.current
@@ -237,6 +240,7 @@ export function useMainMapCameraEvents({
       historyActive,
       mode,
       onHeadingChange,
+      onWatchRouteSpanChange,
       mediaAssetCount,
       perspectiveEnabled,
       phoneHeadingMode,
@@ -259,8 +263,15 @@ export function useMainMapCameraEvents({
     if (camera) {
       const [longitude, latitude] = camera.centerCoordinate
       onCameraSettled(latitude, longitude, camera.zoomLevel)
+      onWatchRouteSpanChange(latitude, camera.zoomLevel)
     }
-  }, [currentCameraRef, onCameraSettled, scheduleOffscreenMapIndicatorRefresh, setCameraHeading])
+  }, [
+    currentCameraRef,
+    onCameraSettled,
+    onWatchRouteSpanChange,
+    scheduleOffscreenMapIndicatorRefresh,
+    setCameraHeading,
+  ])
 
   return { handleMapLoaded, handleCameraChanged, handleMapIdle }
 }

@@ -106,8 +106,8 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(start = 32.dp, end = 32.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: "--", "km/h", speedColor)
-                LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: "--", "%", dutyColor)
+                LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: DASH, "km/h", speedColor)
+                LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: DASH, "%", dutyColor)
             }
 
             // ── Bottom: battery % above the bottom gauge ──
@@ -117,7 +117,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
             ) {
                 Text(
                     // Same size as the curved temp values so the three secondary readouts match.
-                    text = frame.battery?.let { "${format(it, 0)}%" } ?: "--",
+                    text = frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
                     style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
                     color = battColor,
                 )
@@ -130,7 +130,7 @@ internal fun FrameLayout(frame: WatchFrame, muted: Boolean) {
 @Composable
 internal fun AmbientLayout(frame: WatchFrame) {
     Text(
-        text = frame.speed?.let { format(it, 0) } ?: "--",
+        text = frame.speed?.let { format(it, 0) } ?: DASH,
         style = MaterialTheme.typography.display1,
         color = AmbientText,
         textAlign = TextAlign.Center,
@@ -224,7 +224,7 @@ private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, col
 
 private fun format(value: Double, decimals: Int): String = String.format("%.${decimals}f", value)
 
-private fun temp(value: Double?): String = value?.let { "${format(it, 0)}°" } ?: "--"
+private fun temp(value: Double?): String = value?.let { "${format(it, 0)}°" } ?: DASH
 
 private fun batteryColor(value: Double?): Color = when {
     value == null -> SecondaryText

@@ -2,6 +2,8 @@ package app.vescape.wear
 
 import androidx.compose.ui.graphics.Color
 
+internal const val DASH = "—"
+
 // Palette mirrors src/constants/theme.ts so the watch matches the phone app.
 internal val PrimaryText = Color(0xFFF1F5F9) // slate.textPrimary
 internal val SecondaryText = Color(0xFF94A3B8) // slate.textSecondary

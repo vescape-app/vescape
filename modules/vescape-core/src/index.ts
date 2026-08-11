@@ -1685,6 +1685,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteDebugRecording(name: string): Promise<void>
   startDebugReplay(name: string, options: DebugReplayOptions | null): Promise<void>
   recordPhoneHeading(headingDeg: number): void
+  setWatchRouteSpanM(spanM: number | null): void
   stopDebugReplay(): Promise<void>
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
@@ -2819,6 +2820,17 @@ export function addReplayPhoneHeadingListener(
  */
 export function recordPhoneHeading(headingDeg: number): void {
   native.recordPhoneHeading(headingDeg)
+}
+
+/**
+ * Sync the settled phone-map viewport scale to the Android Wear route. iOS accepts this as a no-op
+ * because the Wear Mirror is Android-only.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setWatchRouteSpanM`
+ */
+export function setWatchRouteSpanM(spanM: number | null): void {
+  native.setWatchRouteSpanM(spanM)
 }
 
 export function addTelemetryRebuildProgressListener(

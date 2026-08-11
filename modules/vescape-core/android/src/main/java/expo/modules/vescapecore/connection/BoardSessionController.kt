@@ -144,7 +144,7 @@ private const val NOTIFICATION_ID = 1001
 private const val HISTORY_FLUSH_INTERVAL_MS = 300L
 private const val LIVE_SERIES_INTERVAL_MS = 1_000L
 private const val LIVE_SERIES_BUCKETS = 64
-private const val WATCH_FRAME_INTERVAL_MS = 500L
+private const val WATCH_FRAME_INTERVAL_MS = 250L
 private const val NOTIFICATION_TELEMETRY_INTERVAL_MS = 10_000L
 private const val GATT_CONNECT_TIMEOUT_MS = 6_000L
 private const val GATT_READY_TIMEOUT_MS = 6_000L
@@ -1667,6 +1667,7 @@ private var wearAutoLaunchOnConnect = true
             // Absolute course, the rotation the wrist applies to its north-up world. Null while the
             // fix carries no usable heading, which leaves the wrist drawing the route north-up.
             courseDeg = if (offset != null) rider?.courseDeg else null,
+            routeSpanM = WatchRouteMirror.viewportSpanM,
         )
     }
 

@@ -278,7 +278,7 @@ class AppDataRepository private constructor(private val context: Context) {
       boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
-      wearMirrorIntervalMs = req("wearMirrorIntervalMs", 500, ::validWearMirrorIntervalMs),
+      wearMirrorIntervalMs = req("wearMirrorIntervalMs", 250, ::validWearMirrorIntervalMs),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },

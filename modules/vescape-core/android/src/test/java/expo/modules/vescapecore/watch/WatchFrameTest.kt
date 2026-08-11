@@ -31,6 +31,10 @@ class WatchFrameTest {
             waiting = flags and WATCH_FRAME_FLAG_WAITING != 0,
             navBearing = lane(),
             navDistanceM = lane(),
+            riderEastM = lane(),
+            riderNorthM = lane(),
+            courseDeg = lane(),
+            routeSpanM = lane(),
         )
     }
 
@@ -83,6 +87,23 @@ class WatchFrameTest {
         )!!
         assertNull(idle.navBearing)
         assertNull(idle.navDistanceM)
+    }
+
+    @Test
+    fun `route span round-trips as the appended compatibility lane`() {
+        val frame = roundTrip(
+            WatchFrame(
+                speed = null,
+                duty = null,
+                battery = null,
+                motorTemp = null,
+                ctrlTemp = null,
+                stale = false,
+                routeSpanM = 725.0,
+            ),
+        )!!
+
+        assertEquals(725.0, frame.routeSpanM!!, 1e-3)
     }
 
     @Test

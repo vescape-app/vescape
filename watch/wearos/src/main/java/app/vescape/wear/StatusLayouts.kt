@@ -48,11 +48,11 @@ internal fun WaitingLayout(isAmbient: Boolean) {
     StatusLayout(title = "Board connecting…", caption = "Waiting for telemetry", spin = true)
 }
 
-/** Ambient stand-in while there is no frame to show: a dim "--" hero. */
+/** Ambient stand-in while there is no frame to show: a dim dash hero. */
 @Composable
 private fun AmbientPlaceholder() {
     Text(
-        text = "--",
+        text = DASH,
         style = MaterialTheme.typography.display1,
         color = AmbientText,
         textAlign = TextAlign.Center,

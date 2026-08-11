@@ -22,6 +22,10 @@ internal object WatchRouteMirror {
     /** Origin of the route currently on the watch; the frame's rider lanes are offsets from it. */
     val origin: GeoPoint? get() = pusher?.origin
 
+    /** Settled phone-map horizontal viewport span, carried on the next live Watch Frame. */
+    @Volatile
+    var viewportSpanM: Double? = null
+
     /**
      * Attaches to [controller] so every published path lands on the watch. Idempotent: attaching
      * again over a live mirror keeps the pusher (and its origin) rather than orphaning the route

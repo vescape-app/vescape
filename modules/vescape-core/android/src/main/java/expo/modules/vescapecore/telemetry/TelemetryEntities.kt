@@ -383,7 +383,7 @@ data class AppSettings(
   val boardMoveStrengthPercent: Int = 60,
   val connectionSoundsEnabled: Boolean = true,
   val telemetryPollRateHz: Int = 20,
-  val wearMirrorIntervalMs: Int = 500,
+  val wearMirrorIntervalMs: Int = 250,
   val wearAutoLaunchOnConnect: Boolean = true,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
