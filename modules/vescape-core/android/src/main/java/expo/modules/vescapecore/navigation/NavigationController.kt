@@ -528,11 +528,13 @@ class NavigationController(
         MapboxDirectionsApi(MapboxDirectionsApi.accessToken(context.applicationContext)),
         AppDataNavigationStore(context.applicationContext),
       ).also {
-        instance = it
         // The Wear Mirror follows the path from here rather than from the board session: a route is
-        // Navigation truth and must reach the wrist without waiting for a board. Attached before
-        // restore so the cold-start path pushes itself.
+        // Navigation truth and must reach the wrist without waiting for a board. Attached *before*
+        // the instance is published, or a caller taking the lock-free fast path could publish a
+        // Navigation through a controller nothing is listening to, and that route would never reach
+        // the wrist.
         WatchRouteMirror.attach(it, context.applicationContext)
+        instance = it
         // Restore here rather than from the module, so a JS reload — which recreates the module but
         // not this singleton — cannot re-run it over a Navigation the rider has since replaced.
         it.restore()
