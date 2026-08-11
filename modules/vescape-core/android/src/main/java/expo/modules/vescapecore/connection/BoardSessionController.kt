@@ -66,10 +66,12 @@ import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WatchMirrorPresence
 import expo.modules.vescapecore.watch.WatchRouteMirror
+import expo.modules.vescapecore.watch.WatchSettingsPusher
 import expo.modules.vescapecore.watch.WatchSnapshot
 import expo.modules.vescapecore.watch.WatchTelemetryPusher
 import expo.modules.vescapecore.watch.WatchTick
 import expo.modules.vescapecore.watch.offsetMeters
+import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.buildLiveState
 import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
 import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
@@ -289,6 +291,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
     }
     private val watchPusher by lazy {
         WatchTelemetryPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    }
+    private val watchSettingsPusher by lazy {
+        WatchSettingsPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
     }
     private val watchMirrorPresence by lazy {
         WatchMirrorPresence(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
@@ -2432,6 +2437,7 @@ private var wearAutoLaunchOnConnect = true
         movingThresholdCentiKmh = settings.toMetricSanitizerConfig().movingSpeedThresholdCentiKmh
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
         watchTick.setIntervalMs(settings.wearMirrorIntervalMs.toLong())
+        watchSettingsPusher.push(settings.toWatchSettings())
         wearAutoLaunchOnConnect = settings.wearAutoLaunchOnConnect
         autoCloseEnabled = settings.autoCloseEnabled
         autoCloseDelayMinutes = settings.autoCloseDelayMinutes

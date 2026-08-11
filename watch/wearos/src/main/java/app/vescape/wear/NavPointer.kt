@@ -36,7 +36,7 @@ import kotlin.math.sin
  */
 @Composable
 internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean) {
-    val color = if (muted) DimText else NavColor
+    val color = if (muted) DimText else navColor()
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val center = Offset(size.width / 2f, size.height / 2f)

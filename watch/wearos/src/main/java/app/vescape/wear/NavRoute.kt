@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 internal fun NavRoute(frame: WatchFrame, muted: Boolean) {
-    val color = if (muted) DimText else NavColor
+    val color = if (muted) DimText else navColor()
     val route = RouteState.route.value
     val east = frame.riderEastM
     val north = frame.riderNorthM

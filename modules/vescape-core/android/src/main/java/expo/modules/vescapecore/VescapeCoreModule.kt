@@ -871,6 +871,8 @@ class VescapeCoreModule : Module() {
         key == "telemetryPollRateHz" ||
         key == "wearMirrorIntervalMs" ||
 key == "wearAutoLaunchOnConnect" ||
+        // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
+        key == "riderColor" ||
         key == "boardWarningsEnabled"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)

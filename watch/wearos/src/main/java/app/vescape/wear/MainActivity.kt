@@ -13,6 +13,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.wear.ambient.AmbientLifecycleObserver
 import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.DataEvent
+import com.google.android.gms.wearable.DataItem
+import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
 
@@ -55,20 +57,32 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Route polyline arriving on the Data Layer: pushed once per route change, deleted when the
-     * route ends. Deletion clears the wrist route, which is what hides the drawn line.
+     * Cold phone state arriving on the Data Layer: the route polyline (pushed once per route
+     * change, deleted when the route ends — deletion is what hides the drawn line) and the rider's
+     * settings (pushed once per settings change).
      */
-    private val routeListener = DataClient.OnDataChangedListener { events ->
+    private val dataListener = DataClient.OnDataChangedListener { events ->
         for (event in events) {
-            if (event.dataItem.uri.path != ROUTE_PATH) continue
-            val route = when (event.type) {
-                DataEvent.TYPE_DELETED -> null
-                else -> WatchRouteDecoder.decode(event.dataItem.data ?: ByteArray(0))
+            val deleted = event.type == DataEvent.TYPE_DELETED
+            when (event.dataItem.uri.path) {
+                ROUTE_PATH -> {
+                    val route = if (deleted) null else WatchRouteDecoder.decode(event.dataItem.data ?: ByteArray(0))
+                    runOnUiThread { RouteState.accept(route) }
+                }
+                SETTINGS_PATH -> {
+                    val settings = if (deleted) WatchSettings() else readSettings(event.dataItem)
+                    runOnUiThread { SettingsState.accept(settings) }
+                }
             }
-            runOnUiThread { RouteState.accept(route) }
         }
         events.release()
     }
+
+    private fun readSettings(item: DataItem): WatchSettings = WatchSettings(
+        riderColor = parseRiderColor(
+            DataMapItem.fromDataItem(item).dataMap.getString(SETTING_RIDER_COLOR),
+        ),
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -93,11 +107,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         messageClient.addListener(listener)
-        dataClient.addListener(routeListener)
-        // A listener only sees changes, so pick up a route that synced while we were stopped.
+        dataClient.addListener(dataListener)
+        // A listener only sees changes, so pick up whatever synced while we were stopped.
         dataClient.dataItems.addOnSuccessListener { items ->
-            val item = items.firstOrNull { it.uri.path == ROUTE_PATH }
-            RouteState.accept(item?.data?.let(WatchRouteDecoder::decode))
+            val route = items.firstOrNull { it.uri.path == ROUTE_PATH }
+            RouteState.accept(route?.data?.let(WatchRouteDecoder::decode))
+            val settings = items.firstOrNull { it.uri.path == SETTINGS_PATH }
+            SettingsState.accept(settings?.let(::readSettings) ?: WatchSettings())
             items.release()
         }
         phoneLinkMonitor.start()
@@ -112,7 +128,7 @@ class MainActivity : ComponentActivity() {
         }
         WatchDiagnostics.recordReceiver(active = false)
         phoneLinkMonitor.stop()
-        dataClient.removeListener(routeListener)
+        dataClient.removeListener(dataListener)
         messageClient.removeListener(listener)
         super.onStop()
     }

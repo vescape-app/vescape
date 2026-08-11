@@ -1,5 +1,6 @@
 package app.vescape.wear
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 internal const val DASH = "—"
@@ -16,4 +17,11 @@ internal val CtrlTempColor = Color(0xFFF97316) // orange.color (controllerTemp)
 internal val BatteryColor = Color(0xFF22C55E) // green.color
 internal val WarningColor = Color(0xFFF97316) // orange.color
 internal val NavColor = Color(0xFFA855F7) // purple.color (navigation)
+
+/**
+ * Nav accent the wrist actually draws with: the rider's own colour when they picked one on the
+ * phone, so route, chevron and rider dot match the phone map instead of a hardcoded purple.
+ */
+@Composable
+internal fun navColor(): Color = SettingsState.settings.value.riderColor ?: NavColor
 internal val AmbientText = Color(0xFFB8C4CE)
