@@ -1,34 +1,22 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
+import type { WeatherHour } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { theme } from '@/constants/theme'
-import {
-  isNightAtTime,
-  weatherCodeToColor,
-  type WeatherHourForecast,
-} from '@/modules/weather/lib/weather'
+import { formatHour, weatherIconColor } from '@/modules/weather/lib/weather'
 
-interface HourItemProps {
-  item: WeatherHourForecast
-  sunrise: string | null
-  sunset: string | null
-}
-
-function HourItem({ item, sunrise, sunset }: HourItemProps) {
-  const isNight = isNightAtTime(item.hourNum, item.minuteNum, sunrise, sunset)
+function HourItem({ item }: { item: WeatherHour }) {
   return (
     <View style={styles.item}>
-      <Text style={styles.hour}>{item.hour}</Text>
+      <Text style={styles.hour}>{formatHour(item.minuteOfDay)}</Text>
       <WeatherIcon
-        code={item.weatherCode}
-        hour={item.hourNum}
-        isNight={isNight}
+        icon={item.icon}
         size={20}
-        color={weatherCodeToColor(item.weatherCode, item.hourNum, isNight)}
+        color={weatherIconColor(item.icon)}
         weight="duotone"
       />
-      <Text style={styles.temp}>{item.temperature}°</Text>
+      <Text style={styles.temp}>{item.temperatureC}°</Text>
       {item.precipitationProbability > 0 && (
         <Text style={styles.precip}>{item.precipitationProbability}%</Text>
       )}
@@ -36,14 +24,8 @@ function HourItem({ item, sunrise, sunset }: HourItemProps) {
   )
 }
 
-interface WeatherHourlyStripProps {
-  hours: WeatherHourForecast[]
-  sunrise: string | null
-  sunset: string | null
-}
-
 /** Horizontal scroll of hourly forecast items. */
-export function WeatherHourlyStrip({ hours, sunrise, sunset }: WeatherHourlyStripProps) {
+export function WeatherHourlyStrip({ hours }: { hours: WeatherHour[] }) {
   return (
     <ScrollView
       horizontal
@@ -52,7 +34,7 @@ export function WeatherHourlyStrip({ hours, sunrise, sunset }: WeatherHourlyStri
       style={styles.container}
     >
       {hours.map((item) => (
-        <HourItem key={item.hour} item={item} sunrise={sunrise} sunset={sunset} />
+        <HourItem key={item.minuteOfDay} item={item} />
       ))}
     </ScrollView>
   )

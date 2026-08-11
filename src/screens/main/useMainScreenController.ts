@@ -19,7 +19,6 @@ import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
@@ -73,10 +72,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   )
   const liveLocations = useBleStore((s) => s.liveLocationHistory)
   const latestApproximateLocation = useBleStore((s) => s.latestApproximateLocation)
-  const fetchWeather = useWeatherStore((s) => s.fetch)
-  const refreshWeather = useWeatherStore((s) => s.refresh)
-  const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
-  const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const satelliteOverlayEnabled = useSettingsStore((s) => s.satelliteOverlayEnabled)
   const satelliteImageryOpacity = useSettingsStore((s) => s.satelliteImageryOpacity)
@@ -183,15 +178,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   useEffect(() => {
     setSeekTimeMs(null)
   }, [selectedSession, setSeekTimeMs])
-
-  useEffect(() => {
-    const loc = liveLocations.at(-1) ?? latestApproximateLocation
-    const lat = loc?.latitude ?? lastGpsLatitude
-    const lon = loc?.longitude ?? lastGpsLongitude
-    if (lat != null && lon != null) {
-      void fetchWeather(lat, lon)
-    }
-  }, [liveLocations, latestApproximateLocation, lastGpsLatitude, lastGpsLongitude, fetchWeather])
 
   const weatherActive = mode === 'weather'
   const legalLimitsActive = mode === 'legalLimits'
@@ -469,7 +455,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     exitWeatherMode,
     enterLegalLimitsMode,
     exitLegalLimitsMode,
-    refreshWeather,
     handleMapFocus,
     exitMapFocus,
     onSeek: setSeekTimeMs,

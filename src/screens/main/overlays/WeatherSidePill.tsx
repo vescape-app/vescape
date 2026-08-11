@@ -1,5 +1,6 @@
 import { DropIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
+import type { WeatherIconSlug } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -7,19 +8,15 @@ import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 
 /** Compact weather control aligned opposite the map selectors on the home overlay. */
 export function WeatherSidePill({
-  code,
+  icon,
   temperature,
   precipProbability,
-  hour,
-  isNight,
   verticalOffset,
   onPress,
 }: {
-  code: number
+  icon: WeatherIconSlug
   temperature: number
   precipProbability: number | null
-  hour: number
-  isNight: boolean
   verticalOffset: number
   onPress?: () => void
 }) {
@@ -30,9 +27,7 @@ export function WeatherSidePill({
       style={[styles.pill, { transform: [{ translateY: verticalOffset }] }]}
     >
       <WeatherIcon
-        code={code}
-        hour={hour}
-        isNight={isNight}
+        icon={icon}
         size={18}
         color={theme.palette.slate.textSecondary}
         weight="duotone"

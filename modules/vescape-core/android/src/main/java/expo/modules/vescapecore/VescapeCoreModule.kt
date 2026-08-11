@@ -5,6 +5,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
@@ -169,6 +170,7 @@ class VescapeCoreModule : Module() {
       "onAppStatus",
       "onNavigation",
       "onRouteProgress",
+      "onWeather",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -294,6 +296,13 @@ class VescapeCoreModule : Module() {
       )
     }
     OnStopObserving("onRouteProgress") { stopObserving("onRouteProgress") }
+    OnStartObserving("onWeather") {
+      startObserving("onWeather")
+      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
+      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
+      sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
+    }
+    OnStopObserving("onWeather") { stopObserving("onWeather") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -408,6 +417,14 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAppStatus`
     Function("getAppStatus") {
       AppStatusCoordinator.get(context).current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
+    Function("getWeather") {
+      WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
+    Function("refreshWeather") {
+      WeatherCoordinator.get().refresh()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `provisionDeviceCredential`
     AsyncFunction("provisionDeviceCredential") Coroutine {

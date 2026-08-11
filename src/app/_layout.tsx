@@ -28,6 +28,7 @@ import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
 import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
+import { startWeatherSync } from '@/modules/weather/store/weatherStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
@@ -85,6 +86,7 @@ function RootLayout() {
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
+    const stopWeatherSync = startWeatherSync()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
@@ -92,6 +94,7 @@ function RootLayout() {
       stopAlertsBoardSync()
       stopAppStatusSync()
       stopNavigationSync()
+      stopWeatherSync()
     }
   }, [fixturesReady])
 

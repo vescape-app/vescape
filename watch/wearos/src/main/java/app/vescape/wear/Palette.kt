@@ -25,3 +25,21 @@ internal val NavColor = Color(0xFFA855F7) // purple.color (navigation)
 @Composable
 internal fun navColor(): Color = SettingsState.settings.value.riderColor ?: NavColor
 internal val AmbientText = Color(0xFFB8C4CE)
+
+/**
+ * Condition tints, keyed by the icon slug the phone resolves. Mirrors `theme.weather`; the phone
+ * owns which WMO code is which condition, each renderer owns what that condition looks like.
+ *
+ * @parity /src/constants/theme.ts `weather`
+ */
+internal fun weatherColor(slug: String): Color = when (slug) {
+    "sun" -> Color(0xFFFBBF24) // amber.light
+    "moon" -> Color(0xFFA78BFA) // violet.moon
+    "cloud-sun" -> Color(0xFFF59E0B) // amber.color
+    "cloud-moon" -> Color(0xFF7C6FEF) // violet.color
+    "cloud-fog" -> Color(0xFFCBD5E1) // slate.text
+    "cloud-rain" -> Color(0xFF60A5FA) // blue.color
+    "cloud-snow" -> Color(0xFFBAE6FD) // sky.snow
+    "cloud-lightning" -> Color(0xFFC084FC) // purple.thunder
+    else -> Color(0xFF94A3B8) // slate.light
+}
