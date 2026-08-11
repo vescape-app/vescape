@@ -12,6 +12,13 @@ class WatchCommandTest {
     }
 
     @Test
+    fun `a wake level command is a kind byte and the wire level`() {
+        assertArrayEquals(byteArrayOf(2, 0), encodeWakeLevelCommand(WakeLevel.ASLEEP))
+        assertArrayEquals(byteArrayOf(2, 1), encodeWakeLevelCommand(WakeLevel.ACTIVE))
+        assertArrayEquals(byteArrayOf(2, 2), encodeWakeLevelCommand(WakeLevel.AMBIENT))
+    }
+
+    @Test
     fun `a direction is clamped so the wrist can never ask for more than one board move`() {
         assertArrayEquals(byteArrayOf(1, 1), encodeMoveCommand(127))
         assertArrayEquals(byteArrayOf(1, -1), encodeMoveCommand(-127))

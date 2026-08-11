@@ -21,6 +21,7 @@ import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.TelemetryRepository
+import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
@@ -234,6 +235,11 @@ class CoreForegroundService : Service() {
         /** Wrist Board Move tick (ADR-0033). Dropped when no session is running — nothing to move. */
         fun watchMove(direction: Int) {
             instance?.controller?.watchMove(direction)
+        }
+
+        /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
+        internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
+            instance?.controller?.watchMirrorWakeLevel(level)
         }
 
         fun pushProfileToBoard(

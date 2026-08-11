@@ -18,6 +18,27 @@ import java.util.concurrent.atomic.AtomicInteger
 const val COMMAND_PATH = "/command"
 
 private const val COMMAND_KIND_MOVE: Byte = 1
+private const val COMMAND_KIND_MIRROR_AWAKE: Byte = 2
+
+/**
+ * How often the Mirror re-states its wake level while it is on screen. The phone stops pushing
+ * after `WATCH_MIRROR_AWAKE_TIMEOUT_MS` (45 s) without a tick, so this is a third of its dead-man:
+ * the phone stops streaming into a wrist that died, dropped out of range, or lost its stop message.
+ */
+const val WAKE_LEVEL_HEARTBEAT_MS = 15_000L
+
+/**
+ * How awake the Mirror is, and therefore how fast frames are worth receiving. Without this the
+ * phone pushes at full cadence into a stopped activity for as long as its service lives, purely
+ * because the Mirror is *installed* — the capability it gates on says nothing about running.
+ *
+ * Wire values — append, never renumber.
+ */
+enum class WakeLevel(val wire: Byte) {
+    ASLEEP(0),
+    ACTIVE(1),
+    AMBIENT(2),
+}
 
 /**
  * Tick spacing while a Move button is held. The phone stops the board after
@@ -29,6 +50,10 @@ const val MOVE_REPEAT_MS = 300L
 /** `[kind, direction]`, direction `-1` back / `0` stop / `1` forward. */
 fun encodeMoveCommand(direction: Int): ByteArray =
     byteArrayOf(COMMAND_KIND_MOVE, direction.coerceIn(-1, 1).toByte())
+
+/** `[kind, level]`, level per [WakeLevel.wire]. */
+fun encodeWakeLevelCommand(level: WakeLevel): ByteArray =
+    byteArrayOf(COMMAND_KIND_MIRROR_AWAKE, level.wire)
 
 /**
  * Fire-and-forget send of the rider's *current* intent to every connected node, off the UI thread.
@@ -68,14 +93,29 @@ class CommandSender(context: Context) {
         }
     }
 
-    private fun send(direction: Int) {
+    private fun send(direction: Int) = sendPayload(encodeMoveCommand(direction))
+
+    private fun sendPayload(payload: ByteArray) {
         try {
-            val payload = encodeMoveCommand(direction)
             for (node in Tasks.await(nodeClient.connectedNodes)) {
                 Tasks.await(messageClient.sendMessage(node.id, COMMAND_PATH, payload))
             }
         } catch (error: Exception) {
-            Log.w("VescapeWear", "Move command send failed", error)
+            Log.w("VescapeWear", "Wrist command send failed", error)
+        }
+    }
+
+    /**
+     * Tell the phone how awake the Mirror is. Not routed through the latest-wins [pending] slot:
+     * a wake level is not a Move, and coalescing the two would let a stale hold ride out under a
+     * wake tick. Ordered behind whatever is already queued, which is all this needs.
+     */
+    fun sendWakeLevel(level: WakeLevel) {
+        try {
+            sends.execute { sendPayload(encodeWakeLevelCommand(level)) }
+        } catch (rejected: RejectedExecutionException) {
+            // The wrist app is going away; the phone's wake-level dead-man stops the push anyway.
+            Log.w("VescapeWear", "Wake level dropped after shutdown", rejected)
         }
     }
 

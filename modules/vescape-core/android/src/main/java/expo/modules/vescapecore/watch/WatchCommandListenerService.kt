@@ -17,6 +17,7 @@ class WatchCommandListenerService : WearableListenerService() {
         if (event.path != WATCH_COMMAND_PATH) return
         when (val command = WatchCommandDecoder.decode(event.data)) {
             is WatchCommand.Move -> CoreForegroundService.watchMove(command.direction)
+            is WatchCommand.MirrorAwake -> CoreForegroundService.watchMirrorWakeLevel(command.level)
             null -> Unit
         }
     }

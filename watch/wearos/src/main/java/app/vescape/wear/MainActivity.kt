@@ -3,8 +3,9 @@ package app.vescape.wear
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private val ongoingActivityController by lazy { OngoingActivityController(this) }
     private val commandSender by lazy { CommandSender(this) }
     private val isAmbient = mutableStateOf(false)
+    private val wakeHeartbeat = Handler(Looper.getMainLooper())
     private val ambientObserver = AmbientLifecycleObserver(this, AmbientCallback())
     private val replayEnabled by lazy {
         ReplayGate.isEnabled(this, intent?.hasExtra("replay") == true)
@@ -136,7 +138,6 @@ class MainActivity : ComponentActivity() {
             MirrorScreen(
                 sender = commandSender,
                 isAmbient = isAmbient.value,
-                onKeepScreenAwakeChanged = ::setKeepScreenAwake,
                 onRequestClose = { finishAndRemoveTask() },
             )
         }
@@ -151,6 +152,7 @@ class MainActivity : ComponentActivity() {
             frameReplayer.start(replayFixture())
             return
         }
+        publishWakeLevel()
         messageClient.addListener(listener)
         dataClient.addListener(dataListener)
         // A listener only sees changes, so pick up whatever synced while we were stopped.
@@ -174,6 +176,10 @@ class MainActivity : ComponentActivity() {
             return
         }
         WatchDiagnostics.recordReceiver(active = false)
+        // Stop the stream before the listeners go: an unheard 4 Hz push is the wrist's, and the
+        // phone's, single biggest avoidable drain. The phone's dead-man covers a lost stop.
+        wakeHeartbeat.removeCallbacksAndMessages(null)
+        commandSender.sendWakeLevel(WakeLevel.ASLEEP)
         phoneLinkMonitor.stop()
         dataClient.removeListener(dataListener)
         messageClient.removeListener(listener)
@@ -191,7 +197,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         lifecycle.removeObserver(ambientObserver)
-        setKeepScreenAwake(false)
+        wakeHeartbeat.removeCallbacksAndMessages(null)
         phoneLinkMonitor.shutdown()
         ongoingActivityController.stop()
         super.onDestroy()
@@ -210,21 +216,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun setKeepScreenAwake(keepAwake: Boolean) {
-        if (keepAwake) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+    /**
+     * Re-states the current [WakeLevel] to the phone on a heartbeat, so the phone pushes frames only
+     * while the Mirror is actually on a wrist, at a cadence matching what the wrist can show.
+     */
+    private fun publishWakeLevel() {
+        wakeHeartbeat.removeCallbacksAndMessages(null)
+        if (replayEnabled) return
+        commandSender.sendWakeLevel(if (isAmbient.value) WakeLevel.AMBIENT else WakeLevel.ACTIVE)
+        wakeHeartbeat.postDelayed(::publishWakeLevel, WAKE_LEVEL_HEARTBEAT_MS)
     }
 
     private inner class AmbientCallback : AmbientLifecycleObserver.AmbientLifecycleCallback {
         override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
             isAmbient.value = true
+            publishWakeLevel()
         }
 
         override fun onExitAmbient() {
             isAmbient.value = false
+            publishWakeLevel()
         }
     }
 }

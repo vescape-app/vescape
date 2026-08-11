@@ -7,7 +7,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,19 +25,21 @@ import kotlinx.coroutines.launch
 /**
  * Screen shell around the live Watch Frame: routes between the gauges ([FrameLayout]), the Board
  * Move page ([MoveScreen]), the diagnostics pager page ([DiagnosticsScreen]), the
- * waiting/disconnected status layouts, the ambient hero, and the close prompt. Also owns the refresh tick that ages a stopped stream into
- * DISCONNECTED and the keep-screen-awake flag while telemetry is LIVE.
+ * waiting/disconnected status layouts, the ambient hero, and the close prompt. Also owns the
+ * refresh tick that ages a stopped stream into DISCONNECTED.
+ *
+ * The mirror deliberately does not hold the screen on. `FLAG_KEEP_SCREEN_ON` also suppresses
+ * ambient, so a ride ran the display at full brightness for hours and the low-power ambient hero
+ * below was unreachable — by far the largest battery cost the wrist had.
  */
 @Composable
 fun MirrorScreen(
     sender: CommandSender,
     isAmbient: Boolean = false,
-    onKeepScreenAwakeChanged: (Boolean) -> Unit = {},
     onRequestClose: () -> Unit = {},
 ) {
     val state by TelemetryState.mirrorState
     val phoneLink by TelemetryState.phoneLink
-    val keepScreenAwake = state.status == MirrorStatus.LIVE && !isAmbient
     var showClosePrompt by remember { mutableStateOf(false) }
     // A hold must not be interpreted as a page swipe, and must never end because the page moved.
     var moveHeld by remember { mutableStateOf(false) }
@@ -64,11 +65,6 @@ fun MirrorScreen(
     }
     BackHandler(enabled = !showClosePrompt && !weatherVisible && !navFocused) {
         showClosePrompt = true
-    }
-
-    DisposableEffect(keepScreenAwake) {
-        onKeepScreenAwakeChanged(keepScreenAwake)
-        onDispose { onKeepScreenAwakeChanged(false) }
     }
 
     LaunchedEffect(isAmbient) {

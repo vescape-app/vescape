@@ -64,7 +64,9 @@ import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
+import expo.modules.vescapecore.watch.WATCH_MIRROR_AWAKE_TIMEOUT_MS
 import expo.modules.vescapecore.watch.WatchMirrorPresence
+import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import expo.modules.vescapecore.watch.WatchMoveRelay
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.watch.WatchSettingsPusher
@@ -152,6 +154,9 @@ private const val HISTORY_FLUSH_INTERVAL_MS = 300L
 private const val LIVE_SERIES_INTERVAL_MS = 1_000L
 private const val LIVE_SERIES_BUCKETS = 64
 private const val WATCH_FRAME_INTERVAL_MS = 250L
+
+/** Push cadence while the Mirror sits in ambient/AOD, where the wrist itself redraws about once a minute. */
+private const val WATCH_FRAME_AMBIENT_INTERVAL_MS = 5_000L
 private const val NOTIFICATION_TELEMETRY_INTERVAL_MS = 10_000L
 private const val GATT_CONNECT_TIMEOUT_MS = 6_000L
 private const val GATT_READY_TIMEOUT_MS = 6_000L
@@ -327,7 +332,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             scheduler = scheduler,
             snapshot = ::watchSnapshot,
             isStale = { telemetry != null && isTelemetryStale() },
-            canPush = { watchMirrorPresence.present },
+            canPush = ::canPushWatchFrame,
             push = watchPusher::pushFrame,
             intervalMs = WATCH_FRAME_INTERVAL_MS,
         )
@@ -1856,6 +1861,65 @@ private var wearAutoLaunchOnConnect = true
      */
     fun watchMove(direction: Int) = watchMoveRelay.accept(direction)
 
+    /**
+     * Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level
+     * older than [WATCH_MIRROR_AWAKE_TIMEOUT_MS] means the wrist app is gone (killed, out of range,
+     * or its `onStop` message was lost) and is read as ASLEEP.
+     */
+    @Volatile
+    private var watchWakeLevel: WatchMirrorWakeLevel = WatchMirrorWakeLevel.ASLEEP
+
+    @Volatile
+    private var watchWakeLevelAtMs: Long = 0L
+
+    /** The rider's `wearMirrorIntervalMs`, held so ambient can hand the cadence back to it. */
+    @Volatile
+    private var configuredWatchIntervalMs: Long = WATCH_FRAME_INTERVAL_MS
+
+    /**
+     * A wrist build older than the wake protocol never reports a level, so gating it on one would
+     * blank its Mirror for good (phone and watch update on separate Play tracks). Such a wrist is
+     * pushed to unconditionally, exactly as before — the gate only applies where it can be answered.
+     */
+    private fun canPushWatchFrame(): Boolean {
+        if (!watchMirrorPresence.present) return false
+        if (!watchMirrorPresence.reportsWakeLevel) return true
+        return watchMirrorWakeLevel() != WatchMirrorWakeLevel.ASLEEP
+    }
+
+    private fun watchMirrorWakeLevel(): WatchMirrorWakeLevel =
+        if (SystemClock.elapsedRealtime() - watchWakeLevelAtMs > WATCH_MIRROR_AWAKE_TIMEOUT_MS) {
+            WatchMirrorWakeLevel.ASLEEP
+        } else {
+            watchWakeLevel
+        }
+
+    /** Wrist wake-level tick (see [WatchMirrorWakeLevel]): gates the push and picks its cadence. */
+    internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
+        val changed = level != watchWakeLevel
+        watchWakeLevel = level
+        watchWakeLevelAtMs = SystemClock.elapsedRealtime()
+        if (!changed) return
+        recordWatchDiagnostic("watch_mirror_wake_level", mapOf("level" to level.name))
+        applyWatchInterval()
+    }
+
+    /**
+     * Single owner of the push cadence. Two inputs set it — the rider's `wearMirrorIntervalMs` and
+     * the wrist's wake level — so both must resolve here: applying either one directly lets a
+     * settings reload silently drop the ambient rate back to the live one, where the level-change
+     * early-return then leaves it for the rest of the ambient stretch.
+     */
+    private fun applyWatchInterval() {
+        watchTick.setIntervalMs(
+            if (watchMirrorWakeLevel() == WatchMirrorWakeLevel.AMBIENT) {
+                WATCH_FRAME_AMBIENT_INTERVAL_MS
+            } else {
+                configuredWatchIntervalMs
+            },
+        )
+    }
+
     // Deliberately ungated: a stop must reach the board even if the link lost trust mid-hold,
     // otherwise the rider's release does nothing and the board coasts to the firmware timeout.
     fun stopBoardMove(): Boolean = boardMoveController.stop()
@@ -2490,7 +2554,8 @@ private var wearAutoLaunchOnConnect = true
         configuredPollIntervalMs = pollIntervalMsForHz(settings.telemetryPollRateHz)
         movingThresholdCentiKmh = settings.toMetricSanitizerConfig().movingSpeedThresholdCentiKmh
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
-        watchTick.setIntervalMs(settings.wearMirrorIntervalMs.toLong())
+        configuredWatchIntervalMs = settings.wearMirrorIntervalMs.toLong()
+        applyWatchInterval()
         watchSettingsPusher.push(settings.toWatchSettings())
         wearAutoLaunchOnConnect = settings.wearAutoLaunchOnConnect
         boardMoveStrengthPercent = settings.boardMoveStrengthPercent
