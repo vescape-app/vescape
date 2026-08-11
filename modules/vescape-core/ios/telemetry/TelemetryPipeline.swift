@@ -1,5 +1,9 @@
 import Foundation
 
+/// One GPS fix as everything downstream sees it.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
+/// @parity /modules/vescape-core/src/index.ts `LocationEvent`
 internal struct TelemetryLocationCapture {
   let latitude: Double
   let longitude: Double
@@ -9,6 +13,35 @@ internal struct TelemetryLocationCapture {
   let altitudeM: Double?
   let timestamp: Int64
   let precise: Bool
+  /// The reliable course from `GpsCourseDeriver`, not the raw `bearingDeg`. Nil on approximate
+  /// fixes and wherever a capture is rebuilt from storage.
+  var courseDeg: Double?
+  /// The fix `courseDeg` was derived from; older than `timestamp` while a course is retained.
+  var courseSourceTimestamp: Int64?
+
+  init(
+    latitude: Double,
+    longitude: Double,
+    speedMps: Double?,
+    bearingDeg: Double?,
+    accuracyM: Double?,
+    altitudeM: Double?,
+    timestamp: Int64,
+    precise: Bool,
+    courseDeg: Double? = nil,
+    courseSourceTimestamp: Int64? = nil
+  ) {
+    self.latitude = latitude
+    self.longitude = longitude
+    self.speedMps = speedMps
+    self.bearingDeg = bearingDeg
+    self.accuracyM = accuracyM
+    self.altitudeM = altitudeM
+    self.timestamp = timestamp
+    self.precise = precise
+    self.courseDeg = courseDeg
+    self.courseSourceTimestamp = courseSourceTimestamp
+  }
 
   var map: [String: Any?] {
     [
@@ -20,6 +53,8 @@ internal struct TelemetryLocationCapture {
       "altitudeM": altitudeM,
       "timestamp": timestamp,
       "precise": precise,
+      "courseDeg": courseDeg,
+      "courseSourceTimestamp": courseSourceTimestamp,
     ]
   }
 }

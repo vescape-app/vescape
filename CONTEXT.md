@@ -116,6 +116,10 @@ _Avoid_: Direction map point, navigation Map Point, destination marker
 The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Once computed it is fixed for the ride, so the rider is free to wander without it changing under them. It describes where the rider could go and is never **Ride History**, which records where they did go.
 _Avoid_: Route, ride route, navigation mode, guidance, directions
 
+**Route Progress**:
+Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Navigation is the fixed path; Route Progress is the moving place on it.
+_Avoid_: Navigation progress, route position, ETA, remaining route, navigation fix
+
 **Navigation Profile**:
 The kind of ways a **Navigation** may follow, such as footpaths or cycleways. The rider chooses it while looking at a path and the last choice carries to the next Navigation. It is not a **Map Camera Profile**, which is camera behavior, nor a **Tune Profile**, which is board settings.
 _Avoid_: Navigation mode, routing mode, travel mode, way preference
@@ -359,6 +363,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Navigation** is produced under one **Navigation Profile** and keeps it: choosing a different profile does not redraw the existing path, it produces a new Navigation in its place.
 - A **Navigation** outlives the app process and any single **Ride Recording**: a rider who restarts, crashes, or starts riding another day finds the same Direction Point and the same path waiting.
 - A **Navigation** is computed once and never changes on its own: straying from it, looping back, or riding side paths leaves it untouched, and only the rider asks for a new one.
+- **Route Progress** belongs to exactly one **Navigation** and attaches to the nearest point on it unconditionally: there is no off-route state, so a rider who loops away and comes back re-attaches without asking for anything.
+- **Route Progress** measures what is left along the path rather than the straight line to the **Direction Point**, and its bearing points at an aim point ahead on the path rather than at the target, so it follows the ways the path follows.
 - A **Map Camera Controller** may frame **Live State**, **Ride History**, **GPS Fixes**, or **Map Points**, but does not own those domain objects.
 - A **Map Camera Intent** is interpreted by the **Map Camera Controller**; outside components request camera behavior instead of mutating the map camera directly.
 - A **History Camera Refinement** belongs to one selected **Ride Recording** in **Ride History** and is ignored if the selected ride changes or the rider manually browses the map.

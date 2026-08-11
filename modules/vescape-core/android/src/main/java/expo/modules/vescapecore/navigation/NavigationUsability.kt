@@ -1,10 +1,6 @@
 package expo.modules.vescapecore.navigation
 
-import kotlin.math.asin
-import kotlin.math.cos
-import kotlin.math.min
-import kotlin.math.sin
-import kotlin.math.sqrt
+import expo.modules.vescapecore.geo.GeoMath
 
 /**
  * Whether a path Directions returned is worth drawing at all.
@@ -32,8 +28,6 @@ object NavigationUsability {
    */
   private const val MIN_CHECKED_DIRECT_METERS = 50.0
 
-  private const val EARTH_RADIUS_METERS = 6_371_000.0
-
   /** Path points as `(latitude, longitude)`, in the order they are ridden. */
   fun isUsable(
     points: List<Pair<Double, Double>>,
@@ -42,7 +36,8 @@ object NavigationUsability {
   ): Boolean {
     if (points.size < 2) return false
     val (originLatitude, originLongitude) = points.first()
-    val direct = distanceMeters(originLatitude, originLongitude, targetLatitude, targetLongitude)
+    val direct =
+      GeoMath.distanceMeters(originLatitude, originLongitude, targetLatitude, targetLongitude)
     if (direct < MIN_CHECKED_DIRECT_METERS) return true
     return pathLengthMeters(points) <= direct * MAX_DETOUR_RATIO
   }
@@ -52,22 +47,8 @@ object NavigationUsability {
     for (index in 1 until points.size) {
       val (previousLatitude, previousLongitude) = points[index - 1]
       val (latitude, longitude) = points[index]
-      total += distanceMeters(previousLatitude, previousLongitude, latitude, longitude)
+      total += GeoMath.distanceMeters(previousLatitude, previousLongitude, latitude, longitude)
     }
     return total
-  }
-
-  private fun distanceMeters(
-    fromLatitude: Double,
-    fromLongitude: Double,
-    toLatitude: Double,
-    toLongitude: Double,
-  ): Double {
-    val deltaLatitude = Math.toRadians(toLatitude - fromLatitude)
-    val deltaLongitude = Math.toRadians(toLongitude - fromLongitude)
-    val a = sin(deltaLatitude / 2) * sin(deltaLatitude / 2) +
-      cos(Math.toRadians(fromLatitude)) * cos(Math.toRadians(toLatitude)) *
-      sin(deltaLongitude / 2) * sin(deltaLongitude / 2)
-    return 2 * EARTH_RADIUS_METERS * asin(min(1.0, sqrt(a)))
   }
 }

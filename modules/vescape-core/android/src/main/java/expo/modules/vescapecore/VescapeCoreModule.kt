@@ -167,6 +167,7 @@ class VescapeCoreModule : Module() {
       "onBoardWarnings",
       "onAppStatus",
       "onNavigation",
+      "onRouteProgress",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -193,6 +194,16 @@ class VescapeCoreModule : Module() {
             "computing" to NavigationController.get(context).computing,
           ),
         )
+      }
+    }
+
+    // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
+    // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
+    // @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
+    NavigationController.get(context).onProgressChange = { progress ->
+      if (shouldEmitToFrontend("onRouteProgress")) {
+        sendEvent("onRouteProgress", mapOf("progress" to progress?.toMap()))
       }
     }
 
@@ -273,6 +284,15 @@ class VescapeCoreModule : Module() {
       )
     }
     OnStopObserving("onNavigation") { stopObserving("onNavigation") }
+    OnStartObserving("onRouteProgress") {
+      startObserving("onRouteProgress")
+      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
+      sendEvent(
+        "onRouteProgress",
+        mapOf("progress" to NavigationController.get(context).currentProgress?.toMap()),
+      )
+    }
+    OnStopObserving("onRouteProgress") { stopObserving("onRouteProgress") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -300,6 +320,7 @@ class VescapeCoreModule : Module() {
       // its own definition().
       BoardWarningRegistry.get(context).onChange = null
       NavigationController.get(context).onChange = null
+      NavigationController.get(context).onProgressChange = null
       appStatusUnsub?.invoke()
       appStatusUnsub = null
       previewAlertFeedback?.release()

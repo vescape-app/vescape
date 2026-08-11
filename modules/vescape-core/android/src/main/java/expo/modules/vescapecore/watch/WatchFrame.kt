@@ -36,16 +36,12 @@ internal data class WatchFrame(
     val stale: Boolean,
     val waiting: Boolean = false,
     /**
-     * Bearing to the navigation target relative to travel direction, degrees clockwise from ahead.
-     * TODO(nav): always null — nothing feeds these lanes yet. The wrist already renders the nav
-     * overlay when both are present and hides it when either is null. The remaining work is native:
-     * the session holds the active destination coordinate (JS sends it once per route change, as an
-     * intent, and clears it when the route ends) and derives bearing + distance per watch tick from
-     * `LocationTracker.riderPosition` and the current course. Deriving them in JS instead would put
-     * a per-fix computation on the bridge for data native already has.
+     * Where the path goes next: absolute degrees clockwise from north, from Route Progress. The
+     * wrist rotates its north-up world by [courseDeg], so this is never pre-rotated on the phone.
+     * Null whenever there is no Navigation, which is how the wrist hides its nav overlay.
      */
     val navBearing: Double? = null,
-    /** Straight-line distance to the navigation target, metres. TODO(nav): see [navBearing]. */
+    /** Metres left to the Direction Point measured **along** the path. Null with [navBearing]. */
     val navDistanceM: Double? = null,
     /** Rider position, metres east of the pushed route's origin. Null when there is no route. */
     val riderEastM: Double? = null,
@@ -63,7 +59,7 @@ internal data class WatchSnapshot(
     val batterySoc: Double?,
     val motorTemp: Double?,
     val ctrlTemp: Double?,
-    /** Nav target relative bearing (degrees) and distance (metres), derived natively. TODO(nav): see [WatchFrame.navBearing]. */
+    /** Route Progress bearing (absolute degrees) and remaining distance along the path (metres). */
     val navBearing: Double? = null,
     val navDistanceM: Double? = null,
     /** Rider offset from the pushed route origin (metres) and course (degrees), derived natively. */
@@ -119,7 +115,7 @@ internal object WatchFrameBuilder {
             putFloat(frame.battery.toLaneFloat())
             putFloat(frame.motorTemp.toLaneFloat())
             putFloat(frame.ctrlTemp.toLaneFloat())
-            // Nav lanes ride as NaN until a route feeds them, which is how the wrist hides the overlay.
+            // Nav lanes ride as NaN when there is no Navigation, which is how the wrist hides the overlay.
             putFloat(frame.navBearing.toLaneFloat())
             putFloat(frame.navDistanceM.toLaneFloat())
             // Rider placement against the pushed route; NaN whenever there is no route to place on.

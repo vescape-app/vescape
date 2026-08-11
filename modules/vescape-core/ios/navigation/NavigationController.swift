@@ -183,6 +183,35 @@ final class NavigationController {
   /// Notified on every change, including the clear to `nil` and every `computing` transition.
   var onChange: ((Navigation?) -> Void)?
 
+  /// Where the rider is along the current path. Derived and never stored: recomputed by `onFix` and
+  /// dropped whenever the Navigation it belongs to changes, so there is no cache to expire by hand.
+  private var progress: RouteProgress?
+
+  var currentProgress: RouteProgress? { lock.withLock { progress } }
+
+  /// Notified on every Route Progress change, including the clear to `nil`.
+  var onProgressChange: ((RouteProgress?) -> Void)?
+
+  /// A GPS Fix arrived. Recomputes Route Progress against the current path and notifies when it
+  /// moved. This is the *only* thing a fix does to a Navigation: it does not recompute, reroute or
+  /// retry the path itself.
+  ///
+  /// A fix with no usable path publishes `nil` rather than keeping the last position, so nothing
+  /// downstream can show progress along a path that is gone.
+  func onFix(latitude: Double, longitude: Double, speedMps: Double?) {
+    lock.withLock {
+      let points = state?.status == .ready ? state?.points : nil
+      let next = points.flatMap {
+        RouteProgress.compute(
+          points: $0, riderLatitude: latitude, riderLongitude: longitude, speedMps: speedMps
+        )
+      }
+      guard progress != next else { return }
+      progress = next
+      onProgressChange?(next)
+    }
+  }
+
   /// Ordering token. Every intent claims one *synchronously*, before any network work starts, so
   /// the rider's last action always wins: a fetch that resolves late finds its token stale and is
   /// dropped rather than resurrecting a path over a newer target or over a clear.
@@ -414,7 +443,12 @@ final class NavigationController {
       // in here rather than at the call site so the read of `state` and the write are one step.
       if keepUsablePath, navigation?.status != .ready, state?.status == .ready { return false }
       state = navigation
+      // Route Progress belongs to exactly one Navigation, so it dies with the one being replaced
+      // rather than describing a path that is no longer drawn. The next fix refills it.
+      let hadProgress = progress != nil
+      progress = nil
       onChange?(navigation)
+      if hadProgress { onProgressChange?(nil) }
       return true
     }
     if committed { persist(request) }
