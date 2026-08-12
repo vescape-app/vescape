@@ -259,6 +259,12 @@ function resolveGapThresholdMs(points: TelemetryChartPoint[], gapMultiplier: num
   return Math.max(1, median * gapMultiplier)
 }
 
+/**
+ * Split a series into runs separated by sampling gaps. Runs of a single sample are **kept**: a
+ * sparse stretch (every neighbour beyond the gap threshold) is all one-sample runs, and dropping
+ * them would render the whole stretch blank while the scrub marker still reports its values.
+ * Callers stroke runs of 2+ and draw one-sample runs as dots.
+ */
 export function splitChartLineSegments(
   points: TelemetryChartPoint[],
   range: { y: { min: number; max: number } },
@@ -281,7 +287,7 @@ export function splitChartLineSegments(
       const prev = points[i - 1]
       const deltaMs = point.date.getTime() - prev.date.getTime()
       if (deltaMs > gapThresholdMs && current.length > 0) {
-        if (current.length >= 2) segments.push(current)
+        segments.push(current)
         current = []
       }
     }
@@ -289,7 +295,7 @@ export function splitChartLineSegments(
     current.push(position)
   }
 
-  if (current.length >= 2) segments.push(current)
+  if (current.length > 0) segments.push(current)
   return segments
 }
 
@@ -315,7 +321,7 @@ export function splitChartPointSegments(
       const prev = points[i - 1]
       const deltaMs = point.date.getTime() - prev.date.getTime()
       if (deltaMs > gapThresholdMs && current.length > 0) {
-        if (current.length >= 2) segments.push(current)
+        segments.push(current)
         current = []
       }
     }
@@ -323,6 +329,6 @@ export function splitChartPointSegments(
     current.push({ ...position, point })
   }
 
-  if (current.length >= 2) segments.push(current)
+  if (current.length > 0) segments.push(current)
   return segments
 }
