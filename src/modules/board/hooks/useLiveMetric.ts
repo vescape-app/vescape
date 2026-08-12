@@ -6,6 +6,7 @@ import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
 import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
 import { type ExcludedRange, toExcludedRanges } from '@/components/charts/chartMath'
 import { finite, absolute } from '@/helpers/finite'
+import { useDeferredMount } from '@/hooks/useDeferredMount'
 
 export interface LiveMetricPoint {
   ts: number
@@ -46,6 +47,9 @@ const SELECTOR_KEYS = new Map<TelemetrySelector, string>(
   ]),
 )
 
+/** Grace period after interactions settle before the heavy focused stream is opened. */
+export const FOCUS_DEFER_MS = 150
+
 const EMPTY_FLAT: number[] = []
 const EMPTY_RANGES: ExcludedRange[] = []
 
@@ -69,21 +73,26 @@ export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
 }
 
 /**
- * Full-resolution live series for a `/control` detail chart. Mounting focuses the metric so
- * native streams it on `onFocusedSeries` at full resolution (20ms buckets, below the packet interval);
+ * Full-resolution live series for a `/control` detail chart. Focusing the metric makes native
+ * stream it on `onFocusedSeries` at full resolution (20ms buckets, below the packet interval);
  * unmounting releases it so native stops. The center screen never focuses anything, so the
  * high-res stream costs nothing while riding.
+ *
+ * The focus is taken only after the screen has settled ({@link FOCUS_DEFER_MS}): the first
+ * emit hands over the whole window at once, which is the single heaviest moment of the screen,
+ * and it must not land while the navigation transition is still running.
  */
 export function useLiveMetric(pick: TelemetrySelector): LiveMetricPoint[] {
   const metricKey = SELECTOR_KEYS.get(pick) ?? ''
   if (__DEV__ && !metricKey) {
     console.warn('useLiveMetric: selector must be a `liveSelectors.*` reference, got an unknown fn')
   }
+  const focusReady = useDeferredMount(FOCUS_DEFER_MS)
   useEffect(() => {
-    if (!metricKey) return
+    if (!metricKey || !focusReady) return
     acquireFocusedSeries(metricKey)
     return () => releaseFocusedSeries(metricKey)
-  }, [metricKey])
+  }, [metricKey, focusReady])
   const flat = useFocusedSeriesStore((s) => s.series[metricKey] ?? EMPTY_FLAT)
   return useMemo(() => flatToPoints(flat), [flat])
 }
@@ -101,12 +110,12 @@ export function buildFocusedExcludedRanges(
 ): ExcludedRange[] {
   const reason =
     metricKeys.length === 1 && metricKeys[0] === 'avg_speed' ? 'low_speed' : 'free_spin'
-  const records: Array<{
+  const records: {
     startMs: number
     endMs: number
     reason: string
     metrics: Record<string, boolean>
-  }> = []
+  }[] = []
   for (const key of metricKeys) {
     const flat = exclusions[key]
     if (!flat) continue
