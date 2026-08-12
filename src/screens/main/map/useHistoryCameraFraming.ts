@@ -4,7 +4,7 @@ import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { reduceMapCameraIntent } from '@/modules/map/lib/cameraController'
 import { toEngineTarget } from '@/modules/map/lib/cameraEngine/cameraTarget'
 import { getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
-import { getHistoryRouteCamera, type HistoryCameraViewport } from '@/modules/map/lib/historyCamera'
+import { getRouteFitCamera, type RouteCameraViewport } from '@/modules/map/lib/routeCamera'
 import {
   getHistoryPreviewBounds,
   getHistoryPreviewZoom,
@@ -19,7 +19,7 @@ interface UseHistoryCameraFramingParams {
   preview: ({ key: string } & HistoryPreviewTarget) | null
   previewRoute: [number, number][]
   rideRoute: [number, number][]
-  viewport: HistoryCameraViewport
+  viewport: RouteCameraViewport
   perspectiveEnabled: boolean
   dispatchCameraIntent: (
     intent: Parameters<typeof reduceMapCameraIntent>[1],
@@ -48,7 +48,7 @@ export function useHistoryCameraFraming({
   const { controllerStateRef, engine } = cameraRefs
   const getHistoryPreviewCamera = useCallback(
     (coordinate: { latitude: number; longitude: number }) => {
-      const camera = getHistoryRouteCamera({
+      const camera = getRouteFitCamera({
         route: [[coordinate.longitude, coordinate.latitude]],
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,
@@ -71,7 +71,7 @@ export function useHistoryCameraFraming({
 
   const fitRide = useCallback(
     (nextSelectionKey: string | null) => {
-      const historyCamera = getHistoryRouteCamera({
+      const historyCamera = getRouteFitCamera({
         route: rideRoute,
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,
@@ -97,7 +97,7 @@ export function useHistoryCameraFraming({
     (nextPreview: HistoryPreviewTarget & { key?: string }) => {
       const bounds = getHistoryPreviewBounds(nextPreview)
       if (bounds) {
-        const historyCamera = getHistoryRouteCamera({
+        const historyCamera = getRouteFitCamera({
           route: [bounds.ne, bounds.sw],
           viewport,
           maxZoom: MAP_DEFAULTS.maxZoom,
@@ -141,7 +141,7 @@ export function useHistoryCameraFraming({
 
   const previewHistoryRoute = useCallback(
     (nextSelectionKey: string, route: [number, number][]) => {
-      const historyCamera = getHistoryRouteCamera({
+      const historyCamera = getRouteFitCamera({
         route,
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,

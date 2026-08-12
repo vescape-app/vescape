@@ -27,8 +27,7 @@ interface MetricAlertsProps {
   /** Live telemetry value driving the gauge needle; absent renders the offline preview. */
   liveValue?: SharedValue<number | null>
   hotRange?: MetricAlertsHotRange | null
-  /** Screen telemetry placed after the preset gauge but before its controls. */
-  detailContent?: ReactNode
+  /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
   /** Optional precomputed snapshot shared with the screen's chart markers. */
   ruleSnapshot?: AlertTestRule[]
@@ -47,7 +46,6 @@ export function MetricAlerts({
   unit,
   liveValue,
   hotRange,
-  detailContent,
   controlsHeader,
   ruleSnapshot,
 }: MetricAlertsProps) {
@@ -102,7 +100,6 @@ export function MetricAlerts({
           hotRange={hotRange}
           disabled={batteryBlocked}
           testRules={visibleRuleSnapshot}
-          detailContent={detailContent}
           controlsHeader={controlsHeader}
           onCustomize={controller.customize}
           onDiscardCustom={() => setConfirmingDiscard(true)}

@@ -430,13 +430,90 @@ final class AppDataRepository {
     updateSetting(Self.directionPointLongitudeKey, rawValue: longitude)
   }
 
+  func getDirectionPoint() -> (latitude: Double, longitude: Double)? {
+    let settings = getSettings()
+    guard
+      let latitude = Self.doubleValue(settings[Self.directionPointLatitudeKey] ?? nil),
+      let longitude = Self.doubleValue(settings[Self.directionPointLongitudeKey] ?? nil)
+    else { return nil }
+    return (latitude, longitude)
+  }
+
+  // MARK: - Navigation
+
+  /// The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately excluded
+  /// from `getSettings` below: it is native-owned, JS receives it through `onNavigation` instead,
+  /// and it is by far the largest value here (~14 KB for a long path) so it must not ride along on
+  /// every settings read.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationPath`
+  static let navigationPathKey = "navigationPath"
+
+  func getNavigationPath() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationPathKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationPath(_ json: String?) {
+    let key = Self.navigationPathKey
+    guard let json, let encoded = Self.encodeJson(json) else {
+      write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
+      return
+    }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [key, encoded, updatedAt]
+      )
+    }
+  }
+
+  /// The rider's last chosen Navigation Profile, as its wire string. App data rather than a
+  /// user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
+  /// switching profile while looking at a path.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationProfile`
+  static let navigationProfileKey = "navigationProfile"
+
+  func getNavigationProfile() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationProfileKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationProfile(_ profile: String) {
+    guard let encoded = Self.encodeJson(profile) else { return }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [Self.navigationProfileKey, encoded, updatedAt]
+      )
+    }
+  }
+
   // MARK: - Settings
 
   func getSettings() -> [String: Any?] {
     let rows: [String: Any] = read([:]) { db in
       var stored: [String: Any] = [:]
       for row in try Row.fetchAll(db, sql: "SELECT key, value_json FROM app_settings") {
-        if let decoded = Self.decodeJson(row["value_json"]) { stored[row["key"]] = decoded }
+        let key: String = row["key"]
+        // Native-owned; JS gets the Navigation through `onNavigation`, never here — and the path
+        // is large besides. (Android's projection is a typed whitelist, so it drops these keys
+        // without an exclusion.)
+        guard key != Self.navigationPathKey, key != Self.navigationProfileKey else { continue }
+        if let decoded = Self.decodeJson(row["value_json"]) { stored[key] = decoded }
       }
       return stored
     }
@@ -452,7 +529,12 @@ final class AppDataRepository {
 
   func updateSetting(_ key: String, rawValue: Any?) {
     // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
-    guard key != "legalPolicy", key != "legalMode" else { return }
+    // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the
+    // profile through `setNavigationProfile`, never by writing these rows.
+    guard
+      key != "legalPolicy", key != "legalMode",
+      key != Self.navigationPathKey, key != Self.navigationProfileKey
+    else { return }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
       write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }

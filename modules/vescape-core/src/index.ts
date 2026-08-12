@@ -30,11 +30,23 @@ export interface ErrorEvent {
   message: string
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
+ */
 export interface LocationEvent {
   latitude: number
   longitude: number
   speedMps: number | null
+  /** The fix's own bearing, straight off the receiver — noisy at a standstill. */
   bearingDeg: number | null
+  /**
+   * The direction the rider is actually travelling, derived natively per precise fix and retained
+   * briefly across stops. Null on approximate fixes and while no course is trustworthy.
+   */
+  courseDeg: number | null
+  /** The fix `courseDeg` came from; older than `timestamp` while a course is retained. */
+  courseSourceTimestamp: number | null
   accuracyM: number | null
   altitudeM: number | null
   timestamp: number
@@ -1011,7 +1023,7 @@ export interface AppSettings {
   satelliteImagerySaturation: number
   /** Hide POI names and icons on the telemetry/home map. Explore keeps map details visible. */
   hideTelemetryMapDetails: boolean
-  mapNavigationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
+  mapOrientationMode: 'northUp' | 'gpsHeading' | 'phoneHeading' | 'freeRotate'
   historyMetricGradientsEnabled: boolean
   historyMetricHotRanges: Partial<
     Record<
@@ -1062,17 +1074,23 @@ export interface AppSettings {
    */
   telemetryPollRateHz: number
   /**
-   * Watch Mirror push interval in ms — the cadence of the dedicated watch tick,
-   * independent of the board poll rate. Lower values increase wrist update rate
-   * for stress-testing the link. Floored at 50ms (20Hz), capped at 10s.
+   * Watch push rate in Hz — the cadence of the dedicated watch tick, independent
+   * of the board poll rate. Higher values increase the wrist update rate for
+   * stress-testing the link. Clamped to 1–20 Hz.
    */
-  wearMirrorIntervalMs: number
+  wearPushRateHz: number
   /**
    * Android-only: bring the Watch Mirror to the foreground on the paired watch when a fresh
    * board session connects (never on mid-ride auto-reconnects). No-op unless the Mirror app
    * is installed and reachable.
    */
   wearAutoLaunchOnConnect: boolean
+  /**
+   * Android-only, off by default: draw the direction chevron on the Watch Mirror. Only the
+   * chevron — the wrist keeps drawing the route, rider dot and remaining distance either way.
+   * Mirrored to the wrist over the settings path.
+   */
+  wearNavArrowEnabled: boolean
   /**
    * Persistent device-scoped anonymous Group Ride Rider id. Generated once on
    * first use and stored locally; sent to the relay server as the Rider's
@@ -1435,6 +1453,194 @@ export interface AppStatusEvent {
 }
 
 /**
+ * The condition pictogram a forecast resolves to. Native classifies the WMO code; this side only
+ * picks artwork and a tint for the slug it is handed, so the phone, the wrist and iOS cannot
+ * disagree about what the weather is.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `WeatherIcon`
+ * @parity /modules/vescape-core/ios/weather/Weather.swift `WeatherIcon`
+ */
+export type WeatherIconSlug =
+  | 'sun'
+  | 'moon'
+  | 'cloud-sun'
+  | 'cloud-moon'
+  | 'cloud'
+  | 'cloud-fog'
+  | 'cloud-rain'
+  | 'cloud-snow'
+  | 'cloud-lightning'
+
+/**
+ * One forecast hour. `minuteOfDay` is minutes since midnight **local to the forecast location**, so
+ * it is a label to render and not a timestamp to compare against `Date.now()`.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `WeatherHour`
+ * @parity /modules/vescape-core/ios/weather/Weather.swift `WeatherHour`
+ */
+export interface WeatherHour {
+  minuteOfDay: number
+  temperatureC: number
+  weatherCode: number
+  icon: WeatherIconSlug
+  precipitationProbability: number
+}
+
+/**
+ * The weather where the rider is, computed natively. JS renders it and nothing else: there is no
+ * fetch on this side, no cache, and no way to ask for a refresh — the forecast follows GPS Fixes,
+ * which native owns, and it keeps updating while the JS runtime is gone.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/weather/Weather.kt `Weather`
+ * @parity /modules/vescape-core/ios/weather/Weather.swift `Weather`
+ */
+export interface Weather {
+  temperatureC: number
+  weatherCode: number
+  icon: WeatherIconSlug
+  label: string
+  precipitationProbability: number
+  hourly: WeatherHour[]
+  /** Minutes since local midnight, or `null` when the forecast omitted the day's sun times. */
+  sunriseMinuteOfDay: number | null
+  sunsetMinuteOfDay: number | null
+  latitude: number
+  longitude: number
+  fetchedAtMs: number
+}
+
+/**
+ * Native forecast changed. Emitted on every successful refresh and replayed on subscribe, so a late
+ * listener is immediately consistent. `null` means no successful fetch in this process yet.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onWeather`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendWeather`
+ */
+export interface WeatherEvent {
+  weather: Weather | null
+}
+
+/**
+ * The rideable path from the rider to their Direction Point, computed natively. JS renders it and
+ * nothing else: there is no routing logic on this side, and a Navigation never changes on its own.
+ *
+ * `coordinates` are GeoJSON `[longitude, latitude]` pairs — the opposite order from
+ * `setDirectionPoint(latitude, longitude)` — so they feed a `ShapeSource` unmodified.
+ *
+ * It is durable: native stores it and restores it on cold start, so a `computedAtMs` days old is
+ * expected and is not a reason to ask for a new one. Nothing on this side refetches.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `Navigation`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `Navigation`
+ */
+export interface Navigation {
+  target: { latitude: number; longitude: number }
+  /**
+   * Navigation Profile the path was produced under, and the one the switcher shows as current. It
+   * never changes for this Navigation — a different profile produces a new one in its place.
+   */
+  profile: NavigationProfile
+  computedAtMs: number
+  status: NavigationStatus
+  /**
+   * How far the path runs and how long the routing service thinks it takes. Both are `0` unless
+   * `status` is `ready`, and both can be `0` on a path restored from before they were stored.
+   *
+   * The duration is the Navigation Profile's own estimate — a walking path is timed at walking
+   * pace — so it says what shape the ride ahead is, not when an EUC gets there.
+   */
+  distanceMeters: number
+  durationSeconds: number
+  /** Empty unless `status` is `ready`. Never infer failure from this — read `status`. */
+  coordinates: [longitude: number, latitude: number][]
+}
+
+/**
+ * How a Navigation ended up. A Navigation exists for as long as its Direction Point does, so a
+ * request that produced no path is still a Navigation — one that says why instead of drawing a line.
+ *
+ * - `ready` — a usable path was computed.
+ * - `fetchFailed` — could not ask: no signal, timeout, API error. Worth retrying with signal.
+ * - `noPathFound` — asked and answered, but nothing rideable leads there. Retrying from the same
+ *   spot will say the same thing.
+ *
+ * Nothing retries on its own. `recomputeNavigation` is the only way a failed one is recomputed.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationStatus`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationStatus`
+ */
+export type NavigationStatus = 'ready' | 'fetchFailed' | 'noPathFound'
+
+/**
+ * The kind of ways a Navigation may follow. The rider picks it inline on the path view — there is
+ * no settings-screen entry — and the choice sticks as the default for the next Navigation.
+ *
+ * - `walking` — footpaths and forest tracks, which is where Direction Points usually are. The
+ *   default when the rider has never chosen.
+ * - `cycling` — cycleways and roads; refuses footpaths.
+ * - `driving` — roads only.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationController.kt `NavigationProfile`
+ * @parity /modules/vescape-core/ios/navigation/NavigationController.swift `NavigationProfile`
+ */
+export type NavigationProfile = 'walking' | 'cycling' | 'driving'
+
+/**
+ * Native Navigation changed. Emitted whenever it is computed or cleared, and replayed on subscribe,
+ * so a late listener is immediately consistent. `null` means no Navigation — no Direction Point is
+ * set, or the path could not be computed.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onNavigation`
+ */
+export interface NavigationEvent {
+  navigation: Navigation | null
+  /**
+   * Whether native is computing a path right now. The one part of Navigation state that is not
+   * durable, and the only reason a rider's tap is allowed to look like it did something before a
+   * result exists: a recompute that fails publishes no new Navigation at all.
+   */
+  computing: boolean
+}
+
+/**
+ * Where the rider is along their Navigation right now, computed natively on every GPS Fix. JS reads
+ * it and derives nothing: there is no projection, no along-path arithmetic and no straight-line
+ * fallback on this side.
+ *
+ * Attachment is unconditional — there is no off-route state — so on a path that passes near itself
+ * `remainingMeters` can jump as the projection snaps between legs. That is known and accepted.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/RouteProgress.kt `RouteProgress`
+ * @parity /modules/vescape-core/ios/navigation/RouteProgress.swift `RouteProgress`
+ */
+export interface RouteProgress {
+  /** The point on the path nearest to the rider. */
+  latitude: number
+  longitude: number
+  /** Metres left to the Direction Point measured along the path, not as the crow flies. */
+  remainingMeters: number
+  /**
+   * Absolute degrees clockwise from north, aimed a short way further along the path. Absolute, not
+   * relative to where the rider is pointing — rotate it yourself if a view needs it rider-up.
+   */
+  bearingDeg: number
+}
+
+/**
+ * Native Route Progress changed. Emitted on every GPS Fix that moves it, replayed on subscribe, and
+ * `null` whenever there is no Navigation to be along — including the moment one is replaced, before
+ * the next fix refills it.
+ *
+ * Separate from `onNavigation` because this fires at ~1 Hz and the path itself does not change.
+ *
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onRouteProgress`
+ */
+export interface RouteProgressEvent {
+  progress: RouteProgress | null
+}
+
+/**
  * @parity /modules/vescape-core/ios/auth/DeviceCredentialStore.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/DeviceCredentialStore.kt
  */
@@ -1493,6 +1699,12 @@ type VescapeCoreEvents = {
   onBoardWarnings: (event: BoardWarningsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
+  /** Native Navigation, on every change (including clears) and on subscribe. */
+  onNavigation: (event: NavigationEvent) => void
+  /** Native Route Progress, on every GPS Fix that moves it, on clears, and on subscribe. */
+  onRouteProgress: (event: RouteProgressEvent) => void
+  /** Native forecast, on every successful refresh and on subscribe. */
+  onWeather: (event: WeatherEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -1549,12 +1761,15 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteDebugRecording(name: string): Promise<void>
   startDebugReplay(name: string, options: DebugReplayOptions | null): Promise<void>
   recordPhoneHeading(headingDeg: number): void
+  setWatchRouteSpanM(spanM: number | null): void
   stopDebugReplay(): Promise<void>
   reportUiError(message: string, source?: string | null, stack?: string | null): void
   reportDiagnosticTest(): DiagnosticStatus
   getDiagnosticStatus(): DiagnosticStatus
   getLiveState(): LiveStateEvent
   getAppStatus(): AppStatus | null
+  getWeather(): Weather | null
+  refreshWeather(): void
   provisionDeviceCredential(
     serverUrl: string,
     deviceToken: string,
@@ -1661,6 +1876,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteMapPoint(id: string): Promise<void>
   setMapPointReaction(id: string, reaction: MapPointReaction | null): Promise<void>
   setDirectionPoint(latitude: number | null, longitude: number | null): Promise<void>
+  recomputeNavigation(): Promise<void>
+  setNavigationProfile(profile: NavigationProfile): Promise<void>
   getSettings(): Promise<AppSettings>
   refreshLegalPolicy(): Promise<void>
   setLegalMode(boardId: string, enabled: boolean): Promise<void>
@@ -2026,6 +2243,25 @@ export function getLiveState(): LiveStateEvent {
 export function getAppStatus(): AppStatus | null {
   if (E2E_ENABLED) return null
   return native.getAppStatus()
+}
+
+/**
+ * Read the process's current forecast. `null` until a GPS Fix has produced one — nothing on this
+ * side can ask for a fetch, because the position that would drive it is native's to begin with.
+ */
+export function getWeather(): Weather | null {
+  if (E2E_ENABLED) return null
+  return native.getWeather()
+}
+
+/**
+ * Refetch the forecast where the last one was fetched — the rider asking for fresh weather. Fire and
+ * forget: the result lands on `onWeather` like every other refresh, and a call before the first
+ * forecast exists does nothing.
+ */
+export function refreshWeather(): void {
+  if (E2E_ENABLED) return
+  native.refreshWeather()
 }
 
 export async function provisionDeviceCredential(
@@ -2471,6 +2707,38 @@ export async function setDirectionPoint(
   return native.setDirectionPoint(latitude, longitude)
 }
 
+/**
+ * Asks native to compute the Navigation again, from the rider's current position to the Direction
+ * Point they already have. A no-op when no Direction Point is set.
+ *
+ * The rider's own action, and the only way a Navigation is ever replaced: nothing in the app may
+ * call this automatically, on a timer, on reconnect or on a new fix. A path that appears mid-ride
+ * without being asked for is exactly what Navigation is designed not to do.
+ *
+ * A request that finds no path leaves a drawn one in place — asking for a better path never costs
+ * the rider the one they had.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `recomputeNavigation`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
+ */
+export async function recomputeNavigation(): Promise<void> {
+  return native.recomputeNavigation()
+}
+
+/**
+ * Remembers `profile` as the rider's Navigation Profile and recomputes the path under it. The
+ * choice sticks natively and becomes the default for the next Navigation, so nothing on this side
+ * has to carry it between rides.
+ *
+ * Like `recomputeNavigation`, only ever called from a rider's tap.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setNavigationProfile`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
+ */
+export async function setNavigationProfile(profile: NavigationProfile): Promise<void> {
+  return native.setNavigationProfile(profile)
+}
+
 export async function getSettings(): Promise<AppSettings> {
   if (E2E_ENABLED) {
     return e2eFake.getSettings()
@@ -2561,6 +2829,20 @@ export function addAppStatusListener(cb: (event: AppStatusEvent) => void): Event
   return emitter.addListener('onAppStatus', cb)
 }
 
+export function addWeatherListener(cb: (event: WeatherEvent) => void): EventSubscription {
+  return emitter.addListener('onWeather', cb)
+}
+
+export function addNavigationListener(cb: (event: NavigationEvent) => void): EventSubscription {
+  return emitter.addListener('onNavigation', cb)
+}
+
+export function addRouteProgressListener(
+  cb: (event: RouteProgressEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onRouteProgress', cb)
+}
+
 export function addLiveStateListener(cb: (event: LiveStateEvent) => void): EventSubscription {
   if (E2E_ENABLED) {
     return e2eFake.addLiveStateListener(cb)
@@ -2639,6 +2921,17 @@ export function addReplayPhoneHeadingListener(
  */
 export function recordPhoneHeading(headingDeg: number): void {
   native.recordPhoneHeading(headingDeg)
+}
+
+/**
+ * Sync the settled phone-map viewport scale to the Android Wear route. iOS accepts this as a no-op
+ * because the Wear Mirror is Android-only.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setWatchRouteSpanM`
+ */
+export function setWatchRouteSpanM(spanM: number | null): void {
+  native.setWatchRouteSpanM(spanM)
 }
 
 export function addTelemetryRebuildProgressListener(

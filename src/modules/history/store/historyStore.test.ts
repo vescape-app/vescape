@@ -53,7 +53,7 @@ const getSettings = mock(async () => ({
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'northUp',
+  mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
 }))

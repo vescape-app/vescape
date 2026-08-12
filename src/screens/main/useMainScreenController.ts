@@ -19,7 +19,6 @@ import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
@@ -73,17 +72,13 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   )
   const liveLocations = useBleStore((s) => s.liveLocationHistory)
   const latestApproximateLocation = useBleStore((s) => s.latestApproximateLocation)
-  const fetchWeather = useWeatherStore((s) => s.fetch)
-  const refreshWeather = useWeatherStore((s) => s.refresh)
-  const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
-  const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const satelliteOverlayEnabled = useSettingsStore((s) => s.satelliteOverlayEnabled)
   const satelliteImageryOpacity = useSettingsStore((s) => s.satelliteImageryOpacity)
   const satelliteMapImageryOpacity = useSettingsStore((s) => s.satelliteMapImageryOpacity)
   const satelliteImagerySaturation = useSettingsStore((s) => s.satelliteImagerySaturation)
   const hideTelemetryMapDetails = useSettingsStore((s) => s.hideTelemetryMapDetails)
-  const mapNavigationMode = useSettingsStore((s) => s.mapNavigationMode)
+  const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const setSetting = useSettingsStore((s) => s.set)
   const {
     blocks,
@@ -184,19 +179,10 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     setSeekTimeMs(null)
   }, [selectedSession, setSeekTimeMs])
 
-  useEffect(() => {
-    const loc = liveLocations.at(-1) ?? latestApproximateLocation
-    const lat = loc?.latitude ?? lastGpsLatitude
-    const lon = loc?.longitude ?? lastGpsLongitude
-    if (lat != null && lon != null) {
-      void fetchWeather(lat, lon)
-    }
-  }, [liveLocations, latestApproximateLocation, lastGpsLatitude, lastGpsLongitude, fetchWeather])
-
   const weatherActive = mode === 'weather'
   const legalLimitsActive = mode === 'legalLimits'
   const historyActive = mode === 'history'
-  const rotationLocked = mapNavigationMode === 'northUp'
+  const rotationLocked = mapOrientationMode === 'northUp'
   const previousRide = getPreviousRideSession(sessions, selectedSession)
   const nextRide = getNextRideSession(sessions, selectedSession)
   const canPreviousRide = !!previousRide || historyHasMore
@@ -345,9 +331,9 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     [setSetting],
   )
 
-  const setMapNavigationMode = useCallback(
-    (nextMode: typeof mapNavigationMode) => {
-      void setSetting('mapNavigationMode', nextMode)
+  const setMapOrientationMode = useCallback(
+    (nextMode: typeof mapOrientationMode) => {
+      void setSetting('mapOrientationMode', nextMode)
     },
     [setSetting],
   )
@@ -412,8 +398,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     satelliteImagerySaturation,
     hideTelemetryMapDetails,
     setMapStyleKey,
-    mapNavigationMode,
-    setMapNavigationMode,
+    mapOrientationMode,
+    setMapOrientationMode,
     mapSelector,
     setMapSelector,
     dismissMapSelector,
@@ -469,7 +455,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     exitWeatherMode,
     enterLegalLimitsMode,
     exitLegalLimitsMode,
-    refreshWeather,
     handleMapFocus,
     exitMapFocus,
     onSeek: setSeekTimeMs,

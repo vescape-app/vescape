@@ -1,4 +1,5 @@
 import ActivityKit
+import AppIntents
 
 /// Live Activity contract for the Board Session status surface — the iOS peer of Android's
 /// persistent foreground-service notification. One activity lives for the whole session; native
@@ -6,10 +7,10 @@ import ActivityKit
 ///
 /// This single file is compiled into BOTH the `vescape-core` module pod (which drives it via
 /// `RideLiveActivityController`, globbed in by the podspec) and the `ride-activity` widget extension
-/// (which renders it — added to that target by `plugins/withLiveActivityAttributes.ts`). ActivityKit
-/// matches the two separately-compiled copies by unqualified type name. Keep it dependency-free.
+/// (which renders it through the symlink under `targets/ride-activity`). ActivityKit matches the
+/// two separately-compiled copies by unqualified type name.
 ///
-/// Deployment target is 17.0 (> ActivityKit's 16.1 floor), so no `@available` gating is needed.
+/// The deployment target is iOS 17, matching the native Clerk SDK used by the app.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notification/NotificationController.kt
 struct RideActivityAttributes: ActivityAttributes {
@@ -29,4 +30,25 @@ struct RideActivityAttributes: ActivityAttributes {
     var faultCode: Int?
   }
 
+}
+
+/// Native Stop ride action shared by the app and widget targets. `LiveActivityIntent` makes iOS run
+/// `perform()` in the app process without foregrounding the UI, so the app-side copy can reach the
+/// durable `BoardSessionController.shared`. The widget copy only supplies the archived intent type.
+///
+/// Authentication is deliberate: Lock Screen controls remain inert until the rider authenticates.
+@available(iOS 17.0, *)
+struct StopRideIntent: LiveActivityIntent {
+  static let title: LocalizedStringResource = "Stop ride"
+  static let description = IntentDescription("Stop the active Vescape Board Session.")
+  static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+
+  func perform() async throws -> some IntentResult {
+    #if canImport(ExpoModulesCore)
+      await MainActor.run {
+        BoardSessionCommands.stopRide()
+      }
+    #endif
+    return .result()
+  }
 }

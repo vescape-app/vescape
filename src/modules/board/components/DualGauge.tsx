@@ -72,6 +72,10 @@ const VB_CROP_H = VB_H - CROP_TOP
 const VB_CROP_LEFT_X = LEFT_ARC.cx - R - CROP_PAD
 const VB_CROP_RIGHT_X = RIGHT_ARC.cx - CROP_PAD
 
+// Arcs end at the arc centre line (cy), well above the bottom of the gauge box.
+// The touch row is clipped to that so it matches what the rider actually sees.
+const ARC_BOTTOM_RATIO = (LEFT_ARC.cy - CROP_TOP) / VB_CROP_H
+
 const SPARKLINE_HEIGHT = 28
 const SPARKLINE_TOP = 12
 const SPARKLINE_GAP = 32
@@ -191,6 +195,8 @@ interface GaugePairProps {
   speedSeries: SparklinePoint[]
   dutySeries: SparklinePoint[]
   windowMs?: number
+  onPressSpeed: () => void
+  onPressDuty: () => void
 }
 
 function GaugePair({
@@ -205,6 +211,8 @@ function GaugePair({
   speedSeries,
   dutySeries,
   windowMs,
+  onPressSpeed,
+  onPressDuty,
 }: GaugePairProps) {
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
@@ -301,6 +309,25 @@ function GaugePair({
           />
         </Canvas>
       ) : null}
+      <View
+        style={[
+          styles.gaugeTouchRow,
+          { height: SPARKLINE_TOP + SPARKLINE_HEIGHT + gaugeHeight * ARC_BOTTOM_RATIO },
+        ]}
+      >
+        <Pressable
+          style={styles.halfPressable}
+          testID="gauge-speed"
+          onPress={onPressSpeed}
+          android_ripple={interaction.ripple}
+        />
+        <Pressable
+          style={styles.halfPressable}
+          testID="gauge-duty"
+          onPress={onPressDuty}
+          android_ripple={interaction.ripple}
+        />
+      </View>
     </View>
   )
 }
@@ -361,21 +388,9 @@ export function DualGauge({
           speedSeries={speedSeries ?? []}
           dutySeries={dutySeries ?? []}
           windowMs={windowMs}
+          onPressSpeed={() => router.push(routes.controlSpeed)}
+          onPressDuty={() => router.push(routes.controlDuty)}
         />
-        <View style={styles.gaugeTouchRow}>
-          <Pressable
-            style={styles.halfPressable}
-            testID="gauge-speed"
-            onPress={() => router.push(routes.controlSpeed)}
-            android_ripple={interaction.ripple}
-          />
-          <Pressable
-            style={styles.halfPressable}
-            testID="gauge-duty"
-            onPress={() => router.push(routes.controlDuty)}
-            android_ripple={interaction.ripple}
-          />
-        </View>
       </View>
     </View>
   )
@@ -404,7 +419,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   gaugeContent: { position: 'relative' },
-  gaugeTouchRow: { position: 'absolute', inset: 0, flexDirection: 'row', gap: 32 },
+  gaugeTouchRow: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', gap: 32 },
   row: {
     flexDirection: 'row',
     gap: 32,

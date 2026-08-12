@@ -30,7 +30,6 @@ import { ChipRow, OpenButton, ValueRow } from '@/components/dev/ShowcaseControls
 
 import { theme } from '@/constants/theme'
 import type { BasicSliderItem } from '@/modules/tune/lib/sliderDefinitions'
-import { DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS } from '@/modules/tune/lib/tunePreview'
 
 const RANGE_CONFIGS = {
   tune: { min: -5, max: 5, step: 1 },
@@ -263,8 +262,6 @@ function TunePreviewShowcase() {
   const [hillHeightMeters, setHillHeightMeters] = useState(2.5)
   const [hillSpacingMeters, setHillSpacingMeters] = useState(30)
   const hillsEnabled = hillsPreset !== 'flat'
-  const hillLoadAmps = useSharedValue(0)
-  const [advancedPhysics, setAdvancedPhysics] = useState(DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS)
   const fields = useMemo(
     () => ({
       kp: 20,
@@ -335,23 +332,17 @@ function TunePreviewShowcase() {
         hillsEnabled={hillsEnabled}
         hillHeightMeters={hillHeightMeters}
         hillSpacingMeters={hillSpacingMeters}
-        advancedPhysics={advancedPhysics}
         onHelp={() => {}}
-        hillLoadAmps={hillLoadAmps}
         speedKmh={previewSpeedKmh}
         groundToBoardAngleDegrees={groundToBoardAngleDegrees}
       />
       <TunePreviewScenarioControls
-        advancedPhysics={advancedPhysics}
-        onAdvancedPhysicsChange={setAdvancedPhysics}
         hillsPreset={hillsPreset}
         onHillsPresetChange={setHillsPreset}
         hillHeightMeters={hillHeightMeters}
         onHillHeightChange={setHillHeightMeters}
         hillSpacingMeters={hillSpacingMeters}
         onHillSpacingChange={setHillSpacingMeters}
-        hillsEnabled={hillsEnabled}
-        hillLoadAmps={hillLoadAmps}
         pitchInputDegrees={pitchInputDegrees}
         pitchInputActive={pitchInputActive}
         speedKmh={previewSpeedKmh}

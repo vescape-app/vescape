@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test'
 
-import { distanceMeters, nearbyRadiusMeters } from '@/modules/map/lib/nearbyRadius'
+import {
+  distanceMeters,
+  nearbyRadiusMeters,
+  watchRouteSpanMeters,
+} from '@/modules/map/lib/nearbyRadius'
 
 test('a closer camera asks for a smaller radius', () => {
   expect(nearbyRadiusMeters(16, 52)).toBeLessThan(nearbyRadiusMeters(12, 52))
@@ -30,4 +34,11 @@ test('distance is symmetric and zero for the same point', () => {
   // Warsaw to Kraków is ~252km.
   expect(distanceMeters(warsaw, krakow) / 1000).toBeGreaterThan(240)
   expect(distanceMeters(warsaw, krakow) / 1000).toBeLessThan(265)
+})
+
+test('watch route span follows zoom and clamps unusable extremes', () => {
+  expect(watchRouteSpanMeters(16, 52, 1080)).toBeLessThan(watchRouteSpanMeters(14, 52, 1080) ?? 0)
+  expect(watchRouteSpanMeters(24, 52, 1080)).toBe(150)
+  expect(watchRouteSpanMeters(1, 52, 1080)).toBe(2_000)
+  expect(watchRouteSpanMeters(14, 52, 0)).toBeNull()
 })

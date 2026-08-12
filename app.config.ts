@@ -3,6 +3,16 @@ import pkg from './package.json' with { type: 'json' }
 import { applicationId, isDevelopmentApp } from './src/config/appVariant.ts'
 import { androidVersionCode } from './src/helpers/version.ts'
 
+// Without a team ID, prebuild happily writes an Xcode project with no DEVELOPMENT_TEAM and the
+// failure only surfaces minutes later as "Signing for X requires a development team". Expo loads
+// .env.local automatically, so the fix is a line there — say so at the point of failure.
+const appleTeamId = process.env.APPLE_TEAM_ID
+if (!appleTeamId) {
+  console.warn(
+    'APPLE_TEAM_ID is not set — the generated iOS project will not be signable. Add APPLE_TEAM_ID to .env.local before prebuilding for a device.',
+  )
+}
+
 const config: ExpoConfig = {
   name: isDevelopmentApp ? 'vescape dev' : 'vescape',
   slug: 'vescape',
@@ -16,7 +26,7 @@ const config: ExpoConfig = {
     bundleIdentifier: applicationId,
     // Required by @bacons/apple-targets to sign the ride-activity widget extension. Account-specific
     // 10-char Apple Developer team ID — set APPLE_TEAM_ID at prebuild/build time (EAS secret / .env).
-    appleTeamId: process.env.APPLE_TEAM_ID,
+    appleTeamId,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
@@ -106,6 +116,7 @@ const config: ExpoConfig = {
           minSdkVersion: 30,
         },
         ios: {
+          // Clerk's native iOS SDK requires 17.0. Keep app, pods, and widget aligned.
           deploymentTarget: '17.0',
         },
       },
@@ -130,6 +141,7 @@ const config: ExpoConfig = {
     './plugins/withSentryNativeInit',
     './plugins/withAndroidSigningConfig',
     './plugins/withServerOrigin',
+    './plugins/withMapboxToken',
   ],
   experiments: {
     typedRoutes: true,

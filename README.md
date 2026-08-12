@@ -118,7 +118,7 @@ Build, test, or install the Wear OS companion on a connected watch:
 ```bash
 bun run wear:build
 bun run wear:test
-bun run wear:install
+bun run wear
 ```
 
 Run tests (JS via Bun + native Kotlin unit tests):

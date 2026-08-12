@@ -69,8 +69,8 @@ export function ControlDetailLayout({
 }
 
 /**
- * Bind one control's gauge, history chart, and alert controls to one immutable rule snapshot.
- * Preset metrics place their chart inside MetricAlerts so the shared slider lands below it.
+ * Bind one control's gauge, alert controls, and history chart to one immutable rule snapshot.
+ * Alert controls stay directly below the main gauge; telemetry charts follow the complete block.
  */
 function ControlDetailAlerts({
   controlId,
@@ -135,23 +135,25 @@ function ControlDetailAlerts({
   return (
     <MetricDetailAlertContext value={alertContext}>
       {asAlertPresetMetric(controlId) && controller ? (
-        <MetricAlerts
-          controller={controller}
-          unit={unit}
-          liveValue={liveValue}
-          hotRange={hotRange}
-          ruleSnapshot={ruleSnapshot}
-          detailContent={children}
-          controlsHeader={<AlertsHeader />}
-        />
+        <>
+          <MetricAlerts
+            controller={controller}
+            unit={unit}
+            liveValue={liveValue}
+            hotRange={hotRange}
+            ruleSnapshot={ruleSnapshot}
+            controlsHeader={<AlertsHeader />}
+          />
+          {children}
+        </>
       ) : (
         <>
           {gauge}
-          {children}
           <View style={styles.alertsSection}>
             <AlertsHeader />
             {alerts}
           </View>
+          {children}
         </>
       )}
     </MetricDetailAlertContext>

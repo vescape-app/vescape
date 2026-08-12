@@ -33,7 +33,7 @@ struct RideActivityWidget: Widget {
             .foregroundStyle(statusColor(context.state))
         }
         DynamicIslandExpandedRegion(.bottom) {
-          RideStatusRow(state: context.state)
+          RideActivityDetails(state: context.state)
         }
       } compactLeading: {
         Image(systemName: boardSymbol(context.state))
@@ -64,7 +64,25 @@ private struct RideActivityLockScreenView: View {
           .font(.subheadline.weight(.bold))
           .foregroundStyle(statusColor(state))
       }
+      RideActivityDetails(state: state)
+    }
+  }
+}
+
+/// Shared details and authenticated native stop for the Lock Screen and expanded Dynamic Island.
+private struct RideActivityDetails: View {
+  let state: RideActivityAttributes.ContentState
+
+  var body: some View {
+    HStack(alignment: .bottom, spacing: 12) {
       RideStatusRow(state: state)
+      Spacer(minLength: 8)
+      Button(intent: StopRideIntent()) {
+        Label("Stop ride", systemImage: "stop.fill")
+          .font(.caption.weight(.semibold))
+      }
+      .buttonStyle(.borderedProminent)
+      .tint(.red)
     }
   }
 }

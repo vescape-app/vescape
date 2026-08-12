@@ -5,6 +5,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
@@ -20,6 +21,9 @@ import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.buildSessionConfig
 
+import expo.modules.vescapecore.navigation.NavigationController
+import expo.modules.vescapecore.navigation.NavigationProfile
+import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -164,6 +168,9 @@ class VescapeCoreModule : Module() {
       "onAppDataChanged",
       "onBoardWarnings",
       "onAppStatus",
+      "onNavigation",
+      "onRouteProgress",
+      "onWeather",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -174,6 +181,32 @@ class VescapeCoreModule : Module() {
     appStatusUnsub = AppStatusCoordinator.get(context).addChangeListener { status ->
       if (shouldEmitToFrontend("onAppStatus")) {
         sendEvent("onAppStatus", mapOf("status" to status?.toMap()))
+      }
+    }
+
+    // Navigation is native-owned; JS only renders the coordinates it is handed. Push every change,
+    // including the clear to `null` (late subscribers replay below and through `getNavigation`).
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
+    // @parity /modules/vescape-core/src/index.ts `NavigationEvent`
+    NavigationController.get(context).onChange = { navigation ->
+      if (shouldEmitToFrontend("onNavigation")) {
+        sendEvent(
+          "onNavigation",
+          mapOf(
+            "navigation" to navigation?.toMap(),
+            "computing" to NavigationController.get(context).computing,
+          ),
+        )
+      }
+    }
+
+    // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
+    // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
+    // @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
+    NavigationController.get(context).onProgressChange = { progress ->
+      if (shouldEmitToFrontend("onRouteProgress")) {
+        sendEvent("onRouteProgress", mapOf("progress" to progress?.toMap()))
       }
     }
 
@@ -242,6 +275,34 @@ class VescapeCoreModule : Module() {
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
     }
     OnStopObserving("onAppStatus") { stopObserving("onAppStatus") }
+    OnStartObserving("onNavigation") {
+      startObserving("onNavigation")
+      // Late subscriber: replay the current Navigation so JS is immediately consistent.
+      sendEvent(
+        "onNavigation",
+        mapOf(
+          "navigation" to NavigationController.get(context).current?.toMap(),
+          "computing" to NavigationController.get(context).computing,
+        ),
+      )
+    }
+    OnStopObserving("onNavigation") { stopObserving("onNavigation") }
+    OnStartObserving("onRouteProgress") {
+      startObserving("onRouteProgress")
+      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
+      sendEvent(
+        "onRouteProgress",
+        mapOf("progress" to NavigationController.get(context).currentProgress?.toMap()),
+      )
+    }
+    OnStopObserving("onRouteProgress") { stopObserving("onRouteProgress") }
+    OnStartObserving("onWeather") {
+      startObserving("onWeather")
+      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
+      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
+      sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
+    }
+    OnStopObserving("onWeather") { stopObserving("onWeather") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -268,6 +329,8 @@ class VescapeCoreModule : Module() {
       // module reachable (mirrors iOS OnDestroy nulling `onChange`). A fresh module re-attaches in
       // its own definition().
       BoardWarningRegistry.get(context).onChange = null
+      NavigationController.get(context).onChange = null
+      NavigationController.get(context).onProgressChange = null
       appStatusUnsub?.invoke()
       appStatusUnsub = null
       previewAlertFeedback?.release()
@@ -304,6 +367,9 @@ class VescapeCoreModule : Module() {
     }
     Function("recordPhoneHeading") { headingDeg: Double ->
       CoreForegroundService.recordPhoneHeading(context.applicationContext, headingDeg)
+    }
+    Function("setWatchRouteSpanM") { spanM: Double? ->
+      WatchRouteMirror.viewportSpanM = spanM
     }
     Function("setTelemetryRecordingEnabled") { enabled: Boolean -> setTelemetryRecordingEnabled(enabled) }
     Function("setBmsSeriesFocused") { focused: Boolean ->
@@ -351,6 +417,14 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAppStatus`
     Function("getAppStatus") {
       AppStatusCoordinator.get(context).current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
+    Function("getWeather") {
+      WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
+    Function("refreshWeather") {
+      WeatherCoordinator.get().refresh()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `provisionDeviceCredential`
     AsyncFunction("provisionDeviceCredential") Coroutine {
@@ -724,8 +798,37 @@ class VescapeCoreModule : Module() {
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") Coroutine { latitude: Double?, longitude: Double? ->
       val appCtx = context.applicationContext
-      AppDataRepository.get(appCtx).setDirectionPoint(latitude, longitude)
+      val repository = AppDataRepository.get(appCtx)
+      repository.setDirectionPoint(latitude, longitude)
       CoreForegroundService.reloadGroupRideTarget(appCtx)
+
+      // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
+      // one ends it. The Directions call runs off the promise so the pin lands immediately.
+      val navigation = NavigationController.get(appCtx)
+      if (latitude == null || longitude == null) {
+        navigation.clear()
+      } else {
+        val origin = navigationOrigin(repository)
+        navigation.setTarget(latitude, longitude, origin?.first, origin?.second)
+      }
+    }
+    // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
+    // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
+    // by then they have usually ridden somewhere with signal, or somewhere a path exists.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
+    // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
+    AsyncFunction("recomputeNavigation") Coroutine { ->
+      recomputeNavigation(context.applicationContext)
+    }
+    // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
+    // path is computed again under it. The stored profile moves even with no Direction Point set —
+    // the rider chose, and the next Navigation honours it.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
+    // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
+    AsyncFunction("setNavigationProfile") Coroutine { profile: String ->
+      val appCtx = context.applicationContext
+      NavigationController.get(appCtx).selectProfile(NavigationProfile.fromWire(profile))
+      recomputeNavigation(appCtx)
     }
     AsyncFunction("getSettings") {
       runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
@@ -783,8 +886,11 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
-        key == "wearMirrorIntervalMs" ||
+        key == "wearPushRateHz" ||
 key == "wearAutoLaunchOnConnect" ||
+        key == "wearNavArrowEnabled" ||
+        // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
+        key == "riderColor" ||
         key == "boardWarningsEnabled"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
@@ -1088,6 +1194,40 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.stopBoardSession(context.applicationContext) {
       promise.resolve(null)
     }
+  }
+
+  /**
+   * Asks for the path again, to the Direction Point the rider already has and from where they are
+   * now. A no-op with no Direction Point: there is nothing to compute a path to.
+   */
+  private suspend fun recomputeNavigation(appContext: Context) {
+    val repository = AppDataRepository.get(appContext)
+    val directionPoint = repository.getDirectionPoint() ?: return
+    val origin = navigationOrigin(repository)
+    NavigationController.get(appContext).recompute(
+      directionPoint.first,
+      directionPoint.second,
+      origin?.first,
+      origin?.second,
+    )
+  }
+
+  /**
+   * Where a path starts: the rider's live fix, however weak, falling back to the last GPS position
+   * written to app data only when the phone has produced nothing at all this run.
+   *
+   * The stored row is a survivor of the last session — persisted at most every 30s and only from a
+   * precise fix — so on a cold start indoors it is easily yesterday's position kilometres away. A
+   * live approximate fix is the rider; the stored one only claims to be.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `navigationOrigin`
+   */
+  private suspend fun navigationOrigin(repository: AppDataRepository): Pair<Double, Double>? {
+    CoreForegroundService.currentRiderPosition()?.let { return it.latitude to it.longitude }
+    val settings = repository.getTypedSettings()
+    val latitude = settings.lastGpsLatitude ?: return null
+    val longitude = settings.lastGpsLongitude ?: return null
+    return latitude to longitude
   }
 
   private suspend fun reloadPrivacyZonesIntoRecorder(appContext: Context) {

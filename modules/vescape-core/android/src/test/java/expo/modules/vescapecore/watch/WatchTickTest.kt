@@ -1,6 +1,5 @@
 package expo.modules.vescapecore.watch
 
-import expo.modules.vescapecore.runtime.BoardSession
 import expo.modules.vescapecore.runtime.TestScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -8,7 +7,7 @@ import org.junit.Test
 
 /**
  * Verifies the dedicated watch tick fires at its configured cadence and re-arms live when the
- * `wearMirrorIntervalMs` App Setting changes (ADR-0013/0019) — lowering the interval must take
+ * `wearPushRateHz` App Setting changes (ADR-0013/0019) — lowering the interval must take
  * effect immediately rather than waiting out the current, longer delay.
  */
 class WatchTickTest {
@@ -24,14 +23,11 @@ class WatchTickTest {
 
     private fun tick(
         scheduler: TestScheduler,
-        session: BoardSession,
         intervalMs: Long,
-        snapshot: () -> WatchSnapshot? = { this.snapshot },
+        snapshot: () -> WatchSnapshot = { this.snapshot },
         onPush: (ByteArray) -> Unit,
     ) = WatchTick(
         scheduler = scheduler,
-        session = { session },
-        isCurrentSession = { it === session },
         snapshot = snapshot,
         isStale = { false },
         canPush = { true },
@@ -42,9 +38,8 @@ class WatchTickTest {
     @Test
     fun `pushes a frame every interval`() {
         val scheduler = TestScheduler()
-        val session = BoardSession(1)
         var pushes = 0
-        tick(scheduler, session, 500) { pushes++ }.start()
+        tick(scheduler, 500) { pushes++ }.start()
 
         scheduler.advance(1500)
 
@@ -54,9 +49,8 @@ class WatchTickTest {
     @Test
     fun `lowering interval re-arms the pending tick immediately`() {
         val scheduler = TestScheduler()
-        val session = BoardSession(1)
         var pushes = 0
-        val watchTick = tick(scheduler, session, 2000) { pushes++ }
+        val watchTick = tick(scheduler, 2000) { pushes++ }
         watchTick.start()
 
         scheduler.advance(1000)
@@ -72,26 +66,40 @@ class WatchTickTest {
     }
 
     @Test
-    fun `pushes a waiting frame while the session has no telemetry yet`() {
+    fun `pushes a frame with empty board lanes while navigation stays available`() {
         val scheduler = TestScheduler()
-        val session = BoardSession(1)
         val pushed = mutableListOf<ByteArray>()
-        tick(scheduler, session, 500, snapshot = { null }) { pushed.add(it) }.start()
+        tick(
+            scheduler,
+            500,
+            snapshot = {
+                snapshot.copy(
+                    speed = null,
+                    dutyCycle = null,
+                    batterySoc = null,
+                    motorTemp = null,
+                    ctrlTemp = null,
+                    navBearing = 42.0,
+                    navDistanceM = 100.0,
+                )
+            },
+        ) { pushed.add(it) }.start()
 
         scheduler.advance(500)
 
         assertEquals(1, pushed.size)
-        val flags = pushed.single()[1].toInt()
-        assertTrue(flags and WATCH_FRAME_FLAG_WAITING != 0)
-        assertTrue(flags and WATCH_FRAME_FLAG_STALE != 0)
+        val decoded = java.nio.ByteBuffer.wrap(pushed.single()).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        decoded.position(2)
+        assertTrue(decoded.float.isNaN())
+        repeat(4) { decoded.float }
+        assertEquals(42.0f, decoded.float)
     }
 
     @Test
     fun `setIntervalMs while stopped takes effect on next start`() {
         val scheduler = TestScheduler()
-        val session = BoardSession(1)
         var pushes = 0
-        val watchTick = tick(scheduler, session, 500) { pushes++ }
+        val watchTick = tick(scheduler, 500) { pushes++ }
 
         watchTick.setIntervalMs(100)
         watchTick.start()

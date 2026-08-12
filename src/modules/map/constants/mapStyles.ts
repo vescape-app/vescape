@@ -21,6 +21,7 @@ export const MAP_DEFAULTS = {
   markerInactiveColor: theme.palette.slate.light,
   trailColor: theme.palette.violet.color,
   trailWidth: 3,
+  navigationWidth: 5,
   accuracyFillColor: theme.alpha(theme.palette.violet.color, 0.12),
   trailGradientStart: theme.alpha(theme.palette.violet.color, 0),
   trailGradientEnd: theme.alpha(theme.palette.violet.color, 0.85),
@@ -47,11 +48,11 @@ export const MAP_STYLES = [
 ] as const
 
 export type MapStyleKey = (typeof MAP_STYLES)[number]['key']
-export const MAP_NAVIGATION_MODES = [
+export const MAP_ORIENTATION_MODES = [
   { key: 'northUp', label: 'North up' },
   { key: 'gpsHeading', label: 'GPS heading' },
   { key: 'phoneHeading', label: 'Compass' },
   { key: 'freeRotate', label: 'Free rotate' },
 ] as const
 
-export type MapNavigationMode = (typeof MAP_NAVIGATION_MODES)[number]['key']
+export type MapOrientationMode = (typeof MAP_ORIENTATION_MODES)[number]['key']

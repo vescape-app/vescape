@@ -9,7 +9,7 @@ import {
 } from 'vescape-core'
 import { generateId } from '@/helpers/id'
 
-export type { AlertRule, AlertSoundType } from 'vescape-core'
+export type { AlertSoundType } from 'vescape-core'
 
 interface AlertsState {
   /**

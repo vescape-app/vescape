@@ -112,6 +112,18 @@ _Avoid_: Marker, GPS point, telemetry marker, direction point
 One rider's private navigation target on the map, stored on the phone only. It is not a Map Point: it is never shared as a place, has no category, author or reactions, and Group Ride presence reads it natively.
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
+**Navigation**:
+The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Once computed it is fixed for the ride, so the rider is free to wander without it changing under them. It describes where the rider could go and is never **Ride History**, which records where they did go.
+_Avoid_: Route, ride route, navigation mode, guidance, directions
+
+**Route Progress**:
+Where the rider is along their **Navigation** right now: the point on the path nearest to them, how far is left to the **Direction Point** from there, and the bearing to an aim point a short way further along. It is derived and never stored, it changes with every **GPS Fix**, and it ends with the Navigation it belongs to. Navigation is the fixed path; Route Progress is the moving place on it.
+_Avoid_: Navigation progress, route position, ETA, remaining route, navigation fix
+
+**Navigation Profile**:
+The kind of ways a **Navigation** may follow, such as footpaths or cycleways. The rider chooses it while looking at a path and the last choice carries to the next Navigation. It is not a **Map Camera Profile**, which is camera behavior, nor a **Tune Profile**, which is board settings.
+_Avoid_: Navigation mode, routing mode, travel mode, way preference
+
 **Map Point Reaction**:
 One Account's `up` or `down` vote on one Map Point. A reaction belongs to exactly one Account and one Map Point, changing it replaces the row, and removing it deletes the row. The score is derived by adding up votes and subtracting down votes; it is never stored on the Map Point.
 _Avoid_: Like flag, liked point, reaction column on Map Point
@@ -129,8 +141,12 @@ The Map Camera Controller's in-flight adjustment from approximate Ride History f
 _Avoid_: Second jump, route correction, recenter after load
 
 **Map Camera Profile**:
-A named camera behavior used by the Map Camera Controller to derive heading, zoom, pitch, padding, and animation policy for a view or navigation mode.
+A named camera behavior used by the Map Camera Controller to derive heading, zoom, pitch, padding, and animation policy for a view or Map Orientation Mode.
 _Avoid_: Tilt setting, view camera hack, mode special case
+
+**Map Orientation Mode**:
+The rider's chosen map camera orientation: north up, GPS heading, compass, or free rotate. It says which way the map faces, not where the rider is going.
+_Avoid_: Navigation mode, map navigation, heading mode
 
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.
@@ -343,6 +359,12 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Map Point** is placed by a signed-in **Vescape Account** on the live map and does not belong to **Ride Recording** or **Ride History**; the server owns it, and the app reads the ones near the camera without keeping a durable copy.
 - A **Map Point Reaction** belongs to one **Vescape Account** and one **Map Point**; the server derives the score from its reaction rows.
 - A **Direction Point** is one rider's private navigation target, is never a **Map Point**, and stays on the phone so **Group Ride** presence can share it.
+- A **Navigation** belongs to exactly one **Direction Point**: setting a Direction Point creates it and clearing one ends it, so a rider never has more than one Navigation.
+- A **Navigation** is produced under one **Navigation Profile** and keeps it: choosing a different profile does not redraw the existing path, it produces a new Navigation in its place.
+- A **Navigation** outlives the app process and any single **Ride Recording**: a rider who restarts, crashes, or starts riding another day finds the same Direction Point and the same path waiting.
+- A **Navigation** is computed once and never changes on its own: straying from it, looping back, or riding side paths leaves it untouched, and only the rider asks for a new one.
+- **Route Progress** belongs to exactly one **Navigation** and attaches to the nearest point on it unconditionally: there is no off-route state, so a rider who loops away and comes back re-attaches without asking for anything.
+- **Route Progress** measures what is left along the path rather than the straight line to the **Direction Point**, and its bearing points at an aim point ahead on the path rather than at the target, so it follows the ways the path follows.
 - A **Map Camera Controller** may frame **Live State**, **Ride History**, **GPS Fixes**, or **Map Points**, but does not own those domain objects.
 - A **Map Camera Intent** is interpreted by the **Map Camera Controller**; outside components request camera behavior instead of mutating the map camera directly.
 - A **History Camera Refinement** belongs to one selected **Ride Recording** in **Ride History** and is ignored if the selected ride changes or the rider manually browses the map.
@@ -351,7 +373,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Map Camera Profile** for compass follow is applied only after a real compass heading is available; heading zero is not used as a placeholder for compass readiness.
 - A style reload is treated as a **Map Camera Intent** that preserves the current manual camera snapshot or recomputes the active logical target without resetting heading or pitch.
 - A weather view uses a **Map Camera Profile** rather than a direct zoom change; it keeps the current map center while applying a weather overview zoom and low or flat pitch.
-- A **Map Camera Controller** uses **App Settings** such as map style, navigation mode, and perspective mode, but those settings remain durable preferences outside the controller.
+- A **Map Camera Controller** uses **App Settings** such as map style, **Map Orientation Mode**, and perspective mode, but those settings remain durable preferences outside the controller.
 - A **Privacy Zone** limits what **Ride Recording** data is retained without changing **Live State**.
 - A **Ride Recording** becomes part of **Ride History**.
 - A **Moving Window** belongs to one **Ride Recording** and is derived from which **Telemetry Samples** are excluded from speed metrics; a Ride Recording without one is excluded from **Ride History**.
@@ -443,6 +465,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - "tilt setting" is too narrow because pitch depends on zoom, heading, padding, and view intent; resolved term: use **Map Camera Profile**.
 - "filter" may mean dropping samples, smoothing charts, or excluding implausible values from metrics; resolved term: use **Metric Sanitizer** for metric exclusion that preserves original samples.
 - "save area" or "safe area" may mean a privacy boundary around home or work; resolved term: use **Privacy Zone**.
+- "navigation mode" may mean how the map camera is oriented or guidance toward a destination; resolved term: use **Map Orientation Mode** for camera orientation and reserve "navigation" for destination guidance.
 - "smoother" is avoided in the raw-telemetry layer (see **Metric Sanitizer**) but is legitimate for the **Battery SoC Estimate**, a processed derived value that smooths the percentage only — never the raw voltage **Telemetry Sample**.
 - "BMS telemetry" may mean live smart-BMS cell values or a durable battery-health archive; resolved: use **Live BMS Series** for the ephemeral in-memory cell-voltage window (retained by `liveHistoryLimit`, never persisted), distinct from scalar **Telemetry Samples**. No durable BMS/battery-health store exists; if one is ever added it needs its own term and a rest-normalized capture trigger.
 - "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts **Ride Recording** sample persistence only — the **Board Session** stays connected and live at a reduced poll rate.
