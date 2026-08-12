@@ -368,6 +368,10 @@ class CoreForegroundService : Service() {
             instance?.controller?.setBmsSeriesFocused(focused)
         }
 
+        fun setFocusedSeriesMetrics(metrics: List<String>) {
+            instance?.controller?.setFocusedSeriesMetrics(metrics)
+        }
+
         fun setLiveHistoryLimit(limit: Number?) {
             val minutes = (limit?.toInt() ?: DEFAULT_LIVE_HISTORY_LIMIT_MINUTES)
                 .coerceIn(MIN_LIVE_HISTORY_LIMIT_MINUTES, MAX_LIVE_HISTORY_LIMIT_MINUTES)

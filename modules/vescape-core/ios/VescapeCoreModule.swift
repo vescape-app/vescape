@@ -75,7 +75,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -90,6 +90,8 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onLiveTick") { self.observedEvents.remove("onLiveTick") }
     OnStartObserving("onLiveSeries") { self.observedEvents.insert("onLiveSeries") }
     OnStopObserving("onLiveSeries") { self.observedEvents.remove("onLiveSeries") }
+    OnStartObserving("onFocusedSeries") { self.observedEvents.insert("onFocusedSeries") }
+    OnStopObserving("onFocusedSeries") { self.observedEvents.remove("onFocusedSeries") }
     OnStartObserving("onTelemetryHistory") { self.observedEvents.insert("onTelemetryHistory") }
     OnStopObserving("onTelemetryHistory") { self.observedEvents.remove("onTelemetryHistory") }
     OnStartObserving("onBms") { self.observedEvents.insert("onBms") }
@@ -275,6 +277,11 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBmsSeriesFocused`
     Function("setBmsSeriesFocused") { (focused: Bool) in
       self.coordinator.setBmsSeriesFocused(focused)
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setFocusedSeriesMetrics`
+    Function("setFocusedSeriesMetrics") { (metrics: [String]) in
+      self.coordinator.setFocusedSeriesMetrics(metrics)
     }
 
     AsyncFunction("getCriticalRideNotificationPermissionStatus") { (promise: Promise) in

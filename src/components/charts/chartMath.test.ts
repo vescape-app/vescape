@@ -174,3 +174,16 @@ test('splitChartLineSegments breaks line on large telemetry gap', () => {
   expect(segments[0]).toHaveLength(3)
   expect(segments[1]).toHaveLength(2)
 })
+
+test('a sparsely sampled stretch survives as one-sample runs instead of vanishing', () => {
+  // Dense 50ms block, then samples seconds apart: every sparse neighbour exceeds the gap
+  // threshold, so each is its own run. Dropping them would blank the whole stretch.
+  const points: TelemetryChartPoint[] = [
+    ...Array.from({ length: 6 }, (_, i) => ({ date: new Date(1000 + i * 50), value: 4 })),
+    { date: new Date(9_000), value: 3 },
+    { date: new Date(14_000), value: 3 },
+    { date: new Date(20_000), value: 3 },
+  ]
+  const runs = splitChartLineSegments(points, { y: { min: 0, max: 10 } }, 100, 50, 30_000)
+  expect(runs.map((run) => run.length)).toEqual([6, 1, 1, 1])
+})

@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
+import { View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
+import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
 import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
 import type {
   ExcludedRange,
@@ -9,6 +11,9 @@ import type {
 } from '@/components/charts/chartMath'
 import type { TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import { useMetricDetailAlertThresholds } from '@/modules/board/components/metricDetailAlertContext'
+import { FOCUS_DEFER_MS } from '@/modules/board/hooks/useLiveMetric'
+import { useBleStore } from '@/modules/board/store/bleStore'
+import { useDeferredMount } from '@/hooks/useDeferredMount'
 import { DASH } from '@/helpers/format'
 
 interface SecondaryMetricSeries {
@@ -64,6 +69,12 @@ export function MetricDetailChart({
   reserveRightAxis,
 }: MetricDetailChartProps) {
   const alertThresholds = useMetricDetailAlertThresholds(metric.controlId)
+  // The series is opened on the same deferral (see `useLiveMetric`), so until it lands the chart
+  // renders its chrome with no points and says so. Only a connected board will ever fill it —
+  // without one an empty chart is the honest end state, not a pending one.
+  const ready = useDeferredMount(FOCUS_DEFER_MS)
+  const connected = useBleStore((s) => s.status === 'connected')
+  const loading = connected && (!ready || points.length === 0)
   // Live charts never persist a selection: while scrubbing the marker follows the
   // cursor, on release it snaps back to the newest point to signal "live".
   const currentPoint = points.at(-1) ?? null
@@ -84,23 +95,26 @@ export function MetricDetailChart({
   }, [secondary, currentPoint])
 
   return (
-    <TelemetryLineChart
-      label={label}
-      value={displayValue}
-      points={points}
-      currentPoint={currentPoint}
-      color={metric.color}
-      range={range}
-      height={height}
-      scrubbable
-      formatValue={formatValue}
-      windowMs={windowMs}
-      excludedRanges={excludedRanges}
-      secondary={secondarySeries}
-      scrubTimeMs={scrubTimeMs}
-      onScrubTimeChange={onScrubTimeChange}
-      reserveRightAxis={reserveRightAxis}
-      alertThresholds={alertThresholds}
-    />
+    <View>
+      <TelemetryLineChart
+        label={label}
+        value={displayValue}
+        points={points}
+        currentPoint={currentPoint}
+        color={metric.color}
+        range={range}
+        height={height}
+        scrubbable
+        formatValue={formatValue}
+        windowMs={windowMs}
+        excludedRanges={excludedRanges}
+        secondary={secondarySeries}
+        scrubTimeMs={scrubTimeMs}
+        onScrubTimeChange={onScrubTimeChange}
+        reserveRightAxis={reserveRightAxis}
+        alertThresholds={alertThresholds}
+      />
+      {loading ? <ChartLoadingOverlay /> : null}
+    </View>
   )
 }

@@ -1532,6 +1532,16 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
+    /**
+     * Detail-chart focus intent from JS: the set of metrics whose high-res `onFocusedSeries` stream
+     * should run (empty to stop). Emits an immediate snapshot on change; the live-series timer keeps
+     * it fresh thereafter.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift (setFocusedSeriesMetrics)
+     */
+    fun setFocusedSeriesMetrics(metrics: List<String>) {
+        liveSeriesEmitter.setFocusedMetrics(metrics.toSet())
+    }
+
     private fun emitBmsSeries(mode: String, frames: List<BmsSeriesFrame>) {
         val cellCount = bmsSeriesRing.cellCount()
         emitEvent(
