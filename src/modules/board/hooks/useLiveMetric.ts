@@ -48,7 +48,7 @@ const SELECTOR_KEYS = new Map<TelemetrySelector, string>(
 )
 
 /** Grace period after interactions settle before the heavy focused stream is opened. */
-export const FOCUS_DEFER_MS = 150
+export const FOCUS_DEFER_MS = 500
 
 const EMPTY_FLAT: number[] = []
 const EMPTY_RANGES: ExcludedRange[] = []
