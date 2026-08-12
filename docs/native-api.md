@@ -270,19 +270,38 @@ Valid keys: `liveHistoryLimit`, `autoConnect`, `autoRecording`, `selectedBoardId
 
 Writing default-equivalent value deletes the override row. Unknown keys and type mismatches are silently ignored.
 
+## Auto start (companion presence)
+
+Android only — every fn rejects `UNSUPPORTED_PLATFORM` on iOS, except `getCompanionPresenceBoards()`
+which resolves `[]`. All are async.
+
+| fn                                      | returns                                                              |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `setCompanionPresenceEnabled(enabled)`  | void. Master switch; on also forces `autoConnect`                    |
+| `getCompanionPresenceBoards()`          | `CompanionPresenceBoard[]` — linked boards the OS is associated with |
+| `addCompanionPresenceBoard(boardId)`    | void. Opens the system chooser, then observes the board              |
+| `removeCompanionPresenceBoard(boardId)` | void. Stops observing and drops the association                      |
+
+Associations, not the settings flag, are the source of truth for which boards are armed. Disabling
+the master switch stops observing but keeps associations, so re-enabling needs no second chooser.
+Enabling and removing both prune associations no linked board claims.
+
+```ts
+CompanionPresenceBoard = { boardId, name, bleId }
+```
+
+Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` maps them to copy.
+
 ## Diagnostics
 
-| fn                                      | sync | returns                                   |
-| --------------------------------------- | ---- | ----------------------------------------- |
-| `setDebugRecordingEnabled(enabled)`     | yes  | void. Android only                        |
-| `getCompanionPresenceBoards()`          | yes  | Android companion-associated saved boards |
-| `addCompanionPresenceBoard(boardId)`    | yes  | Associate and observe one linked board    |
-| `removeCompanionPresenceBoard(boardId)` | yes  | Stop observing and remove its association |
-| `listDebugRecordings()`                 | no   | `{ name, createdAt, sizeBytes }[]`        |
-| `exportDebugRecording(name)`            | no   | `{ uri, name, sizeBytes }`. Android only  |
-| `reportUiError(message,source?,stack?)` | yes  | void                                      |
-| `reportDiagnosticTest()`                | yes  | `DiagnosticStatus`                        |
-| `getDiagnosticStatus()`                 | yes  | `DiagnosticStatus`                        |
+| fn                                      | sync | returns                                  |
+| --------------------------------------- | ---- | ---------------------------------------- |
+| `setDebugRecordingEnabled(enabled)`     | yes  | void. Android only                       |
+| `listDebugRecordings()`                 | no   | `{ name, createdAt, sizeBytes }[]`       |
+| `exportDebugRecording(name)`            | no   | `{ uri, name, sizeBytes }`. Android only |
+| `reportUiError(message,source?,stack?)` | yes  | void                                     |
+| `reportDiagnosticTest()`                | yes  | `DiagnosticStatus`                       |
+| `getDiagnosticStatus()`                 | yes  | `DiagnosticStatus`                       |
 
 ### DiagnosticStatus shape
 

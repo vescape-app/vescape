@@ -142,6 +142,8 @@ export default function ConnectionSettingsScreen() {
     if ((await ensureBackgroundLocation()) && pendingBoardId) {
       void enableCompanion(pendingBoardId)
     } else {
+      // Grant happens outside the app, so this attempt is over — the rider taps Enable again.
+      setPendingBoardId(null)
       Linking.openSettings()
     }
   }

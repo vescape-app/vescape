@@ -704,6 +704,7 @@ export const e2eFake = {
   },
 
   getCompanionPresenceBoards(): CompanionPresenceBoard[] {
+    if (!e2eSettings.companionPresenceEnabled) return []
     return e2eBoards.flatMap((board) =>
       e2eCompanionBoardIds.has(board.id) && board.link
         ? [{ boardId: board.id, name: board.name, bleId: board.link.bleId }]
@@ -716,9 +717,9 @@ export const e2eFake = {
     e2eSettings.companionPresenceEnabled = true
   },
 
+  /** Native keeps the master switch on at zero boards (the "nothing armed" state) — mirror that. */
   removeCompanionPresenceBoard(boardId: string): void {
     e2eCompanionBoardIds.delete(boardId)
-    e2eSettings.companionPresenceEnabled = e2eCompanionBoardIds.size > 0
   },
 
   setLegalMode(boardId: string, enabled: boolean): void {

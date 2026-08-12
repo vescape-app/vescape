@@ -93,7 +93,9 @@ export function AutoStartCard({
           right={
             <Switch
               value={enabled}
-              disabled={masterBusy || noBoards}
+              // Lockable only into the off state: unlinking every board must never strand the
+              // switch on with nothing to turn it off.
+              disabled={masterBusy || (noBoards && !enabled)}
               onValueChange={toggle}
               trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
               thumbColor={enabled ? theme.palette.sky.color : theme.palette.slate.textMuted}

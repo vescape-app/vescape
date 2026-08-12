@@ -37,44 +37,25 @@ internal class CompanionPresence(
         if (enabled) enable(promise) else disable(promise)
     }
 
-    fun addBoard(boardId: String, promise: Promise) {
-        enableBoard(boardId, promise)
-    }
-
+    /**
+     * Forgetting is unconditional: a Board whose BLE link was removed still owns an OS association
+     * that no screen can reach, so a missing link means "prune orphans", never an error.
+     */
     fun removeBoard(boardId: String, promise: Promise) {
         CoroutineScope(Dispatchers.IO).launch {
-            val repo = AppDataRepository.get(context)
-            val bleId = boardBleId(repo, boardId)
-            if (bleId == null) {
-                promise.reject("COMPANION_BOARD_UNLINKED", "Board must have a BLE link", null)
-                return@launch
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val manager = companionManager()
-                try {
-                    @Suppress("DEPRECATION")
-                    manager.stopObservingDevicePresence(bleId)
-                } catch (e: Exception) {
-                    Log.w(VESC_SESSION_TAG, "Companion presence stop failed: ${e.message}")
-                }
-                try {
-                    @Suppress("DEPRECATION")
-                    manager.disassociate(bleId)
-                } catch (e: Exception) {
-                    Log.w(VESC_SESSION_TAG, "Companion disassociation failed: ${e.message}")
-                }
-            }
+            val bleId = boardBleId(AppDataRepository.get(context), boardId)
+            if (bleId != null) forget(bleId)
+            pruneOrphanAssociations()
             promise.resolve(null)
         }
     }
 
     suspend fun getBoards(): List<Map<String, String>> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return emptyList()
-        if (!AppDataRepository.get(context).getTypedSettings().companionPresenceEnabled) {
-            return emptyList()
-        }
+        val repo = AppDataRepository.get(context)
+        if (!repo.getTypedSettings().companionPresenceEnabled) return emptyList()
         val associated = associatedAddresses(companionManager())
-        return AppDataRepository.get(context).getBoards().mapNotNull { board ->
+        return repo.getBoards().mapNotNull { board ->
             val link = board["link"] as? Map<*, *> ?: return@mapNotNull null
             val bleId = link["bleId"] as? String ?: return@mapNotNull null
             if (associated.none { it.equals(bleId, ignoreCase = true) }) return@mapNotNull null
@@ -134,6 +115,7 @@ internal class CompanionPresence(
                 val repo = AppDataRepository.get(context)
                 repo.updateSetting("autoConnect", true)
                 repo.updateSetting("companionPresenceEnabled", true)
+                pruneOrphanAssociations()
                 for (board in getBoards()) {
                     observe(board.getValue("bleId"))
                 }
@@ -144,7 +126,7 @@ internal class CompanionPresence(
         }
     }
 
-    private fun enableBoard(boardId: String, promise: Promise) {
+    fun addBoard(boardId: String, promise: Promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             promise.reject("COMPANION_PRESENCE_UNSUPPORTED", "Companion presence requires Android 12+", null)
             return
@@ -165,7 +147,7 @@ internal class CompanionPresence(
             val repo = AppDataRepository.get(context)
             val bleId = boardBleId(repo, boardId)
             if (bleId == null) {
-                promise.reject("COMPANION_BOARD_UNLINKED", "Selected board must have a BLE link", null)
+                promise.reject("COMPANION_BOARD_UNLINKED", "Board must have a BLE link", null)
                 return@launch
             }
             // Auto-start claims the board exclusively. Rather than ask the user to disconnect first,
@@ -183,16 +165,9 @@ internal class CompanionPresence(
     private fun disable(promise: Promise) {
         CoroutineScope(Dispatchers.IO).launch {
             val repo = AppDataRepository.get(context)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                for (board in getBoards()) {
-                    try {
-                        @Suppress("DEPRECATION")
-                        companionManager().stopObservingDevicePresence(board.getValue("bleId"))
-                    } catch (e: Exception) {
-                        Log.w(VESC_SESSION_TAG, "Companion presence stop failed: ${e.message}")
-                    }
-                }
-            }
+            // Associations survive a disable: they are what getBoards() reads back, so flipping the
+            // master switch on again restores the same armed Boards without a second chooser.
+            for (board in getBoards()) stopObserving(board.getValue("bleId"))
             repo.updateSetting("companionPresenceEnabled", false)
             promise.resolve(null)
         }
@@ -206,6 +181,11 @@ internal class CompanionPresence(
         }
     }
 
+    /**
+     * Error codes raised here are a rider-facing contract; the JS peer maps them to copy.
+     *
+     * @parity /src/modules/settings/lib/companionErrors.ts
+     */
     @SuppressLint("MissingPermission")
     private fun associateOrObserve(bleId: String, promise: Promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
@@ -325,6 +305,44 @@ internal class CompanionPresence(
         val board = repo.getBoard(boardId) ?: return null
         val link = board["link"] as? Map<*, *> ?: return null
         return (link["bleId"] as? String)?.takeIf { it.isNotBlank() }
+    }
+
+    private fun stopObserving(bleId: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        try {
+            @Suppress("DEPRECATION")
+            companionManager().stopObservingDevicePresence(bleId)
+        } catch (e: Exception) {
+            Log.w(VESC_SESSION_TAG, "Companion presence stop failed: ${e.message}")
+        }
+    }
+
+    /** Stop watching an address and drop its OS association. Both steps are best-effort. */
+    private fun forget(bleId: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        stopObserving(bleId)
+        try {
+            @Suppress("DEPRECATION")
+            companionManager().disassociate(bleId)
+        } catch (e: Exception) {
+            Log.w(VESC_SESSION_TAG, "Companion disassociation failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Associations outlive the Boards that created them — unlink a Board's BLE and its association
+     * becomes invisible to every screen while still waking the phone. Drop anything no linked Board
+     * claims. Board associations are the only ones we ever create, so unmatched means orphaned.
+     */
+    private suspend fun pruneOrphanAssociations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val linked = AppDataRepository.get(context).getBoards()
+            .mapNotNull { (it["link"] as? Map<*, *>)?.get("bleId") as? String }
+            .map { it.uppercase() }
+            .toSet()
+        for (address in associatedAddresses(companionManager())) {
+            if (address.uppercase() !in linked) forget(address)
+        }
     }
 
     @Suppress("DEPRECATION")
