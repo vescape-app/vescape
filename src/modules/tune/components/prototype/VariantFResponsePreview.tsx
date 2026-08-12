@@ -14,6 +14,7 @@ import { Text } from '@/components/base/Text'
 import { MonoValue } from '@/components/base/MonoValue'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { theme } from '@/constants/theme'
+import { useLatestCallback } from '@/hooks/useLatestCallback'
 import { TunePreview } from '@/modules/tune/components/TunePreview'
 import { responseLeanAngleDegrees } from '@/modules/tune/lib/tunePreviewGeometry'
 
@@ -42,6 +43,7 @@ export const VariantFResponsePreview = memo(function VariantFResponsePreview({
   const speedKmh = useSharedValue(cycling ? 5 : RESPONSE_SPEED_KMH)
   const riderLeanAngleDegrees = useSharedValue(0)
   const speedText = useDerivedValue(() => `${speedKmh.value.toFixed(1)} km/h`)
+  const notifyScenarioChange = useLatestCallback(onScenarioChange)
 
   useEffect(() => {
     const magnitude = responseLeanAngleDegrees(aggressiveness, stiffness)
@@ -55,12 +57,12 @@ export const VariantFResponsePreview = memo(function VariantFResponsePreview({
     (speed) => {
       if (!cycling) return
       if (scenario === 'acceleration' && speed >= 30) {
-        scheduleOnRN(onScenarioChange, 'braking')
+        scheduleOnRN(notifyScenarioChange, 'braking')
       } else if (scenario === 'braking' && speed <= 5) {
-        scheduleOnRN(onScenarioChange, 'acceleration')
+        scheduleOnRN(notifyScenarioChange, 'acceleration')
       }
     },
-    [cycling, onScenarioChange, scenario, speedKmh],
+    [cycling, notifyScenarioChange, scenario, speedKmh],
   )
 
   return (

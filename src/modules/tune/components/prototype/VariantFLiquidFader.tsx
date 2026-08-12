@@ -10,6 +10,7 @@ import { scheduleOnRN } from 'react-native-worklets'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useLatestCallback } from '@/hooks/useLatestCallback'
 
 export type FaderReadout = { number: string; word: string }
 
@@ -32,6 +33,8 @@ export function VariantFLiquidFader({
 }) {
   const progress = useSharedValue(value)
   const dragging = useSharedValue(false)
+  const notifyInteraction = useLatestCallback(() => onInteraction?.())
+  const notifyChange = useLatestCallback((nextValue: number) => onChange(nextValue))
 
   useEffect(() => {
     if (!dragging.value) progress.value = value
@@ -42,7 +45,7 @@ export function VariantFLiquidFader({
       Gesture.Pan()
         .minDistance(0)
         .onBegin((event) => {
-          if (onInteraction) scheduleOnRN(onInteraction)
+          scheduleOnRN(notifyInteraction)
           dragging.value = true
           progress.value = Math.min(10, Math.max(0, (1 - event.y / height) * 10))
         })
@@ -51,9 +54,9 @@ export function VariantFLiquidFader({
         })
         .onFinalize(() => {
           dragging.value = false
-          scheduleOnRN(onChange, Math.round(progress.value * 2) / 2)
+          scheduleOnRN(notifyChange, Math.round(progress.value * 2) / 2)
         }),
-    [dragging, height, onChange, onInteraction, progress],
+    [dragging, height, notifyChange, notifyInteraction, progress],
   )
   const fillStyle = useAnimatedStyle(() => ({ height: (progress.value / 10) * height }))
   const markerStyle = useAnimatedStyle(() => ({
