@@ -444,6 +444,9 @@ platform :ios do
     upload_to_app_store(
       api_key:              api_key,
       submit_for_review:    false,
+      # precheck can't inspect in-app purchases with an ASC API key, and there is
+      # nothing to pre-check when we only stage a draft instead of submitting.
+      run_precheck_before_submit: false,
       automatic_release:    false,
       skip_metadata:        true,
       skip_screenshots:     true,
