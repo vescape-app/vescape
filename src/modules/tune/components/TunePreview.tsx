@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/immutability */
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, Switch, View, useWindowDimensions } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { EyeIcon, QuestionIcon } from 'phosphor-react-native'
@@ -59,6 +59,8 @@ interface TunePreviewProps {
   hillLoadAmps?: SharedValue<number>
   speedKmh?: SharedValue<number>
   groundToBoardAngleDegrees?: SharedValue<number>
+  minimal?: boolean
+  minimalAccessory?: ReactNode
 }
 
 interface TunePreviewScenario {
@@ -112,6 +114,8 @@ export function TunePreview({
   hillLoadAmps,
   speedKmh,
   groundToBoardAngleDegrees,
+  minimal = false,
+  minimalAccessory,
 }: TunePreviewProps) {
   const model = useMemo(
     () => createTunePreviewModel(fields),
@@ -263,96 +267,110 @@ export function TunePreview({
 
   return (
     <View style={styles.card}>
-      <View style={styles.header}>
-        <View style={styles.titleBlock}>
-          <View style={styles.identityRow}>
-            <EyeIcon size={16} color={theme.tune.color} weight="duotone" />
-            <View style={styles.identityText}>
-              <View style={styles.titleRow}>
-                <Text style={styles.title}>Tune Preview</Text>
-                <Pressable hitSlop={8} onPress={onHelp}>
-                  <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
-                </Pressable>
+      {minimal ? (
+        <View style={styles.minimalHeader}>
+          {minimalAccessory}
+          <Pressable
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="About Tune Preview"
+            onPress={onHelp}
+          >
+            <QuestionIcon size={16} color={theme.palette.slate.textMuted} weight="bold" />
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.header}>
+          <View style={styles.titleBlock}>
+            <View style={styles.identityRow}>
+              <EyeIcon size={16} color={theme.tune.color} weight="duotone" />
+              <View style={styles.identityText}>
+                <View style={styles.titleRow}>
+                  <Text style={styles.title}>Tune Preview</Text>
+                  <Pressable hitSlop={8} onPress={onHelp}>
+                    <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+                  </Pressable>
+                </View>
+                <Text style={styles.subtitle}>{TUNE_PREVIEW_DESCRIPTION}</Text>
               </View>
-              <Text style={styles.subtitle}>{TUNE_PREVIEW_DESCRIPTION}</Text>
-            </View>
-            <View style={styles.speedReadout}>
-              <Canvas style={styles.speedCanvas}>
-                {speedFont && (
-                  <SkiaText
-                    x={0}
-                    y={SPEED_BASELINE}
-                    text={speedStr}
-                    font={speedFont}
-                    color={theme.telemetry.speed}
-                  />
-                )}
-              </Canvas>
-              <Text style={styles.speedUnit}>km/h</Text>
-            </View>
-            {onDisable ? (
-              <Switch
-                value
-                onValueChange={(enabled) => {
-                  if (!enabled) onDisable()
-                }}
-                trackColor={{
-                  false: theme.palette.slate.border,
-                  true: theme.alpha(theme.tune.color, 0.6),
-                }}
-                thumbColor={theme.tune.color}
-                accessibilityLabel="Disable Tune Preview"
-              />
-            ) : null}
-          </View>
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={styles.boardSwatch} />
-              <Text style={styles.boardLegendText}>Board </Text>
-              <Canvas style={styles.legendValueCanvas}>
-                {readoutFont && (
-                  <SkiaText
-                    x={0}
-                    y={READOUT_BASELINE}
-                    text={boardAngleStr}
-                    font={readoutFont}
-                    color={theme.palette.sky.color}
-                  />
-                )}
-              </Canvas>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={styles.targetSwatch} />
-              <Text style={styles.targetLegendText}>Target </Text>
-              <Canvas style={styles.legendValueCanvas}>
-                {readoutFont && (
-                  <SkiaText
-                    x={0}
-                    y={READOUT_BASELINE}
-                    text={targetAngleStr}
-                    font={readoutFont}
-                    color={theme.palette.purple.light}
-                  />
-                )}
-              </Canvas>
-            </View>
-          </View>
-          <View style={styles.motorReadout}>
-            <Text style={styles.motorLabel}>Motor</Text>
-            <Canvas style={styles.legendValueCanvas}>
-              {readoutFont && (
-                <SkiaText
-                  x={0}
-                  y={READOUT_BASELINE}
-                  text={currentStr}
-                  font={readoutFont}
-                  color={theme.telemetry.motorCurrent}
+              <View style={styles.speedReadout}>
+                <Canvas style={styles.speedCanvas}>
+                  {speedFont && (
+                    <SkiaText
+                      x={0}
+                      y={SPEED_BASELINE}
+                      text={speedStr}
+                      font={speedFont}
+                      color={theme.telemetry.speed}
+                    />
+                  )}
+                </Canvas>
+                <Text style={styles.speedUnit}>km/h</Text>
+              </View>
+              {onDisable ? (
+                <Switch
+                  value
+                  onValueChange={(enabled) => {
+                    if (!enabled) onDisable()
+                  }}
+                  trackColor={{
+                    false: theme.palette.slate.border,
+                    true: theme.alpha(theme.tune.color, 0.6),
+                  }}
+                  thumbColor={theme.tune.color}
+                  accessibilityLabel="Disable Tune Preview"
                 />
-              )}
-            </Canvas>
+              ) : null}
+            </View>
+            <View style={styles.legend}>
+              <View style={styles.legendItem}>
+                <View style={styles.boardSwatch} />
+                <Text style={styles.boardLegendText}>Board </Text>
+                <Canvas style={styles.legendValueCanvas}>
+                  {readoutFont && (
+                    <SkiaText
+                      x={0}
+                      y={READOUT_BASELINE}
+                      text={boardAngleStr}
+                      font={readoutFont}
+                      color={theme.palette.sky.color}
+                    />
+                  )}
+                </Canvas>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={styles.targetSwatch} />
+                <Text style={styles.targetLegendText}>Target </Text>
+                <Canvas style={styles.legendValueCanvas}>
+                  {readoutFont && (
+                    <SkiaText
+                      x={0}
+                      y={READOUT_BASELINE}
+                      text={targetAngleStr}
+                      font={readoutFont}
+                      color={theme.palette.purple.light}
+                    />
+                  )}
+                </Canvas>
+              </View>
+            </View>
+            <View style={styles.motorReadout}>
+              <Text style={styles.motorLabel}>Motor</Text>
+              <Canvas style={styles.legendValueCanvas}>
+                {readoutFont && (
+                  <SkiaText
+                    x={0}
+                    y={READOUT_BASELINE}
+                    text={currentStr}
+                    font={readoutFont}
+                    color={theme.telemetry.motorCurrent}
+                  />
+                )}
+              </Canvas>
+            </View>
           </View>
         </View>
-      </View>
+      )}
       {model.status === 'unsupported' ? (
         <View style={styles.unsupported}>
           <Text style={styles.unsupportedTitle}>Preview unavailable</Text>
@@ -512,6 +530,14 @@ function pitchInputArrow(
 
 const styles = StyleSheet.create({
   card: {},
+  minimalHeader: {
+    height: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 16,

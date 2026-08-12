@@ -1,5 +1,5 @@
 // PROTOTYPE — throwaway. Host + switcher for the tune-screen variants.
-// Reachable only in dev builds, from /tune?variant=A ... /tune?variant=E.
+// Reachable only in dev builds, from /tune?variant=A ... /tune?variant=H.
 // Delete this whole folder once a direction is picked. See NOTES.md.
 
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -13,6 +13,9 @@ import { VariantB, VARIANT_B_NAME } from '@/modules/tune/components/prototype/Va
 import { VariantC, VARIANT_C_NAME } from '@/modules/tune/components/prototype/VariantC'
 import { VariantD, VARIANT_D_NAME } from '@/modules/tune/components/prototype/VariantD'
 import { VariantE, VARIANT_E_NAME } from '@/modules/tune/components/prototype/VariantE'
+import { VariantF, VARIANT_F_NAME } from '@/modules/tune/components/prototype/VariantF'
+import { VariantG, VARIANT_G_NAME } from '@/modules/tune/components/prototype/VariantG'
+import { VariantH, VARIANT_H_NAME } from '@/modules/tune/components/prototype/VariantH'
 import type { TuneVariantProps } from '@/modules/tune/components/prototype/types'
 
 const VARIANTS = [
@@ -22,6 +25,9 @@ const VARIANTS = [
   { key: 'C', name: VARIANT_C_NAME, Component: VariantC },
   { key: 'D', name: VARIANT_D_NAME, Component: VariantD },
   { key: 'E', name: VARIANT_E_NAME, Component: VariantE },
+  { key: 'F', name: VARIANT_F_NAME, Component: VariantF },
+  { key: 'G', name: VARIANT_G_NAME, Component: VariantG },
+  { key: 'H', name: VARIANT_H_NAME, Component: VariantH },
 ] as const
 
 export type TuneVariantKey = (typeof VARIANTS)[number]['key']

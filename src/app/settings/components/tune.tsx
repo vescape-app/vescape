@@ -336,6 +336,18 @@ function TunePreviewShowcase() {
         speedKmh={previewSpeedKmh}
         groundToBoardAngleDegrees={groundToBoardAngleDegrees}
       />
+      <TunePreview
+        fields={fields}
+        pitchInputDegrees={pitchInputDegrees}
+        pitchInputActive={pitchInputActive}
+        hillsEnabled={hillsEnabled}
+        hillHeightMeters={hillHeightMeters}
+        hillSpacingMeters={hillSpacingMeters}
+        onHelp={() => {}}
+        speedKmh={previewSpeedKmh}
+        groundToBoardAngleDegrees={groundToBoardAngleDegrees}
+        minimal
+      />
       <TunePreviewScenarioControls
         hillsPreset={hillsPreset}
         onHillsPresetChange={setHillsPreset}

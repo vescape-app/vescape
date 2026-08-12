@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, View, type TextStyle } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretDownIcon, CheckIcon } from 'phosphor-react-native'
 
@@ -20,6 +20,7 @@ interface SelectProps<T extends string = string> {
   onChange: (value: T) => void
   placeholder?: string
   style?: View['props']['style']
+  textStyle?: TextStyle
 }
 
 export function Select<T extends string = string>({
@@ -28,6 +29,7 @@ export function Select<T extends string = string>({
   onChange,
   placeholder = 'Select…',
   style,
+  textStyle,
 }: SelectProps<T>) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)
@@ -45,7 +47,7 @@ export function Select<T extends string = string>({
   return (
     <>
       <Pressable ref={triggerRef} style={[styles.trigger, style]} onPress={() => setOpen(true)}>
-        <Text style={[styles.triggerText, !selectedOption && styles.placeholderText]}>
+        <Text style={[styles.triggerText, !selectedOption && styles.placeholderText, textStyle]}>
           {selectedOption?.label ?? placeholder}
         </Text>
         <CaretDownIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
