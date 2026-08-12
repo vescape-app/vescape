@@ -13,6 +13,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowsClockwiseIcon,
+  CheckIcon,
   CubeIcon,
   FadersIcon,
   GearSixIcon,
@@ -189,6 +190,15 @@ function ButtonShowcase() {
             label="Tune"
             variant="tune"
             icon={FadersIcon}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
+            style={{ flex: 1 }}
+            label="Enabled"
+            variant="success"
+            icon={CheckIcon}
             onPress={() => {}}
             loading={loading}
             disabled={disabled}

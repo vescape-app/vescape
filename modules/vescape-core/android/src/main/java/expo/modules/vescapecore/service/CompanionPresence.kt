@@ -251,9 +251,22 @@ internal class CompanionPresence(
 
                 override fun onFailure(error: CharSequence?) {
                     pending = null
+                    // Android 14+ reports a dismissed chooser here ("user_rejected") instead of a
+                    // cancelled activity result. Both mean "the rider backed out", not a failure.
+                    val reason = error?.toString().orEmpty()
+                    if (reason.contains("user_rejected", ignoreCase = true) ||
+                        reason.contains("cancel", ignoreCase = true)
+                    ) {
+                        promise.reject(
+                            "COMPANION_ASSOCIATION_CANCELLED",
+                            "Companion device association cancelled",
+                            null,
+                        )
+                        return
+                    }
                     promise.reject(
                         "COMPANION_ASSOCIATION_FAILED",
-                        error?.toString() ?: "Companion association failed",
+                        reason.ifEmpty { "Companion association failed" },
                         null,
                     )
                 }

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useLocalSearchParams } from 'expo-router'
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
@@ -7,7 +6,6 @@ import {
   ClockCountdownIcon,
   PowerIcon,
   RecordIcon,
-  RocketLaunchIcon,
   SpeakerHighIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -19,18 +17,21 @@ import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
-import { FadeCardModal } from '@/components/modals/FadeCardModal'
+import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import {
-  AUTO_START_VARIANTS,
-  type AutoStartVariantKey,
-} from '@/modules/settings/components/prototype/AutoStartVariants'
-import { PrototypeSwitcher } from '@/modules/settings/components/prototype/PrototypeSwitcher'
+import { AutoStartCard } from '@/modules/settings/components/AutoStartCard'
+import { companionErrorMessage } from '@/modules/settings/lib/companionErrors'
 import {
   ensureBackgroundLocation,
   hasBackgroundLocation,
 } from '@/modules/settings/hooks/usePermissions'
+
+/** Backing out of the system device chooser is normal — only real failures get an alert. */
+const alertCompanionError = (error: unknown, fallback: string) => {
+  const message = companionErrorMessage(error, fallback)
+  if (message) Alert.alert('Auto start app', message)
+}
 
 export default function ConnectionSettingsScreen() {
   const {
@@ -62,24 +63,15 @@ export default function ConnectionSettingsScreen() {
       removeCompanionBoard: s.removeCompanionBoard,
     })),
   )
-  // PROTOTYPE: ?variant=A..E swaps the auto-start section. Remove with the prototype folder.
-  const { variant } = useLocalSearchParams<{ variant?: string }>()
-  const variantKey = (
-    variant && variant in AUTO_START_VARIANTS ? variant : 'T'
-  ) as AutoStartVariantKey
-  const Variant = AUTO_START_VARIANTS[variantKey].Component
-
   const boards = useBoardStore((s) => s.boards)
   const linkedBoards = boards
     .filter((board) => board.link)
     .map((board) => ({ id: board.id, name: board.name, bleId: board.link!.bleId }))
-  const availableAutoStartBoards = boards.filter(
-    (board) =>
-      board.link && !companionPresenceBoards.some((enabled) => enabled.boardId === board.id),
-  )
+
+  const connectedBoardId = useBleStore((s) => (s.status === 'idle' ? null : s.selectedBoardId))
 
   const [bgLocationPrompt, setBgLocationPrompt] = useState(false)
-  const [boardPickerVisible, setBoardPickerVisible] = useState(false)
+  const [disconnectPrompt, setDisconnectPrompt] = useState(false)
   const [pendingBoardId, setPendingBoardId] = useState<string | null>(null)
   const [busyBoardId, setBusyBoardId] = useState<string | null>(null)
   const [masterBusy, setMasterBusy] = useState(false)
@@ -88,19 +80,9 @@ export default function ConnectionSettingsScreen() {
     setMasterBusy(true)
     try {
       await setCompanionPresence(enabled)
-      if (
-        enabled &&
-        useSettingsStore.getState().companionPresenceBoards.length === 0 &&
-        availableAutoStartBoards.length > 0
-      ) {
-        setBoardPickerVisible(true)
-      }
     } catch (error) {
       console.warn('Companion presence toggle failed', error)
-      Alert.alert(
-        'Auto start app',
-        error instanceof Error ? error.message : 'Could not change auto start',
-      )
+      alertCompanionError(error, 'Could not change auto start')
     } finally {
       setMasterBusy(false)
     }
@@ -112,18 +94,15 @@ export default function ConnectionSettingsScreen() {
       await addCompanionBoard(boardId)
     } catch (error) {
       console.warn('Companion presence toggle failed', error)
-      Alert.alert(
-        'Auto start app',
-        error instanceof Error ? error.message : 'Could not enable auto start',
-      )
+      alertCompanionError(error, 'Could not enable auto start')
     } finally {
       setBusyBoardId(null)
       setPendingBoardId(null)
     }
   }
 
-  const onAddCompanionBoard = async (boardId: string) => {
-    setBoardPickerVisible(false)
+  /** Runs the permission gate, then hands the board to native (which opens the Android chooser). */
+  const continueEnable = async (boardId: string) => {
     // Hands-off auto-start records GPS only with "Allow all the time": the OS starts the service
     // from the background and withholds while-in-use location. Explain why before any grant attempt.
     if (await hasBackgroundLocation()) {
@@ -134,16 +113,24 @@ export default function ConnectionSettingsScreen() {
     }
   }
 
+  const onAddCompanionBoard = async (boardId: string) => {
+    // Android can only pair with a board it can scan, so native drops a live session first. Say so
+    // up front — an unannounced disconnect mid-ride reads like a bug.
+    if (boardId === connectedBoardId) {
+      setPendingBoardId(boardId)
+      setDisconnectPrompt(true)
+      return
+    }
+    await continueEnable(boardId)
+  }
+
   const onRemoveCompanionBoard = async (boardId: string) => {
     setBusyBoardId(boardId)
     try {
       await removeCompanionBoard(boardId)
     } catch (error) {
       console.warn('Companion presence removal failed', error)
-      Alert.alert(
-        'Auto start app',
-        error instanceof Error ? error.message : 'Could not remove auto-start board',
-      )
+      alertCompanionError(error, 'Could not turn this board off')
     } finally {
       setBusyBoardId(null)
     }
@@ -168,20 +155,19 @@ export default function ConnectionSettingsScreen() {
         />
 
         {Platform.OS === 'android' ? (
-          <Variant
+          <AutoStartCard
             enabled={companionPresenceEnabled}
-            armed={companionPresenceBoards}
-            linked={linkedBoards}
+            boards={linkedBoards}
+            armedBoardIds={companionPresenceBoards.map((board) => board.boardId)}
             cooldownMinutes={companionPresenceCooldownMinutes}
             busyBoardId={busyBoardId}
             masterBusy={masterBusy}
             onToggle={(enabled) => void onCompanionToggle(enabled)}
-            onAdd={(boardId) => void onAddCompanionBoard(boardId)}
-            onRemove={(boardId) => void onRemoveCompanionBoard(boardId)}
-            onCooldown={(minutes) => {
-              const clamped = Math.min(480, Math.max(0, minutes))
-              if (clamped !== companionPresenceCooldownMinutes) {
-                void set('companionPresenceCooldownMinutes', clamped)
+            onEnableBoard={(boardId) => void onAddCompanionBoard(boardId)}
+            onDisableBoard={(boardId) => void onRemoveCompanionBoard(boardId)}
+            onCooldownChange={(minutes) => {
+              if (minutes !== companionPresenceCooldownMinutes) {
+                void set('companionPresenceCooldownMinutes', minutes)
               }
             }}
           />
@@ -318,10 +304,23 @@ export default function ConnectionSettingsScreen() {
           </>
         ) : null}
       </ScrollView>
-      <PrototypeSwitcher
-        variants={Object.keys(AUTO_START_VARIANTS)}
-        current={variantKey}
-        label={AUTO_START_VARIANTS[variantKey].name}
+      <ConfirmModal
+        visible={disconnectPrompt}
+        title="Board will disconnect"
+        message={
+          'Android pairs with a board by scanning for it, which only works while nothing is ' +
+          'connected. Your board disconnects for a moment, then reconnects once auto start is set up.'
+        }
+        confirmLabel="Continue"
+        cancelLabel="Not now"
+        onConfirm={() => {
+          setDisconnectPrompt(false)
+          if (pendingBoardId) void continueEnable(pendingBoardId)
+        }}
+        onCancel={() => {
+          setDisconnectPrompt(false)
+          setPendingBoardId(null)
+        }}
       />
       <ConfirmModal
         visible={bgLocationPrompt}
@@ -336,25 +335,6 @@ export default function ConnectionSettingsScreen() {
         onConfirm={onBgLocationConfirm}
         onCancel={() => setBgLocationPrompt(false)}
       />
-      <FadeCardModal
-        visible={boardPickerVisible}
-        title="Add auto-start board"
-        titleIcon={RocketLaunchIcon}
-        onDismiss={() => setBoardPickerVisible(false)}
-      >
-        <SettingsCard>
-          {availableAutoStartBoards.map((board) => (
-            <SettingsRow
-              key={board.id}
-              icon={BluetoothConnectedIcon}
-              iconColor={theme.palette.cyan.color}
-              label={board.name}
-              hint={board.link?.bleId}
-              onPress={() => void onAddCompanionBoard(board.id)}
-            />
-          ))}
-        </SettingsCard>
-      </FadeCardModal>
     </SafeAreaView>
   )
 }
