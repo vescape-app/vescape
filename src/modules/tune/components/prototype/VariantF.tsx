@@ -1,12 +1,9 @@
 // PROTOTYPE — throwaway. Variant F: four rider-facing modes with a bottom icon rail.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { Canvas, LinearGradient, RoundedRect, vec } from '@shopify/react-native-skia'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated'
-import { scheduleOnRN } from 'react-native-worklets'
+import { useSharedValue } from 'react-native-reanimated'
 import type { TuneProfileFieldValue } from 'vescape-core'
 import {
   ArrowDownIcon,
@@ -15,7 +12,7 @@ import {
   HandPalmIcon,
   LightningIcon,
   MountainsIcon,
-  SlidersHorizontalIcon,
+  QuestionIcon,
   WaveSineIcon,
 } from 'phosphor-react-native'
 
@@ -29,6 +26,14 @@ import { applySliderValue, stepLabel } from '@/modules/tune/components/prototype
 import type { TuneVariantProps } from '@/modules/tune/components/prototype/types'
 import { formatSliderValue, type BasicSliderItem } from '@/modules/tune/lib/sliderDefinitions'
 import { VariantFOverview } from '@/modules/tune/components/prototype/VariantFOverview'
+import {
+  VariantFLiquidFader,
+  type FaderReadout,
+} from '@/modules/tune/components/prototype/VariantFLiquidFader'
+import {
+  type ResponseScenario,
+  VariantFResponsePreview,
+} from '@/modules/tune/components/prototype/VariantFResponsePreview'
 
 export const VARIANT_F_NAME = 'Ride modes'
 
@@ -53,14 +58,17 @@ const PREVIEW_PRESETS: Record<
   pumptrack: { label: 'Pumptrack', hillsEnabled: true, height: 0.5, spacing: 5 },
 }
 
-const PREVIEW_PRESET_OPTIONS: SelectOption<PreviewPresetId>[] = Object.entries(PREVIEW_PRESETS).map(
-  ([value, preset]) => ({ value: value as PreviewPresetId, label: preset.label }),
-)
+const PREVIEW_PRESET_OPTIONS: SelectOption<PreviewPresetId>[] = Object.entries(PREVIEW_PRESETS)
+  .map(([value, preset]) => ({ value: value as PreviewPresetId, label: preset.label }))
+  .filter((option) => option.value !== 'flat')
 
 export function VariantF(props: TuneVariantProps) {
   const insets = useSafeAreaInsets()
   const [mode, setMode] = useState<Mode>('response')
   const [presetId, setPresetId] = useState<PreviewPresetId>('small')
+  const [responseScenario, setResponseScenario] = useState<ResponseScenario>('acceleration')
+  const [responseLegendHelpVisible, setResponseLegendHelpVisible] = useState(false)
+  const [styleScenario, setStyleScenario] = useState<ResponseScenario>('acceleration')
   const sliders = useMemo(
     () => new Map(props.basicSliders.map((slider) => [slider.id, slider])),
     [props.basicSliders],
@@ -74,6 +82,7 @@ export function VariantF(props: TuneVariantProps) {
       ),
     [props.displayGroups],
   )
+  const deferredPreviewFields = useDeferredValue(previewFields)
 
   return (
     <View style={styles.root}>
@@ -82,13 +91,46 @@ export function VariantF(props: TuneVariantProps) {
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + (mode === 'terrain' ? 230 : 170) },
+          {
+            paddingBottom:
+              insets.bottom + (mode === 'overview' ? 360 : mode === 'terrain' ? 230 : 170),
+          },
         ]}
       >
-        <ModeHero mode={mode} presetId={presetId} onPresetChange={setPresetId} />
-        <PreviewPanel fields={previewFields} presetId={presetId} />
+        <ModeHero
+          mode={mode}
+          presetId={presetId}
+          onPresetChange={setPresetId}
+          onResponseLegendHelp={() => setResponseLegendHelpVisible(true)}
+        />
+        {mode === 'overview' ? null : mode === 'response' ? (
+          <VariantFResponsePreview
+            fields={deferredPreviewFields}
+            scenario={responseScenario}
+            aggressiveness={normalized(sliders.get('aggressiveness'))}
+            stiffness={normalized(
+              sliders.get(responseScenario === 'acceleration' ? 'noseStiffness' : 'tailStiffness'),
+            )}
+            onScenarioChange={setResponseScenario}
+          />
+        ) : mode === 'style' ? (
+          <VariantFResponsePreview
+            fields={deferredPreviewFields}
+            scenario={styleScenario}
+            aggressiveness={normalized(sliders.get('aggressiveness'))}
+            stiffness={0}
+            cycling
+            onScenarioChange={setStyleScenario}
+          />
+        ) : (
+          <PreviewPanel fields={deferredPreviewFields} presetId={presetId} />
+        )}
         {mode === 'response' ? (
-          <ResponsePage sliders={sliders} setDraftField={props.setDraftField} />
+          <ResponsePage
+            sliders={sliders}
+            setDraftField={props.setDraftField}
+            onScenarioChange={setResponseScenario}
+          />
         ) : null}
         {mode === 'style' ? (
           <StylePage sliders={sliders} setDraftField={props.setDraftField} />
@@ -96,6 +138,15 @@ export function VariantF(props: TuneVariantProps) {
         {mode === 'terrain' ? <TerrainPage props={props} /> : null}
         {mode === 'overview' ? <VariantFOverview sliders={sliders} props={props} /> : null}
       </ScrollView>
+
+      <InfoModal
+        visible={responseLegendHelpVisible}
+        title="Board and Target"
+        message={
+          'Board is the solid blue line. It shows how the deck is actually tilted in this preview.\n\nTarget is the dashed purple line. It shows the angle the controller is trying to reach.\n\nWhen the lines are apart, the board is still reacting. Aggressiveness changes how firmly and quickly Board follows Target. Nose and Tail stiffness move Target when the motor is working or braking.'
+        }
+        onDismiss={() => setResponseLegendHelpVisible(false)}
+      />
 
       <View style={[styles.modeRail, { bottom: insets.bottom + 154 }]}>
         {MODES.map((item) => {
@@ -121,11 +172,13 @@ export function VariantF(props: TuneVariantProps) {
 function ResponsePage({
   sliders,
   setDraftField,
+  onScenarioChange,
 }: {
   sliders: Map<string, BasicSliderItem>
   setDraftField: TuneVariantProps['setDraftField']
+  onScenarioChange: (scenario: ResponseScenario) => void
 }) {
-  const items = ['aggressiveness', 'noseStiffness', 'tailStiffness']
+  const items = ['noseStiffness', 'aggressiveness', 'tailStiffness']
     .map((id) => sliders.get(id))
     .filter((item): item is BasicSliderItem => item != null)
   return (
@@ -134,14 +187,24 @@ function ResponsePage({
         <CompactControl
           key={item.id}
           item={item}
-          icon={index === 0 ? LightningIcon : index === 1 ? ArrowUpIcon : ArrowDownIcon}
+          icon={
+            item.id === 'aggressiveness'
+              ? LightningIcon
+              : item.id === 'noseStiffness'
+                ? ArrowUpIcon
+                : ArrowDownIcon
+          }
           color={
-            index === 0
+            item.id === 'aggressiveness'
               ? theme.palette.sky.color
-              : index === 1
+              : item.id === 'noseStiffness'
                 ? theme.palette.teal.color
                 : theme.palette.orange.color
           }
+          onInteraction={() => {
+            if (item.id === 'noseStiffness') onScenarioChange('acceleration')
+            if (item.id === 'tailStiffness') onScenarioChange('braking')
+          }}
           onValue={(value) => applySliderValue(item.id, value, setDraftField)}
         />
       ))}
@@ -168,8 +231,6 @@ function StylePage({
               item={item}
               icon={id === 'carveTilt' ? WaveSineIcon : HandPalmIcon}
               color={id === 'carveTilt' ? theme.palette.pink.color : theme.palette.orange.color}
-              topLabel={id === 'carveTilt' ? 'More carve' : 'More brake support'}
-              bottomLabel={id === 'carveTilt' ? 'Less carve' : 'Less brake support'}
               onValue={(value) => applySliderValue(id, value, setDraftField)}
             />
           )
@@ -182,8 +243,15 @@ function StylePage({
 function TerrainPage({ props }: { props: TuneVariantProps }) {
   const up = findField(props, 'atr_strength_up')
   const down = findField(props, 'atr_strength_down')
-  const upReaction = findField(props, 'atr_response_boost')
-  const downReaction = findField(props, 'atr_transition_boost')
+  const tiltbackSpeed = findField(props, 'atr_on_speed')
+  const releaseSpeed = findField(props, 'atr_off_speed')
+  const reactionSpeeds = [tiltbackSpeed?.value, releaseSpeed?.value].filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value),
+  )
+  const reactionSpeed =
+    reactionSpeeds.length > 0
+      ? reactionSpeeds.reduce((total, value) => total + value, 0) / reactionSpeeds.length
+      : 0
   return (
     <>
       <View style={styles.split}>
@@ -192,23 +260,38 @@ function TerrainPage({ props }: { props: TuneVariantProps }) {
           icon={ArrowUpIcon}
           color={theme.palette.green.color}
           value={fieldLevel(up?.value, 0, 2)}
-          reaction={fieldLevel(upReaction?.value, upReaction?.min ?? 0, upReaction?.max ?? 10)}
           onValue={(value) => up && props.setDraftField(up.id, value / 5)}
-          onReaction={(value) => setFieldLevel(upReaction, value, props.setDraftField)}
         />
         <AtrColumn
           title="Descent assist"
           icon={ArrowDownIcon}
           color={theme.palette.teal.color}
           value={fieldLevel(down?.value, 0, 2)}
-          reaction={fieldLevel(
-            downReaction?.value,
-            downReaction?.min ?? 0,
-            downReaction?.max ?? 10,
-          )}
           onValue={(value) => down && props.setDraftField(down.id, value / 5)}
-          onReaction={(value) => setFieldLevel(downReaction, value, props.setDraftField)}
         />
+      </View>
+      <View style={styles.atrReaction}>
+        <View style={styles.reactionHeader}>
+          <Text style={styles.reactionTitle}>ATR reaction speed</Text>
+          <Text style={[styles.reactionValue, { color: theme.palette.green.color }]}>
+            {reactionSpeed.toFixed(0)} deg/s
+          </Text>
+        </View>
+        <View style={styles.reactionDial}>
+          <TuneDial
+            value={reactionSpeed}
+            min={0}
+            max={200}
+            step={5}
+            unit="deg/s"
+            color={theme.palette.green.color}
+            valueChangeMode="commit"
+            onValueChange={(value) => {
+              if (tiltbackSpeed) props.setDraftField(tiltbackSpeed.id, value)
+              if (releaseSpeed) props.setDraftField(releaseSpeed.id, value)
+            }}
+          />
+        </View>
       </View>
     </>
   )
@@ -218,35 +301,77 @@ function ModeHero({
   mode,
   presetId,
   onPresetChange,
+  onResponseLegendHelp,
 }: {
   mode: Mode
   presetId: PreviewPresetId
   onPresetChange: (preset: PreviewPresetId) => void
+  onResponseLegendHelp: () => void
 }) {
   const content = {
-    response: ['Board response', 'How firmly the board holds you', theme.palette.sky.color],
-    style: ['Ride character', 'Carving and braking, tuned separately', theme.palette.pink.color],
-    terrain: ['Terrain assist', 'Independent help uphill and downhill', theme.palette.green.color],
-    overview: ['Tune overview', 'One glance before saving', theme.palette.purple.color],
-  }[mode] as [string, string, string]
+    response: [
+      'Board response',
+      'How firmly the board holds you',
+      theme.palette.sky.color,
+      LightningIcon,
+    ],
+    style: [
+      'Ride character',
+      'Carving and braking, tuned separately',
+      theme.palette.pink.color,
+      WaveSineIcon,
+    ],
+    terrain: [
+      'Terrain assist',
+      'Independent help uphill and downhill',
+      theme.palette.green.color,
+      MountainsIcon,
+    ],
+    overview: ['Tune overview', 'One glance before saving', theme.palette.purple.color, GaugeIcon],
+  }[mode] as [string, string, string, typeof LightningIcon]
+  const HeroIcon = content[3]
   return (
     <View style={styles.hero}>
       <View style={styles.heroIdentity}>
-        <SlidersHorizontalIcon size={20} color={content[2]} weight="duotone" />
+        <HeroIcon size={20} color={content[2]} weight="duotone" />
         <View style={styles.heroCopy}>
           <Text style={styles.title}>{content[0]}</Text>
           <Text style={styles.subtitle}>{content[1]}</Text>
         </View>
       </View>
       <View style={styles.previewSelectRow}>
-        <MountainsIcon size={13} color={theme.palette.green.color} weight="duotone" />
-        <Select
-          options={PREVIEW_PRESET_OPTIONS}
-          value={presetId}
-          onChange={onPresetChange}
-          style={styles.previewSelect}
-          textStyle={styles.previewSelectText}
-        />
+        {mode === 'response' ? (
+          <>
+            <View style={styles.boardLegendSwatch} />
+            <Text style={styles.boardLegendLabel}>Board</Text>
+            <View style={styles.targetLegendSwatch} />
+            <Text style={styles.targetLegendLabel}>Target</Text>
+            <Pressable
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="What Board and Target mean"
+              onPress={onResponseLegendHelp}
+            >
+              <QuestionIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+            </Pressable>
+          </>
+        ) : mode === 'style' ? null : mode === 'terrain' ? (
+          <>
+            <MountainsIcon size={13} color={theme.palette.green.color} weight="duotone" />
+            <Select
+              options={PREVIEW_PRESET_OPTIONS}
+              value={presetId}
+              onChange={onPresetChange}
+              style={styles.previewSelect}
+              textStyle={styles.previewSelectText}
+            />
+          </>
+        ) : (
+          <>
+            <MountainsIcon size={13} color={theme.palette.green.color} weight="duotone" />
+            <Text style={styles.previewSelectText}>Flat</Text>
+          </>
+        )}
       </View>
     </View>
   )
@@ -276,6 +401,7 @@ function PreviewPanel({
           hillsEnabled={preset.hillsEnabled}
           hillHeightMeters={preset.height}
           hillSpacingMeters={preset.spacing}
+          lockedSpeedKmh={15}
           speedKmh={speedKmh}
           groundToBoardAngleDegrees={groundToBoardAngleDegrees}
           active
@@ -298,11 +424,13 @@ function CompactControl({
   item,
   icon: Icon,
   color,
+  onInteraction,
   onValue,
 }: {
   item: BasicSliderItem
   icon: typeof LightningIcon
   color: string
+  onInteraction?: () => void
   onValue: (value: number) => void
 }) {
   return (
@@ -314,15 +442,14 @@ function CompactControl({
         color={color}
         compact
       />
-      <View style={styles.faderRow}>
-        <LiquidFader
-          value={normalized(item)}
-          color={color}
-          onChange={(level) => onValue(item.min + (level / 10) * (item.max - item.min))}
-          height={160}
-        />
-        <StatusReadout number={formatSliderValue(item)} word={stepLabel(item)} color={color} />
-      </View>
+      <VariantFLiquidFader
+        value={normalized(item)}
+        color={color}
+        height={160}
+        readouts={sliderReadouts(item)}
+        onInteraction={onInteraction}
+        onChange={(level) => onValue(item.min + (level / 10) * (item.max - item.min))}
+      />
     </View>
   )
 }
@@ -331,15 +458,11 @@ function WideControl({
   item,
   icon: Icon,
   color,
-  topLabel,
-  bottomLabel,
   onValue,
 }: {
   item: BasicSliderItem
   icon: typeof LightningIcon
   color: string
-  topLabel: string
-  bottomLabel: string
   onValue: (value: number) => void
 }) {
   return (
@@ -350,19 +473,14 @@ function WideControl({
         description={controlDescription(item.id)}
         color={color}
       />
-      <View style={styles.verticalScale}>
-        <Text style={styles.axisLabel}>{topLabel}</Text>
-        <View style={styles.faderRow}>
-          <LiquidFader
-            value={normalized(item)}
-            color={color}
-            onChange={(level) => onValue(item.min + (level / 10) * (item.max - item.min))}
-            height={166}
-          />
-          <StatusReadout number={formatSliderValue(item)} word={stepLabel(item)} color={color} />
-        </View>
-        <Text style={styles.axisLabel}>{bottomLabel}</Text>
-      </View>
+      <VariantFLiquidFader
+        value={normalized(item)}
+        color={color}
+        height={166}
+        readouts={sliderReadouts(item)}
+        wide
+        onChange={(level) => onValue(item.min + (level / 10) * (item.max - item.min))}
+      />
     </View>
   )
 }
@@ -372,17 +490,13 @@ function AtrColumn({
   icon: Icon,
   color,
   value,
-  reaction,
   onValue,
-  onReaction,
 }: {
   title: string
   icon: typeof LightningIcon
   color: string
   value: number
-  reaction: number
   onValue: (value: number) => void
-  onReaction: (value: number) => void
 }) {
   const description =
     title === 'Climb assist'
@@ -392,30 +506,14 @@ function AtrColumn({
   return (
     <View style={styles.dualControl}>
       <ControlIntro icon={Icon} title={title} description={description} color={color} />
-      <View style={styles.verticalScale}>
-        <Text style={styles.axisLabel}>More assist</Text>
-        <View style={styles.faderRow}>
-          <LiquidFader value={value} color={color} onChange={onValue} height={166} />
-          <StatusReadout number={value.toFixed(1)} word={levelWord(value)} color={color} />
-        </View>
-        <Text style={styles.axisLabel}>Less assist</Text>
-      </View>
-      <View style={styles.reactionHeader}>
-        <Text style={styles.reactionTitle}>Reaction</Text>
-        <Text style={[styles.reactionValue, { color }]}>{levelWord(reaction)}</Text>
-      </View>
-      <View style={styles.reactionDial}>
-        <TuneDial
-          value={reaction}
-          min={0}
-          max={10}
-          step={0.5}
-          unit="°/s"
-          color={color}
-          valueChangeMode="commit"
-          onValueChange={onReaction}
-        />
-      </View>
+      <VariantFLiquidFader
+        value={value}
+        color={color}
+        height={166}
+        readouts={levelReadouts()}
+        wide
+        onChange={onValue}
+      />
     </View>
   )
 }
@@ -446,82 +544,25 @@ function ControlIntro({
   )
 }
 
-function StatusReadout({ number, word, color }: { number: string; word: string; color: string }) {
-  return (
-    <View style={styles.statusReadout}>
-      <Text style={[styles.statusNumber, { color }]}>{number}</Text>
-      <Text style={[styles.level, { color }]}>{word}</Text>
-    </View>
-  )
+function normalized(item: BasicSliderItem | undefined) {
+  return item?.value == null
+    ? 0
+    : Math.round(((item.value - item.min) / (item.max - item.min)) * 10)
 }
 
-function LiquidFader({
-  value,
-  color,
-  onChange,
-  height,
-}: {
-  value: number
-  color: string
-  onChange: (value: number) => void
-  height: number
-}) {
-  const progress = useSharedValue(value)
-  const dragging = useSharedValue(false)
-
-  useEffect(() => {
-    if (!dragging.value) {
-      progress.value = value
-    }
-  }, [dragging, progress, value])
-
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .minDistance(0)
-        .onBegin((event) => {
-          dragging.value = true
-          const next = Math.min(10, Math.max(0, (1 - event.y / height) * 10))
-          progress.value = next
-        })
-        .onUpdate((event) => {
-          const next = Math.min(10, Math.max(0, (1 - event.y / height) * 10))
-          progress.value = next
-        })
-        .onFinalize(() => {
-          dragging.value = false
-          scheduleOnRN(onChange, Math.round(progress.value * 2) / 2)
-        }),
-    [dragging, height, onChange, progress],
-  )
-  const fillStyle = useAnimatedStyle(() => ({ height: (progress.value / 10) * height }))
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.liquidTrack, { height }]}>
-        <Animated.View style={[styles.liquidFillClip, fillStyle]}>
-          <Canvas style={[styles.liquidGradient, { height }]} pointerEvents="none">
-            <RoundedRect x={0} y={0} width={58} height={height} r={29}>
-              <LinearGradient
-                start={vec(29, 0)}
-                end={vec(29, height)}
-                colors={[theme.alpha(color, 0.03), theme.alpha(color, 0.4)]}
-              />
-            </RoundedRect>
-          </Canvas>
-        </Animated.View>
-        <View style={styles.liquidTicks} pointerEvents="none">
-          {[1, 2, 3, 4].map((tick) => (
-            <View key={tick} style={styles.liquidTick} />
-          ))}
-        </View>
-      </Animated.View>
-    </GestureDetector>
-  )
+function sliderReadouts(item: BasicSliderItem): FaderReadout[] {
+  return Array.from({ length: 21 }, (_, index) => {
+    const value = item.min + (index / 20) * (item.max - item.min)
+    const preview = { ...item, value, modifiedManually: false }
+    return { number: formatSliderValue(preview), word: stepLabel(preview) }
+  })
 }
 
-function normalized(item: BasicSliderItem) {
-  return item.value == null ? 0 : Math.round(((item.value - item.min) / (item.max - item.min)) * 10)
+function levelReadouts(): FaderReadout[] {
+  return Array.from({ length: 21 }, (_, index) => {
+    const value = index / 2
+    return { number: value.toFixed(1), word: levelWord(value) }
+  })
 }
 function controlDescription(id: string) {
   return (
@@ -545,15 +586,6 @@ function fieldLevel(value: unknown, min = 0, max = 10) {
     ? Math.round(((value - min) / (max - min)) * 10)
     : 0
 }
-function setFieldLevel(
-  field: ReturnType<typeof findField>,
-  level: number,
-  setter: TuneVariantProps['setDraftField'],
-) {
-  if (field && field.min != null && field.max != null)
-    setter(field.id, field.min + (level / 10) * (field.max - field.min))
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
@@ -575,7 +607,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   previewSelect: {
-    width: 86,
+    width: 112,
     height: 26,
     paddingHorizontal: 0,
     borderWidth: 0,
@@ -586,6 +618,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
+  boardLegendSwatch: { width: 14, height: 2, backgroundColor: theme.palette.sky.color },
+  targetLegendSwatch: {
+    width: 14,
+    height: 1,
+    borderTopWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.palette.purple.light,
+  },
+  boardLegendLabel: { color: theme.palette.sky.color, fontSize: 9, fontWeight: '800' },
+  targetLegendLabel: { color: theme.palette.purple.light, fontSize: 9, fontWeight: '800' },
   triple: { flexDirection: 'row', gap: 12, paddingTop: 4 },
   compact: {
     flex: 1,
@@ -603,37 +645,6 @@ const styles = StyleSheet.create({
     paddingLeft: 24,
     fontSize: 9,
     lineHeight: 11,
-  },
-  level: { fontSize: 12, fontWeight: '800' },
-  faderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  statusReadout: { minWidth: 38, gap: 2, alignItems: 'flex-start' },
-  statusNumber: { fontFamily: theme.mono('700'), fontSize: 18 },
-  liquidTrack: {
-    width: 58,
-    borderRadius: 29,
-    borderWidth: 1.5,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surface,
-    overflow: 'hidden',
-  },
-  liquidFillClip: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-  },
-  liquidGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, width: 58 },
-  liquidTicks: {
-    position: 'absolute',
-    inset: 9,
-    justifyContent: 'space-evenly',
-  },
-  liquidTick: {
-    alignSelf: 'center',
-    width: 12,
-    height: 1,
-    backgroundColor: theme.alpha(theme.palette.mono.white, 0.4),
   },
   dualControl: {
     flex: 1,
@@ -657,8 +668,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     textAlign: 'left',
   },
-  verticalScale: { alignItems: 'center', gap: 6 },
-  axisLabel: { color: theme.palette.slate.textMuted, fontSize: 9, fontWeight: '700' },
   controlDescription: {
     alignSelf: 'stretch',
     minHeight: 26,
@@ -684,6 +693,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   reactionValue: { fontSize: 10, fontWeight: '800' },
+  atrReaction: { gap: 4, paddingTop: 8 },
   reactionDial: { alignSelf: 'stretch', overflow: 'hidden' },
   modeRail: {
     position: 'absolute',

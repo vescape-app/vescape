@@ -12,13 +12,13 @@ import {
   calculateGroundToBoardAngleDegrees,
   calculateLongitudinalTarget,
   calculatePreviewAcceleration,
-  calculateSyntheticAcceleration,
   calculateTerrainAtrDisturbance,
   calculateTerrainLoadCurrentAmps,
   calculateTerrainSlope,
   createTunePreviewModel,
   createTunePreviewState,
   groundTravelToVisualOffset,
+  holdTunePreviewSpeed,
   pitchInputControlToRate,
   pitchInputRateToControlDegrees,
   resetTunePreviewSpeed,
@@ -28,7 +28,10 @@ import {
   stepTunePreview,
   terrainSlopeToSyntheticAcceleration,
 } from '@/modules/tune/lib/tunePreview'
-import { terrainHeightRelativeToWheel } from '@/modules/tune/lib/tunePreviewGeometry'
+import {
+  responseLeanAngleDegrees,
+  terrainHeightRelativeToWheel,
+} from '@/modules/tune/lib/tunePreviewGeometry'
 
 const baseFields = {
   kp: 20,
@@ -332,12 +335,6 @@ describe('Tune Preview longitudinal response', () => {
     expect(aggregateTorqueAndAdaptiveTilt(3, 5)).toBe(5)
     expect(aggregateTorqueAndAdaptiveTilt(-6, -2)).toBe(-6)
     expect(aggregateTorqueAndAdaptiveTilt(-3, 5)).toBe(2)
-  })
-
-  test('maps controller current to the bounded comparative acceleration scale', () => {
-    expect(calculateSyntheticAcceleration(60)).toBe(6)
-    expect(calculateSyntheticAcceleration(-30)).toBe(-3)
-    expect(calculateSyntheticAcceleration(100)).toBe(6)
   })
 
   test('Nose accelerates more than Tail through tune-derived controller effort', () => {
@@ -967,5 +964,259 @@ describe('Tune Preview longitudinal response', () => {
       erpm: speedKmhToReferenceErpm(15),
       measuredAccelerationErpmPerTick: 0,
     })
+  })
+
+  test('speed hold preserves the physical response while locking speed and ERPM', () => {
+    const state = {
+      ...createTunePreviewState(17),
+      angleDegrees: 3,
+      syntheticCurrentAmps: 24,
+      measuredAccelerationErpmPerTick: 2.5,
+      atrAccelDiff: 1.2,
+    }
+
+    expect(holdTunePreviewSpeed(state, 15)).toEqual({
+      ...state,
+      syntheticSpeedKmh: 15,
+      erpm: speedKmhToReferenceErpm(15),
+    })
+  })
+
+  test('matches Refloat speed gates for Nose, Tail, Brake Tilt, and Aggressiveness', () => {
+    const parameters = readyParameters({
+      ...baseFields,
+      tiltback_constant: 0,
+      tiltback_variable: 0,
+      atr_strength_up: 0,
+      atr_strength_down: 0,
+    })
+    const speeds = [0, 5, 15, 30, 50]
+    const targetAt = (speedKmh: number, currentAmps: number, angleDegrees = 0) =>
+      calculateLongitudinalTarget(
+        { ...createTunePreviewState(speedKmh), angleDegrees },
+        parameters,
+        { pitchInputDegrees: 0, speedKmh },
+        0.1,
+        currentAmps,
+      )
+
+    const nose = speeds.map((speed) => targetAt(speed, 45).torqueTiltDegrees)
+    const tail = speeds.map((speed) => targetAt(speed, -45).torqueTiltDegrees)
+    const brakeTilt = speeds.map((speed) => targetAt(speed, -45, 5).brakeTiltDegrees)
+
+    // Refloat halves only the Torque Tilt transition rate below 500 ERPM. Its target strength
+    // remains current-based, so every normal riding speed reaches the same first-step value.
+    expect(nose).toEqual([0.5, 1, 1, 1, 1])
+    expect(tail).toEqual([-0.5, -1, -1, -1, -1])
+
+    // Brake Tilt is a separate feature and is disabled through 2000 ERPM (~7 km/h here).
+    expect(brakeTilt.slice(0, 2)).toEqual([0, 0])
+    expect(brakeTilt.slice(2).every((value) => value > 0)).toBe(true)
+
+    // Aggressiveness maps to PID gains. Refloat does not multiply those gains by speed.
+    const lowAggressivenessCurrent = calculateControllerCurrentAmps(0, 0, 0, 2, {
+      kp: 15,
+      kp2: 0.4,
+      kpBrake: 1,
+      kp2Brake: 1,
+    })
+    const highAggressivenessCurrent = calculateControllerCurrentAmps(0, 0, 0, 2, {
+      kp: 30,
+      kp2: 1.1,
+      kpBrake: 1,
+      kp2Brake: 1,
+    })
+    expect(lowAggressivenessCurrent).toBe(30)
+    expect(highAggressivenessCurrent).toBe(60)
+  })
+
+  test('Ride style cycles between 5 and 30 km/h and makes zero stiffness visibly flat', () => {
+    const run = (
+      scenario: 'acceleration' | 'braking',
+      aggressiveness: 0 | 5 | 10,
+      stiffness: 0 | 5 | 10,
+    ) => {
+      const kp = 15 + aggressiveness * 1.5
+      const parameters = readyParameters({
+        ...baseFields,
+        kp,
+        kp2: 0.4 + aggressiveness * 0.07,
+        ki: 0.015 + aggressiveness * 0.0015,
+        torquetilt_strength: stiffness * 0.03,
+        torquetilt_strength_regen: stiffness * 0.03,
+      })
+      let activeScenario = scenario
+      let state = createTunePreviewState(scenario === 'acceleration' ? 5 : 30)
+      let minimumSpeed = state.syntheticSpeedKmh
+      let maximumSpeed = state.syntheticSpeedKmh
+      let switches = 0
+      let maximumAbsoluteTorqueTilt = 0
+      let boardMagnitudeTotal = 0
+      let targetMagnitudeTotal = 0
+      let targetSamples = 0
+      for (let frame = 0; frame < 1200; frame += 1) {
+        if (activeScenario === 'acceleration' && state.syntheticSpeedKmh >= 30) {
+          activeScenario = 'braking'
+          switches += 1
+        } else if (activeScenario === 'braking' && state.syntheticSpeedKmh <= 5) {
+          activeScenario = 'acceleration'
+          switches += 1
+        }
+        const signedLean =
+          responseLeanAngleDegrees(aggressiveness, stiffness) *
+          (activeScenario === 'acceleration' ? -1 : 1)
+        state = stepTunePreview(
+          state,
+          parameters,
+          {
+            pitchInputDegrees: 0,
+            pitchInputActive: false,
+            riderLeanAngleDegrees: signedLean,
+            riderLoadCurrentAmps: activeScenario === 'acceleration' ? 35 : -60,
+            speedKmh: state.syntheticSpeedKmh,
+            hillsEnabled: false,
+            advancedPhysics: DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
+          },
+          1 / 60,
+        )
+        if (state.syntheticSpeedKmh < 5) {
+          state = holdTunePreviewSpeed(state, 5, DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS)
+        } else if (state.syntheticSpeedKmh > 30) {
+          state = holdTunePreviewSpeed(state, 30, DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS)
+        }
+        minimumSpeed = Math.min(minimumSpeed, state.syntheticSpeedKmh)
+        maximumSpeed = Math.max(maximumSpeed, state.syntheticSpeedKmh)
+        if (frame >= 300) {
+          maximumAbsoluteTorqueTilt = Math.max(
+            maximumAbsoluteTorqueTilt,
+            Math.abs(state.torqueTiltDegrees),
+          )
+          boardMagnitudeTotal += Math.abs(state.angleDegrees)
+          targetMagnitudeTotal += Math.abs(state.targetAngleDegrees)
+          targetSamples += 1
+        }
+      }
+      return {
+        state,
+        minimumSpeed,
+        maximumSpeed,
+        switches,
+        maximumAbsoluteTorqueTilt,
+        meanBoardMagnitude: boardMagnitudeTotal / targetSamples,
+        meanTargetMagnitude: targetMagnitudeTotal / targetSamples,
+      }
+    }
+
+    const matrix = (['acceleration', 'braking'] as const).flatMap((scenario) =>
+      ([0, 5, 10] as const).flatMap((aggressiveness) =>
+        ([0, 5, 10] as const).map((stiffness) => ({
+          scenario,
+          aggressiveness,
+          stiffness,
+          ...run(scenario, aggressiveness, stiffness),
+        })),
+      ),
+    )
+
+    for (const { state, minimumSpeed, maximumSpeed, switches } of matrix) {
+      const values = Object.values(state).filter(
+        (value): value is number => typeof value === 'number',
+      )
+      expect(values.every(Number.isFinite)).toBe(true)
+      expect(minimumSpeed).toBeGreaterThanOrEqual(4.5)
+      expect(maximumSpeed).toBeLessThanOrEqual(30.5)
+      expect(minimumSpeed).toBeLessThanOrEqual(5.5)
+      expect(maximumSpeed).toBeGreaterThanOrEqual(29.5)
+      expect(switches).toBeGreaterThanOrEqual(2)
+      expect(Math.abs(state.angleDegrees)).toBeLessThan(responseLeanAngleDegrees(0))
+    }
+
+    for (const scenario of ['acceleration', 'braking'] as const) {
+      const angles = ([0, 5, 10] as const).map((aggressiveness) =>
+        Math.abs(
+          matrix.find(
+            (row) =>
+              row.scenario === scenario &&
+              row.aggressiveness === aggressiveness &&
+              row.stiffness === 5,
+          )!.meanBoardMagnitude,
+        ),
+      )
+      expect(angles[0]).toBeGreaterThan(angles[1])
+      expect(angles[1]).toBeGreaterThan(angles[2])
+
+      const boardAngles = ([0, 5, 10] as const).map((stiffness) =>
+        Math.abs(
+          matrix.find(
+            (row) =>
+              row.scenario === scenario && row.aggressiveness === 5 && row.stiffness === stiffness,
+          )!.meanBoardMagnitude,
+        ),
+      )
+      expect(boardAngles[0]).toBeGreaterThan(boardAngles[1])
+      expect(boardAngles[1]).toBeGreaterThan(boardAngles[2])
+
+      const targets = ([0, 5, 10] as const).map(
+        (stiffness) =>
+          matrix.find(
+            (row) =>
+              row.scenario === scenario && row.aggressiveness === 5 && row.stiffness === stiffness,
+          )!.meanTargetMagnitude,
+      )
+      expect(targets[2]).toBeGreaterThan(targets[0])
+
+      const noTilt = matrix.find(
+        (row) => row.scenario === scenario && row.aggressiveness === 5 && row.stiffness === 0,
+      )!
+      const fullTilt = matrix.find(
+        (row) => row.scenario === scenario && row.aggressiveness === 5 && row.stiffness === 10,
+      )!
+      expect(noTilt.maximumAbsoluteTorqueTilt).toBeLessThan(0.01)
+      expect(fullTilt.maximumAbsoluteTorqueTilt).toBeGreaterThan(1)
+    }
+  })
+
+  test('derives Ride style braking from physical current while Brake Tilt changes posture', () => {
+    const rows = [0, 10, 20].map((brakeTilt) => {
+      const parameters = readyParameters({ ...baseFields, braketilt_strength: brakeTilt })
+      let state = createTunePreviewState(30)
+      let frames = 0
+      let currentTotal = 0
+      let brakeTiltTotal = 0
+      while (state.syntheticSpeedKmh > 5 && frames < 1800) {
+        state = stepTunePreview(
+          state,
+          parameters,
+          {
+            pitchInputDegrees: 0,
+            pitchInputActive: false,
+            riderLeanAngleDegrees: responseLeanAngleDegrees(5),
+            riderLoadCurrentAmps: -25,
+            speedKmh: state.syntheticSpeedKmh,
+            hillsEnabled: false,
+            advancedPhysics: DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
+          },
+          1 / 60,
+        )
+        currentTotal += state.syntheticCurrentAmps
+        brakeTiltTotal += state.brakeTiltDegrees
+        frames += 1
+      }
+      return {
+        brakeTilt,
+        seconds: frames / 60,
+        endSpeed: state.syntheticSpeedKmh,
+        meanCurrent: currentTotal / frames,
+        meanBrakeTilt: brakeTiltTotal / frames,
+        target: state.targetAngleDegrees,
+      }
+    })
+
+    expect(rows.every((row) => row.endSpeed <= 5)).toBe(true)
+    expect(rows.every((row) => row.seconds > 4 && row.seconds < 5)).toBe(true)
+    expect(Math.abs(rows[0].seconds - rows[2].seconds)).toBeLessThan(0.1)
+    expect(rows[0].meanBrakeTilt).toBe(0)
+    expect(rows[2].meanBrakeTilt).toBeGreaterThan(5)
+    expect(rows.every((row) => row.meanCurrent < -30)).toBe(true)
   })
 })

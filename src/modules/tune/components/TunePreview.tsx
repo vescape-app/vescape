@@ -33,6 +33,7 @@ import {
   createTunePreviewModel,
   createTunePreviewState,
   groundTravelToVisualOffset,
+  holdTunePreviewSpeed,
   stepTunePreview,
   type TunePreviewAdvancedPhysics,
   type TunePreviewParameters,
@@ -59,8 +60,15 @@ interface TunePreviewProps {
   hillLoadAmps?: SharedValue<number>
   speedKmh?: SharedValue<number>
   groundToBoardAngleDegrees?: SharedValue<number>
+  riderLeanAngleDegrees?: SharedValue<number>
+  riderLoadCurrentAmps?: number
+  initialSpeedKmh?: number
+  minimumSpeedKmh?: number
+  maximumSpeedKmh?: number
+  lockedSpeedKmh?: number
   minimal?: boolean
   minimalAccessory?: ReactNode
+  showMinimalHelp?: boolean
 }
 
 interface TunePreviewScenario {
@@ -114,8 +122,15 @@ export function TunePreview({
   hillLoadAmps,
   speedKmh,
   groundToBoardAngleDegrees,
+  riderLeanAngleDegrees,
+  riderLoadCurrentAmps,
+  initialSpeedKmh = TUNE_PREVIEW_RESET_SPEED_KMH,
+  minimumSpeedKmh,
+  maximumSpeedKmh,
+  lockedSpeedKmh,
   minimal = false,
   minimalAccessory,
+  showMinimalHelp = true,
 }: TunePreviewProps) {
   const model = useMemo(
     () => createTunePreviewModel(fields),
@@ -127,7 +142,7 @@ export function TunePreview({
   const { width: canvasWidth } = useWindowDimensions()
   const centerX = canvasWidth / 2
 
-  const state = useSharedValue(createTunePreviewState(TUNE_PREVIEW_RESET_SPEED_KMH))
+  const state = useSharedValue(createTunePreviewState(initialSpeedKmh))
   const scenario = useSharedValue<TunePreviewScenario>({
     parameters,
     hillsEnabled,
@@ -158,12 +173,14 @@ export function TunePreview({
     if (!activeParameters) return
     const dtSeconds = (frame.timeSincePreviousFrame ?? 0) / 1000
     if (dtSeconds <= 0) return
-    const next = stepTunePreview(
+    let next = stepTunePreview(
       state.value,
       activeParameters,
       {
         pitchInputDegrees: pitchInputDegrees.value,
         pitchInputActive: pitchInputActive.value,
+        riderLeanAngleDegrees: riderLeanAngleDegrees?.value,
+        riderLoadCurrentAmps,
         speedKmh: state.value.syntheticSpeedKmh,
         hillsEnabled: terrain.hillsEnabled,
         hillHeightMeters: terrain.hillHeightMeters,
@@ -172,6 +189,13 @@ export function TunePreview({
       },
       dtSeconds,
     )
+    if (lockedSpeedKmh != null) {
+      next = holdTunePreviewSpeed(next, lockedSpeedKmh, terrain.advancedPhysics)
+    } else if (minimumSpeedKmh != null && next.syntheticSpeedKmh < minimumSpeedKmh) {
+      next = holdTunePreviewSpeed(next, minimumSpeedKmh, terrain.advancedPhysics)
+    } else if (maximumSpeedKmh != null && next.syntheticSpeedKmh > maximumSpeedKmh) {
+      next = holdTunePreviewSpeed(next, maximumSpeedKmh, terrain.advancedPhysics)
+    }
     state.value = next
     const groundToBoardAngle = calculateGroundToBoardAngleDegrees(
       next.angleDegrees,
@@ -270,14 +294,16 @@ export function TunePreview({
       {minimal ? (
         <View style={styles.minimalHeader}>
           {minimalAccessory}
-          <Pressable
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="About Tune Preview"
-            onPress={onHelp}
-          >
-            <QuestionIcon size={16} color={theme.palette.slate.textMuted} weight="bold" />
-          </Pressable>
+          {showMinimalHelp ? (
+            <Pressable
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="About Tune Preview"
+              onPress={onHelp}
+            >
+              <QuestionIcon size={16} color={theme.palette.slate.textMuted} weight="bold" />
+            </Pressable>
+          ) : null}
         </View>
       ) : (
         <View style={styles.header}>

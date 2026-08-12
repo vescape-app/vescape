@@ -5,6 +5,7 @@ import type { RefloatConfigField } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { basicSliderColor } from '@/modules/tune/components/basicSliderIcons'
 import type { TuneVariantProps } from '@/modules/tune/components/prototype/types'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 import { formatSliderValue, type BasicSliderItem } from '@/modules/tune/lib/sliderDefinitions'
@@ -18,9 +19,11 @@ export function VariantFOverview({
 }) {
   const [showAllFields, setShowAllFields] = useState(false)
   const [fieldQuery, setFieldQuery] = useState('')
-  const changedFields = props.displayGroups
-    .flatMap((group) => group.fields)
-    .filter((field) => Object.prototype.hasOwnProperty.call(props.dirtyFields, field.id))
+  const changedFields = props.displayGroups.flatMap((group) =>
+    group.fields
+      .filter((field) => Object.prototype.hasOwnProperty.call(props.dirtyFields, field.id))
+      .map((field) => ({ field, groupId: group.id })),
+  )
   const query = fieldQuery.trim().toLowerCase()
   const filteredGroups = props.displayGroups
     .map((group) => ({
@@ -40,8 +43,13 @@ export function VariantFOverview({
       </Section>
       <Section title="Changed VESC parameters" count={changedFields.length}>
         {changedFields.length ? (
-          changedFields.map((field) => (
-            <NativeRow key={field.id} field={field} onPress={props.openFieldEditor} />
+          changedFields.map(({ field, groupId }) => (
+            <NativeRow
+              key={field.id}
+              field={field}
+              groupId={groupId}
+              onPress={props.openFieldEditor}
+            />
           ))
         ) : (
           <Text style={styles.empty}>No native VESC parameters changed.</Text>
@@ -83,9 +91,16 @@ export function VariantFOverview({
         {showAllFields
           ? filteredGroups.map((group) => (
               <View key={group.id} style={styles.group}>
-                <Text style={styles.groupTitle}>{group.title}</Text>
+                <Text style={[styles.groupTitle, { color: nativeGroupColor(group.id) }]}>
+                  {group.title}
+                </Text>
                 {group.fields.map((field) => (
-                  <NativeRow key={field.id} field={field} onPress={props.openFieldEditor} />
+                  <NativeRow
+                    key={field.id}
+                    field={field}
+                    groupId={group.id}
+                    onPress={props.openFieldEditor}
+                  />
                 ))}
               </View>
             ))
@@ -122,35 +137,37 @@ function BasicRow({
   onPress: TuneVariantProps['openBasicSliderEditor']
 }) {
   const ref = useRef<View>(null)
+  const color = basicSliderColor(item.id)
   return (
     <Pressable ref={ref} style={rowStyle} onPress={() => onPress(item.id, ref)}>
+      <View style={[styles.colorMark, { backgroundColor: color }]} />
       <Text style={styles.label}>{item.label}</Text>
-      <Value value={formatSliderValue(item)} color={theme.tune.color} />
+      <Value value={formatSliderValue(item)} color={color} />
     </Pressable>
   )
 }
 
 function NativeRow({
   field,
+  groupId,
   onPress,
 }: {
   field: RefloatConfigField
+  groupId: string
   onPress: TuneVariantProps['openFieldEditor']
 }) {
   const ref = useRef<View>(null)
+  const color = nativeGroupColor(groupId)
   return (
-    <Pressable
-      ref={ref}
-      style={rowStyle}
-      onPress={() => onPress(field, ref, theme.palette.purple.color)}
-    >
+    <Pressable ref={ref} style={rowStyle} onPress={() => onPress(field, ref, color)}>
+      <View style={[styles.colorMark, { backgroundColor: color }]} />
       <View style={styles.identity}>
         <Text style={styles.label}>{field.label}</Text>
         <Text style={styles.fieldId}>{field.id}</Text>
       </View>
       <Value
         value={`${formatTuneValue(field.value)}${field.unit ? ` ${field.unit}` : ''}`}
-        color={theme.palette.purple.color}
+        color={color}
       />
     </Pressable>
   )
@@ -166,6 +183,17 @@ function Value({ value, color }: { value: string; color: string }) {
 }
 
 const rowStyle = ({ pressed }: { pressed: boolean }) => [styles.row, pressed && styles.pressed]
+
+function nativeGroupColor(groupId: string): string {
+  if (groupId === 'general') return theme.palette.sky.color
+  if (groupId === 'atr') return theme.palette.green.color
+  if (groupId === 'turn_tiltback') return theme.palette.pink.color
+  if (groupId === 'torque_tiltback') return theme.palette.teal.color
+  if (groupId === 'brake') return theme.palette.orange.color
+  if (groupId.includes('tiltback')) return theme.palette.purple.color
+  return theme.palette.cyan.color
+}
+
 const styles = StyleSheet.create({
   overview: { gap: 18 },
   section: { gap: 2 },
@@ -187,6 +215,7 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.palette.slate.border,
   },
   pressed: { backgroundColor: theme.palette.slate.surface },
+  colorMark: { width: 3, height: 24, borderRadius: 2 },
   label: { flex: 1, color: theme.palette.slate.textPrimary, fontSize: 13, fontWeight: '700' },
   valueWrap: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   value: { fontFamily: theme.mono('700'), fontSize: 13, fontVariant: ['tabular-nums'] },

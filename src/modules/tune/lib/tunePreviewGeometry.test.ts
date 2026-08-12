@@ -4,6 +4,7 @@ import {
   REFERENCE_WHEEL_DIAMETER_METERS,
   TUNE_PREVIEW_PIXELS_PER_METER,
   TUNE_PREVIEW_WHEEL_RADIUS_PIXELS,
+  responseLeanAngleDegrees,
   terrainHeightRelativeToWheel,
   tunePreviewDeckLine,
 } from '@/modules/tune/lib/tunePreviewGeometry'
@@ -36,5 +37,17 @@ describe('Tune Preview deck geometry', () => {
     const valley = terrainHeightRelativeToWheel(-quarterWavePixels, 0, heightMeters, spacingMeters)
 
     expect(peak - valley).toBeCloseTo(heightMeters * TUNE_PREVIEW_PIXELS_PER_METER)
+  })
+
+  test('maps low aggressiveness near deck contact and high aggressiveness to a slight lean', () => {
+    const contactAngle = (Math.asin(TUNE_PREVIEW_WHEEL_RADIUS_PIXELS / 72) * 180) / Math.PI
+    const soft = responseLeanAngleDegrees(0)
+    const medium = responseLeanAngleDegrees(5)
+    const firm = responseLeanAngleDegrees(10)
+
+    expect(soft).toBeCloseTo(contactAngle * 0.84)
+    expect(soft).toBeGreaterThan(medium)
+    expect(medium).toBeGreaterThan(firm)
+    expect(firm).toBe(2)
   })
 })

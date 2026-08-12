@@ -5,6 +5,7 @@ import {
   GROUND_TICK_SPACING_METERS,
   TUNE_PREVIEW_PIXELS_PER_METER,
 } from '@/modules/tune/lib/tunePreviewGeometry'
+import { calculatePitchAcceleration } from '@/modules/tune/lib/tunePreviewResponse'
 
 // Longitudinal target equations and transition signs derive from Refloat v1.2.1
 // torque_tilt.c and brake_tilt.c (GPL-3.0-or-later), matching the bundled schema.
@@ -13,7 +14,6 @@ export const TUNE_PREVIEW_MODEL_VERSION = 'refloat-bundled-legacy-v18' as const
 export const REFERENCE_ERPM_PER_KMH = 1000 / 3.5
 export const MAX_TUNE_PREVIEW_SPEED_KMH = 50
 export const TUNE_PREVIEW_RESET_SPEED_KMH = 15
-export const COMPARATIVE_ACCELERATION_KMH_PER_SECOND = 6
 export const MAX_SYNTHETIC_CURRENT_AMPS = 60
 // A typical Refloat kp of 20 reaches the 60 A preview limit at 3 degrees of error.
 // A wider gesture range makes most of the control indistinguishable current saturation.
@@ -192,6 +192,9 @@ export interface TunePreviewState {
 export interface TunePreviewInput {
   pitchInputDegrees: number
   pitchInputActive?: boolean
+  /** Rider pressure represented by a damped pitch moment, never an imposed Board angle. */
+  riderLeanAngleDegrees?: number
+  riderLoadCurrentAmps?: number
   speedKmh: number
   hillsEnabled?: boolean
   hillHeightMeters?: number
@@ -396,6 +399,7 @@ export function pitchInputControlToRate(controlDegrees: number): number {
 }
 
 export function pitchInputRateToControlDegrees(rateDegreesPerSecond: number): number {
+  'worklet'
   const normalizedRate =
     clampFinite(
       rateDegreesPerSecond,
@@ -448,12 +452,13 @@ export function resetTunePreviewSpeed(
   }
 }
 
-export function calculateSyntheticAcceleration(syntheticCurrentAmps: number): number {
-  return (
-    (clamp(syntheticCurrentAmps, -MAX_SYNTHETIC_CURRENT_AMPS, MAX_SYNTHETIC_CURRENT_AMPS) /
-      MAX_SYNTHETIC_CURRENT_AMPS) *
-    COMPARATIVE_ACCELERATION_KMH_PER_SECOND
-  )
+export function holdTunePreviewSpeed(
+  state: TunePreviewState,
+  speedKmh: number,
+  physics?: Partial<TunePreviewAdvancedPhysics>,
+): TunePreviewState {
+  const syntheticSpeedKmh = boundedSpeed(speedKmh)
+  return { ...state, syntheticSpeedKmh, erpm: speedKmhToErpm(syntheticSpeedKmh, physics) }
 }
 
 export function terrainSlopeToSyntheticAcceleration(slope: number): number {
@@ -683,20 +688,6 @@ export function aggregateTorqueAndAdaptiveTilt(
   return torqueTiltDegrees + adaptiveTiltDegrees
 }
 
-function calculatePhysicalPitchAcceleration(
-  angularRateDegreesPerSecond: number,
-  longitudinalAccelerationMetersPerSecondSquared: number,
-  physics: TunePreviewAdvancedPhysics,
-): number {
-  const angularAccelerationRadians =
-    (longitudinalAccelerationMetersPerSecondSquared * BALANCE_PITCH_AUTHORITY) /
-    physics.centerOfMassHeightMeters
-  return (
-    (angularAccelerationRadians * 180) / Math.PI -
-    physics.pitchDampingPerSecond * angularRateDegreesPerSecond
-  )
-}
-
 function stepFixed(
   state: TunePreviewState,
   parameters: TunePreviewParameters,
@@ -733,7 +724,7 @@ function stepFixed(
   const terrainSlope = calculateTerrainSlope(state.groundTravelMeters, input)
   const terrainLoadCurrentAmps = calculateTerrainLoadCurrentAmps(terrainSlope, physics)
   const syntheticCurrentAmps = clamp(
-    balanceCurrentAmps + terrainLoadCurrentAmps,
+    balanceCurrentAmps + terrainLoadCurrentAmps + finiteOrZero(input.riderLoadCurrentAmps ?? 0),
     -currentLimit,
     currentLimit,
   )
@@ -827,10 +818,18 @@ function stepFixed(
   // Pitch Input adds a bounded pitch rate instead of imposing an angle. The tune reacts to
   // the growing error during the gesture and owns recovery after the gesture ends. Pitch response
   // uses PID balance effort; terrain-load current remains in total current and longitudinal speed.
-  const angularAcceleration = calculatePhysicalPitchAcceleration(
+  const balancePitchAccelerationDegrees =
+    (((calculatePreviewAcceleration(balanceCurrentAmps, 0, physics) / 3.6) *
+      BALANCE_PITCH_AUTHORITY) /
+      physics.centerOfMassHeightMeters) *
+    (180 / Math.PI)
+  const angularAcceleration = calculatePitchAcceleration(
+    balancePitchAccelerationDegrees,
+    input.riderLeanAngleDegrees == null
+      ? null
+      : finiteOrZero(input.riderLeanAngleDegrees) - controlledAngleDegrees,
     controlledRateDegreesPerSecond,
-    calculatePreviewAcceleration(balanceCurrentAmps, 0, physics) / 3.6,
-    physics,
+    physics.pitchDampingPerSecond,
   )
   const angularRateDegreesPerSecond = clamp(
     state.angularRateDegreesPerSecond + angularAcceleration * dt,
