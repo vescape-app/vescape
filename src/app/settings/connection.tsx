@@ -1,15 +1,14 @@
 import { useState } from 'react'
+import { useLocalSearchParams } from 'expo-router'
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   BluetoothConnectedIcon,
   ClockCountdownIcon,
-  PlusIcon,
   PowerIcon,
   RecordIcon,
   RocketLaunchIcon,
   SpeakerHighIcon,
-  TrashIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -21,9 +20,13 @@ import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { FadeCardModal } from '@/components/modals/FadeCardModal'
-import { IconButton } from '@/components/base/IconButton'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import {
+  AUTO_START_VARIANTS,
+  type AutoStartVariantKey,
+} from '@/modules/settings/components/prototype/AutoStartVariants'
+import { PrototypeSwitcher } from '@/modules/settings/components/prototype/PrototypeSwitcher'
 import {
   ensureBackgroundLocation,
   hasBackgroundLocation,
@@ -59,7 +62,17 @@ export default function ConnectionSettingsScreen() {
       removeCompanionBoard: s.removeCompanionBoard,
     })),
   )
+  // PROTOTYPE: ?variant=A..E swaps the auto-start section. Remove with the prototype folder.
+  const { variant } = useLocalSearchParams<{ variant?: string }>()
+  const variantKey = (
+    variant && variant in AUTO_START_VARIANTS ? variant : 'T'
+  ) as AutoStartVariantKey
+  const Variant = AUTO_START_VARIANTS[variantKey].Component
+
   const boards = useBoardStore((s) => s.boards)
+  const linkedBoards = boards
+    .filter((board) => board.link)
+    .map((board) => ({ id: board.id, name: board.name, bleId: board.link!.bleId }))
   const availableAutoStartBoards = boards.filter(
     (board) =>
       board.link && !companionPresenceBoards.some((enabled) => enabled.boardId === board.id),
@@ -155,104 +168,23 @@ export default function ConnectionSettingsScreen() {
         />
 
         {Platform.OS === 'android' ? (
-          <>
-            <SettingsSectionTitle>Wake up</SettingsSectionTitle>
-            <SettingsCard>
-              <SettingsRow
-                icon={RocketLaunchIcon}
-                iconColor={
-                  companionPresenceEnabled
-                    ? theme.palette.green.color
-                    : theme.palette.slate.textMuted
-                }
-                label="Auto start app"
-                hint="Start the app when one of your configured boards appears"
-                right={
-                  <Switch
-                    value={companionPresenceEnabled}
-                    disabled={masterBusy}
-                    onValueChange={(enabled) => void onCompanionToggle(enabled)}
-                    trackColor={{
-                      false: theme.palette.slate.border,
-                      true: theme.palette.sky.border,
-                    }}
-                    thumbColor={
-                      companionPresenceEnabled
-                        ? theme.palette.sky.color
-                        : theme.palette.slate.textMuted
-                    }
-                  />
-                }
-              />
-              {companionPresenceEnabled && companionPresenceBoards.length === 0 ? (
-                <SettingsRow
-                  icon={RocketLaunchIcon}
-                  iconColor={theme.palette.slate.textMuted}
-                  label="No auto-start boards"
-                  hint="Add a linked board to start the app when it appears"
-                />
-              ) : companionPresenceEnabled ? (
-                companionPresenceBoards.map((board) => (
-                  <SettingsRow
-                    key={board.boardId}
-                    icon={RocketLaunchIcon}
-                    iconColor={theme.palette.green.color}
-                    label={board.name}
-                    hint={board.bleId}
-                    right={
-                      <IconButton
-                        icon={TrashIcon}
-                        destructive
-                        loading={busyBoardId === board.boardId}
-                        accessibilityLabel={`Remove ${board.name} from auto start`}
-                        onPress={() => void onRemoveCompanionBoard(board.boardId)}
-                      />
-                    }
-                  />
-                ))
-              ) : null}
-              {companionPresenceEnabled ? (
-                <SettingsRow
-                  icon={PlusIcon}
-                  iconColor={theme.palette.sky.color}
-                  label="Add board"
-                  hint={
-                    availableAutoStartBoards.length > 0
-                      ? 'Choose another linked board'
-                      : 'No linked boards available'
-                  }
-                  onPress={
-                    availableAutoStartBoards.length > 0
-                      ? () => setBoardPickerVisible(true)
-                      : undefined
-                  }
-                />
-              ) : null}
-              {companionPresenceEnabled ? (
-                <SettingsRow
-                  icon={ClockCountdownIcon}
-                  iconColor={theme.palette.amber.color}
-                  label="Don't restart for"
-                  hint="After you exit the app, wait this long before auto starting again. 0 = off"
-                  right={
-                    <Stepper
-                      value={companionPresenceCooldownMinutes}
-                      unit="min"
-                      min={0}
-                      max={480}
-                      step={(v, dir) => (dir === 1 ? (v < 60 ? 15 : 30) : v <= 60 ? 15 : 30)}
-                      onChange={(nextValue) => {
-                        const clampedValue = Math.min(480, Math.max(0, nextValue))
-                        if (clampedValue !== companionPresenceCooldownMinutes) {
-                          void set('companionPresenceCooldownMinutes', clampedValue)
-                        }
-                      }}
-                    />
-                  }
-                />
-              ) : null}
-            </SettingsCard>
-          </>
+          <Variant
+            enabled={companionPresenceEnabled}
+            armed={companionPresenceBoards}
+            linked={linkedBoards}
+            cooldownMinutes={companionPresenceCooldownMinutes}
+            busyBoardId={busyBoardId}
+            masterBusy={masterBusy}
+            onToggle={(enabled) => void onCompanionToggle(enabled)}
+            onAdd={(boardId) => void onAddCompanionBoard(boardId)}
+            onRemove={(boardId) => void onRemoveCompanionBoard(boardId)}
+            onCooldown={(minutes) => {
+              const clamped = Math.min(480, Math.max(0, minutes))
+              if (clamped !== companionPresenceCooldownMinutes) {
+                void set('companionPresenceCooldownMinutes', clamped)
+              }
+            }}
+          />
         ) : null}
 
         <SettingsSectionTitle>Connection</SettingsSectionTitle>
@@ -386,6 +318,11 @@ export default function ConnectionSettingsScreen() {
           </>
         ) : null}
       </ScrollView>
+      <PrototypeSwitcher
+        variants={Object.keys(AUTO_START_VARIANTS)}
+        current={variantKey}
+        label={AUTO_START_VARIANTS[variantKey].name}
+      />
       <ConfirmModal
         visible={bgLocationPrompt}
         title="Allow location all the time"
