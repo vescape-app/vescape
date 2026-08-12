@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { useIsFocused, useNavigation, useRouter } from 'expo-router'
 import {
   ArrowsClockwiseIcon,
   BluetoothSlashIcon,
+  CaretDownIcon,
+  CaretUpIcon,
   ClockCounterClockwiseIcon,
   CopyIcon,
   FadersIcon,
@@ -16,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { type RefloatConfigField, type TuneProfileFieldValue } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
+import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { IconButton } from '@/components/base/IconButton'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { InfoModal } from '@/components/modals/InfoModal'
@@ -83,6 +86,7 @@ export default function TuneScreen() {
     tuneCompatibilityIssue,
   } = useTuneScreenData()
   const reportedCompatibilityIssue = useRef<string | null>(null)
+  const [advancedSettingsVisible, setAdvancedSettingsVisible] = useState(false)
   const setActiveProfile = useTuneProfileStore((s) => s.setActiveProfile)
   const revertField = useTuneProfileStore((s) => s.revertField)
   const acceptBoardField = useTuneProfileStore((s) => s.acceptBoardField)
@@ -109,65 +113,70 @@ export default function TuneScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: () =>
-        profiles.length > 0 ? (
-          <PillSelector
-            activeId={activeProfile?.id ?? ''}
-            contained
-            style={styles.headerPills}
-            contentContainerStyle={styles.headerPillsContent}
-          >
-            {profiles.map((profile) => (
-              <PillSelectorItem
-                key={profile.id}
-                id={profile.id}
-                label={profile.name}
-                icon={tuneProfileIconComponent(profile.icon)}
-                activeLabelOnly
-                color={tuneProfileColorTheme(profile.color)}
-                onPress={() => setActiveProfile(profile.id)}
+      header: () => (
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 8) }]}>
+          <HeaderBackButton />
+          <View style={styles.headerCenter}>
+            {profiles.length > 0 ? (
+              <PillSelector
+                activeId={activeProfile?.id ?? ''}
+                contained
+                fitContent
+                style={styles.headerPills}
+                contentContainerStyle={styles.headerPillsContent}
               >
-                <PillSelectorMenuItem
-                  icon={PencilSimpleIcon}
-                  label="Edit"
-                  onPress={() => modals.setMetadataModalProfile(profile)}
-                />
-                {modals.otherBoards.length > 0 ? (
-                  <PillSelectorMenuItem
-                    icon={CopyIcon}
-                    label="Copy to board"
-                    onPress={() => modals.setCopySourceProfile(profile)}
-                  />
-                ) : null}
-                {profiles.length > 1 ? (
-                  <PillSelectorMenuItem
-                    icon={TrashIcon}
-                    label="Delete"
-                    onPress={() => modals.setDeleteConfirmProfile(profile)}
-                    danger
-                    separator
-                  />
-                ) : null}
-              </PillSelectorItem>
-            ))}
-            <PillSelectorAdd onPress={() => modals.handleCreateProfile(activeProfile?.id)} />
-          </PillSelector>
-        ) : (
-          <Text style={styles.headerTitle}>Tune</Text>
-        ),
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          {activeProfile ? (
-            <IconButton icon={ClockCounterClockwiseIcon} onPress={() => void openHistory()} />
-          ) : null}
-          {boardConnected ? (
-            <IconButton
-              icon={ArrowsClockwiseIcon}
-              onPress={() => void loadOnline()}
-              loading={boardSnapshotStatus === 'loading'}
-              disabled={!firmwareCommandsTrusted}
-            />
-          ) : null}
+                {profiles.map((profile) => (
+                  <PillSelectorItem
+                    key={profile.id}
+                    id={profile.id}
+                    label={profile.name}
+                    icon={tuneProfileIconComponent(profile.icon)}
+                    activeLabelOnly
+                    color={tuneProfileColorTheme(profile.color)}
+                    onPress={() => setActiveProfile(profile.id)}
+                  >
+                    <PillSelectorMenuItem
+                      icon={PencilSimpleIcon}
+                      label="Edit"
+                      onPress={() => modals.setMetadataModalProfile(profile)}
+                    />
+                    {modals.otherBoards.length > 0 ? (
+                      <PillSelectorMenuItem
+                        icon={CopyIcon}
+                        label="Copy to board"
+                        onPress={() => modals.setCopySourceProfile(profile)}
+                      />
+                    ) : null}
+                    {profiles.length > 1 ? (
+                      <PillSelectorMenuItem
+                        icon={TrashIcon}
+                        label="Delete"
+                        onPress={() => modals.setDeleteConfirmProfile(profile)}
+                        danger
+                        separator
+                      />
+                    ) : null}
+                  </PillSelectorItem>
+                ))}
+                <PillSelectorAdd onPress={() => modals.handleCreateProfile(activeProfile?.id)} />
+              </PillSelector>
+            ) : (
+              <Text style={styles.headerTitle}>Tune</Text>
+            )}
+          </View>
+          <View style={styles.headerActions}>
+            {activeProfile ? (
+              <IconButton icon={ClockCounterClockwiseIcon} onPress={() => void openHistory()} />
+            ) : null}
+            {boardConnected ? (
+              <IconButton
+                icon={ArrowsClockwiseIcon}
+                onPress={() => void loadOnline()}
+                loading={boardSnapshotStatus === 'loading'}
+                disabled={!firmwareCommandsTrusted}
+              />
+            ) : null}
+          </View>
         </View>
       ),
     })
@@ -176,6 +185,7 @@ export default function TuneScreen() {
     boardConnected,
     boardSnapshotStatus,
     firmwareCommandsTrusted,
+    insets.top,
     openHistory,
     loadOnline,
     navigation,
@@ -323,38 +333,51 @@ export default function TuneScreen() {
           ))}
         </TuneGroupGrid>
 
-        {displayGroups.map((group) => (
-          <TuneGroupGrid
-            key={group.id}
-            title={group.title}
-            subtitle={
-              activeProfile
-                ? `${group.fields.length} profile values${
-                    group.fields.some((field) => boardDiffByField.has(field.id))
-                      ? ` - ${
-                          group.fields.filter((field) => boardDiffByField.has(field.id)).length
-                        } changed`
-                      : ''
-                  }`
-                : `${group.fields.length} read-only values`
-            }
-          >
-            {group.fields.map((field) => (
-              <TuneFieldCell
-                key={field.id}
-                field={field}
-                savedValue={activeProfile?.fields[field.id]}
-                boardValue={boardDiffByField.get(field.id)?.boardValue}
-                profileValue={boardDiffByField.get(field.id)?.profileValue}
-                dirty={Object.prototype.hasOwnProperty.call(dirtyFields, field.id)}
-                boardChanged={boardDiffByField.has(field.id)}
-                onPress={modals.openFieldEditor}
-                onRevert={() => revertField(field.id)}
-                onAcceptBoard={() => acceptBoardField(field.id)}
-              />
-            ))}
-          </TuneGroupGrid>
-        ))}
+        <View style={styles.advancedSettingsToggle}>
+          <Button
+            label={advancedSettingsVisible ? 'Hide advanced settings' : 'Show advanced settings'}
+            icon={advancedSettingsVisible ? CaretUpIcon : CaretDownIcon}
+            iconPosition="right"
+            variant="secondary"
+            size="sm"
+            onPress={() => setAdvancedSettingsVisible((visible) => !visible)}
+          />
+        </View>
+
+        {advancedSettingsVisible
+          ? displayGroups.map((group) => (
+              <TuneGroupGrid
+                key={group.id}
+                title={group.title}
+                subtitle={
+                  activeProfile
+                    ? `${group.fields.length} profile values${
+                        group.fields.some((field) => boardDiffByField.has(field.id))
+                          ? ` - ${
+                              group.fields.filter((field) => boardDiffByField.has(field.id)).length
+                            } changed`
+                          : ''
+                      }`
+                    : `${group.fields.length} read-only values`
+                }
+              >
+                {group.fields.map((field) => (
+                  <TuneFieldCell
+                    key={field.id}
+                    field={field}
+                    savedValue={activeProfile?.fields[field.id]}
+                    boardValue={boardDiffByField.get(field.id)?.boardValue}
+                    profileValue={boardDiffByField.get(field.id)?.profileValue}
+                    dirty={Object.prototype.hasOwnProperty.call(dirtyFields, field.id)}
+                    boardChanged={boardDiffByField.has(field.id)}
+                    onPress={modals.openFieldEditor}
+                    onRevert={() => revertField(field.id)}
+                    onAcceptBoard={() => acceptBoardField(field.id)}
+                  />
+                ))}
+              </TuneGroupGrid>
+            ))
+          : null}
       </TunePreviewSection>
 
       {hasTuneView && !modals.editor ? (
@@ -528,9 +551,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.palette.slate.bg,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingBottom: 0,
+    backgroundColor: theme.palette.slate.bg,
+  },
   headerActions: {
     flexDirection: 'row',
     gap: 8,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
   headerTitle: {
     color: theme.palette.slate.textPrimary,
@@ -538,7 +573,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   headerPills: {
-    marginHorizontal: 8,
+    maxWidth: '100%',
   },
   headerPillsContent: {
     minWidth: 0,
@@ -553,6 +588,9 @@ const styles = StyleSheet.create({
   },
   firstProfileAction: {
     minWidth: 240,
+  },
+  advancedSettingsToggle: {
+    alignItems: 'center',
   },
   stateText: {
     color: theme.palette.slate.textSecondary,
