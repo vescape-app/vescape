@@ -158,7 +158,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     gap: 2,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    // Deep surface at partial opacity over the card: recessed, but not a black hole.
+    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
   },
   boardRow: {
     flexDirection: 'row',
