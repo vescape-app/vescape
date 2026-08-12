@@ -1,6 +1,7 @@
-import { LayoutAnimation, Platform, Switch, UIManager } from 'react-native'
+import { LayoutAnimation, Platform, StyleSheet, Switch, UIManager, View } from 'react-native'
 import { CheckIcon, ClockCountdownIcon, RocketLaunchIcon } from 'phosphor-react-native'
 
+import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
@@ -77,7 +78,7 @@ export function AutoStartCard({
   return (
     <>
       <SettingsSectionTitle>Wake up</SettingsSectionTitle>
-      <SettingsCard>
+      <SettingsCard separatorInset={0}>
         <SettingsRow
           icon={RocketLaunchIcon}
           iconColor={
@@ -100,34 +101,32 @@ export function AutoStartCard({
           }
         />
 
-        {enabled && !noBoards
-          ? boards.map((board) => {
+        {enabled && !noBoards ? (
+          <View style={styles.boardList}>
+            {boards.map((board) => {
               const isArmed = armed.has(board.id)
               return (
-                <SettingsRow
-                  key={board.id}
-                  icon={RocketLaunchIcon}
-                  iconWeight={isArmed ? 'fill' : 'duotone'}
-                  iconColor={
-                    isArmed ? theme.palette.green.color : theme.palette.slate.textSecondary
-                  }
-                  label={board.name}
-                  hint={isArmed ? 'Wakes the app when detected' : board.bleId}
-                  right={
-                    <Button
-                      label={isArmed ? 'Enabled' : 'Enable'}
-                      icon={isArmed ? CheckIcon : undefined}
-                      size="sm"
-                      variant={isArmed ? 'success' : 'secondary'}
-                      loading={busyBoardId === board.id}
-                      disabled={busyBoardId != null && busyBoardId !== board.id}
-                      onPress={() => setBoard(board.id, !isArmed)}
-                    />
-                  }
-                />
+                <View key={board.id} style={styles.boardRow}>
+                  <View style={styles.boardText}>
+                    <Text style={[styles.boardName, isArmed && styles.boardNameArmed]}>
+                      {board.name}
+                    </Text>
+                    <Text style={styles.boardBleId}>{board.bleId}</Text>
+                  </View>
+                  <Button
+                    label={isArmed ? 'Enabled' : 'Enable'}
+                    icon={isArmed ? CheckIcon : undefined}
+                    size="sm"
+                    variant={isArmed ? 'success' : 'secondary'}
+                    loading={busyBoardId === board.id}
+                    disabled={busyBoardId != null && busyBoardId !== board.id}
+                    onPress={() => setBoard(board.id, !isArmed)}
+                  />
+                </View>
               )
-            })
-          : null}
+            })}
+          </View>
+        ) : null}
 
         {enabled ? (
           <SettingsRow
@@ -153,3 +152,23 @@ export function AutoStartCard({
     </>
   )
 }
+
+const styles = StyleSheet.create({
+  boardList: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    gap: 2,
+    backgroundColor: theme.palette.slate.surfaceDeep,
+  },
+  boardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  boardText: { flex: 1, gap: 2 },
+  boardName: { fontSize: 15, fontWeight: '600' },
+  boardNameArmed: { color: theme.palette.green.text },
+  boardBleId: { fontSize: 11, color: theme.palette.slate.textMuted },
+})
