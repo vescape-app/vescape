@@ -113,8 +113,10 @@ internal class LiveSeriesEmitter(
     private fun emitFocusedSeries() {
         val metrics = focusedMetrics
         if (metrics.isEmpty()) return
+        // One exclusion scan for the whole tick — the spans are identical across metrics.
+        val spans = telemetryPipeline.focusedExclusionSpans()
         for (metric in metrics) {
-            val focused = telemetryPipeline.focusedSeries(metric) ?: continue
+            val focused = telemetryPipeline.focusedSeries(metric, spans) ?: continue
             emitEvent(
                 "onFocusedSeries",
                 mapOf(
@@ -122,6 +124,8 @@ internal class LiveSeriesEmitter(
                     "series" to focused.series,
                     "exclusions" to focused.exclusions,
                     "windowMs" to focused.windowMs,
+                    "spanMs" to focused.spanMs,
+                    "sampleRateHz" to focused.sampleRateHz,
                     "generation" to generation(),
                 ),
             )

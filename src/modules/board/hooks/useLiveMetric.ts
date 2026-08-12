@@ -70,7 +70,7 @@ export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
 
 /**
  * Full-resolution live series for a `/control` detail chart. Mounting focuses the metric so
- * native streams it on `onFocusedSeries` at fixed-width time buckets (constant scrub resolution);
+ * native streams it on `onFocusedSeries` at full resolution (20ms buckets, below the packet interval);
  * unmounting releases it so native stops. The center screen never focuses anything, so the
  * high-res stream costs nothing while riding.
  */

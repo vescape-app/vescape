@@ -3,7 +3,7 @@ import type { FocusedSeriesEvent } from 'vescape-core'
 
 /**
  * High-resolution live series for the metrics a `/control` detail chart currently has
- * focused. Native decimates each on fixed-width time buckets (constant scrub resolution)
+ * focused. Native emits each at full resolution (20ms buckets, below the packet interval)
  * and pushes ~1Hz on `onFocusedSeries`, one event per focused metric. `series[metric]` is
  * a flat `[ts0, v0, ts1, v1, ...]` array; `exclusions[key]` is a flat `[start0, end0, ...]`
  * span list per exclusion key, shared across metrics, for redrawing overlay bands.
@@ -11,6 +11,9 @@ import type { FocusedSeriesEvent } from 'vescape-core'
 interface FocusedSeriesState {
   series: Record<string, number[]>
   exclusions: Record<string, number[]>
+  /** Coverage of the focused data, measured natively — see {@link FocusedSeriesEvent}. */
+  spanMs: number
+  sampleRateHz: number
   generation: number
   apply: (event: FocusedSeriesEvent) => void
   clearMetric: (metric: string) => void
@@ -23,11 +26,15 @@ const EMPTY_EXCLUSIONS: Record<string, number[]> = {}
 export const useFocusedSeriesStore = create<FocusedSeriesState>((set) => ({
   series: EMPTY_SERIES,
   exclusions: EMPTY_EXCLUSIONS,
+  spanMs: 0,
+  sampleRateHz: 0,
   generation: 0,
   apply: (event) =>
     set((state) => ({
       series: { ...state.series, [event.metric]: event.series },
       exclusions: event.exclusions,
+      spanMs: event.spanMs,
+      sampleRateHz: event.sampleRateHz,
       generation: event.generation,
     })),
   clearMetric: (metric) =>
@@ -37,5 +44,12 @@ export const useFocusedSeriesStore = create<FocusedSeriesState>((set) => ({
       delete series[metric]
       return { series }
     }),
-  clear: () => set({ series: EMPTY_SERIES, exclusions: EMPTY_EXCLUSIONS, generation: 0 }),
+  clear: () =>
+    set({
+      series: EMPTY_SERIES,
+      exclusions: EMPTY_EXCLUSIONS,
+      spanMs: 0,
+      sampleRateHz: 0,
+      generation: 0,
+    }),
 }))

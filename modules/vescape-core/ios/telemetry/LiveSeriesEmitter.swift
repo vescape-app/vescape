@@ -14,11 +14,11 @@ internal final class LiveSeriesEmitter {
   private static let buckets = 64
   /// One display frame — the fastest an emit can usefully arrive. See `scaledIntervalMs`.
   private static let minIntervalMs = 16
-  /// Focused detail-chart resolution: fixed-width time buckets (constant scrub resolution
-  /// regardless of window length), capped so a long window can't blow up the payload.
+  /// Focused detail-chart resolution: fixed-width time buckets, uncapped, and narrower than
+  /// the board packet interval (~30-50ms) so at most one sample lands per bucket — the focused
+  /// series is effectively full-resolution. Only mounted `/control` detail charts pay for it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `FOCUSED_SERIES_BUCKET_WIDTH_MS`
-  private static let focusedBucketWidthMs: Int64 = 250
-  private static let focusedMaxBuckets = 1_500
+  private static let focusedBucketWidthMs: Int64 = 20
 
   /// Send a native event to JS. Wired by the coordinator.
   var emit: ((String, [String: Any?]) -> Void)?
@@ -152,7 +152,14 @@ internal final class LiveSeriesEmitter {
   private func emitFocusedSeries() {
     guard !focusedMetrics.isEmpty else { return }
     let samples = recentSnapshot()
-    let bucketCount = max(1, min(Self.focusedMaxBuckets, Int(windowMs / Self.focusedBucketWidthMs)))
+    guard !samples.isEmpty else { return }
+    let bucketCount = max(1, Int(windowMs / Self.focusedBucketWidthMs))
+    // Span and rate describe the data actually held, not the configured window, so the
+    // detail screen can caption exactly what the rider is looking at.
+    let firstTs = timestamp(samples.first) ?? 0
+    let lastTs = timestamp(samples.last) ?? 0
+    let spanMs = max(0, lastTs - firstTs)
+    let sampleRateHz = spanMs > 0 ? Double(samples.count - 1) * 1000.0 / Double(spanMs) : 0
     for metric in focusedMetrics {
       guard let m = Self.allMetrics.first(where: { $0.key == metric }) else { continue }
       let series = LiveSeriesDownsampler.downsampleMinMax(
@@ -168,6 +175,8 @@ internal final class LiveSeriesEmitter {
         "series": series,
         "exclusions": [String: [Double]](),
         "windowMs": windowMs,
+        "spanMs": spanMs,
+        "sampleRateHz": sampleRateHz,
         "generation": generation(),
       ])
     }

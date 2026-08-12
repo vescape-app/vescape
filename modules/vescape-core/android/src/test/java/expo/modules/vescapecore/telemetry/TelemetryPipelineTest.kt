@@ -256,6 +256,36 @@ class TelemetryPipelineTest {
     }
 
     @Test
+    fun `focusedSeries reports the covered span and the measured packet rate`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+
+        // Five samples 50ms apart: 200ms of coverage at 20Hz.
+        for (i in 0 until 5) {
+            pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L + i * 50L), session)
+        }
+
+        val focused = pipeline.focusedSeries("speed")
+        assertNotNull(focused)
+        assertEquals(200L, focused!!.spanMs)
+        assertEquals(20.0, focused.sampleRateHz, 0.001)
+    }
+
+    @Test
+    fun `focusedSeries reports a zero rate until two samples exist`() {
+        val pipeline = buildPipeline()
+        val session = BoardSession(id = 1)
+        pipeline.beginSession(session, sessionConfig)
+        pipeline.process(telemetry(speed = 20.0, packetAt = 1_000L), session)
+
+        val focused = pipeline.focusedSeries("speed")
+        assertNotNull(focused)
+        assertEquals(0L, focused!!.spanMs)
+        assertEquals(0.0, focused.sampleRateHz, 0.001)
+    }
+
+    @Test
     fun `focusedSeries carries avg_speed excluded spans for a low-speed run`() {
         val pipeline = buildPipeline()
         val session = BoardSession(id = 1)

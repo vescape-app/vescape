@@ -62,18 +62,25 @@ internal val ALL_SERIES_METRICS = LIVE_SERIES_METRICS + FOCUSED_ONLY_SERIES_METR
 internal val LIVE_EXCLUSION_KEYS = listOf(METRIC_AVG_SPEED, METRIC_MAX_SPEED, METRIC_MAX_DUTY)
 
 /**
- * Focused detail-chart resolution: fixed-width time buckets (constant scrub resolution
- * regardless of window length), capped so a long window can't blow up the payload.
+ * Focused detail-chart resolution: fixed-width time buckets, uncapped, and narrower than
+ * the board packet interval (~30–50ms) so at most one sample lands per bucket — the focused
+ * series is effectively full-resolution. Payload therefore scales with the sample count of
+ * the live window, not with a bucket budget: only mounted `/control` detail charts pay it.
  * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `focusedBucketWidthMs`
  */
-internal const val FOCUSED_SERIES_BUCKET_WIDTH_MS = 250L
-internal const val FOCUSED_SERIES_MAX_BUCKETS = 1500
+internal const val FOCUSED_SERIES_BUCKET_WIDTH_MS = 20L
 
-/** Render-ready focused series for one metric plus its excluded spans, per exclusion key. */
+/**
+ * Render-ready focused series for one metric plus its excluded spans, per exclusion key.
+ * [spanMs] and [sampleRateHz] describe the data actually held (not the configured window),
+ * so the detail screen can caption exactly what the rider is looking at.
+ */
 internal data class FocusedSeries(
     val series: DoubleArray,
     val exclusions: Map<String, DoubleArray>,
     val windowMs: Long,
+    val spanMs: Long,
+    val sampleRateHz: Double,
 )
 
 internal data class ProcessedTelemetry(
@@ -188,19 +195,19 @@ internal class TelemetryPipeline(
     }
 
     /**
-     * High-resolution series for a single focused metric, decimated on **fixed-width**
-     * time buckets ([FOCUSED_SERIES_BUCKET_WIDTH_MS], capped to [FOCUSED_SERIES_MAX_BUCKETS])
-     * so scrub resolution stays constant as the window grows. Rides with the contiguous
-     * excluded spans per exclusion key so the detail chart can redraw its overlay bands.
+     * Full-resolution series for a single focused metric on [FOCUSED_SERIES_BUCKET_WIDTH_MS]
+     * buckets — narrower than the packet interval, so every sample survives while the fixed
+     * absolute bucket grid keeps the line stable as the window slides. Rides with the
+     * contiguous excluded spans per exclusion key so the detail chart can redraw its overlay
+     * bands. Pass [spans] to reuse one exclusion scan across every metric of an emit tick.
      * Returns null for an unknown metric key.
      */
-    fun focusedSeries(metricKey: String): FocusedSeries? {
+    fun focusedSeries(metricKey: String, spans: Map<String, DoubleArray>? = null): FocusedSeries? {
         val metric = ALL_SERIES_METRICS.find { it.key == metricKey } ?: return null
         val rows = synchronized(recentLock) { if (recentTelemetry.isEmpty()) null else recentTelemetry.toList() }
-            ?: return FocusedSeries(DoubleArray(0), emptyMap(), recentWindowMs())
+            ?: return FocusedSeries(DoubleArray(0), emptyMap(), recentWindowMs(), 0L, 0.0)
         val windowMs = recentWindowMs()
-        val bucketCount = (windowMs / FOCUSED_SERIES_BUCKET_WIDTH_MS)
-            .toInt().coerceIn(1, FOCUSED_SERIES_MAX_BUCKETS)
+        val bucketCount = (windowMs / FOCUSED_SERIES_BUCKET_WIDTH_MS).toInt().coerceAtLeast(1)
         val series = LiveSeriesDownsampler.downsampleMinMax(
             rows,
             bucketCount,
@@ -208,8 +215,27 @@ internal class TelemetryPipeline(
             { (it["lastPacketAt"] as Number).toLong() },
             metric.select,
         )
-        return FocusedSeries(series, excludedSpans(rows), windowMs)
+        val spanMs = sampleSpanMs(rows)
+        return FocusedSeries(
+            series,
+            spans ?: excludedSpans(rows),
+            windowMs,
+            spanMs,
+            if (spanMs > 0L) (rows.size - 1) * 1000.0 / spanMs else 0.0,
+        )
     }
+
+    /** Elapsed time between the oldest and newest retained sample, 0 when fewer than two. */
+    private fun sampleSpanMs(rows: List<Map<String, Any?>>): Long {
+        if (rows.size < 2) return 0L
+        val first = (rows.first()["lastPacketAt"] as? Number)?.toLong() ?: return 0L
+        val last = (rows.last()["lastPacketAt"] as? Number)?.toLong() ?: return 0L
+        return (last - first).coerceAtLeast(0L)
+    }
+
+    /** Excluded spans for the current window — shared by every metric of one emit tick. */
+    fun focusedExclusionSpans(): Map<String, DoubleArray> =
+        excludedSpans(synchronized(recentLock) { recentTelemetry.toList() })
 
     /**
      * Contiguous [start, end] runs (flat `[s0, e0, s1, e1, ...]`) per exclusion key across

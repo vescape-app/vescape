@@ -1214,7 +1214,7 @@ export interface LiveSeriesEvent {
 
 /**
  * High-resolution series for the one metric a `/control` detail chart has focused,
- * decimated natively on fixed-width time buckets. `series` and each `exclusions` entry
+ * emitted natively at full resolution (20ms buckets). `series` and each `exclusions` entry
  * are flat `[ts0, v0, ts1, v1, ...]` / `[start0, end0, ...]` arrays. Excluded spans ride
  * along per exclusion key so JS can rebuild overlay bands without raw samples.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveSeriesEmitter.kt `emitFocusedSeries`
@@ -1225,6 +1225,10 @@ export interface FocusedSeriesEvent {
   series: number[]
   exclusions: Record<string, number[]>
   windowMs: number
+  /** Elapsed time actually covered by the retained samples (≤ `windowMs` right after connect). */
+  spanMs: number
+  /** Measured packet rate over `spanMs`; 0 until two samples exist. */
+  sampleRateHz: number
   generation: number
 }
 
@@ -1697,7 +1701,7 @@ type VescapeCoreEvents = {
   onLiveTick: (event: TelemetryEvent) => void
   /** Decimated per-metric min/max sparkline series (~1Hz) for the live strip. */
   onLiveSeries: (event: LiveSeriesEvent) => void
-  /** High-res fixed-width-bucket series for the one focused `/control` detail-chart metric (~1Hz). */
+  /** Full-resolution series for each focused `/control` detail-chart metric (~1Hz). */
   onFocusedSeries: (event: FocusedSeriesEvent) => void
   /** Batched full samples (~3Hz) for history buffer and detail charts. */
   onTelemetryHistory: (event: TelemetryHistoryEvent) => void

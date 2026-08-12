@@ -32,7 +32,7 @@ Native events → liveTelemetryRuntime (mutable buffer + SharedValues)
                                             Reads the natively-decimated `onLiveSeries`
                                             store (~1Hz). No JS-thread projection.
 
-Native (focused)  → onFocusedSeries (per focused metric, fixed-width buckets)
+Native (focused)  → onFocusedSeries (per focused metric, full-resolution 20ms buckets)
                         └── useLiveMetric(selector) → focusedSeriesStore
                             `/control` detail charts only; native decimates,
                             JS just maps the flat series to points.
@@ -53,7 +53,7 @@ Native (focused)  → onFocusedSeries (per focused metric, fixed-width buckets)
 | Metric                                    | Value                          |
 | ----------------------------------------- | ------------------------------ |
 | Buffer size at 5min/20Hz                  | ~6000 telemetry samples        |
-| Focused series payload (per metric, ~1Hz) | ≤ 1500 buckets, fixed-width    |
+| Focused series payload (per metric, ~1Hz) | full window, 20ms buckets      |
 | React renders per publish                 | 1 batch (all metric consumers) |
 | SharedValue updates                       | ~20/sec, zero React cost       |
 | Production JS lag (10min history)         | <50ms                          |
