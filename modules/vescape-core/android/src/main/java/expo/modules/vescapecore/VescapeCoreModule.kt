@@ -551,6 +551,15 @@ class VescapeCoreModule : Module() {
     AsyncFunction("setCompanionPresenceEnabled") { enabled: Boolean, promise: Promise ->
       companionPresence.setEnabled(enabled, promise)
     }
+    AsyncFunction("getCompanionPresenceBoards") Coroutine { ->
+      companionPresence.getBoards()
+    }
+    AsyncFunction("addCompanionPresenceBoard") { boardId: String, promise: Promise ->
+      companionPresence.addBoard(boardId, promise)
+    }
+    AsyncFunction("removeCompanionPresenceBoard") { boardId: String, promise: Promise ->
+      companionPresence.removeBoard(boardId, promise)
+    }
     AsyncFunction("stopBoard") { promise: Promise ->
       stopBoardSession(promise)
     }

@@ -3,6 +3,7 @@ import type { EventSubscription } from 'expo-modules-core'
 import type {
   AppSettings,
   Board,
+  CompanionPresenceBoard,
   BoardProbeProgressEvent,
   BoardProbeResult,
   DeviceFoundEvent,
@@ -45,6 +46,7 @@ const telemetryHistoryListeners = new Set<(event: TelemetryHistoryEvent) => void
 const boardProbeProgressListeners = new Set<(event: BoardProbeProgressEvent) => void>()
 
 const e2eBoards: Board[] = []
+const e2eCompanionBoardIds = new Set<string>()
 
 const e2eSettings: AppSettings = {
   liveHistoryLimit: 1000,
@@ -699,6 +701,24 @@ export const e2eFake = {
 
   updateSetting(key: string, value: unknown): void {
     ;(e2eSettings as unknown as Record<string, unknown>)[key] = value
+  },
+
+  getCompanionPresenceBoards(): CompanionPresenceBoard[] {
+    return e2eBoards.flatMap((board) =>
+      e2eCompanionBoardIds.has(board.id) && board.link
+        ? [{ boardId: board.id, name: board.name, bleId: board.link.bleId }]
+        : [],
+    )
+  },
+
+  addCompanionPresenceBoard(boardId: string): void {
+    e2eCompanionBoardIds.add(boardId)
+    e2eSettings.companionPresenceEnabled = true
+  },
+
+  removeCompanionPresenceBoard(boardId: string): void {
+    e2eCompanionBoardIds.delete(boardId)
+    e2eSettings.companionPresenceEnabled = e2eCompanionBoardIds.size > 0
   },
 
   setLegalMode(boardId: string, enabled: boolean): void {
