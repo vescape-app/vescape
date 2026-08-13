@@ -1,5 +1,4 @@
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
-import type { ChartNumberFormat } from '@/components/charts/line/chartFormat'
 import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 
@@ -45,8 +44,6 @@ export interface ChartMetricDef {
   label: string
   color: string
   range: AutoRangeOptions
-  /** How the head reading is printed. Data rather than a formatter: it runs in a worklet. */
-  reading: ChartNumberFormat
   /** Session-exclusion stat keys that grey out this chart's ranges. */
   statKeys?: string | string[]
 }
@@ -61,7 +58,6 @@ export const SPEED_CHART_DEF: ChartMetricDef = {
   label: telemetry.speed.label,
   color: telemetry.speed.color,
   range: rangeOf(telemetry.speed, { includeZero: true, fixed: true }),
-  reading: { decimals: 0, unit: telemetry.speed.unit, abs: true },
   statKeys: ['avg_speed', 'max_speed'],
 }
 
@@ -72,7 +68,6 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Duty', 'Cycle'],
     color: telemetry.duty.color,
     range: rangeOf(telemetry.duty, { includeZero: true, fixed: true }),
-    reading: { decimals: 0, unit: '%', compactUnit: true },
     statKeys: 'max_duty',
   },
   {
@@ -80,7 +75,6 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: 'Battery',
     color: telemetry.battVoltage.color,
     range: rangeOf(telemetry.battVoltage),
-    reading: { decimals: 1, unit: telemetry.battVoltage.unit, compactUnit: true },
   },
   {
     key: 'tempMotor',
@@ -88,7 +82,6 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Motor', 'Temp'],
     color: telemetry.motorTemp.color,
     range: rangeOf(telemetry.motorTemp),
-    reading: { decimals: 0, unit: telemetry.motorTemp.unit },
   },
   {
     key: 'tempController',
@@ -96,7 +89,6 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Controller', 'Temp'],
     color: telemetry.controllerTemp.color,
     range: rangeOf(telemetry.controllerTemp),
-    reading: { decimals: 0, unit: telemetry.controllerTemp.unit },
   },
   {
     key: 'motorCurrent',
@@ -104,7 +96,6 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Motor', 'Current'],
     color: telemetry.motorCurrent.color,
     range: rangeOf(telemetry.motorCurrent, { includeZero: true }),
-    reading: { decimals: 0, unit: telemetry.motorCurrent.unit },
   },
   {
     key: 'batteryCurrent',
@@ -112,7 +103,6 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Batt', 'Current'],
     color: telemetry.battCurrent.color,
     range: rangeOf(telemetry.battCurrent, { includeZero: true }),
-    reading: { decimals: 0, unit: telemetry.battCurrent.unit },
   },
 ]
 

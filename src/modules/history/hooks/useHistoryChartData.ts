@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
-import type { ChartReadingSpec, ChartSpec } from '@/components/charts/line/ChartStack'
+import type { ChartSpec } from '@/components/charts/line/ChartStack'
 import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
@@ -9,7 +9,6 @@ import {
   HISTORY_CHART_DEFS,
   OPTIONAL_CHART_METRICS,
   SPEED_CHART_DEF,
-  type ChartMetricDef,
   type OptionalChartMetric,
 } from '@/modules/history/components/historyChartMetrics'
 import {
@@ -158,11 +157,6 @@ interface HistoryChartStackInput {
   activeMetrics: ReadonlySet<OptionalChartMetric>
 }
 
-/** What the chart prints beside its label, live under a finger and at the head otherwise. */
-function readingOf(def: ChartMetricDef): ChartReadingSpec {
-  return { seriesKey: def.key, color: def.color, ...def.reading }
-}
-
 /**
  * The ride as one chart stack: speed always, plus whichever metrics the rider has opened.
  *
@@ -188,7 +182,6 @@ export function useHistoryChartStack({
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
-      reading: readingOf(SPEED_CHART_DEF),
       height: SPEED_CHART_HEIGHT,
       series: [
         {
@@ -209,7 +202,6 @@ export function useHistoryChartStack({
           : ({
               key: def.key,
               label: def.label,
-              reading: readingOf(def),
               height: METRIC_CHART_HEIGHT,
               series: [
                 { key: def.key, data: series[def.key], color: def.color, ramp: ramps[def.key] },
@@ -246,13 +238,6 @@ function batteryChart(
     return {
       key: 'battery',
       label: 'Battery',
-      reading: {
-        seriesKey: 'voltage',
-        color: telemetry.battVoltage.color,
-        decimals: telemetry.battVoltage.decimals,
-        unit: telemetry.battVoltage.unit,
-        compactUnit: true,
-      },
       height: METRIC_CHART_HEIGHT,
       series: [{ ...voltage, ramp: ramps.battery, label: undefined }],
       left: { range: ranges.battery },
@@ -262,13 +247,6 @@ function batteryChart(
   return {
     key: 'battery',
     label: 'Battery',
-    reading: {
-      seriesKey: 'percent',
-      color: telemetry.battVoltage.color,
-      decimals: 0,
-      unit: '%',
-      compactUnit: true,
-    },
     height: METRIC_CHART_HEIGHT,
     series: [
       {

@@ -116,7 +116,6 @@ export function ChartStackShowcase() {
       {
         key: 'speed',
         label: 'Speed',
-        reading: { seriesKey: 'speed', decimals: 1, unit: 'km/h' },
         height: 48,
         series: [
           {
@@ -133,13 +132,6 @@ export function ChartStackShowcase() {
       {
         key: 'duty',
         label: 'Duty / Voltage',
-        reading: {
-          seriesKey: 'duty',
-          decimals: 0,
-          unit: '%',
-          compactUnit: true,
-          color: theme.palette.amber.color,
-        },
         height: 40,
         series: [
           {
