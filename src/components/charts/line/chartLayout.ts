@@ -14,7 +14,6 @@ export const CHART_GAP = 8
 export interface ChartLayoutInput {
   heights: number[]
   width: number
-  hasRightAxis: boolean
 }
 
 export interface ChartLayout {
@@ -26,17 +25,13 @@ export interface ChartLayout {
 }
 
 /**
- * Place every plot of a stack in one canvas. Gutters are decided once for the whole stack, so
- * charts with and without a right-hand axis still share an x scale — the misalignment a
- * per-chart layout invites is not expressible here.
+ * Place every plot of a stack in one canvas. Both gutters are always reserved, whether or not any
+ * chart currently carries a right-hand axis: the stack shares one x scale, and a gutter that
+ * appears with the battery chart would otherwise resize — and re-path — every line in the stack.
  */
-export function computeChartLayout({
-  heights,
-  width,
-  hasRightAxis,
-}: ChartLayoutInput): ChartLayout {
+export function computeChartLayout({ heights, width }: ChartLayoutInput): ChartLayout {
   const plotX = AXIS_WIDTH
-  const plotWidth = Math.max(0, width - AXIS_WIDTH - (hasRightAxis ? AXIS_WIDTH : 0))
+  const plotWidth = Math.max(0, width - AXIS_WIDTH * 2)
   const plots: ChartPlotBox[] = []
   const labelBaselines: number[] = []
   let y = 0

@@ -18,6 +18,7 @@ interface BandGroup {
   key: string
   color: string
   row: number
+  fill: NonNullable<ChartBand['fill']>
   starts: number[]
   ends: number[]
 }
@@ -26,10 +27,11 @@ function groupBands(bands: ChartBand[]): BandGroup[] {
   const groups = new Map<string, BandGroup>()
   for (const band of bands) {
     const row = band.row ?? 0
-    const key = `${row}|${band.color}`
+    const fill = band.fill ?? 'floor'
+    const key = `${fill}|${row}|${band.color}`
     let group = groups.get(key)
     if (!group) {
-      group = { key, color: band.color, row, starts: [], ends: [] }
+      group = { key, color: band.color, row, fill, starts: [], ends: [] }
       groups.set(key, group)
     }
     group.starts.push(band.startMs)
@@ -96,7 +98,9 @@ function BandGroupPath({
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
   const { starts, ends } = group
-  const y = plot.height - BAND_INSET - BAND_HEIGHT - group.row * ROW_PITCH
+  const wash = group.fill === 'plot'
+  const height = wash ? plot.height : BAND_HEIGHT
+  const y = wash ? 0 : plot.height - BAND_INSET - BAND_HEIGHT - group.row * ROW_PITCH
 
   const path = useDerivedValue(() => {
     const built = Skia.Path.Make()
@@ -106,10 +110,11 @@ function BandGroupPath({
       const left = projectX(starts[i], viewport, plot.width)
       const right = projectX(ends[i], viewport, plot.width)
       if (right < 0 || left > plot.width) continue
-      built.addRect(Skia.XYWHRect(left, y, Math.max(right - left, MIN_WIDTH), BAND_HEIGHT))
+      built.addRect(Skia.XYWHRect(left, y, Math.max(right - left, MIN_WIDTH), height))
     }
     return built
-  }, [camera, dataKey, domainEndMs, domainStartMs, ends, plot.width, starts, y])
+  }, [camera, dataKey, domainEndMs, domainStartMs, ends, height, plot.width, starts, y])
 
-  return <Path path={path} color={group.color} opacity={BAND_OPACITY} />
+  // A wash carries its own alpha; the hairlines are solid marks that only need to sit back a little.
+  return <Path path={path} color={group.color} opacity={wash ? 1 : BAND_OPACITY} />
 }

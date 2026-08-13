@@ -69,15 +69,17 @@ export interface ChartTimeRange {
  * A stretch of time called out under the line — a segment excluded from the stats, a favourite
  * lap, a fault window.
  *
- * Drawn as a hairline along the floor of the plot rather than a block behind the line: the line
- * is what the rider is reading, and a full-height wash competes with it. Bands sharing a colour
- * and a row are drawn as one path, so a ride with hundreds of excluded stretches still costs a
- * handful of nodes.
+ * Drawn as a hairline along the floor of the plot by default: the line is what the rider is
+ * reading, and a wash behind it competes for attention — which is exactly why the few ranges the
+ * rider chose themselves can ask for `plot` instead. Bands sharing a colour, a row and a fill are
+ * drawn as one path, so a ride with hundreds of excluded stretches still costs a handful of nodes.
  */
 export interface ChartBand extends ChartTimeRange {
   color: string
   /** Which hairline to sit on, counting up from the floor. Keeps two kinds from overlapping. */
   row?: number
+  /** `floor` is the hairline; `plot` washes the full height of the plot behind the line. */
+  fill?: 'floor' | 'plot'
 }
 
 export interface ChartPlotBox {
@@ -85,4 +87,10 @@ export interface ChartPlotBox {
   y: number
   width: number
   height: number
+}
+
+/** Vertical extent of one plot in canvas coordinates, for attributing a touch to a chart. */
+export interface ChartPlotBand {
+  top: number
+  bottom: number
 }

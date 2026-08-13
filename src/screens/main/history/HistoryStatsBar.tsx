@@ -69,6 +69,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
               {secondaryStats.map((item) => (
                 <CompactStat key={item.key} item={item} />
               ))}
+              <View style={styles.toggleCell} />
             </View>
           </View>
         ) : (

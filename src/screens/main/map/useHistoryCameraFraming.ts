@@ -19,6 +19,8 @@ interface UseHistoryCameraFramingParams {
   preview: ({ key: string } & HistoryPreviewTarget) | null
   previewRoute: [number, number][]
   rideRoute: [number, number][]
+  /** The stretch the chart is zoomed into, or empty when it shows the whole ride. */
+  focusRoute: [number, number][]
   viewport: RouteCameraViewport
   perspectiveEnabled: boolean
   dispatchCameraIntent: (
@@ -39,6 +41,7 @@ export function useHistoryCameraFraming({
   preview,
   previewRoute,
   rideRoute,
+  focusRoute,
   viewport,
   perspectiveEnabled,
   dispatchCameraIntent,
@@ -70,9 +73,9 @@ export function useHistoryCameraFraming({
   )
 
   const fitRide = useCallback(
-    (nextSelectionKey: string | null) => {
+    (nextSelectionKey: string | null, route: [number, number][]) => {
       const historyCamera = getRouteFitCamera({
-        route: rideRoute,
+        route,
         viewport,
         maxZoom: MAP_DEFAULTS.maxZoom,
       })
@@ -90,7 +93,7 @@ export function useHistoryCameraFraming({
       engine.setTarget(toEngineTarget(effect.camera))
       onHeadingChange(0)
     },
-    [dispatchCameraIntent, engine, onHeadingChange, perspectiveEnabled, rideRoute, viewport],
+    [dispatchCameraIntent, engine, onHeadingChange, perspectiveEnabled, viewport],
   )
 
   const previewHistorySession = useCallback(
@@ -167,7 +170,10 @@ export function useHistoryCameraFraming({
     if (!active || !selectionKey) return
 
     const mode = controllerStateRef.current.mode
-    if (mode.kind !== 'rideHistory' || mode.selectionKey !== selectionKey) {
+    // Zooming the chart is an explicit request to be shown that stretch of ride, so it reclaims a
+    // camera the rider had panned away by hand; opening a metric only reframes what it already owns.
+    const reclaim = mode.kind === 'rideHistory' && focusRoute.length > 0
+    if (mode.kind !== 'rideHistory' || mode.selectionKey !== selectionKey || reclaim) {
       setCameraModeRef({
         kind: 'rideHistory',
         selectionKey,
@@ -176,8 +182,12 @@ export function useHistoryCameraFraming({
     }
 
     const frame = requestAnimationFrame(() => {
+      if (focusRoute.length > 0) {
+        fitRide(selectionKey, focusRoute)
+        return
+      }
       if (rideRoute.length > 0) {
-        fitRide(selectionKey)
+        fitRide(selectionKey, rideRoute)
         return
       }
       if (previewRoute.length > 0) {
@@ -193,6 +203,7 @@ export function useHistoryCameraFraming({
     active,
     controllerStateRef,
     fitRide,
+    focusRoute,
     preview,
     previewHistoryRoute,
     previewHistorySession,

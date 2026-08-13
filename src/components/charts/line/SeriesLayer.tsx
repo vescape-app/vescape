@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { LinearGradient, Path, Skia, vec } from '@shopify/react-native-skia'
+import { Circle, Group, LinearGradient, Path, Skia, vec } from '@shopify/react-native-skia'
 import { useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated'
 
 import { resolveRampGradient } from '@/components/charts/line/colorRamp'
@@ -7,6 +7,8 @@ import { resolveRampGradient } from '@/components/charts/line/colorRamp'
 import {
   msPerPixel,
   pickLevel,
+  projectX,
+  projectY,
   viewportFor,
   viewportMatrix,
 } from '@/components/charts/line/projection'
@@ -22,9 +24,15 @@ import type {
   ChartPlotBox,
   ChartYRange,
 } from '@/components/charts/line/types'
+import { theme } from '@/constants/theme'
 
 const LINE_WIDTH = 2
 const DOT_DIAMETER = 3.5
+const HEAD_RADIUS = 3
+/** A ring in the plot background, so the head reads as a marker rather than a bump in the line. */
+const HEAD_RING = theme.palette.slate.bg
+/** Parked off-canvas rather than hidden: a series with no samples costs nothing to skip. */
+const OFFSCREEN = -1_000
 
 export interface SeriesLayerProps {
   paths: SeriesPaths
@@ -32,6 +40,8 @@ export interface SeriesLayerProps {
   color: string
   /** Colour by value. Overrides `color` where the two would disagree. */
   ramp?: ChartColorRamp
+  /** Mark the last sample — the live head, or where a finished ride ended. */
+  showHead?: boolean
   plot: ChartPlotBox
   camera: SharedValue<ChartCamera>
   dataKey: string
@@ -50,6 +60,7 @@ export function SeriesLayer({
   yRange,
   color,
   ramp,
+  showHead = false,
   plot,
   camera,
   dataKey,
@@ -100,6 +111,18 @@ export function SeriesLayer({
     return visiblePointDots(linePath.value, plot.width)
   }, [dataKey, paths, plot.height, plot.width, yRange])
 
+  // The head only moves when the camera or the data does, so it is one mapper that sleeps through
+  // a scrub — and it is parked off-canvas rather than hidden when there is nothing to mark.
+  const head = paths.head
+  const headTransform = useDerivedValue(() => {
+    if (head == null || plot.width <= 0) return [{ translateX: OFFSCREEN }, { translateY: 0 }]
+    const viewport = viewportFor(camera.value, dataKey, paths.domainStartMs, paths.domainEndMs)
+    return [
+      { translateX: projectX(paths.domainStartMs + head.sec * 1000, viewport, plot.width) },
+      { translateY: projectY(head.value, yRange, plot.height) },
+    ]
+  }, [camera, dataKey, head, paths, plot.height, plot.width, yRange])
+
   const shader = gradient ? (
     <LinearGradient
       start={vec(0, 0)}
@@ -130,6 +153,12 @@ export function SeriesLayer({
       >
         {shader}
       </Path>
+      {showHead && (
+        <Group transform={headTransform}>
+          <Circle cx={0} cy={0} r={HEAD_RADIUS} color={color} />
+          <Circle cx={0} cy={0} r={HEAD_RADIUS} color={HEAD_RING} style="stroke" strokeWidth={1} />
+        </Group>
+      )}
     </>
   )
 }

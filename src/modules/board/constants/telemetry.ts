@@ -7,7 +7,12 @@ export interface TelemetryMetricConfig {
   color: string
   decimals: number
   chartRange: TelemetryChartRange
-  /** Sparkline auto-range min span. Omit for fixed-range metrics. */
+  /**
+   * Smallest y span an auto-ranged chart of this metric may show.
+   *
+   * Without it a metric that barely moved is drawn as if it did: a pack that sagged half a volt
+   * fills the plot with what is really sensor noise. Omit for fixed-range metrics.
+   */
   minSpan?: number
   /** Alert system controlId (kebab-case). Omit if metric has no alert support. */
   controlId?: string
@@ -65,6 +70,7 @@ const telemetryDefinitions = {
     color: theme.telemetry.speed,
     decimals: 0,
     chartRange: { min: 0, max: 50 },
+    minSpan: 10,
     controlId: 'speed',
     abs: true,
   },
@@ -74,6 +80,7 @@ const telemetryDefinitions = {
     color: theme.telemetry.duty,
     decimals: 0,
     chartRange: { min: 0, max: 100 },
+    minSpan: 20,
     controlId: 'duty',
   },
   motorCurrent: {
@@ -101,7 +108,7 @@ const telemetryDefinitions = {
     decimals: 1,
     compactUnit: true,
     chartRange: { min: 0, max: 100 },
-    minSpan: 2,
+    minSpan: 5,
     controlId: 'battery',
   },
   motorTemp: {
@@ -124,7 +131,8 @@ const telemetryDefinitions = {
   },
   footpadAdc1: {
     label: 'ADC 1',
-    unit: '',
+    unit: 'V',
+    compactUnit: true,
     color: theme.telemetry.footpad1,
     decimals: 3,
     chartRange: { min: 0, max: 3.3 },
@@ -132,7 +140,8 @@ const telemetryDefinitions = {
   },
   footpadAdc2: {
     label: 'ADC 2',
-    unit: '',
+    unit: 'V',
+    compactUnit: true,
     color: theme.telemetry.footpad2,
     decimals: 3,
     chartRange: { min: 0, max: 3.3 },

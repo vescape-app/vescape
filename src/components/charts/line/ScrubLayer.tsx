@@ -5,6 +5,7 @@ import { AXIS_FONT_SIZE } from '@/components/charts/line/chartLayout'
 import { formatAxisNumber, formatClock } from '@/components/charts/line/chartFormat'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
 import { sampleAtSec, type SeriesPaths } from '@/components/charts/line/seriesPaths'
+import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera, ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
@@ -81,6 +82,8 @@ export interface ScrubReadoutOptions {
   domainStartMs: number
   domainEndMs: number
   scrubTimeMs: SharedValue<number | null>
+  /** Cuts the plot draws through — the cursor is a real moment, the plot is compacted time. */
+  timeline: ChartTimeline | null
   /** Width of one mono glyph, measured once on the JS thread. */
   glyphWidth: number
 }
@@ -99,6 +102,7 @@ export function useScrubReadout({
   domainStartMs,
   domainEndMs,
   scrubTimeMs,
+  timeline,
   glyphWidth,
 }: ScrubReadoutOptions): SharedValue<StackReadout> {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
@@ -108,11 +112,13 @@ export function useScrubReadout({
     if (timeMs == null) return EMPTY_READOUT
 
     const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
+    // The reading is of a real moment; the plot it is drawn on runs in compacted time.
+    const chartMs = toChartMs(timeMs, timeline)
     const time = formatClock(timeMs, true)
 
     // The stack shares one x scale, so the cursor sits at the same place in every plot.
     const plotWidth = charts.length > 0 ? charts[0].plot.width : 0
-    const cursorX = projectX(timeMs, viewport, plotWidth)
+    const cursorX = projectX(chartMs, viewport, plotWidth)
 
     const measured: ChartReadout[] = []
     let widest = 0
@@ -127,7 +133,7 @@ export function useScrubReadout({
       for (let i = 0; i < targets.length; i += 1) {
         const target = targets[i]
         const { paths } = target
-        const sample = sampleAtSec(paths.raw, (timeMs - paths.domainStartMs) / 1000)
+        const sample = sampleAtSec(paths.raw, (chartMs - paths.domainStartMs) / 1000)
         if (!sample.found) {
           rows.push('—')
           dots.push(OFFSCREEN, OFFSCREEN)
@@ -160,7 +166,7 @@ export function useScrubReadout({
     }
 
     return { time, charts: measured }
-  }, [camera, charts, dataKey, domainEndMs, domainStartMs, glyphWidth])
+  }, [camera, charts, dataKey, domainEndMs, domainStartMs, glyphWidth, timeline])
 }
 
 /**
@@ -285,6 +291,8 @@ export interface ScrubCursorProps {
   top: number
   bottom: number
   scrubTimeMs: SharedValue<number | null>
+  /** The cursor marks a real moment on a plot drawn in compacted time. */
+  timeline: ChartTimeline | null
 }
 
 /**
@@ -304,14 +312,15 @@ export function ScrubCursor({
   top,
   bottom,
   scrubTimeMs,
+  timeline,
 }: ScrubCursorProps) {
   'use no memo'
   const transform = useDerivedValue(() => {
     const timeMs = scrubTimeMs.value
     if (timeMs == null) return [{ translateX: OFFSCREEN }]
     const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
-    return [{ translateX: plotX + projectX(timeMs, viewport, plotWidth) }]
-  }, [camera, dataKey, domainEndMs, domainStartMs, plotWidth, plotX])
+    return [{ translateX: plotX + projectX(toChartMs(timeMs, timeline), viewport, plotWidth) }]
+  }, [camera, dataKey, domainEndMs, domainStartMs, plotWidth, plotX, timeline])
 
   return (
     <Group clip={{ x: plotX, y: top, width: plotWidth, height: bottom - top }}>

@@ -93,7 +93,6 @@ export function HistoryRideDetail({
           setTrimName('')
           history.beginTrimFavorite()
         }}
-        onSeek={history.onSeek}
         onMetricInteraction={history.setActiveHistoryMapMetric}
         onHeightChange={onPanelHeightChange}
         trim={

@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test'
 
 import { telemetry, telemetryByControlId } from '@/modules/board/constants/telemetry'
 
-test('formatWithUnit omits spacing for unitless metrics', () => {
-  expect(telemetry.footpadAdc1.formatWithUnit(1.23456)).toBe('1.235')
+test('footpad ADC reads as compact volts, so a weak pad is readable as a voltage', () => {
+  expect(telemetry.footpadAdc1.formatWithUnit(1.23456)).toBe('1.235V')
 })
 
 test('speed formatting uses absolute rounded values', () => {

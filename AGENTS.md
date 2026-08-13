@@ -19,6 +19,18 @@ Use **Oxfmt** (`bun run format`) for repository formatting. Do not run Prettier 
 apply Prettier-formatted rewrites; Prettier rewrites the style globally and causes
 `Formatter mismatch caught: Prettier rewrote style globally`.
 
+## Verification Budget
+
+Lefthook `pre-commit` already runs fmt, `ts`, lint, knip, and tests on staged files. Don't
+re-run `bun run check` after every edit — wasteful.
+
+- Big refactor, rename, move, deletion → `bun run ts` (+ `bun knip` after deletions).
+- Real logic change with tests → `bun test <path>`, that path only.
+- Check failed → re-run that one check until green.
+- Small edits (copy, style, props, docs) → nothing, let the hook catch it.
+
+Narrow command over full `bun run check`.
+
 ## Git Branch Names
 
 Do **not** add generated prefixes to branch names, including agent/tool names like `codex/`,
