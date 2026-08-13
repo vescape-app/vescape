@@ -1,15 +1,12 @@
-import { useCallback, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { type TelemetryChartPoint } from '@/components/charts/chartMath'
-import { TelemetryLineChart, type ChartTrimConfig } from '@/components/charts/TelemetryLineChart'
+import { ChartStack } from '@/components/charts/line/ChartStack'
+import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
-import { theme } from '@/constants/theme'
 import {
-  OPTIONAL_CHART_METRICS,
-  SPEED_CHART_DEF,
   toggleOptionalChartMetric,
   type OptionalChartMetric,
 } from '@/modules/history/components/historyChartMetrics'
@@ -18,11 +15,11 @@ import { HistoryMetricTabs } from '@/modules/history/components/HistoryMetricTab
 import { HistoryPanelNav } from '@/modules/history/components/HistoryPanelNav'
 import { HistoryRideMediaDrawer } from '@/modules/history/components/HistoryRideMediaDrawer'
 import {
-  useChartExcludedRanges,
+  useChartExclusionBands,
   useChartRanges,
   useChartSeries,
-  useMetricPointColors,
-  useOptionalChartConfig,
+  useHistoryChartStack,
+  useMetricRamps,
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
 import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
@@ -59,11 +56,17 @@ interface HistoryTelemetryPanelProps {
   onSeek?: (timeMs: number) => void
   onMetricInteraction?: (metric: HistoryMetricKey) => void
   onHeightChange?: (height: number) => void
-  /** When set, the primary chart becomes a Favorite range trimmer and scrubbing is suspended. */
-  trim?: ChartTrimConfig
+  /** When set, the stack becomes a Favorite range trimmer and scrubbing is suspended. */
+  trim?: HistoryTrimConfig
 }
 
-const MAP_SEEK_THROTTLE_MS = 33
+/** A Favorite being cut out of the ride: the seed range, and where the rider drags it to. */
+export interface HistoryTrimConfig {
+  startMs: number
+  endMs: number
+  onChange: (startMs: number, endMs: number) => void
+  onCommit: (startMs: number, endMs: number) => void
+}
 
 export function HistoryTelemetryPanel({
   startAtMs,
@@ -102,35 +105,29 @@ export function HistoryTelemetryPanel({
   const [shareInfoVisible, setShareInfoVisible] = useState(false)
   const [mediaDrawerVisible, setMediaDrawerVisible] = useState(false)
   const mediaButtonRef = useRef<View>(null)
-  const scrubTimeMs = useSharedValue<number | null>(null)
-  const lastMapSeekAtRef = useRef(0)
+  const selection = useSharedValue<ChartTimeRange | null>(null)
+  const trimRef = useRef(trim)
+  trimRef.current = trim
 
-  const { visibleSamples, chartSamples, headSample } = useVisibleRideSamples(
+  const { visibleSamples, headSample } = useVisibleRideSamples(
     samples,
     movingStartAtMs,
     movingEndAtMs,
     headTimeMs,
   )
-  const series = useChartSeries(chartSamples)
+  const series = useChartSeries(visibleSamples)
   const ranges = useChartRanges(series)
-  const pointColors = useMetricPointColors()
-  const excludedRanges = useChartExcludedRanges()
-  const optionalChartConfig = useOptionalChartConfig({
+  const ramps = useMetricRamps()
+  const exclusionBands = useChartExclusionBands()
+  const charts = useHistoryChartStack({
     headSample,
-    chartSamples,
     series,
     ranges,
-    pointColors,
-    excludedRanges,
+    ramps,
+    exclusionBands,
+    favoriteRanges,
+    activeMetrics: activeCharts,
   })
-  const favoriteChartHighlights = useMemo(
-    () =>
-      favoriteRanges.map((range) => ({
-        ...range,
-        color: theme.alpha(theme.status.favorite.color, 0.12),
-      })),
-    [favoriteRanges],
-  )
 
   const rideWindow = rideMovingWindow({ movingStartAtMs, movingEndAtMs })
   const titleStartMs = rideWindow?.startMs ?? startAtMs
@@ -138,24 +135,31 @@ export function HistoryTelemetryPanel({
   const bottomInset = Math.max(insets.bottom, 16) + 8
   const hasChartData = headSample != null && visibleSamples.length >= 2
 
+  // The seed range enters the canvas as a shared value, so dragging a handle never renders the
+  // panel; the trimmer hears about it through the throttled callbacks below.
+  const trimStartMs = trim?.startMs
+  const trimEndMs = trim?.endMs
+  useEffect(() => {
+    selection.value =
+      trimStartMs == null || trimEndMs == null ? null : { startMs: trimStartMs, endMs: trimEndMs }
+  }, [selection, trimEndMs, trimStartMs])
+
   const handleScrubTimeChange = useCallback(
-    (timeMs: number) => {
-      const now = Date.now()
-      if (now - lastMapSeekAtRef.current < MAP_SEEK_THROTTLE_MS) return
-      lastMapSeekAtRef.current = now
+    (timeMs: number | null) => {
+      if (timeMs == null || trimRef.current) return
+      setHeadTimeMs(timeMs)
       onSeek?.(timeMs)
     },
     [onSeek],
   )
 
-  const handlePointSelected = useCallback(
-    (point: TelemetryChartPoint) => {
-      const ms = point.date.getTime()
-      setHeadTimeMs(ms)
-      onSeek?.(ms)
-    },
-    [onSeek],
-  )
+  const handleSelectionPreview = useCallback((range: ChartTimeRange) => {
+    trimRef.current?.onChange(range.startMs, range.endMs)
+  }, [])
+
+  const handleSelectionCommit = useCallback((range: ChartTimeRange) => {
+    trimRef.current?.onCommit(range.startMs, range.endMs)
+  }, [])
 
   const handleToggleMetric = useCallback(
     (metric: OptionalChartMetric) => {
@@ -164,10 +168,6 @@ export function HistoryTelemetryPanel({
     },
     [onMetricInteraction],
   )
-
-  const headPoint: TelemetryChartPoint | null = headSample
-    ? { date: new Date(headSample.capturedAtMs), value: headSample.speedKmh }
-    : null
 
   return (
     <View
@@ -198,54 +198,19 @@ export function HistoryTelemetryPanel({
           onOpenShareInfo={() => setShareInfoVisible(true)}
         />
       ) : null}
-      {hasChartData && headPoint && optionalChartConfig && headSample != null && (
+      {hasChartData && (
         <>
-          <TelemetryLineChart
-            label={SPEED_CHART_DEF.label}
-            value={SPEED_CHART_DEF.formatValue(headSample.speedKmh)}
-            points={series.speed}
-            color={SPEED_CHART_DEF.color}
-            range={ranges.speed}
-            currentPoint={headPoint}
-            height={48}
-            containerStyle={styles.chart}
+          <ChartStack
+            charts={charts}
+            dataKey={`${startAtMs}`}
             timeMode="clock"
-            formatValue={SPEED_CHART_DEF.formatValue}
-            getPointColor={pointColors.speed}
-            onGestureStart={() => onMetricInteraction?.('speed')}
-            onPointSelected={trim ? undefined : handlePointSelected}
-            scrubTimeMs={scrubTimeMs}
+            containerStyle={styles.chart}
             onScrubTimeChange={trim ? undefined : handleScrubTimeChange}
-            excludedRanges={excludedRanges.speed}
-            timeRangeHighlights={favoriteChartHighlights}
-            trim={trim}
+            selection={trim ? selection : undefined}
+            onSelectionPreview={handleSelectionPreview}
+            onSelectionChange={handleSelectionCommit}
+            showHead
           />
-
-          {OPTIONAL_CHART_METRICS.filter((m) => activeCharts.has(m.key)).map((metric) => {
-            const cfg = optionalChartConfig[metric.key]
-            return (
-              <TelemetryLineChart
-                key={metric.key}
-                label={cfg.label}
-                value={cfg.value}
-                points={cfg.points}
-                color={cfg.color}
-                range={cfg.range}
-                currentPoint={{ date: new Date(headSample.capturedAtMs), value: cfg.headValue }}
-                height={40}
-                containerStyle={styles.chart}
-                timeMode="clock"
-                formatValue={cfg.formatValue}
-                getPointColor={cfg.getPointColor}
-                onGestureStart={() => onMetricInteraction?.(metric.key)}
-                onPointSelected={trim ? undefined : handlePointSelected}
-                scrubTimeMs={scrubTimeMs}
-                onScrubTimeChange={trim ? undefined : handleScrubTimeChange}
-                excludedRanges={cfg.excludedRanges}
-                secondary={cfg.secondary}
-              />
-            )
-          })}
 
           <HistoryMetricTabs activeCharts={activeCharts} onToggle={handleToggleMetric} />
           <HistoryMetricLegend />
@@ -283,6 +248,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chart: {
-    minHeight: 72,
+    minHeight: 76,
   },
 })

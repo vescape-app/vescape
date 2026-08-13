@@ -116,6 +116,7 @@ export function ChartStackShowcase() {
       {
         key: 'speed',
         label: 'Speed',
+        value: `${speed.vs[speed.vs.length - 1].toFixed(1)} km/h`,
         height: 48,
         series: [
           {
@@ -132,6 +133,8 @@ export function ChartStackShowcase() {
       {
         key: 'duty',
         label: 'Duty / Voltage',
+        value: `${duty.vs[duty.vs.length - 1].toFixed(0)} %`,
+        valueColor: theme.palette.amber.color,
         height: 40,
         series: [
           {
@@ -178,7 +181,13 @@ export function ChartStackShowcase() {
         on, drag either half of it to move that edge.
       </Text>
       <View style={styles.stack}>
-        <ChartStack charts={charts} dataKey={size} timeMode="clock" selection={selection} />
+        <ChartStack
+          charts={charts}
+          dataKey={size}
+          timeMode="clock"
+          selection={selection}
+          showHead
+        />
       </View>
     </ShowcaseCard>
   )

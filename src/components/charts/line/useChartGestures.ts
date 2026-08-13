@@ -41,8 +41,20 @@ export interface ChartGestureOptions {
   selection?: SharedValue<ChartTimeRange | null>
   /** Called once per drag, when the finger lifts — not on every frame of it. */
   onSelectionCommit?: (range: ChartTimeRange) => void
+  /** The range as it is being dragged, throttled, for anything that previews it live. */
+  onSelectionPreview?: (range: ChartTimeRange) => void
+  /** Scrub position for the JS side, throttled; always ends with `null`. */
+  onScrubTimeChange?: (timeMs: number | null) => void
+  /** A touch has landed. Fired once per gesture, before anything moves. */
+  onGestureStart?: () => void
   enabled: boolean
 }
+
+/**
+ * How often the JS thread hears about a scrub. Fast enough that a map marker tracks the finger,
+ * slow enough that a React render per touch sample cannot happen.
+ */
+const SCRUB_NOTIFY_MS = 50
 
 /**
  * Pinch to zoom and pan, as one gesture, entirely on the UI thread.
@@ -68,6 +80,9 @@ export function useChartGestures({
   scrubTimeMs,
   selection,
   onSelectionCommit,
+  onSelectionPreview,
+  onScrubTimeChange,
+  onGestureStart,
   enabled,
 }: ChartGestureOptions) {
   const startViewport = useSharedValue<ChartViewport>({ startMs: 0, endMs: 0 })
@@ -76,6 +91,7 @@ export function useChartGestures({
   const draggedEdge = useSharedValue<SelectionEdge | null>(null)
   const dragOriginMs = useSharedValue(0)
   const lastDragX = useSharedValue(Number.NaN)
+  const lastNotifyAt = useSharedValue(0)
 
   return useMemo(() => {
     const focalRatio = (focalX: number) => {
@@ -97,7 +113,16 @@ export function useChartGestures({
       if (clamped === lastScrubX.value) return
       lastScrubX.value = clamped
       const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
-      scrubTimeMs.value = unprojectX(clamped, viewport, plotWidth)
+      const timeMs = unprojectX(clamped, viewport, plotWidth)
+      scrubTimeMs.value = timeMs
+      // The canvas follows the shared value directly; the JS side hears a sampled version of it,
+      // because everything it drives — a map marker, a native focus request — renders through
+      // React and cannot keep up with a touch stream.
+      if (onScrubTimeChange == null) return
+      const now = Date.now()
+      if (now - lastNotifyAt.value < SCRUB_NOTIFY_MS) return
+      lastNotifyAt.value = now
+      runOnJS(onScrubTimeChange)(timeMs)
     }
 
     /**
@@ -168,6 +193,8 @@ export function useChartGestures({
       .onStart((event) => {
         'worklet'
         lastScrubX.value = Number.NaN
+        lastNotifyAt.value = 0
+        if (onGestureStart) runOnJS(onGestureStart)()
         // While a range is on screen the drag belongs to it: a selection is something the rider
         // is adjusting, and reading values off the line is what the chart does the rest of the time.
         const edge = edgeAt(event.x)
@@ -196,7 +223,7 @@ export function useChartGestures({
         if (translationX === lastDragX.value) return
         lastDragX.value = translationX
         const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
-        selection.value = moveSelectionEdge({
+        const moved = moveSelectionEdge({
           edge,
           range,
           originMs: dragOriginMs.value,
@@ -206,12 +233,23 @@ export function useChartGestures({
           domainStartMs,
           domainEndMs,
         })
+        selection.value = moved
+        // Same sampling as a scrub, for the same reason: whatever previews the range live —
+        // a stats bar, a label — renders through React and cannot keep up with a touch stream.
+        if (onSelectionPreview == null) return
+        const now = Date.now()
+        if (now - lastNotifyAt.value < SCRUB_NOTIFY_MS) return
+        lastNotifyAt.value = now
+        runOnJS(onSelectionPreview)(moved)
       })
       .onFinalize(() => {
         'worklet'
         const range = draggedEdge.value != null ? selection?.value : null
         draggedEdge.value = null
         scrubTimeMs.value = null
+        // Unconditionally, and outside the throttle: whoever is following the finger has to be
+        // told it is gone, however briefly it was down.
+        if (onScrubTimeChange) runOnJS(onScrubTimeChange)(null)
         // Committed on release rather than per frame: the range is what the rest of the app acts
         // on, and re-running that for every pixel of a drag is what a shared value exists to avoid.
         if (range != null && onSelectionCommit) runOnJS(onSelectionCommit)(range)
@@ -228,8 +266,12 @@ export function useChartGestures({
     enabled,
     follow,
     lastDragX,
+    lastNotifyAt,
     lastScrubX,
+    onGestureStart,
+    onScrubTimeChange,
     onSelectionCommit,
+    onSelectionPreview,
     plotWidth,
     plotX,
     scrubTimeMs,

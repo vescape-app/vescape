@@ -74,14 +74,7 @@ function resolveRangeOptions(options?: AutoRangeOptions): ResolvedRangeOptions {
   }
 }
 
-function getMinMax(points: TelemetryChartPoint[], opts: ResolvedRangeOptions) {
-  let min = Number.POSITIVE_INFINITY
-  let max = Number.NEGATIVE_INFINITY
-  for (const point of points) {
-    min = Math.min(min, point.value)
-    max = Math.max(max, point.value)
-  }
-
+function padRange(min: number, max: number, opts: ResolvedRangeOptions) {
   if (opts.baseline) {
     min = Math.min(min, opts.baseline.min)
     max = Math.max(max, opts.baseline.max)
@@ -103,7 +96,29 @@ export function computeAutoRange(
 ): TelemetryChartRange {
   const opts = resolveRangeOptions(options)
   if (!points.length) return { y: { min: opts.fallbackMin, max: opts.fallbackMax } }
-  return { y: getMinMax(points, opts) }
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  for (const point of points) {
+    min = Math.min(min, point.value)
+    max = Math.max(max, point.value)
+  }
+  return { y: padRange(min, max, opts) }
+}
+
+/** The same range, for series carried as a plain array of values. */
+export function computeAutoRangeFromValues(
+  values: number[],
+  options?: AutoRangeOptions,
+): { min: number; max: number } {
+  const opts = resolveRangeOptions(options)
+  if (values.length === 0) return { min: opts.fallbackMin, max: opts.fallbackMax }
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  for (const value of values) {
+    if (value < min) min = value
+    if (value > max) max = value
+  }
+  return padRange(min, max, opts)
 }
 
 export function getChartPosition(

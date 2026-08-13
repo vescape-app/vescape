@@ -65,6 +65,10 @@ export interface ChartAxisSpec {
 export interface ChartSpec {
   key: string
   label?: string
+  /** Current reading, shown beside the label — the head value, already formatted. */
+  value?: string
+  /** Colour of {@link value}; the first series' colour when unset. */
+  valueColor?: string
   height: number
   series: ChartSeriesSpec[]
   left: ChartAxisSpec
@@ -96,6 +100,18 @@ export interface ChartStackProps {
   selection?: SharedValue<ChartTimeRange | null>
   /** The range after a handle drag, once the finger lifts. */
   onSelectionChange?: (range: ChartTimeRange) => void
+  /** The range while a handle is being dragged, throttled. */
+  onSelectionPreview?: (range: ChartTimeRange) => void
+  /**
+   * Moment under the finger, for the parts of the app that live outside the canvas — a map
+   * marker, a native focus request. Throttled, and always called with `null` on release.
+   * Anything drawn inside the stack should read `scrubTimeMs` instead and stay off the JS thread.
+   */
+  onScrubTimeChange?: (timeMs: number | null) => void
+  /** A touch has landed on the stack. Used to tell native which metric to resolve in full. */
+  onGestureStart?: () => void
+  /** Mark the last sample of every series. */
+  showHead?: boolean
   containerStyle?: StyleProp<ViewStyle>
 }
 
@@ -173,6 +189,10 @@ export function ChartStack({
   scrubTimeMs,
   selection,
   onSelectionChange,
+  onSelectionPreview,
+  onScrubTimeChange,
+  onGestureStart,
+  showHead = false,
   containerStyle,
 }: ChartStackProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
@@ -232,6 +252,9 @@ export function ChartStack({
     scrubTimeMs: scrub,
     selection,
     onSelectionCommit: onSelectionChange,
+    onSelectionPreview,
+    onScrubTimeChange,
+    onGestureStart,
     enabled: width > 0 && !prepared.isEmpty,
   })
 
@@ -285,6 +308,7 @@ export function ChartStack({
                 index={index}
                 readout={readout}
                 scrubTargets={scrubCharts[index].targets}
+                showHead={showHead}
                 labelFont={labelFont}
                 axisFont={axisFont}
               />
@@ -339,6 +363,7 @@ interface ChartPlotProps {
   index: number
   readout: SharedValue<StackReadout>
   scrubTargets: ScrubTarget[]
+  showHead: boolean
   labelFont: ReturnType<typeof useSkiaFont>
   axisFont: ReturnType<typeof useSkiaMonoFont>
 }
@@ -351,6 +376,7 @@ function ChartPlot({
   index,
   readout,
   scrubTargets,
+  showHead,
   labelFont,
   axisFont,
 }: ChartPlotProps) {
@@ -368,6 +394,17 @@ function ChartPlot({
           y={labelBaseline}
           text={chart.label}
           color={theme.palette.slate.textSecondary}
+        />
+      )}
+      {/* The head reading, right-aligned on the label row. Measured here rather than laid out
+          from the left, so a value that grows a digit stays anchored to the edge of the plot. */}
+      {labelFont && chart.value && (
+        <Text
+          font={labelFont}
+          x={plot.x + plot.width - labelFont.getTextWidth(chart.value)}
+          y={labelBaseline}
+          text={chart.value}
+          color={chart.valueColor ?? chart.series[0]?.color ?? theme.palette.slate.textSecondary}
         />
       )}
 
@@ -408,6 +445,7 @@ function ChartPlot({
               paths={series.paths}
               color={series.color}
               ramp={series.ramp}
+              showHead={showHead}
               yRange={
                 (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range
               }

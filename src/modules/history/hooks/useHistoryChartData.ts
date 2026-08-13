@@ -1,33 +1,38 @@
 import { useMemo } from 'react'
 
-import {
-  computeAutoRange,
-  toExcludedRanges,
-  type ExcludedRange,
-  type TelemetryChartPoint,
-  type TelemetryChartRange,
-} from '@/components/charts/chartMath'
-import type { SecondaryChartSeries } from '@/components/charts/TelemetryLineChart'
+import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
+import type { ChartSpec } from '@/components/charts/line/ChartStack'
+import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   HISTORY_CHART_DEFS,
   OPTIONAL_CHART_METRICS,
+  SPEED_CHART_DEF,
+  type ChartMetricDef,
   type OptionalChartMetric,
-  type OptionalChartMetricDef,
 } from '@/modules/history/components/historyChartMetrics'
 import {
   getHistoryMetricColorRange,
-  getMetricRampColor,
   getTelemetrySampleMetricValue,
   type HistoryMetricKey,
+  type MetricColorRange,
 } from '@/modules/history/lib/metricColorScale'
-import { downsampleTimeSeries, findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
+import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 import { RIDE_TRIM_PADDING_MS, rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
-const CHART_MAX_POINTS = 220
+const SPEED_CHART_HEIGHT = 48
+const METRIC_CHART_HEIGHT = 40
+/** Excluded stretches sit on the floor; favourite ranges on the line above, so both stay legible. */
+const EXCLUSION_ROW = 0
+const FAVORITE_ROW = 1
+
+/** Every metric of a ride, plus derived pack percent. */
+export type HistorySeries = Record<HistoryMetricKey | 'batteryPercent', ChartSeriesData>
+export type HistoryRanges = Record<HistoryMetricKey, { min: number; max: number }>
+export type HistoryRamps = Record<HistoryMetricKey, ChartColorRamp | undefined>
 
 export function useVisibleRideSamples(
   samples: TelemetrySample[],
@@ -49,189 +54,236 @@ export function useVisibleRideSamples(
     const trimmed = sortedSamples.filter((s) => s.capturedAtMs >= lo && s.capturedAtMs <= hi)
     return trimmed.length > 0 ? trimmed : sortedSamples
   }, [sortedSamples, movingStartAtMs, movingEndAtMs])
-  const chartSamples = useMemo(
-    () => downsampleTimeSeries(visibleSamples, CHART_MAX_POINTS, (sample) => sample.capturedAtMs),
-    [visibleSamples],
-  )
   const headSample = useMemo(() => {
     if (headTimeMs == null) return visibleSamples.at(-1) ?? null
     const idx = findNearestSampleIndexByTime(visibleSamples, headTimeMs)
     return idx >= 0 ? visibleSamples[idx] : (visibleSamples.at(-1) ?? null)
   }, [visibleSamples, headTimeMs])
-  return { visibleSamples, chartSamples, headSample }
+  return { visibleSamples, headSample }
 }
 
-export function useChartSeries(chartSamples: TelemetrySample[]) {
+/**
+ * Every metric of a ride as parallel time/value arrays.
+ *
+ * Full resolution, deliberately: the chart builds its own level-of-detail pyramid and draws the
+ * level that fits the zoom, so pre-decimating the ride to a few hundred points would only throw
+ * away the detail a rider zooms in to find.
+ */
+export function useChartSeries(samples: TelemetrySample[]): HistorySeries {
   return useMemo(() => {
-    const series = {} as Record<HistoryMetricKey, TelemetryChartPoint[]>
-    for (const def of HISTORY_CHART_DEFS) series[def.key] = []
-    for (const sample of chartSamples) {
-      const date = new Date(sample.capturedAtMs)
+    const series = {} as HistorySeries
+    for (const def of HISTORY_CHART_DEFS) series[def.key] = { ts: [], vs: [] }
+    // Pack percent is derived from voltage rather than measured, so it is not a metric of its
+    // own — but it is a line, and rides without a pack configured do not have it at all.
+    series.batteryPercent = { ts: [], vs: [] }
+    for (const sample of samples) {
       for (const def of HISTORY_CHART_DEFS) {
         const value = getTelemetrySampleMetricValue(sample, def.key)
-        if (value != null) series[def.key].push({ date, value })
+        if (value == null) continue
+        series[def.key].ts.push(sample.capturedAtMs)
+        series[def.key].vs.push(value)
       }
+      if (sample.batteryPercent == null) continue
+      series.batteryPercent.ts.push(sample.capturedAtMs)
+      series.batteryPercent.vs.push(sample.batteryPercent)
     }
     return series
-  }, [chartSamples])
+  }, [samples])
 }
 
-export function useChartRanges(series: Record<HistoryMetricKey, TelemetryChartPoint[]>) {
+export function useChartRanges(series: HistorySeries): HistoryRanges {
   return useMemo(() => {
-    const ranges = {} as Record<HistoryMetricKey, TelemetryChartRange>
+    const ranges = {} as HistoryRanges
     for (const def of HISTORY_CHART_DEFS) {
-      ranges[def.key] = computeAutoRange(series[def.key], def.range)
+      ranges[def.key] = computeAutoRangeFromValues(series[def.key].vs, def.range)
     }
     return ranges
   }, [series])
 }
 
-export function useMetricPointColors() {
+/**
+ * The hot-range gradient as a chart colour ramp.
+ *
+ * The old chart asked a `value => color` function per point and rebuilt a gradient stop for each
+ * one, every frame. The two ends of the ramp say the same thing, and the chart turns them into a
+ * single gradient it never has to touch again.
+ */
+function toColorRamp(range: MetricColorRange | null): ChartColorRamp | undefined {
+  if (!range) return undefined
+  return {
+    stops: [
+      { value: range.min, color: range.baseColor },
+      { value: range.max, color: range.hotColor },
+    ],
+  }
+}
+
+export function useMetricRamps(): HistoryRamps {
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
   return useMemo(() => {
-    const colors = {} as Record<HistoryMetricKey, ((value: number) => string) | undefined>
+    const ramps = {} as HistoryRamps
     for (const def of HISTORY_CHART_DEFS) {
-      const range = getHistoryMetricColorRange(def.key, def.color, hotRanges, gradientsEnabled)
-      colors[def.key] = range ? (value: number) => getMetricRampColor(value, range) : undefined
+      ramps[def.key] = toColorRamp(
+        getHistoryMetricColorRange(def.key, def.color, hotRanges, gradientsEnabled),
+      )
     }
-    return colors
+    return ramps
   }, [gradientsEnabled, hotRanges])
 }
 
-export function useChartExcludedRanges() {
+/** Free-spin stretches read as a fault; anything else excluded is merely not counted. */
+function exclusionColor(reason: string): string {
+  return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
+}
+
+export function useChartExclusionBands() {
   const sessionExclusions = useHistoryStore((s) => s.sessionExclusions)
   return useMemo(() => {
-    const excluded = {} as Record<HistoryMetricKey, ExcludedRange[] | undefined>
+    const bands = {} as Record<HistoryMetricKey, ChartBand[] | undefined>
     for (const def of HISTORY_CHART_DEFS) {
-      excluded[def.key] = def.statKeys
-        ? toExcludedRanges(sessionExclusions, def.statKeys)
+      bands[def.key] = def.statKeys
+        ? toExcludedRanges(sessionExclusions, def.statKeys).map((range) => ({
+            startMs: range.startMs,
+            endMs: range.endMs,
+            color: exclusionColor(range.reason),
+            row: EXCLUSION_ROW,
+          }))
         : undefined
     }
-    return excluded
+    return bands
   }, [sessionExclusions])
 }
 
-interface OptionalChartConfig {
-  points: TelemetryChartPoint[]
-  range: TelemetryChartRange
-  label: string
-  value: string
-  headValue: number
-  color: string
-  getPointColor: ((value: number) => string) | undefined
-  formatValue: (value: number) => string
-  excludedRanges?: ExcludedRange[]
-  secondary?: SecondaryChartSeries
-}
-
-interface OptionalChartConfigInput {
+interface HistoryChartStackInput {
   headSample: TelemetrySample | null
-  chartSamples: TelemetrySample[]
-  series: Record<HistoryMetricKey, TelemetryChartPoint[]>
-  ranges: Record<HistoryMetricKey, TelemetryChartRange>
-  pointColors: Record<HistoryMetricKey, ((value: number) => string) | undefined>
-  excludedRanges: Record<HistoryMetricKey, ExcludedRange[] | undefined>
+  series: HistorySeries
+  ranges: HistoryRanges
+  ramps: HistoryRamps
+  exclusionBands: Record<HistoryMetricKey, ChartBand[] | undefined>
+  /** Favourite ranges, marked on the speed chart only — they belong to the ride, not a metric. */
+  favoriteRanges: { startMs: number; endMs: number }[]
+  activeMetrics: ReadonlySet<OptionalChartMetric>
 }
 
-export function useOptionalChartConfig({
+/** The reading shown beside a chart's label: the head sample, formatted by that metric's rules. */
+function headText(def: ChartMetricDef, headSample: TelemetrySample | null): string {
+  const head = headSample ? getTelemetrySampleMetricValue(headSample, def.key) : null
+  const format = def.formatHeadValue ?? def.formatValue
+  return head == null ? '-' : format(head)
+}
+
+/**
+ * The ride as one chart stack: speed always, plus whichever metrics the rider has opened.
+ *
+ * Built as a single list because the stack is the unit of synchronisation — every chart in it
+ * shares one camera, one scrub cursor and one x scale, so metrics opened later line up with the
+ * speed chart by construction rather than by matching props.
+ */
+export function useHistoryChartStack({
   headSample,
-  chartSamples,
   series,
   ranges,
-  pointColors,
-  excludedRanges,
-}: OptionalChartConfigInput): Record<OptionalChartMetric, OptionalChartConfig> | null {
-  const batteryPercentPoints = useMemo(
-    () =>
-      chartSamples
-        .filter((s) => s.batteryPercent != null)
-        .map((s) => ({ date: new Date(s.capturedAtMs), value: s.batteryPercent! })),
-    [chartSamples],
-  )
-  if (!headSample) return null
-  const config = {} as Record<OptionalChartMetric, OptionalChartConfig>
-  for (const def of OPTIONAL_CHART_METRICS) {
-    config[def.key] =
-      def.key === 'battery'
-        ? buildBatteryConfig(
-            headSample,
-            batteryPercentPoints,
-            series.battery,
-            ranges.battery,
-            pointColors.battery,
-          )
-        : buildMetricConfig(
-            def,
-            headSample,
-            series[def.key],
-            ranges[def.key],
-            pointColors[def.key],
-            excludedRanges[def.key],
-          )
-  }
-  return config
+  ramps,
+  exclusionBands,
+  favoriteRanges,
+  activeMetrics,
+}: HistoryChartStackInput): ChartSpec[] {
+  return useMemo(() => {
+    const favoriteBands: ChartBand[] = favoriteRanges.map((range) => ({
+      ...range,
+      color: theme.status.favorite.color,
+      row: FAVORITE_ROW,
+    }))
+
+    const speed: ChartSpec = {
+      key: 'speed',
+      label: SPEED_CHART_DEF.label,
+      value: headText(SPEED_CHART_DEF, headSample),
+      height: SPEED_CHART_HEIGHT,
+      series: [
+        {
+          key: 'speed',
+          data: series.speed,
+          color: SPEED_CHART_DEF.color,
+          ramp: ramps.speed,
+        },
+      ],
+      left: { range: ranges.speed },
+      bands: [...(exclusionBands.speed ?? []), ...favoriteBands],
+    }
+
+    const optional = OPTIONAL_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
+      (def) =>
+        def.key === 'battery'
+          ? batteryChart(headSample, series, ranges, ramps)
+          : ({
+              key: def.key,
+              label: def.label,
+              value: headText(def, headSample),
+              valueColor: def.color,
+              height: METRIC_CHART_HEIGHT,
+              series: [
+                { key: def.key, data: series[def.key], color: def.color, ramp: ramps[def.key] },
+              ],
+              left: { range: ranges[def.key] },
+              bands: exclusionBands[def.key],
+            } satisfies ChartSpec),
+    )
+
+    return [speed, ...optional]
+  }, [activeMetrics, exclusionBands, favoriteRanges, headSample, ramps, ranges, series])
 }
 
-function buildMetricConfig(
-  def: OptionalChartMetricDef,
-  headSample: TelemetrySample,
-  points: TelemetryChartPoint[],
-  range: TelemetryChartRange,
-  getPointColor: ((value: number) => string) | undefined,
-  excludedRanges: ExcludedRange[] | undefined,
-): OptionalChartConfig {
-  const headValue = getTelemetrySampleMetricValue(headSample, def.key)
-  const formatHead = def.formatHeadValue ?? def.formatValue
-  return {
-    points,
-    range,
-    label: def.label,
-    value: headValue == null ? '-' : formatHead(headValue),
-    headValue: headValue ?? 0,
-    color: def.color,
-    getPointColor,
-    formatValue: def.formatValue,
-    excludedRanges,
+/**
+ * Battery is two readings of one thing: pack percent against a fixed 0-100 scale, and pack
+ * voltage on its own axis under it. Rides with no pack configured have no percent at all, and
+ * fall back to voltage as the single line.
+ */
+function batteryChart(
+  headSample: TelemetrySample | null,
+  series: HistorySeries,
+  ranges: HistoryRanges,
+  ramps: HistoryRamps,
+): ChartSpec {
+  const percent = headSample?.batteryPercent
+  const voltage: ChartSpec['series'][number] = {
+    key: 'voltage',
+    data: series.battery,
+    color: telemetry.battVoltage.color,
+    label: 'Pack',
+    unit: telemetry.battVoltage.unit,
   }
-}
 
-function buildBatteryConfig(
-  headSample: TelemetrySample,
-  percentPoints: TelemetryChartPoint[],
-  voltagePoints: TelemetryChartPoint[],
-  voltageRange: TelemetryChartRange,
-  voltagePointColor: ((value: number) => string) | undefined,
-): OptionalChartConfig {
-  if (percentPoints.length > 0) {
+  if (percent == null) {
     return {
-      // % is the main green line; voltage rides under it as dim gray.
-      points: percentPoints,
-      range: { y: { min: 0, max: 100 } },
+      key: 'battery',
       label: 'Battery',
-      value: headSample.batteryPercent != null ? `${Math.round(headSample.batteryPercent)}%` : '-',
-      headValue: headSample.batteryPercent ?? 0,
-      color: telemetry.battVoltage.color,
-      getPointColor: undefined,
-      formatValue: (v) => `${Math.round(v)}%`,
-      secondary: {
-        points: voltagePoints,
-        range: voltageRange,
-        color: theme.palette.slate.textMuted,
-        value: telemetry.battVoltage.formatWithUnit(headSample.batteryVoltage),
-        formatValue: telemetry.battVoltage.formatWithUnit,
-      },
+      value: headSample ? telemetry.battVoltage.formatWithUnit(headSample.batteryVoltage) : '-',
+      valueColor: telemetry.battVoltage.color,
+      height: METRIC_CHART_HEIGHT,
+      series: [{ ...voltage, ramp: ramps.battery, label: undefined }],
+      left: { range: ranges.battery },
     }
   }
-  // No derived % for this ride (no pack config) — fall back to voltage only.
+
   return {
-    points: voltagePoints,
-    range: voltageRange,
+    key: 'battery',
     label: 'Battery',
-    value: telemetry.battVoltage.formatWithUnit(headSample.batteryVoltage),
-    headValue: headSample.batteryVoltage,
-    color: telemetry.battVoltage.color,
-    getPointColor: voltagePointColor,
-    formatValue: telemetry.battVoltage.formatWithUnit,
+    value: `${Math.round(percent)}%`,
+    valueColor: telemetry.battVoltage.color,
+    height: METRIC_CHART_HEIGHT,
+    series: [
+      {
+        key: 'percent',
+        data: series.batteryPercent,
+        color: telemetry.battVoltage.color,
+        label: 'Charge',
+        unit: '%',
+      },
+      { ...voltage, axis: 'right', color: theme.palette.slate.textMuted },
+    ],
+    left: { range: { min: 0, max: 100 } },
+    right: { range: ranges.battery },
   }
 }

@@ -47,8 +47,6 @@ import {
   type ChartTrimConfig,
 } from '@/components/charts/TelemetryChartTrim'
 
-export type { ChartTrimConfig } from '@/components/charts/TelemetryChartTrim'
-
 const DEFAULT_HEIGHT = 54
 const Y_AXIS_WIDTH = 34
 const CARD_HORIZONTAL_PADDING = 8

@@ -47,6 +47,8 @@ export interface SeriesPaths {
   domainEndMs: number
   /** Typical spacing between samples, for deciding when individual points are worth marking. */
   sampleMs: number
+  /** Last sample of the series — the live head, or where a finished ride ended. */
+  head: { sec: number; value: number } | null
   isEmpty: boolean
 }
 
@@ -113,6 +115,8 @@ export function buildSeriesPaths(data: ChartSeriesData): SeriesPaths {
   const pyramid = buildLodPyramid(data)
   const raw = buildLevelVertices(pyramid, -1)
   const levels = pyramid.levels.slice(1)
+  const { ts, vs } = pyramid.raw
+  const last = ts.length - 1
 
   return {
     bucketMs: levels.map((level) => level.bucketMs),
@@ -124,7 +128,8 @@ export function buildSeriesPaths(data: ChartSeriesData): SeriesPaths {
     domainStartMs: pyramid.startMs,
     domainEndMs: pyramid.endMs,
     sampleMs: pyramid.gapMs / 3,
-    isEmpty: pyramid.raw.ts.length === 0,
+    head: last < 0 ? null : { sec: (ts[last] - pyramid.startMs) / 1000, value: vs[last] },
+    isEmpty: ts.length === 0,
   }
 }
 
