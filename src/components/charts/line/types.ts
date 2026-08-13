@@ -36,6 +36,29 @@ export interface ChartCamera {
   key: string
 }
 
+export interface ChartColorStop {
+  /** In the metric's own units, on the axis the series is drawn against. */
+  value: number
+  color: string
+}
+
+/**
+ * Colour as a function of value — a speed line running blue to red, a duty line greening into
+ * amber near its limit.
+ *
+ * Expressed as a ramp rather than a colour per point on purpose. The colour of a sample depends
+ * only on its value, and value maps to a fixed y, so the whole ramp is one vertical gradient
+ * over the plot: it is unaffected by panning or zooming and is built once per render. Colouring
+ * points individually would mean rebuilding a gradient stop per sample on every frame, which is
+ * what made the old chart's speed gradient the expensive series to draw.
+ */
+export interface ChartColorRamp {
+  /** Any order; sorted on use. A single stop is just a solid colour. */
+  stops: ChartColorStop[]
+  /** `bands` holds each colour flat up to the next stop; `smooth` blends between them. */
+  mode?: 'smooth' | 'bands'
+}
+
 export interface ChartPlotBox {
   x: number
   y: number

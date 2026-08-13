@@ -28,7 +28,12 @@ import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
 import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
 import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
-import type { ChartPlotBox, ChartSeriesData, ChartYRange } from '@/components/charts/line/types'
+import type {
+  ChartColorRamp,
+  ChartPlotBox,
+  ChartSeriesData,
+  ChartYRange,
+} from '@/components/charts/line/types'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
 
@@ -42,6 +47,8 @@ export interface ChartSeriesSpec {
   data: ChartSeriesData
   color: string
   axis?: 'left' | 'right'
+  /** Colour by value instead of a flat `color` — see {@link ChartColorRamp}. */
+  ramp?: ChartColorRamp
   /** Shown in the scrub readout; worth setting once a chart carries more than one series. */
   label?: string
   unit?: string
@@ -355,6 +362,7 @@ function ChartPlot({
               key={series.key}
               paths={series.paths}
               color={series.color}
+              ramp={series.ramp}
               yRange={
                 (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range
               }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { ChartStack, type ChartSpec } from '@/components/charts/line/ChartStack'
-import type { ChartSeriesData } from '@/components/charts/line/types'
+import type { ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { Text } from '@/components/base/Text'
@@ -18,6 +18,25 @@ const SIZES = {
 } as const
 
 type SizeKey = keyof typeof SIZES
+
+/** Blends between stops — the faster the reading, the hotter the line. */
+const SPEED_RAMP: ChartColorRamp = {
+  stops: [
+    { value: 0, color: theme.palette.cyan.color },
+    { value: 25, color: theme.palette.green.color },
+    { value: 40, color: theme.palette.red.color },
+  ],
+}
+
+/** Holds each colour flat to the next boundary, so the zones read as zones. */
+const DUTY_BANDS: ChartColorRamp = {
+  mode: 'bands',
+  stops: [
+    { value: 0, color: theme.palette.slate.textMuted },
+    { value: 50, color: theme.palette.amber.color },
+    { value: 75, color: theme.palette.red.color },
+  ],
+}
 
 /** Deterministic ride-shaped signal with occasional one-sample spikes to prove they survive. */
 function generateSeries(count: number, stepMs: number, seed: number, scale: number) {
@@ -59,7 +78,15 @@ export function ChartStackShowcase() {
         key: 'speed',
         label: 'Speed',
         height: 48,
-        series: [{ key: 'speed', data: speed, color: theme.palette.cyan.color, unit: 'km/h' }],
+        series: [
+          {
+            key: 'speed',
+            data: speed,
+            color: theme.palette.cyan.color,
+            unit: 'km/h',
+            ramp: SPEED_RAMP,
+          },
+        ],
         left: { range: rangeOf(speed) },
       },
       {
@@ -67,7 +94,14 @@ export function ChartStackShowcase() {
         label: 'Duty / Voltage',
         height: 40,
         series: [
-          { key: 'duty', data: duty, color: theme.palette.amber.color, label: 'Duty', unit: '%' },
+          {
+            key: 'duty',
+            data: duty,
+            color: theme.palette.amber.color,
+            label: 'Duty',
+            unit: '%',
+            ramp: DUTY_BANDS,
+          },
           {
             key: 'volts',
             data: volts,
