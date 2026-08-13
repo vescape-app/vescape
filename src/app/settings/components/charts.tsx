@@ -8,6 +8,7 @@ import { Text } from '@/components/base/Text'
 import { LinearGauge } from '@/components/charts/LinearGauge'
 import { IconHero } from '@/components/settings/IconHero'
 import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
+import { ChartStackShowcase } from '@/components/charts/line/ChartStackShowcase'
 import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
 import { computeAutoRange, type TelemetryChartPoint } from '@/components/charts/chartMath'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
@@ -525,6 +526,7 @@ export default function ChartsPage() {
           icon={ChartLineUpIcon}
           description="Sparkline, LinearGauge, SingleGauge, DualGauge, TelemetryLineChart, ChartLoadingOverlay, BmsCellVoltages."
         />
+        <ChartStackShowcase />
         <SparklineShowcase />
         <LinearGaugeShowcase />
         <AnimatedSingleGaugeShowcase />
