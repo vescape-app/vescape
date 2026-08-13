@@ -250,10 +250,9 @@ export function ChartStack({
     dataKey,
   })
 
-  const hasRightAxis = charts.some((chart) => chart.right != null)
   const layout = useMemo(
-    () => computeChartLayout({ heights: charts.map((c) => c.height), width, hasRightAxis }),
-    [charts, hasRightAxis, width],
+    () => computeChartLayout({ heights: charts.map((c) => c.height), width }),
+    [charts, width],
   )
 
   // Mono digits, so one measurement holds for every label the chart will ever show.

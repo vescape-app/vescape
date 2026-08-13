@@ -1,7 +1,36 @@
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
 import type { ChartNumberFormat } from '@/components/charts/line/chartFormat'
-import { telemetry } from '@/modules/board/constants/telemetry'
+import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
+
+/** Breathing room above and below the ride's own extremes, as a fraction of the span. */
+const PADDING_RATIO = 0.1
+
+/**
+ * The y domain of a metric's chart, taken from the metric's own definition.
+ *
+ * `minSpan` is what keeps a flat ride from being drawn as a mountain range: without it a motor
+ * temperature that never moved more than a degree fills the plot with sensor noise. It and the
+ * fallback bounds belong to the metric, not to this chart — {@link telemetry} already states both,
+ * so read them from there rather than restating them per chart.
+ */
+function rangeOf(
+  metric: TelemetryMetricConfig,
+  { includeZero = false, fixed = false } = {},
+): AutoRangeOptions {
+  return {
+    includeZero,
+    minSpan: metric.minSpan ?? metric.chartRange.max - metric.chartRange.min,
+    paddingRatio: PADDING_RATIO,
+    snap: true,
+    fallbackMin: metric.chartRange.min,
+    fallbackMax: metric.chartRange.max,
+    // Metrics read against a scale the rider already knows keep it, and only stretch past it when
+    // the ride actually did. The rest have no meaningful fixed scale — a ±300 A axis would hide
+    // every current a ride ever draws.
+    baseline: fixed ? metric.chartRange : undefined,
+  }
+}
 
 export type OptionalChartMetric =
   | 'duty'
@@ -31,7 +60,7 @@ export const SPEED_CHART_DEF: ChartMetricDef = {
   key: 'speed',
   label: telemetry.speed.label,
   color: telemetry.speed.color,
-  range: { includeZero: true, minSpan: 10, paddingRatio: 0.1, fallbackMin: -5, fallbackMax: 5 },
+  range: rangeOf(telemetry.speed, { includeZero: true, fixed: true }),
   reading: { decimals: 0, unit: telemetry.speed.unit, abs: true },
   statKeys: ['avg_speed', 'max_speed'],
 }
@@ -42,7 +71,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: telemetry.duty.label,
     multilineLabel: ['Duty', 'Cycle'],
     color: telemetry.duty.color,
-    range: { includeZero: true, minSpan: 20, paddingRatio: 0.1, fallbackMin: 0, fallbackMax: 100 },
+    range: rangeOf(telemetry.duty, { includeZero: true, fixed: true }),
     reading: { decimals: 0, unit: '%', compactUnit: true },
     statKeys: 'max_duty',
   },
@@ -50,7 +79,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     key: 'battery',
     label: 'Battery',
     color: telemetry.battVoltage.color,
-    range: { includeZero: false, minSpan: 5, paddingRatio: 0.1, fallbackMin: 30, fallbackMax: 60 },
+    range: rangeOf(telemetry.battVoltage),
     reading: { decimals: 1, unit: telemetry.battVoltage.unit, compactUnit: true },
   },
   {
@@ -58,7 +87,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: telemetry.motorTemp.label,
     multilineLabel: ['Motor', 'Temp'],
     color: telemetry.motorTemp.color,
-    range: { includeZero: false, minSpan: 20, paddingRatio: 0.1, fallbackMin: 0, fallbackMax: 100 },
+    range: rangeOf(telemetry.motorTemp),
     reading: { decimals: 0, unit: telemetry.motorTemp.unit },
   },
   {
@@ -66,7 +95,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: telemetry.controllerTemp.label,
     multilineLabel: ['Controller', 'Temp'],
     color: telemetry.controllerTemp.color,
-    range: { includeZero: false, minSpan: 20, paddingRatio: 0.1, fallbackMin: 0, fallbackMax: 100 },
+    range: rangeOf(telemetry.controllerTemp),
     reading: { decimals: 0, unit: telemetry.controllerTemp.unit },
   },
   {
@@ -74,7 +103,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: telemetry.motorCurrent.label,
     multilineLabel: ['Motor', 'Current'],
     color: telemetry.motorCurrent.color,
-    range: { includeZero: true, minSpan: 10, paddingRatio: 0.1, fallbackMin: -5, fallbackMax: 5 },
+    range: rangeOf(telemetry.motorCurrent, { includeZero: true }),
     reading: { decimals: 0, unit: telemetry.motorCurrent.unit },
   },
   {
@@ -82,7 +111,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: telemetry.battCurrent.label,
     multilineLabel: ['Batt', 'Current'],
     color: telemetry.battCurrent.color,
-    range: { includeZero: true, minSpan: 5, paddingRatio: 0.1, fallbackMin: -5, fallbackMax: 5 },
+    range: rangeOf(telemetry.battCurrent, { includeZero: true }),
     reading: { decimals: 0, unit: telemetry.battCurrent.unit },
   },
 ]
