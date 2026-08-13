@@ -1,15 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import {
-  StyleSheet,
-  View,
-  type LayoutChangeEvent,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native'
+import { StyleSheet, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native'
 import { Canvas, DashPathEffect, Group, Line, Text, vec } from '@shopify/react-native-skia'
 import { GestureDetector } from 'react-native-gesture-handler'
-import {
+import Animated, {
   useAnimatedReaction,
+  useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
   type SharedValue,
@@ -32,6 +27,7 @@ import {
 import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
 import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
 import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
+import { useStackTransition } from '@/components/charts/line/useStackTransition'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { BandsLayer } from '@/components/charts/line/BandsLayer'
 import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
@@ -290,6 +286,22 @@ export function ChartStack({
     () => computeChartLayout({ heights: compacted.map((c) => c.height), width }),
     [compacted, width],
   )
+  const chartKeys = useMemo(() => compacted.map((c) => c.key), [compacted])
+  const transition = useStackTransition(chartKeys, layout)
+  // The container follows the same curve as the plots inside it, so a chart opening never leaves
+  // a gap under the stack and the panel above it rises once rather than twice.
+  const containerHeight = useAnimatedStyle(
+    () => ({
+      height:
+        transition.fromHeight +
+        (transition.toHeight - transition.fromHeight) * transition.progress.value,
+    }),
+    [transition],
+  )
+  const axisSlide = useDerivedValue(
+    () => [{ translateY: transition.axisDelta * (1 - transition.progress.value) }],
+    [transition],
+  )
 
   // Mono digits, so one measurement holds for every label the chart will ever show.
   const glyphWidth = axisFont ? axisFont.getTextWidth('0') : 0
@@ -386,10 +398,10 @@ export function ChartStack({
   )
 
   return (
-    <View style={containerStyle} onLayout={onLayout}>
+    <Animated.View style={[containerStyle, styles.container, containerHeight]} onLayout={onLayout}>
       {width > 0 && (
         <GestureDetector gesture={gesture}>
-          <Canvas style={[styles.canvas, { height: layout.canvasHeight }]}>
+          <Canvas style={[styles.canvas, { height: transition.reservedHeight }]}>
             {/* Before the plots: the cursor marks a moment, so it belongs behind the readings
                 it points at rather than cutting across them. */}
             <ScrubCursor
@@ -432,6 +444,9 @@ export function ChartStack({
                 scrubTimeMs={scrub}
                 labelFont={labelFont}
                 axisFont={axisFont}
+                slideFrom={transition.deltas[index]}
+                entering={transition.entering[index]}
+                progress={transition.progress}
               />
             ))}
 
@@ -468,7 +483,7 @@ export function ChartStack({
             )}
 
             {axisFont && (
-              <>
+              <Group transform={axisSlide}>
                 <Text
                   font={axisFont}
                   x={AXIS_WIDTH}
@@ -483,12 +498,12 @@ export function ChartStack({
                   text={endLabel}
                   color={AXIS_TEXT_COLOR}
                 />
-              </>
+              </Group>
             )}
           </Canvas>
         </GestureDetector>
       )}
-    </View>
+    </Animated.View>
   )
 }
 
@@ -505,6 +520,11 @@ interface ChartPlotProps {
   scrubTimeMs: SharedValue<number | null>
   labelFont: ReturnType<typeof useSkiaFont>
   axisFont: ReturnType<typeof useSkiaMonoFont>
+  /** How far above its new home this chart used to sit — see {@link useStackTransition}. */
+  slideFrom: number
+  /** New to the stack, so it fades in rather than appearing over the chart it displaced. */
+  entering: boolean
+  progress: SharedValue<number>
 }
 
 function ChartPlot({
@@ -519,14 +539,26 @@ function ChartPlot({
   scrubTimeMs,
   labelFont,
   axisFont,
+  slideFrom,
+  entering,
+  progress,
 }: ChartPlotProps) {
+  // See SeriesLayer: derived values and React Compiler memoisation do not mix.
+  'use no memo'
   const clip = useMemo(
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
     [plot],
   )
+  // The whole chart moves as one — clip included, since the clip rect lives in this group's own
+  // coordinates. Transform only: no path is rebuilt for a chart that merely changed neighbours.
+  const slide = useDerivedValue(
+    () => [{ translateY: slideFrom * (1 - progress.value) }],
+    [slideFrom],
+  )
+  const opacity = useDerivedValue(() => (entering ? progress.value : 1), [entering])
 
   return (
-    <>
+    <Group transform={slide} opacity={opacity}>
       {labelFont && chart.label && (
         <Text
           font={labelFont}
@@ -599,7 +631,7 @@ function ChartPlot({
       {axisFont && chart.right && (
         <AxisTicks font={axisFont} plot={plot} range={chart.right.range} side="right" />
       )}
-    </>
+    </Group>
   )
 }
 
@@ -628,9 +660,11 @@ function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
 
   return (
     <>
-      {ticks.map((tick) => (
+      {ticks.map((tick, index) => (
         <Text
-          key={`${side}-${tick.text}-${tick.y}`}
+          // Keyed by slot, not by value: a tick that moves or reads differently is the same tick,
+          // and remounting it on every layout change is what made the axis flicker.
+          key={`${side}-${index}`}
           font={font}
           x={tick.x}
           y={tick.y}
@@ -643,6 +677,11 @@ function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
 }
 
 const styles = StyleSheet.create({
+  // The canvas is held at the taller of the two layouts mid-transition; the container is what
+  // gives the stack its height, so what has not arrived yet stays cut off.
+  container: {
+    overflow: 'hidden',
+  },
   canvas: {
     width: '100%',
   },

@@ -153,6 +153,9 @@ test('selects ride immediately while loading its full route', async () => {
     id: 'current',
     startAtMs: 5_000_000,
     endAtMs: 5_060_000,
+    // Known geography, so selecting it takes one range call and no GPS preview.
+    firstLatitude: 52,
+    firstLongitude: 18,
   })
   const next = block({
     id: 'next',
@@ -192,14 +195,9 @@ test('selects ride immediately while loading its full route', async () => {
   expect(useHistoryStore.getState().selectedSession?.id).toBe(
     useHistoryStore.getState().sessions[1].id,
   )
-  expect(useHistoryStore.getState().sessionSamples).toEqual([
-    expect.objectContaining({
-      capturedAtMs: next.startAtMs,
-      deviceId: next.deviceId,
-      latitude: next.firstLatitude,
-      longitude: next.firstLongitude,
-    }),
-  ])
+  // The previous ride's lines stay up until the new samples land: no stand-in drawing, no
+  // empty stack between two rides.
+  expect(useHistoryStore.getState().sessionSamples).toEqual([currentSample])
   await Promise.resolve()
   expect(getHistoryRange).toHaveBeenLastCalledWith({
     fromMs: next.startAtMs,
@@ -271,7 +269,7 @@ test('loads the full route immediately but keeps loading visible for at least 15
   expect(wait).toHaveBeenCalledWith(150)
   expect(getHistoryRange).toHaveBeenCalledTimes(1)
   expect(useHistoryStore.getState().loadingSession).toBe(true)
-  expect(useHistoryStore.getState().sessionSamples[0]?.id).toBe(0)
+  expect(useHistoryStore.getState().sessionSamples).toEqual([])
 
   finishMinimumLoading()
   await select
