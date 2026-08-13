@@ -53,6 +53,7 @@ export function useCameraControls({
     preview: historyPreview,
     previewRoute: historyPreviewRoute,
     rideRoute,
+    focusRoute: historyFocusRoute,
     selectionKey: historySelectionKey,
   } = history
   const { updatesEnabled: liveFollowUpdatesEnabled } = follow
@@ -279,6 +280,7 @@ export function useCameraControls({
     preview: historyPreview,
     previewRoute: historyPreviewRoute,
     rideRoute,
+    focusRoute: historyFocusRoute,
     viewport: historyViewport,
     perspectiveEnabled,
     dispatchCameraIntent,

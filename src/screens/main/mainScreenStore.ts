@@ -22,6 +22,8 @@ interface MainScreenState {
   historySheetVisible: boolean
   mapSelector: MapSelector
   perspectiveEnabled: boolean
+  /** Measured height of the History panel; the map fits the route into what is left above it. */
+  historyPanelHeight: number
   trimRange: TrimRange | null
   activeHistoryMapMetric: HistoryMetricKey
 }
@@ -42,6 +44,7 @@ interface MainScreenActions {
   setMapSelector: (selector: MapSelector) => void
   dismissMapSelector: () => void
   setPerspectiveEnabled: (enabled: boolean) => void
+  setHistoryPanelHeight: (height: number) => void
   /** Enter trim mode seeded with a default range (the ride's full Moving Window). */
   beginTrim: (range: TrimRange) => void
   /** Live-update the trimmed span while a handle is dragged. */
@@ -58,6 +61,7 @@ const initialState: MainScreenState = {
   historySheetVisible: false,
   mapSelector: null,
   perspectiveEnabled: true,
+  historyPanelHeight: 0,
   trimRange: null,
   activeHistoryMapMetric: 'speed',
 }
@@ -130,6 +134,10 @@ export const useMainScreenStore = create<MainScreenState & MainScreenActions>((s
 
   setPerspectiveEnabled(enabled) {
     set({ perspectiveEnabled: enabled })
+  },
+
+  setHistoryPanelHeight(height) {
+    set((state) => (state.historyPanelHeight === height ? state : { historyPanelHeight: height }))
   },
 
   beginTrim(range) {
