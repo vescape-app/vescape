@@ -20,6 +20,7 @@ import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
+import { RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
 import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
@@ -543,6 +544,9 @@ export function HistoryMapLayers({
           />
         </ShapeSource>
       )}
+      {/* Over the route and its highlight, under the pins: the pins are landmarks of the whole
+          ride and stay readable however far the chart is zoomed in. */}
+      <RouteZoomFocus rideGpsSamples={rideGpsSamples} routeShape={rideRouteShape} />
       <TrimRouteHighlight rideGpsSamples={rideGpsSamples} />
       {rideRoute[0] && (
         <MapPin

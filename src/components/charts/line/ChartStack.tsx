@@ -8,7 +8,12 @@ import {
 } from 'react-native'
 import { Canvas, DashPathEffect, Group, Line, Text, vec } from '@shopify/react-native-skia'
 import { GestureDetector } from 'react-native-gesture-handler'
-import { useDerivedValue, useSharedValue, type SharedValue } from 'react-native-reanimated'
+import {
+  useAnimatedReaction,
+  useDerivedValue,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import {
   AXIS_FONT_SIZE,
@@ -55,6 +60,8 @@ const GRID_COLOR = theme.palette.slate.surface
 const AXIS_TEXT_COLOR = theme.palette.slate.textDim
 /** Below this window, wall-clock labels gain seconds — above it they would never change. */
 const CLOCK_SECONDS_BELOW_MS = 10 * 60_000
+/** Slack when deciding the camera is showing everything, so rounding cannot leave it "zoomed". */
+const FULL_VIEW_EPSILON_MS = 1
 
 export interface ChartSeriesSpec {
   key: string
@@ -116,6 +123,11 @@ export interface ChartStackProps {
    * from the same drag; a stack given none keeps its own.
    */
   scrubTimeMs?: SharedValue<number | null>
+  /**
+   * Where to publish the window the camera is showing, or `null` while it shows everything.
+   * Pass one to mark the zoomed stretch somewhere else — on a map, in a second chart.
+   */
+  zoomWindowMs?: SharedValue<ChartTimeRange | null>
   /**
    * Chosen stretch of time, dimmed outside and draggable by its handles. Pass one to trim a
    * ride, mark a stretch for export, or pick a window to zoom into.
@@ -207,6 +219,7 @@ export function ChartStack({
   timeMode = 'clock',
   follow = false,
   scrubTimeMs,
+  zoomWindowMs,
   selection,
   onSelectionChange,
   onSelectionPreview,
@@ -291,6 +304,20 @@ export function ChartStack({
     onChartTouch: handleChartTouch,
     enabled: width > 0 && !prepared.isEmpty,
   })
+
+  // Mirrored rather than owned: the camera belongs to the stack, and a consumer outside it wants
+  // the window in wall-clock terms without knowing what a camera is.
+  useAnimatedReaction(
+    () => camera.viewport.value,
+    (window) => {
+      if (zoomWindowMs == null) return
+      const whole =
+        window.startMs <= prepared.startMs + FULL_VIEW_EPSILON_MS &&
+        window.endMs >= prepared.endMs - FULL_VIEW_EPSILON_MS
+      zoomWindowMs.value = whole ? null : { startMs: window.startMs, endMs: window.endMs }
+    },
+    [prepared.endMs, prepared.startMs, zoomWindowMs],
+  )
 
   const withSeconds = useDerivedValue(
     () => camera.viewport.value.endMs - camera.viewport.value.startMs < CLOCK_SECONDS_BELOW_MS,

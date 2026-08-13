@@ -24,7 +24,7 @@ import {
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
 import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
-import { scrubHeadMs } from '@/modules/history/lib/scrubHead'
+import { scrubHeadMs, zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
 import { type TelemetrySample } from '@/modules/history/store/historyStore'
@@ -128,12 +128,14 @@ export function HistoryTelemetryPanel({
   const bottomInset = Math.max(insets.bottom, 16) + 8
   const hasChartData = visibleSamples.length >= 2
 
-  // The scrub head outlives this component (the map reads it too), so a ride switch has to clear
-  // it — otherwise the marker stays parked on a moment from the previous ride.
+  // The scrub head and the zoom window outlive this component (the map reads both), so a ride
+  // switch has to clear them — otherwise the map keeps marking a moment from the previous ride.
   useEffect(() => {
     scrubHeadMs.value = null
+    zoomWindowMs.value = null
     return () => {
       scrubHeadMs.value = null
+      zoomWindowMs.value = null
     }
   }, [startAtMs])
 
@@ -208,6 +210,7 @@ export function HistoryTelemetryPanel({
             timeMode="clock"
             containerStyle={styles.chart}
             scrubTimeMs={scrubHeadMs}
+            zoomWindowMs={zoomWindowMs}
             selection={trim ? selection : undefined}
             onSelectionPreview={handleSelectionPreview}
             onSelectionChange={handleSelectionCommit}

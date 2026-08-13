@@ -66,6 +66,10 @@ export interface ChartGestureOptions {
  */
 const SELECTION_NOTIFY_MS = 50
 
+/** Gap allowed between the two taps of a double tap, and how far the finger may stray. */
+const DOUBLE_TAP_MS = 280
+const TAP_SLOP_PX = 12
+
 /**
  * Pinch to zoom and pan, as one gesture, entirely on the UI thread.
  *
@@ -102,6 +106,10 @@ export function useChartGestures({
   const dragOriginMs = useSharedValue(0)
   const lastDragX = useSharedValue(Number.NaN)
   const lastNotifyAt = useSharedValue(0)
+  const lastTapAt = useSharedValue(0)
+  const lastTapX = useSharedValue(0)
+  const lastTapY = useSharedValue(0)
+  const tapMoved = useSharedValue(false)
 
   return useMemo(() => {
     const focalRatio = (focalX: number) => {
@@ -167,6 +175,8 @@ export function useChartGestures({
         'worklet'
         startViewport.value = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
         startFocalRatio.value = focalRatio(event.focalX)
+        // The first finger of a pinch is not half of a double tap.
+        lastTapAt.value = 0
       })
       .onUpdate((event) => {
         'worklet'
@@ -192,17 +202,15 @@ export function useChartGestures({
         }
       })
 
-    const fit = Gesture.Tap()
-      .enabled(enabled)
-      .numberOfTaps(2)
-      .onEnd(() => {
-        'worklet'
-        camera.value = {
-          spanMs: domainEndMs - domainStartMs,
-          endMs: follow ? null : domainEndMs,
-          key: dataKey,
-        }
-      })
+    /** Back to the whole ride. */
+    const fitToDomain = () => {
+      'worklet'
+      camera.value = {
+        spanMs: domainEndMs - domainStartMs,
+        endMs: follow ? null : domainEndMs,
+        key: dataKey,
+      }
+    }
 
     const scrub = Gesture.Pan()
       .enabled(enabled)
@@ -210,14 +218,34 @@ export function useChartGestures({
       // starting a zoom never drags the cursor along with it.
       .maxPointers(1)
       .minDistance(0)
-      .onStart((event) => {
+      // Touch-down, before the pan has decided it is a drag — a tap that never moves far enough
+      // to activate still lands here, and both of these are answers about where the finger went
+      // down rather than about dragging.
+      .onBegin((event) => {
         'worklet'
-        lastScrubX.value = Number.NaN
-        lastNotifyAt.value = 0
+        // The second tap of a double tap fits the ride back into view. Counted here rather than
+        // by a Tap gesture: a pan with no minimum distance activates on the first touch and wins
+        // the race, and making it wait for a tap to fail would delay every scrub by the
+        // double-tap timeout — the one thing that has to feel instant.
+        const now = Date.now()
+        const isSecondTap =
+          now - lastTapAt.value < DOUBLE_TAP_MS &&
+          Math.abs(event.x - lastTapX.value) < TAP_SLOP_PX &&
+          Math.abs(event.y - lastTapY.value) < TAP_SLOP_PX
+        lastTapAt.value = isSecondTap ? 0 : now
+        lastTapX.value = event.x
+        lastTapY.value = event.y
+        tapMoved.value = false
+        if (isSecondTap) fitToDomain()
         if (onChartTouch) {
           const index = chartAtY(event.y)
           if (index >= 0) runOnJS(onChartTouch)(index)
         }
+      })
+      .onStart((event) => {
+        'worklet'
+        lastScrubX.value = Number.NaN
+        lastNotifyAt.value = 0
         // While a range is on screen the drag belongs to it: a selection is something the rider
         // is adjusting, and reading values off the line is what the chart does the rest of the time.
         const edge = edgeAt(event.x)
@@ -233,6 +261,11 @@ export function useChartGestures({
       })
       .onUpdate((event) => {
         'worklet'
+        if (
+          Math.abs(event.translationX) > TAP_SLOP_PX ||
+          Math.abs(event.translationY) > TAP_SLOP_PX
+        )
+          tapMoved.value = true
         const edge = draggedEdge.value
         if (edge == null) {
           scrubTo(event.x)
@@ -269,13 +302,15 @@ export function useChartGestures({
         'worklet'
         const range = draggedEdge.value != null ? selection?.value : null
         draggedEdge.value = null
+        // A touch that travelled is a drag, and a drag is never half of a double tap.
+        if (tapMoved.value) lastTapAt.value = 0
         scrubTimeMs.value = null
         // Committed on release rather than per frame: the range is what the rest of the app acts
         // on, and re-running that for every pixel of a drag is what a shared value exists to avoid.
         if (range != null && onSelectionCommit) runOnJS(onSelectionCommit)(range)
       })
 
-    return Gesture.Race(fit, Gesture.Simultaneous(pinch, scrub))
+    return Gesture.Simultaneous(pinch, scrub)
   }, [
     camera,
     dataKey,
@@ -288,6 +323,9 @@ export function useChartGestures({
     lastDragX,
     lastNotifyAt,
     lastScrubX,
+    lastTapAt,
+    lastTapX,
+    lastTapY,
     onChartTouch,
     onSelectionCommit,
     onSelectionPreview,
@@ -297,6 +335,7 @@ export function useChartGestures({
     scrubTimeMs,
     selection,
     startFocalRatio,
+    tapMoved,
     startViewport,
   ])
 }

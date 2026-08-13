@@ -3,6 +3,7 @@ import type { LineLayerStyle } from '@rnmapbox/maps'
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { distanceMeters } from '@/helpers/mapGeometry'
+import { routeDistanceProgress } from '@/modules/history/lib/routeProgress'
 import {
   getHistoryMetricColorRange,
   getMetricRampColor,
@@ -181,23 +182,6 @@ function advanceNearestTelemetryIndex(
   return index
 }
 
-function getRouteDistanceProgress(samples: readonly HistoryGpsSample[]): number[] {
-  const distances = new Array<number>(samples.length).fill(0)
-  let distanceM = 0
-  for (let index = 1; index < samples.length; index += 1) {
-    const from = samples[index - 1]
-    const to = samples[index]
-    distanceM += distanceMeters(
-      { longitude: from.longitude, latitude: from.latitude },
-      { longitude: to.longitude, latitude: to.latitude },
-    )
-    distances[index] = distanceM
-  }
-
-  if (distanceM <= 0) return distances
-  return distances.map((distance) => Math.max(0, Math.min(1, distance / distanceM)))
-}
-
 export function getHistoryRouteMetricGradient({
   gpsSamples,
   telemetrySamples,
@@ -217,7 +201,7 @@ export function getHistoryRouteMetricGradient({
   if (!range) return null
 
   const lastIndex = gpsSamples.length - 1
-  const routeProgress = getRouteDistanceProgress(gpsSamples)
+  const routeProgress = routeDistanceProgress(gpsSamples)
   const maxStops = 160
   const step = Math.max(1, Math.floor(lastIndex / (maxStops - 1)))
   const expression: unknown[] = ['interpolate', ['linear'], ['line-progress']]
