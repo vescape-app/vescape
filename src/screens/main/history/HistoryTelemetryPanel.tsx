@@ -18,6 +18,7 @@ import { HistoryRideMediaDrawer } from '@/modules/history/components/HistoryRide
 import {
   useChartExclusionBands,
   useChartRanges,
+  useChartTimeline,
   useChartSeries,
   useHistoryChartStack,
   useFavoriteBands,
@@ -112,6 +113,7 @@ export function HistoryTelemetryPanel({
 
   const visibleSamples = useVisibleRideSamples(samples, movingStartAtMs, movingEndAtMs)
   const series = useChartSeries(visibleSamples)
+  const timeline = useChartTimeline(visibleSamples)
   const ranges = useChartRanges(series)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
@@ -225,6 +227,7 @@ export function HistoryTelemetryPanel({
           <ChartStack
             charts={charts}
             bands={favoriteBands}
+            timeline={timeline}
             dataKey={`${startAtMs}`}
             timeMode="clock"
             containerStyle={styles.chart}

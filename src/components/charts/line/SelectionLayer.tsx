@@ -2,6 +2,7 @@ import { Group, LinearGradient, Rect, RoundedRect, vec } from '@shopify/react-na
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { projectX, viewportFor } from '@/components/charts/line/projection'
+import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera, ChartTimeRange } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
 
@@ -24,6 +25,8 @@ export interface SelectionLayerProps {
   /** Canvas y bounds the selection spans — the first plot's top to the last plot's bottom. */
   top: number
   bottom: number
+  /** The range is real time; the plot it is drawn on is compacted. */
+  timeline: ChartTimeline | null
 }
 
 /**
@@ -45,6 +48,7 @@ export function SelectionLayer({
   plotWidth,
   top,
   bottom,
+  timeline,
 }: SelectionLayerProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
@@ -58,11 +62,11 @@ export function SelectionLayer({
     const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
     const clamp = (x: number) => Math.min(Math.max(x, 0), plotWidth)
     return {
-      left: clamp(projectX(range.startMs, viewport, plotWidth)),
-      right: clamp(projectX(range.endMs, viewport, plotWidth)),
+      left: clamp(projectX(toChartMs(range.startMs, timeline), viewport, plotWidth)),
+      right: clamp(projectX(toChartMs(range.endMs, timeline), viewport, plotWidth)),
       active: true,
     }
-  }, [camera, dataKey, domainEndMs, domainStartMs, plotWidth])
+  }, [camera, dataKey, domainEndMs, domainStartMs, plotWidth, timeline])
 
   /*
    * Everything below moves by transform, and nothing resizes.

@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 
 import { ChartStack, type ChartSpec } from '@/components/charts/line/ChartStack'
+import { buildTimeline } from '@/components/charts/line/timeline'
 import type {
   ChartBand,
   ChartColorRamp,
@@ -45,6 +46,19 @@ const DUTY_BANDS: ChartColorRamp = {
   ],
 }
 
+/**
+ * A pause dropped into every generated ride, so the chart's gap seam is always on show. Real rides
+ * stop for lights and coffee; the samples simply stop arriving.
+ */
+const PAUSE_AT = 0.55
+const PAUSE_MS = 30 * 60_000
+
+/** Where each sample lands once the pause is inserted. */
+function sampleTime(index: number, count: number, stepMs: number): number {
+  const paused = index >= Math.floor(count * PAUSE_AT) ? PAUSE_MS : 0
+  return BASE + index * stepMs + paused
+}
+
 /** Deterministic ride-shaped signal with occasional one-sample spikes to prove they survive. */
 function generateSeries(count: number, stepMs: number, seed: number, scale: number) {
   const ts: number[] = []
@@ -55,7 +69,7 @@ function generateSeries(count: number, stepMs: number, seed: number, scale: numb
     const noise = (state / 0xffffffff - 0.5) * 4
     const wave = Math.sin(i / (count / 40)) * 0.35 + 0.5
     const spike = i % 1_997 === 0 ? scale * 0.45 : 0
-    ts.push(BASE + i * stepMs)
+    ts.push(sampleTime(i, count, stepMs))
     vs.push(Math.max(0, wave * scale + noise + spike))
   }
   return { ts, vs }
@@ -73,21 +87,20 @@ function rangeOf(data: ChartSeriesData) {
 
 /** Stand-ins for the history chart's excluded stretches and favourite segments. */
 function generateBands(count: number, stepMs: number): ChartBand[] {
-  const spanMs = count * stepMs
   return [
     {
-      startMs: BASE + spanMs * 0.12,
-      endMs: BASE + spanMs * 0.19,
+      startMs: sampleTime(count * 0.12, count, stepMs),
+      endMs: sampleTime(count * 0.19, count, stepMs),
       color: theme.palette.yellow.color,
     },
     {
-      startMs: BASE + spanMs * 0.55,
-      endMs: BASE + spanMs * 0.58,
+      startMs: sampleTime(count * 0.56, count, stepMs),
+      endMs: sampleTime(count * 0.58, count, stepMs),
       color: theme.palette.yellow.color,
     },
     {
-      startMs: BASE + spanMs * 0.68,
-      endMs: BASE + spanMs * 0.82,
+      startMs: sampleTime(count * 0.68, count, stepMs),
+      endMs: sampleTime(count * 0.82, count, stepMs),
       color: theme.palette.cyan.color,
       row: 1,
     },
@@ -98,14 +111,16 @@ export function ChartStackShowcase() {
   const [size, setSize] = useState<SizeKey>('tiny')
   const [selectable, setSelectable] = useState(false)
   const { count, stepMs } = SIZES[size]
-  const spanMs = count * stepMs
 
   const selection = useSharedValue<ChartTimeRange | null>(null)
   useEffect(() => {
     selection.value = selectable
-      ? { startMs: BASE + spanMs * 0.2, endMs: BASE + spanMs * 0.7 }
+      ? {
+          startMs: sampleTime(count * 0.2, count, stepMs),
+          endMs: sampleTime(count * 0.7, count, stepMs),
+        }
       : null
-  }, [selectable, selection, spanMs])
+  }, [count, selectable, selection, stepMs])
 
   const speed = useMemo(() => generateSeries(count, stepMs, 7, 42), [count, stepMs])
   const duty = useMemo(() => generateSeries(count, stepMs, 21, 85), [count, stepMs])
@@ -158,12 +173,17 @@ export function ChartStackShowcase() {
     [count, duty, speed, stepMs, volts],
   )
 
+  const timeline = useMemo(
+    () => buildTimeline(speed.ts, { minGapMs: 5 * 60_000, gapWidthMs: 20_000 }),
+    [speed],
+  )
+
   // Stack-level: a stretch the rider chose, washed through every plot rather than marked under one.
   const stackBands: ChartBand[] = useMemo(
     () => [
       {
-        startMs: BASE + count * stepMs * 0.3,
-        endMs: BASE + count * stepMs * 0.44,
+        startMs: sampleTime(count * 0.3, count, stepMs),
+        endMs: sampleTime(count * 0.44, count, stepMs),
         color: theme.alpha(theme.status.favorite.color, 0.12),
         fill: 'plot',
       },
@@ -194,6 +214,7 @@ export function ChartStackShowcase() {
         <ChartStack
           charts={charts}
           bands={stackBands}
+          timeline={timeline}
           dataKey={size}
           timeMode="clock"
           selection={selection}

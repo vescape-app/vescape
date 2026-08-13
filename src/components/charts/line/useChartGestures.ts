@@ -8,6 +8,7 @@ import {
   pickSelectionEdge,
   type SelectionEdge,
 } from '@/components/charts/line/selectionMath'
+import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import type {
   ChartCamera,
   ChartPlotBand,
@@ -56,6 +57,11 @@ export interface ChartGestureOptions {
   plotBands: ChartPlotBand[]
   /** Which chart a touch landed on, by index. Fired once per gesture, before anything moves. */
   onChartTouch?: (index: number) => void
+  /**
+   * Cuts the plot draws through. The camera and the plot run in compacted chart time; everything
+   * this hook publishes — the scrub head, the selection — is in real time, and converts here.
+   */
+  timeline: ChartTimeline | null
   enabled: boolean
 }
 
@@ -97,6 +103,7 @@ export function useChartGestures({
   onSelectionPreview,
   plotBands,
   onChartTouch,
+  timeline,
   enabled,
 }: ChartGestureOptions) {
   const startViewport = useSharedValue<ChartViewport>({ startMs: 0, endMs: 0 })
@@ -131,8 +138,7 @@ export function useChartGestures({
       if (clamped === lastScrubX.value) return
       lastScrubX.value = clamped
       const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
-      const timeMs = unprojectX(clamped, viewport, plotWidth)
-      scrubTimeMs.value = timeMs
+      scrubTimeMs.value = toRealMs(unprojectX(clamped, viewport, plotWidth), timeline)
     }
 
     /**
@@ -146,8 +152,8 @@ export function useChartGestures({
       const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
       return pickSelectionEdge(
         x - plotX,
-        projectX(range.startMs, viewport, plotWidth),
-        projectX(range.endMs, viewport, plotWidth),
+        projectX(toChartMs(range.startMs, timeline), viewport, plotWidth),
+        projectX(toChartMs(range.endMs, timeline), viewport, plotWidth),
       )
     }
 
@@ -257,7 +263,8 @@ export function useChartGestures({
         // Where the edge sat when the finger landed; the drag moves it from there by translation.
         lastDragX.value = Number.NaN
         const range = selection?.value
-        dragOriginMs.value = range == null ? 0 : edge === 'start' ? range.startMs : range.endMs
+        dragOriginMs.value =
+          range == null ? 0 : toChartMs(edge === 'start' ? range.startMs : range.endMs, timeline)
       })
       .onUpdate((event) => {
         'worklet'
@@ -279,9 +286,14 @@ export function useChartGestures({
         if (translationX === lastDragX.value) return
         lastDragX.value = translationX
         const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
-        const moved = moveSelectionEdge({
+        // The edge is dragged across the plot, so the arithmetic happens in chart time and the
+        // result is published back in the real time the rest of the app trims and stores.
+        const movedChart = moveSelectionEdge({
           edge,
-          range,
+          range: {
+            startMs: toChartMs(range.startMs, timeline),
+            endMs: toChartMs(range.endMs, timeline),
+          },
           originMs: dragOriginMs.value,
           translationX,
           plotWidth,
@@ -289,6 +301,10 @@ export function useChartGestures({
           domainStartMs,
           domainEndMs,
         })
+        const moved = {
+          startMs: toRealMs(movedChart.startMs, timeline),
+          endMs: toRealMs(movedChart.endMs, timeline),
+        }
         selection.value = moved
         // Same sampling as a scrub, for the same reason: whatever previews the range live —
         // a stats bar, a label — renders through React and cannot keep up with a touch stream.
@@ -336,6 +352,7 @@ export function useChartGestures({
     selection,
     startFocalRatio,
     tapMoved,
+    timeline,
     startViewport,
   ])
 }

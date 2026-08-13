@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
 import type { ChartSpec } from '@/components/charts/line/ChartStack'
+import { buildTimeline, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
@@ -145,6 +146,28 @@ export function useChartExclusionBands() {
     }
     return bands
   }, [sessionExclusions])
+}
+
+/**
+ * How long a ride has to stand still before the chart cuts the pause out, and what the cut is
+ * worth on the axis once collapsed.
+ *
+ * Sessions already split on a 30-minute pause, so what is left inside one ride is a coffee stop or
+ * a wait at lights — minutes of flat line that squeeze the riding either side of it into a corner.
+ */
+const GAP_MIN_MS = 5 * 60_000
+const GAP_WIDTH_MS = 20_000
+
+/** The ride's long pauses, or `null` when it has none — see {@link buildTimeline}. */
+export function useChartTimeline(samples: TelemetrySample[]): ChartTimeline | null {
+  return useMemo(
+    () =>
+      buildTimeline(
+        samples.map((sample) => sample.capturedAtMs),
+        { minGapMs: GAP_MIN_MS, gapWidthMs: GAP_WIDTH_MS },
+      ),
+    [samples],
+  )
 }
 
 /**

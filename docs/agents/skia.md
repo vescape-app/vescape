@@ -184,4 +184,5 @@ imperatively needs no throttle.
 - `src/components/charts/line/SeriesLayer.tsx` — matrix projection, the repaint nudge
 - `src/components/charts/line/seriesPaths.ts` — LOD tiles, sampling values back out of paths
 - `src/components/charts/line/colorRamp.ts` — value colour as a camera-invariant gradient
+- `src/components/charts/line/timeline.ts` — chart time vs real time, converted at the stack's edge
 - `src/screens/main/map/SeekPositionPin.tsx` — a native consumer driven from a shared value

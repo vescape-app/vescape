@@ -34,6 +34,7 @@ import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/ser
 import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { BandsLayer } from '@/components/charts/line/BandsLayer'
+import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
 import type {
   ChartBand,
   ChartColorRamp,
@@ -43,6 +44,7 @@ import type {
   ChartYRange,
 } from '@/components/charts/line/types'
 import { SelectionLayer } from '@/components/charts/line/SelectionLayer'
+import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
 
@@ -88,6 +90,13 @@ export interface ChartStackProps {
    */
   bands?: ChartBand[]
   charts: ChartSpec[]
+  /**
+   * Long idle stretches to cut out of the plot — see {@link ChartTimeline}.
+   *
+   * The chart draws compacted time; every time value crossing this boundary, in either direction,
+   * stays real. Nothing outside the canvas has to know a ride was cut.
+   */
+  timeline?: ChartTimeline | null
   /**
    * Identity of the data on screen — a ride id, a focused metric. Zoom survives data updates
    * and resets only when this changes.
@@ -174,6 +183,31 @@ function prepareStack(charts: ChartSpec[]): PreparedStack {
   }
 }
 
+/** Every series and band of a stack in chart time, so the canvas never sees a cut ride. */
+function compactCharts(charts: ChartSpec[], timeline: ChartTimeline | null): ChartSpec[] {
+  if (timeline == null) return charts
+  return charts.map((chart) => ({
+    ...chart,
+    series: chart.series.map((series) => ({
+      ...series,
+      data: { ts: series.data.ts.map((ms) => toChartMs(ms, timeline)), vs: series.data.vs },
+    })),
+    bands: compactBands(chart.bands, timeline),
+  }))
+}
+
+function compactBands(
+  bands: ChartBand[] | undefined,
+  timeline: ChartTimeline | null,
+): ChartBand[] | undefined {
+  if (timeline == null || bands == null) return bands
+  return bands.map((band) => ({
+    ...band,
+    startMs: toChartMs(band.startMs, timeline),
+    endMs: toChartMs(band.endMs, timeline),
+  }))
+}
+
 /** What the scrub readout needs of a chart: a line to sample, and the axis it is read against. */
 function toScrubTargets(chart: PreparedChart): ScrubTarget[] {
   return chart.series.map((series) => ({
@@ -204,6 +238,7 @@ export function ChartStack({
   onSelectionPreview,
   onChartTouch,
   bands,
+  timeline = null,
   showHead = false,
   containerStyle,
 }: ChartStackProps) {
@@ -220,7 +255,11 @@ export function ChartStack({
   const ownScrubTimeMs = useSharedValue<number | null>(null)
   const scrub = scrubTimeMs ?? ownScrubTimeMs
 
-  const prepared = useMemo(() => prepareStack(charts), [charts])
+  // Cutting happens here, once per data change: the canvas below draws chart time throughout, so
+  // no worklet pays for a conversion per frame.
+  const compacted = useMemo(() => compactCharts(charts, timeline), [charts, timeline])
+  const stackBands = useMemo(() => compactBands(bands, timeline), [bands, timeline])
+  const prepared = useMemo(() => prepareStack(compacted), [compacted])
   const camera = useChartCamera({
     startMs: prepared.startMs,
     endMs: prepared.endMs,
@@ -228,8 +267,8 @@ export function ChartStack({
   })
 
   const layout = useMemo(
-    () => computeChartLayout({ heights: charts.map((c) => c.height), width }),
-    [charts, width],
+    () => computeChartLayout({ heights: compacted.map((c) => c.height), width }),
+    [compacted, width],
   )
 
   // Mono digits, so one measurement holds for every label the chart will ever show.
@@ -249,6 +288,7 @@ export function ChartStack({
     domainStartMs: prepared.startMs,
     domainEndMs: prepared.endMs,
     scrubTimeMs: scrub,
+    timeline,
     glyphWidth,
   })
 
@@ -278,6 +318,7 @@ export function ChartStack({
     onSelectionPreview,
     plotBands,
     onChartTouch: handleChartTouch,
+    timeline,
     enabled: width > 0 && !prepared.isEmpty,
   })
 
@@ -290,9 +331,11 @@ export function ChartStack({
       const whole =
         window.startMs <= prepared.startMs + FULL_VIEW_EPSILON_MS &&
         window.endMs >= prepared.endMs - FULL_VIEW_EPSILON_MS
-      zoomWindowMs.value = whole ? null : { startMs: window.startMs, endMs: window.endMs }
+      zoomWindowMs.value = whole
+        ? null
+        : { startMs: toRealMs(window.startMs, timeline), endMs: toRealMs(window.endMs, timeline) }
     },
-    [prepared.endMs, prepared.startMs, zoomWindowMs],
+    [prepared.endMs, prepared.startMs, timeline, zoomWindowMs],
   )
 
   const withSeconds = useDerivedValue(
@@ -301,13 +344,13 @@ export function ChartStack({
   const startLabel = useDerivedValue(() => {
     const { startMs, endMs } = camera.viewport.value
     if (timeMode === 'relative') return formatRelative(camera.domainEndMs - startMs)
-    return formatClock(startMs, endMs - startMs < CLOCK_SECONDS_BELOW_MS)
-  }, [camera.domainEndMs, timeMode])
+    return formatClock(toRealMs(startMs, timeline), endMs - startMs < CLOCK_SECONDS_BELOW_MS)
+  }, [camera.domainEndMs, timeMode, timeline])
   const endLabel = useDerivedValue(() => {
     const { startMs, endMs } = camera.viewport.value
     if (timeMode === 'relative') return formatRelative(camera.domainEndMs - endMs)
-    return formatClock(endMs, endMs - startMs < CLOCK_SECONDS_BELOW_MS)
-  }, [camera.domainEndMs, timeMode])
+    return formatClock(toRealMs(endMs, timeline), endMs - startMs < CLOCK_SECONDS_BELOW_MS)
+  }, [camera.domainEndMs, timeMode, timeline])
   const plotWidth = layout.plots[0]?.width ?? 0
   const plotsTop = layout.plots[0]?.y ?? 0
   const plotsBottom = (layout.plots.at(-1)?.y ?? 0) + (layout.plots.at(-1)?.height ?? 0)
@@ -339,12 +382,13 @@ export function ChartStack({
               top={plotsTop}
               bottom={plotsBottom}
               scrubTimeMs={scrub}
+              timeline={timeline}
             />
 
-            {bands && bands.length > 0 && (
+            {stackBands && stackBands.length > 0 && (
               <Group transform={[{ translateX: AXIS_WIDTH }, { translateY: plotsTop }]}>
                 <BandsLayer
-                  bands={bands}
+                  bands={stackBands}
                   plot={stackPlot}
                   camera={camera.camera}
                   dataKey={camera.dataKey}
@@ -383,6 +427,23 @@ export function ChartStack({
                 plotWidth={plotWidth}
                 top={plotsTop}
                 bottom={plotsBottom}
+                timeline={timeline}
+              />
+            )}
+
+            {axisFont && (
+              <GapMarkersLayer
+                timeline={timeline}
+                camera={camera.camera}
+                dataKey={camera.dataKey}
+                domainStartMs={prepared.startMs}
+                domainEndMs={prepared.endMs}
+                plotX={AXIS_WIDTH}
+                plotWidth={plotWidth}
+                top={plotsTop}
+                bottom={plotsBottom}
+                labelBaseline={layout.timeAxisBaseline}
+                font={axisFont}
               />
             )}
 
