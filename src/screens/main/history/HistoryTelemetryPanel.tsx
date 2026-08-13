@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useSharedValue } from 'react-native-reanimated'
+import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ChartStack } from '@/components/charts/line/ChartStack'
@@ -107,6 +107,7 @@ export function HistoryTelemetryPanel({
   const selection = useSharedValue<ChartTimeRange | null>(null)
   const trimRef = useRef(trim)
   trimRef.current = trim
+  const trimming = trim != null
 
   const visibleSamples = useVisibleRideSamples(samples, movingStartAtMs, movingEndAtMs)
   const series = useChartSeries(visibleSamples)
@@ -147,6 +148,22 @@ export function HistoryTelemetryPanel({
     selection.value =
       trimStartMs == null || trimEndMs == null ? null : { startMs: trimStartMs, endMs: trimEndMs }
   }, [selection, trimEndMs, trimStartMs])
+
+  // Trimming a Favorite is the rider saying which part of the ride they mean, so the map follows
+  // the handles rather than the chart's own zoom: same dim, same camera fit, same settle.
+  useAnimatedReaction(
+    () => (trimming ? selection.value : null),
+    (range) => {
+      zoomWindowMs.value = range == null ? null : { startMs: range.startMs, endMs: range.endMs }
+    },
+    [trimming],
+  )
+
+  // Leaving the trimmer hands the window back to the chart's camera, which only reports on its
+  // next change — so the selection has to be cleared here or the map stays framed on it.
+  useEffect(() => {
+    if (!trimming) zoomWindowMs.value = null
+  }, [trimming])
 
   const handleSelectionPreview = useCallback((range: ChartTimeRange) => {
     trimRef.current?.onChange(range.startMs, range.endMs)
@@ -210,7 +227,7 @@ export function HistoryTelemetryPanel({
             timeMode="clock"
             containerStyle={styles.chart}
             scrubTimeMs={scrubHeadMs}
-            zoomWindowMs={zoomWindowMs}
+            zoomWindowMs={trimming ? undefined : zoomWindowMs}
             selection={trim ? selection : undefined}
             onSelectionPreview={handleSelectionPreview}
             onSelectionChange={handleSelectionCommit}
