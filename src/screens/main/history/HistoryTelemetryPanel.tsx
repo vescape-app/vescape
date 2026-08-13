@@ -7,6 +7,7 @@ import { ChartStack } from '@/components/charts/line/ChartStack'
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
 import {
+  isHistoryMetricKey,
   toggleOptionalChartMetric,
   type OptionalChartMetric,
 } from '@/modules/history/components/historyChartMetrics'
@@ -153,6 +154,15 @@ export function HistoryTelemetryPanel({
     trimRef.current?.onCommit(range.startMs, range.endMs)
   }, [])
 
+  // Touching a chart is what says "colour the route by this": the stack keys its charts by metric,
+  // and the map reads the same hot ranges the lines do, so the two always agree.
+  const handleChartTouch = useCallback(
+    (key: string) => {
+      if (isHistoryMetricKey(key)) onMetricInteraction?.(key)
+    },
+    [onMetricInteraction],
+  )
+
   const handleToggleMetric = useCallback(
     (metric: OptionalChartMetric) => {
       onMetricInteraction?.(metric)
@@ -201,6 +211,7 @@ export function HistoryTelemetryPanel({
             selection={trim ? selection : undefined}
             onSelectionPreview={handleSelectionPreview}
             onSelectionChange={handleSelectionCommit}
+            onChartTouch={trim ? undefined : handleChartTouch}
             showHead
           />
 

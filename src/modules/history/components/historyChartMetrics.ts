@@ -92,6 +92,13 @@ export const HISTORY_CHART_DEFS: readonly ChartMetricDef[] = [
   ...OPTIONAL_CHART_METRICS,
 ]
 
+const HISTORY_METRIC_KEYS = new Set<string>(HISTORY_CHART_DEFS.map((def) => def.key))
+
+/** Whether a chart key names a metric — the stack keys its charts by one. */
+export function isHistoryMetricKey(key: string): key is HistoryMetricKey {
+  return HISTORY_METRIC_KEYS.has(key)
+}
+
 export function toggleOptionalChartMetric(
   activeMetrics: ReadonlySet<OptionalChartMetric>,
   metric: OptionalChartMetric,

@@ -8,7 +8,12 @@ import {
   pickSelectionEdge,
   type SelectionEdge,
 } from '@/components/charts/line/selectionMath'
-import type { ChartCamera, ChartTimeRange, ChartViewport } from '@/components/charts/line/types'
+import type {
+  ChartCamera,
+  ChartPlotBand,
+  ChartTimeRange,
+  ChartViewport,
+} from '@/components/charts/line/types'
 
 /**
  * How close to the live edge a pan has to land before the camera re-attaches to it. A rider who
@@ -43,8 +48,14 @@ export interface ChartGestureOptions {
   onSelectionCommit?: (range: ChartTimeRange) => void
   /** The range as it is being dragged, throttled, for anything that previews it live. */
   onSelectionPreview?: (range: ChartTimeRange) => void
-  /** A touch has landed. Fired once per gesture, before anything moves. */
-  onGestureStart?: () => void
+  /**
+   * Vertical bounds of each plot in canvas coordinates, so a touch can be attributed to the
+   * chart it landed on. A stack is one gesture over one canvas; without this it can say when it
+   * was touched but not where.
+   */
+  plotBands: ChartPlotBand[]
+  /** Which chart a touch landed on, by index. Fired once per gesture, before anything moves. */
+  onChartTouch?: (index: number) => void
   enabled: boolean
 }
 
@@ -80,7 +91,8 @@ export function useChartGestures({
   selection,
   onSelectionCommit,
   onSelectionPreview,
-  onGestureStart,
+  plotBands,
+  onChartTouch,
   enabled,
 }: ChartGestureOptions) {
   const startViewport = useSharedValue<ChartViewport>({ startMs: 0, endMs: 0 })
@@ -129,6 +141,24 @@ export function useChartGestures({
         projectX(range.startMs, viewport, plotWidth),
         projectX(range.endMs, viewport, plotWidth),
       )
+    }
+
+    /**
+     * Which chart a touch at `y` belongs to. The gaps between plots go to the nearer plot, so a
+     * touch on a label row still counts as a touch on the chart it names.
+     */
+    const chartAtY = (y: number) => {
+      'worklet'
+      let best = -1
+      let bestDistance = Number.POSITIVE_INFINITY
+      for (let i = 0; i < plotBands.length; i += 1) {
+        const { top, bottom } = plotBands[i]
+        const distance = y < top ? top - y : y > bottom ? y - bottom : 0
+        if (distance >= bestDistance) continue
+        bestDistance = distance
+        best = i
+      }
+      return best
     }
 
     const pinch = Gesture.Pinch()
@@ -184,7 +214,10 @@ export function useChartGestures({
         'worklet'
         lastScrubX.value = Number.NaN
         lastNotifyAt.value = 0
-        if (onGestureStart) runOnJS(onGestureStart)()
+        if (onChartTouch) {
+          const index = chartAtY(event.y)
+          if (index >= 0) runOnJS(onChartTouch)(index)
+        }
         // While a range is on screen the drag belongs to it: a selection is something the rider
         // is adjusting, and reading values off the line is what the chart does the rest of the time.
         const edge = edgeAt(event.x)
@@ -255,9 +288,10 @@ export function useChartGestures({
     lastDragX,
     lastNotifyAt,
     lastScrubX,
-    onGestureStart,
+    onChartTouch,
     onSelectionCommit,
     onSelectionPreview,
+    plotBands,
     plotWidth,
     plotX,
     scrubTimeMs,

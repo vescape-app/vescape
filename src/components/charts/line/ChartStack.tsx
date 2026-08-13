@@ -125,8 +125,11 @@ export interface ChartStackProps {
   onSelectionChange?: (range: ChartTimeRange) => void
   /** The range while a handle is being dragged, throttled. */
   onSelectionPreview?: (range: ChartTimeRange) => void
-  /** A touch has landed on the stack. Used to tell native which metric to resolve in full. */
-  onGestureStart?: () => void
+  /**
+   * The chart a touch landed on, by its key. Fired once per gesture: a stack is one gesture over
+   * one canvas, so this is how a consumer follows which metric the rider is looking at.
+   */
+  onChartTouch?: (key: string) => void
   /** Mark the last sample of every series. */
   showHead?: boolean
   containerStyle?: StyleProp<ViewStyle>
@@ -207,7 +210,7 @@ export function ChartStack({
   selection,
   onSelectionChange,
   onSelectionPreview,
-  onGestureStart,
+  onChartTouch,
   showHead = false,
   containerStyle,
 }: ChartStackProps) {
@@ -260,6 +263,18 @@ export function ChartStack({
     glyphWidth,
   })
 
+  const plotBands = useMemo(
+    () => layout.plots.map((plot) => ({ top: plot.y, bottom: plot.y + plot.height })),
+    [layout],
+  )
+  const handleChartTouch = useCallback(
+    (index: number) => {
+      const key = charts[index]?.key
+      if (key != null) onChartTouch?.(key)
+    },
+    [charts, onChartTouch],
+  )
+
   const gesture = useChartGestures({
     camera: camera.camera,
     dataKey,
@@ -272,7 +287,8 @@ export function ChartStack({
     selection,
     onSelectionCommit: onSelectionChange,
     onSelectionPreview,
-    onGestureStart,
+    plotBands,
+    onChartTouch: handleChartTouch,
     enabled: width > 0 && !prepared.isEmpty,
   })
 

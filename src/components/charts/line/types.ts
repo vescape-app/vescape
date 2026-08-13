@@ -86,3 +86,9 @@ export interface ChartPlotBox {
   width: number
   height: number
 }
+
+/** Vertical extent of one plot in canvas coordinates, for attributing a touch to a chart. */
+export interface ChartPlotBand {
+  top: number
+  bottom: number
+}
