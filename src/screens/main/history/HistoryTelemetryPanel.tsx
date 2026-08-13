@@ -1,15 +1,17 @@
+import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ChartStack } from '@/components/charts/line/ChartStack'
+import { routes } from '@/navigation/routes'
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
 import {
   isHistoryMetricKey,
   toggleOptionalChartMetric,
-  type OptionalChartMetric,
+  type ChartToggleMetric,
 } from '@/modules/history/components/historyChartMetrics'
 import { HistoryMetricLegend } from '@/modules/history/components/HistoryMetricLegend'
 import { HistoryMetricTabs } from '@/modules/history/components/HistoryMetricTabs'
@@ -103,7 +105,8 @@ export function HistoryTelemetryPanel({
   trim,
 }: HistoryTelemetryPanelProps) {
   const insets = useSafeAreaInsets()
-  const [activeCharts, setActiveCharts] = useState<Set<OptionalChartMetric>>(new Set())
+  const router = useRouter()
+  const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(new Set())
   const [shareInfoVisible, setShareInfoVisible] = useState(false)
   const [mediaDrawerVisible, setMediaDrawerVisible] = useState(false)
   const mediaButtonRef = useRef<View>(null)
@@ -189,8 +192,8 @@ export function HistoryTelemetryPanel({
   )
 
   const handleToggleMetric = useCallback(
-    (metric: OptionalChartMetric) => {
-      onMetricInteraction?.(metric)
+    (metric: ChartToggleMetric) => {
+      if (isHistoryMetricKey(metric)) onMetricInteraction?.(metric)
       setActiveCharts((prev) => toggleOptionalChartMetric(prev, metric))
     },
     [onMetricInteraction],
@@ -223,6 +226,7 @@ export function HistoryTelemetryPanel({
           onOpenMediaDrawer={() => setMediaDrawerVisible(true)}
           onToggleFavorite={onToggleFavorite}
           onOpenShareInfo={() => setShareInfoVisible(true)}
+          onOpenCharts={() => router.push(routes.historyCharts)}
         />
       ) : null}
       {hasChartData && (

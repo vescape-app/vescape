@@ -1,4 +1,5 @@
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
+import { theme } from '@/constants/theme'
 import { telemetry, type TelemetryMetricConfig } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 
@@ -111,6 +112,136 @@ export const HISTORY_CHART_DEFS: readonly ChartMetricDef[] = [
   ...OPTIONAL_CHART_METRICS,
 ]
 
+/**
+ * Metrics the ride records but the map cannot be coloured by.
+ *
+ * Kept apart from {@link OPTIONAL_CHART_METRICS} because a {@link HistoryMetricKey} is a promise
+ * that the route can be painted with it — attitude, footpad voltage and the GPS fix have no such
+ * meaning on a line drawn over a map. They are chart-only, and only the full-screen charts page
+ * offers them; the map panel would not have the room.
+ */
+export type ExtraChartMetric =
+  | 'pitch'
+  | 'roll'
+  | 'balancePitch'
+  | 'footpadAdc1'
+  | 'footpadAdc2'
+  | 'altitude'
+  | 'gpsAccuracy'
+
+/** Whether a chart-only metric reads the board stream or the phone's own GPS log. */
+export type ExtraChartSource = 'board' | 'gps'
+
+export interface ExtraChartMetricDef {
+  key: ExtraChartMetric
+  label: string
+  multilineLabel?: [string, string]
+  color: string
+  range: AutoRangeOptions
+  source: ExtraChartSource
+  unit?: string
+}
+
+/** The GPS metrics have no board-side definition, so they state their own scale here. */
+function gpsRange(min: number, max: number, minSpan: number, fixed = false): AutoRangeOptions {
+  return {
+    minSpan,
+    paddingRatio: PADDING_RATIO,
+    snap: true,
+    fallbackMin: min,
+    fallbackMax: max,
+    baseline: fixed ? { min, max } : undefined,
+  }
+}
+
+export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
+  {
+    key: 'pitch',
+    label: telemetry.pitch.label,
+    color: telemetry.pitch.color,
+    range: rangeOf(telemetry.pitch),
+    source: 'board',
+    unit: telemetry.pitch.unit,
+  },
+  {
+    key: 'roll',
+    label: telemetry.roll.label,
+    color: telemetry.roll.color,
+    range: rangeOf(telemetry.roll),
+    source: 'board',
+    unit: telemetry.roll.unit,
+  },
+  {
+    key: 'balancePitch',
+    label: telemetry.balancePitch.label,
+    multilineLabel: ['Balance', 'Pitch'],
+    color: telemetry.balancePitch.color,
+    range: rangeOf(telemetry.balancePitch),
+    source: 'board',
+    unit: telemetry.balancePitch.unit,
+  },
+  {
+    key: 'footpadAdc1',
+    label: telemetry.footpadAdc1.label,
+    multilineLabel: ['Footpad', 'ADC 1'],
+    color: telemetry.footpadAdc1.color,
+    // Fixed to the sensor's own 0-3.3 V scale: a pad that reads low is only readable against the
+    // voltage it should have been, and auto-ranging would hide exactly that.
+    range: rangeOf(telemetry.footpadAdc1, { includeZero: true, fixed: true }),
+    source: 'board',
+    unit: telemetry.footpadAdc1.unit,
+  },
+  {
+    key: 'footpadAdc2',
+    label: telemetry.footpadAdc2.label,
+    multilineLabel: ['Footpad', 'ADC 2'],
+    color: telemetry.footpadAdc2.color,
+    range: rangeOf(telemetry.footpadAdc2, { includeZero: true, fixed: true }),
+    source: 'board',
+    unit: telemetry.footpadAdc2.unit,
+  },
+  {
+    key: 'altitude',
+    label: 'Altitude',
+    color: theme.telemetry.altitude,
+    range: gpsRange(0, 100, 20),
+    source: 'gps',
+    unit: 'm',
+  },
+  {
+    key: 'gpsAccuracy',
+    label: 'GPS Accuracy',
+    multilineLabel: ['GPS', 'Accuracy'],
+    color: theme.telemetry.gpsAccuracy,
+    range: gpsRange(0, 20, 10),
+    source: 'gps',
+    unit: 'm',
+  },
+]
+
+/**
+ * Anything a metric tab can switch on: a map-colourable metric, or a chart-only one.
+ *
+ * Speed is in here even though the ride panel always draws it — on a page that is only charts,
+ * the rider is entitled to close it like any other line.
+ */
+export type ChartToggleMetric = 'speed' | OptionalChartMetric | ExtraChartMetric
+
+/** What a metric tab renders, whichever kind of metric it switches on. */
+export interface ChartTabMetricDef {
+  key: ChartToggleMetric
+  label: string
+  color: string
+  multilineLabel?: [string, string]
+}
+
+/** Every metric a full-screen stack can show, speed first and map-colourable ones ahead of the rest. */
+export const ALL_CHART_METRICS: readonly ChartTabMetricDef[] = [
+  { key: SPEED_CHART_DEF.key, label: SPEED_CHART_DEF.label, color: SPEED_CHART_DEF.color },
+  ...OPTIONAL_CHART_METRICS,
+  ...EXTRA_CHART_METRICS,
+]
+
 const HISTORY_METRIC_KEYS = new Set<string>(HISTORY_CHART_DEFS.map((def) => def.key))
 
 /** Whether a chart key names a metric — the stack keys its charts by one. */
@@ -118,10 +249,10 @@ export function isHistoryMetricKey(key: string): key is HistoryMetricKey {
   return HISTORY_METRIC_KEYS.has(key)
 }
 
-export function toggleOptionalChartMetric(
-  activeMetrics: ReadonlySet<OptionalChartMetric>,
-  metric: OptionalChartMetric,
-): Set<OptionalChartMetric> {
+export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
+  activeMetrics: ReadonlySet<T>,
+  metric: T,
+): Set<T> {
   const next = new Set(activeMetrics)
   if (next.has(metric)) {
     next.delete(metric)

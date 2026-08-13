@@ -131,7 +131,8 @@ const telemetryDefinitions = {
   },
   footpadAdc1: {
     label: 'ADC 1',
-    unit: '',
+    unit: 'V',
+    compactUnit: true,
     color: theme.telemetry.footpad1,
     decimals: 3,
     chartRange: { min: 0, max: 3.3 },
@@ -139,7 +140,8 @@ const telemetryDefinitions = {
   },
   footpadAdc2: {
     label: 'ADC 2',
-    unit: '',
+    unit: 'V',
+    compactUnit: true,
     color: theme.telemetry.footpad2,
     decimals: 3,
     chartRange: { min: 0, max: 3.3 },

@@ -7,10 +7,12 @@ import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/ch
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
+  EXTRA_CHART_METRICS,
   HISTORY_CHART_DEFS,
   OPTIONAL_CHART_METRICS,
   SPEED_CHART_DEF,
-  type OptionalChartMetric,
+  type ChartToggleMetric,
+  type ExtraChartMetric,
 } from '@/modules/history/components/historyChartMetrics'
 import { toGpsGapRanges } from '@/modules/history/lib/gpsGaps'
 import {
@@ -21,6 +23,7 @@ import {
 } from '@/modules/history/lib/metricColorScale'
 import { RIDE_TRIM_PADDING_MS, rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
+import type { HistoryGpsSample } from 'vescape-core'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const SPEED_CHART_HEIGHT = 48
@@ -87,6 +90,92 @@ export function useChartSeries(samples: TelemetrySample[]): HistorySeries {
     }
     return series
   }, [samples])
+}
+
+/** Every chart-only metric of a ride — see {@link EXTRA_CHART_METRICS}. */
+export type HistoryExtraSeries = Record<ExtraChartMetric, ChartSeriesData>
+export type HistoryExtraRanges = Record<ExtraChartMetric, { min: number; max: number }>
+
+function extraBoardValue(sample: TelemetrySample, metric: ExtraChartMetric): number | null {
+  switch (metric) {
+    case 'pitch':
+      return sample.pitch
+    case 'roll':
+      return sample.roll
+    case 'balancePitch':
+      return sample.balancePitch
+    case 'footpadAdc1':
+      return sample.adc1
+    case 'footpadAdc2':
+      return sample.adc2
+    default:
+      return null
+  }
+}
+
+function extraGpsValue(sample: HistoryGpsSample, metric: ExtraChartMetric): number | null {
+  switch (metric) {
+    case 'altitude':
+      return sample.altitudeM
+    case 'gpsAccuracy':
+      return sample.accuracyM
+    default:
+      return null
+  }
+}
+
+/**
+ * The chart-only metrics of a ride, board stream and GPS log merged into one shape.
+ *
+ * The two sources are logged independently and at different rates, so they are read separately and
+ * only meet here — the chart stack lines them up on the ride's own clock, not on a shared index.
+ * Only the full-screen page calls this: the map panel never offers these metrics, and building
+ * eight more series per ride under a map nobody asked to see would be wasted work.
+ */
+export function useExtraChartSeries(
+  samples: TelemetrySample[],
+  gpsSamples: HistoryGpsSample[],
+): HistoryExtraSeries {
+  return useMemo(() => {
+    const series = {} as HistoryExtraSeries
+    for (const def of EXTRA_CHART_METRICS) series[def.key] = { ts: [], vs: [] }
+
+    for (const sample of samples) {
+      for (const def of EXTRA_CHART_METRICS) {
+        if (def.source !== 'board') continue
+        const value = extraBoardValue(sample, def.key)
+        if (value == null) continue
+        series[def.key].ts.push(sample.capturedAtMs)
+        series[def.key].vs.push(value)
+      }
+    }
+
+    // Board samples define the visible ride; GPS logged outside it would stretch the x scale past
+    // what every other chart shows.
+    const startMs = samples.at(0)?.capturedAtMs ?? Number.NEGATIVE_INFINITY
+    const endMs = samples.at(-1)?.capturedAtMs ?? Number.POSITIVE_INFINITY
+    for (const sample of gpsSamples) {
+      if (sample.capturedAtMs < startMs || sample.capturedAtMs > endMs) continue
+      for (const def of EXTRA_CHART_METRICS) {
+        if (def.source !== 'gps') continue
+        const value = extraGpsValue(sample, def.key)
+        if (value == null) continue
+        series[def.key].ts.push(sample.capturedAtMs)
+        series[def.key].vs.push(value)
+      }
+    }
+    return series
+  }, [gpsSamples, samples])
+}
+
+export function useExtraChartRanges(series: HistoryExtraSeries): HistoryExtraRanges {
+  return useMemo(() => {
+    const ranges = {} as HistoryExtraRanges
+    for (const def of EXTRA_CHART_METRICS) {
+      ranges[def.key] = computeAutoRangeFromValues(series[def.key].vs, def.range)
+    }
+    return ranges
+  }, [series])
 }
 
 export function useChartRanges(series: HistorySeries): HistoryRanges {
@@ -212,7 +301,18 @@ interface HistoryChartStackInput {
   ranges: HistoryRanges
   ramps: HistoryRamps
   exclusionBands: Record<HistoryMetricKey, ChartBand[] | undefined>
-  activeMetrics: ReadonlySet<OptionalChartMetric>
+  activeMetrics: ReadonlySet<ChartToggleMetric>
+  /**
+   * Let the rider close the speed chart too. The ride panel keeps speed as the line the stack is
+   * read against; a page that is nothing but charts has no such anchor to protect.
+   */
+  speedOptional?: boolean
+  /** Chart-only metrics, when the surface offers them — see {@link useExtraChartSeries}. */
+  extraSeries?: HistoryExtraSeries
+  extraRanges?: HistoryExtraRanges
+  /** Chart heights, so a full screen can spend the room the map panel does not have. */
+  speedHeight?: number
+  metricHeight?: number
 }
 
 /**
@@ -228,12 +328,17 @@ export function useHistoryChartStack({
   ramps,
   exclusionBands,
   activeMetrics,
+  extraSeries,
+  extraRanges,
+  speedOptional = false,
+  speedHeight = SPEED_CHART_HEIGHT,
+  metricHeight = METRIC_CHART_HEIGHT,
 }: HistoryChartStackInput): ChartSpec[] {
   return useMemo(() => {
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
-      height: SPEED_CHART_HEIGHT,
+      height: speedHeight,
       series: [
         {
           key: 'speed',
@@ -249,11 +354,11 @@ export function useHistoryChartStack({
     const optional = OPTIONAL_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
       (def) =>
         def.key === 'battery'
-          ? batteryChart(series, ranges, ramps)
+          ? batteryChart(series, ranges, ramps, metricHeight)
           : ({
               key: def.key,
               label: def.label,
-              height: METRIC_CHART_HEIGHT,
+              height: metricHeight,
               series: [
                 { key: def.key, data: series[def.key], color: def.color, ramp: ramps[def.key] },
               ],
@@ -262,8 +367,41 @@ export function useHistoryChartStack({
             } satisfies ChartSpec),
     )
 
-    return [speed, ...optional]
-  }, [activeMetrics, exclusionBands, ramps, ranges, series])
+    const extra =
+      extraSeries && extraRanges
+        ? EXTRA_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
+            (def) =>
+              ({
+                key: def.key,
+                label: def.label,
+                height: metricHeight,
+                series: [
+                  {
+                    key: def.key,
+                    data: extraSeries[def.key],
+                    color: def.color,
+                    unit: def.unit,
+                  },
+                ],
+                left: { range: extraRanges[def.key] },
+              }) satisfies ChartSpec,
+          )
+        : []
+
+    const showSpeed = !speedOptional || activeMetrics.has('speed')
+    return [...(showSpeed ? [speed] : []), ...optional, ...extra]
+  }, [
+    activeMetrics,
+    exclusionBands,
+    extraRanges,
+    extraSeries,
+    metricHeight,
+    ramps,
+    ranges,
+    series,
+    speedHeight,
+    speedOptional,
+  ])
 }
 
 /**
@@ -275,6 +413,7 @@ function batteryChart(
   series: HistorySeries,
   ranges: HistoryRanges,
   ramps: HistoryRamps,
+  height: number,
 ): ChartSpec {
   const hasPercent = series.batteryPercent.vs.length > 0
   const voltage: ChartSpec['series'][number] = {
@@ -289,7 +428,7 @@ function batteryChart(
     return {
       key: 'battery',
       label: 'Battery',
-      height: METRIC_CHART_HEIGHT,
+      height,
       series: [{ ...voltage, ramp: ramps.battery, label: undefined }],
       left: { range: ranges.battery },
     }
@@ -298,7 +437,7 @@ function batteryChart(
   return {
     key: 'battery',
     label: 'Battery',
-    height: METRIC_CHART_HEIGHT,
+    height,
     series: [
       {
         key: 'percent',

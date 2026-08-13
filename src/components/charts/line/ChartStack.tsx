@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   StyleSheet,
   View,
@@ -117,6 +117,13 @@ export interface ChartStackProps {
    */
   zoomWindowMs?: SharedValue<ChartTimeRange | null>
   /**
+   * Window to open at, in wall-clock ms, or `null` to open showing everything.
+   *
+   * Read once per dataset, unlike {@link zoomWindowMs}, which the stack only ever writes: this is
+   * how a second stack of the same ride opens on the stretch the rider had already pinched into.
+   */
+  initialZoomMs?: ChartTimeRange | null
+  /**
    * Chosen stretch of time, dimmed outside and draggable by its handles. Pass one to trim a
    * ride, mark a stretch for export, or pick a window to zoom into.
    */
@@ -233,6 +240,7 @@ export function ChartStack({
   follow = false,
   scrubTimeMs,
   zoomWindowMs,
+  initialZoomMs,
   selection,
   onSelectionChange,
   onSelectionPreview,
@@ -265,6 +273,18 @@ export function ChartStack({
     endMs: prepared.endMs,
     dataKey,
   })
+
+  // Adopting a window is a one-off per dataset: after this the camera belongs to the rider's
+  // gestures, and re-applying it would snap the stack back under their finger.
+  const adoptedZoomKey = useRef<string | null>(null)
+  if (adoptedZoomKey.current !== dataKey && !prepared.isEmpty) {
+    adoptedZoomKey.current = dataKey
+    if (initialZoomMs) {
+      const startMs = toChartMs(initialZoomMs.startMs, timeline)
+      const endMs = toChartMs(initialZoomMs.endMs, timeline)
+      if (endMs > startMs) camera.camera.value = { spanMs: endMs - startMs, endMs, key: dataKey }
+    }
+  }
 
   const layout = useMemo(
     () => computeChartLayout({ heights: compacted.map((c) => c.height), width }),

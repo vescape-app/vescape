@@ -132,6 +132,8 @@ export const telemetry = {
   pitch: palette.purple.light,
   roll: palette.fuchsia.color,
   balancePitch: palette.fuchsia.light,
+  altitude: palette.amber.color,
+  gpsAccuracy: palette.green.light,
 } as const
 
 export const map = {
