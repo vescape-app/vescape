@@ -23,9 +23,9 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const SPEED_CHART_HEIGHT = 48
 const METRIC_CHART_HEIGHT = 40
-/** Excluded stretches sit on the floor; favourite ranges on the line above, so both stay legible. */
+/** Excluded stretches sit on the floor of the plot, clear of the line they annotate. */
 const EXCLUSION_ROW = 0
-const FAVORITE_ROW = 1
+const FAVORITE_WASH = theme.alpha(theme.status.favorite.color, 0.12)
 
 /** Every metric of a ride, plus derived pack percent. */
 export type HistorySeries = Record<HistoryMetricKey | 'batteryPercent', ChartSeriesData>
@@ -147,13 +147,24 @@ export function useChartExclusionBands() {
   }, [sessionExclusions])
 }
 
+/**
+ * Favourite stretches, washed across the whole stack.
+ *
+ * They belong to the ride rather than to a metric, so they are not one chart's band: the rider
+ * marked a piece of the ride, and every line should show it.
+ */
+export function useFavoriteBands(ranges: { startMs: number; endMs: number }[]): ChartBand[] {
+  return useMemo(
+    () => ranges.map((range) => ({ ...range, color: FAVORITE_WASH, fill: 'plot' as const })),
+    [ranges],
+  )
+}
+
 interface HistoryChartStackInput {
   series: HistorySeries
   ranges: HistoryRanges
   ramps: HistoryRamps
   exclusionBands: Record<HistoryMetricKey, ChartBand[] | undefined>
-  /** Favourite ranges, marked on the speed chart only — they belong to the ride, not a metric. */
-  favoriteRanges: { startMs: number; endMs: number }[]
   activeMetrics: ReadonlySet<OptionalChartMetric>
 }
 
@@ -169,16 +180,9 @@ export function useHistoryChartStack({
   ranges,
   ramps,
   exclusionBands,
-  favoriteRanges,
   activeMetrics,
 }: HistoryChartStackInput): ChartSpec[] {
   return useMemo(() => {
-    const favoriteBands: ChartBand[] = favoriteRanges.map((range) => ({
-      ...range,
-      color: theme.status.favorite.color,
-      row: FAVORITE_ROW,
-    }))
-
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
@@ -192,7 +196,7 @@ export function useHistoryChartStack({
         },
       ],
       left: { range: ranges.speed },
-      bands: [...(exclusionBands.speed ?? []), ...favoriteBands],
+      bands: exclusionBands.speed,
     }
 
     const optional = OPTIONAL_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
@@ -212,7 +216,7 @@ export function useHistoryChartStack({
     )
 
     return [speed, ...optional]
-  }, [activeMetrics, exclusionBands, favoriteRanges, ramps, ranges, series])
+  }, [activeMetrics, exclusionBands, ramps, ranges, series])
 }
 
 /**

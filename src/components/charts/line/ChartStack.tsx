@@ -81,6 +81,12 @@ export interface ChartSpec {
 }
 
 export interface ChartStackProps {
+  /**
+   * Time ranges called out across the whole stack rather than under one line — a Favorite the
+   * rider picked out. Drawn as one column through every plot, so the eye reads the same stretch
+   * on every metric at once.
+   */
+  bands?: ChartBand[]
   charts: ChartSpec[]
   /**
    * Identity of the data on screen — a ride id, a focused metric. Zoom survives data updates
@@ -197,6 +203,7 @@ export function ChartStack({
   onSelectionChange,
   onSelectionPreview,
   onChartTouch,
+  bands,
   showHead = false,
   containerStyle,
 }: ChartStackProps) {
@@ -304,6 +311,12 @@ export function ChartStack({
   const plotWidth = layout.plots[0]?.width ?? 0
   const plotsTop = layout.plots[0]?.y ?? 0
   const plotsBottom = (layout.plots.at(-1)?.y ?? 0) + (layout.plots.at(-1)?.height ?? 0)
+  // One box covering every plot and the gaps between them, for bands that belong to the ride
+  // rather than to a metric.
+  const stackPlot = useMemo(
+    () => ({ x: AXIS_WIDTH, y: plotsTop, width: plotWidth, height: plotsBottom - plotsTop }),
+    [plotWidth, plotsBottom, plotsTop],
+  )
   const endLabelX = useDerivedValue(
     () => AXIS_WIDTH + plotWidth - glyphWidth * (withSeconds.value ? 8 : 5),
     [glyphWidth, plotWidth],
@@ -327,6 +340,19 @@ export function ChartStack({
               bottom={plotsBottom}
               scrubTimeMs={scrub}
             />
+
+            {bands && bands.length > 0 && (
+              <Group transform={[{ translateX: AXIS_WIDTH }, { translateY: plotsTop }]}>
+                <BandsLayer
+                  bands={bands}
+                  plot={stackPlot}
+                  camera={camera.camera}
+                  dataKey={camera.dataKey}
+                  domainStartMs={prepared.startMs}
+                  domainEndMs={prepared.endMs}
+                />
+              </Group>
+            )}
 
             {prepared.charts.map((chart, index) => (
               <ChartPlot

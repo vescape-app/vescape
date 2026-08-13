@@ -158,6 +158,19 @@ export function ChartStackShowcase() {
     [count, duty, speed, stepMs, volts],
   )
 
+  // Stack-level: a stretch the rider chose, washed through every plot rather than marked under one.
+  const stackBands: ChartBand[] = useMemo(
+    () => [
+      {
+        startMs: BASE + count * stepMs * 0.3,
+        endMs: BASE + count * stepMs * 0.44,
+        color: theme.alpha(theme.status.favorite.color, 0.12),
+        fill: 'plot',
+      },
+    ],
+    [count, stepMs],
+  )
+
   return (
     <ShowcaseCard name="ChartStack / one canvas, shared camera">
       <ChipRow
@@ -180,6 +193,7 @@ export function ChartStackShowcase() {
       <View style={styles.stack}>
         <ChartStack
           charts={charts}
+          bands={stackBands}
           dataKey={size}
           timeMode="clock"
           selection={selection}

@@ -20,6 +20,7 @@ import {
   useChartRanges,
   useChartSeries,
   useHistoryChartStack,
+  useFavoriteBands,
   useMetricRamps,
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
@@ -114,12 +115,12 @@ export function HistoryTelemetryPanel({
   const ranges = useChartRanges(series)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
+  const favoriteBands = useFavoriteBands(favoriteRanges)
   const charts = useHistoryChartStack({
     series,
     ranges,
     ramps,
     exclusionBands,
-    favoriteRanges,
     activeMetrics: activeCharts,
   })
 
@@ -223,6 +224,7 @@ export function HistoryTelemetryPanel({
         <>
           <ChartStack
             charts={charts}
+            bands={favoriteBands}
             dataKey={`${startAtMs}`}
             timeMode="clock"
             containerStyle={styles.chart}
