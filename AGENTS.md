@@ -105,6 +105,7 @@ Rules:
 ## React Native
 
 React Native UI conventions, including icon usage, live in `docs/agents/react.md`.
+Skia canvas rules — gesture frame cost, transform-only animation, worklet and repaint traps — live in `docs/agents/skia.md`.
 Visual design language (colors, layout, typography) lives in `docs/design.md`.
 Clerk production authentication setup and Android email-link debugging live in `docs/agents/clerk-auth.md`.
 Mapbox dependency patches and their native camera semantics live in `docs/agents/mapbox-patches.md`.
