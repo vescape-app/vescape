@@ -157,6 +157,12 @@ internal final class BoardSessionController: VescGattListener {
   private let courseDeriver = GpsCourseDeriver()
   private var recentLocations: [[String: Any?]] = []
   private var gpsError: String?
+  private var gpsSessionStartedAt: Int64?
+  private var gpsFixCount = 0
+  private var gpsPreciseFixCount = 0
+  private var gpsFirstFixAt: Int64?
+  private var gpsFirstPreciseFixAt: Int64?
+  private var gpsLastFixAt: Int64?
 
   private var pendingOnSuccess: (() -> Void)?
   private var pendingOnError: ((String, String) -> Void)?
@@ -597,6 +603,7 @@ internal final class BoardSessionController: VescGattListener {
     movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: sessionSettings).movingSpeedThresholdCentiKmh
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     recordingCoordinator.beginBoardSession(config: config)
+    beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
     // Board Session). Detectors that fire warnings this session land in later slices.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt
@@ -675,6 +682,7 @@ internal final class BoardSessionController: VescGattListener {
         BoardWarningRegistry.shared.reportCleanEvaluation(boardId: boardId, kind: BoardWarningKind.batteryConfigMismatch)
       }
     }
+    recordGpsSessionSummary()
     session?.invalidate()
     session = nil
     config = nil
@@ -1536,6 +1544,7 @@ internal final class BoardSessionController: VescGattListener {
 
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
     var location = incoming
+    recordGpsFix(location)
     // Approximate fixes never feed the course: they are metres of noise apart and would spin a
     // derived bearing, and they are not what the map's GPS heading mode follows either.
     if location.precise {
@@ -1577,6 +1586,52 @@ internal final class BoardSessionController: VescGattListener {
       guard let timestamp = (row["timestamp"] ?? nil) as? NSNumber else { return false }
       return timestamp.int64Value < oldest
     }
+  }
+
+  /// One low-volume Local Diagnostic Event per Board Session. No coordinates leave the GPS path.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `recordGpsSessionSummary`
+  private func beginGpsSessionDiagnostics() {
+    gpsSessionStartedAt = nowMs()
+    gpsFixCount = 0
+    gpsPreciseFixCount = 0
+    gpsFirstFixAt = nil
+    gpsFirstPreciseFixAt = nil
+    gpsLastFixAt = nil
+  }
+
+  private func recordGpsFix(_ location: TelemetryLocationCapture) {
+    guard gpsSessionStartedAt != nil else { return }
+    gpsFixCount += 1
+    gpsFirstFixAt = gpsFirstFixAt ?? nowMs()
+    gpsLastFixAt = nowMs()
+    if location.precise {
+      gpsPreciseFixCount += 1
+      gpsFirstPreciseFixAt = gpsFirstPreciseFixAt ?? nowMs()
+    }
+  }
+
+  private func recordGpsSessionSummary() {
+    guard let startedAt = gpsSessionStartedAt else { return }
+    let endedAt = nowMs()
+    recordConnectionDiagnostic(
+      "gps_session_summary",
+      operation: "gps",
+      message: "GPS Board Session summary",
+      extra: [
+        "recording_enabled": recordingCoordinator.telemetryRecordingEnabled,
+        "updates_started": gpsMonitor.active,
+        "fix_count": gpsFixCount,
+        "precise_fix_count": gpsPreciseFixCount,
+        "first_fix_delay_ms": gpsFirstFixAt.map { $0 - startedAt },
+        "first_precise_fix_delay_ms": gpsFirstPreciseFixAt.map { $0 - startedAt },
+        "last_fix_age_ms": gpsLastFixAt.map { endedAt - $0 },
+        "duration_ms": endedAt - startedAt,
+        "authorization": gpsMonitor.authorization,
+        "accuracy_authorization": gpsMonitor.accuracyAuthorization,
+        "last_error": gpsError,
+      ]
+    )
+    gpsSessionStartedAt = nil
   }
 
   // MARK: - Polling (response-paced; ADR 0015 dumb connect)

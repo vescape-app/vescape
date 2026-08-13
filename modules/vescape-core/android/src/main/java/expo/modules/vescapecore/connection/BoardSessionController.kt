@@ -29,6 +29,7 @@ import expo.modules.vescapecore.config.ConfigRWControllerPort
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.location.GpsMonitor
+import expo.modules.vescapecore.location.isPreciseGpsFix
 import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
@@ -94,12 +95,14 @@ import expo.modules.vescapecore.warnings.BoardWarningStore
 import expo.modules.vescapecore.warnings.CellSpreadDetector
 import expo.modules.vescapecore.warnings.ConfigSafetyDetector
 import expo.modules.vescapecore.warnings.ConfigSafetyValues
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.os.BatteryManager
@@ -108,6 +111,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.ContextCompat
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -636,6 +640,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var fwVersionString: String? = null
     private var boardReadyTimeoutHandle: Cancellable? = null
     private var gpsError: String? = null
+    private var gpsSessionStartedAt: Long? = null
+    private var gpsFixCount = 0
+    private var gpsPreciseFixCount = 0
+    private var gpsFirstFixAt: Long? = null
+    private var gpsFirstPreciseFixAt: Long? = null
+    private var gpsLastFixAt: Long? = null
     private var isStoppingService = false
     private var connectionSoundsEnabled = true
 private var wearAutoLaunchOnConnect = true
@@ -1030,6 +1040,7 @@ private var wearAutoLaunchOnConnect = true
         connectionCoordinator.reset()
         reconnectScheduler.cancelAndReset()
         recordingCoordinator.beginBoardSession(start.boardConfig)
+        beginGpsSessionDiagnostics()
         // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
         // Board Session). Detectors that fire warnings this session land in later slices.
         start.boardConfig.appBoardId?.let {
@@ -1984,6 +1995,7 @@ private var wearAutoLaunchOnConnect = true
         // and the next session must not still be reading time from the past.
         sessionClock = SystemSessionClock
         alertCoordinator.stopAllGeiger()
+        recordGpsSessionSummary(stoppedConfig)
         recordingCoordinator.finishBoardSession(
             status = if (emitDisconnected) "disconnected" else "stopped",
             markerType = if (emitDisconnected) "disconnected" else "app_stop",
@@ -2311,10 +2323,70 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun onLocationUpdated(location: Location) {
+        recordGpsFix(location)
         locationTracker.onLocationUpdated(location)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
+    }
+
+    /**
+     * One low-volume Local Diagnostic Event per Board Session. No coordinates leave the GPS path.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `recordGpsSessionSummary`
+     */
+    private fun beginGpsSessionDiagnostics() {
+        gpsSessionStartedAt = nowMs()
+        gpsFixCount = 0
+        gpsPreciseFixCount = 0
+        gpsFirstFixAt = null
+        gpsFirstPreciseFixAt = null
+        gpsLastFixAt = null
+    }
+
+    private fun recordGpsFix(location: Location) {
+        if (gpsSessionStartedAt == null) return
+        val at = nowMs()
+        gpsFixCount += 1
+        if (gpsFirstFixAt == null) gpsFirstFixAt = at
+        gpsLastFixAt = at
+        val accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null
+        if (isPreciseGpsFix(location.provider, accuracyM)) {
+            gpsPreciseFixCount += 1
+            if (gpsFirstPreciseFixAt == null) gpsFirstPreciseFixAt = at
+        }
+    }
+
+    private fun recordGpsSessionSummary(config: SessionConfig?) {
+        val startedAt = gpsSessionStartedAt ?: return
+        val endedAt = nowMs()
+        val locationManager = service.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val fineGranted = ContextCompat.checkSelfPermission(service, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val backgroundGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(service, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        recordLocalDiagnostic(
+            "gps_session_summary",
+            config,
+            "gps",
+            mapOf(
+                "message" to "GPS Board Session summary",
+                "recording_enabled" to recordingCoordinator.telemetryRecordingEnabled,
+                "updates_started" to gpsMonitor.active,
+                "fix_count" to gpsFixCount,
+                "precise_fix_count" to gpsPreciseFixCount,
+                "first_fix_delay_ms" to gpsFirstFixAt?.minus(startedAt),
+                "first_precise_fix_delay_ms" to gpsFirstPreciseFixAt?.minus(startedAt),
+                "last_fix_age_ms" to gpsLastFixAt?.let { endedAt - it },
+                "duration_ms" to endedAt - startedAt,
+                "foreground_permission" to fineGranted,
+                "background_permission" to backgroundGranted,
+                "gps_provider_enabled" to (locationManager?.isProviderEnabled(LocationManager.GPS_PROVIDER) ?: false),
+                "network_provider_enabled" to (locationManager?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ?: false),
+                "last_error" to gpsError,
+            ),
+        )
+        gpsSessionStartedAt = null
     }
 
     /**
