@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -22,6 +22,7 @@ import {
   useChartSeries,
   useHistoryChartStack,
   useFavoriteBands,
+  useGpsGapBands,
   useMetricRamps,
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
@@ -118,6 +119,8 @@ export function HistoryTelemetryPanel({
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favoriteRanges)
+  const gpsGapBands = useGpsGapBands(visibleSamples)
+  const stackBands = useMemo(() => [...favoriteBands, ...gpsGapBands], [favoriteBands, gpsGapBands])
   const charts = useHistoryChartStack({
     series,
     ranges,
@@ -226,7 +229,7 @@ export function HistoryTelemetryPanel({
         <>
           <ChartStack
             charts={charts}
-            bands={favoriteBands}
+            bands={stackBands}
             timeline={timeline}
             dataKey={`${startAtMs}`}
             timeMode="clock"

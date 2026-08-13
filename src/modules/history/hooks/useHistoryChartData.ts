@@ -12,6 +12,7 @@ import {
   SPEED_CHART_DEF,
   type OptionalChartMetric,
 } from '@/modules/history/components/historyChartMetrics'
+import { toGpsGapRanges } from '@/modules/history/lib/gpsGaps'
 import {
   getHistoryMetricColorRange,
   getTelemetrySampleMetricValue,
@@ -24,8 +25,12 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 const SPEED_CHART_HEIGHT = 48
 const METRIC_CHART_HEIGHT = 40
-/** Excluded stretches sit on the floor of the plot, clear of the line they annotate. */
-const EXCLUSION_ROW = 0
+/**
+ * Excluded stretches sit on the floor of the plot, clear of the line they annotate; the GPS
+ * dropouts of the whole ride get the row under them, at the foot of the stack.
+ */
+const EXCLUSION_ROW = 1
+const GPS_GAP_ROW = 0
 const FAVORITE_WASH = theme.alpha(theme.status.favorite.color, 0.12)
 
 /** Every metric of a ride, plus derived pack percent. */
@@ -146,6 +151,25 @@ export function useChartExclusionBands() {
     }
     return bands
   }, [sessionExclusions])
+}
+
+/**
+ * Where the phone lost its fix, washed across the whole stack.
+ *
+ * The map has nothing to draw over these stretches while the charts stay full of board data, which
+ * reads as if the ride went nowhere. A red mark under every line says the ride is fine and the
+ * position is what is missing.
+ */
+export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
+  const gpsSamples = useHistoryStore((s) => s.sessionGpsSamples)
+  return useMemo(() => {
+    const sampleTimes = samples.map((sample) => sample.capturedAtMs)
+    return toGpsGapRanges(gpsSamples, sampleTimes).map((range) => ({
+      ...range,
+      color: theme.palette.red.color,
+      row: GPS_GAP_ROW,
+    }))
+  }, [gpsSamples, samples])
 }
 
 /**
