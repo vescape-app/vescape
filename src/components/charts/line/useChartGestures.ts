@@ -1,9 +1,14 @@
 import { useMemo } from 'react'
 import { Gesture } from 'react-native-gesture-handler'
-import { useSharedValue, type SharedValue } from 'react-native-reanimated'
+import { runOnJS, useSharedValue, type SharedValue } from 'react-native-reanimated'
 
-import { MIN_SPAN_MS, unprojectX, viewportFor } from '@/components/charts/line/projection'
-import type { ChartCamera, ChartViewport } from '@/components/charts/line/types'
+import { MIN_SPAN_MS, projectX, unprojectX, viewportFor } from '@/components/charts/line/projection'
+import {
+  moveSelectionEdge,
+  pickSelectionEdge,
+  type SelectionEdge,
+} from '@/components/charts/line/selectionMath'
+import type { ChartCamera, ChartTimeRange, ChartViewport } from '@/components/charts/line/types'
 
 /**
  * How close to the live edge a pan has to land before the camera re-attaches to it. A rider who
@@ -29,6 +34,13 @@ export interface ChartGestureOptions {
    * through React — and so a chart driven from outside is indistinguishable from a touched one.
    */
   scrubTimeMs: SharedValue<number | null>
+  /**
+   * Chosen time range, or `null` when nothing is selected. Present means its handles can be
+   * dragged; a drag that starts anywhere else still scrubs.
+   */
+  selection?: SharedValue<ChartTimeRange | null>
+  /** Called once per drag, when the finger lifts — not on every frame of it. */
+  onSelectionCommit?: (range: ChartTimeRange) => void
   enabled: boolean
 }
 
@@ -54,11 +66,16 @@ export function useChartGestures({
   plotX,
   follow,
   scrubTimeMs,
+  selection,
+  onSelectionCommit,
   enabled,
 }: ChartGestureOptions) {
   const startViewport = useSharedValue<ChartViewport>({ startMs: 0, endMs: 0 })
   const startFocalRatio = useSharedValue(0)
   const lastScrubX = useSharedValue(Number.NaN)
+  const draggedEdge = useSharedValue<SelectionEdge | null>(null)
+  const dragOriginMs = useSharedValue(0)
+  const lastDragX = useSharedValue(Number.NaN)
 
   return useMemo(() => {
     const focalRatio = (focalX: number) => {
@@ -81,6 +98,22 @@ export function useChartGestures({
       lastScrubX.value = clamped
       const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
       scrubTimeMs.value = unprojectX(clamped, viewport, plotWidth)
+    }
+
+    /**
+     * Which edge a drag starting at `x` owns: the plot is split at the midpoint of the range, so
+     * either half is a target as wide as it needs to be rather than a few pixels of handle.
+     */
+    const edgeAt = (x: number) => {
+      'worklet'
+      const range = selection?.value
+      if (range == null || plotWidth <= 0) return null
+      const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
+      return pickSelectionEdge(
+        x - plotX,
+        projectX(range.startMs, viewport, plotWidth),
+        projectX(range.endMs, viewport, plotWidth),
+      )
     }
 
     const pinch = Gesture.Pinch()
@@ -135,15 +168,53 @@ export function useChartGestures({
       .onStart((event) => {
         'worklet'
         lastScrubX.value = Number.NaN
-        scrubTo(event.x)
+        // While a range is on screen the drag belongs to it: a selection is something the rider
+        // is adjusting, and reading values off the line is what the chart does the rest of the time.
+        const edge = edgeAt(event.x)
+        draggedEdge.value = edge
+        if (edge == null) {
+          scrubTo(event.x)
+          return
+        }
+        // Where the edge sat when the finger landed; the drag moves it from there by translation.
+        lastDragX.value = Number.NaN
+        const range = selection?.value
+        dragOriginMs.value = range == null ? 0 : edge === 'start' ? range.startMs : range.endMs
       })
       .onUpdate((event) => {
         'worklet'
-        scrubTo(event.x)
+        const edge = draggedEdge.value
+        if (edge == null) {
+          scrubTo(event.x)
+          return
+        }
+        const range = selection == null ? null : selection.value
+        if (selection == null || range == null) return
+        // Same half-pixel quantisation as scrubbing: touches arrive faster than frames and report
+        // sub-pixel movement, and a move too small to redraw is not worth waking the layer for.
+        const translationX = Math.round(event.translationX * 2) / 2
+        if (translationX === lastDragX.value) return
+        lastDragX.value = translationX
+        const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
+        selection.value = moveSelectionEdge({
+          edge,
+          range,
+          originMs: dragOriginMs.value,
+          translationX,
+          plotWidth,
+          viewportSpanMs: viewport.endMs - viewport.startMs,
+          domainStartMs,
+          domainEndMs,
+        })
       })
       .onFinalize(() => {
         'worklet'
+        const range = draggedEdge.value != null ? selection?.value : null
+        draggedEdge.value = null
         scrubTimeMs.value = null
+        // Committed on release rather than per frame: the range is what the rest of the app acts
+        // on, and re-running that for every pixel of a drag is what a shared value exists to avoid.
+        if (range != null && onSelectionCommit) runOnJS(onSelectionCommit)(range)
       })
 
     return Gesture.Race(fit, Gesture.Simultaneous(pinch, scrub))
@@ -152,12 +223,17 @@ export function useChartGestures({
     dataKey,
     domainEndMs,
     domainStartMs,
+    dragOriginMs,
+    draggedEdge,
     enabled,
     follow,
+    lastDragX,
     lastScrubX,
+    onSelectionCommit,
     plotWidth,
     plotX,
     scrubTimeMs,
+    selection,
     startFocalRatio,
     startViewport,
   ])

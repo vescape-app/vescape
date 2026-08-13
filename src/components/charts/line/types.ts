@@ -59,6 +59,27 @@ export interface ChartColorRamp {
   mode?: 'smooth' | 'bands'
 }
 
+/** A stretch of time, in epoch ms. */
+export interface ChartTimeRange {
+  startMs: number
+  endMs: number
+}
+
+/**
+ * A stretch of time called out under the line — a segment excluded from the stats, a favourite
+ * lap, a fault window.
+ *
+ * Drawn as a hairline along the floor of the plot rather than a block behind the line: the line
+ * is what the rider is reading, and a full-height wash competes with it. Bands sharing a colour
+ * and a row are drawn as one path, so a ride with hundreds of excluded stretches still costs a
+ * handful of nodes.
+ */
+export interface ChartBand extends ChartTimeRange {
+  color: string
+  /** Which hairline to sit on, counting up from the floor. Keeps two kinds from overlapping. */
+  row?: number
+}
+
 export interface ChartPlotBox {
   x: number
   y: number

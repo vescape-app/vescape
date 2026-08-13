@@ -28,12 +28,16 @@ import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
 import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
 import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
+import { BandsLayer } from '@/components/charts/line/BandsLayer'
 import type {
+  ChartBand,
   ChartColorRamp,
   ChartPlotBox,
   ChartSeriesData,
+  ChartTimeRange,
   ChartYRange,
 } from '@/components/charts/line/types'
+import { SelectionLayer } from '@/components/charts/line/SelectionLayer'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
 
@@ -65,6 +69,8 @@ export interface ChartSpec {
   series: ChartSeriesSpec[]
   left: ChartAxisSpec
   right?: ChartAxisSpec
+  /** Time ranges called out under the line — see {@link ChartBand}. */
+  bands?: ChartBand[]
 }
 
 export interface ChartStackProps {
@@ -83,6 +89,13 @@ export interface ChartStackProps {
    * from the same drag; a stack given none keeps its own.
    */
   scrubTimeMs?: SharedValue<number | null>
+  /**
+   * Chosen stretch of time, dimmed outside and draggable by its handles. Pass one to trim a
+   * ride, mark a stretch for export, or pick a window to zoom into.
+   */
+  selection?: SharedValue<ChartTimeRange | null>
+  /** The range after a handle drag, once the finger lifts. */
+  onSelectionChange?: (range: ChartTimeRange) => void
   containerStyle?: StyleProp<ViewStyle>
 }
 
@@ -158,6 +171,8 @@ export function ChartStack({
   timeMode = 'clock',
   follow = false,
   scrubTimeMs,
+  selection,
+  onSelectionChange,
   containerStyle,
 }: ChartStackProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
@@ -215,6 +230,8 @@ export function ChartStack({
     plotX: AXIS_WIDTH,
     follow,
     scrubTimeMs: scrub,
+    selection,
+    onSelectionCommit: onSelectionChange,
     enabled: width > 0 && !prepared.isEmpty,
   })
 
@@ -232,6 +249,8 @@ export function ChartStack({
     return formatClock(endMs, endMs - startMs < CLOCK_SECONDS_BELOW_MS)
   }, [camera.domainEndMs, timeMode])
   const plotWidth = layout.plots[0]?.width ?? 0
+  const plotsTop = layout.plots[0]?.y ?? 0
+  const plotsBottom = (layout.plots.at(-1)?.y ?? 0) + (layout.plots.at(-1)?.height ?? 0)
   const endLabelX = useDerivedValue(
     () => AXIS_WIDTH + plotWidth - glyphWidth * (withSeconds.value ? 8 : 5),
     [glyphWidth, plotWidth],
@@ -251,8 +270,8 @@ export function ChartStack({
               domainEndMs={prepared.endMs}
               plotX={AXIS_WIDTH}
               plotWidth={plotWidth}
-              top={layout.plots[0]?.y ?? 0}
-              bottom={(layout.plots.at(-1)?.y ?? 0) + (layout.plots.at(-1)?.height ?? 0)}
+              top={plotsTop}
+              bottom={plotsBottom}
               scrubTimeMs={scrub}
             />
 
@@ -270,6 +289,21 @@ export function ChartStack({
                 axisFont={axisFont}
               />
             ))}
+
+            {/* Over the plots: what is outside the selection is dimmed, lines included. */}
+            {selection && (
+              <SelectionLayer
+                selection={selection}
+                camera={camera.camera}
+                dataKey={camera.dataKey}
+                domainStartMs={prepared.startMs}
+                domainEndMs={prepared.endMs}
+                plotX={AXIS_WIDTH}
+                plotWidth={plotWidth}
+                top={plotsTop}
+                bottom={plotsBottom}
+              />
+            )}
 
             {axisFont && (
               <>
@@ -357,6 +391,17 @@ function ChartPlot({
 
       <Group clip={clip}>
         <Group transform={[{ translateX: plot.x }, { translateY: plot.y }]}>
+          {/* Under the series: a band is context for the line, never something drawn over it. */}
+          {chart.bands && chart.bands.length > 0 && (
+            <BandsLayer
+              bands={chart.bands}
+              plot={plot}
+              camera={camera.camera}
+              dataKey={camera.dataKey}
+              domainStartMs={camera.domainStartMs}
+              domainEndMs={camera.domainEndMs}
+            />
+          )}
           {chart.series.map((series) => (
             <SeriesLayer
               key={series.key}

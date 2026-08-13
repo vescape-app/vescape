@@ -1,8 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
+import { useSharedValue } from 'react-native-reanimated'
+
 import { ChartStack, type ChartSpec } from '@/components/charts/line/ChartStack'
-import type { ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
+import type {
+  ChartBand,
+  ChartColorRamp,
+  ChartSeriesData,
+  ChartTimeRange,
+} from '@/components/charts/line/types'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { Text } from '@/components/base/Text'
@@ -64,9 +71,41 @@ function rangeOf(data: ChartSeriesData) {
   return { min: Math.floor(min), max: Math.ceil(max) }
 }
 
+/** Stand-ins for the history chart's excluded stretches and favourite segments. */
+function generateBands(count: number, stepMs: number): ChartBand[] {
+  const spanMs = count * stepMs
+  return [
+    {
+      startMs: BASE + spanMs * 0.12,
+      endMs: BASE + spanMs * 0.19,
+      color: theme.palette.yellow.color,
+    },
+    {
+      startMs: BASE + spanMs * 0.55,
+      endMs: BASE + spanMs * 0.58,
+      color: theme.palette.yellow.color,
+    },
+    {
+      startMs: BASE + spanMs * 0.68,
+      endMs: BASE + spanMs * 0.82,
+      color: theme.palette.cyan.color,
+      row: 1,
+    },
+  ]
+}
+
 export function ChartStackShowcase() {
   const [size, setSize] = useState<SizeKey>('tiny')
+  const [selectable, setSelectable] = useState(false)
   const { count, stepMs } = SIZES[size]
+  const spanMs = count * stepMs
+
+  const selection = useSharedValue<ChartTimeRange | null>(null)
+  useEffect(() => {
+    selection.value = selectable
+      ? { startMs: BASE + spanMs * 0.2, endMs: BASE + spanMs * 0.7 }
+      : null
+  }, [selectable, selection, spanMs])
 
   const speed = useMemo(() => generateSeries(count, stepMs, 7, 42), [count, stepMs])
   const duty = useMemo(() => generateSeries(count, stepMs, 21, 85), [count, stepMs])
@@ -88,6 +127,7 @@ export function ChartStackShowcase() {
           },
         ],
         left: { range: rangeOf(speed) },
+        bands: generateBands(count, stepMs),
       },
       {
         key: 'duty',
@@ -115,7 +155,7 @@ export function ChartStackShowcase() {
         right: { range: rangeOf(volts) },
       },
     ],
-    [duty, speed, volts],
+    [count, duty, speed, stepMs, volts],
   )
 
   return (
@@ -126,12 +166,19 @@ export function ChartStackShowcase() {
         selected={size}
         onSelect={(value) => setSize(value as SizeKey)}
       />
+      <ChipRow
+        label="Selection"
+        options={['off', 'on']}
+        selected={selectable ? 'on' : 'off'}
+        onSelect={(value) => setSelectable(value === 'on')}
+      />
       <Text style={styles.note}>
         {count.toLocaleString()} samples per series, drawn from a min/max pyramid — the spikes are
-        single samples. Drag to scrub, pinch to zoom and pan, double-tap to fit.
+        single samples. Drag to scrub, pinch to zoom and pan, double-tap to fit. With a selection
+        on, drag either half of it to move that edge.
       </Text>
       <View style={styles.stack}>
-        <ChartStack charts={charts} dataKey={size} timeMode="clock" />
+        <ChartStack charts={charts} dataKey={size} timeMode="clock" selection={selection} />
       </View>
     </ShowcaseCard>
   )
