@@ -52,7 +52,15 @@ export function HistoryMetricTabs({
                 { backgroundColor: active ? metric.color : theme.palette.slate.surface },
               ]}
             />
-            {metric.multilineLabel ? (
+            {metric.tabLabel ? (
+              <Text
+                style={[styles.metricTabText, active && styles.metricTabTextActive]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {metric.tabLabel}
+              </Text>
+            ) : metric.multilineLabel ? (
               <View style={styles.metricTabTextStack}>
                 <Text
                   style={[styles.metricTabText, active && styles.metricTabTextActive]}

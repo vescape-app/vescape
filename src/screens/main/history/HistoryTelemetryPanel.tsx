@@ -10,6 +10,7 @@ import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
 import {
   isHistoryMetricKey,
+  PANEL_CHART_METRICS,
   toggleOptionalChartMetric,
   type ChartToggleMetric,
 } from '@/modules/history/components/historyChartMetrics'
@@ -106,7 +107,11 @@ export function HistoryTelemetryPanel({
 }: HistoryTelemetryPanelProps) {
   const insets = useSafeAreaInsets()
   const router = useRouter()
-  const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(new Set())
+  // Speed is on by default and closable like any other line — the rider who wants the map back
+  // should not have to keep a chart they are not reading.
+  const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(
+    () => new Set<ChartToggleMetric>(['speed']),
+  )
   const [shareInfoVisible, setShareInfoVisible] = useState(false)
   const [mediaDrawerVisible, setMediaDrawerVisible] = useState(false)
   const mediaButtonRef = useRef<View>(null)
@@ -130,6 +135,7 @@ export function HistoryTelemetryPanel({
     ramps,
     exclusionBands,
     activeMetrics: activeCharts,
+    speedOptional: true,
   })
 
   const rideWindow = rideMovingWindow({ movingStartAtMs, movingEndAtMs })
@@ -231,23 +237,30 @@ export function HistoryTelemetryPanel({
       ) : null}
       {hasChartData && (
         <>
-          <ChartStack
-            charts={charts}
-            bands={stackBands}
-            timeline={timeline}
-            dataKey={`${startAtMs}`}
-            timeMode="clock"
-            containerStyle={styles.chart}
-            scrubTimeMs={scrubHeadMs}
-            zoomWindowMs={trimming ? undefined : zoomWindowMs}
-            selection={trim ? selection : undefined}
-            onSelectionPreview={handleSelectionPreview}
-            onSelectionChange={handleSelectionCommit}
-            onChartTouch={trim ? undefined : handleChartTouch}
-            showHead
-          />
+          {/* Every metric closed means the rider wants the map: the tabs stay to bring one back. */}
+          {activeCharts.size > 0 ? (
+            <ChartStack
+              charts={charts}
+              bands={stackBands}
+              timeline={timeline}
+              dataKey={`${startAtMs}`}
+              timeMode="clock"
+              containerStyle={styles.chart}
+              scrubTimeMs={scrubHeadMs}
+              zoomWindowMs={trimming ? undefined : zoomWindowMs}
+              selection={trim ? selection : undefined}
+              onSelectionPreview={handleSelectionPreview}
+              onSelectionChange={handleSelectionCommit}
+              onChartTouch={trim ? undefined : handleChartTouch}
+              showHead
+            />
+          ) : null}
 
-          <HistoryMetricTabs activeCharts={activeCharts} onToggle={handleToggleMetric} />
+          <HistoryMetricTabs
+            activeCharts={activeCharts}
+            onToggle={handleToggleMetric}
+            metrics={PANEL_CHART_METRICS}
+          />
           <HistoryMetricLegend />
         </>
       )}

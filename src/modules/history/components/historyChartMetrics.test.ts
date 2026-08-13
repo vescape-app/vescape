@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test'
 
 import {
+  ALL_CHART_METRICS,
   EXTRA_CHART_METRICS,
+  PANEL_CHART_METRICS,
   OPTIONAL_CHART_METRICS,
   toggleOptionalChartMetric,
   type ChartToggleMetric,
@@ -41,4 +43,17 @@ test('toggling a chart-only metric works alongside a map metric', () => {
   )
   expect(enabled.has('duty')).toBe(true)
   expect(enabled.has('altitude')).toBe(true)
+})
+
+test('the ride panel offers speed and a short list, the full-screen page offers everything', () => {
+  expect(PANEL_CHART_METRICS.map((metric) => metric.key)).toEqual([
+    'speed',
+    'duty',
+    'battery',
+    'tempMotor',
+    'tempController',
+  ])
+  expect(ALL_CHART_METRICS.length).toBe(
+    1 + OPTIONAL_CHART_METRICS.length + EXTRA_CHART_METRICS.length,
+  )
 })

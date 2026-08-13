@@ -52,6 +52,8 @@ export interface ChartMetricDef {
 export interface OptionalChartMetricDef extends ChartMetricDef {
   key: OptionalChartMetric
   multilineLabel?: [string, string]
+  /** Short form for a metric tab, where the chart's own label would wrap. */
+  tabLabel?: string
 }
 
 export const SPEED_CHART_DEF: ChartMetricDef = {
@@ -66,7 +68,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
   {
     key: 'duty',
     label: telemetry.duty.label,
-    multilineLabel: ['Duty', 'Cycle'],
+    tabLabel: 'DC',
     color: telemetry.duty.color,
     range: rangeOf(telemetry.duty, { includeZero: true, fixed: true }),
     statKeys: 'max_duty',
@@ -80,14 +82,14 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
   {
     key: 'tempMotor',
     label: telemetry.motorTemp.label,
-    multilineLabel: ['Motor', 'Temp'],
+    tabLabel: 'Motor C°',
     color: telemetry.motorTemp.color,
     range: rangeOf(telemetry.motorTemp),
   },
   {
     key: 'tempController',
     label: telemetry.controllerTemp.label,
-    multilineLabel: ['Controller', 'Temp'],
+    tabLabel: 'Ctrl C°',
     color: telemetry.controllerTemp.color,
     range: rangeOf(telemetry.controllerTemp),
   },
@@ -233,11 +235,32 @@ export interface ChartTabMetricDef {
   label: string
   color: string
   multilineLabel?: [string, string]
+  tabLabel?: string
 }
+
+/** The speed chart as a tab, for the surfaces that let the rider close it. */
+const SPEED_TAB: ChartTabMetricDef = {
+  key: SPEED_CHART_DEF.key,
+  label: SPEED_CHART_DEF.label,
+  color: SPEED_CHART_DEF.color,
+}
+
+/**
+ * What the ride panel offers under the map.
+ *
+ * Deliberately shorter than the full list: the panel is a strip over a map, and the metrics left
+ * out of it are a tap away on the full-screen charts page, which has the room to read them.
+ */
+export const PANEL_CHART_METRICS: readonly ChartTabMetricDef[] = [
+  SPEED_TAB,
+  ...OPTIONAL_CHART_METRICS.filter(
+    (metric) => metric.key !== 'motorCurrent' && metric.key !== 'batteryCurrent',
+  ),
+]
 
 /** Every metric a full-screen stack can show, speed first and map-colourable ones ahead of the rest. */
 export const ALL_CHART_METRICS: readonly ChartTabMetricDef[] = [
-  { key: SPEED_CHART_DEF.key, label: SPEED_CHART_DEF.label, color: SPEED_CHART_DEF.color },
+  SPEED_TAB,
   ...OPTIONAL_CHART_METRICS,
   ...EXTRA_CHART_METRICS,
 ]
