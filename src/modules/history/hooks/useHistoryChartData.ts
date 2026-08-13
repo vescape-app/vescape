@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/charts/chartMath'
-import type { ChartSpec } from '@/components/charts/line/ChartStack'
+import type { ChartReadingSpec, ChartSpec } from '@/components/charts/line/ChartStack'
 import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
@@ -18,7 +18,6 @@ import {
   type HistoryMetricKey,
   type MetricColorRange,
 } from '@/modules/history/lib/metricColorScale'
-import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 import { RIDE_TRIM_PADDING_MS, rideMovingWindow } from '@/modules/history/lib/sessions'
 import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -38,8 +37,7 @@ export function useVisibleRideSamples(
   samples: TelemetrySample[],
   movingStartAtMs: number | null,
   movingEndAtMs: number | null,
-  headTimeMs: number | null,
-) {
+): TelemetrySample[] {
   const sortedSamples = useMemo(
     () => [...samples].sort((a, b) => a.capturedAtMs - b.capturedAtMs),
     [samples],
@@ -54,12 +52,7 @@ export function useVisibleRideSamples(
     const trimmed = sortedSamples.filter((s) => s.capturedAtMs >= lo && s.capturedAtMs <= hi)
     return trimmed.length > 0 ? trimmed : sortedSamples
   }, [sortedSamples, movingStartAtMs, movingEndAtMs])
-  const headSample = useMemo(() => {
-    if (headTimeMs == null) return visibleSamples.at(-1) ?? null
-    const idx = findNearestSampleIndexByTime(visibleSamples, headTimeMs)
-    return idx >= 0 ? visibleSamples[idx] : (visibleSamples.at(-1) ?? null)
-  }, [visibleSamples, headTimeMs])
-  return { visibleSamples, headSample }
+  return visibleSamples
 }
 
 /**
@@ -156,7 +149,6 @@ export function useChartExclusionBands() {
 }
 
 interface HistoryChartStackInput {
-  headSample: TelemetrySample | null
   series: HistorySeries
   ranges: HistoryRanges
   ramps: HistoryRamps
@@ -166,11 +158,9 @@ interface HistoryChartStackInput {
   activeMetrics: ReadonlySet<OptionalChartMetric>
 }
 
-/** The reading shown beside a chart's label: the head sample, formatted by that metric's rules. */
-function headText(def: ChartMetricDef, headSample: TelemetrySample | null): string {
-  const head = headSample ? getTelemetrySampleMetricValue(headSample, def.key) : null
-  const format = def.formatHeadValue ?? def.formatValue
-  return head == null ? '-' : format(head)
+/** What the chart prints beside its label, live under a finger and at the head otherwise. */
+function readingOf(def: ChartMetricDef): ChartReadingSpec {
+  return { seriesKey: def.key, color: def.color, ...def.reading }
 }
 
 /**
@@ -181,7 +171,6 @@ function headText(def: ChartMetricDef, headSample: TelemetrySample | null): stri
  * speed chart by construction rather than by matching props.
  */
 export function useHistoryChartStack({
-  headSample,
   series,
   ranges,
   ramps,
@@ -199,7 +188,7 @@ export function useHistoryChartStack({
     const speed: ChartSpec = {
       key: 'speed',
       label: SPEED_CHART_DEF.label,
-      value: headText(SPEED_CHART_DEF, headSample),
+      reading: readingOf(SPEED_CHART_DEF),
       height: SPEED_CHART_HEIGHT,
       series: [
         {
@@ -216,12 +205,11 @@ export function useHistoryChartStack({
     const optional = OPTIONAL_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
       (def) =>
         def.key === 'battery'
-          ? batteryChart(headSample, series, ranges, ramps)
+          ? batteryChart(series, ranges, ramps)
           : ({
               key: def.key,
               label: def.label,
-              value: headText(def, headSample),
-              valueColor: def.color,
+              reading: readingOf(def),
               height: METRIC_CHART_HEIGHT,
               series: [
                 { key: def.key, data: series[def.key], color: def.color, ramp: ramps[def.key] },
@@ -232,7 +220,7 @@ export function useHistoryChartStack({
     )
 
     return [speed, ...optional]
-  }, [activeMetrics, exclusionBands, favoriteRanges, headSample, ramps, ranges, series])
+  }, [activeMetrics, exclusionBands, favoriteRanges, ramps, ranges, series])
 }
 
 /**
@@ -241,12 +229,11 @@ export function useHistoryChartStack({
  * fall back to voltage as the single line.
  */
 function batteryChart(
-  headSample: TelemetrySample | null,
   series: HistorySeries,
   ranges: HistoryRanges,
   ramps: HistoryRamps,
 ): ChartSpec {
-  const percent = headSample?.batteryPercent
+  const hasPercent = series.batteryPercent.vs.length > 0
   const voltage: ChartSpec['series'][number] = {
     key: 'voltage',
     data: series.battery,
@@ -255,12 +242,17 @@ function batteryChart(
     unit: telemetry.battVoltage.unit,
   }
 
-  if (percent == null) {
+  if (!hasPercent) {
     return {
       key: 'battery',
       label: 'Battery',
-      value: headSample ? telemetry.battVoltage.formatWithUnit(headSample.batteryVoltage) : '-',
-      valueColor: telemetry.battVoltage.color,
+      reading: {
+        seriesKey: 'voltage',
+        color: telemetry.battVoltage.color,
+        decimals: telemetry.battVoltage.decimals,
+        unit: telemetry.battVoltage.unit,
+        compactUnit: true,
+      },
       height: METRIC_CHART_HEIGHT,
       series: [{ ...voltage, ramp: ramps.battery, label: undefined }],
       left: { range: ranges.battery },
@@ -270,8 +262,13 @@ function batteryChart(
   return {
     key: 'battery',
     label: 'Battery',
-    value: `${Math.round(percent)}%`,
-    valueColor: telemetry.battVoltage.color,
+    reading: {
+      seriesKey: 'percent',
+      color: telemetry.battVoltage.color,
+      decimals: 0,
+      unit: '%',
+      compactUnit: true,
+    },
     height: METRIC_CHART_HEIGHT,
     series: [
       {

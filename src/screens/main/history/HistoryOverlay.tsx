@@ -67,7 +67,6 @@ export interface MainHistoryOverlayProps {
   selectRide: (session: HistorySession) => void
   exitHistory: () => void
   removeSession: () => void
-  onSeek: (timeMs: number) => void
   setActiveHistoryMapMetric: (metric: HistoryMetricKey) => void
   mediaHistory: {
     assets: MediaHistoryAsset[]

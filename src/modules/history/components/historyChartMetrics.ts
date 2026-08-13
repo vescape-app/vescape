@@ -1,4 +1,5 @@
 import type { AutoRangeOptions } from '@/components/charts/chartMath'
+import type { ChartNumberFormat } from '@/components/charts/line/chartFormat'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 
@@ -15,10 +16,8 @@ export interface ChartMetricDef {
   label: string
   color: string
   range: AutoRangeOptions
-  /** Scrub/axis value formatting. */
-  formatValue: (value: number) => string
-  /** Header value formatting when it differs from formatValue (e.g. rounded duty). */
-  formatHeadValue?: (value: number) => string
+  /** How the head reading is printed. Data rather than a formatter: it runs in a worklet. */
+  reading: ChartNumberFormat
   /** Session-exclusion stat keys that grey out this chart's ranges. */
   statKeys?: string | string[]
 }
@@ -33,7 +32,7 @@ export const SPEED_CHART_DEF: ChartMetricDef = {
   label: telemetry.speed.label,
   color: telemetry.speed.color,
   range: { includeZero: true, minSpan: 10, paddingRatio: 0.1, fallbackMin: -5, fallbackMax: 5 },
-  formatValue: telemetry.speed.formatWithUnit,
+  reading: { decimals: 0, unit: telemetry.speed.unit, abs: true },
   statKeys: ['avg_speed', 'max_speed'],
 }
 
@@ -44,8 +43,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Duty', 'Cycle'],
     color: telemetry.duty.color,
     range: { includeZero: true, minSpan: 20, paddingRatio: 0.1, fallbackMin: 0, fallbackMax: 100 },
-    formatValue: (value) => `${value.toFixed(1)}%`,
-    formatHeadValue: (value) => `${value.toFixed(0)}%`,
+    reading: { decimals: 0, unit: '%', compactUnit: true },
     statKeys: 'max_duty',
   },
   {
@@ -53,7 +51,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     label: 'Battery',
     color: telemetry.battVoltage.color,
     range: { includeZero: false, minSpan: 5, paddingRatio: 0.1, fallbackMin: 30, fallbackMax: 60 },
-    formatValue: telemetry.battVoltage.formatWithUnit,
+    reading: { decimals: 1, unit: telemetry.battVoltage.unit, compactUnit: true },
   },
   {
     key: 'tempMotor',
@@ -61,7 +59,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Motor', 'Temp'],
     color: telemetry.motorTemp.color,
     range: { includeZero: false, minSpan: 20, paddingRatio: 0.1, fallbackMin: 0, fallbackMax: 100 },
-    formatValue: telemetry.motorTemp.formatWithUnit,
+    reading: { decimals: 0, unit: telemetry.motorTemp.unit },
   },
   {
     key: 'tempController',
@@ -69,7 +67,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Controller', 'Temp'],
     color: telemetry.controllerTemp.color,
     range: { includeZero: false, minSpan: 20, paddingRatio: 0.1, fallbackMin: 0, fallbackMax: 100 },
-    formatValue: telemetry.controllerTemp.formatWithUnit,
+    reading: { decimals: 0, unit: telemetry.controllerTemp.unit },
   },
   {
     key: 'motorCurrent',
@@ -77,7 +75,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Motor', 'Current'],
     color: telemetry.motorCurrent.color,
     range: { includeZero: true, minSpan: 10, paddingRatio: 0.1, fallbackMin: -5, fallbackMax: 5 },
-    formatValue: telemetry.motorCurrent.formatWithUnit,
+    reading: { decimals: 0, unit: telemetry.motorCurrent.unit },
   },
   {
     key: 'batteryCurrent',
@@ -85,7 +83,7 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Batt', 'Current'],
     color: telemetry.battCurrent.color,
     range: { includeZero: true, minSpan: 5, paddingRatio: 0.1, fallbackMin: -5, fallbackMax: 5 },
-    formatValue: telemetry.battCurrent.formatWithUnit,
+    reading: { decimals: 0, unit: telemetry.battCurrent.unit },
   },
 ]
 

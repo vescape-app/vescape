@@ -20,6 +20,7 @@ import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
+import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
@@ -35,7 +36,6 @@ import {
 } from '@/modules/map-points/constants/mapPoints'
 import { theme } from '@/constants/theme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
-import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 import { getFavoriteRouteSegments } from '@/modules/history/lib/favoriteRoute'
 import { resolveMarkerRenderData } from '@/modules/history/lib/markerOverlap'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -294,26 +294,6 @@ function LiveMapLayers({
         rider.presence ? <RiderPresencePin key={rider.id} rider={rider} index={index} /> : null,
       )}
     </>
-  )
-}
-
-// Subscribes to the scrub head directly so dragging the telemetry chart only re-renders this pin,
-// not the whole map/overlay tree. rideGpsSamples is a stable prop (changes only on session switch).
-function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
-  const seekTimeMs = useMainScreenStore((s) => s.seekTimeMs)
-  const seekPosition = useMemo(() => {
-    if (seekTimeMs == null || rideGpsSamples.length === 0) return null
-    const idx = findNearestSampleIndexByTime(rideGpsSamples, seekTimeMs)
-    return idx >= 0 ? rideGpsSamples[idx] : null
-  }, [seekTimeMs, rideGpsSamples])
-
-  if (!seekPosition || seekPosition.latitude == null || seekPosition.longitude == null) return null
-  return (
-    <MapPin
-      id="center-seek-position"
-      coordinate={[seekPosition.longitude, seekPosition.latitude]}
-      color={MAP_DEFAULTS.markerColor}
-    />
   )
 }
 

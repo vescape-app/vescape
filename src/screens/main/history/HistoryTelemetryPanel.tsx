@@ -23,6 +23,7 @@ import {
   useVisibleRideSamples,
 } from '@/modules/history/hooks/useHistoryChartData'
 import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
+import { scrubHeadMs } from '@/modules/history/lib/scrubHead'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
 import { type TelemetrySample } from '@/modules/history/store/historyStore'
@@ -53,7 +54,6 @@ interface HistoryTelemetryPanelProps {
   onAddMedia: () => void
   onOpenMedia: (asset: MediaAssetInput) => void
   onToggleFavorite: () => void
-  onSeek?: (timeMs: number) => void
   onMetricInteraction?: (metric: HistoryMetricKey) => void
   onHeightChange?: (height: number) => void
   /** When set, the stack becomes a Favorite range trimmer and scrubbing is suspended. */
@@ -94,13 +94,11 @@ export function HistoryTelemetryPanel({
   onAddMedia,
   onOpenMedia,
   onToggleFavorite,
-  onSeek,
   onMetricInteraction,
   onHeightChange,
   trim,
 }: HistoryTelemetryPanelProps) {
   const insets = useSafeAreaInsets()
-  const [headTimeMs, setHeadTimeMs] = useState<number | null>(null)
   const [activeCharts, setActiveCharts] = useState<Set<OptionalChartMetric>>(new Set())
   const [shareInfoVisible, setShareInfoVisible] = useState(false)
   const [mediaDrawerVisible, setMediaDrawerVisible] = useState(false)
@@ -109,18 +107,12 @@ export function HistoryTelemetryPanel({
   const trimRef = useRef(trim)
   trimRef.current = trim
 
-  const { visibleSamples, headSample } = useVisibleRideSamples(
-    samples,
-    movingStartAtMs,
-    movingEndAtMs,
-    headTimeMs,
-  )
+  const visibleSamples = useVisibleRideSamples(samples, movingStartAtMs, movingEndAtMs)
   const series = useChartSeries(visibleSamples)
   const ranges = useChartRanges(series)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
   const charts = useHistoryChartStack({
-    headSample,
     series,
     ranges,
     ramps,
@@ -133,7 +125,16 @@ export function HistoryTelemetryPanel({
   const titleStartMs = rideWindow?.startMs ?? startAtMs
   const titleEndMs = rideWindow?.endMs ?? endAtMs
   const bottomInset = Math.max(insets.bottom, 16) + 8
-  const hasChartData = headSample != null && visibleSamples.length >= 2
+  const hasChartData = visibleSamples.length >= 2
+
+  // The scrub head outlives this component (the map reads it too), so a ride switch has to clear
+  // it — otherwise the marker stays parked on a moment from the previous ride.
+  useEffect(() => {
+    scrubHeadMs.value = null
+    return () => {
+      scrubHeadMs.value = null
+    }
+  }, [startAtMs])
 
   // The seed range enters the canvas as a shared value, so dragging a handle never renders the
   // panel; the trimmer hears about it through the throttled callbacks below.
@@ -143,15 +144,6 @@ export function HistoryTelemetryPanel({
     selection.value =
       trimStartMs == null || trimEndMs == null ? null : { startMs: trimStartMs, endMs: trimEndMs }
   }, [selection, trimEndMs, trimStartMs])
-
-  const handleScrubTimeChange = useCallback(
-    (timeMs: number | null) => {
-      if (timeMs == null || trimRef.current) return
-      setHeadTimeMs(timeMs)
-      onSeek?.(timeMs)
-    },
-    [onSeek],
-  )
 
   const handleSelectionPreview = useCallback((range: ChartTimeRange) => {
     trimRef.current?.onChange(range.startMs, range.endMs)
@@ -205,7 +197,7 @@ export function HistoryTelemetryPanel({
             dataKey={`${startAtMs}`}
             timeMode="clock"
             containerStyle={styles.chart}
-            onScrubTimeChange={trim ? undefined : handleScrubTimeChange}
+            scrubTimeMs={scrubHeadMs}
             selection={trim ? selection : undefined}
             onSelectionPreview={handleSelectionPreview}
             onSelectionChange={handleSelectionCommit}

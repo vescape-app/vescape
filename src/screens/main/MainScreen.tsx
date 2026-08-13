@@ -72,7 +72,6 @@ function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenCon
     selectRide: controller.selectRide,
     exitHistory: controller.exitHistory,
     removeSession: controller.removeSession,
-    onSeek: controller.onSeek,
     setActiveHistoryMapMetric: controller.setActiveHistoryMapMetric,
     mediaHistory: controller.mediaHistory,
     openMedia: controller.openMedia,

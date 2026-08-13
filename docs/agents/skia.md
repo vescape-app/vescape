@@ -157,6 +157,26 @@ With a monospaced font, one glyph measured on the JS thread stands in for every 
 `width = text.length * glyphWidth`. Calling `font.getTextWidth` inside a mapper shapes text on
 every touch move.
 
+### A gesture must not reach React — including outside the canvas
+
+The expensive part of a scrub is rarely the canvas; it is whatever else the finger drives. A
+`setState` per touch sample re-runs the memos that build the chart spec and reconciles the whole
+tree, and a native consumer can be worse still: an rnmapbox `PointAnnotation` with child views
+re-snapshots those views to a bitmap on every coordinate change, which stalls the app outright.
+
+So the scrub head is a shared value — a module singleton when consumers live in different trees —
+and consumers read it on the UI thread:
+
+- Inside the canvas: a `useDerivedValue`. Values printed beside a label are resolved from the
+  series in a worklet, so formatting has to be carried as data (decimals, unit) rather than as a
+  formatter — a JS closure cannot be called from a worklet.
+- Outside the canvas: `useAnimatedReaction` → `runOnJS` → one imperative native call. A Mapbox
+  `ShapeSource` takes a new position through `setNativeProps` with no render at all; feed it a
+  `CircleLayer`, not an annotation.
+
+Throttle only what genuinely renders — a preview that lands in a store. A consumer reached
+imperatively needs no throttle.
+
 ## Where to look
 
 - `src/components/charts/line/ScrubLayer.tsx` — one mapper for a whole stack, banner layout
@@ -164,3 +184,4 @@ every touch move.
 - `src/components/charts/line/SeriesLayer.tsx` — matrix projection, the repaint nudge
 - `src/components/charts/line/seriesPaths.ts` — LOD tiles, sampling values back out of paths
 - `src/components/charts/line/colorRamp.ts` — value colour as a camera-invariant gradient
+- `src/screens/main/map/SeekPositionPin.tsx` — a native consumer driven from a shared value

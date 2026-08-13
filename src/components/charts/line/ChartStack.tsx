@@ -16,7 +16,13 @@ import {
   LABEL_FONT_SIZE,
   computeChartLayout,
 } from '@/components/charts/line/chartLayout'
-import { formatAxisNumber, formatClock, formatRelative } from '@/components/charts/line/chartFormat'
+import {
+  formatAxisNumber,
+  formatClock,
+  formatReading,
+  formatRelative,
+  type ChartNumberFormat,
+} from '@/components/charts/line/chartFormat'
 import {
   ScrubCursor,
   ScrubLayer,
@@ -25,7 +31,11 @@ import {
   type StackReadout,
 } from '@/components/charts/line/ScrubLayer'
 import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
-import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
+import {
+  buildSeriesPaths,
+  sampleAtSec,
+  type SeriesPaths,
+} from '@/components/charts/line/seriesPaths'
 import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { BandsLayer } from '@/components/charts/line/BandsLayer'
@@ -62,13 +72,26 @@ export interface ChartAxisSpec {
   range: ChartYRange
 }
 
+/**
+ * The reading shown beside a chart's label: the value under the finger while scrubbing, and the
+ * last sample of the ride the rest of the time.
+ *
+ * Named as a series and a format rather than passed as a string, because the string would have to
+ * be rebuilt on the JS thread for every frame of a drag — the render that made scrubbing lag. The
+ * chart resolves it in the same worklet that moves the cursor.
+ */
+export interface ChartReadingSpec extends ChartNumberFormat {
+  /** Which of the chart's series to read. */
+  seriesKey: string
+  /** Defaults to that series' colour. */
+  color?: string
+}
+
 export interface ChartSpec {
   key: string
   label?: string
-  /** Current reading, shown beside the label — the head value, already formatted. */
-  value?: string
-  /** Colour of {@link value}; the first series' colour when unset. */
-  valueColor?: string
+  /** Live reading shown on the label row — see {@link ChartReadingSpec}. */
+  reading?: ChartReadingSpec
   height: number
   series: ChartSeriesSpec[]
   left: ChartAxisSpec
@@ -102,12 +125,6 @@ export interface ChartStackProps {
   onSelectionChange?: (range: ChartTimeRange) => void
   /** The range while a handle is being dragged, throttled. */
   onSelectionPreview?: (range: ChartTimeRange) => void
-  /**
-   * Moment under the finger, for the parts of the app that live outside the canvas — a map
-   * marker, a native focus request. Throttled, and always called with `null` on release.
-   * Anything drawn inside the stack should read `scrubTimeMs` instead and stay off the JS thread.
-   */
-  onScrubTimeChange?: (timeMs: number | null) => void
   /** A touch has landed on the stack. Used to tell native which metric to resolve in full. */
   onGestureStart?: () => void
   /** Mark the last sample of every series. */
@@ -190,7 +207,6 @@ export function ChartStack({
   selection,
   onSelectionChange,
   onSelectionPreview,
-  onScrubTimeChange,
   onGestureStart,
   showHead = false,
   containerStyle,
@@ -199,6 +215,9 @@ export function ChartStack({
   'use no memo'
   const [width, setWidth] = useState(0)
   const labelFont = useSkiaFont('600', LABEL_FONT_SIZE)
+  // The head reading is mono so its width is known without shaping it, and so a number does not
+  // jitter sideways as its digits change under a moving finger.
+  const readingFont = useSkiaMonoFont('600', LABEL_FONT_SIZE)
   const axisFont = useSkiaMonoFont('500', AXIS_FONT_SIZE)
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
@@ -253,7 +272,6 @@ export function ChartStack({
     selection,
     onSelectionCommit: onSelectionChange,
     onSelectionPreview,
-    onScrubTimeChange,
     onGestureStart,
     enabled: width > 0 && !prepared.isEmpty,
   })
@@ -309,7 +327,9 @@ export function ChartStack({
                 readout={readout}
                 scrubTargets={scrubCharts[index].targets}
                 showHead={showHead}
+                scrubTimeMs={scrub}
                 labelFont={labelFont}
+                readingFont={readingFont}
                 axisFont={axisFont}
               />
             ))}
@@ -364,7 +384,9 @@ interface ChartPlotProps {
   readout: SharedValue<StackReadout>
   scrubTargets: ScrubTarget[]
   showHead: boolean
+  scrubTimeMs: SharedValue<number | null>
   labelFont: ReturnType<typeof useSkiaFont>
+  readingFont: ReturnType<typeof useSkiaMonoFont>
   axisFont: ReturnType<typeof useSkiaMonoFont>
 }
 
@@ -377,7 +399,9 @@ function ChartPlot({
   readout,
   scrubTargets,
   showHead,
+  scrubTimeMs,
   labelFont,
+  readingFont,
   axisFont,
 }: ChartPlotProps) {
   const clip = useMemo(
@@ -396,15 +420,14 @@ function ChartPlot({
           color={theme.palette.slate.textSecondary}
         />
       )}
-      {/* The head reading, right-aligned on the label row. Measured here rather than laid out
-          from the left, so a value that grows a digit stays anchored to the edge of the plot. */}
-      {labelFont && chart.value && (
-        <Text
-          font={labelFont}
-          x={plot.x + plot.width - labelFont.getTextWidth(chart.value)}
-          y={labelBaseline}
-          text={chart.value}
-          color={chart.valueColor ?? chart.series[0]?.color ?? theme.palette.slate.textSecondary}
+      {readingFont && chart.reading && (
+        <ChartReading
+          spec={chart.reading}
+          series={chart.series}
+          plot={plot}
+          baseline={labelBaseline}
+          scrubTimeMs={scrubTimeMs}
+          font={readingFont}
         />
       )}
 
@@ -473,6 +496,46 @@ function ChartPlot({
       )}
     </>
   )
+}
+
+interface ChartReadingProps {
+  spec: ChartReadingSpec
+  series: PreparedSeries[]
+  plot: ChartPlotBox
+  baseline: number
+  scrubTimeMs: SharedValue<number | null>
+  font: NonNullable<ReturnType<typeof useSkiaMonoFont>>
+}
+
+/**
+ * The reading on the label row, right-aligned to the edge of the plot.
+ *
+ * Resolved entirely on the UI thread: the value under the finger, or the last sample of the
+ * series when nobody is scrubbing. Nothing about it passes through React, so a drag costs the
+ * same whether this is on screen or not.
+ */
+function ChartReading({ spec, series, plot, baseline, scrubTimeMs, font }: ChartReadingProps) {
+  'use no memo'
+  const paths = series.find((s) => s.key === spec.seriesKey)?.paths
+  const color = spec.color ?? series[0]?.color ?? theme.palette.slate.textSecondary
+  const glyphWidth = font.getTextWidth('0')
+
+  const text = useDerivedValue(() => {
+    if (paths == null) return ''
+    const timeMs = scrubTimeMs.value
+    if (timeMs == null) {
+      return paths.head == null ? '—' : formatReading(paths.head.value, spec)
+    }
+    const sample = sampleAtSec(paths.raw, (timeMs - paths.domainStartMs) / 1000)
+    return sample.found ? formatReading(sample.value, spec) : '—'
+  }, [paths, spec])
+  const x = useDerivedValue(
+    () => plot.x + plot.width - text.value.length * glyphWidth,
+    [glyphWidth, plot.width, plot.x],
+  )
+
+  if (paths == null) return null
+  return <Text font={font} x={x} y={baseline} text={text} color={color} />
 }
 
 interface AxisTicksProps {
