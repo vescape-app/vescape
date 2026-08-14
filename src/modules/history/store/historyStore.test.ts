@@ -195,9 +195,9 @@ test('selects ride immediately while loading its full route', async () => {
   expect(useHistoryStore.getState().selectedSession?.id).toBe(
     useHistoryStore.getState().sessions[1].id,
   )
-  // The previous ride's lines stay up until the new samples land: no stand-in drawing, no
-  // empty stack between two rides.
-  expect(useHistoryStore.getState().sessionSamples).toEqual([currentSample])
+  // Samples never outlive the ride they belong to: the charts would otherwise rebuild the whole
+  // previous dataset against the new ride's bounds while the real samples are still loading.
+  expect(useHistoryStore.getState().sessionSamples).toEqual([])
   await Promise.resolve()
   expect(getHistoryRange).toHaveBeenLastCalledWith({
     fromMs: next.startAtMs,

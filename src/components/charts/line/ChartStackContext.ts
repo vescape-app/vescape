@@ -29,6 +29,8 @@ export interface ChartStackContextValue {
   timeline: ChartTimeline | null
   /** Ranges belonging to the ride rather than to a metric, already in chart time. */
   stackBands?: ChartBand[]
+  /** No series has data yet: the frames are drawn, the times under them would be meaningless. */
+  isEmpty: boolean
   /** Width of one plot, gutters already taken off. Identical for every chart in the stack. */
   plotWidth: number
   labelFont: ReturnType<typeof useSkiaFont>

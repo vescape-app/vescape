@@ -34,7 +34,7 @@ export interface ChartTimeAxisProps {
 export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
-  const { camera, dataKey, domainStartMs, domainEndMs, timeline, plotWidth, axisFont } =
+  const { camera, dataKey, domainStartMs, domainEndMs, timeline, plotWidth, axisFont, isEmpty } =
     useChartStack()
 
   const viewport = useDerivedValue(
@@ -57,7 +57,9 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
     return AXIS_WIDTH + plotWidth - glyphWidth * (withSeconds ? 8 : 5)
   }, [glyphWidth, plotWidth, viewport])
 
-  if (!axisFont) return null
+  // The strip still takes its height while a ride loads — an empty frame that keeps the panel
+  // still is the point — but there is no window yet to name.
+  if (!axisFont || isEmpty) return <Canvas style={styles.canvas} />
 
   return (
     <Canvas style={styles.canvas}>

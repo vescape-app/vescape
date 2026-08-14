@@ -33,7 +33,10 @@ import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/m
 import { scrubHeadMs, zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
-import { type TelemetrySample } from '@/modules/history/store/historyStore'
+import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
+
+/** Stable identity, so a loading ride does not rebuild the stack on every render. */
+const EMPTY_SAMPLES: TelemetrySample[] = []
 
 interface HistoryTelemetryPanelProps {
   startAtMs: number
@@ -120,7 +123,17 @@ export function HistoryTelemetryPanel({
   trimRef.current = trim
   const trimming = trim != null
 
-  const visibleSamples = useVisibleRideSamples(samples, movingStartAtMs, movingEndAtMs)
+  // No lines while a ride is loading, whatever the store still holds. Samples and the ride they
+  // belong to have to be drawn as a pair: feeding the previous ride's samples through the new
+  // ride's bounds rebuilds every series, timeline, range and path for a result that is thrown
+  // away the moment the real samples land — which is what made switching rides crawl.
+  const loadingSession = useHistoryStore((s) => s.loadingSession)
+
+  // Derived in render, not through state: an effect would run a commit late and the old ride's
+  // lines would survive the press that started the next one.
+  const rideSamples = loadingSession ? EMPTY_SAMPLES : samples
+
+  const visibleSamples = useVisibleRideSamples(rideSamples, movingStartAtMs, movingEndAtMs)
   const series = useChartSeries(visibleSamples)
   const timeline = useChartTimeline(visibleSamples)
   const ranges = useChartRanges(series)
@@ -142,7 +155,6 @@ export function HistoryTelemetryPanel({
   const titleStartMs = rideWindow?.startMs ?? startAtMs
   const titleEndMs = rideWindow?.endMs ?? endAtMs
   const bottomInset = Math.max(insets.bottom, 16) + 8
-  const hasChartData = visibleSamples.length >= 2
 
   // The scrub head and the zoom window outlive this component (the map reads both), so a ride
   // switch has to clear them — otherwise the map keeps marking a moment from the previous ride.
@@ -235,35 +247,33 @@ export function HistoryTelemetryPanel({
           onOpenCharts={() => router.push(routes.historyCharts)}
         />
       ) : null}
-      {hasChartData && (
-        <>
-          {/* Every metric closed means the rider wants the map: the tabs stay to bring one back. */}
-          {activeCharts.size > 0 ? (
-            <ChartStack
-              charts={charts}
-              bands={stackBands}
-              timeline={timeline}
-              dataKey={`${startAtMs}`}
-              timeMode="clock"
-              containerStyle={styles.chart}
-              scrubTimeMs={scrubHeadMs}
-              zoomWindowMs={trimming ? undefined : zoomWindowMs}
-              selection={trim ? selection : undefined}
-              onSelectionPreview={handleSelectionPreview}
-              onSelectionChange={handleSelectionCommit}
-              onChartTouch={trim ? undefined : handleChartTouch}
-              showHead
-            />
-          ) : null}
+      {/* Drawn whether or not the samples have landed, so the empty frames hold the panel's height
+          and a ride switch fills lines into a stack that never moved. Every metric closed means
+          the rider wants the map: the tabs below stay, to bring one back. */}
+      {activeCharts.size > 0 ? (
+        <ChartStack
+          charts={charts}
+          bands={stackBands}
+          timeline={timeline}
+          dataKey={`${startAtMs}`}
+          timeMode="clock"
+          containerStyle={styles.chart}
+          scrubTimeMs={scrubHeadMs}
+          zoomWindowMs={trimming ? undefined : zoomWindowMs}
+          selection={trim ? selection : undefined}
+          onSelectionPreview={handleSelectionPreview}
+          onSelectionChange={handleSelectionCommit}
+          onChartTouch={trim ? undefined : handleChartTouch}
+          showHead
+        />
+      ) : null}
 
-          <HistoryMetricTabs
-            activeCharts={activeCharts}
-            onToggle={handleToggleMetric}
-            metrics={PANEL_CHART_METRICS}
-          />
-          <HistoryMetricLegend />
-        </>
-      )}
+      <HistoryMetricTabs
+        activeCharts={activeCharts}
+        onToggle={handleToggleMetric}
+        metrics={PANEL_CHART_METRICS}
+      />
+      <HistoryMetricLegend />
       {favoriteMode ? (
         <HistoryRideMediaDrawer
           visible={mediaDrawerVisible}
