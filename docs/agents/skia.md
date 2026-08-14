@@ -134,6 +134,17 @@ A worklet captures the functions it calls at the point it is _written_, so a hel
 further down the file is undefined at run time. Define helpers above their callers. Functions
 nested inside a worklet must **not** carry their own `'worklet'` directive.
 
+### A worklet freezes the object it reads a shared value off
+
+`useDerivedValue(() => row.offset.value)` captures `row` itself, not just the shared value, and
+Reanimated deep-freezes what a worklet captures. Any mutable bookkeeping kept on that object —
+`row.y`, a flag, a timer handle — becomes silently unwritable: the assignment neither applies nor
+throws, and the code reads its own stale state forever after.
+
+Pass the shared values as individual props (`slotY={row.slotY} offset={row.offset}`) and keep the
+mutable record on the JS side only. `ChartStack` and `useStackTransition` are the worked example; a
+whole transition once animated to nowhere because of this.
+
 ## Data across the runtimes
 
 ### Skia objects cross by reference; arrays cross by copy

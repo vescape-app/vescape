@@ -12,7 +12,7 @@ import type {
   ChartTimeRange,
 } from '@/components/charts/line/types'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
-import { ChipRow } from '@/components/dev/ShowcaseControls'
+import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
@@ -110,6 +110,7 @@ function generateBands(count: number, stepMs: number): ChartBand[] {
 export function ChartStackShowcase() {
   const [size, setSize] = useState<SizeKey>('tiny')
   const [selectable, setSelectable] = useState(false)
+  const [shown, setShown] = useState<Record<string, boolean>>({})
   const { count, stepMs } = SIZES[size]
 
   const selection = useSharedValue<ChartTimeRange | null>(null)
@@ -125,6 +126,7 @@ export function ChartStackShowcase() {
   const speed = useMemo(() => generateSeries(count, stepMs, 7, 42), [count, stepMs])
   const duty = useMemo(() => generateSeries(count, stepMs, 21, 85), [count, stepMs])
   const volts = useMemo(() => generateSeries(count, stepMs, 55, 60), [count, stepMs])
+  const motor = useMemo(() => generateSeries(count, stepMs, 13, 55), [count, stepMs])
 
   const charts = useMemo<ChartSpec[]>(
     () => [
@@ -169,9 +171,20 @@ export function ChartStackShowcase() {
         left: { range: rangeOf(duty) },
         right: { range: rangeOf(volts) },
       },
+      {
+        key: 'motor',
+        label: 'Motor °C',
+        height: 40,
+        series: [{ key: 'motor', data: motor, color: theme.palette.orange.color, unit: '°C' }],
+        left: { range: rangeOf(motor) },
+      },
     ],
-    [count, duty, speed, stepMs, volts],
+    [count, duty, motor, speed, stepMs, volts],
   )
+
+  // Toggling a chart in and out is the transition the stack is hardest on: see
+  // `useStackTransition` for what has to hold still while the room is made.
+  const shownCharts = useMemo(() => charts.filter((c) => shown[c.key] !== false), [charts, shown])
 
   const timeline = useMemo(
     () => buildTimeline(speed.ts, { minGapMs: 5 * 60_000, gapWidthMs: 20_000 }),
@@ -205,6 +218,14 @@ export function ChartStackShowcase() {
         selected={selectable ? 'on' : 'off'}
         onSelect={(value) => setSelectable(value === 'on')}
       />
+      {['speed', 'duty', 'motor'].map((key) => (
+        <ToggleRow
+          key={key}
+          label={`Chart: ${key}`}
+          value={shown[key] !== false}
+          onToggle={(value) => setShown((prev) => ({ ...prev, [key]: value }))}
+        />
+      ))}
       <Text style={styles.note}>
         {count.toLocaleString()} samples per series, drawn from a min/max pyramid — the spikes are
         single samples. Drag to scrub, pinch to zoom and pan, double-tap to fit. With a selection
@@ -212,7 +233,7 @@ export function ChartStackShowcase() {
       </Text>
       <View style={styles.stack}>
         <ChartStack
-          charts={charts}
+          charts={shownCharts}
           bands={stackBands}
           timeline={timeline}
           dataKey={size}

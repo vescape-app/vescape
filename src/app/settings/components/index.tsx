@@ -123,6 +123,13 @@ const groups = [
         color: theme.palette.blue.light,
       },
       {
+        label: 'Stack lab',
+        hint: 'Chart-stack reveal in the abstract — modes, slow motion, and a ruler to measure it',
+        route: '/settings/components/stack-lab',
+        icon: StackIcon,
+        color: theme.palette.red.color,
+      },
+      {
         label: 'Map',
         hint: 'Map pins, routes, riders, weather radar, buildings — all layers, live controls',
         route: '/settings/components/map',

@@ -15,6 +15,7 @@ import {
   AXIS_WIDTH,
   LABEL_FONT_SIZE,
   computeChartLayout,
+  type ChartLayout,
 } from '@/components/charts/line/chartLayout'
 import { formatAxisNumber, formatClock, formatRelative } from '@/components/charts/line/chartFormat'
 import {
@@ -27,7 +28,11 @@ import {
 import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
 import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
 import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
-import { useStackTransition } from '@/components/charts/line/useStackTransition'
+import {
+  useStackTransition,
+  type StackRow,
+  type StackTransition,
+} from '@/components/charts/line/useStackTransition'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { BandsLayer } from '@/components/charts/line/BandsLayer'
 import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
@@ -163,6 +168,13 @@ interface SeriesEntry {
 }
 
 type SeriesCache = Map<string, SeriesEntry>
+
+/** The last layout a chart was drawn in, kept so it can fade out after leaving the stack. */
+interface DrawnChart {
+  chart: PreparedChart
+  plot: ChartPlotBox
+  labelBaseline: number
+}
 
 interface PreparedStack {
   charts: PreparedChart[]
@@ -333,14 +345,10 @@ export function ChartStack({
   // The container grows from its top edge, since the panel it lives in is pinned to the bottom of
   // the screen. The canvas is pinned to that same bottom edge, so the room being made appears
   // above the stack rather than being taken out of it.
-  const containerHeight = useAnimatedStyle(
-    () => ({
-      height:
-        transition.fromHeight +
-        (transition.toHeight - transition.fromHeight) * transition.progress.value,
-    }),
-    [transition],
-  )
+  // Destructured before the worklet on purpose: closing over `transition` captures — and freezes —
+  // the rows it carries, and the transition keeps mutable bookkeeping on those.
+  const { boxHeight } = transition
+  const containerHeight = useAnimatedStyle(() => ({ height: boxHeight.value }), [boxHeight])
 
   // Mono digits, so one measurement holds for every label the chart will ever show.
   const glyphWidth = axisFont ? axisFont.getTextWidth('0') : 0
@@ -352,6 +360,11 @@ export function ChartStack({
       })),
     [layout, prepared],
   )
+  // A chart dropped from the stack keeps drawing while it fades out, so the room closes over
+  // something rather than over a hole. Its last drawing is all that is needed.
+  const lastDrawn = useRef(new Map<string, DrawnChart>()).current
+  retainDrawn(lastDrawn, prepared.charts, layout, transition.rows)
+
   const readout = useScrubReadout({
     charts: scrubCharts,
     camera: camera.camera,
@@ -483,8 +496,27 @@ export function ChartStack({
                 scrubTimeMs={scrub}
                 labelFont={labelFont}
                 axisFont={axisFont}
-                entering={transition.entering[index]}
-                progress={transition.progress}
+                slotY={transition.rows.get(chart.key)!.slotY}
+                offset={transition.rows.get(chart.key)!.offset}
+                opacity={
+                  transition.fading.has(chart.key)
+                    ? transition.rows.get(chart.key)!.opacity
+                    : undefined
+                }
+              />
+            ))}
+
+            {transition.exiting.map((key) => (
+              <LeavingPlot
+                key={`leaving-${key}`}
+                drawn={lastDrawn.get(key)}
+                row={transition.rows.get(key)}
+                camera={camera}
+                readout={readout}
+                scrubTimeMs={scrub}
+                showHead={showHead}
+                labelFont={labelFont}
+                axisFont={axisFont}
               />
             ))}
 
@@ -545,6 +577,55 @@ export function ChartStack({
   )
 }
 
+/** Keep every chart the transition still knows about drawable, and forget the rest. */
+function retainDrawn(
+  lastDrawn: Map<string, DrawnChart>,
+  charts: PreparedChart[],
+  layout: ChartLayout,
+  rows: StackTransition['rows'],
+) {
+  charts.forEach((chart, index) => {
+    lastDrawn.set(chart.key, {
+      chart,
+      plot: layout.plots[index],
+      labelBaseline: layout.labelBaselines[index],
+    })
+  })
+  for (const key of lastDrawn.keys()) {
+    if (!rows.has(key)) lastDrawn.delete(key)
+  }
+}
+
+interface LeavingPlotProps {
+  drawn: DrawnChart | undefined
+  row: StackRow | undefined
+  camera: ChartCameraState
+  readout: SharedValue<StackReadout>
+  scrubTimeMs: SharedValue<number | null>
+  showHead: boolean
+  labelFont: ReturnType<typeof useSkiaFont>
+  axisFont: ReturnType<typeof useSkiaMonoFont>
+}
+
+/** A chart that has left the stack, drawn where it last was until its fade finishes. */
+function LeavingPlot({ drawn, row, ...rest }: LeavingPlotProps) {
+  if (drawn == null || row == null) return null
+  return (
+    <ChartPlot
+      chart={drawn.chart}
+      plot={drawn.plot}
+      labelBaseline={drawn.labelBaseline}
+      index={-1}
+      scrubTargets={[]}
+      slotY={row.slotY}
+      offset={row.offset}
+      opacity={row.opacity}
+      leaving
+      {...rest}
+    />
+  )
+}
+
 interface ChartPlotProps {
   chart: PreparedChart
   plot: ChartPlotBox
@@ -558,9 +639,21 @@ interface ChartPlotProps {
   scrubTimeMs: SharedValue<number | null>
   labelFont: ReturnType<typeof useSkiaFont>
   axisFont: ReturnType<typeof useSkiaMonoFont>
-  /** New to the stack, so it fades in rather than appearing over the chart it displaced. */
-  entering: boolean
-  progress: SharedValue<number>
+  /**
+   * Animated placement, passed one value at a time on purpose: a worklet reading `row.offset.value`
+   * captures — and in development freezes — the whole row, and the transition keeps mutable
+   * bookkeeping on it that would then be silently unwritable.
+   */
+  slotY: SharedValue<number>
+  offset: SharedValue<number>
+  /**
+   * Given only while the chart is actually fading. An animated opacity puts the group behind a
+   * `saveLayer`, and a layer whose bounds lag the transform moving it is culled outright — the
+   * chart blinks out instead of sliding. A chart that is only moving is drawn without one.
+   */
+  opacity?: SharedValue<number>
+  /** On its way out of the stack: still drawn, but no longer part of the scrub readout. */
+  leaving?: boolean
 }
 
 function ChartPlot({
@@ -575,8 +668,10 @@ function ChartPlot({
   scrubTimeMs,
   labelFont,
   axisFont,
-  entering,
-  progress,
+  slotY,
+  offset,
+  opacity,
+  leaving = false,
 }: ChartPlotProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
@@ -584,10 +679,18 @@ function ChartPlot({
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
     [plot],
   )
-  const opacity = useDerivedValue(() => (entering ? progress.value : 1), [entering])
+  // Everything below is drawn at the plot's final coordinates; this carries it back to where it is
+  // currently seen. Stated relative to `plot.y` rather than as the offset alone so that the frame
+  // between the render-phase write and the commit — where the picture still holds the old
+  // coordinates — resolves to no shift at all, instead of to a slot-sized jump.
+  const plotY = plot.y
+  const transform = useDerivedValue(
+    () => [{ translateY: slotY.value + offset.value - plotY }],
+    [plotY, slotY, offset],
+  )
 
-  return (
-    <Group opacity={opacity}>
+  const content = (
+    <>
       {labelFont && chart.label && (
         <Text
           font={labelFont}
@@ -646,7 +749,7 @@ function ChartPlot({
         </Group>
       </Group>
 
-      {axisFont && (
+      {axisFont && !leaving && (
         <ScrubLayer
           targets={scrubTargets}
           plot={plot}
@@ -660,6 +763,14 @@ function ChartPlot({
       {axisFont && chart.right && (
         <AxisTicks font={axisFont} plot={plot} range={chart.right.range} side="right" />
       )}
+    </>
+  )
+
+  // The fade, when there is one, sits inside the transform rather than on the same group: one
+  // group carries the movement, the other the layer, and neither has to be rebuilt for the other.
+  return (
+    <Group transform={transform}>
+      {opacity == null ? content : <Group opacity={opacity}>{content}</Group>}
     </Group>
   )
 }
