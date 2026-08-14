@@ -146,6 +146,24 @@ interface PreparedChart extends ChartSpec {
   series: PreparedSeries[]
 }
 
+/**
+ * One series' compacted data and paths, kept across renders.
+ *
+ * Rebuilding these is what a stack spends its time on, and a metric toggle changes the chart list
+ * without touching a single sample. Without this the whole ride is re-cut and re-pathed on every
+ * toggle, the canvas lands a couple of frames after the layout, and the stack visibly snaps into
+ * place after the container has already resized around it.
+ */
+interface SeriesEntry {
+  /** Identity of the data this was built from, in wall-clock terms. */
+  source: ChartSeriesData
+  timeline: ChartTimeline | null
+  data: ChartSeriesData
+  paths: SeriesPaths
+}
+
+type SeriesCache = Map<string, SeriesEntry>
+
 interface PreparedStack {
   charts: PreparedChart[]
   startMs: number
@@ -161,21 +179,38 @@ interface PreparedStack {
  * would reach the screen first and project the previous dataset through the new viewport — the
  * old line briefly squashed into a corner.
  */
-function prepareStack(charts: ChartSpec[]): PreparedStack {
+function prepareStack(
+  charts: ChartSpec[],
+  timeline: ChartTimeline | null,
+  cache: SeriesCache,
+): PreparedStack {
   let startMs = Number.POSITIVE_INFINITY
   let endMs = Number.NEGATIVE_INFINITY
+  const seen = new Set<string>()
 
   const prepared = charts.map((chart) => ({
     ...chart,
+    bands: compactBands(chart.bands, timeline),
     series: chart.series.map((series) => {
-      const paths = buildSeriesPaths(series.data)
-      if (!paths.isEmpty) {
-        startMs = Math.min(startMs, paths.domainStartMs)
-        endMs = Math.max(endMs, paths.domainEndMs)
+      const cacheKey = `${chart.key}/${series.key}`
+      seen.add(cacheKey)
+      const cached = cache.get(cacheKey)
+      const entry =
+        cached && cached.source === series.data && cached.timeline === timeline
+          ? cached
+          : buildSeriesEntry(series.data, timeline)
+      cache.set(cacheKey, entry)
+      if (!entry.paths.isEmpty) {
+        startMs = Math.min(startMs, entry.paths.domainStartMs)
+        endMs = Math.max(endMs, entry.paths.domainEndMs)
       }
-      return { ...series, paths }
+      return { ...series, data: entry.data, paths: entry.paths }
     }),
   }))
+
+  for (const key of cache.keys()) {
+    if (!seen.has(key)) cache.delete(key)
+  }
 
   const hasData = Number.isFinite(startMs) && endMs > startMs
   return {
@@ -186,17 +221,13 @@ function prepareStack(charts: ChartSpec[]): PreparedStack {
   }
 }
 
-/** Every series and band of a stack in chart time, so the canvas never sees a cut ride. */
-function compactCharts(charts: ChartSpec[], timeline: ChartTimeline | null): ChartSpec[] {
-  if (timeline == null) return charts
-  return charts.map((chart) => ({
-    ...chart,
-    series: chart.series.map((series) => ({
-      ...series,
-      data: { ts: series.data.ts.map((ms) => toChartMs(ms, timeline)), vs: series.data.vs },
-    })),
-    bands: compactBands(chart.bands, timeline),
-  }))
+/** Cut one series to chart time and build its paths — the expensive half of a stack. */
+function buildSeriesEntry(source: ChartSeriesData, timeline: ChartTimeline | null): SeriesEntry {
+  const data =
+    timeline == null
+      ? source
+      : { ts: source.ts.map((ms) => toChartMs(ms, timeline)), vs: source.vs }
+  return { source, timeline, data, paths: buildSeriesPaths(data) }
 }
 
 function compactBands(
@@ -260,10 +291,15 @@ export function ChartStack({
   const scrub = scrubTimeMs ?? ownScrubTimeMs
 
   // Cutting happens here, once per data change: the canvas below draws chart time throughout, so
-  // no worklet pays for a conversion per frame.
-  const compacted = useMemo(() => compactCharts(charts, timeline), [charts, timeline])
+  // no worklet pays for a conversion per frame. Per series, and cached, so opening or closing a
+  // chart costs only the chart that changed.
+  const seriesCache = useRef<SeriesCache>(null)
+  seriesCache.current ??= new Map()
   const stackBands = useMemo(() => compactBands(bands, timeline), [bands, timeline])
-  const prepared = useMemo(() => prepareStack(compacted), [compacted])
+  const prepared = useMemo(
+    () => prepareStack(charts, timeline, seriesCache.current!),
+    [charts, timeline],
+  )
   const camera = useChartCamera({
     startMs: prepared.startMs,
     endMs: prepared.endMs,
@@ -283,10 +319,10 @@ export function ChartStack({
   }
 
   const layout = useMemo(
-    () => computeChartLayout({ heights: compacted.map((c) => c.height), width }),
-    [compacted, width],
+    () => computeChartLayout({ heights: charts.map((c) => c.height), width }),
+    [charts, width],
   )
-  const chartKeys = useMemo(() => compacted.map((c) => c.key), [compacted])
+  const chartKeys = useMemo(() => charts.map((c) => c.key), [charts])
   const transition = useStackTransition(chartKeys, layout)
   // The container follows the same curve as the plots inside it, so a chart opening never leaves
   // a gap under the stack and the panel above it rises once rather than twice.
