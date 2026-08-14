@@ -117,6 +117,8 @@ export function useChartGestures({
   const lastTapX = useSharedValue(0)
   const lastTapY = useSharedValue(0)
   const tapMoved = useSharedValue(false)
+  const pinchActive = useSharedValue(false)
+  const lastTwoFingerX = useSharedValue(0)
 
   return useMemo(() => {
     const focalRatio = (focalX: number) => {
@@ -181,8 +183,13 @@ export function useChartGestures({
         'worklet'
         startViewport.value = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
         startFocalRatio.value = focalRatio(event.focalX)
+        pinchActive.value = true
         // The first finger of a pinch is not half of a double tap.
         lastTapAt.value = 0
+      })
+      .onFinalize(() => {
+        'worklet'
+        pinchActive.value = false
       })
       .onUpdate((event) => {
         'worklet'
@@ -204,6 +211,42 @@ export function useChartGestures({
         camera.value = {
           spanMs: nextSpan,
           endMs: follow && atHead ? null : nextEnd,
+          key: dataKey,
+        }
+      })
+
+    /**
+     * Two fingers moved together, without spreading.
+     *
+     * A pinch only activates once the fingers change distance, so a rider who lays two fingers
+     * down and slides sideways moves nothing until they zoom first. This carries that case, and
+     * yields to the pinch the moment it activates: it shifts the camera by the frame's delta
+     * rather than from a start window, so the handoff in either direction has nothing to disagree
+     * about.
+     */
+    const drag = Gesture.Pan()
+      .enabled(enabled)
+      .minPointers(2)
+      .averageTouches(true)
+      .onStart((event) => {
+        'worklet'
+        lastTwoFingerX.value = event.translationX
+      })
+      .onUpdate((event) => {
+        'worklet'
+        // As in the pinch: the frame where a finger lifts carries a jump to the remaining one.
+        if (event.numberOfPointers < 2) return
+        const dx = event.translationX - lastTwoFingerX.value
+        lastTwoFingerX.value = event.translationX
+        if (pinchActive.value || dx === 0 || plotWidth <= 0) return
+        const { startMs, endMs } = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
+        const span = endMs - startMs
+        if (span <= 0) return
+        const nextEnd = endMs - (dx / plotWidth) * span
+        const snapMs = (span / plotWidth) * FOLLOW_SNAP_PX
+        camera.value = {
+          spanMs: span,
+          endMs: follow && nextEnd >= domainEndMs - snapMs ? null : nextEnd,
           key: dataKey,
         }
       })
@@ -326,7 +369,7 @@ export function useChartGestures({
         if (range != null && onSelectionCommit) runOnJS(onSelectionCommit)(range)
       })
 
-    return Gesture.Simultaneous(pinch, scrub)
+    return Gesture.Simultaneous(pinch, drag, scrub)
   }, [
     camera,
     dataKey,
@@ -342,9 +385,11 @@ export function useChartGestures({
     lastTapAt,
     lastTapX,
     lastTapY,
+    lastTwoFingerX,
     onChartTouch,
     onSelectionCommit,
     onSelectionPreview,
+    pinchActive,
     plotBands,
     plotWidth,
     plotX,
