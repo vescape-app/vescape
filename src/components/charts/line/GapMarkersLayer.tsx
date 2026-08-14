@@ -17,7 +17,7 @@ const LABEL_GAP = 4
 /** Parked off-canvas rather than unmounted, so panning never touches the tree. */
 const OFFSCREEN = -1_000
 
-export interface GapMarkersLayerProps {
+interface GapMarkersCommonProps {
   timeline: ChartTimeline | null
   camera: SharedValue<ChartCamera>
   dataKey: string
@@ -25,13 +25,24 @@ export interface GapMarkersLayerProps {
   domainEndMs: number
   plotX: number
   plotWidth: number
-  /** Canvas y bounds the seam spans — the first plot's top to the last plot's bottom. */
-  top: number
-  bottom: number
-  /** Baseline of the shared time axis: the times sit on the row that already reads as time. */
-  labelBaseline: number
   font: NonNullable<ReturnType<typeof useSkiaMonoFont>>
 }
+
+type GapMarkersVariant =
+  | {
+      /** The dotted line through a plot. Drawn once per chart, in that chart's canvas. */
+      variant: 'seam'
+      /** Canvas y bounds the seam spans. */
+      top: number
+      bottom: number
+    }
+  | {
+      /** The times either side of the cut. Drawn once, on the row that already reads as time. */
+      variant: 'labels'
+      labelBaseline: number
+    }
+
+export type GapMarkersLayerProps = GapMarkersCommonProps & GapMarkersVariant
 
 /**
  * The seam left where a long pause was cut out: a dotted line, with the time the rider stopped on
@@ -39,6 +50,10 @@ export interface GapMarkersLayerProps {
  *
  * Without the mark the chart would quietly lie — two stretches of riding half an hour apart drawn
  * as if they were continuous. The times are what turn the seam into an explanation.
+ *
+ * Split across two canvases because the stack is: the seam belongs to a plot and is drawn in every
+ * chart, the times belong to the time axis and are drawn once under all of them. Both read the
+ * same camera, so they stay on the same x with no coordination.
  */
 export function GapMarkersLayer({ timeline, ...rest }: GapMarkersLayerProps) {
   if (timeline == null) return null
@@ -57,31 +72,30 @@ export function GapMarkersLayer({ timeline, ...rest }: GapMarkersLayerProps) {
   )
 }
 
-interface GapMarkerProps extends Omit<GapMarkersLayerProps, 'timeline'> {
-  /** Middle of the seam in chart time. */
-  chartMs: number
-  /** Real bounds of the cut, for the labels. */
-  startMs: number
-  endMs: number
-}
+type GapMarkerProps = Omit<GapMarkersCommonProps, 'timeline'> &
+  GapMarkersVariant & {
+    /** Middle of the seam in chart time. */
+    chartMs: number
+    /** Real bounds of the cut, for the labels. */
+    startMs: number
+    endMs: number
+  }
 
-function GapMarker({
-  chartMs,
-  startMs,
-  endMs,
-  camera,
-  dataKey,
-  domainStartMs,
-  domainEndMs,
-  plotX,
-  plotWidth,
-  top,
-  bottom,
-  labelBaseline,
-  font,
-}: GapMarkerProps) {
+function GapMarker(props: GapMarkerProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const {
+    chartMs,
+    startMs,
+    endMs,
+    camera,
+    dataKey,
+    domainStartMs,
+    domainEndMs,
+    plotX,
+    plotWidth,
+    font,
+  } = props
   const startLabel = formatClock(startMs, false)
   const endLabel = formatClock(endMs, false)
   const startWidth = font.getTextWidth(startLabel)
@@ -93,19 +107,26 @@ function GapMarker({
     return [{ translateX: plotX + x }]
   }, [camera, chartMs, dataKey, domainEndMs, domainStartMs, plotWidth, plotX])
 
+  if (props.variant === 'seam') {
+    return (
+      <Group transform={transform}>
+        <Line p1={vec(0, props.top)} p2={vec(0, props.bottom)} color={LINE_COLOR} strokeWidth={1}>
+          <DashPathEffect intervals={DASH} />
+        </Line>
+      </Group>
+    )
+  }
+
   return (
     <Group transform={transform}>
-      <Line p1={vec(0, top)} p2={vec(0, bottom)} color={LINE_COLOR} strokeWidth={1}>
-        <DashPathEffect intervals={DASH} />
-      </Line>
       <Text
         font={font}
         x={-LABEL_GAP - startWidth}
-        y={labelBaseline}
+        y={props.labelBaseline}
         text={startLabel}
         color={LABEL_COLOR}
       />
-      <Text font={font} x={LABEL_GAP} y={labelBaseline} text={endLabel} color={LABEL_COLOR} />
+      <Text font={font} x={LABEL_GAP} y={props.labelBaseline} text={endLabel} color={LABEL_COLOR} />
     </Group>
   )
 }

@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { ChartStack } from '@/components/charts/line/ChartStack'
-import { CHART_GAP, LABEL_HEIGHT, TIME_AXIS_HEIGHT } from '@/components/charts/line/chartLayout'
+import { stackChromeHeight } from '@/components/charts/line/chartLayout'
 import { theme } from '@/constants/theme'
 import { HistoryMetricTabs } from '@/modules/history/components/HistoryMetricTabs'
 import {
@@ -95,8 +95,7 @@ export function HistoryChartsScreen() {
   const chartCount = Math.max(1, activeCharts.size)
   const speedShown = activeCharts.has('speed')
   const { speedHeight, metricHeight } = useMemo(() => {
-    const chrome = TIME_AXIS_HEIGHT + chartCount * LABEL_HEIGHT + (chartCount - 1) * CHART_GAP
-    const plotSpace = Math.max(0, stackHeight - chrome)
+    const plotSpace = Math.max(0, stackHeight - stackChromeHeight(chartCount))
     // Speed only claims its extra share while it is on screen; closed, the metrics take the room.
     const shares = speedShown ? chartCount - 1 + SPEED_HEIGHT_WEIGHT : chartCount
     const unit = plotSpace / shares
