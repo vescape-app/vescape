@@ -1,7 +1,12 @@
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated'
+import Animated, {
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ChartStack } from '@/components/charts/line/ChartStack'
@@ -133,6 +138,14 @@ export function HistoryTelemetryPanel({
   // lines would survive the press that started the next one.
   const rideSamples = loadingSession ? EMPTY_SAMPLES : samples
 
+  // The lines are cleared in the same commit as the press, so the fade out is only the chrome
+  // going; the fade in is the whole stack arriving at once, once its samples have landed.
+  const fade = useSharedValue(1)
+  useEffect(() => {
+    fade.value = withTiming(loadingSession ? 0 : 1, { duration: loadingSession ? 90 : 260 })
+  }, [fade, loadingSession])
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }))
+
   const visibleSamples = useVisibleRideSamples(rideSamples, movingStartAtMs, movingEndAtMs)
   const series = useChartSeries(visibleSamples)
   const timeline = useChartTimeline(visibleSamples)
@@ -251,21 +264,23 @@ export function HistoryTelemetryPanel({
           and a ride switch fills lines into a stack that never moved. Every metric closed means
           the rider wants the map: the tabs below stay, to bring one back. */}
       {activeCharts.size > 0 ? (
-        <ChartStack
-          charts={charts}
-          bands={stackBands}
-          timeline={timeline}
-          dataKey={`${startAtMs}`}
-          timeMode="clock"
-          containerStyle={styles.chart}
-          scrubTimeMs={scrubHeadMs}
-          zoomWindowMs={trimming ? undefined : zoomWindowMs}
-          selection={trim ? selection : undefined}
-          onSelectionPreview={handleSelectionPreview}
-          onSelectionChange={handleSelectionCommit}
-          onChartTouch={trim ? undefined : handleChartTouch}
-          showHead
-        />
+        <Animated.View style={fadeStyle}>
+          <ChartStack
+            charts={charts}
+            bands={stackBands}
+            timeline={timeline}
+            dataKey={`${startAtMs}`}
+            timeMode="clock"
+            containerStyle={styles.chart}
+            scrubTimeMs={scrubHeadMs}
+            zoomWindowMs={trimming ? undefined : zoomWindowMs}
+            selection={trim ? selection : undefined}
+            onSelectionPreview={handleSelectionPreview}
+            onSelectionChange={handleSelectionCommit}
+            onChartTouch={trim ? undefined : handleChartTouch}
+            showHead
+          />
+        </Animated.View>
       ) : null}
 
       <HistoryMetricTabs
