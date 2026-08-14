@@ -60,48 +60,6 @@ let liveRefreshInFlight = false
 let liveRefreshVersion = 0
 let sessionLoadVersion = 0
 
-function bucketToPreviewSample(bucket: TelemetryMinuteBucket): TelemetrySample {
-  return {
-    id: 0,
-    capturedAtMs: bucket.bucketStartMs,
-    deviceId: bucket.deviceId,
-    deviceName: bucket.deviceName,
-    speedKmh: bucket.avgSpeedKmh,
-    batteryVoltage: bucket.minBatteryVoltage ?? 0,
-    batteryPercent: null,
-    motorCurrent: bucket.maxMotorCurrent,
-    batteryCurrent: bucket.maxBatteryCurrent,
-    dutyCycle: bucket.maxDuty,
-    pitch: 0,
-    roll: 0,
-    balancePitch: 0,
-    balanceCurrent: 0,
-    erpm: 0,
-    state: 0,
-    switchState: 0,
-    adc1: 0,
-    adc2: 0,
-    odometer: null,
-    tempMosfet: bucket.maxTempMosfet,
-    tempMotor: bucket.maxTempMotor,
-    hasFault: bucket.faultCount > 0,
-    faultCode: 0,
-    latitude: bucket.firstLatitude,
-    longitude: bucket.firstLongitude,
-  }
-}
-
-function buildPreviewSamples(
-  blocks: TelemetryMinuteBucket[],
-  session: HistorySession,
-): TelemetrySample[] {
-  const blockSet = new Set(session.blockIds)
-  return blocks
-    .filter((b) => blockSet.has(b.id))
-    .sort((a, b) => a.bucketStartMs - b.bucketStartMs)
-    .map(bucketToPreviewSample)
-}
-
 /** Rider-set ride split gap. Read per grouping call so a settings change re-groups on next load. */
 function rideSplitGapMs() {
   return useSettingsStore.getState().rideSplitGapMinutes * 60_000
@@ -301,10 +259,12 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       })
       return
     }
-    const previewSamples = buildPreviewSamples(get().blocks, session)
     set({
       selectedSession: session,
-      sessionSamples: previewSamples.length > 0 ? previewSamples : get().sessionSamples,
+      // The previous ride's lines stay up until the real samples land. A minute-bucket stand-in
+      // used to fill the gap, but it drew a different, coarser shape of the same charts — the
+      // stack rebuilt twice and neither drawing was the ride.
+      sessionSamples: get().sessionSamples,
       sessionGpsSamples: [],
       loadingSession: true,
       sessionTruncated: false,
