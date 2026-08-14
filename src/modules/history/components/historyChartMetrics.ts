@@ -54,6 +54,8 @@ export interface OptionalChartMetricDef extends ChartMetricDef {
   multilineLabel?: [string, string]
   /** Short form for a metric tab, where the chart's own label would wrap. */
   tabLabel?: string
+  unit: string
+  decimals: number
 }
 
 export const SPEED_CHART_DEF: ChartMetricDef = {
@@ -72,12 +74,16 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     color: telemetry.duty.color,
     range: rangeOf(telemetry.duty, { includeZero: true, fixed: true }),
     statKeys: 'max_duty',
+    unit: telemetry.duty.unit,
+    decimals: telemetry.duty.decimals,
   },
   {
     key: 'battery',
     label: 'Battery',
     color: telemetry.battVoltage.color,
     range: rangeOf(telemetry.battVoltage),
+    unit: telemetry.battVoltage.unit,
+    decimals: telemetry.battVoltage.decimals,
   },
   {
     key: 'tempMotor',
@@ -85,6 +91,8 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     tabLabel: 'Motor C°',
     color: telemetry.motorTemp.color,
     range: rangeOf(telemetry.motorTemp),
+    unit: telemetry.motorTemp.unit,
+    decimals: telemetry.motorTemp.decimals,
   },
   {
     key: 'tempController',
@@ -92,6 +100,8 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     tabLabel: 'Ctrl C°',
     color: telemetry.controllerTemp.color,
     range: rangeOf(telemetry.controllerTemp),
+    unit: telemetry.controllerTemp.unit,
+    decimals: telemetry.controllerTemp.decimals,
   },
   {
     key: 'motorCurrent',
@@ -99,6 +109,8 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Motor', 'Current'],
     color: telemetry.motorCurrent.color,
     range: rangeOf(telemetry.motorCurrent, { includeZero: true }),
+    unit: telemetry.motorCurrent.unit,
+    decimals: telemetry.motorCurrent.decimals,
   },
   {
     key: 'batteryCurrent',
@@ -106,6 +118,8 @@ export const OPTIONAL_CHART_METRICS: readonly OptionalChartMetricDef[] = [
     multilineLabel: ['Batt', 'Current'],
     color: telemetry.battCurrent.color,
     range: rangeOf(telemetry.battCurrent, { includeZero: true }),
+    unit: telemetry.battCurrent.unit,
+    decimals: telemetry.battCurrent.decimals,
   },
 ]
 
@@ -142,6 +156,7 @@ export interface ExtraChartMetricDef {
   range: AutoRangeOptions
   source: ExtraChartSource
   unit?: string
+  decimals?: number
 }
 
 /** The GPS metrics have no board-side definition, so they state their own scale here. */
@@ -164,6 +179,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: rangeOf(telemetry.pitch),
     source: 'board',
     unit: telemetry.pitch.unit,
+    decimals: telemetry.pitch.decimals,
   },
   {
     key: 'roll',
@@ -172,6 +188,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: rangeOf(telemetry.roll),
     source: 'board',
     unit: telemetry.roll.unit,
+    decimals: telemetry.roll.decimals,
   },
   {
     key: 'balancePitch',
@@ -181,6 +198,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: rangeOf(telemetry.balancePitch),
     source: 'board',
     unit: telemetry.balancePitch.unit,
+    decimals: telemetry.balancePitch.decimals,
   },
   {
     key: 'footpadAdc1',
@@ -192,6 +210,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: rangeOf(telemetry.footpadAdc1, { includeZero: true, fixed: true }),
     source: 'board',
     unit: telemetry.footpadAdc1.unit,
+    decimals: telemetry.footpadAdc1.decimals,
   },
   {
     key: 'footpadAdc2',
@@ -201,6 +220,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: rangeOf(telemetry.footpadAdc2, { includeZero: true, fixed: true }),
     source: 'board',
     unit: telemetry.footpadAdc2.unit,
+    decimals: telemetry.footpadAdc2.decimals,
   },
   {
     key: 'altitude',
@@ -209,6 +229,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: gpsRange(0, 100, 20),
     source: 'gps',
     unit: 'm',
+    decimals: 0,
   },
   {
     key: 'gpsAccuracy',
@@ -218,6 +239,7 @@ export const EXTRA_CHART_METRICS: readonly ExtraChartMetricDef[] = [
     range: gpsRange(0, 20, 10),
     source: 'gps',
     unit: 'm',
+    decimals: 0,
   },
 ]
 

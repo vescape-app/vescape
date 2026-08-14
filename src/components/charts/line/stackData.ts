@@ -125,6 +125,7 @@ export function toScrubTargets(chart: PreparedChart): ScrubTarget[] {
     color: series.color,
     label: series.label,
     unit: series.unit,
+    decimals: series.decimals,
     range: (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range,
   }))
 }

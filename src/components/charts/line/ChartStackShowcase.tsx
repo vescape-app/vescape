@@ -144,6 +144,7 @@ export function ChartStackShowcase() {
             data: speed,
             color: theme.palette.cyan.color,
             unit: 'km/h',
+            decimals: 0,
             ramp: SPEED_RAMP,
           },
         ],
@@ -163,6 +164,7 @@ export function ChartStackShowcase() {
                   color: theme.palette.amber.color,
                   label: 'Duty',
                   unit: '%',
+                  decimals: 0,
                   ramp: DUTY_BANDS,
                 },
                 {
@@ -172,6 +174,7 @@ export function ChartStackShowcase() {
                   axis: 'right',
                   label: 'Pack',
                   unit: 'V',
+                  decimals: 1,
                 },
               ],
               left: { range: rangeOf(duty) },

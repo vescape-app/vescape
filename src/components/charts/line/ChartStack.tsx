@@ -30,7 +30,7 @@ import {
 } from '@/components/charts/line/ChartStackContext'
 import { ChartTimeAxis } from '@/components/charts/line/ChartTimeAxis'
 import { LineChart } from '@/components/charts/line/LineChart'
-import { useScrubReadout } from '@/components/charts/line/ScrubLayer'
+import { SCRUB_FONT_SIZE, useScrubReadout } from '@/components/charts/line/ScrubLayer'
 import {
   compactBands,
   compactCharts,
@@ -149,6 +149,7 @@ export function ChartStack({
   const [width, setWidth] = useState(0)
   const labelFont = useSkiaFont('600', LABEL_FONT_SIZE)
   const axisFont = useSkiaMonoFont('500', AXIS_FONT_SIZE)
+  const scrubFont = useSkiaMonoFont('600', SCRUB_FONT_SIZE)
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     setWidth(Math.round(event.nativeEvent.layout.width))
@@ -195,6 +196,7 @@ export function ChartStack({
 
   // Mono digits, so one measurement holds for every label the chart will ever show.
   const glyphWidth = axisFont ? axisFont.getTextWidth('0') : 0
+  const scrubGlyphWidth = scrubFont ? scrubFont.getTextWidth('0') : 0
   // Every chart draws at the same origin in its own canvas, so the readout is laid out against
   // one plot box per chart height and never against a position in the stack.
   const scrubCharts = useMemo(
@@ -213,7 +215,7 @@ export function ChartStack({
     domainEndMs: prepared.endMs,
     scrubTimeMs: scrub,
     timeline,
-    glyphWidth,
+    glyphWidth: scrubGlyphWidth,
   })
 
   const plotBands = useMemo(
@@ -277,6 +279,7 @@ export function ChartStack({
       plotWidth,
       labelFont,
       axisFont,
+      scrubFont,
       showHead,
     }),
     [
@@ -290,6 +293,7 @@ export function ChartStack({
       prepared.startMs,
       readout,
       scrub,
+      scrubFont,
       selection,
       showHead,
       stackBands,

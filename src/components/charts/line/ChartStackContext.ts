@@ -35,6 +35,7 @@ export interface ChartStackContextValue {
   plotWidth: number
   labelFont: ReturnType<typeof useSkiaFont>
   axisFont: ReturnType<typeof useSkiaMonoFont>
+  scrubFont: ReturnType<typeof useSkiaMonoFont>
   showHead: boolean
 }
 

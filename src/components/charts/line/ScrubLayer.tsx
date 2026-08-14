@@ -2,7 +2,7 @@ import { Circle, Group, Rect, RoundedRect, Text } from '@shopify/react-native-sk
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { AXIS_FONT_SIZE } from '@/components/charts/line/chartLayout'
-import { formatAxisNumber, formatClock } from '@/components/charts/line/chartFormat'
+import { formatClock } from '@/components/charts/line/chartFormat'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
 import { sampleAtSec, type SeriesPaths } from '@/components/charts/line/seriesPaths'
 import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline'
@@ -13,8 +13,8 @@ import { theme } from '@/constants/theme'
 const CURSOR_COLOR = theme.palette.slate.border
 const BANNER_BG = theme.alpha(theme.palette.slate.surfaceDeep, 0.85)
 const BANNER_BORDER = theme.palette.slate.surface
-const TIME_COLOR = theme.palette.slate.textSecondary
-const FONT_SIZE = AXIS_FONT_SIZE
+export const SCRUB_FONT_SIZE = 11
+const FONT_SIZE = SCRUB_FONT_SIZE
 const ROW_HEIGHT = FONT_SIZE + 4
 const PADDING = 5
 const RADIUS = 5
@@ -29,6 +29,7 @@ export interface ScrubTarget {
   color: string
   label?: string
   unit?: string
+  decimals?: number
   range: ChartYRange
 }
 
@@ -128,7 +129,7 @@ export function useScrubReadout({
 
       const rows: string[] = []
       const dots: number[] = []
-      let longest = time.length
+      let longest = 0
 
       for (let i = 0; i < targets.length; i += 1) {
         const target = targets[i]
@@ -136,12 +137,16 @@ export function useScrubReadout({
         const sample = sampleAtSec(paths.raw, (chartMs - paths.domainStartMs) / 1000)
         if (!sample.found) {
           rows.push('—')
+          longest = Math.max(longest, 1)
           dots.push(OFFSCREEN, OFFSCREEN)
           continue
         }
 
+        const decimals = target.decimals ?? 1
+        const formatted =
+          decimals === 0 ? Math.round(sample.value).toString() : sample.value.toFixed(decimals)
         const unit = target.unit ? ` ${target.unit}` : ''
-        const value = `${formatAxisNumber(sample.value)}${unit}`
+        const value = `${formatted}${unit}`
         const row = target.label ? `${target.label} ${value}` : value
         rows.push(row)
         longest = Math.max(longest, row.length)
@@ -181,17 +186,16 @@ export function ScrubLayer({ targets, plot, index: chart, readout, font }: Scrub
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
   // The row count never changes, so the banner is only ever as tall as the series it carries.
-  const height = (targets.length + 1) * ROW_HEIGHT + PADDING * 2
+  const height = targets.length * ROW_HEIGHT + PADDING * 2
+  const centeredY = Math.max((plot.height - height) / 2, 0)
 
   const opacity = useDerivedValue(() => (readout.value.charts.length === 0 ? 0 : 1), [])
   // A translated group, so the banner moves as one node instead of a value per child.
   const bannerTransform = useDerivedValue(
-    () => [{ translateX: readout.value.charts[chart]?.x ?? 0 }],
-    [chart],
+    () => [{ translateX: readout.value.charts[chart]?.x ?? 0 }, { translateY: centeredY }],
+    [centeredY, chart],
   )
   const bannerWidth = useDerivedValue(() => readout.value.charts[chart]?.width ?? 0, [chart])
-  const timeText = useDerivedValue(() => readout.value.time, [])
-
   if (targets.length === 0) return null
 
   return (
@@ -216,7 +220,6 @@ export function ScrubLayer({ targets, plot, index: chart, readout, font }: Scrub
           style="stroke"
           strokeWidth={0.5}
         />
-        <Text font={font} x={PADDING} y={PADDING + FONT_SIZE} text={timeText} color={TIME_COLOR} />
         {targets.map((target, index) => (
           <ScrubRow
             key={index}
@@ -248,7 +251,7 @@ function ScrubRow({ chart, index, color, readout, font }: ScrubRowProps) {
     <Text
       font={font}
       x={PADDING}
-      y={PADDING + FONT_SIZE + ROW_HEIGHT * (index + 1)}
+      y={PADDING + FONT_SIZE + ROW_HEIGHT * index}
       text={text}
       color={color}
     />

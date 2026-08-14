@@ -50,6 +50,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
     stackBands,
     labelFont,
     axisFont,
+    scrubFont,
     showHead,
   } = useChartStack()
 
@@ -154,13 +155,13 @@ export function LineChart({ chart, width, index }: LineChartProps) {
         </Group>
       </Group>
 
-      {axisFont && (
+      {scrubFont && (
         <ScrubLayer
           targets={scrubTargets}
           plot={plot}
           index={index}
           readout={readout}
-          font={axisFont}
+          font={scrubFont}
         />
       )}
 

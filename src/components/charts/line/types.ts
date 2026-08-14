@@ -92,6 +92,8 @@ export interface ChartSeriesSpec {
   /** Shown in the scrub readout; worth setting once a chart carries more than one series. */
   label?: string
   unit?: string
+  /** Decimal precision used by the scrub readout. */
+  decimals?: number
 }
 
 export interface ChartAxisSpec {

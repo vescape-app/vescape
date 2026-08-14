@@ -34,8 +34,17 @@ export interface ChartTimeAxisProps {
 export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
-  const { camera, dataKey, domainStartMs, domainEndMs, timeline, plotWidth, axisFont, isEmpty } =
-    useChartStack()
+  const {
+    camera,
+    dataKey,
+    domainStartMs,
+    domainEndMs,
+    timeline,
+    plotWidth,
+    axisFont,
+    isEmpty,
+    readout,
+  } = useChartStack()
 
   const viewport = useDerivedValue(
     () => viewportFor(camera.value, dataKey, domainStartMs, domainEndMs),
@@ -56,6 +65,12 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
     const withSeconds = endMs - startMs < CLOCK_SECONDS_BELOW_MS
     return AXIS_WIDTH + plotWidth - glyphWidth * (withSeconds ? 8 : 5)
   }, [glyphWidth, plotWidth, viewport])
+  const scrubTimeX = useDerivedValue(() => {
+    const width = readout.value.time.length * glyphWidth
+    return AXIS_WIDTH + (plotWidth - width) / 2
+  }, [glyphWidth, plotWidth])
+  const scrubTimeOpacity = useDerivedValue(() => (readout.value.time ? 1 : 0), [])
+  const scrubTimeText = useDerivedValue(() => readout.value.time, [])
 
   // The strip still takes its height while a ride loads — an empty frame that keeps the panel
   // still is the point — but there is no window yet to name.
@@ -81,6 +96,14 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
         y={TIME_AXIS_BASELINE}
         text={startLabel}
         color={AXIS_TEXT_COLOR}
+      />
+      <Text
+        font={axisFont}
+        x={scrubTimeX}
+        y={TIME_AXIS_BASELINE}
+        text={scrubTimeText}
+        color={theme.palette.mono.white}
+        opacity={scrubTimeOpacity}
       />
       <Text
         font={axisFont}

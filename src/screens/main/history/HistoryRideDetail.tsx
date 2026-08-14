@@ -64,6 +64,7 @@ export function HistoryRideDetail({
                 .join(' · ')
             : undefined
         }
+        gpsGapSamples={history.sessionSamples}
         samples={history.sessionChartSamples}
         canPrevious={
           !trimming && (favoriteMode ? history.canPreviousFavorite : history.canPreviousRide)

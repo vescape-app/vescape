@@ -357,6 +357,8 @@ export function useHistoryChartStack({
           key: 'speed',
           data: series.speed,
           color: SPEED_CHART_DEF.color,
+          unit: telemetry.speed.unit,
+          decimals: telemetry.speed.decimals,
           ramp: ramps.speed,
         },
       ],
@@ -373,7 +375,14 @@ export function useHistoryChartStack({
               label: def.label,
               height: metricHeight,
               series: [
-                { key: def.key, data: series[def.key], color: def.color, ramp: ramps[def.key] },
+                {
+                  key: def.key,
+                  data: series[def.key],
+                  color: def.color,
+                  ramp: ramps[def.key],
+                  unit: def.unit,
+                  decimals: def.decimals,
+                },
               ],
               left: { range: ranges[def.key] },
               bands: exclusionBands[def.key],
@@ -394,6 +403,7 @@ export function useHistoryChartStack({
                     data: extraSeries[def.key],
                     color: def.color,
                     unit: def.unit,
+                    decimals: def.decimals,
                   },
                 ],
                 left: { range: extraRanges[def.key] },
@@ -433,8 +443,8 @@ function batteryChart(
     key: 'voltage',
     data: series.battery,
     color: telemetry.battVoltage.color,
-    label: 'Pack',
     unit: telemetry.battVoltage.unit,
+    decimals: telemetry.battVoltage.decimals,
   }
 
   if (!hasPercent) {
@@ -456,8 +466,8 @@ function batteryChart(
         key: 'percent',
         data: series.batteryPercent,
         color: telemetry.battVoltage.color,
-        label: 'Charge',
-        unit: '%',
+        unit: telemetry.batteryPercent.unit,
+        decimals: telemetry.batteryPercent.decimals,
       },
       { ...voltage, axis: 'right', color: theme.palette.slate.textMuted },
     ],

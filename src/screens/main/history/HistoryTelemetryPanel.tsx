@@ -55,6 +55,9 @@ interface HistoryTelemetryPanelProps {
   deviceName: string
   navigationTitle?: string
   navigationSubtitle?: string
+  /** Full-density samples retained for recording-continuity and GPS-gap detection. */
+  gpsGapSamples: TelemetrySample[]
+  /** Decimated samples used to draw the compact chart lines. */
   samples: TelemetrySample[]
   canPrevious: boolean
   canNext: boolean
@@ -95,6 +98,7 @@ export function HistoryTelemetryPanel({
   deviceName,
   navigationTitle,
   navigationSubtitle,
+  gpsGapSamples,
   samples,
   canPrevious,
   canNext,
@@ -144,6 +148,7 @@ export function HistoryTelemetryPanel({
   // Derived in render, not through state: an effect would run a commit late and the old ride's
   // lines would survive the press that started the next one.
   const rideSamples = loadingSession ? EMPTY_SAMPLES : samples
+  const rideGpsGapSamples = loadingSession ? EMPTY_SAMPLES : gpsGapSamples
 
   // The lines are cleared in the same commit as the press, so the fade out is only the chrome
   // going; the fade in is the whole stack arriving at once, once its samples have landed.
@@ -154,6 +159,11 @@ export function HistoryTelemetryPanel({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }))
 
   const visibleSamples = useVisibleRideSamples(rideSamples, movingStartAtMs, movingEndAtMs)
+  const visibleGpsGapSamples = useVisibleRideSamples(
+    rideGpsGapSamples,
+    movingStartAtMs,
+    movingEndAtMs,
+  )
   useEffect(() => {
     setDisplayedCharts((current) => new Set([...current, ...activeCharts]))
     const timeout = setTimeout(() => setDisplayedCharts(activeCharts), CHART_CHANGE_FADE_MS)
@@ -166,7 +176,7 @@ export function HistoryTelemetryPanel({
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favoriteRanges)
-  const gpsGapBands = useGpsGapBands(visibleSamples)
+  const gpsGapBands = useGpsGapBands(visibleGpsGapSamples)
   const stackBands = useMemo(() => [...favoriteBands, ...gpsGapBands], [favoriteBands, gpsGapBands])
   const charts = useHistoryChartStack({
     series,
