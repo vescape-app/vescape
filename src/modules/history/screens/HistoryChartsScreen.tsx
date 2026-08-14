@@ -35,8 +35,6 @@ import { useHistoryStore } from '@/modules/history/store/historyStore'
 
 /** Tabs per row: the fourteen metrics wrap into two even rows. */
 const TAB_COLUMNS = 7
-/** Speed anchors the stack, so it keeps more of the height than the metrics under it. */
-const SPEED_HEIGHT_WEIGHT = 1.6
 /**
  * Floor under a plot, below which a line is a smear rather than a reading.
  *
@@ -93,17 +91,12 @@ export function HistoryChartsScreen() {
   // Charts are sized to fill the screen rather than to a fixed strip, so the plot heights come
   // from what the stack was actually given: the canvas spends the rest on labels and the time axis.
   const chartCount = Math.max(1, activeCharts.size)
-  const speedShown = activeCharts.has('speed')
-  const { speedHeight, metricHeight } = useMemo(() => {
+  // Every chart gets the same plot height, speed included: the stack reads as one grid, and a
+  // taller speed plot only made the metrics under it harder to compare against each other.
+  const chartHeight = useMemo(() => {
     const plotSpace = Math.max(0, stackHeight - stackChromeHeight(chartCount))
-    // Speed only claims its extra share while it is on screen; closed, the metrics take the room.
-    const shares = speedShown ? chartCount - 1 + SPEED_HEIGHT_WEIGHT : chartCount
-    const unit = plotSpace / shares
-    return {
-      speedHeight: Math.max(MIN_METRIC_HEIGHT * SPEED_HEIGHT_WEIGHT, unit * SPEED_HEIGHT_WEIGHT),
-      metricHeight: Math.max(MIN_METRIC_HEIGHT, unit),
-    }
-  }, [chartCount, speedShown, stackHeight])
+    return Math.max(MIN_METRIC_HEIGHT, plotSpace / chartCount)
+  }, [chartCount, stackHeight])
 
   const charts = useHistoryChartStack({
     series,
@@ -114,8 +107,8 @@ export function HistoryChartsScreen() {
     speedOptional: true,
     extraSeries,
     extraRanges,
-    speedHeight,
-    metricHeight,
+    speedHeight: chartHeight,
+    metricHeight: chartHeight,
   })
 
   const handleToggleMetric = useCallback((metric: ChartToggleMetric) => {
