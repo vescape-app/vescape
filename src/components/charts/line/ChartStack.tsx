@@ -318,24 +318,27 @@ export function ChartStack({
     }
   }
 
-  const layout = useMemo(
-    () => computeChartLayout({ heights: charts.map((c) => c.height), width }),
-    [charts, width],
-  )
+  // The drawing surface only ever grows. Resizing it is what used to make a toggle jump: the
+  // canvas takes its new height at commit while the picture inside it lands a frame or two later,
+  // so for those frames the old drawing hangs off the wrong edge.
+  const surfaceHeight = useRef(0)
+  const layout = useMemo(() => {
+    const heights = charts.map((c) => c.height)
+    const natural = computeChartLayout({ heights, width })
+    surfaceHeight.current = Math.max(surfaceHeight.current, natural.canvasHeight)
+    return computeChartLayout({ heights, width, surfaceHeight: surfaceHeight.current })
+  }, [charts, width])
   const chartKeys = useMemo(() => charts.map((c) => c.key), [charts])
   const transition = useStackTransition(chartKeys, layout)
-  // The container follows the same curve as the plots inside it, so a chart opening never leaves
-  // a gap under the stack and the panel above it rises once rather than twice.
+  // The container grows from its top edge, since the panel it lives in is pinned to the bottom of
+  // the screen. The canvas is pinned to that same bottom edge, so the room being made appears
+  // above the stack rather than being taken out of it.
   const containerHeight = useAnimatedStyle(
     () => ({
       height:
         transition.fromHeight +
         (transition.toHeight - transition.fromHeight) * transition.progress.value,
     }),
-    [transition],
-  )
-  const axisSlide = useDerivedValue(
-    () => [{ translateY: transition.axisDelta * (1 - transition.progress.value) }],
     [transition],
   )
 
@@ -437,7 +440,7 @@ export function ChartStack({
     <Animated.View style={[containerStyle, styles.container, containerHeight]} onLayout={onLayout}>
       {width > 0 && (
         <GestureDetector gesture={gesture}>
-          <Canvas style={[styles.canvas, { height: transition.reservedHeight }]}>
+          <Canvas style={[styles.canvas, { height: layout.surfaceHeight }]}>
             {/* Before the plots: the cursor marks a moment, so it belongs behind the readings
                 it points at rather than cutting across them. */}
             <ScrubCursor
@@ -480,7 +483,6 @@ export function ChartStack({
                 scrubTimeMs={scrub}
                 labelFont={labelFont}
                 axisFont={axisFont}
-                slideFrom={transition.deltas[index]}
                 entering={transition.entering[index]}
                 progress={transition.progress}
               />
@@ -519,7 +521,7 @@ export function ChartStack({
             )}
 
             {axisFont && (
-              <Group transform={axisSlide}>
+              <>
                 <Text
                   font={axisFont}
                   x={AXIS_WIDTH}
@@ -534,7 +536,7 @@ export function ChartStack({
                   text={endLabel}
                   color={AXIS_TEXT_COLOR}
                 />
-              </Group>
+              </>
             )}
           </Canvas>
         </GestureDetector>
@@ -556,8 +558,6 @@ interface ChartPlotProps {
   scrubTimeMs: SharedValue<number | null>
   labelFont: ReturnType<typeof useSkiaFont>
   axisFont: ReturnType<typeof useSkiaMonoFont>
-  /** How far above its new home this chart used to sit — see {@link useStackTransition}. */
-  slideFrom: number
   /** New to the stack, so it fades in rather than appearing over the chart it displaced. */
   entering: boolean
   progress: SharedValue<number>
@@ -575,7 +575,6 @@ function ChartPlot({
   scrubTimeMs,
   labelFont,
   axisFont,
-  slideFrom,
   entering,
   progress,
 }: ChartPlotProps) {
@@ -585,16 +584,10 @@ function ChartPlot({
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
     [plot],
   )
-  // The whole chart moves as one — clip included, since the clip rect lives in this group's own
-  // coordinates. Transform only: no path is rebuilt for a chart that merely changed neighbours.
-  const slide = useDerivedValue(
-    () => [{ translateY: slideFrom * (1 - progress.value) }],
-    [slideFrom],
-  )
   const opacity = useDerivedValue(() => (entering ? progress.value : 1), [entering])
 
   return (
-    <Group transform={slide} opacity={opacity}>
+    <Group opacity={opacity}>
       {labelFont && chart.label && (
         <Text
           font={labelFont}
@@ -719,6 +712,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   canvas: {
+    position: 'absolute',
+    bottom: 0,
     width: '100%',
   },
 })

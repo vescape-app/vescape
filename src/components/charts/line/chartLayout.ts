@@ -14,13 +14,21 @@ export const CHART_GAP = 8
 export interface ChartLayoutInput {
   heights: number[]
   width: number
+  /**
+   * Height of the drawing surface, when it is larger than this stack needs. The stack is placed
+   * against its bottom edge and the surplus is left empty above.
+   */
+  surfaceHeight?: number
 }
 
 export interface ChartLayout {
   plots: ChartPlotBox[]
   /** Label baselines, one per plot, in canvas coordinates. */
   labelBaselines: number[]
+  /** What this stack needs — the height of the box it should be given. */
   canvasHeight: number
+  /** What it is drawn on, which is never smaller. */
+  surfaceHeight: number
   timeAxisBaseline: number
 }
 
@@ -28,13 +36,26 @@ export interface ChartLayout {
  * Place every plot of a stack in one canvas. Both gutters are always reserved, whether or not any
  * chart currently carries a right-hand axis: the stack shares one x scale, and a gutter that
  * appears with the battery chart would otherwise resize — and re-path — every line in the stack.
+ *
+ * The stack sits against the bottom of its surface. A rider toggling a chart on expects the room
+ * for it to be made above the charts they are already reading, not underneath them — and since
+ * the surface itself never resizes, a chart below the newcomer keeps the same coordinates on both
+ * sides of the change, so it cannot move even for the frame the canvas takes to repaint.
  */
-export function computeChartLayout({ heights, width }: ChartLayoutInput): ChartLayout {
+export function computeChartLayout({
+  heights,
+  width,
+  surfaceHeight = 0,
+}: ChartLayoutInput): ChartLayout {
   const plotX = AXIS_WIDTH
   const plotWidth = Math.max(0, width - AXIS_WIDTH * 2)
   const plots: ChartPlotBox[] = []
   const labelBaselines: number[] = []
-  let y = 0
+  const stackHeight =
+    heights.length === 0
+      ? 0
+      : heights.reduce((total, h) => total + h + LABEL_HEIGHT + CHART_GAP, -CHART_GAP)
+  let y = Math.max(0, surfaceHeight - (stackHeight + TIME_AXIS_HEIGHT))
 
   for (let i = 0; i < heights.length; i += 1) {
     if (i > 0) y += CHART_GAP
@@ -48,7 +69,8 @@ export function computeChartLayout({ heights, width }: ChartLayoutInput): ChartL
   return {
     plots,
     labelBaselines,
-    canvasHeight: y + TIME_AXIS_HEIGHT,
+    canvasHeight: stackHeight + TIME_AXIS_HEIGHT,
+    surfaceHeight: Math.max(surfaceHeight, stackHeight + TIME_AXIS_HEIGHT),
     timeAxisBaseline: y + AXIS_FONT_SIZE + 2,
   }
 }
