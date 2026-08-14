@@ -67,7 +67,8 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
   }, [glyphWidth, plotWidth, viewport])
   const scrubTimeX = useDerivedValue(() => {
     const width = readout.value.time.length * glyphWidth
-    return AXIS_WIDTH + (plotWidth - width) / 2
+    const centered = readout.value.cursorX - width / 2
+    return AXIS_WIDTH + Math.min(Math.max(centered, 0), Math.max(plotWidth - width, 0))
   }, [glyphWidth, plotWidth])
   const scrubTimeOpacity = useDerivedValue(() => (readout.value.time ? 1 : 0), [])
   const scrubTimeText = useDerivedValue(() => readout.value.time, [])
@@ -99,18 +100,18 @@ export function ChartTimeAxis({ timeMode, glyphWidth }: ChartTimeAxisProps) {
       />
       <Text
         font={axisFont}
+        x={endLabelX}
+        y={TIME_AXIS_BASELINE}
+        text={endLabel}
+        color={AXIS_TEXT_COLOR}
+      />
+      <Text
+        font={axisFont}
         x={scrubTimeX}
         y={TIME_AXIS_BASELINE}
         text={scrubTimeText}
         color={theme.palette.mono.white}
         opacity={scrubTimeOpacity}
-      />
-      <Text
-        font={axisFont}
-        x={endLabelX}
-        y={TIME_AXIS_BASELINE}
-        text={endLabel}
-        color={AXIS_TEXT_COLOR}
       />
     </Canvas>
   )

@@ -65,11 +65,13 @@ interface ChartReadout {
  */
 export interface StackReadout {
   time: string
+  /** Cursor x in plot coordinates, shared with the bottom time readout. */
+  cursorX: number
   charts: ChartReadout[]
 }
 
 const EMPTY_CHART_READOUT: ChartReadout = { x: 0, width: 0, rows: [], dots: [] }
-const EMPTY_READOUT: StackReadout = { time: '', charts: [] }
+const EMPTY_READOUT: StackReadout = { time: '', cursorX: OFFSCREEN, charts: [] }
 
 export interface ScrubChartSpec {
   targets: ScrubTarget[]
@@ -170,7 +172,7 @@ export function useScrubReadout({
       measured[c].x = Math.min(Math.max(x, 0), Math.max(plotWidth - width, 0))
     }
 
-    return { time, charts: measured }
+    return { time, cursorX, charts: measured }
   }, [camera, charts, dataKey, domainEndMs, domainStartMs, glyphWidth, timeline])
 }
 
