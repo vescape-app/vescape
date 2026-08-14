@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router'
-import { XIcon } from 'phosphor-react-native'
+import { ArrowLeftIcon } from 'phosphor-react-native'
 import { useCallback, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -127,6 +127,13 @@ export function HistoryChartsScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
       <View style={styles.header}>
+        <IconButton
+          icon={ArrowLeftIcon}
+          onPress={() => router.back()}
+          size="sm"
+          testID="history-charts-close"
+          accessibilityLabel="Back"
+        />
         <View style={styles.headerText}>
           {session ? (
             <>
@@ -139,13 +146,8 @@ export function HistoryChartsScreen() {
             </>
           ) : null}
         </View>
-        <IconButton
-          icon={XIcon}
-          onPress={() => router.back()}
-          size="sm"
-          testID="history-charts-close"
-          accessibilityLabel="Close charts"
-        />
+        {/* Mirrors the back button's width so the title centers on the screen, not the gap. */}
+        <View style={styles.headerSpacer} />
       </View>
 
       <View
@@ -195,6 +197,10 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     minWidth: 0,
+    alignItems: 'center',
+  },
+  headerSpacer: {
+    width: 38,
   },
   title: {
     color: theme.palette.slate.textPrimary,
