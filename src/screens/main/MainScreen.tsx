@@ -32,6 +32,7 @@ function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenCon
     enterHistoryMode: controller.enterHistoryMode,
     selectedSession: controller.selectedSession,
     sessionSamples: controller.sessionSamples,
+    sessionChartSamples: controller.sessionChartSamples,
     sessionGpsSamples: controller.sessionGpsSamples,
     sessionMarkers: controller.sessionMarkers,
     nextRide: controller.nextRide,

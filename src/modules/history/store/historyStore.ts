@@ -25,6 +25,7 @@ interface HistoryState {
   samples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   sessionSamples: TelemetrySample[]
+  sessionChartSamples: TelemetrySample[]
   sessionGpsSamples: HistoryGpsSample[]
   sessionMarkers: HistoryMarker[]
   sessionExclusions: MetricExclusion[]
@@ -90,6 +91,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
   samples: [],
   gpsSamples: [],
   sessionSamples: [],
+  sessionChartSamples: [],
   sessionGpsSamples: [],
   sessionMarkers: [],
   sessionExclusions: [],
@@ -121,6 +123,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
         samples: [],
         gpsSamples: [],
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],
@@ -251,6 +254,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       set({
         selectedSession: null,
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],
@@ -267,6 +271,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       // thrown away the moment the real samples land. A minute-bucket stand-in had the same
       // problem, cheaply: it drew a coarser shape of the same charts, then drew them again.
       sessionSamples: [],
+      sessionChartSamples: [],
       sessionGpsSamples: [],
       loadingSession: true,
       sessionTruncated: false,
@@ -293,6 +298,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
       if (version !== sessionLoadVersion) return
       set({
         sessionSamples: range.boardSamples,
+        sessionChartSamples: range.chartSamples ?? range.boardSamples,
         sessionGpsSamples: range.gpsSamples,
         sessionMarkers: range.markers,
         sessionExclusions: range.exclusions,
@@ -368,6 +374,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
         samples: [],
         gpsSamples: [],
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],
@@ -401,6 +408,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
         samples: [],
         gpsSamples: [],
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],

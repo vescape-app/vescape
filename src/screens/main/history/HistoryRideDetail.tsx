@@ -64,7 +64,7 @@ export function HistoryRideDetail({
                 .join(' · ')
             : undefined
         }
-        samples={history.sessionSamples}
+        samples={history.sessionChartSamples}
         canPrevious={
           !trimming && (favoriteMode ? history.canPreviousFavorite : history.canPreviousRide)
         }

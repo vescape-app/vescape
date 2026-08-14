@@ -25,6 +25,7 @@ import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStr
 export interface MainHistoryOverlayProps {
   selectedSession: HistorySession | null
   sessionSamples: TelemetrySample[]
+  sessionChartSamples: TelemetrySample[]
   sessionGpsSamples: HistoryGpsSample[]
   sessionMarkers: HistoryMarker[]
   nextRide: HistorySession | null
