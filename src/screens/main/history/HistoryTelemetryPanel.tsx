@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router'
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, {
   Easing,
@@ -178,7 +178,7 @@ export function HistoryTelemetryPanel({
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favoriteRanges)
   const gpsGapBands = useGpsGapBands(visibleGpsGapSamples)
-  const stackBands = useMemo(() => [...favoriteBands, ...gpsGapBands], [favoriteBands, gpsGapBands])
+
   const charts = useHistoryChartStack({
     series,
     ranges,
@@ -186,6 +186,7 @@ export function HistoryTelemetryPanel({
     exclusionBands,
     activeMetrics: displayedCharts,
     speedOptional: true,
+    gpsGapBands,
   })
   const chartViewportTargetHeight =
     charts.length === 0
@@ -329,7 +330,7 @@ export function HistoryTelemetryPanel({
           <View style={styles.chartContent}>
             <ChartStack
               charts={charts}
-              bands={stackBands}
+              bands={favoriteBands}
               timeline={timeline}
               dataKey={`${startAtMs}`}
               timeMode="clock"

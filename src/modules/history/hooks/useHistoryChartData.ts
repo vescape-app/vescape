@@ -256,11 +256,11 @@ export function useChartExclusionBands() {
 }
 
 /**
- * Where the phone lost its fix, washed across the whole stack.
+ * Where the phone lost its fix, marked under the speed line.
  *
  * The map has nothing to draw over these stretches while the charts stay full of board data, which
- * reads as if the ride went nowhere. A red mark under every line says the ride is fine and the
- * position is what is missing.
+ * reads as if the ride went nowhere. A red mark says the ride is fine and the position is what is
+ * missing — once, under speed, because it is a fact about the ride and not about each metric.
  */
 export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
   const gpsSamples = useHistoryStore((s) => s.sessionGpsSamples)
@@ -326,6 +326,8 @@ interface HistoryChartStackInput {
   /** Chart heights, so a full screen can spend the room the map panel does not have. */
   speedHeight?: number
   metricHeight?: number
+  /** Where the fix was lost — see {@link useGpsGapBands}. Speed carries it for the whole stack. */
+  gpsGapBands?: ChartBand[]
 }
 
 /**
@@ -346,6 +348,7 @@ export function useHistoryChartStack({
   speedOptional = false,
   speedHeight = SPEED_CHART_HEIGHT,
   metricHeight = METRIC_CHART_HEIGHT,
+  gpsGapBands,
 }: HistoryChartStackInput): ChartSpec[] {
   return useMemo(() => {
     const speed: ChartSpec = {
@@ -363,7 +366,7 @@ export function useHistoryChartStack({
         },
       ],
       left: { range: ranges.speed },
-      bands: exclusionBands.speed,
+      bands: [...(exclusionBands.speed ?? []), ...(gpsGapBands ?? [])],
     }
 
     const optional = OPTIONAL_CHART_METRICS.filter((def) => activeMetrics.has(def.key)).map(
@@ -416,6 +419,7 @@ export function useHistoryChartStack({
   }, [
     activeMetrics,
     exclusionBands,
+    gpsGapBands,
     extraRanges,
     extraSeries,
     metricHeight,

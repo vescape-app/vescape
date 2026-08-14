@@ -86,7 +86,6 @@ export function HistoryChartsScreen() {
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favorites)
   const gpsGapBands = useGpsGapBands(visibleSamples)
-  const stackBands = useMemo(() => [...favoriteBands, ...gpsGapBands], [favoriteBands, gpsGapBands])
 
   // Charts are sized to fill the screen rather than to a fixed strip, so the plot heights come
   // from what the stack was actually given: the canvas spends the rest on labels and the time axis.
@@ -107,6 +106,7 @@ export function HistoryChartsScreen() {
     speedOptional: true,
     extraSeries,
     extraRanges,
+    gpsGapBands,
     speedHeight: chartHeight,
     metricHeight: chartHeight,
   })
@@ -151,7 +151,7 @@ export function HistoryChartsScreen() {
         {hasChartData && stackHeight > 0 ? (
           <ChartStack
             charts={charts}
-            bands={stackBands}
+            bands={favoriteBands}
             timeline={timeline}
             dataKey={`${session?.startAtMs ?? 0}`}
             timeMode="clock"
