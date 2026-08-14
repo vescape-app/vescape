@@ -79,10 +79,10 @@ export function HistoryChartsScreen() {
     session?.movingStartAtMs ?? null,
     session?.movingEndAtMs ?? null,
   )
-  const series = useChartSeries(visibleSamples)
+  const series = useChartSeries(visibleSamples, activeCharts)
   const extraSeries = useExtraChartSeries(visibleSamples, gpsSamples)
   const timeline = useChartTimeline(visibleSamples)
-  const ranges = useChartRanges(series)
+  const ranges = useChartRanges(series, activeCharts)
   const extraRanges = useExtraChartRanges(extraSeries)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()

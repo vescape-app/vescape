@@ -147,9 +147,9 @@ export function HistoryTelemetryPanel({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }))
 
   const visibleSamples = useVisibleRideSamples(rideSamples, movingStartAtMs, movingEndAtMs)
-  const series = useChartSeries(visibleSamples)
+  const series = useChartSeries(visibleSamples, activeCharts)
   const timeline = useChartTimeline(visibleSamples)
-  const ranges = useChartRanges(series)
+  const ranges = useChartRanges(series, activeCharts)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favoriteRanges)

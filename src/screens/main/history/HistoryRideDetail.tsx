@@ -9,7 +9,6 @@ import {
 } from '@/modules/history/lib/rideFormat'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
-import { HistoryMapLoading } from '@/screens/main/history/HistoryMapLoading'
 import { HistoryStatsBar } from '@/screens/main/history/HistoryStatsBar'
 import { HistoryTelemetryPanel } from '@/screens/main/history/HistoryTelemetryPanel'
 import { TrimStatsBar } from '@/screens/main/history/TrimStatsBar'
@@ -47,7 +46,6 @@ export function HistoryRideDetail({
 
   return (
     <>
-      {busy && <HistoryMapLoading />}
       <HistoryTelemetryPanel
         startAtMs={session.startAtMs}
         endAtMs={session.endAtMs}

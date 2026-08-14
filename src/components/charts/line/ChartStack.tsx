@@ -148,7 +148,7 @@ export function ChartStack({
   // no worklet pays for a conversion per frame.
   const compacted = useMemo(() => compactCharts(charts, timeline), [charts, timeline])
   const stackBands = useMemo(() => compactBands(bands, timeline), [bands, timeline])
-  const prepared = useMemo(() => prepareStack(compacted), [compacted])
+  const prepared = useMemo(() => prepareStack(compacted, dataKey), [compacted, dataKey])
   const camera = useChartCamera({
     startMs: prepared.startMs,
     endMs: prepared.endMs,

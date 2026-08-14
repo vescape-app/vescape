@@ -18,6 +18,44 @@ export interface PreparedStack {
   isEmpty: boolean
 }
 
+const PREPARED_RIDE_CACHE_SIZE = 3
+const preparedRideCache = new Map<
+  string,
+  Map<string, { fingerprint: string; paths: SeriesPaths }>
+>()
+
+function seriesFingerprint(series: ChartSeriesSpec): string {
+  const { ts, vs } = series.data
+  const last = ts.length - 1
+  return `${ts.length}:${ts[0] ?? ''}:${ts[last] ?? ''}:${vs[0] ?? ''}:${vs[last] ?? ''}`
+}
+
+function cachedSeriesPaths(dataKey: string, series: ChartSeriesSpec): SeriesPaths {
+  if (!dataKey) return buildSeriesPaths(series.data)
+
+  let ride = preparedRideCache.get(dataKey)
+  if (!ride) {
+    ride = new Map()
+    preparedRideCache.set(dataKey, ride)
+    if (preparedRideCache.size > PREPARED_RIDE_CACHE_SIZE) {
+      const oldest = preparedRideCache.keys().next().value
+      if (oldest != null) preparedRideCache.delete(oldest)
+    }
+  } else {
+    // Map insertion order doubles as a tiny LRU for the rides around the current selection.
+    preparedRideCache.delete(dataKey)
+    preparedRideCache.set(dataKey, ride)
+  }
+
+  const fingerprint = seriesFingerprint(series)
+  const cached = ride.get(series.key)
+  if (cached?.fingerprint === fingerprint) return cached.paths
+
+  const paths = buildSeriesPaths(series.data)
+  ride.set(series.key, { fingerprint, paths })
+  return paths
+}
+
 /**
  * Turn every series into its Skia paths and measure the shared time domain, in one pass.
  *
@@ -30,14 +68,14 @@ export interface PreparedStack {
  * shown side by side have to share one x scale, or the same moment would sit at two different
  * places depending on which metric the rider looks at.
  */
-export function prepareStack(charts: ChartSpec[]): PreparedStack {
+export function prepareStack(charts: ChartSpec[], dataKey = ''): PreparedStack {
   let startMs = Number.POSITIVE_INFINITY
   let endMs = Number.NEGATIVE_INFINITY
 
   const prepared = charts.map((chart) => ({
     ...chart,
     series: chart.series.map((series) => {
-      const paths = buildSeriesPaths(series.data)
+      const paths = cachedSeriesPaths(dataKey, series)
       if (!paths.isEmpty) {
         startMs = Math.min(startMs, paths.domainStartMs)
         endMs = Math.max(endMs, paths.domainEndMs)

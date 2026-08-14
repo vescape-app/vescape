@@ -18,7 +18,6 @@ import type {
   TelemetrySample,
 } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
-import { HistoryMapLoading } from '@/screens/main/history/HistoryMapLoading'
 import { HistoryRideDetail } from '@/screens/main/history/HistoryRideDetail'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
 import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStrip'
@@ -132,7 +131,7 @@ export function HistoryOverlay({
 
       {visible && !detailSession && (
         <>
-          {busy ? <HistoryMapLoading /> : <HistoryEmptyState favoriteMode={favoriteMode} />}
+          {!busy && <HistoryEmptyState favoriteMode={favoriteMode} />}
           <HistoryControls
             loading={busy}
             tab={history.historyTab}
