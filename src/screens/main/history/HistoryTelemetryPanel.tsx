@@ -20,6 +20,7 @@ import {
   isHistoryMetricKey,
   PANEL_CHART_METRICS,
   toggleOptionalChartMetric,
+  topActiveChartMetric,
   type ChartToggleMetric,
 } from '@/modules/history/components/historyChartMetrics'
 import { HistoryMetricLegend } from '@/modules/history/components/HistoryMetricLegend'
@@ -280,10 +281,14 @@ export function HistoryTelemetryPanel({
 
   const handleToggleMetric = useCallback(
     (metric: ChartToggleMetric) => {
-      if (isHistoryMetricKey(metric)) onMetricInteraction?.(metric)
-      setActiveCharts((prev) => toggleOptionalChartMetric(prev, metric))
+      const next = toggleOptionalChartMetric(activeCharts, metric)
+      setActiveCharts(next)
+      // Opening a chart colours the route by it; closing one hands the colour straight to the top
+      // chart left, so the map never keeps a colour whose line is gone.
+      const colourBy = next.has(metric) ? metric : topActiveChartMetric(next)
+      if (colourBy != null && isHistoryMetricKey(colourBy)) onMetricInteraction?.(colourBy)
     },
-    [onMetricInteraction],
+    [activeCharts, onMetricInteraction],
   )
 
   return (

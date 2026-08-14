@@ -294,6 +294,19 @@ export function isHistoryMetricKey(key: string): key is HistoryMetricKey {
   return HISTORY_METRIC_KEYS.has(key)
 }
 
+/**
+ * The chart sitting at the top of the stack, or `null` when nothing is open.
+ *
+ * Stack order is fixed — speed, then the optional metrics, then the chart-only ones — so the top
+ * chart is whatever comes first in that list. What the map is coloured by follows it: closing the
+ * chart the route was coloured by has to hand the colour to the line the rider can still see.
+ */
+export function topActiveChartMetric(
+  activeMetrics: ReadonlySet<ChartToggleMetric>,
+): ChartToggleMetric | null {
+  return ALL_CHART_METRICS.find((def) => activeMetrics.has(def.key))?.key ?? null
+}
+
 export function toggleOptionalChartMetric<T extends ChartToggleMetric>(
   activeMetrics: ReadonlySet<T>,
   metric: T,
