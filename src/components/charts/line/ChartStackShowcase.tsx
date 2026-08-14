@@ -3,7 +3,11 @@ import { StyleSheet, View } from 'react-native'
 
 import { useSharedValue } from 'react-native-reanimated'
 
-import { ChartStack, type ChartSpec } from '@/components/charts/line/ChartStack'
+import {
+  CHART_CHANGE_FADE_MS,
+  ChartStack,
+  type ChartSpec,
+} from '@/components/charts/line/ChartStack'
 import { buildTimeline } from '@/components/charts/line/timeline'
 import type {
   ChartBand,
@@ -110,6 +114,8 @@ function generateBands(count: number, stepMs: number): ChartBand[] {
 export function ChartStackShowcase() {
   const [size, setSize] = useState<SizeKey>('tiny')
   const [selectable, setSelectable] = useState(false)
+  const [showDuty, setShowDuty] = useState(true)
+  const [displayDuty, setDisplayDuty] = useState(true)
   const { count, stepMs } = SIZES[size]
 
   const selection = useSharedValue<ChartTimeRange | null>(null)
@@ -138,39 +144,57 @@ export function ChartStackShowcase() {
             data: speed,
             color: theme.palette.cyan.color,
             unit: 'km/h',
+            decimals: 0,
             ramp: SPEED_RAMP,
           },
         ],
         left: { range: rangeOf(speed) },
         bands: generateBands(count, stepMs),
       },
-      {
-        key: 'duty',
-        label: 'Duty / Voltage',
-        height: 40,
-        series: [
-          {
-            key: 'duty',
-            data: duty,
-            color: theme.palette.amber.color,
-            label: 'Duty',
-            unit: '%',
-            ramp: DUTY_BANDS,
-          },
-          {
-            key: 'volts',
-            data: volts,
-            color: theme.palette.violet.color,
-            axis: 'right',
-            label: 'Pack',
-            unit: 'V',
-          },
-        ],
-        left: { range: rangeOf(duty) },
-        right: { range: rangeOf(volts) },
-      },
+      ...(displayDuty
+        ? [
+            {
+              key: 'duty',
+              label: 'Duty / Voltage',
+              height: 40,
+              series: [
+                {
+                  key: 'duty',
+                  data: duty,
+                  color: theme.palette.amber.color,
+                  label: 'Duty',
+                  unit: '%',
+                  decimals: 0,
+                  ramp: DUTY_BANDS,
+                },
+                {
+                  key: 'volts',
+                  data: volts,
+                  color: theme.palette.violet.color,
+                  axis: 'right',
+                  label: 'Pack',
+                  unit: 'V',
+                  decimals: 1,
+                },
+              ],
+              left: { range: rangeOf(duty) },
+              right: { range: rangeOf(volts) },
+            } satisfies ChartSpec,
+          ]
+        : []),
     ],
-    [count, duty, speed, stepMs, volts],
+    [count, displayDuty, duty, speed, stepMs, volts],
+  )
+
+  useEffect(() => {
+    if (showDuty) setDisplayDuty(true)
+    const timeout = setTimeout(() => setDisplayDuty(showDuty), CHART_CHANGE_FADE_MS)
+    return () => clearTimeout(timeout)
+  }, [showDuty])
+
+  const visibleChartKeys = useMemo(
+    () => new Set(showDuty ? ['speed', 'duty'] : ['speed']),
+    [showDuty],
   )
 
   const timeline = useMemo(
@@ -205,6 +229,12 @@ export function ChartStackShowcase() {
         selected={selectable ? 'on' : 'off'}
         onSelect={(value) => setSelectable(value === 'on')}
       />
+      <ChipRow
+        label="Second chart"
+        options={['hidden', 'shown']}
+        selected={showDuty ? 'shown' : 'hidden'}
+        onSelect={(value) => setShowDuty(value === 'shown')}
+      />
       <Text style={styles.note}>
         {count.toLocaleString()} samples per series, drawn from a min/max pyramid — the spikes are
         single samples. Drag to scrub, pinch to zoom and pan, double-tap to fit. With a selection
@@ -219,6 +249,8 @@ export function ChartStackShowcase() {
           timeMode="clock"
           selection={selection}
           showHead
+          animateChartChanges
+          visibleChartKeys={visibleChartKeys}
         />
       </View>
     </ShowcaseCard>

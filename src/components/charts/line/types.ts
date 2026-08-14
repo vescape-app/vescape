@@ -82,6 +82,35 @@ export interface ChartBand extends ChartTimeRange {
   fill?: 'floor' | 'plot'
 }
 
+export interface ChartSeriesSpec {
+  key: string
+  data: ChartSeriesData
+  color: string
+  axis?: 'left' | 'right'
+  /** Colour by value instead of a flat `color` — see {@link ChartColorRamp}. */
+  ramp?: ChartColorRamp
+  /** Shown in the scrub readout; worth setting once a chart carries more than one series. */
+  label?: string
+  unit?: string
+  /** Decimal precision used by the scrub readout. */
+  decimals?: number
+}
+
+export interface ChartAxisSpec {
+  range: ChartYRange
+}
+
+export interface ChartSpec {
+  key: string
+  label?: string
+  height: number
+  series: ChartSeriesSpec[]
+  left: ChartAxisSpec
+  right?: ChartAxisSpec
+  /** Time ranges called out under the line — see {@link ChartBand}. */
+  bands?: ChartBand[]
+}
+
 export interface ChartPlotBox {
   x: number
   y: number

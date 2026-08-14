@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   StyleSheet,
   View,
@@ -6,86 +6,53 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
-import { Canvas, DashPathEffect, Group, Line, Text, vec } from '@shopify/react-native-skia'
 import { GestureDetector } from 'react-native-gesture-handler'
-import {
+import Animated, {
   useAnimatedReaction,
-  useDerivedValue,
+  useAnimatedStyle,
   useSharedValue,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 
 import {
   AXIS_FONT_SIZE,
   AXIS_WIDTH,
+  CHART_GAP,
   LABEL_FONT_SIZE,
-  computeChartLayout,
+  LABEL_HEIGHT,
+  computeRowBands,
+  plotWidthFor,
 } from '@/components/charts/line/chartLayout'
-import { formatAxisNumber, formatClock, formatRelative } from '@/components/charts/line/chartFormat'
 import {
-  ScrubCursor,
-  ScrubLayer,
-  useScrubReadout,
-  type ScrubTarget,
-  type StackReadout,
-} from '@/components/charts/line/ScrubLayer'
-import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
-import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
-import { useChartCamera, type ChartCameraState } from '@/components/charts/line/useChartCamera'
+  ChartStackProvider,
+  type ChartStackContextValue,
+} from '@/components/charts/line/ChartStackContext'
+import { ChartTimeAxis } from '@/components/charts/line/ChartTimeAxis'
+import { LineChart } from '@/components/charts/line/LineChart'
+import { SCRUB_FONT_SIZE, useScrubReadout } from '@/components/charts/line/ScrubLayer'
+import {
+  compactBands,
+  compactCharts,
+  prepareStack,
+  toScrubTargets,
+} from '@/components/charts/line/stackData'
+import { useChartCamera } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
-import { BandsLayer } from '@/components/charts/line/BandsLayer'
-import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
-import type {
-  ChartBand,
-  ChartColorRamp,
-  ChartPlotBox,
-  ChartSeriesData,
-  ChartTimeRange,
-  ChartYRange,
-} from '@/components/charts/line/types'
-import { SelectionLayer } from '@/components/charts/line/SelectionLayer'
 import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/line/timeline'
+import type { ChartBand, ChartSpec, ChartTimeRange } from '@/components/charts/line/types'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
-import { theme } from '@/constants/theme'
 
-const GRID_COLOR = theme.palette.slate.surface
-const AXIS_TEXT_COLOR = theme.palette.slate.textDim
-/** Below this window, wall-clock labels gain seconds — above it they would never change. */
-const CLOCK_SECONDS_BELOW_MS = 10 * 60_000
+export type { ChartSpec } from '@/components/charts/line/types'
+
 /** Slack when deciding the camera is showing everything, so rounding cannot leave it "zoomed". */
 const FULL_VIEW_EPSILON_MS = 1
-
-export interface ChartSeriesSpec {
-  key: string
-  data: ChartSeriesData
-  color: string
-  axis?: 'left' | 'right'
-  /** Colour by value instead of a flat `color` — see {@link ChartColorRamp}. */
-  ramp?: ChartColorRamp
-  /** Shown in the scrub readout; worth setting once a chart carries more than one series. */
-  label?: string
-  unit?: string
-}
-
-export interface ChartAxisSpec {
-  range: ChartYRange
-}
-
-export interface ChartSpec {
-  key: string
-  label?: string
-  height: number
-  series: ChartSeriesSpec[]
-  left: ChartAxisSpec
-  right?: ChartAxisSpec
-  /** Time ranges called out under the line — see {@link ChartBand}. */
-  bands?: ChartBand[]
-}
+export const CHART_CHANGE_FADE_MS = 120
 
 export interface ChartStackProps {
   /**
    * Time ranges called out across the whole stack rather than under one line — a Favorite the
-   * rider picked out. Drawn as one column through every plot, so the eye reads the same stretch
+   * rider picked out. Drawn through every chart at the same x, so the eye reads the same stretch
    * on every metric at once.
    */
   bands?: ChartBand[]
@@ -134,104 +101,29 @@ export interface ChartStackProps {
   onSelectionPreview?: (range: ChartTimeRange) => void
   /**
    * The chart a touch landed on, by its key. Fired once per gesture: a stack is one gesture over
-   * one canvas, so this is how a consumer follows which metric the rider is looking at.
+   * the whole column, so this is how a consumer follows which metric the rider is looking at.
    */
   onChartTouch?: (key: string) => void
   /** Mark the last sample of every series. */
   showHead?: boolean
+  /** Fade chart rows as the visible metric set changes. Initial rows do not animate. */
+  animateChartChanges?: boolean
+  /** Keys still visible while a deselected row is retained long enough to fade out. */
+  visibleChartKeys?: ReadonlySet<string>
   containerStyle?: StyleProp<ViewStyle>
 }
 
-interface PreparedSeries extends ChartSeriesSpec {
-  paths: SeriesPaths
-}
-
-interface PreparedChart extends ChartSpec {
-  series: PreparedSeries[]
-}
-
-interface PreparedStack {
-  charts: PreparedChart[]
-  startMs: number
-  endMs: number
-  isEmpty: boolean
-}
-
 /**
- * Turn every series into its Skia paths and measure the shared time domain, in one pass.
+ * A group of charts sharing one camera, one x scale and one gesture.
  *
- * Preparing the data and deciding the viewport have to happen together. Reanimated schedules a
- * derived value to the UI thread as the hook is called, so a camera built before the paths
- * would reach the screen first and project the previous dataset through the new viewport — the
- * old line briefly squashed into a corner.
- */
-function prepareStack(charts: ChartSpec[]): PreparedStack {
-  let startMs = Number.POSITIVE_INFINITY
-  let endMs = Number.NEGATIVE_INFINITY
-
-  const prepared = charts.map((chart) => ({
-    ...chart,
-    series: chart.series.map((series) => {
-      const paths = buildSeriesPaths(series.data)
-      if (!paths.isEmpty) {
-        startMs = Math.min(startMs, paths.domainStartMs)
-        endMs = Math.max(endMs, paths.domainEndMs)
-      }
-      return { ...series, paths }
-    }),
-  }))
-
-  const hasData = Number.isFinite(startMs) && endMs > startMs
-  return {
-    charts: prepared,
-    startMs: hasData ? startMs : 0,
-    endMs: hasData ? endMs : 1,
-    isEmpty: !hasData,
-  }
-}
-
-/** Every series and band of a stack in chart time, so the canvas never sees a cut ride. */
-function compactCharts(charts: ChartSpec[], timeline: ChartTimeline | null): ChartSpec[] {
-  if (timeline == null) return charts
-  return charts.map((chart) => ({
-    ...chart,
-    series: chart.series.map((series) => ({
-      ...series,
-      data: { ts: series.data.ts.map((ms) => toChartMs(ms, timeline)), vs: series.data.vs },
-    })),
-    bands: compactBands(chart.bands, timeline),
-  }))
-}
-
-function compactBands(
-  bands: ChartBand[] | undefined,
-  timeline: ChartTimeline | null,
-): ChartBand[] | undefined {
-  if (timeline == null || bands == null) return bands
-  return bands.map((band) => ({
-    ...band,
-    startMs: toChartMs(band.startMs, timeline),
-    endMs: toChartMs(band.endMs, timeline),
-  }))
-}
-
-/** What the scrub readout needs of a chart: a line to sample, and the axis it is read against. */
-function toScrubTargets(chart: PreparedChart): ScrubTarget[] {
-  return chart.series.map((series) => ({
-    paths: series.paths,
-    color: series.color,
-    label: series.label,
-    unit: series.unit,
-    range: (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range,
-  }))
-}
-
-/**
- * A group of charts sharing one camera, one canvas and one x scale.
+ * Each chart draws into its own canvas and is placed by ordinary layout, so opening or closing one
+ * costs the others nothing: Skia re-records a picture on every commit and lands it a frame or two
+ * late, and a stack drawn into one canvas paid that for the whole group whenever any part of it
+ * changed. What holds the group together is shared values, not shared geometry — see
+ * {@link ChartStackProvider}.
  *
- * The stack is the unit of synchronisation: charts drawn together zoom and scrub together by
- * construction, and gutters are reserved once for the whole group, so a chart with a right-hand
- * axis cannot drift out of alignment with one without.
+ * Gutters are reserved once for the whole stack, so a chart with a right-hand axis cannot drift
+ * out of alignment with one without.
  */
 export function ChartStack({
   charts,
@@ -248,6 +140,8 @@ export function ChartStack({
   bands,
   timeline = null,
   showHead = false,
+  animateChartChanges = false,
+  visibleChartKeys,
   containerStyle,
 }: ChartStackProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
@@ -255,6 +149,7 @@ export function ChartStack({
   const [width, setWidth] = useState(0)
   const labelFont = useSkiaFont('600', LABEL_FONT_SIZE)
   const axisFont = useSkiaMonoFont('500', AXIS_FONT_SIZE)
+  const scrubFont = useSkiaMonoFont('600', SCRUB_FONT_SIZE)
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     setWidth(Math.round(event.nativeEvent.layout.width))
@@ -263,11 +158,22 @@ export function ChartStack({
   const ownScrubTimeMs = useSharedValue<number | null>(null)
   const scrub = scrubTimeMs ?? ownScrubTimeMs
 
-  // Cutting happens here, once per data change: the canvas below draws chart time throughout, so
+  // Cutting happens here, once per data change: the canvases below draw chart time throughout, so
   // no worklet pays for a conversion per frame.
   const compacted = useMemo(() => compactCharts(charts, timeline), [charts, timeline])
   const stackBands = useMemo(() => compactBands(bands, timeline), [bands, timeline])
-  const prepared = useMemo(() => prepareStack(compacted), [compacted])
+  const prepared = useMemo(() => prepareStack(compacted, dataKey), [compacted, dataKey])
+  const previousChartKeysRef = useRef<ReadonlySet<string>>(
+    new Set(prepared.charts.map((chart) => chart.key)),
+  )
+  const addedChartKeys = new Set(
+    prepared.charts
+      .map((chart) => chart.key)
+      .filter((key) => !previousChartKeysRef.current.has(key)),
+  )
+  useEffect(() => {
+    previousChartKeysRef.current = new Set(prepared.charts.map((chart) => chart.key))
+  }, [prepared.charts])
   const camera = useChartCamera({
     startMs: prepared.startMs,
     endMs: prepared.endMs,
@@ -286,20 +192,20 @@ export function ChartStack({
     }
   }
 
-  const layout = useMemo(
-    () => computeChartLayout({ heights: compacted.map((c) => c.height), width }),
-    [compacted, width],
-  )
+  const plotWidth = plotWidthFor(width)
 
   // Mono digits, so one measurement holds for every label the chart will ever show.
   const glyphWidth = axisFont ? axisFont.getTextWidth('0') : 0
+  const scrubGlyphWidth = scrubFont ? scrubFont.getTextWidth('0') : 0
+  // Every chart draws at the same origin in its own canvas, so the readout is laid out against
+  // one plot box per chart height and never against a position in the stack.
   const scrubCharts = useMemo(
     () =>
-      prepared.charts.map((chart, index) => ({
+      prepared.charts.map((chart) => ({
         targets: toScrubTargets(chart),
-        plot: layout.plots[index],
+        plot: { x: AXIS_WIDTH, y: LABEL_HEIGHT, width: plotWidth, height: chart.height },
       })),
-    [layout, prepared],
+    [plotWidth, prepared],
   )
   const readout = useScrubReadout({
     charts: scrubCharts,
@@ -309,12 +215,12 @@ export function ChartStack({
     domainEndMs: prepared.endMs,
     scrubTimeMs: scrub,
     timeline,
-    glyphWidth,
+    glyphWidth: scrubGlyphWidth,
   })
 
   const plotBands = useMemo(
-    () => layout.plots.map((plot) => ({ top: plot.y, bottom: plot.y + plot.height })),
-    [layout],
+    () => computeRowBands(compacted.map((chart) => chart.height)),
+    [compacted],
   )
   const handleChartTouch = useCallback(
     (index: number) => {
@@ -329,7 +235,7 @@ export function ChartStack({
     dataKey,
     domainStartMs: prepared.startMs,
     domainEndMs: prepared.endMs,
-    plotWidth: layout.plots[0]?.width ?? 0,
+    plotWidth,
     plotX: AXIS_WIDTH,
     follow,
     scrubTimeMs: scrub,
@@ -358,292 +264,83 @@ export function ChartStack({
     [prepared.endMs, prepared.startMs, timeline, zoomWindowMs],
   )
 
-  const withSeconds = useDerivedValue(
-    () => camera.viewport.value.endMs - camera.viewport.value.startMs < CLOCK_SECONDS_BELOW_MS,
-  )
-  const startLabel = useDerivedValue(() => {
-    const { startMs, endMs } = camera.viewport.value
-    if (timeMode === 'relative') return formatRelative(camera.domainEndMs - startMs)
-    return formatClock(toRealMs(startMs, timeline), endMs - startMs < CLOCK_SECONDS_BELOW_MS)
-  }, [camera.domainEndMs, timeMode, timeline])
-  const endLabel = useDerivedValue(() => {
-    const { startMs, endMs } = camera.viewport.value
-    if (timeMode === 'relative') return formatRelative(camera.domainEndMs - endMs)
-    return formatClock(toRealMs(endMs, timeline), endMs - startMs < CLOCK_SECONDS_BELOW_MS)
-  }, [camera.domainEndMs, timeMode, timeline])
-  const plotWidth = layout.plots[0]?.width ?? 0
-  const plotsTop = layout.plots[0]?.y ?? 0
-  const plotsBottom = (layout.plots.at(-1)?.y ?? 0) + (layout.plots.at(-1)?.height ?? 0)
-  // One box covering every plot and the gaps between them, for bands that belong to the ride
-  // rather than to a metric.
-  const stackPlot = useMemo(
-    () => ({ x: AXIS_WIDTH, y: plotsTop, width: plotWidth, height: plotsBottom - plotsTop }),
-    [plotWidth, plotsBottom, plotsTop],
-  )
-  const endLabelX = useDerivedValue(
-    () => AXIS_WIDTH + plotWidth - glyphWidth * (withSeconds.value ? 8 : 5),
-    [glyphWidth, plotWidth],
+  const context = useMemo<ChartStackContextValue>(
+    () => ({
+      camera: camera.camera,
+      dataKey: camera.dataKey,
+      domainStartMs: prepared.startMs,
+      domainEndMs: prepared.endMs,
+      scrubTimeMs: scrub,
+      selection,
+      readout,
+      timeline,
+      stackBands,
+      isEmpty: prepared.isEmpty,
+      plotWidth,
+      labelFont,
+      axisFont,
+      scrubFont,
+      showHead,
+    }),
+    [
+      axisFont,
+      camera.camera,
+      camera.dataKey,
+      labelFont,
+      plotWidth,
+      prepared.endMs,
+      prepared.isEmpty,
+      prepared.startMs,
+      readout,
+      scrub,
+      scrubFont,
+      selection,
+      showHead,
+      stackBands,
+      timeline,
+    ],
   )
 
   return (
     <View style={containerStyle} onLayout={onLayout}>
       {width > 0 && (
-        <GestureDetector gesture={gesture}>
-          <Canvas style={[styles.canvas, { height: layout.canvasHeight }]}>
-            {/* Before the plots: the cursor marks a moment, so it belongs behind the readings
-                it points at rather than cutting across them. */}
-            <ScrubCursor
-              camera={camera.camera}
-              dataKey={camera.dataKey}
-              domainStartMs={prepared.startMs}
-              domainEndMs={prepared.endMs}
-              plotX={AXIS_WIDTH}
-              plotWidth={plotWidth}
-              top={plotsTop}
-              bottom={plotsBottom}
-              scrubTimeMs={scrub}
-              timeline={timeline}
-            />
-
-            {stackBands && stackBands.length > 0 && (
-              <Group transform={[{ translateX: AXIS_WIDTH }, { translateY: plotsTop }]}>
-                <BandsLayer
-                  bands={stackBands}
-                  plot={stackPlot}
-                  camera={camera.camera}
-                  dataKey={camera.dataKey}
-                  domainStartMs={prepared.startMs}
-                  domainEndMs={prepared.endMs}
-                />
-              </Group>
-            )}
-
-            {prepared.charts.map((chart, index) => (
-              <ChartPlot
-                key={chart.key}
-                chart={chart}
-                plot={layout.plots[index]}
-                labelBaseline={layout.labelBaselines[index]}
-                camera={camera}
-                index={index}
-                readout={readout}
-                scrubTargets={scrubCharts[index].targets}
-                showHead={showHead}
-                scrubTimeMs={scrub}
-                labelFont={labelFont}
-                axisFont={axisFont}
-              />
-            ))}
-
-            {/* Over the plots: what is outside the selection is dimmed, lines included. */}
-            {selection && (
-              <SelectionLayer
-                selection={selection}
-                camera={camera.camera}
-                dataKey={camera.dataKey}
-                domainStartMs={prepared.startMs}
-                domainEndMs={prepared.endMs}
-                plotX={AXIS_WIDTH}
-                plotWidth={plotWidth}
-                top={plotsTop}
-                bottom={plotsBottom}
-                timeline={timeline}
-              />
-            )}
-
-            {axisFont && (
-              <GapMarkersLayer
-                timeline={timeline}
-                camera={camera.camera}
-                dataKey={camera.dataKey}
-                domainStartMs={prepared.startMs}
-                domainEndMs={prepared.endMs}
-                plotX={AXIS_WIDTH}
-                plotWidth={plotWidth}
-                top={plotsTop}
-                bottom={plotsBottom}
-                labelBaseline={layout.timeAxisBaseline}
-                font={axisFont}
-              />
-            )}
-
-            {axisFont && (
-              <>
-                <Text
-                  font={axisFont}
-                  x={AXIS_WIDTH}
-                  y={layout.timeAxisBaseline}
-                  text={startLabel}
-                  color={AXIS_TEXT_COLOR}
-                />
-                <Text
-                  font={axisFont}
-                  x={endLabelX}
-                  y={layout.timeAxisBaseline}
-                  text={endLabel}
-                  color={AXIS_TEXT_COLOR}
-                />
-              </>
-            )}
-          </Canvas>
-        </GestureDetector>
+        <ChartStackProvider value={context}>
+          <GestureDetector gesture={gesture}>
+            <View style={styles.column}>
+              {prepared.charts.map((chart, index) => (
+                <ChartRow
+                  key={chart.key}
+                  visible={!visibleChartKeys || visibleChartKeys.has(chart.key)}
+                  fadeIn={animateChartChanges && addedChartKeys.has(chart.key)}
+                >
+                  <LineChart chart={chart} width={width} index={index} />
+                </ChartRow>
+              ))}
+              <ChartTimeAxis timeMode={timeMode} glyphWidth={glyphWidth} />
+            </View>
+          </GestureDetector>
+        </ChartStackProvider>
       )}
     </View>
   )
 }
 
-interface ChartPlotProps {
-  chart: PreparedChart
-  plot: ChartPlotBox
-  labelBaseline: number
-  camera: ChartCameraState
-  /** This chart's position in the stack readout. */
-  index: number
-  readout: SharedValue<StackReadout>
-  scrubTargets: ScrubTarget[]
-  showHead: boolean
-  scrubTimeMs: SharedValue<number | null>
-  labelFont: ReturnType<typeof useSkiaFont>
-  axisFont: ReturnType<typeof useSkiaMonoFont>
+interface ChartRowProps {
+  visible: boolean
+  fadeIn: boolean
+  children: React.ReactNode
 }
 
-function ChartPlot({
-  chart,
-  plot,
-  labelBaseline,
-  camera,
-  index,
-  readout,
-  scrubTargets,
-  showHead,
-  scrubTimeMs,
-  labelFont,
-  axisFont,
-}: ChartPlotProps) {
-  const clip = useMemo(
-    () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
-    [plot],
-  )
+function ChartRow({ visible, fadeIn, children }: ChartRowProps) {
+  const opacity = useSharedValue(fadeIn ? 0 : visible ? 1 : 0)
+  useEffect(() => {
+    opacity.value = withTiming(visible ? 1 : 0, { duration: CHART_CHANGE_FADE_MS })
+  }, [opacity, visible])
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }))
 
-  return (
-    <>
-      {labelFont && chart.label && (
-        <Text
-          font={labelFont}
-          x={plot.x}
-          y={labelBaseline}
-          text={chart.label}
-          color={theme.palette.slate.textSecondary}
-        />
-      )}
-      <Group transform={[{ translateX: plot.x }, { translateY: plot.y }]}>
-        <Line p1={vec(0, 0.5)} p2={vec(plot.width, 0.5)} color={GRID_COLOR} strokeWidth={0.5} />
-        <Line
-          p1={vec(0, plot.height / 2)}
-          p2={vec(plot.width, plot.height / 2)}
-          color={GRID_COLOR}
-          strokeWidth={0.5}
-        >
-          <DashPathEffect intervals={[4, 4]} />
-        </Line>
-        <Line
-          p1={vec(0, plot.height - 0.5)}
-          p2={vec(plot.width, plot.height - 0.5)}
-          color={GRID_COLOR}
-          strokeWidth={0.5}
-        />
-      </Group>
-
-      <Group clip={clip}>
-        <Group transform={[{ translateX: plot.x }, { translateY: plot.y }]}>
-          {/* Under the series: a band is context for the line, never something drawn over it. */}
-          {chart.bands && chart.bands.length > 0 && (
-            <BandsLayer
-              bands={chart.bands}
-              plot={plot}
-              camera={camera.camera}
-              dataKey={camera.dataKey}
-              domainStartMs={camera.domainStartMs}
-              domainEndMs={camera.domainEndMs}
-            />
-          )}
-          {chart.series.map((series) => (
-            <SeriesLayer
-              key={series.key}
-              paths={series.paths}
-              color={series.color}
-              ramp={series.ramp}
-              showHead={showHead}
-              yRange={
-                (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range
-              }
-              plot={plot}
-              camera={camera.camera}
-              dataKey={camera.dataKey}
-            />
-          ))}
-        </Group>
-      </Group>
-
-      {axisFont && (
-        <ScrubLayer
-          targets={scrubTargets}
-          plot={plot}
-          index={index}
-          readout={readout}
-          font={axisFont}
-        />
-      )}
-
-      {axisFont && <AxisTicks font={axisFont} plot={plot} range={chart.left.range} side="left" />}
-      {axisFont && chart.right && (
-        <AxisTicks font={axisFont} plot={plot} range={chart.right.range} side="right" />
-      )}
-    </>
-  )
-}
-
-interface AxisTicksProps {
-  font: NonNullable<ReturnType<typeof useSkiaMonoFont>>
-  plot: ChartPlotBox
-  range: ChartYRange
-  side: 'left' | 'right'
-}
-
-/** Three ticks — top, middle, bottom — matching the three grid lines of the plot. */
-function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
-  const ticks = useMemo(() => {
-    const values = [range.max, (range.min + range.max) / 2, range.min]
-    const baselines = [
-      plot.y + AXIS_FONT_SIZE,
-      plot.y + plot.height / 2 + AXIS_FONT_SIZE / 2,
-      plot.y + plot.height,
-    ]
-    return values.map((value, index) => {
-      const text = formatAxisNumber(value)
-      const x = side === 'left' ? plot.x - 4 - font.getTextWidth(text) : plot.x + plot.width + 4
-      return { text, x, y: baselines[index] }
-    })
-  }, [font, plot, range, side])
-
-  return (
-    <>
-      {ticks.map((tick) => (
-        <Text
-          key={`${side}-${tick.text}-${tick.y}`}
-          font={font}
-          x={tick.x}
-          y={tick.y}
-          text={tick.text}
-          color={AXIS_TEXT_COLOR}
-        />
-      ))}
-    </>
-  )
+  return <Animated.View style={style}>{children}</Animated.View>
 }
 
 const styles = StyleSheet.create({
-  canvas: {
-    width: '100%',
-  },
+  column: { width: '100%', gap: CHART_GAP },
 })

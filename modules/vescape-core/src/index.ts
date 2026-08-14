@@ -693,6 +693,8 @@ export interface MetricExclusion {
 
 export interface HistoryRange {
   boardSamples: TelemetrySample[]
+  /** Native-decimated overview used by the compact ride chart. */
+  chartSamples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   exclusions: MetricExclusion[]
@@ -723,11 +725,17 @@ const BMS_SERIES_BALANCE_LANE_BITS = 30
  * lanes/sample, row-major) plus a device dictionary, instead of an array of ~25-field objects. This
  * replaces N×25 per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
  */
+/**
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `getRange`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getRange`
+ */
 interface NativeHistoryRange {
   boardColumns: ArrayBuffer
   boardCount: number
   boardDevices: (string | null)[]
   boardDeviceNames: string[]
+  chartColumns?: ArrayBuffer
+  chartCount?: number
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   exclusions: MetricExclusion[]
@@ -744,12 +752,16 @@ const nullableLane = (value: number): number | null => (Number.isNaN(value) ? nu
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt
  */
-function decodeBoardSamples(range: NativeHistoryRange): TelemetrySample[] {
-  const { boardCount, boardDevices, boardDeviceNames } = range
-  if (!boardCount || !range.boardColumns) return []
-  const lanes = new Float64Array(range.boardColumns)
-  const samples = new Array<TelemetrySample>(boardCount)
-  for (let i = 0; i < boardCount; i++) {
+function decodeBoardSamples(
+  range: NativeHistoryRange,
+  columns: ArrayBuffer = range.boardColumns,
+  count: number = range.boardCount,
+): TelemetrySample[] {
+  const { boardDevices, boardDeviceNames } = range
+  if (!count || !columns) return []
+  const lanes = new Float64Array(columns)
+  const samples = new Array<TelemetrySample>(count)
+  for (let i = 0; i < count; i++) {
     const o = i * SAMPLE_COLUMN_COUNT
     const deviceIndex = lanes[o + 2]
     samples[i] = {
@@ -2376,11 +2388,15 @@ export async function getHistoryRange(options: {
   deviceId?: string
   limit?: number
 }): Promise<HistoryRange> {
-  const range = E2E_ENABLED
+  const range: NativeHistoryRange = E2E_ENABLED
     ? e2eFake.getHistoryRange(options)
     : await native.getHistoryRange(options)
   return {
     boardSamples: decodeBoardSamples(range),
+    chartSamples:
+      range.chartColumns && range.chartCount != null
+        ? decodeBoardSamples(range, range.chartColumns, range.chartCount)
+        : decodeBoardSamples(range),
     gpsSamples: range.gpsSamples,
     markers: range.markers,
     exclusions: range.exclusions,

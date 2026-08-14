@@ -1,10 +1,18 @@
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useAnimatedReaction, useSharedValue } from 'react-native-reanimated'
+import Animated, {
+  Easing,
+  ReduceMotion,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { ChartStack } from '@/components/charts/line/ChartStack'
+import { CHART_CHANGE_FADE_MS, ChartStack } from '@/components/charts/line/ChartStack'
+import { stackChromeHeight } from '@/components/charts/line/chartLayout'
 import { routes } from '@/navigation/routes'
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
@@ -33,7 +41,11 @@ import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/m
 import { scrubHeadMs, zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
-import { type TelemetrySample } from '@/modules/history/store/historyStore'
+import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/historyStore'
+
+/** Stable identity, so a loading ride does not rebuild the stack on every render. */
+const EMPTY_SAMPLES: TelemetrySample[] = []
+const CHART_HEIGHT_DURATION_MS = 180
 
 interface HistoryTelemetryPanelProps {
   startAtMs: number
@@ -43,6 +55,9 @@ interface HistoryTelemetryPanelProps {
   deviceName: string
   navigationTitle?: string
   navigationSubtitle?: string
+  /** Full-density samples retained for recording-continuity and GPS-gap detection. */
+  gpsGapSamples: TelemetrySample[]
+  /** Decimated samples used to draw the compact chart lines. */
   samples: TelemetrySample[]
   canPrevious: boolean
   canNext: boolean
@@ -83,6 +98,7 @@ export function HistoryTelemetryPanel({
   deviceName,
   navigationTitle,
   navigationSubtitle,
+  gpsGapSamples,
   samples,
   canPrevious,
   canNext,
@@ -112,37 +128,102 @@ export function HistoryTelemetryPanel({
   const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(
     () => new Set<ChartToggleMetric>(['speed']),
   )
+  const [displayedCharts, setDisplayedCharts] = useState(activeCharts)
   const [shareInfoVisible, setShareInfoVisible] = useState(false)
   const [mediaDrawerVisible, setMediaDrawerVisible] = useState(false)
   const mediaButtonRef = useRef<View>(null)
+  const chartHeightAnimatingRef = useRef(false)
+  const pendingPanelHeightRef = useRef<number | null>(null)
   const selection = useSharedValue<ChartTimeRange | null>(null)
   const trimRef = useRef(trim)
   trimRef.current = trim
   const trimming = trim != null
 
-  const visibleSamples = useVisibleRideSamples(samples, movingStartAtMs, movingEndAtMs)
-  const series = useChartSeries(visibleSamples)
+  // No lines while a ride is loading, whatever the store still holds. Samples and the ride they
+  // belong to have to be drawn as a pair: feeding the previous ride's samples through the new
+  // ride's bounds rebuilds every series, timeline, range and path for a result that is thrown
+  // away the moment the real samples land — which is what made switching rides crawl.
+  const loadingSession = useHistoryStore((s) => s.loadingSession)
+
+  // Derived in render, not through state: an effect would run a commit late and the old ride's
+  // lines would survive the press that started the next one.
+  const rideSamples = loadingSession ? EMPTY_SAMPLES : samples
+  const rideGpsGapSamples = loadingSession ? EMPTY_SAMPLES : gpsGapSamples
+
+  // The lines are cleared in the same commit as the press, so the fade out is only the chrome
+  // going; the fade in is the whole stack arriving at once, once its samples have landed.
+  const fade = useSharedValue(1)
+  useEffect(() => {
+    fade.value = withTiming(loadingSession ? 0 : 1, { duration: loadingSession ? 90 : 260 })
+  }, [fade, loadingSession])
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }))
+
+  const visibleSamples = useVisibleRideSamples(rideSamples, movingStartAtMs, movingEndAtMs)
+  const visibleGpsGapSamples = useVisibleRideSamples(
+    rideGpsGapSamples,
+    movingStartAtMs,
+    movingEndAtMs,
+  )
+  useEffect(() => {
+    setDisplayedCharts((current) => new Set([...current, ...activeCharts]))
+    const timeout = setTimeout(() => setDisplayedCharts(activeCharts), CHART_CHANGE_FADE_MS)
+    return () => clearTimeout(timeout)
+  }, [activeCharts])
+
+  const series = useChartSeries(visibleSamples, displayedCharts)
   const timeline = useChartTimeline(visibleSamples)
-  const ranges = useChartRanges(series)
+  const ranges = useChartRanges(series, displayedCharts)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favoriteRanges)
-  const gpsGapBands = useGpsGapBands(visibleSamples)
+  const gpsGapBands = useGpsGapBands(visibleGpsGapSamples)
   const stackBands = useMemo(() => [...favoriteBands, ...gpsGapBands], [favoriteBands, gpsGapBands])
   const charts = useHistoryChartStack({
     series,
     ranges,
     ramps,
     exclusionBands,
-    activeMetrics: activeCharts,
+    activeMetrics: displayedCharts,
     speedOptional: true,
   })
+  const chartViewportTargetHeight =
+    charts.length === 0
+      ? 0
+      : Math.max(
+          76,
+          charts.reduce((height, chart) => height + chart.height, 0) +
+            stackChromeHeight(charts.length),
+        )
+  const chartViewportHeight = useSharedValue(chartViewportTargetHeight)
+  useEffect(() => {
+    chartHeightAnimatingRef.current = true
+    chartViewportHeight.value = withTiming(chartViewportTargetHeight, {
+      duration: CHART_HEIGHT_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    })
+    const timeout = setTimeout(() => {
+      chartHeightAnimatingRef.current = false
+      const height = pendingPanelHeightRef.current
+      if (height != null) onHeightChange?.(height)
+    }, CHART_HEIGHT_DURATION_MS)
+    return () => clearTimeout(timeout)
+  }, [chartViewportHeight, chartViewportTargetHeight, onHeightChange])
+  const chartViewportStyle = useAnimatedStyle(() => ({ height: chartViewportHeight.value }))
+
+  const handlePanelLayout = useCallback(
+    (height: number) => {
+      const roundedHeight = Math.round(height)
+      pendingPanelHeightRef.current = roundedHeight
+      if (!chartHeightAnimatingRef.current) onHeightChange?.(roundedHeight)
+    },
+    [onHeightChange],
+  )
 
   const rideWindow = rideMovingWindow({ movingStartAtMs, movingEndAtMs })
   const titleStartMs = rideWindow?.startMs ?? startAtMs
   const titleEndMs = rideWindow?.endMs ?? endAtMs
   const bottomInset = Math.max(insets.bottom, 16) + 8
-  const hasChartData = visibleSamples.length >= 2
 
   // The scrub head and the zoom window outlive this component (the map reads both), so a ride
   // switch has to clear them — otherwise the map keeps marking a moment from the previous ride.
@@ -208,7 +289,7 @@ export function HistoryTelemetryPanel({
   return (
     <View
       style={[styles.panel, { bottom: bottomInset }]}
-      onLayout={(e) => onHeightChange?.(e.nativeEvent.layout.height)}
+      onLayout={(e) => handlePanelLayout(e.nativeEvent.layout.height)}
     >
       {!trim ? (
         <HistoryPanelNav
@@ -235,10 +316,12 @@ export function HistoryTelemetryPanel({
           onOpenCharts={() => router.push(routes.historyCharts)}
         />
       ) : null}
-      {hasChartData && (
-        <>
-          {/* Every metric closed means the rider wants the map: the tabs stay to bring one back. */}
-          {activeCharts.size > 0 ? (
+      {/* Drawn whether or not the samples have landed, so the empty frames hold the panel's height
+          and a ride switch fills lines into a stack that never moved. Every metric closed means
+          the rider wants the map: the tabs below stay, to bring one back. */}
+      <Animated.View style={[styles.chartViewport, chartViewportStyle, fadeStyle]}>
+        {displayedCharts.size > 0 ? (
+          <View style={styles.chartContent}>
             <ChartStack
               charts={charts}
               bands={stackBands}
@@ -253,17 +336,19 @@ export function HistoryTelemetryPanel({
               onSelectionChange={handleSelectionCommit}
               onChartTouch={trim ? undefined : handleChartTouch}
               showHead
+              animateChartChanges
+              visibleChartKeys={activeCharts}
             />
-          ) : null}
+          </View>
+        ) : null}
+      </Animated.View>
 
-          <HistoryMetricTabs
-            activeCharts={activeCharts}
-            onToggle={handleToggleMetric}
-            metrics={PANEL_CHART_METRICS}
-          />
-          <HistoryMetricLegend />
-        </>
-      )}
+      <HistoryMetricTabs
+        activeCharts={activeCharts}
+        onToggle={handleToggleMetric}
+        metrics={PANEL_CHART_METRICS}
+      />
+      <HistoryMetricLegend />
       {favoriteMode ? (
         <HistoryRideMediaDrawer
           visible={mediaDrawerVisible}
@@ -297,5 +382,14 @@ const styles = StyleSheet.create({
   },
   chart: {
     minHeight: 76,
+  },
+  chartViewport: {
+    overflow: 'hidden',
+  },
+  chartContent: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
 })

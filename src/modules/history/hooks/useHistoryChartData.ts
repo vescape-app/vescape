@@ -70,26 +70,33 @@ export function useVisibleRideSamples(
  * level that fits the zoom, so pre-decimating the ride to a few hundred points would only throw
  * away the detail a rider zooms in to find.
  */
-export function useChartSeries(samples: TelemetrySample[]): HistorySeries {
+export function useChartSeries(
+  samples: TelemetrySample[],
+  activeMetrics?: ReadonlySet<ChartToggleMetric>,
+): HistorySeries {
   return useMemo(() => {
     const series = {} as HistorySeries
     for (const def of HISTORY_CHART_DEFS) series[def.key] = { ts: [], vs: [] }
     // Pack percent is derived from voltage rather than measured, so it is not a metric of its
     // own — but it is a line, and rides without a pack configured do not have it at all.
     series.batteryPercent = { ts: [], vs: [] }
+    const activeDefs = activeMetrics
+      ? HISTORY_CHART_DEFS.filter((def) => activeMetrics.has(def.key))
+      : HISTORY_CHART_DEFS
+    const batteryActive = activeMetrics == null || activeMetrics.has('battery')
     for (const sample of samples) {
-      for (const def of HISTORY_CHART_DEFS) {
+      for (const def of activeDefs) {
         const value = getTelemetrySampleMetricValue(sample, def.key)
         if (value == null) continue
         series[def.key].ts.push(sample.capturedAtMs)
         series[def.key].vs.push(value)
       }
-      if (sample.batteryPercent == null) continue
+      if (!batteryActive || sample.batteryPercent == null) continue
       series.batteryPercent.ts.push(sample.capturedAtMs)
       series.batteryPercent.vs.push(sample.batteryPercent)
     }
     return series
-  }, [samples])
+  }, [activeMetrics, samples])
 }
 
 /** Every chart-only metric of a ride — see {@link EXTRA_CHART_METRICS}. */
@@ -178,14 +185,20 @@ export function useExtraChartRanges(series: HistoryExtraSeries): HistoryExtraRan
   }, [series])
 }
 
-export function useChartRanges(series: HistorySeries): HistoryRanges {
+export function useChartRanges(
+  series: HistorySeries,
+  activeMetrics?: ReadonlySet<ChartToggleMetric>,
+): HistoryRanges {
   return useMemo(() => {
     const ranges = {} as HistoryRanges
     for (const def of HISTORY_CHART_DEFS) {
-      ranges[def.key] = computeAutoRangeFromValues(series[def.key].vs, def.range)
+      ranges[def.key] = computeAutoRangeFromValues(
+        activeMetrics == null || activeMetrics.has(def.key) ? series[def.key].vs : [],
+        def.range,
+      )
     }
     return ranges
-  }, [series])
+  }, [activeMetrics, series])
 }
 
 /**
@@ -344,6 +357,8 @@ export function useHistoryChartStack({
           key: 'speed',
           data: series.speed,
           color: SPEED_CHART_DEF.color,
+          unit: telemetry.speed.unit,
+          decimals: telemetry.speed.decimals,
           ramp: ramps.speed,
         },
       ],
@@ -360,7 +375,14 @@ export function useHistoryChartStack({
               label: def.label,
               height: metricHeight,
               series: [
-                { key: def.key, data: series[def.key], color: def.color, ramp: ramps[def.key] },
+                {
+                  key: def.key,
+                  data: series[def.key],
+                  color: def.color,
+                  ramp: ramps[def.key],
+                  unit: def.unit,
+                  decimals: def.decimals,
+                },
               ],
               left: { range: ranges[def.key] },
               bands: exclusionBands[def.key],
@@ -381,6 +403,7 @@ export function useHistoryChartStack({
                     data: extraSeries[def.key],
                     color: def.color,
                     unit: def.unit,
+                    decimals: def.decimals,
                   },
                 ],
                 left: { range: extraRanges[def.key] },
@@ -420,8 +443,8 @@ function batteryChart(
     key: 'voltage',
     data: series.battery,
     color: telemetry.battVoltage.color,
-    label: 'Pack',
     unit: telemetry.battVoltage.unit,
+    decimals: telemetry.battVoltage.decimals,
   }
 
   if (!hasPercent) {
@@ -443,8 +466,8 @@ function batteryChart(
         key: 'percent',
         data: series.batteryPercent,
         color: telemetry.battVoltage.color,
-        label: 'Charge',
-        unit: '%',
+        unit: telemetry.batteryPercent.unit,
+        decimals: telemetry.batteryPercent.decimals,
       },
       { ...voltage, axis: 'right', color: theme.palette.slate.textMuted },
     ],

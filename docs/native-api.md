@@ -96,7 +96,7 @@ Field omitted (null) when change < threshold from previous:
 | ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `getTelemetryHistory(opts?)`                          | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
 | `getTelemetrySamples({fromMs,toMs,deviceId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, gpsSamples, markers}`                                      | Combined query: decoded samples + GPS points + session markers                                    |
+| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
 | `getTelemetrySummary()`                               | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
 | `getDatabaseSizeBytes()`                              | number                                                                     | File size of vescape.db                                                                           |
 
