@@ -2,6 +2,8 @@ import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, {
+  Easing,
+  ReduceMotion,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
@@ -9,7 +11,8 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { ChartStack } from '@/components/charts/line/ChartStack'
+import { CHART_CHANGE_FADE_MS, ChartStack } from '@/components/charts/line/ChartStack'
+import { stackChromeHeight } from '@/components/charts/line/chartLayout'
 import { routes } from '@/navigation/routes'
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
@@ -42,6 +45,7 @@ import { useHistoryStore, type TelemetrySample } from '@/modules/history/store/h
 
 /** Stable identity, so a loading ride does not rebuild the stack on every render. */
 const EMPTY_SAMPLES: TelemetrySample[] = []
+const CHART_HEIGHT_DURATION_MS = 180
 
 interface HistoryTelemetryPanelProps {
   startAtMs: number
@@ -120,9 +124,12 @@ export function HistoryTelemetryPanel({
   const [activeCharts, setActiveCharts] = useState<Set<ChartToggleMetric>>(
     () => new Set<ChartToggleMetric>(['speed']),
   )
+  const [displayedCharts, setDisplayedCharts] = useState(activeCharts)
   const [shareInfoVisible, setShareInfoVisible] = useState(false)
   const [mediaDrawerVisible, setMediaDrawerVisible] = useState(false)
   const mediaButtonRef = useRef<View>(null)
+  const chartHeightAnimatingRef = useRef(false)
+  const pendingPanelHeightRef = useRef<number | null>(null)
   const selection = useSharedValue<ChartTimeRange | null>(null)
   const trimRef = useRef(trim)
   trimRef.current = trim
@@ -147,9 +154,15 @@ export function HistoryTelemetryPanel({
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }))
 
   const visibleSamples = useVisibleRideSamples(rideSamples, movingStartAtMs, movingEndAtMs)
-  const series = useChartSeries(visibleSamples, activeCharts)
+  useEffect(() => {
+    setDisplayedCharts((current) => new Set([...current, ...activeCharts]))
+    const timeout = setTimeout(() => setDisplayedCharts(activeCharts), CHART_CHANGE_FADE_MS)
+    return () => clearTimeout(timeout)
+  }, [activeCharts])
+
+  const series = useChartSeries(visibleSamples, displayedCharts)
   const timeline = useChartTimeline(visibleSamples)
-  const ranges = useChartRanges(series, activeCharts)
+  const ranges = useChartRanges(series, displayedCharts)
   const ramps = useMetricRamps()
   const exclusionBands = useChartExclusionBands()
   const favoriteBands = useFavoriteBands(favoriteRanges)
@@ -160,9 +173,42 @@ export function HistoryTelemetryPanel({
     ranges,
     ramps,
     exclusionBands,
-    activeMetrics: activeCharts,
+    activeMetrics: displayedCharts,
     speedOptional: true,
   })
+  const chartViewportTargetHeight =
+    charts.length === 0
+      ? 0
+      : Math.max(
+          76,
+          charts.reduce((height, chart) => height + chart.height, 0) +
+            stackChromeHeight(charts.length),
+        )
+  const chartViewportHeight = useSharedValue(chartViewportTargetHeight)
+  useEffect(() => {
+    chartHeightAnimatingRef.current = true
+    chartViewportHeight.value = withTiming(chartViewportTargetHeight, {
+      duration: CHART_HEIGHT_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    })
+    const timeout = setTimeout(() => {
+      chartHeightAnimatingRef.current = false
+      const height = pendingPanelHeightRef.current
+      if (height != null) onHeightChange?.(height)
+    }, CHART_HEIGHT_DURATION_MS)
+    return () => clearTimeout(timeout)
+  }, [chartViewportHeight, chartViewportTargetHeight, onHeightChange])
+  const chartViewportStyle = useAnimatedStyle(() => ({ height: chartViewportHeight.value }))
+
+  const handlePanelLayout = useCallback(
+    (height: number) => {
+      const roundedHeight = Math.round(height)
+      pendingPanelHeightRef.current = roundedHeight
+      if (!chartHeightAnimatingRef.current) onHeightChange?.(roundedHeight)
+    },
+    [onHeightChange],
+  )
 
   const rideWindow = rideMovingWindow({ movingStartAtMs, movingEndAtMs })
   const titleStartMs = rideWindow?.startMs ?? startAtMs
@@ -233,7 +279,7 @@ export function HistoryTelemetryPanel({
   return (
     <View
       style={[styles.panel, { bottom: bottomInset }]}
-      onLayout={(e) => onHeightChange?.(e.nativeEvent.layout.height)}
+      onLayout={(e) => handlePanelLayout(e.nativeEvent.layout.height)}
     >
       {!trim ? (
         <HistoryPanelNav
@@ -263,25 +309,29 @@ export function HistoryTelemetryPanel({
       {/* Drawn whether or not the samples have landed, so the empty frames hold the panel's height
           and a ride switch fills lines into a stack that never moved. Every metric closed means
           the rider wants the map: the tabs below stay, to bring one back. */}
-      {activeCharts.size > 0 ? (
-        <Animated.View style={fadeStyle}>
-          <ChartStack
-            charts={charts}
-            bands={stackBands}
-            timeline={timeline}
-            dataKey={`${startAtMs}`}
-            timeMode="clock"
-            containerStyle={styles.chart}
-            scrubTimeMs={scrubHeadMs}
-            zoomWindowMs={trimming ? undefined : zoomWindowMs}
-            selection={trim ? selection : undefined}
-            onSelectionPreview={handleSelectionPreview}
-            onSelectionChange={handleSelectionCommit}
-            onChartTouch={trim ? undefined : handleChartTouch}
-            showHead
-          />
-        </Animated.View>
-      ) : null}
+      <Animated.View style={[styles.chartViewport, chartViewportStyle, fadeStyle]}>
+        {displayedCharts.size > 0 ? (
+          <View style={styles.chartContent}>
+            <ChartStack
+              charts={charts}
+              bands={stackBands}
+              timeline={timeline}
+              dataKey={`${startAtMs}`}
+              timeMode="clock"
+              containerStyle={styles.chart}
+              scrubTimeMs={scrubHeadMs}
+              zoomWindowMs={trimming ? undefined : zoomWindowMs}
+              selection={trim ? selection : undefined}
+              onSelectionPreview={handleSelectionPreview}
+              onSelectionChange={handleSelectionCommit}
+              onChartTouch={trim ? undefined : handleChartTouch}
+              showHead
+              animateChartChanges
+              visibleChartKeys={activeCharts}
+            />
+          </View>
+        ) : null}
+      </Animated.View>
 
       <HistoryMetricTabs
         activeCharts={activeCharts}
@@ -322,5 +372,14 @@ const styles = StyleSheet.create({
   },
   chart: {
     minHeight: 76,
+  },
+  chartViewport: {
+    overflow: 'hidden',
+  },
+  chartContent: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
 })

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   StyleSheet,
   View,
@@ -7,7 +7,13 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { GestureDetector } from 'react-native-gesture-handler'
-import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated'
+import Animated, {
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated'
 
 import {
   AXIS_FONT_SIZE,
@@ -41,6 +47,7 @@ export type { ChartSpec } from '@/components/charts/line/types'
 
 /** Slack when deciding the camera is showing everything, so rounding cannot leave it "zoomed". */
 const FULL_VIEW_EPSILON_MS = 1
+export const CHART_CHANGE_FADE_MS = 120
 
 export interface ChartStackProps {
   /**
@@ -99,6 +106,10 @@ export interface ChartStackProps {
   onChartTouch?: (key: string) => void
   /** Mark the last sample of every series. */
   showHead?: boolean
+  /** Fade chart rows as the visible metric set changes. Initial rows do not animate. */
+  animateChartChanges?: boolean
+  /** Keys still visible while a deselected row is retained long enough to fade out. */
+  visibleChartKeys?: ReadonlySet<string>
   containerStyle?: StyleProp<ViewStyle>
 }
 
@@ -129,6 +140,8 @@ export function ChartStack({
   bands,
   timeline = null,
   showHead = false,
+  animateChartChanges = false,
+  visibleChartKeys,
   containerStyle,
 }: ChartStackProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
@@ -149,6 +162,17 @@ export function ChartStack({
   const compacted = useMemo(() => compactCharts(charts, timeline), [charts, timeline])
   const stackBands = useMemo(() => compactBands(bands, timeline), [bands, timeline])
   const prepared = useMemo(() => prepareStack(compacted, dataKey), [compacted, dataKey])
+  const previousChartKeysRef = useRef<ReadonlySet<string>>(
+    new Set(prepared.charts.map((chart) => chart.key)),
+  )
+  const addedChartKeys = new Set(
+    prepared.charts
+      .map((chart) => chart.key)
+      .filter((key) => !previousChartKeysRef.current.has(key)),
+  )
+  useEffect(() => {
+    previousChartKeysRef.current = new Set(prepared.charts.map((chart) => chart.key))
+  }, [prepared.charts])
   const camera = useChartCamera({
     startMs: prepared.startMs,
     endMs: prepared.endMs,
@@ -280,7 +304,13 @@ export function ChartStack({
           <GestureDetector gesture={gesture}>
             <View style={styles.column}>
               {prepared.charts.map((chart, index) => (
-                <LineChart key={chart.key} chart={chart} width={width} index={index} />
+                <ChartRow
+                  key={chart.key}
+                  visible={!visibleChartKeys || visibleChartKeys.has(chart.key)}
+                  fadeIn={animateChartChanges && addedChartKeys.has(chart.key)}
+                >
+                  <LineChart chart={chart} width={width} index={index} />
+                </ChartRow>
               ))}
               <ChartTimeAxis timeMode={timeMode} glyphWidth={glyphWidth} />
             </View>
@@ -289,6 +319,22 @@ export function ChartStack({
       )}
     </View>
   )
+}
+
+interface ChartRowProps {
+  visible: boolean
+  fadeIn: boolean
+  children: React.ReactNode
+}
+
+function ChartRow({ visible, fadeIn, children }: ChartRowProps) {
+  const opacity = useSharedValue(fadeIn ? 0 : visible ? 1 : 0)
+  useEffect(() => {
+    opacity.value = withTiming(visible ? 1 : 0, { duration: CHART_CHANGE_FADE_MS })
+  }, [opacity, visible])
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }))
+
+  return <Animated.View style={style}>{children}</Animated.View>
 }
 
 const styles = StyleSheet.create({
