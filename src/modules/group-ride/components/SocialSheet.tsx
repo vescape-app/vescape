@@ -136,6 +136,7 @@ function GroupRideWidget() {
         icon={BroadcastIcon}
         title="Group Ride"
         accent={accent}
+        surface="secondary"
         height={240}
         footer={
           <Button
@@ -198,6 +199,7 @@ function GroupRideWidget() {
       icon={BroadcastIcon}
       title={active ? rideName : 'Group Ride'}
       accent={accent}
+      surface="secondary"
       active={active}
       height={active && rosterRows.length > 0 ? undefined : 240}
       footer={footer}

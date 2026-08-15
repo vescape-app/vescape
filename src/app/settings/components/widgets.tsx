@@ -377,6 +377,7 @@ function CanvasWidgetShowcase() {
         icon={BroadcastIcon}
         title="Group Ride"
         accent={theme.palette.groupRide.color}
+        surface="secondary"
         active={active}
         height={200}
         action={
