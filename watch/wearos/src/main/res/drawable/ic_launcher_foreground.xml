@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon foreground. The 667x667 viewport stands in for the 108dp adaptive canvas, so the
+     72dp always-visible circle is a radius of 222 here. The mark's smallest enclosing circle is
+     centred at (334, 285) with radius 351 — high and wide, not viewport-centred — so scaling by 0.53
+     (radius 186) and translating down by 26 lands it on the mask centre with ~6dp of margin. The
+     previous raster foreground drew the mark at 41% of the frame, which left the strokes too thin to
+     read at watch size; this fills 51%. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="667"
+    android:viewportHeight="667">
+    <group
+        android:pivotX="333.5"
+        android:pivotY="333.5"
+        android:scaleX="0.53"
+        android:scaleY="0.53"
+        android:translateY="26">
+        <path android:pathData="@string/sygnet_path">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="20.9187"
+                    android:startY="414.03"
+                    android:endX="667.566"
+                    android:endY="223.319">
+                    <item android:offset="0.0961538" android:color="#FF38BDF8"/>
+                    <item android:offset="0.802885" android:color="#FF14B8A6"/>
+                    <item android:offset="1" android:color="#FF09FCE1"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

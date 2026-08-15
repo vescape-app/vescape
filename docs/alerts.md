@@ -28,16 +28,18 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 
 ## Schema — `alerts` table
 
-| column          | type          | notes                                                          |
-| --------------- | ------------- | -------------------------------------------------------------- |
-| `board_id`      | TEXT          | owning Board; PK is `(board_id, id)`                           |
-| `id`            | TEXT          | UUID or `preset:<metric>:<index>`                              |
-| `control_id`    | TEXT          | see Control IDs below                                          |
-| `threshold`     | REAL          | trigger point                                                  |
-| `threshold_max` | REAL nullable | range upper bound (Geiger mode)                                |
-| `enabled`       | INTEGER 0/1   | toggled by user                                                |
-| `sound_type`    | TEXT          | feedback value, e.g. `preset:beep` or `tts:Battery {percent}%` |
-| `created_at`    | INTEGER       | ms epoch                                                       |
+| column                 | type             | notes                                                          |
+| ---------------------- | ---------------- | -------------------------------------------------------------- |
+| `board_id`             | TEXT             | owning Board; PK is `(board_id, id)`                           |
+| `id`                   | TEXT             | UUID or `preset:<metric>:<index>`                              |
+| `control_id`           | TEXT             | see Control IDs below                                          |
+| `threshold`            | REAL             | trigger point                                                  |
+| `threshold_max`        | REAL nullable    | range upper bound (Geiger mode)                                |
+| `enabled`              | INTEGER 0/1      | toggled by user                                                |
+| `sound_type`           | TEXT             | feedback value, e.g. `preset:beep` or `tts:Battery {percent}%` |
+| `created_at`           | INTEGER          | ms epoch                                                       |
+| `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot   |
+| `beep_count`           | INTEGER          | sound plays per announcement, 1–5 (preset sounds only)         |
 
 ## Control IDs & implicit direction
 
@@ -62,11 +64,31 @@ Set `threshold_max` to add a range. Active range alerts run a native SoundPool t
 - at `threshold` → about 800 ms between ticks
 - at `threshold_max` → the selected geiger preset loops continuously
 
-Single threshold (no `threshold_max`) → fixed 10 s debounce.
+## Single-threshold rules: arm, announce, re-arm
+
+A single-threshold rule announces when the metric crosses it, then latches. It says nothing more
+until it re-arms — the metric must travel back past the threshold by that metric's re-arm margin
+(`TelemetryMetricDef.alertRearmMargin`: 3 °C temperature, 5 pp duty, 3 km/h speed, 10 pp battery).
+A value hovering on the threshold therefore cannot re-announce, and there is no time-based debounce
+anywhere in the engine (ADR 0032).
+
+Set `repeat_every_seconds` to keep announcing on a fixed cadence for as long as the metric stays
+past the threshold. Native floors it at `ALERT_REPEAT_MIN_SECONDS` (3 s). Re-arming resets the
+repeat clock, so a fresh crossing announces immediately rather than waiting out the cadence.
+
+`beep_count` sets how many times the preset sound plays per announcement, 200 ms apart, so a rider
+can give different rules different signatures. It does nothing for `tts:` rules, which speak once
+per announcement, or for range rules, which own their own cadence.
+
+The latch and repeat clock are cleared only when a new Board Session starts — not on rule edits,
+preset regeneration, idle pause, or backgrounding. Preset rule ids are deterministic, so changing a
+preset level keeps a rule latched.
 
 When multiple alerts fire on the same packet, SoundPool lets their clips or geiger loops overlap.
 Within a single evaluation, the most urgent alert is sorted first for telemetry display
 (Geiger over simple; higher threshold for above-direction controls, lower threshold for below-direction).
+Single-threshold alerts then coalesce per control: only the most urgent announces, and the rest
+latch silently — they are past their thresholds, so they are spent rather than pending.
 
 ## Message mode
 
@@ -83,7 +105,7 @@ This is a plain prefix payload, not a URL. Native only treats the first prefix a
 
 Additional colons inside the message are part of the message.
 
-Message mode is one-shot only. Geiger/range alerts (`threshold_max != null`) use geiger presets and must not use `tts:`. Native should guard against invalid stored combinations.
+Message mode is single-threshold only (one-shot or repeating). Geiger/range alerts (`threshold_max != null`) use geiger presets and must not use `tts:`. Native should guard against invalid stored combinations.
 
 Templates render from current alert values when the rule fires:
 

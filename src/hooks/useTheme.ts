@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { create } from 'zustand'
 
 import {
@@ -40,19 +39,4 @@ export function useResolvedAccentColors() {
 export function useResolvedColor(color: string): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return resolveAdaptiveColor(color, resolvedTheme) as string
-}
-
-/** Resolve the color field in renderer-bound arrays without leaking native color objects. */
-export function useResolvedColorItems<T extends { color: string }>(
-  items: readonly T[] | undefined,
-) {
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  return useMemo(
-    () =>
-      items?.map((item) => ({
-        ...item,
-        color: resolveAdaptiveColor(item.color, resolvedTheme) as string,
-      })) ?? [],
-    [items, resolvedTheme],
-  )
 }

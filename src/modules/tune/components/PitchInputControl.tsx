@@ -1,17 +1,15 @@
 /* eslint-disable react-hooks/immutability */
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
-  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated'
-import { scheduleOnRN } from 'react-native-worklets'
 
 import { theme } from '@/constants/theme'
-import { MAX_PITCH_INPUT_DEGREES, pitchInputControlToRate } from '@/modules/tune/lib/tunePreview'
+import { MAX_PITCH_INPUT_DEGREES } from '@/modules/tune/lib/tunePreview'
 
 interface PitchInputControlProps {
   angleDegrees: SharedValue<number>
@@ -22,7 +20,6 @@ const THUMB_SIZE = 18
 
 export function PitchInputControl({ angleDegrees, active }: PitchInputControlProps) {
   const width = useSharedValue(0)
-  const [rateText, setRateText] = useState('0°/s')
 
   const gesture = useMemo(() => {
     const updateFromX = (x: number) => {
@@ -50,28 +47,12 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
     const normalized = angleDegrees.value / MAX_PITCH_INPUT_DEGREES
     return { transform: [{ translateX: ((1 + normalized) / 2) * travel }] }
   })
-  const updateRateText = useCallback((controlDegrees: number) => {
-    const rate = Math.round(pitchInputControlToRate(controlDegrees))
-    setRateText(`${rate > 0 ? '+' : ''}${rate}°/s`)
-  }, [])
-  useAnimatedReaction(
-    () => angleDegrees.value,
-    (next, previous) => {
-      if (next !== previous) scheduleOnRN(updateRateText, next)
-    },
-  )
-
   const handleLayout = (event: LayoutChangeEvent) => {
     width.value = event.nativeEvent.layout.width
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.labels}>
-        <Text style={styles.edgeLabel}>Nose</Text>
-        <Text style={styles.angle}>{rateText}</Text>
-        <Text style={styles.edgeLabel}>Tail</Text>
-      </View>
       <GestureDetector gesture={gesture}>
         <View
           style={styles.trackTouch}
@@ -84,7 +65,11 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
           <Animated.View style={[styles.thumb, thumbStyle]} />
         </View>
       </GestureDetector>
-      <Text style={styles.hint}>Hold to add pitch rate · release to recover</Text>
+      <View style={styles.labels}>
+        <Text style={styles.edgeLabel}>Nose</Text>
+        <Text style={styles.hint}>Hold to add pitch rate · release to recover</Text>
+        <Text style={styles.edgeLabel}>Tail</Text>
+      </View>
     </View>
   )
 }
@@ -92,28 +77,22 @@ export function PitchInputControl({ angleDegrees, active }: PitchInputControlPro
 const styles = StyleSheet.create({
   container: { gap: 5 },
   labels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  angle: {
-    padding: 0,
-    color: theme.telemetry.speed,
-    fontSize: 11,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  edgeLabel: { color: theme.neutral.textMuted, fontSize: 10, fontWeight: '700' },
+  edgeLabel: { color: theme.palette.slate.textMuted, fontSize: 10, fontWeight: '700' },
   hint: {
-    color: theme.neutral.textMuted,
+    flex: 1,
+    color: theme.palette.slate.textMuted,
     fontSize: 9,
     fontWeight: '600',
     textAlign: 'center',
   },
   trackTouch: { height: 30, justifyContent: 'center' },
-  track: { height: 3, borderRadius: 2, backgroundColor: theme.neutral.border },
+  track: { height: 3, borderRadius: 2, backgroundColor: theme.palette.slate.border },
   centerMark: {
     position: 'absolute',
     left: '50%',
     width: 1,
     height: 10,
-    backgroundColor: theme.neutral.textMuted,
+    backgroundColor: theme.palette.slate.textMuted,
   },
   thumb: {
     position: 'absolute',
@@ -123,6 +102,6 @@ const styles = StyleSheet.create({
     borderRadius: THUMB_SIZE / 2,
     backgroundColor: theme.palette.sky.color,
     borderWidth: 2,
-    borderColor: theme.neutral.textPrimary,
+    borderColor: theme.palette.slate.textPrimary,
   },
 })

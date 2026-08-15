@@ -1,7 +1,7 @@
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 
 import {
-  getMapCameraProfileForNavigationMode,
+  getMapCameraProfileForOrientationMode,
   getPaddingForProfile,
   getPitchForProfileZoom,
   getProfileZoomLevel,
@@ -45,7 +45,7 @@ export type MapCameraIntent =
       type: 'FollowLive'
       gpsCamera: Pick<MapCameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
       followHeadingDeg: number
-      navigationMode: MapNavigationMode
+      orientationMode: MapOrientationMode
       perspectiveEnabled: boolean
       viewportHeight?: number
       preserveHeading?: number
@@ -57,13 +57,13 @@ export type MapCameraIntent =
       zoomLevel: number
       gpsCamera: Pick<MapCameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
       followHeadingDeg: number
-      navigationMode: MapNavigationMode
+      orientationMode: MapOrientationMode
       perspectiveEnabled: boolean
       viewportHeight?: number
     }
   | {
-      type: 'ChangeNavigationMode'
-      navigationMode: MapNavigationMode
+      type: 'ChangeOrientationMode'
+      orientationMode: MapOrientationMode
       gpsCamera: Pick<MapCameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
       followHeadingDeg: number
       perspectiveEnabled: boolean
@@ -74,7 +74,7 @@ export type MapCameraIntent =
       enabled: boolean
       currentCamera: MapCameraSnapshot | null
       fallbackZoomLevel: number
-      navigationMode: MapNavigationMode
+      orientationMode: MapOrientationMode
     }
   | {
       type: 'FrameRideHistoryPreview'
@@ -91,7 +91,7 @@ export type MapCameraIntent =
       coordinate: [number, number]
       currentCamera: MapCameraSnapshot | null
       fallbackZoomLevel: number
-      navigationMode: MapNavigationMode
+      orientationMode: MapOrientationMode
       perspectiveEnabled: boolean
     }
   | {
@@ -104,6 +104,11 @@ export type MapCameraIntent =
       type: 'EnterLegalLimitsView'
       camera: MapCameraSnapshot
     }
+  | {
+      /** Frame a whole line of coordinates — today the Navigation path the rider is confirming. */
+      type: 'FitRoute'
+      camera: MapCameraSnapshot
+    }
 
 export interface MapCameraEffect {
   camera: Partial<MapCameraSnapshot>
@@ -114,14 +119,14 @@ export const initialMapCameraControllerState: MapCameraControllerState = {
   followZoomLevel: null,
 }
 
-function liveProfileForMode(navigationMode: MapNavigationMode): MapCameraProfileKey {
-  return getMapCameraProfileForNavigationMode(navigationMode)
+function liveProfileForMode(orientationMode: MapOrientationMode): MapCameraProfileKey {
+  return getMapCameraProfileForOrientationMode(orientationMode)
 }
 
 function buildLiveFollowCamera({
   gpsCamera,
   followHeadingDeg,
-  navigationMode,
+  orientationMode,
   perspectiveEnabled,
   viewportHeight,
   followZoomLevel,
@@ -130,7 +135,7 @@ function buildLiveFollowCamera({
 }: Extract<MapCameraIntent, { type: 'FollowLive' }> & {
   followZoomLevel: number | null
 }): MapCameraSnapshot {
-  const profile = liveProfileForMode(navigationMode)
+  const profile = liveProfileForMode(orientationMode)
   const baseZoom = followZoomLevel ?? gpsCamera.zoomLevel
   const zoomLevel = getProfileZoomLevel({
     profile,
@@ -138,7 +143,7 @@ function buildLiveFollowCamera({
     enforceMinimums: enforceMinimums && followZoomLevel == null,
   })
   const heading =
-    navigationMode === 'freeRotate' && preserveHeading != null ? preserveHeading : followHeadingDeg
+    orientationMode === 'freeRotate' && preserveHeading != null ? preserveHeading : followHeadingDeg
   return {
     ...gpsCamera,
     zoomLevel,
@@ -195,7 +200,7 @@ export function reduceMapCameraIntent(
           type: 'FollowLive',
           gpsCamera: intent.gpsCamera,
           followHeadingDeg: intent.followHeadingDeg,
-          navigationMode: intent.navigationMode,
+          orientationMode: intent.orientationMode,
           perspectiveEnabled: intent.perspectiveEnabled,
           viewportHeight: intent.viewportHeight,
           followZoomLevel: nextState.followZoomLevel,
@@ -205,7 +210,7 @@ export function reduceMapCameraIntent(
   }
 
   if (intent.type === 'ChangePerspective') {
-    const profile = liveProfileForMode(intent.navigationMode)
+    const profile = liveProfileForMode(intent.orientationMode)
     const zoomLevel = intent.currentCamera?.zoomLevel ?? intent.fallbackZoomLevel
     return {
       state,
@@ -251,7 +256,7 @@ export function reduceMapCameraIntent(
   }
 
   if (intent.type === 'FocusCoordinate') {
-    const profile = liveProfileForMode(intent.navigationMode)
+    const profile = liveProfileForMode(intent.orientationMode)
     const zoomLevel = intent.currentCamera?.zoomLevel ?? intent.fallbackZoomLevel
     return {
       state: {
@@ -297,7 +302,7 @@ export function reduceMapCameraIntent(
     }
   }
 
-  if (intent.type === 'EnterLegalLimitsView') {
+  if (intent.type === 'FitRoute' || intent.type === 'EnterLegalLimitsView') {
     return {
       state: {
         ...state,

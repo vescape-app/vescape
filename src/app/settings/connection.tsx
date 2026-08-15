@@ -6,7 +6,6 @@ import {
   ClockCountdownIcon,
   PowerIcon,
   RecordIcon,
-  RocketLaunchIcon,
   SpeakerHighIcon,
 } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
@@ -18,68 +17,133 @@ import { Stepper } from '@/components/forms/Stepper'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
+import { useBleStore } from '@/modules/board/store/bleStore'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { AutoStartCard } from '@/modules/settings/components/AutoStartCard'
+import { companionErrorMessage } from '@/modules/settings/lib/companionErrors'
 import {
   ensureBackgroundLocation,
   hasBackgroundLocation,
 } from '@/modules/settings/hooks/usePermissions'
+
+/** Backing out of the system device chooser is normal — only real failures get an alert. */
+const alertCompanionError = (error: unknown, fallback: string) => {
+  const message = companionErrorMessage(error, fallback)
+  if (message) Alert.alert('Auto start app', message)
+}
 
 export default function ConnectionSettingsScreen() {
   const {
     autoConnect,
     autoRecording,
     companionPresenceEnabled,
+    companionPresenceBoards,
     companionPresenceCooldownMinutes,
     connectionSoundsEnabled,
     autoCloseEnabled,
     autoCloseDelayMinutes,
     set,
     setCompanionPresence,
+    addCompanionBoard,
+    removeCompanionBoard,
   } = useSettingsStore(
     useShallow((s) => ({
       autoConnect: s.autoConnect,
       autoRecording: s.autoRecording,
       companionPresenceEnabled: s.companionPresenceEnabled,
+      companionPresenceBoards: s.companionPresenceBoards,
       companionPresenceCooldownMinutes: s.companionPresenceCooldownMinutes,
       connectionSoundsEnabled: s.connectionSoundsEnabled,
       autoCloseEnabled: s.autoCloseEnabled,
       autoCloseDelayMinutes: s.autoCloseDelayMinutes,
       set: s.set,
       setCompanionPresence: s.setCompanionPresence,
+      addCompanionBoard: s.addCompanionBoard,
+      removeCompanionBoard: s.removeCompanionBoard,
     })),
   )
+  const boards = useBoardStore((s) => s.boards)
+  const linkedBoards = boards
+    .filter((board) => board.link)
+    .map((board) => ({ id: board.id, name: board.name, bleId: board.link!.bleId }))
+
+  const connectedBoardId = useBleStore((s) => (s.status === 'idle' ? null : s.selectedBoardId))
 
   const [bgLocationPrompt, setBgLocationPrompt] = useState(false)
+  const [disconnectPrompt, setDisconnectPrompt] = useState(false)
+  const [pendingBoardId, setPendingBoardId] = useState<string | null>(null)
+  const [busyBoardId, setBusyBoardId] = useState<string | null>(null)
+  const [masterBusy, setMasterBusy] = useState(false)
 
-  const enableCompanion = () =>
-    setCompanionPresence(true).catch((error) => {
+  const onCompanionToggle = async (enabled: boolean) => {
+    setMasterBusy(true)
+    try {
+      await setCompanionPresence(enabled)
+    } catch (error) {
       console.warn('Companion presence toggle failed', error)
-      Alert.alert(
-        'Auto start app',
-        error instanceof Error ? error.message : 'Could not enable auto start',
-      )
-    })
-
-  const onCompanionToggle = async (next: boolean) => {
-    if (!next) {
-      void setCompanionPresence(false)
-      return
+      alertCompanionError(error, 'Could not change auto start')
+    } finally {
+      setMasterBusy(false)
     }
+  }
+
+  const enableCompanion = async (boardId: string) => {
+    setBusyBoardId(boardId)
+    try {
+      await addCompanionBoard(boardId)
+    } catch (error) {
+      console.warn('Companion presence toggle failed', error)
+      alertCompanionError(error, 'Could not enable auto start')
+    } finally {
+      setBusyBoardId(null)
+      setPendingBoardId(null)
+    }
+  }
+
+  /** Runs the permission gate, then hands the board to native (which opens the Android chooser). */
+  const continueEnable = async (boardId: string) => {
     // Hands-off auto-start records GPS only with "Allow all the time": the OS starts the service
     // from the background and withholds while-in-use location. Explain why before any grant attempt.
     if (await hasBackgroundLocation()) {
-      void enableCompanion()
+      void enableCompanion(boardId)
     } else {
+      setPendingBoardId(boardId)
       setBgLocationPrompt(true)
+    }
+  }
+
+  const onAddCompanionBoard = async (boardId: string) => {
+    // Android can only pair with a board it can scan, so native drops a live session first. Say so
+    // up front — an unannounced disconnect mid-ride reads like a bug.
+    if (boardId === connectedBoardId) {
+      setPendingBoardId(boardId)
+      setDisconnectPrompt(true)
+      return
+    }
+    await continueEnable(boardId)
+  }
+
+  const onRemoveCompanionBoard = async (boardId: string) => {
+    setBusyBoardId(boardId)
+    try {
+      await removeCompanionBoard(boardId)
+    } catch (error) {
+      console.warn('Companion presence removal failed', error)
+      alertCompanionError(error, 'Could not turn this board off')
+    } finally {
+      setBusyBoardId(null)
     }
   }
 
   const onBgLocationConfirm = async () => {
     setBgLocationPrompt(false)
     // Android 10 grants inline; Android 11+ removed the dialog, so fall back to Settings.
-    if (await ensureBackgroundLocation()) {
-      void enableCompanion()
+    if ((await ensureBackgroundLocation()) && pendingBoardId) {
+      void enableCompanion(pendingBoardId)
     } else {
+      // Grant happens outside the app, so this attempt is over — the rider taps Enable again.
+      setPendingBoardId(null)
       Linking.openSettings()
     }
   }
@@ -93,53 +157,22 @@ export default function ConnectionSettingsScreen() {
         />
 
         {Platform.OS === 'android' ? (
-          <>
-            <SettingsSectionTitle>Wake up</SettingsSectionTitle>
-            <SettingsCard>
-              <SettingsRow
-                icon={RocketLaunchIcon}
-                iconColor={theme.palette.green.color}
-                label="Auto start app"
-                hint="When your phone finds your board, it will automatically start the app in the background"
-                right={
-                  <Switch
-                    value={companionPresenceEnabled}
-                    onValueChange={(v) => void onCompanionToggle(v)}
-                    trackColor={{
-                      false: theme.neutral.border,
-                      true: theme.palette.sky.border,
-                    }}
-                    thumbColor={
-                      companionPresenceEnabled ? theme.palette.sky.color : theme.neutral.textMuted
-                    }
-                  />
-                }
-              />
-              {companionPresenceEnabled ? (
-                <SettingsRow
-                  icon={ClockCountdownIcon}
-                  iconColor={theme.palette.amber.color}
-                  label="Don't restart for"
-                  hint="After you exit the app, wait this long before auto starting again. 0 = off"
-                  right={
-                    <Stepper
-                      value={companionPresenceCooldownMinutes}
-                      unit="min"
-                      min={0}
-                      max={480}
-                      step={(v, dir) => (dir === 1 ? (v < 60 ? 15 : 30) : v <= 60 ? 15 : 30)}
-                      onChange={(nextValue) => {
-                        const clampedValue = Math.min(480, Math.max(0, nextValue))
-                        if (clampedValue !== companionPresenceCooldownMinutes) {
-                          void set('companionPresenceCooldownMinutes', clampedValue)
-                        }
-                      }}
-                    />
-                  }
-                />
-              ) : null}
-            </SettingsCard>
-          </>
+          <AutoStartCard
+            enabled={companionPresenceEnabled}
+            boards={linkedBoards}
+            armedBoardIds={companionPresenceBoards.map((board) => board.boardId)}
+            cooldownMinutes={companionPresenceCooldownMinutes}
+            busyBoardId={busyBoardId}
+            masterBusy={masterBusy}
+            onToggle={(enabled) => void onCompanionToggle(enabled)}
+            onEnableBoard={(boardId) => void onAddCompanionBoard(boardId)}
+            onDisableBoard={(boardId) => void onRemoveCompanionBoard(boardId)}
+            onCooldownChange={(minutes) => {
+              if (minutes !== companionPresenceCooldownMinutes) {
+                void set('companionPresenceCooldownMinutes', minutes)
+              }
+            }}
+          />
         ) : null}
 
         <SettingsSectionTitle>Connection</SettingsSectionTitle>
@@ -159,15 +192,17 @@ export default function ConnectionSettingsScreen() {
                 disabled={companionPresenceEnabled}
                 onValueChange={(v) => void set('autoConnect', v)}
                 trackColor={{
-                  false: theme.neutral.border,
-                  true: companionPresenceEnabled ? theme.neutral.border : theme.palette.sky.border,
+                  false: theme.palette.slate.border,
+                  true: companionPresenceEnabled
+                    ? theme.palette.slate.border
+                    : theme.palette.sky.border,
                 }}
                 thumbColor={
                   companionPresenceEnabled
-                    ? theme.neutral.textMuted
+                    ? theme.palette.slate.textMuted
                     : autoConnect
                       ? theme.palette.sky.color
-                      : theme.neutral.textMuted
+                      : theme.palette.slate.textMuted
                 }
               />
             }
@@ -182,8 +217,8 @@ export default function ConnectionSettingsScreen() {
               <Switch
                 value={autoRecording}
                 onValueChange={(v) => void set('autoRecording', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
-                thumbColor={autoRecording ? theme.palette.sky.color : theme.neutral.textMuted}
+                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
+                thumbColor={autoRecording ? theme.palette.sky.color : theme.palette.slate.textMuted}
               />
             }
           />
@@ -196,9 +231,9 @@ export default function ConnectionSettingsScreen() {
               <Switch
                 value={connectionSoundsEnabled}
                 onValueChange={(v) => void set('connectionSoundsEnabled', v)}
-                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
+                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
                 thumbColor={
-                  connectionSoundsEnabled ? theme.palette.sky.color : theme.neutral.textMuted
+                  connectionSoundsEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
                 }
               />
             }
@@ -219,11 +254,11 @@ export default function ConnectionSettingsScreen() {
                     value={autoCloseEnabled}
                     onValueChange={(v) => void set('autoCloseEnabled', v)}
                     trackColor={{
-                      false: theme.neutral.border,
+                      false: theme.palette.slate.border,
                       true: theme.palette.sky.border,
                     }}
                     thumbColor={
-                      autoCloseEnabled ? theme.palette.sky.color : theme.neutral.textMuted
+                      autoCloseEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
                     }
                   />
                 }
@@ -272,6 +307,24 @@ export default function ConnectionSettingsScreen() {
         ) : null}
       </ScrollView>
       <ConfirmModal
+        visible={disconnectPrompt}
+        title="Board will disconnect"
+        message={
+          'Android pairs with a board by scanning for it, which only works while nothing is ' +
+          'connected. Your board disconnects for a moment, then reconnects once auto start is set up.'
+        }
+        confirmLabel="Continue"
+        cancelLabel="Not now"
+        onConfirm={() => {
+          setDisconnectPrompt(false)
+          if (pendingBoardId) void continueEnable(pendingBoardId)
+        }}
+        onCancel={() => {
+          setDisconnectPrompt(false)
+          setPendingBoardId(null)
+        }}
+      />
+      <ConfirmModal
         visible={bgLocationPrompt}
         title="Allow location all the time"
         message={
@@ -291,7 +344,7 @@ export default function ConnectionSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.neutral.bg,
+    backgroundColor: theme.palette.slate.bg,
   },
   content: {
     padding: 16,

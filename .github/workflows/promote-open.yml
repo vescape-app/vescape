@@ -1,0 +1,175 @@
+name: Promote Android Open Candidate
+
+run-name: Open ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Unique CLI dispatch correlation id
+        required: true
+        type: string
+      candidate_run_id:
+        description: Internal release workflow run containing the immutable manifest
+        required: true
+        type: string
+      source_sha:
+        description: Exact candidate source commit
+        required: true
+        type: string
+      marketing_version:
+        description: Candidate marketing version
+        required: true
+        type: string
+      phone_code:
+        description: Exact phone Play version code
+        required: true
+        type: string
+      wear_code:
+        description: Exact Wear Play version code
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: play-publish
+  cancel-in-progress: false
+
+env:
+  PHONE_INTERNAL_TRACK: ${{ vars.PLAY_PHONE_INTERNAL_TRACK || 'internal' }}
+  PHONE_OPEN_TRACK: ${{ vars.PLAY_PHONE_OPEN_TRACK || 'beta' }}
+  WEAR_INTERNAL_TRACK: ${{ vars.PLAY_WEAR_INTERNAL_TRACK || 'wear:internal' }}
+  WEAR_OPEN_TRACK: ${{ vars.PLAY_WEAR_OPEN_TRACK || 'wear:beta' }}
+  PHONE_VERSION_CODE: ${{ inputs.phone_code }}
+  WEAR_VERSION_CODE: ${{ inputs.wear_code }}
+
+jobs:
+  validate:
+    name: Validate exact candidate and live Play tracks
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+      - name: Validate immutable inputs
+        run: |
+          [[ "$REQUEST_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]
+          [[ "$PHONE_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$WEAR_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - name: Download selected internal manifest
+        run: gh run download "$CANDIDATE_RUN_ID" --name release-manifest --dir candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+      - name: Prove dispatch identity matches selected successful manifest
+        run: |
+          test "$(jq -r .workflow.runId candidate/release-manifest.json)" = "$CANDIDATE_RUN_ID"
+          test "$(jq -r .sourceSha candidate/release-manifest.json)" = "$SOURCE_SHA"
+          test "$(jq -r .marketingVersion candidate/release-manifest.json)" = "$MARKETING_VERSION"
+          test "$(jq -r .versionCodes.phone candidate/release-manifest.json)" = "$PHONE_VERSION_CODE"
+          test "$(jq -r .versionCodes.wear candidate/release-manifest.json)" = "$WEAR_VERSION_CODE"
+          test "$(jq -r .uploads.phone candidate/release-manifest.json)" = succeeded
+          test "$(jq -r .uploads.wear candidate/release-manifest.json)" = succeeded
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Write Play credentials
+        run: |
+          echo "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
+          echo "SUPPLY_JSON_KEY=$RUNNER_TEMP/play-service-account.json" >> "$GITHUB_ENV"
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      - name: Validate both exact artifacts before any mutation
+        run: bundle exec fastlane android validate_open_promotion
+
+  promote:
+    name: Promote exact phone and Wear artifacts
+    needs: validate
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Write Play credentials
+        run: |
+          echo "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
+          echo "SUPPLY_JSON_KEY=$RUNNER_TEMP/play-service-account.json" >> "$GITHUB_ENV"
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      - name: Promote exact phone code
+        id: phone
+        continue-on-error: true
+        run: bundle exec fastlane android promote_phone_open
+        env:
+          PROMOTION_RESULT_PATH: ${{ github.workspace }}/phone-result.json
+      - name: Record failed phone promotion
+        if: steps.phone.outcome != 'success'
+        run: |
+          jq -n \
+            --argjson code "$PHONE_VERSION_CODE" \
+            --arg source "$PHONE_INTERNAL_TRACK" \
+            --arg target "$PHONE_OPEN_TRACK" \
+            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed"}' \
+            > phone-result.json
+      - name: Promote exact Wear code
+        id: wear
+        continue-on-error: true
+        run: bundle exec fastlane android promote_wear_open
+        env:
+          PROMOTION_RESULT_PATH: ${{ github.workspace }}/wear-result.json
+      - name: Record failed Wear promotion
+        if: steps.wear.outcome != 'success'
+        run: |
+          jq -n \
+            --argjson code "$WEAR_VERSION_CODE" \
+            --arg source "$WEAR_INTERNAL_TRACK" \
+            --arg target "$WEAR_OPEN_TRACK" \
+            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed"}' \
+            > wear-result.json
+      - name: Create per-form-factor promotion manifest
+        if: always()
+        run: |
+          jq -n \
+            --arg request_id "$REQUEST_ID" \
+            --argjson candidate_run_id "$CANDIDATE_RUN_ID" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg version "$MARKETING_VERSION" \
+            --slurpfile phone phone-result.json \
+            --slurpfile wear wear-result.json \
+            '{schemaVersion:1,requestId:$request_id,candidateRunId:$candidate_run_id,sourceSha:$source_sha,marketingVersion:$version,phone:$phone[0],wear:$wear[0]}' \
+            > promotion-manifest.json
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: promotion-manifest
+          path: promotion-manifest.json
+          overwrite: true
+          retention-days: 90
+      - name: Fail partial or unsuccessful promotion
+        if: steps.phone.outcome != 'success' || steps.wear.outcome != 'success'
+        run: exit 1

@@ -1,29 +1,21 @@
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useMemo, useRef, useState, type ElementRef } from 'react'
+import { useCallback, useRef, useState, type ElementRef } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useSharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
-import type { MapPoint } from 'vescape-core'
+import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
-import { MapNavigationSelector } from '@/modules/map/components/MapNavigationSelector'
+import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
-import {
-  BLANK_STYLE,
-  MAP_STYLES,
-  type MapNavigationMode,
-  type MapStyleKey,
-} from '@/modules/map/constants/mapStyles'
+import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
-import { neutralColors, theme } from '@/constants/theme'
-import { useThemeStore } from '@/hooks/useTheme'
-import { resolveMapThemeTone } from '@/modules/map/lib/mapThemeTone'
+import { theme } from '@/constants/theme'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import {
   FIXTURE_ACCURACY_FIX,
@@ -61,9 +53,6 @@ const HISTORY_METRIC_OPTIONS: { key: HistoryMetricKey; label: string }[] = [
 export default function MapComponentsShowcase() {
   const [styleKey, setStyleKey] = useState<MapStyleKey>('onedark')
   const [styleExpanded, setStyleExpanded] = useState(false)
-  const [navigationMode, setNavigationMode] = useState<MapNavigationMode>('northUp')
-  const [navigationExpanded, setNavigationExpanded] = useState(false)
-  const navigationHeading = useSharedValue(32)
   const [weatherActive, setWeatherActive] = useState(false)
   const [legalLimitsActive, setLegalLimitsActive] = useState(false)
   const [mapPoints] = useState<MapPoint[]>(FIXTURE_MAP_POINTS)
@@ -71,10 +60,9 @@ export default function MapComponentsShowcase() {
   const [activeHistoryMapMetric, setActiveHistoryMapMetric] = useState<HistoryMetricKey>('speed')
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
+  const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
   const cameraRef = useRef<ElementRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const outdoorLight = useThemeStore((state) => state.outdoorLight)
 
   const handleMapLoaded = useCallback(() => {
     cameraRef.current?.setCamera({
@@ -90,31 +78,6 @@ export default function MapComponentsShowcase() {
   const isSatellite = selectedStyle.key === 'satellite'
   const useCustomJSON = isMapy || isOneDark || isSatellite
   const showBuildings3d = selectedStyle.key === 'outdoors' || selectedStyle.key === 'onedark'
-  const satelliteTone = useMemo(
-    () =>
-      resolveMapThemeTone({
-        theme: resolvedTheme,
-        outdoorLight,
-        imageryOpacity: 1,
-        imagerySaturation: 0,
-      }),
-    [outdoorLight, resolvedTheme],
-  )
-  const satelliteStyleJSON = useMemo(
-    () =>
-      getSatelliteDarkMapStyle(
-        satelliteTone.imageryOpacity,
-        true,
-        true,
-        false,
-        true,
-        satelliteTone.imagerySaturation,
-        satelliteTone.roadLineOpacity,
-        satelliteTone.imageryContrast,
-        neutralColors[resolvedTheme].surfaceDeep,
-      ),
-    [resolvedTheme, satelliteTone],
-  )
 
   return (
     <View style={styles.container}>
@@ -127,7 +90,7 @@ export default function MapComponentsShowcase() {
             : isMapy
               ? BLANK_STYLE
               : isSatellite
-                ? satelliteStyleJSON
+                ? getSatelliteDarkMapStyle()
                 : undefined
         }
         pitchEnabled={false}
@@ -218,14 +181,20 @@ export default function MapComponentsShowcase() {
             setStyleExpanded(false)
           }}
         />
-        <MapNavigationSelector
-          activeMode={navigationMode}
-          heading={navigationHeading}
-          expanded={navigationExpanded}
-          onToggle={() => setNavigationExpanded((value) => !value)}
-          onSelect={(mode) => {
-            setNavigationMode(mode)
-            setNavigationExpanded(false)
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile: ${profile}`)
+          }}
+        />
+        {/* Open variant: what the navigation sheet shows while a path is on screen. */}
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          open
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile (open): ${profile}`)
           }}
         />
         <View ref={moreTriggerRef} collapsable={false}>
@@ -268,7 +237,7 @@ export default function MapComponentsShowcase() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.neutral.bg },
+  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
   topRight: {
     position: 'absolute',
     top: 12,
@@ -277,10 +246,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   floatingButton: {
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   hint: {
-    color: theme.neutral.textMuted,
+    color: theme.palette.slate.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },

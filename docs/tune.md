@@ -592,6 +592,23 @@ rate-limit live writes, send neutral/stop on release and disconnect, and avoid
 persisting `inputtilt_remote_type = 1` unless the user explicitly wants Remote
 Tilt enabled after leaving the screen.
 
+#### Board Move as shipped
+
+The Board Settings drawer wires Board Move as a collapsible row: tapping it opens
+two hold buttons plus a strength stepper. Holding a direction button streams
+`±(127 × strength%)` and releasing sends a neutral stop. Strength is the
+persisted `boardMoveStrengthPercent` setting (10–100%, default 60). `BoardMoveController` (both platforms) owns the
+repeat tick — 100 ms, because both firmware generations lapse the request after
+about a second — and the wire format is picked from the linked
+`refloatBaseVersion` (`RC_MOVE` below 1.3, `REMOTE` from 1.3 up; unknown
+versions assume `REMOTE`). The commands need a trusted link and stop with the
+Board Session.
+
+Safety is currently firmware-side only (ready-state gating, the 1.3+ 2s
+disengage grace, and the board's own `remote.max_move_speed` /
+`remote_throttle_current_max` clamps). There is no in-app arming state or hazard
+warning yet.
+
 ### Version Compatibility
 
 The decoder remains schema-driven, but Tune Profile reuse is Refloat-version-scoped:

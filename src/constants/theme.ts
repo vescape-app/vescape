@@ -320,6 +320,8 @@ export const telemetry = {
   pitch: accentColors.dark.purple.light,
   roll: accentColors.dark.fuchsia.color,
   balancePitch: accentColors.dark.fuchsia.light,
+  altitude: accentColors.dark.amber.color,
+  gpsAccuracy: accentColors.dark.green.light,
 } as const
 
 export const map = {
@@ -376,6 +378,26 @@ export const status = {
 
 /** Tune Profile actions and entry points. */
 export const tune = palette.purple
+
+/** Icon accent shared by every entry point for a settings destination. */
+export const settingsIcon = {
+  account: palette.cyan.color,
+  sync: palette.cyan.color,
+  update: status.upgrade.color,
+  database: status.warning.color,
+  link: palette.purple.color,
+  connection: palette.purple.color,
+  liveTelemetry: telemetry.speed,
+  diagnostics: status.warning.color,
+  map: palette.sky.color,
+  watch: palette.amber.color,
+  privacyZones: palette.green.color,
+  filters: palette.purple.color,
+  graphs: palette.cyan.color,
+  advanced: neutral.textSecondary,
+  dev: palette.yellow.color,
+  about: palette.cyan.color,
+} as const
 
 /** Banner callouts — flat row, accent icon + neutral text. */
 export const banner = {
@@ -434,6 +456,11 @@ export type FontWeight = '300' | '400' | '500' | '600' | '700' | '800' | '900'
  *  (`fontFamily: 'monospace'`) bypass this token by inlining their value. */
 export const font = (weight: FontWeight = '500') => `Raleway-${weight}`
 
+export type MonoWeight = '500' | '600' | '700' | '800'
+
+/** Static JetBrains Mono family used by numeric readouts. */
+export const mono = (weight: MonoWeight = '700') => `JetBrainsMono-${weight}`
+
 export const theme = {
   palette,
   neutral,
@@ -441,10 +468,12 @@ export const theme = {
   map,
   status,
   tune,
+  settingsIcon,
   alpha,
   banner,
   weather,
   zone,
   interaction,
   font,
+  mono,
 } as const

@@ -15,6 +15,7 @@ import { DeviceRow } from '@/components/base/DeviceRow'
 import { InfoBadge } from '@/components/base/InfoBadge'
 import { StepTimeline, type StepState, type TimelineStep } from '@/components/base/StepTimeline'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
+import { DevBadge } from '@/components/dev/DevBadge'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
@@ -175,19 +176,33 @@ function ReplayBadgeShowcase() {
   )
 }
 
+function DevBadgeShowcase() {
+  return (
+    <ShowcaseCard name="DevBadge">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <DevBadge />
+        <Text style={{ color: theme.palette.slate.textPrimary, fontSize: 13 }}>
+          Dev build marker · tap to hide for one minute
+        </Text>
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 export default function BoardComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, InfoBadge, StepTimeline, BoardWarningRow, ReplayBadge — board- and connection-flavored components."
+          description="DeviceRow, InfoBadge, StepTimeline, BoardWarningRow, ReplayBadge, DevBadge — board- and connection-flavored components."
         />
         <DeviceRowShowcase />
         <InfoBadgeShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
         <ReplayBadgeShowcase />
+        <DevBadgeShowcase />
       </ScrollView>
     </SafeAreaView>
   )

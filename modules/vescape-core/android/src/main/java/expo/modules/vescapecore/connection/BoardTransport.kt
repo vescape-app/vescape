@@ -63,10 +63,3 @@ sealed interface BoardTransport {
       if (canId in 0..255) Can(canId) else null
   }
 }
-
-internal fun boardTransport(canId: Int?, directConnection: Boolean): BoardTransport? =
-  when {
-    canId != null -> BoardTransport.Can(canId)
-    directConnection -> BoardTransport.Direct
-    else -> null
-  }

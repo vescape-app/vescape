@@ -12,7 +12,13 @@ import java.util.concurrent.TimeUnit
 
 /** Capability the Vescape phone app advertises (vescape-core res/values/wear.xml). Keep the two in sync. */
 private const val PHONE_APP_CAPABILITY = "vescape_phone_app"
+/**
+ * Poll spacing while the link is still unproven. Each pass is two blocking Play-services round
+ * trips, so once frames are arriving the link is proven by the frames themselves and the poll
+ * drops to [PHONE_LINK_SETTLED_REFRESH_MS] — it exists to explain silence, not to narrate success.
+ */
 private const val PHONE_LINK_REFRESH_MS = 5_000L
+private const val PHONE_LINK_SETTLED_REFRESH_MS = 60_000L
 
 /**
  * Derives the [PhoneLink] shown while no frames arrive: a capability listener for the instant
@@ -69,7 +75,9 @@ class PhoneLinkMonitor(context: Context) {
             },
         )
         if (running) {
-            nextRefresh = executor.schedule(::refreshLoop, PHONE_LINK_REFRESH_MS, TimeUnit.MILLISECONDS)
+            val settled = TelemetryState.mirrorState.value.status == MirrorStatus.LIVE
+            val delayMs = if (settled) PHONE_LINK_SETTLED_REFRESH_MS else PHONE_LINK_REFRESH_MS
+            nextRefresh = executor.schedule(::refreshLoop, delayMs, TimeUnit.MILLISECONDS)
         }
     }
 

@@ -118,7 +118,7 @@ Build, test, or install the Wear OS companion on a connected watch:
 ```bash
 bun run wear:build
 bun run wear:test
-bun run wear:install
+bun run wear
 ```
 
 Run tests (JS via Bun + native Kotlin unit tests):
@@ -209,6 +209,7 @@ PR base is always `dev` (`main` is reserved for production releases).
 - [Alerts](docs/alerts.md)
 - [Ride history](docs/history.md)
 - [Connection state](docs/connectionState.md)
+- [Releases](docs/release.md)
 
 ## License
 

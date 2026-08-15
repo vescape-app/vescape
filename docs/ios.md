@@ -55,17 +55,30 @@ symlink; this is verified to compile on device.
   pbxproj plugin.
 - `app.config.ts`: `ios.infoPlist.NSSupportsLiveActivities = true`.
 - `ios.appleTeamId` (via `APPLE_TEAM_ID` env) is **required** — apple-targets needs it to sign the
-  extension. Set it in `.env` / EAS secrets or prebuild warns and device builds fail to sign.
-- `VescapeCore.podspec` platform is `17.0` (ActivityKit needs 16.1+; the app already ships 17.0, so
-  nothing runs below it). This is why no `@available` gating is needed in the ActivityKit code.
+  extension. Set it in `.env`, EAS secrets, or the build environment; otherwise prebuild warns and
+  device builds fail to sign.
+- App, widget, and `VescapeCore.podspec` deployment targets are `17.0`, required by Clerk's native
+  iOS SDK. Keep all three aligned; lowering only Vescape/Widget config makes prebuild produce an
+  invalid mixed-target project and CocoaPods rejects `ClerkExpo`. ActivityKit needs 16.1+, so the
+  app's 17.0 floor also means its ActivityKit code needs no `@available` gating.
 - The `widget` target adds an App Group entitlement by default. It is unused (local `update`s pass
-  `ContentState` directly, no shared storage) but harmless; EAS auto-registers it.
+  `ContentState` directly, no shared storage) but harmless; signing provisioning must cover it.
+
+### Stop ride control
+
+- The Lock Screen and expanded Dynamic Island presentations show **Stop ride**.
+- The button uses `StopRideIntent`, a `LiveActivityIntent`. iOS launches the app process without
+  opening the app UI, then routes to the same native manual-stop command used by the JS bridge.
+- The command reaches `BoardSessionController.shared`; no JavaScript runtime or Expo module
+  instance is required. Its active Board id gate makes duplicate invocations no-ops, and the first
+  invocation tears down BLE, recording, GPS, alerts, and the Live Activity through `endSession`.
+- The intent requires authentication. When the phone is locked, iOS asks the rider to authenticate
+  before executing it; Vescape does not implement a custom unlock flow.
+- There is no Connect or Exit action. A manual stop ends the Live Activity, and iOS apps cannot
+  terminate themselves.
 
 ### Limits
 
-- **No action buttons.** Android's chip has Disconnect / Connect / Exit; the Live Activity is
-  tap-to-open only. Interactive buttons use App Intents; the iOS 17 deployment floor now supports
-  them, but they remain unimplemented. Tracked as `TODO(iOS parity)` in `RideLiveActivityController`.
 - The user can disable Live Activities per-app in Settings; `RideLiveActivityController` checks
   `ActivityAuthorizationInfo().areActivitiesEnabled` and no-ops silently when off.
 

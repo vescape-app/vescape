@@ -9,20 +9,18 @@ import {
 } from 'react'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
+import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import { getLiveFollowCameraProfile, getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
 import { shouldPreserveLiveFollowGesture } from '@/modules/map/lib/cameraGestureState'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import type { CameraSnapshot, HistoryPreviewTarget } from '@/screens/main/map/useCameraControls'
 import type { GpsFix } from '@/screens/main/map/cameraControlTypes'
 
-type CameraTarget = CameraSnapshot & {
-  animationDuration?: number
-  animationMode?: 'easeTo'
-}
-
 export function useMainMapCameraEvents({
   cameraRef,
   currentCameraRef,
+  engine,
+  previewPanActiveRef,
   cameraFix,
   gpsCameraCenter,
   followGps,
@@ -41,6 +39,7 @@ export function useMainMapCameraEvents({
   setFollowGps,
   setFollowZoomLevel,
   onCameraSettled,
+  onWatchRouteSpanChange,
   onHeadingChange,
   repositionOffscreenIndicatorsForCamera,
   scheduleOffscreenMapIndicatorRefresh,
@@ -52,6 +51,8 @@ export function useMainMapCameraEvents({
 }: {
   cameraRef: RefObject<Camera | null>
   currentCameraRef: RefObject<CameraSnapshot | null>
+  engine: CameraEngine
+  previewPanActiveRef: RefObject<boolean>
   cameraFix: GpsFix | null
   gpsCameraCenter: [number, number]
   followGps: boolean
@@ -65,11 +66,13 @@ export function useMainMapCameraEvents({
   mediaAssetCount: number
   mapStyleKey: string
   mapStyleSignature: string
-  getHistoryPreviewCamera: (preview: HistoryPreviewTarget) => CameraTarget
+  getHistoryPreviewCamera: (preview: HistoryPreviewTarget) => CameraSnapshot
   getLiveFollowCamera: () => CameraSnapshot
   setFollowGps: (follow: boolean) => void
   setFollowZoomLevel: (zoom: number) => void
   onCameraSettled: (latitude: number, longitude: number, zoom: number) => void
+  /** Wrist route scale, per camera frame and once more when the map comes to rest. */
+  onWatchRouteSpanChange: (latitude: number, zoom: number) => void
   onHeadingChange: (heading: number) => void
   repositionOffscreenIndicatorsForCamera: (camera: CameraSnapshot) => void
   scheduleOffscreenMapIndicatorRefresh: () => void
@@ -104,16 +107,26 @@ export function useMainMapCameraEvents({
         : historyActive
           ? 0
           : followHeadingDeg
+    const initialPitch = styleReloadCamera
+      ? styleReloadCamera.pitch
+      : getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
     cameraRef.current?.setCamera({
       ...camera,
       heading: initialHeading,
-      pitch: styleReloadCamera
-        ? styleReloadCamera.pitch
-        : getPitchForZoom(camera.zoomLevel, perspectiveEnabled),
+      pitch: initialPitch,
       animationDuration: 0,
+    })
+    // Park the springs on the load camera so the first target animates from it.
+    engine.reset({
+      centerCoordinate: camera.centerCoordinate,
+      zoomLevel: camera.zoomLevel,
+      heading: initialHeading,
+      pitch: initialPitch,
+      padding: 'padding' in camera ? camera.padding : undefined,
     })
   }, [
     cameraRef,
+    engine,
     followHeadingDeg,
     getHistoryPreviewCamera,
     getLiveFollowCamera,
@@ -139,7 +152,19 @@ export function useMainMapCameraEvents({
         heading: state.properties.heading,
         pitch: state.properties.pitch,
       } satisfies CameraSnapshot
-      currentCameraRef.current = camera
+      onWatchRouteSpanChange(latitude, state.properties.zoom)
+      // The reveal gesture writes the camera and drives the engine itself; its
+      // echoes arrive a frame late and would only add phantom velocity.
+      const previewPanActive = previewPanActiveRef.current
+      if (!previewPanActive) currentCameraRef.current = camera
+      // While a native gesture (or any non-engine mover) owns the camera, the
+      // engine shadow-tracks it so its next target blends from here. Telling it
+      // whether a finger is down is the whole filter: the engine discards the
+      // echoes of its own writes itself, which it can do accurately and this
+      // callback cannot.
+      if (!previewPanActive) {
+        engine.driveExternal(camera, { gesture: state.gestures.isGestureActive })
+      }
       repositionOffscreenIndicatorsForCamera(camera)
       const [targetLongitude, targetLatitude] = gpsCameraCenter
       if (
@@ -148,7 +173,17 @@ export function useMainMapCameraEvents({
       ) {
         setCameraReady(true)
       }
-      if (mode === 'map' && !(followGps && headingFollowMode)) {
+      // Keep pitch on the zoom profile when something outside the engine moved
+      // the camera — a native pinch, mostly. Never while the engine animates:
+      // it writes pitch from its own spring every frame, and a direct write here
+      // would be overwritten on the next one, the two of them vibrating against
+      // each other until the spring settles.
+      if (
+        !previewPanActive &&
+        !engine.isAnimating() &&
+        mode === 'map' &&
+        !(followGps && headingFollowMode)
+      ) {
         const pitch = getPitchForZoom(state.properties.zoom, perspectiveEnabled)
         if (Math.abs(state.properties.pitch - pitch) > 0.5) {
           cameraRef.current?.setCameraDirect({ pitch })
@@ -198,6 +233,7 @@ export function useMainMapCameraEvents({
       cameraRef,
       cameraFix,
       currentCameraRef,
+      engine,
       followGps,
       followHeadingDeg,
       gpsCameraCenter,
@@ -205,9 +241,11 @@ export function useMainMapCameraEvents({
       historyActive,
       mode,
       onHeadingChange,
+      onWatchRouteSpanChange,
       mediaAssetCount,
       perspectiveEnabled,
       phoneHeadingMode,
+      previewPanActiveRef,
       repositionOffscreenIndicatorsForCamera,
       setFollowGps,
       setFollowZoomLevel,
@@ -226,8 +264,15 @@ export function useMainMapCameraEvents({
     if (camera) {
       const [longitude, latitude] = camera.centerCoordinate
       onCameraSettled(latitude, longitude, camera.zoomLevel)
+      onWatchRouteSpanChange(latitude, camera.zoomLevel)
     }
-  }, [currentCameraRef, onCameraSettled, scheduleOffscreenMapIndicatorRefresh, setCameraHeading])
+  }, [
+    currentCameraRef,
+    onCameraSettled,
+    onWatchRouteSpanChange,
+    scheduleOffscreenMapIndicatorRefresh,
+    setCameraHeading,
+  ])
 
   return { handleMapLoaded, handleCameraChanged, handleMapIdle }
 }

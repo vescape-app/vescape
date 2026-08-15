@@ -1,0 +1,225 @@
+name: Promote Android Production Release
+
+run-name: Production ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Unique CLI dispatch correlation id
+        required: true
+        type: string
+      operation:
+        description: Production rollout operation
+        required: true
+        type: choice
+        options: [promote, status, halt, resume, advance]
+      open_promotion_run_id:
+        description: Open-promotion run proving both exact artifacts
+        required: true
+        type: string
+      candidate_run_id:
+        description: Internal-build run containing the immutable release manifest
+        required: true
+        type: string
+      source_sha:
+        description: Exact artifact source commit
+        required: true
+        type: string
+      marketing_version:
+        description: Exact marketing version
+        required: true
+        type: string
+      phone_code:
+        description: Exact phone Play version code
+        required: true
+        type: string
+      wear_code:
+        description: Exact Wear Play version code
+        required: true
+        type: string
+      rollout_percentage:
+        description: Explicit percentage for promote or advance; zero otherwise
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: play-publish
+  cancel-in-progress: false
+
+env:
+  PHONE_OPEN_TRACK: ${{ vars.PLAY_PHONE_OPEN_TRACK || 'beta' }}
+  PHONE_PRODUCTION_TRACK: ${{ vars.PLAY_PHONE_PRODUCTION_TRACK || 'production' }}
+  WEAR_OPEN_TRACK: ${{ vars.PLAY_WEAR_OPEN_TRACK || 'wear:beta' }}
+  WEAR_PRODUCTION_TRACK: ${{ vars.PLAY_WEAR_PRODUCTION_TRACK || 'wear:production' }}
+  PHONE_VERSION_CODE: ${{ inputs.phone_code }}
+  WEAR_VERSION_CODE: ${{ inputs.wear_code }}
+  PRODUCTION_OPERATION: ${{ inputs.operation }}
+  ROLLOUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
+
+jobs:
+  production:
+    name: Exact production rollout and GitHub Release
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+      - name: Validate immutable request and source on main
+        run: |
+          [[ "$REQUEST_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          [[ "$OPEN_PROMOTION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]
+          [[ "$PHONE_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$WEAR_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$PRODUCTION_OPERATION" =~ ^(promote|status|halt|resume|advance)$ ]]
+          if [[ "$PRODUCTION_OPERATION" =~ ^(promote|advance)$ ]]; then
+            awk -v value="$ROLLOUT_PERCENTAGE" 'BEGIN { exit !(value > 0 && value <= 100) }'
+          else
+            test "$ROLLOUT_PERCENTAGE" = 0
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          test "$(git show "$SOURCE_SHA:package.json" | jq -r .version)" = "$MARKETING_VERSION"
+          git cat-file -e "$SOURCE_SHA:release-notes/$MARKETING_VERSION.md"
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          OPEN_PROMOTION_RUN_ID: ${{ inputs.open_promotion_run_id }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - name: Download immutable release and open-promotion manifests
+        run: |
+          gh run download "$CANDIDATE_RUN_ID" --name release-manifest --dir candidate
+          gh run download "$OPEN_PROMOTION_RUN_ID" --name promotion-manifest --dir open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          OPEN_PROMOTION_RUN_ID: ${{ inputs.open_promotion_run_id }}
+      - name: Prove exact artifacts passed open testing
+        run: |
+          test "$(jq -r .workflow.runId candidate/release-manifest.json)" = "$CANDIDATE_RUN_ID"
+          test "$(jq -r .candidateRunId open/promotion-manifest.json)" = "$CANDIDATE_RUN_ID"
+          for manifest in candidate/release-manifest.json open/promotion-manifest.json; do
+            test "$(jq -r .sourceSha "$manifest")" = "$SOURCE_SHA"
+            test "$(jq -r .marketingVersion "$manifest")" = "$MARKETING_VERSION"
+          done
+          test "$(jq -r .versionCodes.phone candidate/release-manifest.json)" = "$PHONE_VERSION_CODE"
+          test "$(jq -r .versionCodes.wear candidate/release-manifest.json)" = "$WEAR_VERSION_CODE"
+          test "$(jq -r .phone.versionCode open/promotion-manifest.json)" = "$PHONE_VERSION_CODE"
+          test "$(jq -r .wear.versionCode open/promotion-manifest.json)" = "$WEAR_VERSION_CODE"
+          test "$(jq -r .phone.status open/promotion-manifest.json)" != failed
+          test "$(jq -r .wear.status open/promotion-manifest.json)" != failed
+        env:
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Write Play credentials
+        run: |
+          echo "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
+          echo "SUPPLY_JSON_KEY=$RUNNER_TEMP/play-service-account.json" >> "$GITHUB_ENV"
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      - name: Revalidate exact live Play state before mutation
+        run: bundle exec fastlane android validate_production_candidate
+      - name: Apply phone production operation
+        id: phone
+        continue-on-error: true
+        run: bundle exec fastlane android manage_phone_production
+        env:
+          PRODUCTION_RESULT_PATH: ${{ github.workspace }}/phone-result.json
+      - name: Record failed phone operation
+        if: steps.phone.outcome != 'success'
+        run: |
+          jq -n --argjson code "$PHONE_VERSION_CODE" --arg source "$PHONE_OPEN_TRACK" --arg target "$PHONE_PRODUCTION_TRACK" \
+            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed",playStatus:null,rolloutPercentage:null}' > phone-result.json
+      - name: Apply Wear production operation
+        id: wear
+        continue-on-error: true
+        run: bundle exec fastlane android manage_wear_production
+        env:
+          PRODUCTION_RESULT_PATH: ${{ github.workspace }}/wear-result.json
+      - name: Record failed Wear operation
+        if: steps.wear.outcome != 'success'
+        run: |
+          jq -n --argjson code "$WEAR_VERSION_CODE" --arg source "$WEAR_OPEN_TRACK" --arg target "$WEAR_PRODUCTION_TRACK" \
+            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed",playStatus:null,rolloutPercentage:null}' > wear-result.json
+      - name: Flip existing GitHub prerelease to latest release
+        id: github_release
+        if: inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success'
+        continue-on-error: true
+        run: |
+          TAG="v$MARKETING_VERSION"
+          git fetch origin --tags
+          test "$(git rev-parse "$TAG^{commit}")" = "$SOURCE_SHA"
+          RELEASE_STATE="$(gh release view "$TAG" --json isDraft,isPrerelease --jq '[.isDraft,.isPrerelease] | @tsv')"
+          LATEST_TAG="$(gh api "repos/$REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)"
+          if test "$RELEASE_STATE" = $'false\tfalse' && test "$LATEST_TAG" = "$TAG"; then
+            echo already-released > github-release-status.txt
+          else
+            gh release edit "$TAG" --prerelease=false --latest
+            echo released > github-release-status.txt
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - name: Record GitHub finalization state
+        if: always()
+        run: |
+          if test "$PRODUCTION_OPERATION" != promote; then
+            echo skipped > github-release-status.txt
+          elif test "$GITHUB_OUTCOME" = skipped; then
+            echo skipped > github-release-status.txt
+          elif test "$GITHUB_OUTCOME" != success; then
+            echo failed > github-release-status.txt
+          elif ! test -s github-release-status.txt; then
+            echo failed > github-release-status.txt
+          fi
+        env:
+          GITHUB_OUTCOME: ${{ steps.github_release.outcome }}
+      - name: Publish precise production result
+        if: always()
+        run: |
+          REQUESTED=null
+          if test "$ROLLOUT_PERCENTAGE" != 0; then REQUESTED="$ROLLOUT_PERCENTAGE"; fi
+          jq -n \
+            --arg request_id "$REQUEST_ID" \
+            --argjson open_run_id "$OPEN_PROMOTION_RUN_ID" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg version "$MARKETING_VERSION" \
+            --arg operation "$PRODUCTION_OPERATION" \
+            --argjson requested "$REQUESTED" \
+            --slurpfile phone phone-result.json \
+            --slurpfile wear wear-result.json \
+            --rawfile github github-release-status.txt \
+            '{schemaVersion:1,requestId:$request_id,openPromotionRunId:$open_run_id,sourceSha:$source_sha,marketingVersion:$version,operation:$operation,requestedRolloutPercentage:$requested,phone:$phone[0],wear:$wear[0],githubRelease:($github|rtrimstr("\n"))}' \
+            > production-manifest.json
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          OPEN_PROMOTION_RUN_ID: ${{ inputs.open_promotion_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-manifest
+          path: production-manifest.json
+          overwrite: true
+          retention-days: 365
+      - name: Fail partial Play or GitHub finalization
+        if: steps.phone.outcome != 'success' || steps.wear.outcome != 'success' || (inputs.operation == 'promote' && steps.github_release.outcome != 'success')
+        run: exit 1

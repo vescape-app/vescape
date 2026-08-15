@@ -1,4 +1,4 @@
-import type { AlertRule } from 'vescape-core'
+import { ALERT_BEEP_COUNT_DEFAULT, type AlertRule } from 'vescape-core'
 
 import { TELEMETRY_THRESHOLDS } from '@/modules/board/constants/telemetryThresholds'
 
@@ -50,6 +50,9 @@ export interface AlertRuleSpec {
   threshold: number
   thresholdMax: number | null
   soundType: string
+  /** Seconds between repeats while the metric stays past the threshold; `null` ⇒ announce once. */
+  repeatEverySeconds: number | null
+  beepCount: number
 }
 
 interface GeigerRange {
@@ -66,7 +69,21 @@ interface DiscreteMetricConfig {
   /** Only battery today: no rules unless the board has a valid battery config. */
   requiresBatteryConfig?: boolean
   /** Ordered threshold points per level; count grows and starts earlier with protection. */
-  levels: Record<ActiveLevel, number[]>
+  levels: Record<ActiveLevel, DiscretePoint[]>
+}
+
+/**
+ * One generated threshold point. A bare number is a one-shot announcement; the object form adds a
+ * repeat cadence for a rung that should keep nagging while the rider stays past it.
+ */
+type DiscretePoint = number | { threshold: number; repeatEverySeconds: number }
+
+function pointThreshold(point: DiscretePoint): number {
+  return typeof point === 'number' ? point : point.threshold
+}
+
+function pointRepeatSeconds(point: DiscretePoint): number | null {
+  return typeof point === 'number' ? null : point.repeatEverySeconds
 }
 
 interface GeigerMetricConfig {
@@ -87,14 +104,41 @@ const batteryCriticalPct = Math.round(battery.critical * 100)
 /** Geiger tick preset shared by every range-based preset rule. */
 export const ALERT_PRESET_GEIGER_SOUND_TYPE = 'preset:tick'
 
+/** Seconds between repeats on a ladder's top rung — slow enough to stay information, not alarm. */
+const TEMP_NAG_INTERVAL_SECONDS = 10
+
+/** Motor top rung: 5°C under the stock 100°C throttle point. */
+const TEMP_NAG_MOTOR: DiscretePoint = {
+  threshold: 95,
+  repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS,
+}
+
+/** Controller top rung: the stock 85°C throttle point, i.e. "the board is limiting you now". */
+const TEMP_NAG_CONTROLLER: DiscretePoint = {
+  threshold: 85,
+  repeatEverySeconds: TEMP_NAG_INTERVAL_SECONDS,
+}
+
 /**
- * Discrete temperature points reused by both temperature metrics — they share the
- * same tiers but generate as independent rule sets keyed by their own `controlId`.
+ * The two temperatures do not share a ladder: VESC stock throttling starts at 100°C for the motor
+ * but 85°C for the controller, so the same numbers mean very different things. Each ladder sits
+ * under its own throttle point — the rider hears it while easing off still helps — and ends in a
+ * repeating rung placed about where the board starts limiting power, the one case where nagging is
+ * the correct behavior.
+ *
+ * Motor temperature is the less trustworthy of the two: plenty of hub motors report nothing usable,
+ * and native drops non-positive readings, so this ladder never fires on those Boards.
  */
-const TEMP_LEVELS: Record<ActiveLevel, number[]> = {
-  safe: [65, temp.warning, 75, temp.critical],
-  normal: [temp.warning, 75, temp.critical],
-  minimal: [75, temp.critical],
+const MOTOR_TEMP_LEVELS: Record<ActiveLevel, DiscretePoint[]> = {
+  safe: [temp.warning, 85, TEMP_NAG_MOTOR],
+  normal: [85, TEMP_NAG_MOTOR],
+  minimal: [TEMP_NAG_MOTOR],
+}
+
+const CONTROLLER_TEMP_LEVELS: Record<ActiveLevel, DiscretePoint[]> = {
+  safe: [60, 75, TEMP_NAG_CONTROLLER],
+  normal: [75, TEMP_NAG_CONTROLLER],
+  minimal: [TEMP_NAG_CONTROLLER],
 }
 
 /**
@@ -128,12 +172,12 @@ export const ALERT_PRESET_LEVELS: Record<AlertPresetMetric, AlertPresetMetricCon
   'motor-temp': {
     family: 'discrete',
     soundType: 'tts:Motor {value} {unit}',
-    levels: TEMP_LEVELS,
+    levels: MOTOR_TEMP_LEVELS,
   },
   'controller-temp': {
     family: 'discrete',
     soundType: 'tts:Controller {value} {unit}',
-    levels: TEMP_LEVELS,
+    levels: CONTROLLER_TEMP_LEVELS,
   },
   battery: {
     family: 'discrete',
@@ -182,11 +226,13 @@ export function generateAlertPresetRules(
 
   if (config.family === 'discrete') {
     if (config.requiresBatteryConfig && !options.hasBatteryConfig) return []
-    return config.levels[level].map((threshold) => ({
+    return config.levels[level].map((point) => ({
       controlId: metric,
-      threshold,
+      threshold: pointThreshold(point),
       thresholdMax: null,
       soundType: config.soundType,
+      repeatEverySeconds: pointRepeatSeconds(point),
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     }))
   }
 
@@ -209,6 +255,9 @@ export function generateAlertPresetRules(
       threshold: start,
       thresholdMax: ceiling,
       soundType: config.soundType,
+      // A range rule's cadence follows range depth, so a repeat interval would mean nothing.
+      repeatEverySeconds: null,
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ]
 }
@@ -237,11 +286,15 @@ export function formatAlertPresetSummary(
   if (specs.length === 0) return null
   const unit = ALERT_PRESET_UNIT[metric]
   return specs
-    .map((spec) =>
-      spec.thresholdMax == null
-        ? `${Math.round(spec.threshold)}${unit}`
-        : `${Math.round(spec.threshold)}–${Math.round(spec.thresholdMax)}${unit}`,
-    )
+    .map((spec) => {
+      if (spec.thresholdMax != null) {
+        return `${Math.round(spec.threshold)}–${Math.round(spec.thresholdMax)}${unit}`
+      }
+      // A repeating rung reads as the point it starts at plus a repeat mark: it has no upper
+      // bound, it just keeps going.
+      const repeat = spec.repeatEverySeconds == null ? '' : '↻'
+      return `${Math.round(spec.threshold)}${unit}${repeat}`
+    })
     .join(', ')
 }
 

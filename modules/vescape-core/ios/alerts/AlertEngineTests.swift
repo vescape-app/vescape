@@ -10,7 +10,9 @@ final class AlertEngineTests: XCTestCase {
     controlId: String = "duty",
     threshold: Double = 70.0,
     thresholdMax: Double? = nil,
-    soundType: String = "default"
+    soundType: String = "default",
+    repeatEverySeconds: Int64? = nil,
+    beepCount: Int = alertBeepCountDefault
   ) -> AlertRule {
     AlertRule(
       boardId: "board-1",
@@ -21,6 +23,8 @@ final class AlertEngineTests: XCTestCase {
       enabled: true,
       soundType: soundType,
       createdAt: 0,
+      repeatEverySeconds: repeatEverySeconds,
+      beepCount: beepCount,
       source: nil
     )
   }
@@ -244,7 +248,7 @@ final class AlertEngineTests: XCTestCase {
     let t = telemetry(dutyCycle: 0.89)
 
     let firedA = engine.evaluate(rules: rulesAFirst, telemetry: t)
-    engine.resetDebounce()
+    engine.resetAlertState()
     let firedB = engine.evaluate(rules: rulesBFirst, telemetry: t)
 
     XCTAssertEqual("B", firedA[0].ruleId)
@@ -269,7 +273,7 @@ final class AlertEngineTests: XCTestCase {
 
   // MARK: - Debounce
 
-  func testDebouncePreventsDuplicateFiring() {
+  func testLatchPreventsDuplicateFiring() {
     let rules = [rule(threshold: 60.0)]
     let t = telemetry(dutyCycle: 0.66)
 
@@ -296,7 +300,7 @@ final class AlertEngineTests: XCTestCase {
     let t = telemetry(dutyCycle: 0.66)
 
     engine.evaluate(rules: rules, telemetry: t)
-    engine.resetDebounce()
+    engine.resetAlertState()
     let fired = engine.evaluate(rules: rules, telemetry: t)
 
     XCTAssertEqual(1, fired.count)
@@ -390,7 +394,7 @@ final class AlertEngineTests: XCTestCase {
   func testBatteryHysteresisResetClearsArmedState() {
     let rules = [rule(id: "bat", controlId: "battery", threshold: 50.0)]
     engine.evaluate(rules: rules, telemetry: telemetry(), batteryPercent: 45.0)
-    engine.resetDebounce()
+    engine.resetAlertState()
     let refired = engine.evaluate(rules: rules, telemetry: telemetry(), batteryPercent: 45.0)
     XCTAssertEqual(1, refired.count)
   }
@@ -422,6 +426,128 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertEqual(1, second.count)
     XCTAssertNotNil(first[0].rangeDepth)
   }
+
+  // MARK: - Re-arm + repeat (#348)
+
+  func testParkedAboveThresholdNeverAnnouncesTwice() {
+    let rules = [rule(controlId: "motor-temp", threshold: 70.0)]
+
+    let fired = (1...50).map { _ in engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0)) }
+
+    XCTAssertEqual(1, fired.filter { !$0.isEmpty }.count)
+  }
+
+  func testDippingBelowThresholdWithinTheMarginDoesNotRearm() {
+    let rules = [rule(controlId: "motor-temp", threshold: 70.0)]
+
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0))
+    // Margin is 3°C, so 68 is a wobble around the threshold, not a recovery.
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 68.0))
+    let refired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0))
+
+    XCTAssertTrue(refired.isEmpty)
+  }
+
+  func testCoolingPastTheMarginRearmsTheRule() {
+    let rules = [rule(controlId: "motor-temp", threshold: 70.0)]
+
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0))
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 66.0))
+    let refired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 71.0))
+
+    XCTAssertEqual(1, refired.count)
+  }
+
+  func testRepeatingRuleAnnouncesOnItsCadenceWhileStillPast() {
+    var clock: Int64 = 0
+    let engine = AlertEngine(now: { clock })
+    let rules = [rule(controlId: "motor-temp", threshold: 95.0, repeatEverySeconds: 10)]
+    let hot = telemetry(tempMotor: 96.0)
+
+    let first = engine.evaluate(rules: rules, telemetry: hot)
+    clock += 9_000
+    let tooSoon = engine.evaluate(rules: rules, telemetry: hot)
+    clock += 1_000
+    let onCadence = engine.evaluate(rules: rules, telemetry: hot)
+
+    XCTAssertEqual(1, first.count)
+    XCTAssertTrue(tooSoon.isEmpty)
+    XCTAssertEqual(1, onCadence.count)
+  }
+
+  func testRepeatClockRestartsAfterRearming() {
+    var clock: Int64 = 0
+    let engine = AlertEngine(now: { clock })
+    let rules = [rule(controlId: "motor-temp", threshold: 95.0, repeatEverySeconds: 10)]
+
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
+    clock += 1_000
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 90.0))
+    clock += 1_000
+    // Re-armed, so this is a fresh crossing rather than a repeat — no waiting out the cadence.
+    let refired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
+
+    XCTAssertEqual(1, refired.count)
+  }
+
+  func testOneMetricAnnouncesOnceWhenSeveralRungsCrossTogether() {
+    let rules = [
+      rule(id: "warn", controlId: "motor-temp", threshold: 70.0),
+      rule(id: "high", controlId: "motor-temp", threshold: 85.0),
+      rule(id: "nag", controlId: "motor-temp", threshold: 95.0),
+    ]
+
+    let fired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
+
+    XCTAssertEqual(1, fired.count)
+    XCTAssertEqual("nag", fired[0].ruleId)
+  }
+
+  func testRungsSuppressedByCoalescingAreSpentNotPending() {
+    let rules = [
+      rule(id: "warn", controlId: "motor-temp", threshold: 70.0),
+      rule(id: "nag", controlId: "motor-temp", threshold: 95.0),
+    ]
+
+    _ = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 96.0))
+    // Dropping back under the top rung must not hand the lower one a turn to speak.
+    let onTheWayDown = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 80.0))
+
+    XCTAssertTrue(onTheWayDown.isEmpty)
+  }
+
+  func testSeparateMetricsBothAnnounceInTheSameEvaluation() {
+    let rules = [
+      rule(id: "motor", controlId: "motor-temp", threshold: 70.0),
+      rule(id: "controller", controlId: "controller-temp", threshold: 60.0),
+    ]
+
+    let fired = engine.evaluate(rules: rules, telemetry: telemetry(tempMotor: 75.0, tempMosfet: 65.0))
+
+    XCTAssertEqual(2, fired.count)
+  }
+
+  func testBeepCountReachesTheFiredAlert() {
+    let fired = engine.evaluate(
+      rules: [rule(threshold: 60.0, beepCount: 2)],
+      telemetry: telemetry(dutyCycle: 0.66)
+    )
+
+    XCTAssertEqual(2, fired[0].beepCount)
+  }
+
+  func testRepeatCadenceIsFlooredWhateverJsAsksFor() {
+    XCTAssertEqual(alertRepeatMinSeconds, normalizedAlertRepeatSeconds(0.5))
+    XCTAssertNil(normalizedAlertRepeatSeconds(0.0))
+    XCTAssertNil(normalizedAlertRepeatSeconds(nil))
+    XCTAssertEqual(30, normalizedAlertRepeatSeconds(30.0))
+  }
+
+  func testBeepCountIsClampedToItsRange() {
+    XCTAssertEqual(alertBeepCountRange.upperBound, normalizedAlertBeepCount(99))
+    XCTAssertEqual(alertBeepCountRange.lowerBound, normalizedAlertBeepCount(0))
+    XCTAssertEqual(alertBeepCountDefault, normalizedAlertBeepCount(nil))
+  }
 }
 
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/alerts/AlertEngineTest.kt `VescAlertTemplateTest`
@@ -440,6 +566,7 @@ final class AlertTemplateTests: XCTestCase {
       thresholdMax: thresholdMax,
       soundType: "tts:test",
       rangeDepth: nil,
+      beepCount: alertBeepCountDefault,
       firedAt: 0
     )
   }

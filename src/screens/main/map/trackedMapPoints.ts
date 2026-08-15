@@ -8,7 +8,10 @@ import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { ResolvedAccentColors } from '@/constants/theme'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 import {
   getMapPointKindColor,
   getMapPointKindTextColor,
@@ -64,6 +67,7 @@ function directionTrackedPoint(
   coordinate: [number, number],
   riderColor: string | null,
   accents?: ResolvedAccentColors,
+  icon = getMapPointKindIcon('direction'),
 ): TrackedMapPoint {
   return {
     id: 'direction',
@@ -71,7 +75,7 @@ function directionTrackedPoint(
     coordinate,
     color: riderColor ?? accents?.green.color ?? DESTINATION_POINT_COLOR,
     textColor: riderColor ?? accents?.green.text ?? DESTINATION_POINT_TEXT_COLOR,
-    icon: getMapPointKindIcon('direction'),
+    icon,
   }
 }
 
@@ -106,6 +110,9 @@ export function buildActiveNavigationPoint({
     [activeNavigationTarget.longitude, activeNavigationTarget.latitude],
     riderColor,
     accents,
+    activeNavigationTarget.type === 'place'
+      ? getPlaceCategoryIcon(activeNavigationTarget.category)
+      : undefined,
   )
 }
 

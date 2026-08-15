@@ -1,0 +1,72 @@
+# Ride History off the restored fixture database.
+#
+# The rides here were written by a real board and restored by native `restoreDatabase` — Room on
+# Android, GRDB on iOS — so this covers the durable read path, the sample decode and the chart
+# derivations in one pass. It asserts structure (the metric tabs, the stats a ride computes) rather
+# than specific distances, because the fixture is regenerated from real backups and its numbers move.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: history-button
+
+# Entering History opens the newest ride directly. Waiting on the metric tabs rather than the map:
+# the row only appears once the ride's samples are loaded.
+- extendedWaitUntil:
+    visible:
+      id: history-metric-tab-duty
+    timeout: 30000
+
+- assertVisible: Distance
+- assertVisible: Top Speed
+
+# Expanding the stats panel is what computes the secondary stats — a ride that loads but cannot
+# derive them fails here and nowhere earlier.
+- tapOn:
+    id: history-stats-bar
+- assertVisible: Avg Speed
+- assertVisible: Time
+- assertVisible: Ctrl Max
+- assertVisible: Motor Max
+
+# Optional charts: each tab re-derives a trace from the same samples.
+- tapOn:
+    id: history-metric-tab-duty
+- extendedWaitUntil:
+    visible: 'Duty Cycle'
+    timeout: 10000
+- tapOn:
+    id: history-metric-tab-tempMotor
+- tapOn:
+    id: history-metric-tab-tempController
+
+# The ride list is the only way to reach an older ride, and it reads a different query than the
+# detail screen does.
+- tapOn:
+    id: history-ride-list-button
+- extendedWaitUntil:
+    visible:
+      id: history-session-sheet
+    timeout: 10000
+# A point, not the element — the same trap `../fixture/_home.yaml` documents for the social drawer.
+# The backdrop is a full-screen `Pressable` *behind* the sheet, so tapping its centre lands on the
+# sheet content and the sheet stays open, leaving the run stranded on History.
+- tapOn:
+    point: 50%, 80%
+# Wait for the sheet to be *gone*, not just tapped. It slides out over several frames, and while any
+# of it is still on screen it covers the header — so `history-back` is not visible, every branch in
+# `_home.yaml` skips, and the run dies on `battery-bar` with History still underneath. Asserting the
+# sheet's absence is the only thing that makes the handover deterministic.
+- extendedWaitUntil:
+    notVisible:
+      id: history-session-sheet
+    timeout: 15000
+# And then wait for the header to come back before handing over. Every branch in `_home.yaml` is an
+# instantaneous `when: visible:` probe — nothing there waits — so a `history-back` that is one frame
+# from mounting reads as absent, every branch skips, and the run dies on `battery-bar` with History
+# still on screen. The caller owes the helper a settled screen.
+- extendedWaitUntil:
+    visible:
+      id: history-back
+    timeout: 15000
+
+- runFlow: ../fixture/_home.yaml

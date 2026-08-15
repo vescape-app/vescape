@@ -1,158 +1,335 @@
-name: Release Android
+name: Android Internal Release
 
-# Triggered by a tag of the form `production-<version>` (e.g. production-0.65.0)
-# pushed on the main branch. The tag version must match package.json exactly.
-# Can also be run manually (workflow_dispatch) to produce a signed AAB artifact
-# without tagging; the version then comes straight from package.json.
+run-name: Internal ${{ inputs.request_id }}
+
 on:
-  push:
-    tags: ['production-*']
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Immutable source commit to build
+        required: true
+        type: string
+      request_id:
+        description: Unique CLI dispatch correlation id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: play-publish
+  cancel-in-progress: false
+
+env:
+  PHONE_INTERNAL_TRACK: ${{ vars.PLAY_PHONE_INTERNAL_TRACK || 'internal' }}
+  WEAR_INTERNAL_TRACK: ${{ vars.PLAY_WEAR_INTERNAL_TRACK || 'wear:internal' }}
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  gates:
+    name: Release gates
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history is needed to verify the tag points at a main-branch commit.
-          fetch-depth: 0
-
-      # ── Guard: tag must point at a commit on main ──────────────────────────
-      - name: Verify tag is on main
-        if: github.event_name == 'push'
+          ref: ${{ inputs.source_sha }}
+      - name: Verify immutable source
         run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "✗ Tagged commit is not on main. Aborting."
-            exit 1
-          fi
-          echo "✓ Tag is on main"
-
-      # ── Guard: tag version must match package.json ─────────────────────────
-      - name: Verify version matches package.json
-        run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG_VERSION="${GITHUB_REF_NAME#production-}"
-            if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-              echo "✗ Tag version ($TAG_VERSION) does not match package.json ($PKG_VERSION). Aborting."
-              exit 1
-            fi
-          fi
-          # Phone keeps its existing code. Wear uses a disjoint high range because
-          # both AABs share one Play listing and every artifact code must be unique.
-          read -r VERSION_CODE WEAR_VERSION_CODE <<< "$(node -e "
-            const v = '$PKG_VERSION'.split('.').map(Number);
-            const phone = v[0] * 10000 + v[1] * 100 + v[2];
-            const wear = 1_000_000_000 + phone;
-            if (wear > 2_100_000_000) throw new Error('Wear versionCode exceeds Play limit');
-            console.log(phone, wear);
-          ")"
-          echo "✓ Version $PKG_VERSION (phone $VERSION_CODE, Wear $WEAR_VERSION_CODE)"
-          echo "VERSION_CODE=$VERSION_CODE"           >> "$GITHUB_ENV"
-          echo "WEAR_VERSION_CODE=$WEAR_VERSION_CODE" >> "$GITHUB_ENV"
-          echo "APP_VERSION=$PKG_VERSION"              >> "$GITHUB_ENV"
-
-      # ── Toolchain ──────────────────────────────────────────────────────────
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
       - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - run: bun install --frozen-lockfile
+      - run: bun run copy:shared
+      - run: bunx expo prebuild --platform android --no-install
+      - run: bun run check:ci
 
-      - name: Install Android SDK components
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
-
-      # ── JS + native generation ─────────────────────────────────────────────
-      - name: Install JS dependencies
-        run: bun install
-
-      - name: Copy shared JS into native modules
-        run: bun run copy:shared
-
-      - name: Generate android/ via expo prebuild
-        # The withAndroidSigningConfig plugin injects the release signingConfig
-        # block into the generated app/build.gradle during this step.
-        run: bunx expo prebuild --platform android --no-install
+  build:
+    name: Build signed artifacts once
+    needs: gates
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
+    outputs:
+      marketing_version: ${{ steps.release.outputs.marketing_version }}
+      phone_code: ${{ steps.release.outputs.phone_code }}
+      wear_code: ${{ steps.release.outputs.wear_code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - name: Check out trusted release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-trusted
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - name: Allocate artifact versions
+        id: release
+        run: |
+          MARKETING_VERSION=$(bun -p "require('./package.json').version")
+          read -r PHONE_CODE WEAR_CODE <<< "$(bun -e "import { allocateAndroidArtifactCodes } from './.release-trusted/scripts/release/versionCodes.ts'; const codes = allocateAndroidArtifactCodes(Number(process.env.GITHUB_RUN_NUMBER)); console.log(codes.phone, codes.wear)")"
+          echo "marketing_version=$MARKETING_VERSION" >> "$GITHUB_OUTPUT"
+          echo "phone_code=$PHONE_CODE" >> "$GITHUB_OUTPUT"
+          echo "wear_code=$WEAR_CODE" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - run: bun run copy:shared
+      - name: Verify production runtime configuration
+        run: bun run scripts/release/verifyProductionConfig.ts
         env:
-          # Map/telemetry keys are baked into the JS bundle at build time.
-          # Add these as GitHub repository secrets if the build fails with
-          # "undefined" or missing-token errors.
           EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
           EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
           EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
-          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
-          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
-      # ── Signing secrets ────────────────────────────────────────────────────
+      - name: Generate Android project
+        run: bunx expo prebuild --platform android --no-install
+        env:
+          VERSION_CODE: ${{ steps.release.outputs.phone_code }}
+          EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
+          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
+          EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Decode upload keystore
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
           echo "VESCAPE_UPLOAD_STORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-
-      - name: Write Play service-account JSON
-        run: |
-          echo "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
-          echo "SUPPLY_JSON_KEY=$RUNNER_TEMP/play-service-account.json" >> "$GITHUB_ENV"
-        env:
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-
-      # ── fastlane ───────────────────────────────────────────────────────────
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
-          bundler-cache: true # caches gems; commit Gemfile.lock to speed this up
-
-      - name: Build AAB and publish to Play Store
-        run: bundle exec fastlane android release
+          bundler-cache: true
+      - name: Install trusted release lanes
+        run: cp .release-trusted/fastlane/Fastfile fastlane/Fastfile
+      - name: Build phone and Wear AABs
+        run: bundle exec fastlane android build_internal
         env:
+          VERSION_CODE: ${{ steps.release.outputs.phone_code }}
+          APP_VERSION: ${{ steps.release.outputs.marketing_version }}
+          WEAR_VERSION_CODE: ${{ steps.release.outputs.wear_code }}
           VESCAPE_UPLOAD_STORE_FILE: ${{ env.VESCAPE_UPLOAD_STORE_FILE }}
           VESCAPE_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           VESCAPE_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           VESCAPE_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          SUPPLY_JSON_KEY: ${{ env.SUPPLY_JSON_KEY }}
-          VERSION_CODE: ${{ env.VERSION_CODE }}
-          WEAR_VERSION_CODE: ${{ env.WEAR_VERSION_CODE }}
-          APP_VERSION: ${{ env.APP_VERSION }}
-          # Also pass map/API keys so Metro can bundle them into the AAB
+          EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
           EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
           EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
           EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
           EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
-          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
-          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
-      # Keep the signed AAB even when the Play upload fails (e.g. a new
-      # foreground-service permission needs a manual Console upload first).
-      - name: Upload phone AAB artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Verify native Sentry init in release artifact
+        run: |
+          MERGED=$(find android/app/build/intermediates/merged_manifests/release -name AndroidManifest.xml | head -n 1)
+          test -n "$MERGED"
+          bun run scripts/release/verifySentryNativeInit.ts "$MERGED"
+      - name: Verify signing relationship and record artifact identity
+        run: |
+          PHONE=android/app/build/outputs/bundle/release/app-release.aab
+          WEAR=android/wearos/build/outputs/bundle/release/wearos-release.aab
+          jarsigner -verify "$PHONE"
+          jarsigner -verify "$WEAR"
+          PHONE_CERT=$(keytool -printcert -jarfile "$PHONE" | awk '/SHA256:/{print $2; exit}')
+          WEAR_CERT=$(keytool -printcert -jarfile "$WEAR" | awk '/SHA256:/{print $2; exit}')
+          test -n "$PHONE_CERT" && test "$PHONE_CERT" = "$WEAR_CERT"
+          jq -n \
+            --arg phone_sha "$(sha256sum "$PHONE" | cut -d' ' -f1)" \
+            --arg wear_sha "$(sha256sum "$WEAR" | cut -d' ' -f1)" \
+            --arg cert "$PHONE_CERT" \
+            '{phone:{name:"app-release.aab",sha256:$phone_sha,signingCertificateSha256:$cert},wear:{name:"wearos-release.aab",sha256:$wear_sha,signingCertificateSha256:$cert}}' \
+            > artifact-identity.json
+      - uses: actions/upload-artifact@v4
         with:
-          name: app-release-${{ env.APP_VERSION }}
-          path: android/app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: ignore
-
-      - name: Upload Wear AAB artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+          name: signed-aabs
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/wearos/build/outputs/bundle/release/wearos-release.aab
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
         with:
-          name: wearos-release-${{ env.APP_VERSION }}
-          path: android/wearos/build/outputs/bundle/release/wearos-release.aab
-          if-no-files-found: ignore
+          name: artifact-identity
+          path: artifact-identity.json
+          retention-days: 90
+
+  upload_phone:
+    name: Upload phone internal
+    needs: build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-aabs
+          path: android
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Write Play credentials
+        run: |
+          echo "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
+          echo "SUPPLY_JSON_KEY=$RUNNER_TEMP/play-service-account.json" >> "$GITHUB_ENV"
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      - name: Upload phone to internal
+        id: upload
+        continue-on-error: true
+        run: bundle exec fastlane android upload_phone_internal
+      - name: Record phone result
+        if: always()
+        run: jq -n --arg status "${{ steps.upload.outcome }}" '{phone:(if $status == "success" then "succeeded" else "failed" end)}' > upload-phone.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upload-phone-result
+          path: upload-phone.json
+          overwrite: true
+      - name: Fail unsuccessful upload
+        if: steps.upload.outcome != 'success'
+        run: exit 1
+
+  upload_wear:
+    name: Upload Wear internal
+    # Serialized after the phone upload: Play allows one active edit per app,
+    # so parallel uploads delete each other's edit.
+    needs: [build, upload_phone]
+    if: always() && needs.build.result == 'success'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-aabs
+          path: android
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Write Play credentials
+        run: |
+          echo "$PLAY_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/play-service-account.json"
+          echo "SUPPLY_JSON_KEY=$RUNNER_TEMP/play-service-account.json" >> "$GITHUB_ENV"
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+      - name: Upload Wear to internal
+        id: upload
+        continue-on-error: true
+        run: bundle exec fastlane android upload_wear_internal
+      - name: Record Wear result
+        if: always()
+        run: jq -n --arg status "${{ steps.upload.outcome }}" '{wear:(if $status == "success" then "succeeded" else "failed" end)}' > upload-wear.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upload-wear-result
+          path: upload-wear.json
+          overwrite: true
+      - name: Fail unsuccessful upload
+        if: steps.upload.outcome != 'success'
+        run: exit 1
+
+  manifest:
+    name: Publish release manifest
+    if: always() && needs.build.result == 'success'
+    needs: [build, upload_phone, upload_wear]
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: artifact-identity
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: upload-*-result
+          merge-multiple: true
+      - name: Create release manifest
+        run: |
+          PHONE_STATUS=$(jq -r .phone upload-phone.json)
+          WEAR_STATUS=$(jq -r .wear upload-wear.json)
+          jq -n \
+            --arg request_id "$REQUEST_ID" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg version "$MARKETING_VERSION" \
+            --argjson phone_code "$PHONE_CODE" \
+            --argjson wear_code "$WEAR_CODE" \
+            --argjson run_id "$RUN_ID" \
+            --arg run_url "$RUN_URL" \
+            --argjson run_attempt "$RUN_ATTEMPT" \
+            --arg phone_status "$PHONE_STATUS" \
+            --arg wear_status "$WEAR_STATUS" \
+            --slurpfile identity artifact-identity.json \
+            '{schemaVersion:1,requestId:$request_id,sourceSha:$source_sha,marketingVersion:$version,versionCodes:{phone:$phone_code,wear:$wear_code},workflow:{runId:$run_id,runUrl:$run_url,runAttempt:$run_attempt},artifacts:$identity[0],uploads:{phone:$phone_status,wear:$wear_status}}' \
+            > release-manifest.json
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ needs.build.outputs.marketing_version }}
+          PHONE_CODE: ${{ needs.build.outputs.phone_code }}
+          WEAR_CODE: ${{ needs.build.outputs.wear_code }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: release-manifest.json
+          overwrite: true
+          retention-days: 90
+      - name: Fail partial or unsuccessful release
+        if: needs.upload_phone.result != 'success' || needs.upload_wear.result != 'success'
+        run: exit 1

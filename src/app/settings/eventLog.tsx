@@ -184,6 +184,7 @@ export default function DiagnosticEventsScreen() {
 
   useEffect(() => {
     void loadPage()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; loadPage is stable
   }, [])
 
   const loadMore = useCallback(() => {

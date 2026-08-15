@@ -344,7 +344,7 @@ function EdgeDrawerPositionShowcase({ edge, name, description }: EdgeDrawerPosit
 const LONG_CONTENT_SECTIONS = [
   {
     title: 'How the gesture works',
-    body: 'This drawer contains ordinary text instead of a stack of controls. Swipe upward to read it exactly like a regular scroll view. The content should remain under your finger and preserve normal momentum.',
+    body: 'This drawer contains ordinary text instead of a stack of controls. Scroll it exactly like a regular scroll view. The content should remain under your finger and preserve normal momentum.',
   },
   {
     title: 'Scrolling through content',
@@ -352,7 +352,7 @@ const LONG_CONTENT_SECTIONS = [
   },
   {
     title: 'Reaching the boundary',
-    body: 'At the end of the article there is nowhere left for the content to scroll. Continue dragging upward from that boundary and the gesture transfers to the complete drawer instead.',
+    body: 'At the end of the article there is nowhere left for the content to scroll. Keep dragging toward the edge the drawer opened from and the gesture transfers to the complete drawer instead.',
   },
   {
     title: 'Moving the window',
@@ -360,13 +360,22 @@ const LONG_CONTENT_SECTIONS = [
   },
   {
     title: 'Fling behavior',
-    body: 'Release with enough upward velocity and the drawer continues off-screen. Release early with little velocity and it returns to its open position. This is the same interaction model used by system notification panels.',
+    body: 'Release with enough velocity and the drawer continues off-screen. Release early with little velocity and it returns to its open position. This is the same interaction model used by system notification panels.',
   },
   {
     title: 'End of example',
-    body: 'You are now at the dismiss boundary. Keep dragging upward to push the entire window out of view and close it.',
+    body: 'You are now at the dismiss boundary. Keep dragging to push the entire window out of view and close it.',
   },
 ] as const
+
+/** Enough repeats that the article is several screens tall on a phone, not barely one. */
+const LONG_CONTENT_PASSES = 4
+const LONG_CONTENT_ARTICLE = Array.from({ length: LONG_CONTENT_PASSES }, (_pass, passIndex) =>
+  LONG_CONTENT_SECTIONS.map((section) => ({
+    key: `${passIndex}-${section.title}`,
+    ...section,
+  })),
+).flat()
 
 function EdgeDrawerLongContentShowcase() {
   const triggerRef = useTriggerRef()
@@ -382,21 +391,20 @@ function EdgeDrawerLongContentShowcase() {
       }
     >
       <Text style={styles.previewHint}>
-        Regular text scrolls first; an upward drag at the end moves the complete drawer out.
+        Regular text scrolls first; a drag at the end moves the complete drawer out.
       </Text>
       <EdgeDrawer
         visible={visible}
         triggerRef={triggerRef}
-        edge="top"
         title="Gesture guide"
         onClose={() => setVisible(false)}
       >
         <View style={styles.article}>
           <Text style={styles.articleLead}>
-            Scroll this full article, then continue the same upward motion at the end.
+            Scroll this full article, then continue the same motion at the end.
           </Text>
-          {LONG_CONTENT_SECTIONS.map((section) => (
-            <View key={section.title} style={styles.articleSection}>
+          {LONG_CONTENT_ARTICLE.map((section) => (
+            <View key={section.key} style={styles.articleSection}>
               <Text style={styles.articleTitle}>{section.title}</Text>
               <Text style={styles.articleBody}>{section.body}</Text>
             </View>

@@ -1,12 +1,11 @@
 import { PauseIcon, PlayIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native'
+import { LayoutChangeEvent, StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
@@ -14,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { IconButton } from '@/components/base/IconButton'
+import { MonoValue } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
@@ -22,7 +22,7 @@ import {
 } from '@/modules/weather/store/rainViewerRadarStore'
 
 const FRAME_INTERVAL_MS = 450
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput)
+const TIME_FONT_SIZE = 12
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
   'worklet'
@@ -174,11 +174,6 @@ export function WeatherRadarTimeline() {
     left: `${progress.value * 100}%`,
   }))
 
-  const frameLabelProps = useAnimatedProps(() => ({
-    text: frameLabel.value,
-    value: frameLabel.value,
-  }))
-
   return (
     <View style={styles.container}>
       <IconButton
@@ -190,13 +185,7 @@ export function WeatherRadarTimeline() {
       />
       <View style={styles.timeline}>
         <View style={styles.timelineHeader}>
-          <AnimatedTextInput
-            animatedProps={frameLabelProps}
-            defaultValue="Radar"
-            editable={false}
-            pointerEvents="none"
-            style={styles.timeText}
-          />
+          <MonoValue text={frameLabel} size={TIME_FONT_SIZE} weight="800" style={styles.timeText} />
           <Text style={styles.rangeText}>{frameWindowLabel}</Text>
         </View>
         <GestureDetector gesture={scrubGesture}>
@@ -219,8 +208,8 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
-    borderColor: theme.alpha(theme.neutral.textSecondary, 0.3),
+    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    borderColor: theme.alpha(theme.palette.slate.textSecondary, 0.3),
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row',
@@ -240,15 +229,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   timeText: {
-    color: theme.neutral.textPrimary,
-    fontFamily: theme.font('800'),
-    fontSize: 12,
-    margin: 0,
-    minWidth: 48,
-    padding: 0,
+    width: 64,
   },
   rangeText: {
-    color: theme.neutral.textSecondary,
+    color: theme.palette.slate.textSecondary,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -262,7 +246,7 @@ const styles = StyleSheet.create({
     height: 3,
   },
   thumb: {
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.palette.slate.surfaceDeep,
     borderColor: theme.palette.sky.light,
     borderRadius: 6,
     borderWidth: 2,

@@ -51,7 +51,13 @@ export function formatBoardLinkFacts(link: BoardLink): string {
   return facts.join(' · ')
 }
 
-/** A Board needs a Board Probe before it can start a Board Session when it has no link. */
+/**
+ * A Board needs a Board Probe before it can start a Board Session when it has no link, or when
+ * its link carries no detected transport — native refuses that session with `NEEDS_LINK`, since
+ * without a transport there is nothing to poll and the connect would only time out.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startBleSession`
+ */
 export function boardNeedsLink(board: Pick<Board, 'link'> | undefined): boolean {
-  return board?.link == null
+  return board?.link?.transport == null
 }

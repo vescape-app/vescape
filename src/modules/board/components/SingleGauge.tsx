@@ -1,11 +1,6 @@
 import type { ReactNode } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import {
-  useAnimatedProps,
-  useAnimatedStyle,
-  useDerivedValue,
-  type SharedValue,
-} from 'react-native-reanimated'
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
@@ -24,13 +19,13 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import {
   AlertMarker,
-  AnimatedTextInput,
+  BG_ARC_COLOR,
   gaugeRampColor,
+  GaugeReadout,
   GlowGradient,
   LABEL_FONT_SIZE,
-  useCanvasSize,
 } from '@/modules/board/components/gauge/gaugeShared'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useCanvasSize } from '@/hooks/useCanvasSize'
 
 interface SingleGaugeProps {
   value: SharedValue<number | null>
@@ -59,6 +54,12 @@ const GLOW_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.3]
 
 const BG_ARC = svgPath(arcPath(HALF_ARC, 1))
 
+// Readout box: explicit line height keeps the drawn value at the vertical
+// footprint the readout view used to reserve.
+const HALF_VALUE_FONT_SIZE = 52
+const HALF_VALUE_LINE_HEIGHT = 58
+const HALF_UNIT_FONT_SIZE = 12
+
 function HalfArc({
   value,
   min,
@@ -72,19 +73,13 @@ function HalfArc({
 }: Required<Pick<SingleGaugeProps, 'value' | 'min' | 'max' | 'color' | 'unit'>> &
   Pick<SingleGaugeProps, 'decimals' | 'alerts' | 'hotRange' | 'showValue'>) {
   const { size, onLayout } = useCanvasSize()
-  const neutral = useResolvedNeutralColors()
   const scale = size.w > 0 ? size.w / HALF_VB_W : 0
   const labelFont = useSkiaFont('700', LABEL_FONT_SIZE)
 
-  const animatedValueProps = useAnimatedProps(() => {
+  const valueText = useDerivedValue(() => {
     const current = value.value
-    const text =
-      current != null
-        ? decimals === 0
-          ? Math.round(current).toString()
-          : current.toFixed(decimals)
-        : '—'
-    return { text, value: text }
+    if (current == null) return '—'
+    return decimals === 0 ? Math.round(current).toString() : current.toFixed(decimals)
   })
 
   const arc = useDerivedValue(() =>
@@ -100,9 +95,7 @@ function HalfArc({
     return radialTickPath(HALF_ARC, normalizeFraction(value.value, min, max), MARKER_INSET)
   })
 
-  const animatedValueStyle = useAnimatedStyle(() => ({
-    color: gaugeRampColor(value.value, color, hotRange),
-  }))
+  const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
 
   return (
     <View style={styles.halfWrap}>
@@ -120,7 +113,7 @@ function HalfArc({
               </Path>
               <Path
                 path={BG_ARC}
-                color={neutral.border}
+                color={BG_ARC_COLOR}
                 style="stroke"
                 strokeWidth={STROKE}
                 strokeCap="butt"
@@ -152,20 +145,25 @@ function HalfArc({
                 />
               ) : null}
             </Group>
+            {showValue ? (
+              <GaugeReadout
+                text={valueText}
+                color={valueColor}
+                unit={unit}
+                box={{
+                  x: size.w * 0.18,
+                  y: size.h * 0.36,
+                  width: size.w * 0.64,
+                  height: size.h * 0.6,
+                }}
+                valueSize={HALF_VALUE_FONT_SIZE}
+                valueLineHeight={HALF_VALUE_LINE_HEIGHT}
+                unitSize={HALF_UNIT_FONT_SIZE}
+              />
+            ) : null}
           </Canvas>
         ) : null}
       </View>
-
-      {showValue ? (
-        <View style={styles.halfBowl} pointerEvents="none">
-          <AnimatedTextInput
-            editable={false}
-            animatedProps={animatedValueProps}
-            style={[styles.halfValue, animatedValueStyle]}
-          />
-          <Text style={styles.halfUnit}>{unit}</Text>
-        </View>
-      ) : null}
     </View>
   )
 }
@@ -218,7 +216,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   singleWrap: {
-    backgroundColor: theme.neutral.surface,
+    backgroundColor: theme.palette.slate.surface,
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingTop: 14,
@@ -226,7 +224,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   singleLabel: {
-    color: theme.neutral.textSecondary,
+    color: theme.palette.slate.textSecondary,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -238,29 +236,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  halfBowl: {
-    position: 'absolute',
-    left: '18%',
-    right: '18%',
-    top: '36%',
-    bottom: '4%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  halfValue: {
-    color: theme.neutral.textPrimary,
-    fontSize: 52,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    lineHeight: 58,
-    padding: 0,
-    textAlign: 'center',
-  },
-  halfUnit: {
-    color: theme.neutral.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 2,
   },
 })

@@ -19,6 +19,19 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
 
   var active: Bool { manager != nil }
   var error: String? { lastError }
+  var authorization: String {
+    switch CLLocationManager().authorizationStatus {
+    case .notDetermined: return "not_determined"
+    case .restricted: return "restricted"
+    case .denied: return "denied"
+    case .authorizedAlways: return "always"
+    case .authorizedWhenInUse: return "when_in_use"
+    @unknown default: return "unknown"
+    }
+  }
+  var accuracyAuthorization: String {
+    CLLocationManager().accuracyAuthorization == .fullAccuracy ? "full" : "reduced"
+  }
 
   func start() -> String? {
     let manager = CLLocationManager()

@@ -1,0 +1,21 @@
+# Ride detail with the optional charts on: duty cycle plus both temperature traces.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: history-button
+# The newest ride is already open — same one the ride list's first row would have selected, so
+# there is nothing to pick.
+- extendedWaitUntil:
+    visible:
+      id: history-metric-tab-duty
+    timeout: 30000
+- tapOn:
+    id: history-metric-tab-duty
+- tapOn:
+    id: history-metric-tab-tempMotor
+- tapOn:
+    id: history-metric-tab-tempController
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/07-history-detail
+- runFlow: ../fixture/_home.yaml

@@ -18,6 +18,12 @@ export function HistoryMetricLegend() {
           Free spin
         </Text>
       </View>
+      <View style={styles.metricLegendItem}>
+        <View style={[styles.metricLegendLine, { backgroundColor: theme.palette.red.color }]} />
+        <Text style={styles.metricLegendText} numberOfLines={1}>
+          No GPS
+        </Text>
+      </View>
     </View>
   )
 }

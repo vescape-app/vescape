@@ -136,9 +136,7 @@ interface AlertPresetControlProps {
   disabled?: boolean
   /** Exact visible rules to evaluate while the synthetic needle sweeps the gauge. */
   testRules?: AlertTestRule[]
-  /** Detail-screen content placed between the gauge and its alert controls. */
-  detailContent?: ReactNode
-  /** Detail-screen Alerts heading, kept with the controls below {@link detailContent}. */
+  /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
   /** Take ownership of this level's rules. Omitted where custom rules aren't offered (the gauge
    * preview in board settings), which also hides the action button. */
@@ -158,7 +156,6 @@ export function AlertPresetControl({
   hotRange,
   disabled,
   testRules = [],
-  detailContent,
   controlsHeader,
   onCustomize,
   onDiscardCustom,
@@ -180,6 +177,7 @@ export function AlertPresetControl({
       id: `${metric}-${index}`,
       threshold: spec.threshold,
       thresholdMax: spec.thresholdMax,
+      repeats: spec.repeatEverySeconds != null,
       label: gauge.formatMarker(spec.threshold),
       labelMax: spec.thresholdMax == null ? undefined : gauge.formatMarker(spec.thresholdMax),
     }))
@@ -240,7 +238,6 @@ export function AlertPresetControl({
         showValue={gaugeValue != null}
         containerStyle={styles.gauge}
       />
-      {detailContent}
       {controlsHeader}
       <View style={styles.levelRow}>
         {isCustom ? (

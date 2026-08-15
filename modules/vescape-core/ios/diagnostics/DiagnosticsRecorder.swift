@@ -1,12 +1,10 @@
 import Foundation
 
 /// Local-only capture of Local Diagnostic Events (ADR 0007). Thin seam over the telemetry store
-/// so callers (alert engine, Board Probe #111, remote-report substitute) share one entry point and
+/// so callers (alert engine, Board Probe #111, bridge diagnostics) share one entry point and
 /// one sanitize/persist path. Debug-facing breadcrumbs, not user-visible Ride History Markers.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/diagnostics/DiagnosticsRecorder.kt
-/// @platform-diff iOS has no remote (PostHog) sink yet, so this recorder is local-only; the shared
-/// Android recorder fans out to both a local and a remote sink.
 internal final class DiagnosticsRecorder {
   static let shared = DiagnosticsRecorder()
 

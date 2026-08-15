@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { TextInput, type LayoutChangeEvent } from 'react-native'
-import Animated, { interpolateColor } from 'react-native-reanimated'
+import { useMemo } from 'react'
+import { interpolateColor, type DerivedValue, type SharedValue } from 'react-native-reanimated'
 import {
   Path,
   RadialGradient,
@@ -10,9 +9,10 @@ import {
   type SkFont,
 } from '@shopify/react-native-skia'
 
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { accentColors, theme, type AlphaLevel } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
+import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
+import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import { theme, type AlphaLevel } from '@/constants/theme'
+import { useSkiaFont } from '@/hooks/useSkiaFont'
 import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   clamp01,
@@ -24,9 +24,8 @@ import {
   type Arc,
 } from '@/modules/board/components/gauge/arcGeometry'
 
-export const AnimatedTextInput = Animated.createAnimatedComponent(TextInput)
-
-const GAUGE_HOT_COLOR = accentColors.dark.red.color
+export const BG_ARC_COLOR = theme.palette.slate.border
+const GAUGE_HOT_COLOR = theme.status.error.color
 
 /** Ramp the gauge color toward the hot color across the metric's hot range. */
 export function gaugeRampColor(
@@ -59,19 +58,27 @@ export function GlowGradient({ arc, color, stops, opacities }: GlowGradientProps
 }
 
 const ALERT_STOPS = [0, 0.82, 0.965, 0.99, 1]
-const ALERT_OPACITIES: AlphaLevel[] = [0, 0, 0.3, 0.3, 0]
+const ALERT_OPACITIES: AlphaLevel[] = [0, 0, 0.12, 0.12, 0]
 
 // ── Alert markers ────────────────────────────────────────────────────────────
 
 const TICK_LENGHT = 2
 const TICK_WIDTH = 0.35
 
-function AlertTick({ arc, fraction, color }: { arc: Arc; fraction: number; color: string }) {
+function AlertTick({ arc, fraction }: { arc: Arc; fraction: number }) {
   const path = useMemo(
     () => radialTickPath(arc, fraction, TICK_LENGHT, -STROKE / 2),
     [arc, fraction],
   )
-  return <Path path={path} color={color} style="stroke" strokeWidth={TICK_WIDTH} strokeCap="butt" />
+  return (
+    <Path
+      path={path}
+      color={theme.palette.yellow.color}
+      style="stroke"
+      strokeWidth={TICK_WIDTH}
+      strokeCap="butt"
+    />
+  )
 }
 
 // Numeric marker labels sit just inside the arc, centered on the tick.
@@ -83,13 +90,11 @@ function AlertLabel({
   fraction,
   text,
   font,
-  color,
 }: {
   arc: Arc
   fraction: number
   text: string
   font: SkFont
-  color: string
 }) {
   const p = polar(arc, arc.r - LABEL_INSET, fraction)
   const width = font.getTextWidth(text)
@@ -99,7 +104,7 @@ function AlertLabel({
       y={p.y + LABEL_FONT_SIZE / 2}
       text={text}
       font={font}
-      color={color}
+      color={theme.palette.yellow.text}
     />
   )
 }
@@ -114,62 +119,112 @@ interface AlertMarkerProps {
 }
 
 export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: AlertMarkerProps) {
-  const accents = useResolvedAccentColors()
   const thresholdFraction = normalizeFraction(alert.threshold, min, max)
   const maxFraction =
     alert.thresholdMax == null ? null : normalizeFraction(alert.thresholdMax, min, max)
-  const rangePath = useMemo(() => {
-    if (maxFraction == null) return null
-    const d = rangeWedgePath(arc, thresholdFraction, maxFraction)
+  // The band runs to the end of the scale, not to `thresholdMax`: a range rule sustains its tone
+  // above the max and a repeating rule never stops, so the arc past it is anything but quiet.
+  const bandPath = useMemo(() => {
+    const band = alertBandFractions(alert, (value) => normalizeFraction(value, min, max))
+    if (!band) return null
+    const d = rangeWedgePath(arc, band.from, band.to)
     return d ? Skia.Path.MakeFromSVGString(d) : null
-  }, [arc, thresholdFraction, maxFraction])
-
-  const range = maxFraction != null && rangePath ? { path: rangePath, fraction: maxFraction } : null
+  }, [arc, alert, min, max])
 
   return (
     <>
-      {range ? (
-        <Path path={range.path}>
+      {bandPath ? (
+        <Path path={bandPath}>
           <RadialGradient
             c={vec(arc.cx, arc.cy)}
             r={arc.r}
-            colors={ALERT_OPACITIES.map((o) => theme.alpha(accents.yellow.color, o))}
+            colors={ALERT_OPACITIES.map((o) => theme.alpha(theme.palette.yellow.color, o))}
             positions={ALERT_STOPS}
           />
         </Path>
       ) : null}
-      <AlertTick arc={arc} fraction={thresholdFraction} color={accents.yellow.color} />
-      {range ? (
-        <AlertTick arc={arc} fraction={range.fraction} color={accents.yellow.color} />
-      ) : null}
+      <AlertTick arc={arc} fraction={thresholdFraction} />
+      {maxFraction != null ? <AlertTick arc={arc} fraction={maxFraction} /> : null}
       {labelFont && alert.label ? (
-        <AlertLabel
-          arc={arc}
-          fraction={thresholdFraction}
-          text={alert.label}
-          font={labelFont}
-          color={accents.yellow.text}
-        />
+        <AlertLabel arc={arc} fraction={thresholdFraction} text={alert.label} font={labelFont} />
       ) : null}
-      {labelFont && alert.labelMax && range ? (
-        <AlertLabel
-          arc={arc}
-          fraction={range.fraction}
-          text={alert.labelMax}
-          font={labelFont}
-          color={accents.yellow.text}
-        />
+      {labelFont && alert.labelMax && maxFraction != null ? (
+        <AlertLabel arc={arc} fraction={maxFraction} text={alert.labelMax} font={labelFont} />
       ) : null}
     </>
   )
 }
 
-/** Measured size of a gauge canvas host view, for viewBox → pixel scaling. */
-export function useCanvasSize() {
-  const [size, setSize] = useState({ w: 0, h: 0 })
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout
-    setSize((prev) => (prev.w === width && prev.h === height ? prev : { w: width, h: height }))
-  }, [])
-  return { size, onLayout }
+// ── Numeric readout ──────────────────────────────────────────────────────────
+
+/** Gap between the value line and the unit caption under it. */
+const UNIT_GAP = 2
+
+export interface GaugeReadoutBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface GaugeReadoutProps {
+  text: DerivedValue<string>
+  color: SharedValue<string> | string
+  unit: string
+  /** Bowl the value + unit stack is centered in, in canvas pixels. */
+  box: GaugeReadoutBox
+  valueSize: number
+  valueLineHeight: number
+  unitSize: number
+}
+
+/**
+ * Value + unit drawn inside the gauge's own canvas. Both used to be RN views
+ * layered over the arc, which cost a second native surface per gauge.
+ */
+export function GaugeReadout({
+  text,
+  color,
+  unit,
+  box,
+  valueSize,
+  valueLineHeight,
+  unitSize,
+}: GaugeReadoutProps) {
+  const unitFont = useSkiaFont('500', unitSize)
+  const unitLineHeight = Math.ceil(unitSize * TEXT_LINE_RATIO)
+  const top = box.y + (box.height - (valueLineHeight + UNIT_GAP + unitLineHeight)) / 2
+
+  const unitOrigin = useMemo(() => {
+    if (!unitFont) return null
+    const { ascent, descent } = unitFont.getMetrics()
+    return {
+      x: box.x + (box.width - unitFont.getTextWidth(unit)) / 2,
+      y: top + valueLineHeight + UNIT_GAP + unitLineHeight / 2 - (ascent + descent) / 2,
+    }
+  }, [unitFont, unit, box.x, box.width, top, valueLineHeight, unitLineHeight])
+
+  return (
+    <>
+      <MonoText
+        text={text}
+        size={valueSize}
+        color={color}
+        align="center"
+        x={box.x}
+        y={top}
+        width={box.width}
+        height={valueLineHeight}
+      />
+      {unitOrigin && unitFont ? (
+        <SkiaText
+          x={unitOrigin.x}
+          y={unitOrigin.y}
+          text={unit}
+          font={unitFont}
+          color={theme.palette.slate.textMuted}
+        />
+      ) : null}
+    </>
+  )
 }

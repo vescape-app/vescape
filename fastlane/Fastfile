@@ -1,107 +1,456 @@
 default_platform(:android)
 
-def android_release_properties
+require "json"
+require "supply/client"
+
+def require_release_env(*names)
+  missing = names.select { |name| ENV[name].to_s.empty? }
+  UI.user_error!("Missing Android release env: #{missing.join(", ")}") unless missing.empty?
+end
+
+def signing_properties
   names = %w[
     VESCAPE_UPLOAD_STORE_FILE
     VESCAPE_UPLOAD_STORE_PASSWORD
     VESCAPE_UPLOAD_KEY_ALIAS
     VESCAPE_UPLOAD_KEY_PASSWORD
     APP_VERSION
+    VERSION_CODE
     WEAR_VERSION_CODE
   ]
-  missing = names.select { |name| ENV[name].to_s.empty? }
-  UI.user_error!("Missing Android release env: #{missing.join(", ")}") unless missing.empty?
-
+  require_release_env(*names)
   names.to_h { |name| [name, ENV.fetch(name)] }
 end
 
+def internal_upload(aab, track)
+  require_release_env("SUPPLY_JSON_KEY")
+  upload_to_play_store(
+    aab: aab,
+    track: track,
+    release_status: "completed",
+    skip_upload_apk: true,
+    skip_upload_metadata: true,
+    skip_upload_images: true,
+    skip_upload_screenshots: true,
+    skip_upload_changelogs: true,
+    changes_not_sent_for_review: true
+  )
+end
+
+def play_track_codes(track)
+  require_release_env("SUPPLY_JSON_KEY")
+  Array(google_play_track_version_codes(track: track)).map(&:to_i)
+end
+
+def exact_code(name)
+  value = Integer(ENV.fetch(name), 10)
+  UI.user_error!("Invalid #{name}: #{value}") unless value.positive?
+  value
+rescue ArgumentError
+  UI.user_error!("Invalid #{name}: #{ENV[name]}")
+end
+
+def validate_promotion_artifact(label, code, source_track, target_track)
+  source_codes = play_track_codes(source_track)
+  target_codes = play_track_codes(target_track)
+  return if source_codes.include?(code) || target_codes.include?(code)
+
+  UI.user_error!(
+    "#{label} version code #{code} is on neither #{source_track} nor #{target_track}"
+  )
+end
+
+def promote_exact_artifact(label, code, source_track, target_track)
+  require_release_env("PROMOTION_RESULT_PATH")
+  status = if play_track_codes(target_track).include?(code)
+    "already-open"
+  else
+    source_codes = play_track_codes(source_track)
+    UI.user_error!("#{label} version code #{code} is not active on #{source_track}") unless source_codes.include?(code)
+    upload_to_play_store(
+      track: source_track,
+      track_promote_to: target_track,
+      version_code: code,
+      track_promote_release_status: "completed",
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
+    )
+    "promoted"
+  end
+  File.write(
+    ENV.fetch("PROMOTION_RESULT_PATH"),
+    JSON.generate(
+      versionCode: code,
+      sourceTrack: source_track,
+      targetTrack: target_track,
+      status: status
+    )
+  )
+end
+
+def play_release_state(track, code)
+  require_release_env("SUPPLY_JSON_KEY")
+  client = Supply::Client.make_from_config(
+    params: {
+      json_key: ENV.fetch("SUPPLY_JSON_KEY"),
+      timeout: 300
+    }
+  )
+  client.begin_edit(package_name: "app.vescape")
+  begin
+    release = client.get_edit_track(track)&.releases&.find do |candidate|
+      Array(candidate.version_codes).map(&:to_i).include?(code)
+    end
+    return nil unless release
+
+    {
+      playStatus: release.status,
+      rolloutPercentage: release.user_fraction.nil? ? nil : release.user_fraction.to_f * 100
+    }
+  ensure
+    client.abort_current_edit
+  end
+end
+
+def production_upload_options(track, code)
+  {
+    track: track,
+    version_code: code,
+    skip_upload_apk: true,
+    skip_upload_aab: true,
+    skip_upload_metadata: true,
+    skip_upload_images: true,
+    skip_upload_screenshots: true,
+    skip_upload_changelogs: true
+  }
+end
+
+def rollout_fraction
+  percentage = Float(ENV.fetch("ROLLOUT_PERCENTAGE"))
+  UI.user_error!("Rollout percentage must be greater than 0 and at most 100") unless percentage.positive? && percentage <= 100
+  percentage / 100.0
+rescue ArgumentError
+  UI.user_error!("Invalid ROLLOUT_PERCENTAGE: #{ENV['ROLLOUT_PERCENTAGE']}")
+end
+
+def rollout_upload_options(fraction)
+  return {} if fraction == 1.0
+  { rollout: fraction.to_s }
+end
+
+def manage_production_artifact(label, code, source_track, target_track)
+  require_release_env("PRODUCTION_OPERATION", "PRODUCTION_RESULT_PATH")
+  operation = ENV.fetch("PRODUCTION_OPERATION")
+  current = play_release_state(target_track, code)
+  result_status = case operation
+  when "status"
+    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
+    "active"
+  when "promote"
+    initial_rollout = rollout_fraction
+    if current
+      expected_status = initial_rollout == 1.0 ? "completed" : "inProgress"
+      expected_percentage = initial_rollout == 1.0 ? nil : initial_rollout * 100
+      percentage_matches = expected_percentage.nil? ? current[:rolloutPercentage].nil? : (current[:rolloutPercentage].to_f - expected_percentage).abs < 0.0001
+      UI.user_error!("#{label} production state does not match the requested rollout") unless current[:playStatus] == expected_status && percentage_matches
+      "already-production"
+    else
+      UI.user_error!("#{label} version code #{code} is not active on #{source_track}") unless play_release_state(source_track, code)
+      upload_to_play_store(
+        **production_upload_options(source_track, code),
+        track_promote_to: target_track,
+        track_promote_release_status: initial_rollout == 1.0 ? "completed" : "inProgress",
+        **rollout_upload_options(initial_rollout)
+      )
+      "promoted"
+    end
+  when "halt"
+    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
+    unless current[:playStatus] == "halted"
+      UI.user_error!("#{label} rollout is #{current[:playStatus]}, not inProgress") unless current[:playStatus] == "inProgress"
+      UI.user_error!("#{label} rollout has no staged percentage") unless current[:rolloutPercentage]
+      upload_to_play_store(
+        **production_upload_options(target_track, code),
+        release_status: "halted",
+        rollout: (current[:rolloutPercentage] / 100.0).to_s
+      )
+    end
+    "halted"
+  when "resume"
+    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
+    unless current[:playStatus] == "inProgress"
+      UI.user_error!("#{label} rollout is #{current[:playStatus]}, not halted") unless current[:playStatus] == "halted"
+      UI.user_error!("#{label} rollout has no staged percentage") unless current[:rolloutPercentage]
+      upload_to_play_store(
+        **production_upload_options(target_track, code),
+        track_promote_to: target_track,
+        track_promote_release_status: "inProgress",
+        rollout: (current[:rolloutPercentage] / 100.0).to_s
+      )
+    end
+    "resumed"
+  when "advance"
+    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
+    requested = rollout_fraction
+    current_fraction = current[:rolloutPercentage].to_f / 100.0
+    if current[:playStatus] == "completed" && requested == 1.0
+      # Idempotent retry after completing the rollout.
+    else
+      UI.user_error!("#{label} rollout is #{current[:playStatus]}, not inProgress") unless current[:playStatus] == "inProgress"
+      UI.user_error!("#{label} rollout cannot move backwards") if requested < current_fraction
+      if requested > current_fraction
+        upload_to_play_store(
+          **production_upload_options(target_track, code),
+          release_status: requested == 1.0 ? "completed" : "inProgress",
+          **rollout_upload_options(requested)
+        )
+      end
+    end
+    "advanced"
+  else
+    UI.user_error!("Invalid production operation: #{operation}")
+  end
+
+  state = play_release_state(target_track, code)
+  File.write(
+    ENV.fetch("PRODUCTION_RESULT_PATH"),
+    JSON.generate(
+      versionCode: code,
+      sourceTrack: source_track,
+      targetTrack: target_track,
+      status: result_status,
+      playStatus: state&.fetch(:playStatus),
+      rolloutPercentage: state&.fetch(:rolloutPercentage)
+    )
+  )
+end
+
 platform :android do
-  desc "Build signed phone and Wear AABs, ship to internal testing, and stage production review"
-  lane :release do
-    release_properties = android_release_properties
+  desc "Build the signed phone and Wear AABs once"
+  lane :build_internal do
+    properties = signing_properties
+    gradle(project_dir: "android", task: ":app:bundleRelease", properties: properties)
+    gradle(project_dir: "android", task: ":wearos:bundleRelease", properties: properties)
+  end
 
-    # Leave signer identity in CI logs before producing either artifact.
-    gradle(
-      project_dir: "android",
-      task: ":wearos:signingReport",
-      properties: release_properties
+  desc "Upload the existing phone AAB to internal testing only"
+  lane :upload_phone_internal do
+    internal_upload(
+      "android/app/build/outputs/bundle/release/app-release.aab",
+      ENV.fetch("PHONE_INTERNAL_TRACK", "internal")
     )
+  end
 
-    # Explicit module tasks avoid Gradle's ambiguous root bundleRelease task.
-    gradle(
-      project_dir: "android",
-      task: ":app:bundleRelease",
-      properties: release_properties
+  desc "Upload the existing Wear AAB to internal testing only"
+  lane :upload_wear_internal do
+    internal_upload(
+      "android/wearos/build/outputs/bundle/release/wearos-release.aab",
+      ENV.fetch("WEAR_INTERNAL_TRACK", "wear:internal")
     )
-    gradle(
-      project_dir: "android",
-      task: ":wearos:bundleRelease",
-      properties: release_properties
+  end
+  desc "Validate exact phone and Wear artifacts before open promotion"
+  lane :validate_open_promotion do
+    require_release_env(
+      "PHONE_VERSION_CODE",
+      "WEAR_VERSION_CODE",
+      "PHONE_INTERNAL_TRACK",
+      "PHONE_OPEN_TRACK",
+      "WEAR_INTERNAL_TRACK",
+      "WEAR_OPEN_TRACK"
     )
-
-    phone_aab = "android/app/build/outputs/bundle/release/app-release.aab"
-    wear_aab = "android/wearos/build/outputs/bundle/release/wearos-release.aab"
-
-    # Publish the phone build for immediate internal testing.
-    upload_to_play_store(
-      aab: phone_aab,
-      track: "internal",
-      release_status: "completed",
-      skip_upload_apk: true,
-      skip_upload_metadata: true,
-      skip_upload_images: true,
-      skip_upload_screenshots: true,
-      skip_upload_changelogs: true,
-      changes_not_sent_for_review: true
+    validate_promotion_artifact(
+      "Phone",
+      exact_code("PHONE_VERSION_CODE"),
+      ENV.fetch("PHONE_INTERNAL_TRACK"),
+      ENV.fetch("PHONE_OPEN_TRACK")
     )
-
-    # Promote the same artifact to a production draft for manual review.
-    upload_to_play_store(
-      track: "internal",
-      track_promote_to: "production",
-      release_status: "draft",
-      version_code: ENV["VERSION_CODE"].to_i,
-      skip_upload_aab: true,
-      skip_upload_apk: true,
-      skip_upload_metadata: true,
-      skip_upload_images: true,
-      skip_upload_screenshots: true,
-      skip_upload_changelogs: true,
-      changes_not_sent_for_review: true
+    validate_promotion_artifact(
+      "Wear",
+      exact_code("WEAR_VERSION_CODE"),
+      ENV.fetch("WEAR_INTERNAL_TRACK"),
+      ENV.fetch("WEAR_OPEN_TRACK")
     )
+  end
 
-    # Wear OS uses form-factor-prefixed API track identifiers.
-    upload_to_play_store(
-      aab: wear_aab,
-      track: "wear:internal",
-      release_status: "completed",
-      skip_upload_apk: true,
-      skip_upload_metadata: true,
-      skip_upload_images: true,
-      skip_upload_screenshots: true,
-      skip_upload_changelogs: true,
-      changes_not_sent_for_review: true
+  desc "Promote one exact phone artifact from internal to open testing"
+  lane :promote_phone_open do
+    promote_exact_artifact(
+      "Phone",
+      exact_code("PHONE_VERSION_CODE"),
+      ENV.fetch("PHONE_INTERNAL_TRACK"),
+      ENV.fetch("PHONE_OPEN_TRACK")
     )
+  end
 
-    upload_to_play_store(
-      track: "wear:production",
-      release_status: "completed",
-      version_code: ENV["WEAR_VERSION_CODE"].to_i,
-      skip_upload_aab: true,
-      skip_upload_apk: true,
-      skip_upload_metadata: true,
-      skip_upload_images: true,
-      skip_upload_screenshots: true,
-      skip_upload_changelogs: true,
-      changes_not_sent_for_review: true
+  desc "Promote one exact Wear artifact from internal to open testing"
+  lane :promote_wear_open do
+    promote_exact_artifact(
+      "Wear",
+      exact_code("WEAR_VERSION_CODE"),
+      ENV.fetch("WEAR_INTERNAL_TRACK"),
+      ENV.fetch("WEAR_OPEN_TRACK")
+    )
+  end
+
+
+  desc "Validate exact open-tested artifacts before production work"
+  lane :validate_production_candidate do
+    require_release_env(
+      "PHONE_VERSION_CODE",
+      "WEAR_VERSION_CODE",
+      "PHONE_OPEN_TRACK",
+      "PHONE_PRODUCTION_TRACK",
+      "WEAR_OPEN_TRACK",
+      "WEAR_PRODUCTION_TRACK",
+      "PRODUCTION_OPERATION"
+    )
+    [
+      ["Phone", exact_code("PHONE_VERSION_CODE"), ENV.fetch("PHONE_OPEN_TRACK"), ENV.fetch("PHONE_PRODUCTION_TRACK")],
+      ["Wear", exact_code("WEAR_VERSION_CODE"), ENV.fetch("WEAR_OPEN_TRACK"), ENV.fetch("WEAR_PRODUCTION_TRACK")]
+    ].each do |label, code, open_track, production_track|
+      on_open = play_release_state(open_track, code)
+      on_production = play_release_state(production_track, code)
+      if ENV.fetch("PRODUCTION_OPERATION") == "promote"
+        UI.user_error!("#{label} version code #{code} is on neither #{open_track} nor #{production_track}") unless on_open || on_production
+      else
+        UI.user_error!("#{label} version code #{code} is not on #{production_track}") unless on_production
+      end
+    end
+  end
+
+  desc "Manage one exact phone production rollout"
+  lane :manage_phone_production do
+    manage_production_artifact(
+      "Phone",
+      exact_code("PHONE_VERSION_CODE"),
+      ENV.fetch("PHONE_OPEN_TRACK"),
+      ENV.fetch("PHONE_PRODUCTION_TRACK")
+    )
+  end
+
+  desc "Manage one exact Wear production rollout"
+  lane :manage_wear_production do
+    manage_production_artifact(
+      "Wear",
+      exact_code("WEAR_VERSION_CODE"),
+      ENV.fetch("WEAR_OPEN_TRACK"),
+      ENV.fetch("WEAR_PRODUCTION_TRACK")
     )
   end
 end
 
-# iOS — add below once ready:
-# platform :ios do
-#   lane :release do
-#     build_app(scheme: "vescape", workspace: "ios/vescape.xcworkspace")
-#     upload_to_app_store   # or `pilot` for TestFlight-only
-#   end
-# end
+platform :ios do
+  desc "One-time bootstrap: generate distribution cert + provisioning profiles and push to the certs repo"
+  lane :bootstrap_certs do
+    api_key = app_store_connect_api_key(
+      key_id:       ENV["ASC_KEY_ID"],
+      issuer_id:    ENV["ASC_ISSUER_ID"],
+      key_filepath: ENV["ASC_KEY_PATH"],
+      in_house:     false
+    )
+    match(type: "appstore", api_key: api_key, readonly: false)
+  end
+
+  desc "Build a signed IPA, ship to TestFlight testers, and stage an App Store draft"
+  lane :release do
+    # Create an unlocked keychain with a known password so match can import
+    # the distribution cert. setup_ci alone doesn't pass the password to match,
+    # causing SecItemCopyMatching failures on GitHub Actions runners.
+    keychain_name     = "vescape-build"
+    keychain_password = SecureRandom.hex(32)
+    create_keychain(
+      name:             keychain_name,
+      password:         keychain_password,
+      default_keychain: true,
+      unlock:           true,
+      timeout:          3600,
+      lock_when_sleeps: false
+    )
+
+    # Authenticate with App Store Connect via API key (no Apple ID password needed).
+    # The .p8 file is decoded to RUNNER_TEMP by the workflow and its path exported as
+    # ASC_KEY_PATH; KEY_ID and ISSUER_ID come from secrets.
+    api_key = app_store_connect_api_key(
+      key_id:        ENV["ASC_KEY_ID"],
+      issuer_id:     ENV["ASC_ISSUER_ID"],
+      key_filepath:  ENV["ASC_KEY_PATH"],
+      in_house:      false
+    )
+
+    # Pull the distribution certificate + provisioning profiles from the private
+    # certs repo. The workflow sets CI=true so match runs in read-only mode.
+    match(
+      type:              "appstore",
+      api_key:           api_key,
+      readonly:          ENV["CI"] == "true",
+      keychain_name:     keychain_name,
+      keychain_password: keychain_password
+    )
+
+    # Wire the profiles match installed into the Xcode project so both the
+    # archive and export phases can find them. expo prebuild generates manual
+    # signing but leaves PROVISIONING_PROFILE_SPECIFIER empty — set it here.
+    profiles = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING]
+    [
+      { target: "vescape",      bundle: "app.vescape" },
+      { target: "RideActivity", bundle: "app.vescape.widget" }
+    ].each do |t|
+      update_code_signing_settings(
+        use_automatic_signing: false,
+        path:                  "ios/vescape.xcodeproj",
+        team_id:               ENV["APPLE_TEAM_ID"],
+        code_sign_identity:    "iPhone Distribution",
+        profile_name:          profiles[t[:bundle]],
+        targets:               [t[:target]]
+      )
+    end
+
+    # Build a signed IPA from the expo-prebuilt workspace.
+    # CFBundleVersion is set to VERSION_CODE (github run_number).
+    build_app(
+      workspace:      "ios/vescape.xcworkspace",
+      scheme:         "vescape",
+      export_method:  "app-store",
+      export_options: {
+        provisioningProfiles: profiles
+      },
+      xcargs:         "CURRENT_PROJECT_VERSION=#{ENV["VERSION_CODE"]} MARKETING_VERSION=#{ENV["APP_VERSION"]}"
+    )
+
+    # External distribution requires "What to Test" notes. Reuse the canonical
+    # rider-facing release note for this version; TestFlight caps them at 4000 chars.
+    notes_path = File.join(__dir__, "..", "release-notes", "#{ENV["APP_VERSION"]}.md")
+    UI.user_error!("Missing release note #{notes_path}") unless File.exist?(notes_path)
+    changelog = File.read(notes_path).strip[0, 4000]
+
+    # Upload to TestFlight, wait for Apple to finish processing, then
+    # distribute to internal testers and the external 'External Testers' group.
+    # Waiting adds ~10-20 min but is required for external distribution.
+    upload_to_testflight(
+      api_key:             api_key,
+      changelog:           changelog,
+      distribute_external: true,
+      groups:              ["External Testers"],
+      notify_external_testers: true
+    )
+
+    # Step 2: Create an App Store draft at the same version so you can review
+    # and manually submit for review in App Store Connect — mirrors the Android
+    # production-draft step in the Play Console.
+    upload_to_app_store(
+      api_key:              api_key,
+      submit_for_review:    false,
+      # precheck can't inspect in-app purchases with an ASC API key, and there is
+      # nothing to pre-check when we only stage a draft instead of submitting.
+      run_precheck_before_submit: false,
+      automatic_release:    false,
+      skip_metadata:        true,
+      skip_screenshots:     true,
+      skip_binary_upload:   true   # reuse the build already uploaded via TestFlight
+    )
+  end
+end

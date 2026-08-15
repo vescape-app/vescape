@@ -28,7 +28,6 @@ Extract id. Missing -> ask.
    - `docs/agents/issue-tracker.md`
    - `docs/agents/domain.md`
    - `docs/agents/react.md` if RN UI
-   - `docs/agents/posthog.md` if PostHog/debug
 2. Domain:
    - `CONTEXT.md` if present
    - `docs/tune.md` if tune r/w

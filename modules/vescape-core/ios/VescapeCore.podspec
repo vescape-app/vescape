@@ -8,10 +8,11 @@ Pod::Spec.new do |s|
   s.summary        = package['description']
   s.description    = package['description']
   s.license        = 'MIT'
-  s.author         = 'vesc-app-poc'
-  s.homepage       = 'https://github.com/vesc-app-poc'
-  # 17.0 to match the app deployment target: the Board Session Live Activity (ActivityKit) driven
-  # from this pod needs 16.1+, and the app already ships 17.0, so nothing runs below it.
+  s.author         = 'vescape'
+  s.homepage       = 'https://github.com/vescape'
+  # 17.0 matches the app deployment target required by Clerk's native iOS SDK. The Board Session
+  # Live Activity driven from this pod needs 16.1+, so the app's floor also needs no availability
+  # gating in its ActivityKit code.
   s.platform       = :ios, '17.0'
   s.swift_version  = '5.9'
   s.source         = { :git => '' }
@@ -37,8 +38,10 @@ Pod::Spec.new do |s|
   # percent. `cell-presets.json` is a symlink to the single shared source (../../../shared/data);
   # CocoaPods only copies resources under the pod root, and following the symlink keeps one source
   # of truth instead of a committed per-platform copy.
-  # `fixtures` is a symlink to `../../shared/fixtures` — bundled replay fixtures for the dev-mode
-  # Replay UI (#230), same single-source pattern as `cell-presets.json`.
+  # `fixtures/` holds bundled replay recordings for the dev-mode Replay UI (#230) and the screenshot
+  # capture run. Unlike `cell-presets.json` it is a generated copy (`bun run copy:shared`), not a
+  # symlink: CocoaPods resolves a symlinked file under the pod root but does not expand a glob
+  # through a symlinked directory, so `fixtures/*.jsonl` silently matched nothing.
   s.resource_bundles = {
     'VescapeCoreAssets' => [
       'cell-presets.json',

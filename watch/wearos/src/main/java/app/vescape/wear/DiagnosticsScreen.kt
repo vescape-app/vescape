@@ -25,8 +25,8 @@ import kotlinx.coroutines.delay
 
 /**
  * Field-debuggable view of the frame path ([WatchDiagnostics]), one pager page right of the gauges.
- * Readable straight off the wrist — no adb, no watch-to-phone channel (ADR-0019 stays one-way):
- * counters answer "are frames arriving / decoding", the event ring shows link flaps and streak
+ * Readable straight off the wrist — no adb, and no phone round trip (the wrist->phone channel in
+ * ADR-0033 carries rider commands, never diagnostics): counters answer "are frames arriving / decoding", the event ring shows link flaps and streak
  * starts with wall-clock times a rider can report or photograph.
  */
 @Composable

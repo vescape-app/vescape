@@ -17,8 +17,10 @@ import { telemetry } from '@/modules/board/constants/telemetry'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+
+const ATTITUDE_FONT_SIZE = 11
+const LIVE_FONT_SIZE = 24
 
 const pitchCfg = telemetry.pitch
 const rollCfg = telemetry.roll
@@ -37,7 +39,16 @@ function AttitudeView({ title, value, unit, accentColor, children }: AttitudeVie
     <View style={styles.attitudeView}>
       <View style={styles.attitudeHeader}>
         <Text style={styles.attitudeTitle}>{title}</Text>
-        <TickText value={value} decimals={1} unit={unit} style={styles.attitudeValue} />
+        <TickText
+          value={value}
+          decimals={1}
+          unit={unit}
+          size={ATTITUDE_FONT_SIZE}
+          weight="600"
+          color={theme.palette.slate.textSecondary}
+          align="right"
+          style={styles.attitudeValue}
+        />
       </View>
       <View style={[styles.attitudeAccent, { backgroundColor: accentColor }]} />
       <View style={styles.attitudeCanvas}>{children}</View>
@@ -61,7 +72,10 @@ function LiveMetricReadout({ label, value, decimals, unit, color }: LiveMetricRe
         value={value}
         decimals={decimals}
         unit={unit}
-        style={[styles.liveValue, { color }]}
+        size={LIVE_FONT_SIZE}
+        weight="800"
+        color={color}
+        style={styles.liveValue}
       />
     </View>
   )
@@ -74,47 +88,43 @@ interface HotAttitudeBarsProps {
 }
 
 function HotAttitudeBars({ pitch, roll, balancePitch }: HotAttitudeBarsProps) {
-  const neutral = useResolvedNeutralColors()
-  const accents = useResolvedAccentColors()
-  const pitchZeroColorStyle = useAnimatedStyle<ViewStyle>(
-    () => ({
-      backgroundColor: pitch.value == null ? neutral.textDim : accents.sky.color,
-    }),
-    [accents.sky.color, neutral.textDim],
-  )
-  const rollZeroColorStyle = useAnimatedStyle<ViewStyle>(
-    () => ({
-      backgroundColor: roll.value == null ? neutral.textDim : accents.cyan.color,
-    }),
-    [accents.cyan.color, neutral.textDim],
-  )
+  const pitchZeroColorStyle = useAnimatedStyle<ViewStyle>(() => ({
+    backgroundColor: pitch.value == null ? theme.palette.slate.textDim : theme.palette.sky.color,
+  }))
+  const rollZeroColorStyle = useAnimatedStyle<ViewStyle>(() => ({
+    backgroundColor: roll.value == null ? theme.palette.slate.textDim : theme.palette.cyan.color,
+  }))
   const balanceLineStyle = useAnimatedStyle<ViewStyle>(() => ({
     transform: [{ rotate: `${balancePitch.value ?? 0}deg` }],
   }))
-  const pitchBoardStyle = useAnimatedStyle<ViewStyle>(
-    () => ({
-      transform: [{ rotate: `${pitch.value ?? 0}deg` }],
-      backgroundColor: pitch.value == null ? neutral.textDim : accents.sky.color,
-    }),
-    [accents.sky.color, neutral.textDim],
-  )
-  const rollBoardStyle = useAnimatedStyle<ViewStyle>(
-    () => ({
-      transform: [{ rotate: `${roll.value ?? 0}deg` }],
-      backgroundColor: roll.value == null ? neutral.textDim : accents.cyan.color,
-    }),
-    [accents.cyan.color, neutral.textDim],
-  )
+  const pitchBoardStyle = useAnimatedStyle<ViewStyle>(() => ({
+    transform: [{ rotate: `${pitch.value ?? 0}deg` }],
+    backgroundColor: pitch.value == null ? theme.palette.slate.textDim : theme.palette.sky.color,
+  }))
+  const rollBoardStyle = useAnimatedStyle<ViewStyle>(() => ({
+    transform: [{ rotate: `${roll.value ?? 0}deg` }],
+    backgroundColor: roll.value == null ? theme.palette.slate.textDim : theme.palette.cyan.color,
+  }))
 
   return (
     <View style={styles.attitudeGrid}>
-      <AttitudeView title="SIDE" value={pitch} unit={pitchCfg.unit} accentColor={accents.sky.color}>
+      <AttitudeView
+        title="SIDE"
+        value={pitch}
+        unit={pitchCfg.unit}
+        accentColor={theme.palette.sky.color}
+      >
         <ZeroLevelMarker colorStyle={pitchZeroColorStyle} />
         <Animated.View style={[styles.balanceLine, balanceLineStyle]} />
         <Animated.View style={[styles.sideBoard, pitchBoardStyle]} />
       </AttitudeView>
 
-      <AttitudeView title="BACK" value={roll} unit={rollCfg.unit} accentColor={accents.cyan.color}>
+      <AttitudeView
+        title="BACK"
+        value={roll}
+        unit={rollCfg.unit}
+        accentColor={theme.palette.cyan.color}
+      >
         <ZeroLevelMarker colorStyle={rollZeroColorStyle} />
         <Animated.View style={[styles.frontBoard, rollBoardStyle]} />
       </AttitudeView>
@@ -137,7 +147,6 @@ function ZeroLevelMarker({ colorStyle }: ZeroLevelMarkerProps) {
 }
 
 export default function ImuScreen() {
-  const neutral = useResolvedNeutralColors()
   const pitch = useLiveMetric(liveSelectors.pitch)
   const roll = useLiveMetric(liveSelectors.roll)
   const balancePitch = useLiveMetric(liveSelectors.balancePitch)
@@ -185,7 +194,7 @@ export default function ImuScreen() {
           value={hot.balancePitch}
           decimals={balanceCfg.decimals}
           unit={balanceCfg.unit}
-          color={neutral.textSecondary}
+          color={theme.palette.slate.textSecondary}
         />
       </View>
 
@@ -241,16 +250,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   liveLabel: {
-    color: theme.neutral.textMuted,
+    color: theme.palette.slate.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.7,
   },
   liveValue: {
-    fontSize: 24,
-    fontFamily: 'monospace',
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
+    alignSelf: 'stretch',
   },
   attitudePanel: {
     gap: 10,
@@ -262,13 +268,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionLabel: {
-    color: theme.neutral.textSecondary,
+    color: theme.palette.slate.textSecondary,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
   sectionHint: {
-    color: theme.neutral.textDim,
+    color: theme.palette.slate.textDim,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -288,16 +294,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   attitudeTitle: {
-    color: theme.neutral.textMuted,
+    color: theme.palette.slate.textMuted,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.7,
   },
   attitudeValue: {
-    color: theme.neutral.textSecondary,
-    fontSize: 11,
-    fontFamily: 'monospace',
-    fontWeight: '600',
+    minWidth: 56,
   },
   attitudeAccent: {
     height: 2,
@@ -327,14 +330,14 @@ const styles = StyleSheet.create({
     width: 12,
     height: 2,
     borderRadius: 1,
-    backgroundColor: theme.neutral.textDim,
+    backgroundColor: theme.palette.slate.textDim,
   },
   zeroRing: {
     width: 12,
     height: 12,
     borderRadius: 999,
     borderWidth: 0,
-    backgroundColor: theme.neutral.textDim,
+    backgroundColor: theme.palette.slate.textDim,
   },
   sideBoard: {
     position: 'absolute',
@@ -347,7 +350,7 @@ const styles = StyleSheet.create({
     width: '54%',
     height: 2,
     borderRadius: 1,
-    backgroundColor: theme.neutral.textMuted,
+    backgroundColor: theme.palette.slate.textMuted,
   },
   frontBoard: {
     position: 'absolute',

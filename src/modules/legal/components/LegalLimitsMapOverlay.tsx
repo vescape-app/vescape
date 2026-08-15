@@ -57,6 +57,7 @@ export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOv
       <IconButton
         icon={ArrowLeftIcon}
         size="sm"
+        testID="legal-limits-exit"
         accessibilityLabel="Exit legal limits"
         onPress={onExit}
         style={[styles.mapTopBackButton, { top }]}

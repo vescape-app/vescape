@@ -8,7 +8,7 @@ import { theme } from '@/constants/theme'
  */
 export function ReplayBadge() {
   return (
-    <View style={styles.badge}>
+    <View testID="replay-badge" style={styles.badge}>
       <Text style={styles.text}>REPLAY</Text>
     </View>
   )

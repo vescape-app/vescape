@@ -37,10 +37,13 @@ export const routes = {
   settingsVisuals: '/settings/visuals' as Href,
   settingsMap: '/settings/map' as Href,
   settingsWatch: '/settings/watch' as Href,
-  settingsFilters: '/settings/filters' as Href,
+  settingsHistory: '/settings/history' as Href,
   settingsGraphs: '/settings/graphs' as Href,
   settingsDatabase: '/settings/database' as Href,
   settingsAbout: '/settings/about' as Href,
+  settingsReleaseNotes: '/settings/release-notes' as Href,
+  devMapPlayground: '/dev/map-playground' as Href,
+  historyCharts: '/history/charts' as Href,
 } as const
 
 export const stackScreens = {
@@ -70,8 +73,11 @@ export const stackScreens = {
   settingsVisuals: 'settings/visuals',
   settingsMap: 'settings/map',
   settingsWatch: 'settings/watch',
-  settingsFilters: 'settings/filters',
+  settingsHistory: 'settings/history',
   settingsGraphs: 'settings/graphs',
   settingsDatabase: 'settings/database',
   settingsAbout: 'settings/about',
+  settingsReleaseNotes: 'settings/release-notes',
+  devMapPlayground: 'dev/map-playground',
+  historyCharts: 'history/charts',
 } as const

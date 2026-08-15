@@ -83,6 +83,7 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
               id: rule.id,
               threshold: rule.threshold,
               thresholdMax: rule.thresholdMax,
+              repeats: rule.repeatEverySeconds != null,
             }))
         : [],
     [alertRules, batteryConfigured],

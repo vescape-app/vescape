@@ -75,6 +75,22 @@ internal class SessionRecorder(context: Context, private val boardConfig: Sessio
         )
     }
 
+    /**
+     * The phone's compass bearing, pushed down from JS — the sensor is read there, so native cannot
+     * observe it on its own. Recorded so a replay can drive the heading cone and Compass follow off
+     * the real measured rotation instead of a stand-in derived from GPS course.
+     *
+     * @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `recordPhoneHeading`
+     */
+    fun recordPhoneHeading(headingDeg: Double) {
+        write(
+            JSONObject()
+                .put("t", elapsed())
+                .put("kind", "phone-heading")
+                .put("headingDeg", headingDeg)
+        )
+    }
+
     fun finish(status: String) {
         try {
             recordState(status)

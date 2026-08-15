@@ -1,0 +1,22 @@
+{
+  "temperatureC": 17,
+  "icon": "cloud-sun",
+  "label": "Partly cloudy",
+  "precipitationProbability": 15,
+  "sunriseMinuteOfDay": 312,
+  "sunsetMinuteOfDay": 1248,
+  "hourly": [
+    { "temperatureC": 17, "icon": "sun", "precipitationProbability": 0 },
+    { "temperatureC": 19, "icon": "cloud-sun", "precipitationProbability": 13 },
+    { "temperatureC": 20, "icon": "cloud", "precipitationProbability": 26 },
+    { "temperatureC": 21, "icon": "cloud-rain", "precipitationProbability": 39 },
+    { "temperatureC": 22, "icon": "cloud-lightning", "precipitationProbability": 52 },
+    { "temperatureC": 23, "icon": "cloud-snow", "precipitationProbability": 65 },
+    { "temperatureC": 23, "icon": "sun", "precipitationProbability": 78 },
+    { "temperatureC": 23, "icon": "cloud-sun", "precipitationProbability": 1 },
+    { "temperatureC": 22, "icon": "cloud", "precipitationProbability": 14 },
+    { "temperatureC": 21, "icon": "cloud-rain", "precipitationProbability": 27 },
+    { "temperatureC": 20, "icon": "cloud-lightning", "precipitationProbability": 40 },
+    { "temperatureC": 19, "icon": "cloud-snow", "precipitationProbability": 53 }
+  ]
+}

@@ -5,13 +5,8 @@ import Foundation
 /// Android's `DiagnosticReporter`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/diagnostics/DiagnosticReporter.kt
-/// @platform-diff Android fans events out to a PostHog transport when an API key is configured;
-/// iOS has no PostHog transport yet, so `enabled` is always `false` and captures are kept as Local
-/// Diagnostic Events (ADR 0007) instead of being dropped on the floor.
 internal final class DiagnosticReporter {
   static let shared = DiagnosticReporter()
-
-  private static let defaultHost = "https://us.i.posthog.com"
 
   private let recorder: DiagnosticsRecorder
   private let lock = NSLock()
@@ -23,8 +18,8 @@ internal final class DiagnosticReporter {
     self.recorder = recorder
   }
 
-  /// Count the capture (mirrors Android, which counts even when transport is disabled) and keep
-  /// the breadcrumb in the local store since there is no remote sink on iOS.
+  /// Count the capture and keep the breadcrumb in the local store (Local Diagnostic Events,
+  /// ADR 0007). There is no remote analytics transport on either platform.
   func capture(eventName: String, properties: [String: Any?] = [:]) {
     lock.lock()
     captureCount += 1
@@ -38,10 +33,6 @@ internal final class DiagnosticReporter {
     lock.lock()
     defer { lock.unlock() }
     return [
-      "enabled": false,
-      "host": Self.defaultHost,
-      // No remote identity without a configured transport (matches Android when the key is absent).
-      "distinctId": nil,
       "captureCount": captureCount,
       "lastEventName": lastEventName,
       "lastCaptureAt": lastCaptureAt,

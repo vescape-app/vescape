@@ -10,19 +10,26 @@ import {
   ShapeSource,
   SymbolLayer,
 } from '@rnmapbox/maps'
+import { WarningIcon } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
-import type { DirectionPoint } from '@/modules/map/store/mapStore'
+import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
+import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
+import { RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
+import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 import {
   getMapPointKindColor,
   getMapPointKindLabel,
@@ -30,7 +37,6 @@ import {
 } from '@/modules/map-points/constants/mapPoints'
 import { theme } from '@/constants/theme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
-import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 import { getFavoriteRouteSegments } from '@/modules/history/lib/favoriteRoute'
 import { resolveMarkerRenderData } from '@/modules/history/lib/markerOverlap'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -44,6 +50,7 @@ import type {
   HistoryMetricHotRanges,
 } from '@/modules/history/lib/metricColorScale'
 import { isMapPinKindVisible } from '@/modules/map-points/lib/mapPointVisibility'
+import { getPlaceCategoryIconKey } from '@/modules/map-points/constants/placeCategoryIcon'
 import type {
   HistoryGpsSample,
   HistoryMarker,
@@ -51,7 +58,6 @@ import type {
 } from '@/modules/history/store/historyStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
 
 import {
@@ -59,6 +65,11 @@ import {
   HISTORY_MARKER_ICONS,
   type SelectedHistoryMarker,
 } from '@/modules/history/lib/historyMapMarkerInfo'
+import {
+  DESTINATION_POINT_COLOR,
+  DESTINATION_POINT_TEXT_COLOR,
+  GPS_POINT_COLOR,
+} from '@/screens/main/map/offscreenMapIndicators'
 import {
   getHistoryMetricBaseColor,
   getHistoryRouteHighlightDurationMs,
@@ -74,6 +85,23 @@ const GPS_HEADING_ICON_ID = 'center-gps-heading'
 const GPS_HEADING_ICON = require('@rnmapbox/maps/src/assets/heading.png')
 const HISTORY_ROUTE_HIGHLIGHT_INTERVAL_MS = 50
 const HISTORY_ROUTE_HIGHLIGHT_DELAY_MS = 500
+
+/** The dark halo the dots sit on, so a light path stays readable over a satellite tile. */
+const NAVIGATION_CASING_WIDTH = MAP_DEFAULTS.navigationWidth + 4
+
+/** Distance between two dot centres, in screen pixels. Fixed, so both layers dot in step. */
+const NAVIGATION_DOT_SPACING_PX = 11
+
+/**
+ * A dotted line: a zero-length dash under a round cap draws a circle, and the gap does the spacing.
+ *
+ * Mapbox measures a dash pattern in multiples of the line's own width, so the same pattern on the
+ * casing would space its dots wider than the line's. Dividing by the width converts the spacing back
+ * to pixels and keeps the two layers dot for dot.
+ */
+function navigationDots(lineWidth: number): [number, number] {
+  return [0, NAVIGATION_DOT_SPACING_PX / lineWidth]
+}
 interface MainMapLayersProps {
   historyActive: boolean
   expandSelectedMapPoints: boolean
@@ -132,17 +160,15 @@ function LiveMapLayers({
   riders: MainMapLayersProps['riders']
   highContrastRoutes: boolean
 }) {
-  const neutral = useResolvedNeutralColors()
-  const accents = useResolvedAccentColors()
   const riderColor = useRiderStore((state) => state.riderColor)
-  const gpsPointColor = riderColor ?? accents.purple.color
-  const trailColor = riderColor ?? accents.violet.color
+  const gpsPointColor = riderColor ?? GPS_POINT_COLOR
+  const trailColor = riderColor ?? MAP_DEFAULTS.trailColor
   const trailGradientStart = riderColor
     ? theme.alpha(riderColor, 0)
-    : theme.alpha(accents.violet.color, 0)
+    : MAP_DEFAULTS.trailGradientStart
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
-    : theme.alpha(accents.violet.color, 0.85)
+    : MAP_DEFAULTS.trailGradientEnd
   const gpsPuckPositionShape = useMemo(
     () =>
       accuracyFix
@@ -184,7 +210,7 @@ function LiveMapLayers({
           <LineLayer
             id="center-live-trail-casing"
             style={{
-              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
+              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
               lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
               lineCap: 'round',
               lineJoin: 'round',
@@ -216,7 +242,7 @@ function LiveMapLayers({
             <ShapeSource id="center-gps-accuracy-source" shape={accuracyShape}>
               <FillLayer
                 id="center-gps-accuracy-fill"
-                style={{ fillColor: theme.alpha(accents.violet.color, 0.12) }}
+                style={{ fillColor: MAP_DEFAULTS.accuracyFillColor }}
               />
             </ShapeSource>
           )}
@@ -272,31 +298,9 @@ function LiveMapLayers({
   )
 }
 
-// Subscribes to the scrub head directly so dragging the telemetry chart only re-renders this pin,
-// not the whole map/overlay tree. rideGpsSamples is a stable prop (changes only on session switch).
-function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
-  const accents = useResolvedAccentColors()
-  const seekTimeMs = useMainScreenStore((s) => s.seekTimeMs)
-  const seekPosition = useMemo(() => {
-    if (seekTimeMs == null || rideGpsSamples.length === 0) return null
-    const idx = findNearestSampleIndexByTime(rideGpsSamples, seekTimeMs)
-    return idx >= 0 ? rideGpsSamples[idx] : null
-  }, [seekTimeMs, rideGpsSamples])
-
-  if (!seekPosition || seekPosition.latitude == null || seekPosition.longitude == null) return null
-  return (
-    <MapPin
-      id="center-seek-position"
-      coordinate={[seekPosition.longitude, seekPosition.latitude]}
-      color={accents.violet.color}
-    />
-  )
-}
-
 // Live sub-range highlight while trimming a Favorite. Subscribes to the trim range directly so a
 // drag only re-renders this layer, not the whole map. rideGpsSamples is a stable prop.
 function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
-  const accents = useResolvedAccentColors()
   const trimRange = useMainScreenStore((s) => s.trimRange)
   const shape = useMemo(() => {
     if (!trimRange) return null
@@ -322,7 +326,7 @@ function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSamp
       <LineLayer
         id="center-ride-trim-line"
         style={{
-          lineColor: accents.amber.color,
+          lineColor: theme.palette.amber.color,
           lineWidth: 5,
           lineCap: 'round',
           lineJoin: 'round',
@@ -343,7 +347,6 @@ function FavoriteRouteBorder({
   highContrastRoutes: boolean
   trimming: boolean
 }) {
-  const accents = useResolvedAccentColors()
   const shape = useMemo(() => {
     const coordinates = getFavoriteRouteSegments(rideGpsSamples, favoriteRanges)
     if (coordinates.length === 0) return null
@@ -361,7 +364,7 @@ function FavoriteRouteBorder({
         id="center-ride-favorites-border"
         belowLayerID="center-ride-route-casing"
         style={{
-          lineColor: accents.yellow.color,
+          lineColor: theme.status.favorite.color,
           lineWidth: highContrastRoutes ? 10 : 6,
           lineOpacity: trimming ? 1 : 0.9,
           lineCap: 'round',
@@ -389,6 +392,15 @@ function PendingNavigationTargetPin({
       </Animated.View>
     </MarkerView>
   )
+}
+
+function getNavigationTargetIcon(target: MapSelection | null) {
+  if (target?.type === 'place') return getPlaceCategoryIcon(target.category)
+  return getMapPointKindIcon('direction')
+}
+
+function getNavigationTargetIconKey(target: MapSelection | null) {
+  return target?.type === 'place' ? getPlaceCategoryIconKey(target.category) : 'direction'
 }
 
 const pendingNavigationTargetEntering = () => {
@@ -438,8 +450,6 @@ export function HistoryMapLayers({
   onOpenMedia: MainMapLayersProps['onOpenMedia']
   highContrastRoutes: boolean
 }) {
-  const neutral = useResolvedNeutralColors()
-  const accents = useResolvedAccentColors()
   // Flips only on trim enter/exit, so the whole-route layers dim without per-drag re-renders.
   const trimming = useMainScreenStore((s) => s.trimRange != null)
   const [highlightProgress, setHighlightProgress] = useState(0)
@@ -504,7 +514,7 @@ export function HistoryMapLayers({
           <LineLayer
             id="center-ride-route-casing"
             style={{
-              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
+              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
               lineWidth: highContrastRoutes ? 8 : 0,
               lineCap: 'round',
               lineJoin: 'round',
@@ -522,6 +532,23 @@ export function HistoryMapLayers({
               ...(routeMetricGradient ? { lineGradient: routeMetricGradient } : {}),
             }}
           />
+        </ShapeSource>
+      )}
+      {/* Over the route, under the pins: the pins are landmarks of the whole ride and stay
+          readable however far the chart is zoomed in. */}
+      <RouteZoomFocus
+        rideGpsSamples={rideGpsSamples}
+        routeShape={rideRouteShape}
+        rideTelemetrySamples={rideTelemetrySamples}
+        metric={activeHistoryMapMetric}
+        hotRanges={hotRanges}
+        gradientsEnabled={gradientsEnabled}
+        highContrastRoutes={highContrastRoutes}
+      />
+      {/* Its own source, above the zoom focus: the scrub glow marks where the finger is on the
+          chart, which stays true whether or not that stretch is the one zoomed into. */}
+      {rideRouteShape && (
+        <ShapeSource id="center-ride-route-highlight-source" shape={rideRouteShape} lineMetrics>
           <LineLayer
             id="center-ride-route-highlight"
             style={{
@@ -536,10 +563,18 @@ export function HistoryMapLayers({
       )}
       <TrimRouteHighlight rideGpsSamples={rideGpsSamples} />
       {rideRoute[0] && (
-        <MapPin id="center-ride-start" coordinate={rideRoute[0]} color={accents.green.color} />
+        <MapPin
+          id="center-ride-start"
+          coordinate={rideRoute[0]}
+          color={theme.palette.green.color}
+        />
       )}
       {rideRoute.at(-1) && (
-        <MapPin id="center-ride-end" coordinate={rideRoute.at(-1)!} color={accents.red.color} />
+        <MapPin
+          id="center-ride-end"
+          coordinate={rideRoute.at(-1)!}
+          color={theme.status.error.color}
+        />
       )}
       <SeekPositionPin rideGpsSamples={rideGpsSamples} />
 
@@ -610,10 +645,9 @@ export function MainMapLayers({
   onSelectLegalCountry,
   onFocusDirectionPoint,
 }: MainMapLayersProps) {
-  const accents = useResolvedAccentColors()
   const riderColor = useRiderStore((state) => state.riderColor)
-  const directionColor = riderColor ?? accents.green.color
-  const directionTextColor = riderColor ?? accents.green.text
+  const directionColor = riderColor ?? DESTINATION_POINT_COLOR
+  const directionTextColor = riderColor ?? DESTINATION_POINT_TEXT_COLOR
   const selectedMapPoint = useMemo(
     () =>
       mapPoints.find(
@@ -627,7 +661,30 @@ export function MainMapLayers({
     activeNavigationTarget?.type === 'mapPoint' ? activeNavigationTarget.point.id : null
   const showDirectionPoint =
     directionPoint != null && activeNavigationTarget?.type !== 'mapPoint' && !historyActive
-  const directionPointIconKind = 'direction' as const
+
+  // Native computes and owns the Navigation; this only draws the coordinates it was handed. They
+  // already arrive as GeoJSON `[longitude, latitude]`, so nothing is reordered here.
+  const navigation = useMapStore((state) => state.navigation)
+  // No path could be computed. The pin stays exactly where the rider put it — it is still their
+  // Direction Point, with a bearing and a distance — but it stops pretending a route is coming.
+  const navigationFailed = navigation != null && navigation.status !== 'ready'
+  const directionPinColor = navigationFailed ? theme.status.warning.color : directionColor
+  const directionPinTextColor = navigationFailed ? theme.status.warning.text : directionTextColor
+  const directionPinIcon = navigationFailed
+    ? WarningIcon
+    : getNavigationTargetIcon(activeNavigationTarget)
+  const navigationShape = useMemo<GeoJSON.Feature<GeoJSON.LineString> | null>(
+    () =>
+      navigation && navigation.coordinates.length > 1
+        ? {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: navigation.coordinates },
+            properties: {},
+          }
+        : null,
+    [navigation],
+  )
+  const showNavigation = showDirectionPoint && navigationShape != null
   const mapObjectsInteractive = !weatherActive && !legalLimitsActive && !historyActive
 
   return (
@@ -659,6 +716,7 @@ export function MainMapLayers({
       ) : null}
       <RainViewerOverlay visible={weatherActive} />
       {legalLimitsActive ? <LegalLimitsMapLayer onSelectCountry={onSelectLegalCountry} /> : null}
+      <PrivacyZonesMapLayer />
       {historyActive ? (
         <HistoryMapLayers
           rideRouteShape={rideRouteShape}
@@ -687,16 +745,42 @@ export function MainMapLayers({
           highContrastRoutes={isSatellite}
         />
       )}
+      {showNavigation && (
+        // Drawn whole, never trimmed or dimmed as the rider advances — deliberate, see #353.
+        // `lineMetrics` is free now and is what a later dimming pass would need.
+        <ShapeSource id="center-navigation-source" shape={navigationShape} lineMetrics>
+          <LineLayer
+            id="center-navigation-casing"
+            style={{
+              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineWidth: NAVIGATION_CASING_WIDTH,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(NAVIGATION_CASING_WIDTH),
+            }}
+          />
+          <LineLayer
+            id="center-navigation-line"
+            style={{
+              lineColor: directionColor,
+              lineWidth: MAP_DEFAULTS.navigationWidth,
+              lineCap: 'round',
+              lineJoin: 'round',
+              lineDasharray: navigationDots(MAP_DEFAULTS.navigationWidth),
+            }}
+          />
+        </ShapeSource>
+      )}
       {showDirectionPoint && (
         <MapPin
           // Color in the key: PointAnnotation snapshots its children natively, so a
           // rider-color or icon change must remount the pin to re-render.
-          key={`center-direction-position-${directionColor}-${directionPointIconKind}`}
+          key={`center-direction-position-${directionPinColor}-${navigationFailed ? 'failed' : getNavigationTargetIconKey(activeNavigationTarget)}`}
           id="center-direction-position"
           coordinate={[directionPoint.longitude, directionPoint.latitude]}
-          color={directionColor}
-          icon={getMapPointKindIcon(directionPointIconKind)}
-          iconColor={directionTextColor}
+          color={directionPinColor}
+          icon={directionPinIcon}
+          iconColor={directionPinTextColor}
           selected
           navigationActive
           onSelected={onFocusDirectionPoint}
@@ -717,10 +801,10 @@ export function MainMapLayers({
             <MapPin
               // Color in the key: PointAnnotation snapshots its children natively, so a
               // color change must remount the pin to re-render.
-              key={`center-rider-target-${rider.id}-${rosterRiderColor(rider, index, accents)}`}
+              key={`center-rider-target-${rider.id}-${rosterRiderColor(rider, index)}`}
               id={`center-rider-target-${rider.id}`}
               coordinate={[rider.presence.target.lng, rider.presence.target.lat]}
-              color={rosterRiderColor(rider, index, accents)}
+              color={rosterRiderColor(rider, index)}
               icon={getMapPointKindIcon('direction')}
             />
           ) : null,
@@ -733,9 +817,9 @@ export function MainMapLayers({
               key={point.id}
               id={`center-map-point-${point.id}`}
               coordinate={[point.longitude, point.latitude]}
-              color={getMapPointKindColor(point.category, accents)}
+              color={getMapPointKindColor(point.category)}
               icon={getMapPointKindIcon(point.category)}
-              iconColor={getMapPointKindTextColor(point.category, accents)}
+              iconColor={getMapPointKindTextColor(point.category)}
               selected={
                 selectedMapPoint?.id === point.id || activeNavigationMapPointId === point.id
               }
@@ -765,7 +849,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.4),
+    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.4),
   },
   pendingNavigationTargetCore: {
     width: 8,

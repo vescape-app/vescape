@@ -1,0 +1,8 @@
+# Hero panel: connected home with the live replay filling the sparklines. The runner holds this one
+# until the whole recentWindowMs sparkline window has elapsed at 1x — see scripts/screenshots.ts.
+appId: ${APP_ID}
+---
+- runFlow: ../fixture/_home.yaml
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: ${OUT_DIR}/01-home

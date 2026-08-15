@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
@@ -7,9 +7,12 @@ import { ChartLineUpIcon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { LinearGauge } from '@/components/charts/LinearGauge'
 import { IconHero } from '@/components/settings/IconHero'
+import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
+import { ChartStackShowcase } from '@/components/charts/line/ChartStackShowcase'
 import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
 import { computeAutoRange, type TelemetryChartPoint } from '@/components/charts/chartMath'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
+import { DualGauge } from '@/modules/board/components/DualGauge'
 import { Sparkline, type SparklinePoint } from '@/components/charts/Sparkline'
 import { BmsCellVoltagesView } from '@/modules/battery/components/BmsCellVoltages'
 import { summarizeBms, summarizeBmsWindow } from '@/modules/battery/lib'
@@ -194,6 +197,45 @@ function AnimatedSingleGaugeShowcase() {
   )
 }
 
+function AnimatedDualGaugeShowcase() {
+  const [compact, setCompact] = useState(false)
+  const speed = useSharedValue<number | null>(0)
+  const duty = useSharedValue<number | null>(0)
+
+  const speedSeries = useMemo(() => generateSparklineData(60, 28, 6, 11), [])
+  const dutySeries = useMemo(() => generateSparklineData(60, 55, 14, 23), [])
+
+  useEffect(() => {
+    speed.value = withRepeat(
+      withTiming(50, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    )
+    duty.value = withRepeat(
+      withTiming(100, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    )
+  }, [duty, speed])
+
+  return (
+    <ShowcaseCard
+      name="DualGauge / animated ramp"
+      controls={<ToggleRow label="compact" value={compact} onToggle={setCompact} />}
+    >
+      <DualGauge
+        speedValue={speed}
+        dutyValue={duty}
+        speedSeries={speedSeries}
+        dutySeries={dutySeries}
+        compact={compact}
+        speedAlerts={[{ id: 'speed-warn', threshold: 42, thresholdMax: null }]}
+        dutyAlerts={[{ id: 'duty-warn', threshold: 80, thresholdMax: 95 }]}
+      />
+    </ShowcaseCard>
+  )
+}
+
 function LinearGaugeShowcase() {
   const neutral = useResolvedNeutralColors()
   const [empty, setEmpty] = useState(false)
@@ -235,8 +277,11 @@ function LinearGaugeShowcase() {
         aux={empty ? undefined : mode === 'stale old' ? `${voltageText} · 2h ago` : voltageText}
         charging={charging}
         alerts={[
-          { id: 'low', threshold: 20, thresholdMax: null },
-          { id: 'band', threshold: 40, thresholdMax: 60 },
+          // One of each rule flavor: one-shot (tick only), geiger and repeating (both band the
+          // rest of the scale, since both keep making noise above where their marks stop).
+          { id: 'one-shot', threshold: 20, thresholdMax: null },
+          { id: 'geiger', threshold: 40, thresholdMax: 60 },
+          { id: 'repeating', threshold: 90, thresholdMax: null, repeats: true },
         ]}
         hint={empty ? 'Set battery config in board settings' : undefined}
       />
@@ -372,6 +417,38 @@ function TrimChartShowcase() {
   )
 }
 
+/** The overlay a detail chart wears until its focused series lands. */
+function ChartLoadingOverlayShowcase() {
+  const [loading, setLoading] = useState(true)
+  const points = useMemo(
+    () => generateChartData({ count: 120, base: 24, variance: 6, seed: 7 }),
+    [],
+  )
+  const currentPoint = points.at(-1) ?? null
+  const chartRange = computeAutoRange(points, { includeZero: true, minSpan: 10, paddingRatio: 0.1 })
+
+  return (
+    <ShowcaseCard name="ChartLoadingOverlay">
+      <Pressable onPress={() => setLoading((on) => !on)}>
+        <View>
+          <TelemetryLineChart
+            label="Tap to toggle the overlay"
+            value={currentPoint ? telemetry.speed.formatWithUnit(currentPoint.value) : '-'}
+            points={loading ? [] : points}
+            currentPoint={loading ? null : currentPoint}
+            color={telemetry.speed.color}
+            range={chartRange}
+            height={70}
+            formatValue={telemetry.speed.formatWithUnit}
+            containerStyle={styles.chartExample}
+          />
+          {loading ? <ChartLoadingOverlay /> : null}
+        </View>
+      </Pressable>
+    </ShowcaseCard>
+  )
+}
+
 const CELL_SCENARIOS = {
   'Small imbalance': {
     cells: [4.012, 4.03, 4.028, 4.031, 4.019, 4.03, 4.027, 4.03, 4.025, 4.029],
@@ -449,13 +526,16 @@ export default function ChartsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ChartLineUpIcon}
-          description="Sparkline, LinearGauge, SingleGauge, TelemetryLineChart, BmsCellVoltages."
+          description="Sparkline, LinearGauge, SingleGauge, DualGauge, TelemetryLineChart, ChartLoadingOverlay, BmsCellVoltages."
         />
+        <ChartStackShowcase />
         <SparklineShowcase />
         <LinearGaugeShowcase />
         <AnimatedSingleGaugeShowcase />
+        <AnimatedDualGaugeShowcase />
         <RandomLineChartsShowcase />
         <TrimChartShowcase />
+        <ChartLoadingOverlayShowcase />
         <BmsCellVoltagesShowcase />
       </ScrollView>
     </SafeAreaView>

@@ -2,9 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { AnimatedValueText } from '@/components/base/AnimatedValueText'
+import {
+  ChartHeaderReadout,
+  ChartTooltipReadout,
+  TOOLTIP_WIDTH,
+} from '@/components/charts/TelemetryLineChartReadouts'
 import { Text } from '@/components/base/Text'
-import Animated, {
+import {
   runOnJS,
   useAnimatedStyle,
   useDerivedValue,
@@ -31,7 +35,6 @@ import {
   getChartTimeLabels,
   getXPosition,
   getChartAlertMarkers,
-  getChartExclusionColor,
   splitChartPointSegments,
   splitChartLineSegments,
   type ExcludedRange,
@@ -43,21 +46,13 @@ import {
   useChartTrim,
   type ChartTrimConfig,
 } from '@/components/charts/TelemetryChartTrim'
-import {
-  useResolvedAccentColors,
-  useResolvedColor,
-  useResolvedColorItems,
-  useResolvedNeutralColors,
-} from '@/hooks/useTheme'
-
-export type { ChartTrimConfig } from '@/components/charts/TelemetryChartTrim'
 
 const DEFAULT_HEIGHT = 54
 const Y_AXIS_WIDTH = 34
-const TOOLTIP_WIDTH = 94
 const CARD_HORIZONTAL_PADDING = 8
 const EXCLUSION_MARKER_HEIGHT = 1
 const EXCLUSION_MARKER_INSET = 1
+const ALERT_LINE_COLOR = theme.alpha(theme.palette.yellow.color, 0.1)
 const NO_ALERT_THRESHOLDS: number[] = []
 const EMPTY_MARKER_TABLE: MarkerTable = {
   ts: [],
@@ -148,6 +143,10 @@ function createScrubGesture({
     })
 }
 
+function exclusionColor(reason: string): string {
+  return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
+}
+
 function formatTime(date: Date): string {
   return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
 }
@@ -162,15 +161,6 @@ function buildLinePath(coords: { x: number; y: number }[]) {
   const builder = Skia.PathBuilder.Make().moveTo(coords[0].x, coords[0].y)
   for (let i = 1; i < coords.length; i += 1) builder.lineTo(coords[i].x, coords[i].y)
   return builder.detach()
-}
-
-function resolveActiveChartColor(
-  currentPoint: TelemetryChartPoint | null,
-  baseColor: string,
-  getPointColor?: (value: number) => string,
-): string {
-  if (!currentPoint || !getPointColor) return baseColor
-  return getPointColor(currentPoint.value)
 }
 
 function valueAtTime(points: TelemetryChartPoint[], timeMs: number): TelemetryChartPoint | null {
@@ -309,32 +299,57 @@ const ChartLineSegments = memo(function ChartLineSegments({
   getPointColor,
   windowMs,
 }: ChartLineSegmentsProps) {
-  const plainPaths = useMemo(
+  const plainRuns = useMemo(
     () =>
       !getPointColor && width > 0
         ? splitChartLineSegments(points, range, width, height, windowMs)
-            .filter((segment) => segment.length >= 2)
-            .map(buildLinePath)
+        : [],
+    [getPointColor, height, points, range, width, windowMs],
+  )
+  const plainPaths = useMemo(
+    () => plainRuns.filter((segment) => segment.length >= 2).map(buildLinePath),
+    [plainRuns],
+  )
+  const gradientRuns = useMemo(
+    () =>
+      getPointColor && width > 0
+        ? splitChartPointSegments(points, range, width, height, windowMs)
         : [],
     [getPointColor, height, points, range, width, windowMs],
   )
   const gradientSegments = useMemo(
     () =>
-      getPointColor && width > 0
-        ? splitChartPointSegments(points, range, width, height, windowMs)
-            .filter((segment) => segment.length >= 2)
-            .map((segment) => ({
-              path: buildLinePath(segment),
-              colors: segment.map((point) => getPointColor(point.point.value)),
-              positions: segment.map((point) => Math.max(0, Math.min(1, point.x / width))),
-            }))
-        : [],
-    [getPointColor, height, points, range, width, windowMs],
+      gradientRuns
+        .filter((segment) => segment.length >= 2)
+        .map((segment) => ({
+          path: buildLinePath(segment),
+          colors: segment.map((point) => getPointColor?.(point.point.value) ?? color),
+          positions: segment.map((point) => Math.max(0, Math.min(1, point.x / width))),
+        })),
+    [color, getPointColor, gradientRuns, width],
   )
+  // A stretch sampled slower than the gap threshold is all one-sample runs — no path can be
+  // stroked through it. Drawn as dots so sparse telemetry reads as sparse, not as missing.
+  const orphanDots = useMemo(
+    () =>
+      getPointColor
+        ? gradientRuns
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ ...segment[0], color: getPointColor(segment[0].point.value) }))
+        : plainRuns
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ ...segment[0], color })),
+    [color, getPointColor, gradientRuns, plainRuns],
+  )
+
+  const dots = orphanDots.map((dot, index) => (
+    <Circle key={`dot-${index}`} cx={dot.x} cy={dot.y} r={1.5} color={dot.color} />
+  ))
 
   if (getPointColor) {
     return (
       <>
+        {dots}
         {gradientSegments.map((segment, index) => (
           <Path
             key={index}
@@ -358,6 +373,7 @@ const ChartLineSegments = memo(function ChartLineSegments({
 
   return (
     <>
+      {dots}
       {plainPaths.map((path, index) => (
         <Path
           key={index}
@@ -401,10 +417,6 @@ export function TelemetryLineChart({
   timeRangeHighlights,
 }: TelemetryLineChartProps) {
   'use no memo'
-  const neutral = useResolvedNeutralColors()
-  const accents = useResolvedAccentColors()
-  const resolvedColor = useResolvedColor(color)
-  const resolvedTimeRangeHighlights = useResolvedColorItems(timeRangeHighlights)
   const [chartWidth, setChartWidth] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const internalScrubTimeMs = useSharedValue<number | null>(null)
@@ -413,6 +425,7 @@ export function TelemetryLineChart({
   const onPointSelectedRef = useRef(onPointSelected)
   const onGestureStartRef = useRef(onGestureStart)
   const onScrubTimeChangeRef = useRef(onScrubTimeChange)
+  // Freeze live series while dragging so path and marker-table rebuilds do not starve JS.
   const liveSeriesRef = useRef({ points, secondary })
   const [frozenSeries, setFrozenSeries] = useState<{
     points: TelemetryChartPoint[]
@@ -443,7 +456,7 @@ export function TelemetryLineChart({
         range,
         width: chartWidth,
         height,
-        color: resolvedColor,
+        color,
         getPointColor,
         formatValue,
         windowMs,
@@ -451,7 +464,7 @@ export function TelemetryLineChart({
       }),
     [
       chartWidth,
-      resolvedColor,
+      color,
       displayPoints,
       displaySecondary,
       formatValue,
@@ -493,7 +506,8 @@ export function TelemetryLineChart({
     const idx = liveIdx.value
     return idx >= 0 ? markerTableSV.value.timeStrs[idx] : ''
   })
-  // Capture only the string; Reanimated cannot copy the secondary series' Date fields.
+  // Only the string is captured: closing over `secondary` would drag its points
+  // (and their Date fields) into the worklet, which Reanimated cannot copy.
   const secondaryFallbackValue = secondary?.value ?? '-'
   const liveSecondaryValueText = useDerivedValue(() => {
     const idx = liveIdx.value
@@ -509,10 +523,6 @@ export function TelemetryLineChart({
     if (left + TOOLTIP_WIDTH > cardChartRight) left = cardChartRight - TOOLTIP_WIDTH
     return { left }
   })
-  const liveValueColorStyle = useAnimatedStyle(() => ({
-    color: markerColor.value,
-  }))
-
   // JS-side gesture bookkeeping: one call at drag start (tooltip + freeze) and one at
   // release. The per-move path stays entirely on the UI thread.
   const startDrag = useCallback(() => {
@@ -584,47 +594,38 @@ export function TelemetryLineChart({
     return getChartTimeLabels(displayPoints, windowMs, timeMode)
   }, [displayPoints, timeMode, windowMs])
   const timeRangeBands = useMemo(
-    () => getChartTimeRangeBands(displayPoints, resolvedTimeRangeHighlights, chartWidth, windowMs),
-    [chartWidth, displayPoints, resolvedTimeRangeHighlights, windowMs],
+    () => getChartTimeRangeBands(displayPoints, timeRangeHighlights ?? [], chartWidth, windowMs),
+    [chartWidth, displayPoints, timeRangeHighlights, windowMs],
   )
 
-  const activeColor = resolveActiveChartColor(currentPoint, resolvedColor, getPointColor)
-  const valueColorStyle = getPointColor && currentPoint ? { color: activeColor } : undefined
+  // Header readout: the live marker color wins whenever points carry their own
+  // color, otherwise the secondary series color, otherwise the neutral token.
+  const headerValueColor = secondary
+    ? color
+    : getPointColor
+      ? markerColor
+      : theme.palette.slate.textPrimary
   const hasMarker = markerTable.ts.length > 0
 
   return (
     <View style={[styles.card, containerStyle]}>
-      <View style={styles.header}>
-        {label ? <Text style={styles.label}>{label}</Text> : <View />}
-        <View style={styles.headerRight}>
-          {isDragging && <AnimatedValueText text={liveTimeText} style={styles.headerTime} />}
-          <AnimatedValueText
-            text={liveValueText}
-            style={[
-              styles.value,
-              secondary ? { color } : valueColorStyle,
-              getPointColor && !secondary ? liveValueColorStyle : undefined,
-            ]}
-          />
-        </View>
-      </View>
+      <ChartHeaderReadout
+        label={label}
+        showTime={isDragging}
+        timeText={liveTimeText}
+        valueText={liveValueText}
+        valueColor={headerValueColor}
+      />
 
       {isDragging && hasMarker && (
-        <Animated.View style={[styles.tooltip, tooltipAnimatedStyle]}>
-          <View style={styles.tooltipValues}>
-            <AnimatedValueText
-              text={liveValueText}
-              style={[styles.tooltipValue, { color: activeColor }, liveValueColorStyle]}
-            />
-            {secondary && (
-              <AnimatedValueText
-                text={liveSecondaryValueText}
-                style={[styles.tooltipValue, { color: secondary.color }]}
-              />
-            )}
-          </View>
-          <AnimatedValueText text={liveTimeText} style={styles.tooltipTime} />
-        </Animated.View>
+        <ChartTooltipReadout
+          style={tooltipAnimatedStyle}
+          timeText={liveTimeText}
+          valueText={liveValueText}
+          valueColor={markerColor}
+          secondaryValueText={secondary ? liveSecondaryValueText : undefined}
+          secondaryColor={secondary?.color}
+        />
       )}
 
       <View style={styles.chartBody}>
@@ -651,13 +652,13 @@ export function TelemetryLineChart({
                 <Line
                   p1={vec(0, 0.5)}
                   p2={vec(chartWidth, 0.5)}
-                  color={neutral.surface}
+                  color={theme.palette.slate.surface}
                   strokeWidth={0.5}
                 />
                 <Line
                   p1={vec(0, height / 2)}
                   p2={vec(chartWidth, height / 2)}
-                  color={neutral.surface}
+                  color={theme.palette.slate.surface}
                   strokeWidth={0.5}
                 >
                   <DashPathEffect intervals={[4, 4]} />
@@ -665,7 +666,7 @@ export function TelemetryLineChart({
                 <Line
                   p1={vec(0, height - 0.5)}
                   p2={vec(chartWidth, height - 0.5)}
-                  color={neutral.surface}
+                  color={theme.palette.slate.surface}
                   strokeWidth={0.5}
                 />
 
@@ -674,7 +675,7 @@ export function TelemetryLineChart({
                     key={marker.value}
                     p1={vec(0, marker.y)}
                     p2={vec(chartWidth, marker.y)}
-                    color={theme.alpha(accents.yellow.color, 0.3)}
+                    color={ALERT_LINE_COLOR}
                     strokeWidth={1}
                   />
                 ))}
@@ -692,11 +693,7 @@ export function TelemetryLineChart({
                       width={bandWidth}
                       height={EXCLUSION_MARKER_HEIGHT}
                       r={0.5}
-                      color={getChartExclusionColor(
-                        range.reason,
-                        neutral.textSecondary,
-                        accents.yellow.color,
-                      )}
+                      color={exclusionColor(range.reason)}
                       opacity={0.85}
                     />
                   )
@@ -718,7 +715,7 @@ export function TelemetryLineChart({
                   range={range}
                   width={chartWidth}
                   height={height}
-                  color={resolvedColor}
+                  color={color}
                   getPointColor={getPointColor}
                   windowMs={windowMs}
                 />
@@ -730,14 +727,14 @@ export function TelemetryLineChart({
                   <Line
                     p1={markerLineTop}
                     p2={markerLineBottom}
-                    color={neutral.textDim}
+                    color={theme.palette.slate.textDim}
                     strokeWidth={1}
                   >
                     <DashPathEffect intervals={[3, 3]} />
                   </Line>
                 )}
 
-                <Circle cx={markerX} cy={markerY} r={4} color={neutral.surfaceDeep} />
+                <Circle cx={markerX} cy={markerY} r={4} color={theme.palette.slate.surfaceDeep} />
                 <Circle
                   cx={markerX}
                   cy={markerY}
@@ -797,34 +794,6 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 4,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerTime: {
-    color: theme.neutral.textMuted,
-    fontSize: 9,
-    fontVariant: ['tabular-nums'],
-  },
-  label: {
-    color: theme.neutral.textSecondary,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  value: {
-    color: theme.neutral.textPrimary,
-    fontSize: 11,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
   chartBody: {
     flexDirection: 'row',
   },
@@ -842,7 +811,7 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   yLabel: {
-    color: theme.neutral.textDim,
+    color: theme.palette.slate.textDim,
     fontSize: 8,
     fontVariant: ['tabular-nums'],
     lineHeight: 10,
@@ -864,42 +833,11 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   xLabel: {
-    color: theme.neutral.textDim,
+    color: theme.palette.slate.textDim,
     fontSize: 8,
     fontVariant: ['tabular-nums'],
   },
   xLabelHidden: {
     opacity: 0,
-  },
-  tooltip: {
-    position: 'absolute',
-    top: 2,
-    width: TOOLTIP_WIDTH,
-    backgroundColor: theme.neutral.surfaceDeep,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 1,
-  },
-  tooltipValues: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  tooltipValue: {
-    color: theme.neutral.textPrimary,
-    fontSize: 9,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  tooltipTime: {
-    color: theme.neutral.textMuted,
-    fontSize: 8,
-    fontVariant: ['tabular-nums'],
   },
 })

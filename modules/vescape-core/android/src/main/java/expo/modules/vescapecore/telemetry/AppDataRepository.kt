@@ -13,6 +13,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
+import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `AppDataScope`
 // @parity /modules/vescape-core/src/index.ts `AppDataChangedEvent`
@@ -28,7 +30,7 @@ internal fun validMapStyleKey(value: Any?): String? =
 internal fun validThemeMode(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("system", "light", "dark", "sun") }
 
-internal fun validMapNavigationMode(value: Any?): String? =
+internal fun validMapOrientationMode(value: Any?): String? =
   (value as? String)?.takeIf { it in setOf("northUp", "gpsHeading", "phoneHeading", "freeRotate") }
 
 internal fun validSatelliteImageryOpacity(value: Any?): Double? =
@@ -55,6 +57,12 @@ internal fun validSocEstimateWindowSeconds(value: Any?): Int? =
     ?.coerceIn(0, 120)
 
 /** Max telemetry poll rate in Hz; 0 = unlimited (pure response-paced), capped at 100Hz. */
+/** Board Move strength, percent of full remote input. Floored so a stored 0 cannot mean "no move". */
+internal fun validBoardMoveStrengthPercent(value: Any?): Int? =
+  (value as? Number)
+    ?.toInt()
+    ?.coerceIn(10, 100)
+
 internal fun validTelemetryPollRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
@@ -76,6 +84,12 @@ internal fun validDismissedCommunityMessageIds(value: Any?): List<String>? {
   return list.filterIsInstance<String>().filter { it.isNotEmpty() }.distinct()
 }
 
+/** Ride split gap in minutes; at least 1 so every ride can still end, capped at 24h. */
+internal fun validRideSplitGapMinutes(value: Any?): Int? =
+  (value as? Number)
+    ?.toInt()
+    ?.coerceIn(1, 1440)
+
 /** Auto close delay in minutes; at least 1 so a fired timer always had a real wait. */
 internal fun validAutoCloseDelayMinutes(value: Any?): Int? =
   (value as? Number)
@@ -95,11 +109,11 @@ internal fun validTopSpeedKmh(value: Any?): Double? =
     ?.takeIf { it.isFinite() }
     ?.coerceIn(5.0, 150.0)
 
-/** Watch Mirror push interval in ms; floored at 50ms (20Hz), capped at 10s. */
-internal fun validWearMirrorIntervalMs(value: Any?): Int? =
+/** Watch push rate in Hz; 1 Hz floor, 20 Hz ceiling (the 50 ms the wrist link can still keep up with). */
+internal fun validWearPushRateHz(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
-    ?.coerceIn(50, 10_000)
+    ?.coerceIn(1, 20)
 
 val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
   "speed" to mapOf("start" to 30.0, "end" to 40.0),
@@ -245,7 +259,7 @@ class AppDataRepository private constructor(private val context: Context) {
     val settings = AppSettings(
       liveHistoryLimit = req("liveHistoryLimit", 5, ::validLiveHistoryLimitMinutes),
       autoConnect = req("autoConnect", true) { it as? Boolean },
-      autoRecording = req("autoRecording", false) { it as? Boolean },
+      autoRecording = req("autoRecording", true) { it as? Boolean },
       selectedBoardId = opt("selectedBoardId") { it as? String },
       lastGpsLatitude = opt("lastGpsLatitude") { (it as? Number)?.toDouble() },
       lastGpsLongitude = opt("lastGpsLongitude") { (it as? Number)?.toDouble() },
@@ -261,19 +275,26 @@ class AppDataRepository private constructor(private val context: Context) {
       satelliteMapImageryOpacity = req("satelliteMapImageryOpacity", 1.0, ::validSatelliteImageryOpacity),
       satelliteImagerySaturation = req("satelliteImagerySaturation", -0.35, ::validSatelliteImagerySaturation),
       hideTelemetryMapDetails = req("hideTelemetryMapDetails", true) { it as? Boolean },
-      mapNavigationMode = req("mapNavigationMode", "northUp", ::validMapNavigationMode),
+      mapOrientationMode = req("mapOrientationMode", "northUp", ::validMapOrientationMode),
       historyMetricGradientsEnabled = req("historyMetricGradientsEnabled", true) { it as? Boolean },
       historyMetricHotRanges = req("historyMetricHotRanges", DEFAULT_HISTORY_METRIC_HOT_RANGES, ::validHistoryMetricHotRanges),
       socEstimateWindowSeconds = req("socEstimateWindowSeconds", 20, ::validSocEstimateWindowSeconds),
+      boardMoveStrengthPercent = req("boardMoveStrengthPercent", 60, ::validBoardMoveStrengthPercent),
       connectionSoundsEnabled = req("connectionSoundsEnabled", true) { it as? Boolean },
       telemetryPollRateHz = req("telemetryPollRateHz", 20, ::validTelemetryPollRateHz),
-      wearMirrorIntervalMs = req("wearMirrorIntervalMs", 500, ::validWearMirrorIntervalMs),
+      wearPushRateHz = req("wearPushRateHz", 4, ::validWearPushRateHz),
       wearAutoLaunchOnConnect = req("wearAutoLaunchOnConnect", true) { it as? Boolean },
+      wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
       companionPresenceCooldownMinutes = req("companionPresenceCooldownMinutes", 60, ::validCompanionCooldownMinutes),
       autoCloseEnabled = req("autoCloseEnabled", false) { it as? Boolean },
       autoCloseDelayMinutes = req("autoCloseDelayMinutes", 15, ::validAutoCloseDelayMinutes),
+      rideSplitGapMinutes = req(
+        "rideSplitGapMinutes",
+        DEFAULT_RIDE_SPLIT_GAP_MINUTES,
+        ::validRideSplitGapMinutes,
+      ),
       riderId = opt("riderId") { it as? String },
       riderName = opt("riderName") { it as? String },
       riderColor = opt("riderColor") { it as? String },
@@ -316,8 +337,7 @@ class AppDataRepository private constructor(private val context: Context) {
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
       "freeSpinMaxSpeedDeltaKmh", "freeSpinStationaryBoardCapKmh" ->
         ((value as? Number)?.toDouble() ?: return@withContext).coerceAtLeast(0.0)
-      "themeMode" ->
-        validThemeMode(value) ?: return@withContext
+      "themeMode" -> validThemeMode(value) ?: return@withContext
       "mapStyleKey" ->
         validMapStyleKey(value) ?: return@withContext
       "satelliteOverlayEnabled" -> value as? Boolean ?: return@withContext
@@ -328,19 +348,22 @@ class AppDataRepository private constructor(private val context: Context) {
       "satelliteImagerySaturation" ->
         validSatelliteImagerySaturation(value) ?: return@withContext
       "hideTelemetryMapDetails" -> value as? Boolean ?: return@withContext
-      "mapNavigationMode" ->
-        validMapNavigationMode(value) ?: return@withContext
+      "mapOrientationMode" ->
+        validMapOrientationMode(value) ?: return@withContext
       "historyMetricGradientsEnabled" -> value as? Boolean ?: return@withContext
       "historyMetricHotRanges" ->
         validHistoryMetricHotRanges(value) ?: return@withContext
       "socEstimateWindowSeconds" ->
         validSocEstimateWindowSeconds(value) ?: return@withContext
+      "boardMoveStrengthPercent" ->
+        validBoardMoveStrengthPercent(value) ?: return@withContext
       "connectionSoundsEnabled" -> value as? Boolean ?: return@withContext
       "telemetryPollRateHz" ->
         validTelemetryPollRateHz(value) ?: return@withContext
-      "wearMirrorIntervalMs" ->
-        validWearMirrorIntervalMs(value) ?: return@withContext
+      "wearPushRateHz" ->
+        validWearPushRateHz(value) ?: return@withContext
       "wearAutoLaunchOnConnect" -> value as? Boolean ?: return@withContext
+      "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceCooldownMinutes" ->
@@ -348,6 +371,8 @@ class AppDataRepository private constructor(private val context: Context) {
       "autoCloseEnabled" -> value as? Boolean ?: return@withContext
       "autoCloseDelayMinutes" ->
         validAutoCloseDelayMinutes(value) ?: return@withContext
+      "rideSplitGapMinutes" ->
+        validRideSplitGapMinutes(value) ?: return@withContext
       "riderId", "riderName", "riderColor" -> value as? String
       // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
@@ -381,19 +406,22 @@ class AppDataRepository private constructor(private val context: Context) {
         "satelliteMapImageryOpacity" -> d.satelliteMapImageryOpacity
         "satelliteImagerySaturation" -> d.satelliteImagerySaturation
         "hideTelemetryMapDetails" -> d.hideTelemetryMapDetails
-        "mapNavigationMode" -> d.mapNavigationMode
+        "mapOrientationMode" -> d.mapOrientationMode
         "historyMetricGradientsEnabled" -> d.historyMetricGradientsEnabled
         "historyMetricHotRanges" -> d.historyMetricHotRanges
         "socEstimateWindowSeconds" -> d.socEstimateWindowSeconds
+        "boardMoveStrengthPercent" -> d.boardMoveStrengthPercent
         "connectionSoundsEnabled" -> d.connectionSoundsEnabled
         "telemetryPollRateHz" -> d.telemetryPollRateHz
-        "wearMirrorIntervalMs" -> d.wearMirrorIntervalMs
+        "wearPushRateHz" -> d.wearPushRateHz
         "wearAutoLaunchOnConnect" -> d.wearAutoLaunchOnConnect
+        "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
         "companionPresenceCooldownMinutes" -> d.companionPresenceCooldownMinutes
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
+        "rideSplitGapMinutes" -> d.rideSplitGapMinutes
         "riderId" -> d.riderId
         "riderName" -> d.riderName
         "riderColor" -> d.riderColor
@@ -625,6 +653,45 @@ class AppDataRepository private constructor(private val context: Context) {
       notifyDataChanged(AppDataScope.SETTINGS)
     }
 
+  /**
+   * The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately not part of
+   * the settings projection: it is native-owned, JS receives it through `onNavigation` instead, and
+   * it is by far the largest value here (~14 KB for a long path) so it must not ride along on every
+   * settings read.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPath`
+   */
+  suspend fun getNavigationPath(): String? = withContext(Dispatchers.IO) {
+    dao.getAppSetting(NAVIGATION_PATH)?.valueJson?.let { decodeSettingJson(it) as? String }
+  }
+
+  suspend fun setNavigationPath(json: String?): Unit = withContext(Dispatchers.IO) {
+    if (json == null) {
+      dao.deleteAppSetting(NAVIGATION_PATH)
+    } else {
+      dao.upsertAppSetting(
+        AppSettingEntity(NAVIGATION_PATH, encodeSettingJson(json), System.currentTimeMillis()),
+      )
+    }
+  }
+
+  /**
+   * The rider's last chosen Navigation Profile, as its wire string. App data rather than a
+   * user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
+   * switching profile while looking at a path.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationProfile`
+   */
+  suspend fun getNavigationProfile(): String? = withContext(Dispatchers.IO) {
+    dao.getAppSetting(NAVIGATION_PROFILE)?.valueJson?.let { decodeSettingJson(it) as? String }
+  }
+
+  suspend fun setNavigationProfile(profile: String): Unit = withContext(Dispatchers.IO) {
+    dao.upsertAppSetting(
+      AppSettingEntity(NAVIGATION_PROFILE, encodeSettingJson(profile), System.currentTimeMillis()),
+    )
+  }
+
   suspend fun getAutoConnectBoard(): Map<String, Any?>? = withContext(Dispatchers.IO) {
     val settings = getTypedSettings()
     settings.selectedBoardId
@@ -715,19 +782,22 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "satelliteMapImageryOpacity" to satelliteMapImageryOpacity,
   "satelliteImagerySaturation" to satelliteImagerySaturation,
   "hideTelemetryMapDetails" to hideTelemetryMapDetails,
-  "mapNavigationMode" to mapNavigationMode,
+  "mapOrientationMode" to mapOrientationMode,
   "historyMetricGradientsEnabled" to historyMetricGradientsEnabled,
   "historyMetricHotRanges" to historyMetricHotRanges,
   "socEstimateWindowSeconds" to socEstimateWindowSeconds,
+  "boardMoveStrengthPercent" to boardMoveStrengthPercent,
   "connectionSoundsEnabled" to connectionSoundsEnabled,
   "telemetryPollRateHz" to telemetryPollRateHz,
-  "wearMirrorIntervalMs" to wearMirrorIntervalMs,
+  "wearPushRateHz" to wearPushRateHz,
   "wearAutoLaunchOnConnect" to wearAutoLaunchOnConnect,
+  "wearNavArrowEnabled" to wearNavArrowEnabled,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
   "companionPresenceCooldownMinutes" to companionPresenceCooldownMinutes,
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,
+  "rideSplitGapMinutes" to rideSplitGapMinutes,
   "riderId" to riderId,
   "riderName" to riderName,
   "riderColor" to riderColor,
@@ -766,6 +836,8 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "enabled" to enabled,
   "soundType" to soundType,
   "createdAt" to createdAt,
+  "repeatEverySeconds" to repeatEverySeconds,
+  "beepCount" to beepCount,
   "source" to source,
 )
 
@@ -875,6 +947,20 @@ fun PrivacyZoneEntity.toMap(): Map<String, Any?> = mapOf(
  */
 internal const val DIRECTION_POINT_LATITUDE = "directionPointLatitude"
 internal const val DIRECTION_POINT_LONGITUDE = "directionPointLongitude"
+
+/**
+ * The stored Navigation, next to the Direction Point it belongs to. Native-owned and outside the
+ * settings projection — see `getNavigationPath`.
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationPathKey`
+ */
+internal const val NAVIGATION_PATH = "navigationPath"
+
+/**
+ * The rider's sticky Navigation Profile. Native-owned app data outside the settings projection —
+ * see `getNavigationProfile`.
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `navigationProfileKey`
+ */
+internal const val NAVIGATION_PROFILE = "navigationProfile"
 
 private fun Map<String, Any?>.toPrivacyZoneEntity(): PrivacyZoneEntity {
   val now = System.currentTimeMillis()
@@ -1065,6 +1151,8 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   enabled = getBoolean("enabled"),
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),
+  repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
+  beepCount = normalizedAlertBeepCount((get("beepCount") as? Number)?.toInt()),
   source = get("source") as? String,
 )
 

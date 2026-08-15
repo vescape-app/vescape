@@ -29,6 +29,33 @@ class VescProtocolTest {
   }
 
   @Test
+  fun buildsBoardMoveRemoteCommandForRefloat13() {
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 15, -25),
+      buildBoardMoveCommand(BoardTransport.Direct, BoardMoveGeneration.Remote, input = -25),
+    )
+  }
+
+  @Test
+  fun framesBoardMoveForCan() {
+    assertArrayEquals(
+      byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 15, 0),
+      buildBoardMoveCommand(BoardTransport.Can(7), BoardMoveGeneration.Remote, input = 0),
+    )
+  }
+
+  @Test
+  fun boardMoveGenerationFollowsTheRefloatBaseVersion() {
+    assertEquals(BoardMoveGeneration.RcMove, BoardMoveGeneration.forBaseVersion("1.2.0"))
+    assertEquals(BoardMoveGeneration.RcMove, BoardMoveGeneration.forBaseVersion("1.0.0"))
+    assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion("1.3.0"))
+    assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion("2.0.0"))
+    // Unknown firmware guesses the current generation rather than refusing to move.
+    assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion(null))
+    assertEquals(BoardMoveGeneration.Remote, BoardMoveGeneration.forBaseVersion("nonsense"))
+  }
+
+  @Test
   fun parsesFirmwareVersionPayloads() {
     assertNull(parseFwVersion(byteArrayOf(COMM_FW_VERSION.toByte(), 6)))
     assertEquals("FW 6.05", parseFwVersion(byteArrayOf(COMM_FW_VERSION.toByte(), 6, 5)))

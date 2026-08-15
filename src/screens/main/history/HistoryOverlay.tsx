@@ -18,7 +18,6 @@ import type {
   TelemetrySample,
 } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
-import { HistoryMapLoading } from '@/screens/main/history/HistoryMapLoading'
 import { HistoryRideDetail } from '@/screens/main/history/HistoryRideDetail'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
 import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStrip'
@@ -26,6 +25,7 @@ import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStr
 export interface MainHistoryOverlayProps {
   selectedSession: HistorySession | null
   sessionSamples: TelemetrySample[]
+  sessionChartSamples: TelemetrySample[]
   sessionGpsSamples: HistoryGpsSample[]
   sessionMarkers: HistoryMarker[]
   nextRide: HistorySession | null
@@ -67,7 +67,6 @@ export interface MainHistoryOverlayProps {
   selectRide: (session: HistorySession) => void
   exitHistory: () => void
   removeSession: () => void
-  onSeek: (timeMs: number) => void
   setActiveHistoryMapMetric: (metric: HistoryMetricKey) => void
   mediaHistory: {
     assets: MediaHistoryAsset[]
@@ -133,7 +132,7 @@ export function HistoryOverlay({
 
       {visible && !detailSession && (
         <>
-          {busy ? <HistoryMapLoading /> : <HistoryEmptyState favoriteMode={favoriteMode} />}
+          {!busy && <HistoryEmptyState favoriteMode={favoriteMode} />}
           <HistoryControls
             loading={busy}
             tab={history.historyTab}

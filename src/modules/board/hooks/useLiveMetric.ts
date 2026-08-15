@@ -1,29 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import type { TelemetryEvent } from 'vescape-core'
 
-import {
-  acquireFullSampleStream,
-  releaseFullSampleStream,
-  useBleStore,
-} from '@/modules/board/store/bleStore'
+import { acquireFocusedSeries, releaseFocusedSeries } from '@/modules/board/store/bleStore'
 import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
-import type { ExcludedRange } from '@/components/charts/chartMath'
+import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
+import { type ExcludedRange, toExcludedRanges } from '@/components/charts/chartMath'
 import { finite, absolute } from '@/helpers/finite'
-import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-
-/**
- * TEMPORARY perf switch (https://github.com/KacperKozak/vesc-app-poc/issues/114).
- *
- * `true`  — `/control` detail charts stream raw full samples (`onTelemetryHistory`
- *           firehose) for full-resolution, scrubbable lines + excluded-range bands.
- * `false` — detail charts read the cheap natively-decimated series (the same path
- *           the center sparklines use). The firehose was overwhelming the JS thread
- *           on lower-end devices, so we trade resolution for a near-zero live cost.
- *
- * We want `true` back once the full-sample path is made cheap — flip this flag (both
- * code paths below are kept compiled so the revert is one line). See the issue.
- */
-const LIVE_DETAIL_FULL_RESOLUTION: boolean = false
+import { useDeferredMount } from '@/hooks/useDeferredMount'
 
 export interface LiveMetricPoint {
   ts: number
@@ -32,6 +15,10 @@ export interface LiveMetricPoint {
 
 export type TelemetrySelector = (sample: TelemetryEvent) => number | null | undefined
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `LIVE_SERIES_METRICS`
+ * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `centerMetrics`
+ */
 export const liveSelectors = {
   speed: (s: TelemetryEvent) => (s.metricExclusions?.max_speed ? null : absolute(s.speed)),
   duty: (s: TelemetryEvent) => {
@@ -52,7 +39,7 @@ export const liveSelectors = {
   balancePitch: (s: TelemetryEvent) => finite(s.balancePitch),
 } as const
 
-/** Reverse map: a `liveSelectors` function → its key, which matches `LIVE_SERIES_METRICS` natively. */
+/** Reverse map: a `liveSelectors` function → its metric key, matching the native series names. */
 const SELECTOR_KEYS = new Map<TelemetrySelector, string>(
   (Object.entries(liveSelectors) as [string, TelemetrySelector][]).map(([key, selector]) => [
     selector,
@@ -60,129 +47,91 @@ const SELECTOR_KEYS = new Map<TelemetrySelector, string>(
   ]),
 )
 
-const EMPTY: LiveMetricPoint[] = []
+/** Grace period after interactions settle before the heavy focused stream is opened. */
+export const FOCUS_DEFER_MS = 500
+
 const EMPTY_FLAT: number[] = []
 const EMPTY_RANGES: ExcludedRange[] = []
 
-// ── Decimated path (active): reads the cheap native series, no firehose ───────────
-
-/**
- * Live metric series, decimated natively (min/max per time bucket) and pushed ~1Hz.
- * `metricKey` matches `LIVE_SERIES_METRICS` on the native side. No raw samples cross
- * the bridge and no per-render projection runs.
- */
-export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
-  const flat = useLiveSeriesStore((s) => s.metrics[metricKey] ?? EMPTY_FLAT)
-  return useMemo(() => {
-    const points: LiveMetricPoint[] = []
-    for (let i = 0; i + 1 < flat.length; i += 2) {
-      points.push({ ts: flat[i], value: flat[i + 1] })
-    }
-    return points
-  }, [flat])
-}
-
-function useDecimatedMetric(pick: TelemetrySelector): LiveMetricPoint[] {
-  return useLiveSeries(SELECTOR_KEYS.get(pick) ?? '')
-}
-
-function useDecimatedExcludedRanges(..._metricKeys: string[]): ExcludedRange[] {
-  // The decimated speed/duty series already nulls excluded samples (the line shows
-  // gaps), so we drop the labelled overlay bands here. They return with the
-  // full-resolution path — see issue #114.
-  return EMPTY_RANGES
-}
-
-// ── Full-resolution path (parked behind the flag): streams raw full samples ───────
-
-function projectMetric(telemetry: TelemetryEvent[], pick: TelemetrySelector): LiveMetricPoint[] {
+/** Native emits every series flat as `[ts0, v0, ts1, v1, ...]` — the most compact bridge shape. */
+function flatToPoints(flat: number[]): LiveMetricPoint[] {
   const points: LiveMetricPoint[] = []
-  for (const sample of telemetry) {
-    const value = pick(sample)
-    if (value == null || !Number.isFinite(value)) continue
-    points.push({ ts: sample.lastPacketAt, value })
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    points.push({ ts: flat[i], value: flat[i + 1] })
   }
   return points
 }
 
-let cachedVersion = -1
-const cache = new Map<TelemetrySelector, LiveMetricPoint[]>()
-
-function getOrProject(version: number, pick: TelemetrySelector): LiveMetricPoint[] {
-  if (version !== cachedVersion) {
-    cache.clear()
-    cachedVersion = version
-  }
-  let result = cache.get(pick)
-  if (!result) {
-    const telemetry = liveTelemetryRuntime.getTelemetry()
-    if (telemetry.length === 0) return EMPTY
-    result = projectMetric(telemetry, pick)
-    cache.set(pick, result)
-  }
-  return result
+/**
+ * Center-screen sparkline series: decimated natively (min/max per bucket) and pushed ~1Hz
+ * on `onLiveSeries`. `metricKey` matches the native `LIVE_SERIES_METRICS` set. No raw samples
+ * cross the bridge and no per-render projection runs.
+ */
+export function useLiveSeries(metricKey: string): LiveMetricPoint[] {
+  const flat = useLiveSeriesStore((s) => s.metrics[metricKey] ?? EMPTY_FLAT)
+  return useMemo(() => flatToPoints(flat), [flat])
 }
 
 /**
- * Ref-counts the native full-sample stream so it only runs while a detail chart
- * is mounted. On the center screen nothing acquires it, so native stops emitting
- * the raw `onTelemetryHistory` firehose entirely.
+ * Full-resolution live series for a `/control` detail chart. Focusing the metric makes native
+ * stream it on `onFocusedSeries` at full resolution (20ms buckets, below the packet interval);
+ * unmounting releases it so native stops. The center screen never focuses anything, so the
+ * high-res stream costs nothing while riding.
+ *
+ * The focus is taken only after the screen has settled ({@link FOCUS_DEFER_MS}): the first
+ * emit hands over the whole window at once, which is the single heaviest moment of the screen,
+ * and it must not land while the navigation transition is still running.
  */
-function useFullSampleStream(): void {
+export function useLiveMetric(pick: TelemetrySelector): LiveMetricPoint[] {
+  const metricKey = SELECTOR_KEYS.get(pick) ?? ''
+  if (__DEV__ && !metricKey) {
+    console.warn('useLiveMetric: selector must be a `liveSelectors.*` reference, got an unknown fn')
+  }
+  const focusReady = useDeferredMount(FOCUS_DEFER_MS)
   useEffect(() => {
-    acquireFullSampleStream()
-    return releaseFullSampleStream
-  }, [])
+    if (!metricKey || !focusReady) return
+    acquireFocusedSeries(metricKey)
+    return () => releaseFocusedSeries(metricKey)
+  }, [metricKey, focusReady])
+  const flat = useFocusedSeriesStore((s) => s.series[metricKey] ?? EMPTY_FLAT)
+  return useMemo(() => flatToPoints(flat), [flat])
 }
 
-function useFullResolutionMetric(pick: TelemetrySelector): LiveMetricPoint[] {
-  useFullSampleStream()
-  const version = useBleStore((s) => s.metricVersion)
-  return useMemo(() => getOrProject(version, pick), [version, pick])
-}
-
-function buildLiveExcludedRanges(
-  telemetry: TelemetryEvent[],
+/**
+ * Overlay bands for a detail chart, rebuilt from the excluded spans riding along with the
+ * focused series (flat `[start, end, ...]` per exclusion key). Unions the requested keys, then
+ * reuses {@link toExcludedRanges} to merge nearby spans. Reason mirrors the old sample-scan rule:
+ * `low_speed` when only `avg_speed` is requested, else `free_spin`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `excludedSpans`
+ */
+export function buildFocusedExcludedRanges(
+  exclusions: Record<string, number[]>,
   metricKeys: string[],
-  mergeGapMs = 2000,
 ): ExcludedRange[] {
-  const metricKeySet = new Set(metricKeys)
-  const hasSpeedOnly = metricKeySet.has('avg_speed') && metricKeySet.size === 1
-  const reason = hasSpeedOnly ? 'low_speed' : 'free_spin'
-  const ranges: ExcludedRange[] = []
-  for (const s of telemetry) {
-    if (!metricKeys.some((k) => s.metricExclusions?.[k])) continue
-    const last = ranges.at(-1)
-    if (last && last.reason === reason && s.lastPacketAt - last.endMs <= mergeGapMs) {
-      last.endMs = s.lastPacketAt
-    } else {
-      ranges.push({ startMs: s.lastPacketAt, endMs: s.lastPacketAt, reason })
+  const reason =
+    metricKeys.length === 1 && metricKeys[0] === 'avg_speed' ? 'low_speed' : 'free_spin'
+  const records: {
+    startMs: number
+    endMs: number
+    reason: string
+    metrics: Record<string, boolean>
+  }[] = []
+  for (const key of metricKeys) {
+    const flat = exclusions[key]
+    if (!flat) continue
+    for (let i = 0; i + 1 < flat.length; i += 2) {
+      records.push({ startMs: flat[i], endMs: flat[i + 1], reason, metrics: { [key]: true } })
     }
   }
-  return ranges
+  if (records.length === 0) return EMPTY_RANGES
+  return toExcludedRanges(records, metricKeys)
 }
 
-function useFullResolutionExcludedRanges(...metricKeys: string[]): ExcludedRange[] {
-  useFullSampleStream()
-  const version = useBleStore((s) => s.metricVersion)
+export function useLiveExcludedRanges(...metricKeys: string[]): ExcludedRange[] {
+  const exclusions = useFocusedSeriesStore((s) => s.exclusions)
   const keysKey = metricKeys.join('\0')
-  return useMemo(() => {
-    const telemetry = liveTelemetryRuntime.getTelemetry()
-    return buildLiveExcludedRanges(telemetry, keysKey.split('\0'))
-    // `version` is the recompute trigger (new samples bump it); the body reads the
-    // mutable runtime buffer directly, so it isn't referenced here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, keysKey])
+  return useMemo(
+    () => buildFocusedExcludedRanges(exclusions, keysKey.split('\0')),
+    [exclusions, keysKey],
+  )
 }
-
-// ── Public hooks: bound to one path at module load (no conditional hook calls) ────
-
-/**
- * Live metric series for the `/control` detail charts. Backed by either the
- * full-sample firehose or the decimated native series — see {@link LIVE_DETAIL_FULL_RESOLUTION}.
- */
-export const useLiveMetric: (pick: TelemetrySelector) => LiveMetricPoint[] =
-  LIVE_DETAIL_FULL_RESOLUTION ? useFullResolutionMetric : useDecimatedMetric
-
-export const useLiveExcludedRanges: (...metricKeys: string[]) => ExcludedRange[] =
-  LIVE_DETAIL_FULL_RESOLUTION ? useFullResolutionExcludedRanges : useDecimatedExcludedRanges

@@ -1,12 +1,17 @@
 import { dequal } from 'dequal'
 import { create } from 'zustand'
 import {
+  addCompanionPresenceBoard,
+  getCompanionPresenceBoards,
   getSettings,
+  removeCompanionPresenceBoard,
   setCompanionPresenceEnabled,
   updateSetting,
   type AppSettings,
+  type CompanionPresenceBoard,
 } from 'vescape-core'
 import { DEFAULT_HISTORY_METRIC_HOT_RANGES } from '@/modules/history/lib/metricColorScale'
+import { DEFAULT_RIDE_SPLIT_GAP_MINUTES } from '@/modules/history/lib/sessions'
 import {
   DEFAULT_SATELLITE_IMAGERY_OPACITY,
   DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
@@ -16,7 +21,7 @@ import {
 const DEFAULTS: AppSettings = {
   liveHistoryLimit: 5,
   autoConnect: true,
-  autoRecording: false,
+  autoRecording: true,
   selectedBoardId: null,
   lastGpsLatitude: null,
   lastGpsLongitude: null,
@@ -25,6 +30,7 @@ const DEFAULTS: AppSettings = {
   movingSpeedThresholdKmh: 3,
   freeSpinMaxSpeedDeltaKmh: 12,
   freeSpinStationaryBoardCapKmh: 15,
+  rideSplitGapMinutes: DEFAULT_RIDE_SPLIT_GAP_MINUTES,
   themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
@@ -32,10 +38,11 @@ const DEFAULTS: AppSettings = {
   satelliteMapImageryOpacity: DEFAULT_SATELLITE_MAP_IMAGERY_OPACITY,
   satelliteImagerySaturation: DEFAULT_SATELLITE_IMAGERY_SATURATION,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'northUp',
+  mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: DEFAULT_HISTORY_METRIC_HOT_RANGES,
   socEstimateWindowSeconds: 20,
+  boardMoveStrengthPercent: 60,
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
@@ -43,8 +50,9 @@ const DEFAULTS: AppSettings = {
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
   telemetryPollRateHz: 20,
-  wearMirrorIntervalMs: 500,
+  wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
+  wearNavArrowEnabled: false,
   riderId: null,
   riderName: null,
   riderColor: null,
@@ -54,12 +62,15 @@ const DEFAULTS: AppSettings = {
 
 interface SettingsState extends AppSettings {
   loaded: boolean
+  companionPresenceBoards: CompanionPresenceBoard[]
   load: () => Promise<void>
   set: <K extends Exclude<keyof AppSettings, 'legalPolicy'>>(
     key: K,
     value: AppSettings[K],
   ) => Promise<void>
   setCompanionPresence: (enabled: boolean) => Promise<void>
+  addCompanionBoard: (boardId: string) => Promise<void>
+  removeCompanionBoard: (boardId: string) => Promise<void>
 }
 
 export function useLiveWindowMs(): number {
@@ -73,10 +84,14 @@ export function getLiveWindowMs(): number {
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   ...DEFAULTS,
   loaded: false,
+  companionPresenceBoards: [],
 
   async load() {
     try {
-      const s = await getSettings()
+      const [s, companionPresenceBoards] = await Promise.all([
+        getSettings(),
+        getCompanionPresenceBoards(),
+      ])
       const next: AppSettings = {
         ...s,
         autoConnect: s.companionPresenceEnabled ? true : s.autoConnect,
@@ -87,6 +102,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const patch: Partial<SettingsState> = {}
       for (const key of Object.keys(next) as (keyof AppSettings)[]) {
         if (!dequal(prev[key], next[key])) patch[key] = next[key] as never
+      }
+      if (!dequal(prev.companionPresenceBoards, companionPresenceBoards)) {
+        patch.companionPresenceBoards = companionPresenceBoards
       }
       if (!prev.loaded) patch.loaded = true
       if (Object.keys(patch).length > 0) set(patch)
@@ -103,10 +121,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   async setCompanionPresence(enabled) {
     await setCompanionPresenceEnabled(enabled)
-    set(
-      enabled
-        ? { companionPresenceEnabled: true, autoConnect: true }
-        : { companionPresenceEnabled: false },
-    )
+    const companionPresenceBoards = await getCompanionPresenceBoards()
+    set({
+      companionPresenceEnabled: enabled,
+      companionPresenceBoards,
+      ...(enabled ? { autoConnect: true } : {}),
+    })
+  },
+
+  async addCompanionBoard(boardId) {
+    await addCompanionPresenceBoard(boardId)
+    const companionPresenceBoards = await getCompanionPresenceBoards()
+    set({ companionPresenceBoards, companionPresenceEnabled: companionPresenceBoards.length > 0 })
+  },
+
+  async removeCompanionBoard(boardId) {
+    await removeCompanionPresenceBoard(boardId)
+    const companionPresenceBoards = await getCompanionPresenceBoards()
+    set({ companionPresenceBoards })
   },
 }))

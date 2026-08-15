@@ -85,7 +85,7 @@ export function EditBoardSettings({
       <SettingsCard>
         <SettingsRow
           icon={LinkIcon}
-          iconColor={theme.status.upgrade.color}
+          iconColor={theme.settingsIcon.link}
           label="Board Link"
           hint={link ? formatBoardLinkFacts(link) : 'Not linked — probe a device to ride'}
           right={

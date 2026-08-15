@@ -19,6 +19,8 @@ class AlertEngineTest {
         threshold: Double = 70.0,
         thresholdMax: Double? = null,
         soundType: String = "default",
+        repeatEverySeconds: Long? = null,
+        beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
     ) = AlertRuleEntity(
         boardId = "board-1",
         id = id,
@@ -28,6 +30,8 @@ class AlertEngineTest {
         enabled = true,
         soundType = soundType,
         createdAt = 0L,
+        repeatEverySeconds = repeatEverySeconds,
+        beepCount = beepCount,
         source = null,
     )
 
@@ -267,7 +271,7 @@ class AlertEngineTest {
         val t = telemetry(dutyCycle = 0.89)
 
         val firedA = engine.evaluate(rulesAFirst, t)
-        engine.resetDebounce()
+        engine.resetAlertState()
         val firedB = engine.evaluate(rulesBFirst, t)
 
         assertEquals("B", firedA[0].ruleId)
@@ -290,7 +294,7 @@ class AlertEngineTest {
     // --- Debounce ---
 
     @Test
-    fun debouncePreventsDuplicateFiring() {
+    fun latchPreventsDuplicateFiring() {
         val rules = listOf(rule(threshold = 60.0))
         val t = telemetry(dutyCycle = 0.66)
 
@@ -314,15 +318,148 @@ class AlertEngineTest {
     }
 
     @Test
-    fun resetDebounceAllowsRefiring() {
+    fun resetAlertStateAllowsRefiring() {
         val rules = listOf(rule(threshold = 60.0))
         val t = telemetry(dutyCycle = 0.66)
 
         engine.evaluate(rules, t)
-        engine.resetDebounce()
+        engine.resetAlertState()
         val fired = engine.evaluate(rules, t)
 
         assertEquals(1, fired.size)
+    }
+
+    // --- Re-arm + repeat (#348) ---
+
+    @Test
+    fun parkedAboveThresholdNeverAnnouncesTwice() {
+        val rules = listOf(rule(controlId = "motor-temp", threshold = 70.0))
+
+        val fired = (1..50).map { engine.evaluate(rules, telemetry(tempMotor = 71.0)) }
+
+        assertEquals(1, fired.count { it.isNotEmpty() })
+    }
+
+    @Test
+    fun dippingBelowThresholdWithinTheMarginDoesNotRearm() {
+        val rules = listOf(rule(controlId = "motor-temp", threshold = 70.0))
+
+        engine.evaluate(rules, telemetry(tempMotor = 71.0))
+        // Margin is 3°C, so 68 is a wobble around the threshold, not a recovery.
+        engine.evaluate(rules, telemetry(tempMotor = 68.0))
+        val refired = engine.evaluate(rules, telemetry(tempMotor = 71.0))
+
+        assertTrue(refired.isEmpty())
+    }
+
+    @Test
+    fun coolingPastTheMarginRearmsTheRule() {
+        val rules = listOf(rule(controlId = "motor-temp", threshold = 70.0))
+
+        engine.evaluate(rules, telemetry(tempMotor = 71.0))
+        engine.evaluate(rules, telemetry(tempMotor = 66.0))
+        val refired = engine.evaluate(rules, telemetry(tempMotor = 71.0))
+
+        assertEquals(1, refired.size)
+    }
+
+    @Test
+    fun repeatingRuleAnnouncesOnItsCadenceWhileStillPast() {
+        var clock = 0L
+        val engine = AlertEngine { clock }
+        val rules = listOf(rule(controlId = "motor-temp", threshold = 95.0, repeatEverySeconds = 10L))
+        val hot = telemetry(tempMotor = 96.0)
+
+        val first = engine.evaluate(rules, hot)
+        clock += 9_000
+        val tooSoon = engine.evaluate(rules, hot)
+        clock += 1_000
+        val onCadence = engine.evaluate(rules, hot)
+
+        assertEquals(1, first.size)
+        assertTrue(tooSoon.isEmpty())
+        assertEquals(1, onCadence.size)
+    }
+
+    @Test
+    fun repeatClockRestartsAfterRearming() {
+        var clock = 0L
+        val engine = AlertEngine { clock }
+        val rules = listOf(rule(controlId = "motor-temp", threshold = 95.0, repeatEverySeconds = 10L))
+
+        engine.evaluate(rules, telemetry(tempMotor = 96.0))
+        clock += 1_000
+        engine.evaluate(rules, telemetry(tempMotor = 90.0))
+        clock += 1_000
+        // Re-armed, so this is a fresh crossing rather than a repeat — no waiting out the cadence.
+        val refired = engine.evaluate(rules, telemetry(tempMotor = 96.0))
+
+        assertEquals(1, refired.size)
+    }
+
+    @Test
+    fun oneMetricAnnouncesOnceWhenSeveralRungsCrossTogether() {
+        val rules = listOf(
+            rule(id = "warn", controlId = "motor-temp", threshold = 70.0),
+            rule(id = "high", controlId = "motor-temp", threshold = 85.0),
+            rule(id = "nag", controlId = "motor-temp", threshold = 95.0),
+        )
+
+        val fired = engine.evaluate(rules, telemetry(tempMotor = 96.0))
+
+        assertEquals(1, fired.size)
+        assertEquals("nag", fired[0].ruleId)
+    }
+
+    @Test
+    fun rungsSuppressedByCoalescingAreSpentNotPending() {
+        val rules = listOf(
+            rule(id = "warn", controlId = "motor-temp", threshold = 70.0),
+            rule(id = "nag", controlId = "motor-temp", threshold = 95.0),
+        )
+
+        engine.evaluate(rules, telemetry(tempMotor = 96.0))
+        // Dropping back under the top rung must not hand the lower one a turn to speak.
+        val onTheWayDown = engine.evaluate(rules, telemetry(tempMotor = 80.0))
+
+        assertTrue(onTheWayDown.isEmpty())
+    }
+
+    @Test
+    fun separateMetricsBothAnnounceInTheSameEvaluation() {
+        val rules = listOf(
+            rule(id = "motor", controlId = "motor-temp", threshold = 70.0),
+            rule(id = "controller", controlId = "controller-temp", threshold = 60.0),
+        )
+
+        val fired = engine.evaluate(rules, telemetry(tempMotor = 75.0, tempMosfet = 65.0))
+
+        assertEquals(2, fired.size)
+    }
+
+    @Test
+    fun beepCountReachesTheFiredAlert() {
+        val fired = engine.evaluate(
+            listOf(rule(threshold = 60.0, beepCount = 2)),
+            telemetry(dutyCycle = 0.66),
+        )
+
+        assertEquals(2, fired[0].beepCount)
+    }
+
+    @Test
+    fun repeatCadenceIsFlooredWhateverJsAsksFor() {
+        assertEquals(ALERT_REPEAT_MIN_SECONDS, normalizedAlertRepeatSeconds(0.5))
+        assertNull(normalizedAlertRepeatSeconds(0.0))
+        assertNull(normalizedAlertRepeatSeconds(null))
+        assertEquals(30L, normalizedAlertRepeatSeconds(30.0))
+    }
+
+    @Test
+    fun beepCountIsClampedToItsRange() {
+        assertEquals(ALERT_BEEP_COUNT_RANGE.last, normalizedAlertBeepCount(99))
+        assertEquals(ALERT_BEEP_COUNT_RANGE.first, normalizedAlertBeepCount(0))
+        assertEquals(ALERT_BEEP_COUNT_DEFAULT, normalizedAlertBeepCount(null))
     }
 
     @Test
@@ -429,7 +566,7 @@ class AlertEngineTest {
     fun batteryHysteresisResetClearsArmedState() {
         val rules = listOf(rule(id = "bat", controlId = "battery", threshold = 50.0))
         engine.evaluate(rules, telemetry(), batteryPercent = 45.0)
-        engine.resetDebounce()
+        engine.resetAlertState()
         val refired = engine.evaluate(rules, telemetry(), batteryPercent = 45.0)
         assertEquals(1, refired.size)
     }
@@ -483,6 +620,7 @@ class VescAlertTemplateTest {
         thresholdMax = thresholdMax,
         soundType = "tts:test",
         rangeDepth = null,
+        beepCount = ALERT_BEEP_COUNT_DEFAULT,
         firedAt = 0L,
     )
 

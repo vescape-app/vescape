@@ -76,25 +76,24 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (isOneDark) {
     return (
       <>
-        <SymbolLayer id="poi-label" existing style={{ visibility }} />
         <SymbolLayer
-          id="poi-icon"
+          id="poi-label"
           existing
           style={{
             visibility,
-            iconColor: '#74859a',
-            iconHaloWidth: 0.5,
-            iconOpacity: 0.48,
+            iconColor: '#8ba4bf',
+            iconHaloWidth: 0,
+            iconOpacity: 0.76,
           }}
         />
         <SymbolLayer
-          id="transit-stop-icon"
+          id="transit-label"
           existing
           style={{
             visibility,
-            iconColor: '#74859a',
-            iconHaloWidth: 0.5,
-            iconOpacity: 0.48,
+            iconColor: '#8ba4bf',
+            iconHaloWidth: 0,
+            iconOpacity: 0.76,
           }}
         />
       </>

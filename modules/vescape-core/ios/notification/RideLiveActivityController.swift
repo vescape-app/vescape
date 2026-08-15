@@ -10,12 +10,11 @@ import Foundation
 /// `start` must run while the app is foreground, which holds because a session always begins from a
 /// user-initiated connect.
 ///
-/// Deployment target is 17.0, so ActivityKit is unconditionally available (no `@available` gating).
+/// Deployment target is iOS 17, matching the native Clerk SDK used by the app.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notification/NotificationController.kt
 /// @platform-diff Android renders a system notification with Disconnect/Connect/Exit actions; the
-/// iOS Live Activity is tap-to-open only. Interactive buttons need App Intents (iOS 17+); revisit
-/// when the deployment floor rises. TODO(iOS parity): Live Activity action buttons via App Intents.
+/// iOS Live Activity exposes Stop ride on iOS 17+, but has no post-stop Connect or Exit action.
 final class RideLiveActivityController {
   private var activity: Activity<RideActivityAttributes>?
 

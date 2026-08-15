@@ -97,7 +97,12 @@ export function HistoryControls({
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
       <View style={styles.row}>
-        <IconButton icon={ArrowLeftIcon} onPress={onBack} accessibilityLabel="Back" />
+        <IconButton
+          icon={ArrowLeftIcon}
+          testID="history-back"
+          onPress={onBack}
+          accessibilityLabel="Back"
+        />
         <View style={styles.tabsWrap} pointerEvents="box-none">
           <PillSelector
             activeId={tab}

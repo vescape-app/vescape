@@ -41,7 +41,7 @@ Most Expo apps work in Expo Go without any custom native code. Before running `n
 
 ### When Custom Builds Are Required
 
-You need `npx expo run:ios/android` or `eas build` ONLY when using:
+You need a local native build (`npx expo run:ios/android`) ONLY when using:
 
 - **Local Expo modules** (custom native code in `modules/`)
 - **Apple targets** (widgets, app clips, extensions via `@bacons/apple-targets`)

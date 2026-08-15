@@ -11,12 +11,25 @@ import android.util.Log
 /** Wall-clock tail after the last recorded chunk before the replay disconnects the session. */
 private const val REPLAY_END_TAIL_MS = 250L
 
+/** One scheduled playback event — board chunk, GPS fix or compass reading — by recorded time. */
+private sealed class ReplayEvent(val t: Long) {
+    class Chunk(val chunk: ReplayChunk) : ReplayEvent(chunk.t)
+    class Fix(val fix: ReplayLocation) : ReplayEvent(fix.t)
+    class Heading(val heading: ReplayHeading) : ReplayEvent(heading.t)
+}
+
 /**
  * Dev-mode [SessionTransport] that plays a Debug Recording through the real session stack
- * (ADR 0024): fakes the connect/subscribing/ready callbacks, emits recorded `rx` chunks at their
- * recorded `t` offsets at 1× real time, swallows writes, and ends the session like a real
- * disconnect when the recording runs out. The replay session runs with `recordingEnabled = false`
- * so playback never records a new Debug Recording of itself.
+ * (ADR 0024): fakes the connect/subscribing/ready callbacks, emits recorded `rx` chunks *and*
+ * recorded GPS fixes at their recorded `t` offsets on one merged timeline, swallows writes, and
+ * ends the session like a real disconnect when the recording runs out.
+ * Pacing comes from [clock]: a plain replay runs the whole recording at 1× real time, and a replay
+ * given a warmup window runs that much of it faster so the session comes up with its live window
+ * already filled instead of spending real minutes waiting for one.
+ * Replaying a ride means reproducing where it happened, so the recording owns position for the
+ * whole session; a recording without `location` lines replays like ordinary use without a GPS fix.
+ * The replay session runs with `recordingEnabled = false` so playback never records a new Debug
+ * Recording of itself.
  *
  * @parity /modules/vescape-core/ios/replay/ReplayTransport.swift
  */
@@ -26,70 +39,81 @@ internal class ReplayTransport(
     private val recordingName: String,
     private val listener: VescGattListener,
     private val dispatchListener: ((() -> Unit) -> Unit),
+    private val onLocation: (ReplayLocation) -> Unit,
+    private val onHeading: (ReplayHeading) -> Unit,
+    /** The session clock this playback drives; installed by the controller for the session. */
+    val clock: ReplayClock,
 ) : SessionTransport {
     @Volatile
     private var cancelled = false
     private var pending: Runnable? = null
-    private var playbackStartedAt = 0L
 
     override fun connect(deviceId: String) {
         Log.d(VESC_SESSION_TAG, "replay connect recording=$recordingName")
         // Decode off-main (a ride recording can be megabytes); playback runs on the handler.
         Thread({
-            val chunks = try {
-                ReplayChunkDecoder.rxChunks(ReplayRecordings.read(context, recordingName))
+            val events = try {
+                val jsonl = ReplayRecordings.read(context, recordingName)
+                val chunks = ReplayChunkDecoder.rxChunks(jsonl).map { ReplayEvent.Chunk(it) }
+                val fixes = ReplayChunkDecoder.locations(jsonl).map { ReplayEvent.Fix(it) }
+                val headings = ReplayChunkDecoder.headings(jsonl).map { ReplayEvent.Heading(it) }
+                (chunks + fixes + headings).sortedBy(ReplayEvent::t)
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "replay load failed: ${e.message}")
                 // A stop during background load must not surface as a session failure.
                 if (!cancelled) dispatchListener { listener.onGattFailure("REPLAY_LOAD_FAILED", e.message ?: "Recording unreadable") }
                 return@Thread
             }
-            handler.post { startPlayback(chunks) }
+            handler.post { startPlayback(events) }
         }, "vesc-replay-load").start()
     }
 
-    private fun startPlayback(chunks: List<ReplayChunk>) {
+    private fun startPlayback(events: List<ReplayEvent>) {
         if (cancelled) return
         dispatchListener { listener.onGattConnected() }
         dispatchListener { listener.onGattSubscribing() }
         dispatchListener { listener.onGattReady() }
-        playbackStartedAt = System.currentTimeMillis()
-        scheduleNext(chunks, 0)
+        clock.startPlayback(System.currentTimeMillis())
+        scheduleNext(events, 0)
     }
 
     /**
      * Cursor-based pacing: only the next chunk is ever scheduled, so an hour-long recording never
-     * floods the handler with queued callbacks. Recorded `t` is relative to recording start;
-     * scheduling against `playbackStartedAt` preserves the original absolute pacing (including the
-     * recorded connect handshake gap) at 1× real time.
+     * floods the handler with queued callbacks. Recorded `t` is relative to recording start, and
+     * [ReplayClock.delayUntilRecorded] turns it into a wall delay — preserving the original absolute
+     * pacing (including the recorded connect handshake gap), divided by the speed session time is
+     * currently running at.
      */
-    private fun scheduleNext(chunks: List<ReplayChunk>, index: Int) {
+    private fun scheduleNext(events: List<ReplayEvent>, index: Int) {
         if (cancelled) return
-        if (index >= chunks.size) {
-            postAt((chunks.lastOrNull()?.t ?: 0L) + REPLAY_END_TAIL_MS) {
-                Log.d(VESC_SESSION_TAG, "replay finished recording=$recordingName chunks=${chunks.size}")
+        if (index >= events.size) {
+            postAt((events.lastOrNull()?.t ?: 0L) + REPLAY_END_TAIL_MS) {
+                Log.d(VESC_SESSION_TAG, "replay finished recording=$recordingName events=${events.size}")
                 dispatchListener { listener.onGattDisconnected(status = 0, intentional = false) }
             }
             return
         }
-        val chunk = chunks[index]
-        postAt(chunk.t) {
-            dispatchListener { listener.onGattFrameChunk(chunk.bytes) }
-            scheduleNext(chunks, index + 1)
+        val event = events[index]
+        postAt(event.t) {
+            when (event) {
+                is ReplayEvent.Chunk -> dispatchListener { listener.onGattFrameChunk(event.chunk.bytes) }
+                is ReplayEvent.Fix -> onLocation(event.fix)
+                is ReplayEvent.Heading -> onHeading(event.heading)
+            }
+            scheduleNext(events, index + 1)
         }
     }
 
     private fun postAt(recordedT: Long, block: () -> Unit) {
-        val delayMs = (playbackStartedAt + recordedT - System.currentTimeMillis()).coerceAtLeast(0L)
         val runnable = Runnable { if (!cancelled) { pending = null; block() } }
         pending = runnable
-        handler.postDelayed(runnable, delayMs)
+        handler.postDelayed(runnable, clock.delayUntilRecorded(recordedT))
     }
 
     /** Replay swallows all writes; request/response FSMs get replies on the recording's schedule. */
     override fun sendPayload(payload: ByteArray): Boolean = !cancelled
 
-    override fun sendRemoteTilt(payload: ByteArray, urgent: Boolean): Boolean = !cancelled
+    override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean = !cancelled
 
     override fun clear(markIntentional: Boolean) {
         cancelled = true

@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { forwardRef, useRef, useState } from 'react'
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   ArrowFatLinesUpIcon,
   BroadcastIcon,
+  ArrowsClockwiseIcon,
   CaretDownIcon,
   GearSixIcon,
   PencilSimpleIcon,
@@ -16,21 +17,32 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
 import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
 import { IconButton } from '@/components/base/IconButton'
-import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
-import { AccountWidget } from '@/modules/profile/components/AccountWidget'
+import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
-import { isNightAtTime } from '@/modules/weather/lib/weather'
 import { routes } from '@/navigation/routes'
+import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { theme } from '@/constants/theme'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
+import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
+import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
+import type { MapSelection } from '@/modules/map/lib/mapSelection'
+import { DASH, fmtDistance } from '@/helpers/format'
+import { useMapStore } from '@/modules/map/store/mapStore'
+import { useRiderStore } from '@/modules/group-ride/store/riderStore'
+import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
+import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 
 interface TopBarProps {
   boards: Board[]
@@ -41,41 +53,26 @@ interface TopBarProps {
   onAddBoard: () => void
   onDisconnect: () => void
   onWeatherPress?: () => void
+  activeNavigationTarget: MapSelection | null
+  onNavigationPress: () => void
+  onCancelNavigation: () => void
 }
 
-export function TopBar({
-  boards,
-  activeBoardId,
-  activeBoard,
-  bleStatus,
-  onSelectBoard,
-  onAddBoard,
-  onDisconnect,
-  onWeatherPress,
-}: TopBarProps) {
-  const insets = useSafeAreaInsets()
-  const pillRef = useRef<View>(null)
-  const socialRef = useRef<View>(null)
-  const [selectorOpen, setSelectorOpen] = useState(false)
-  const [socialOpen, setSocialOpen] = useState(false)
+interface BoardPillProps {
+  maxWidth: number
+  activeBoardId: string | null
+  activeBoard: Board | undefined
+  bleStatus: string
+  isReplay: boolean
+  onOpenSelector: () => void
+  onDisconnect: () => void
+}
 
-  const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
-  const nearbyBadge = useGroupRideStore((s) => s.badge)
-  const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
-  const weatherCode = useWeatherStore((s) => s.weatherCode)
-  const weatherTemp = useWeatherStore((s) => s.temperature)
-  const weatherPrecip = useWeatherStore((s) => s.precipitationProbability)
-  const appStatus = useAppStatusStore((s) => s.status)
-  const availableUpdate = selectAvailableUpdate(appStatus)
-  // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
-  const versionWarning =
-    appStatus?.version.status === 'update-warning' || appStatus?.version.status === 'online-blocked'
-  const sunrise = useWeatherStore((s) => s.sunrise)
-  const sunset = useWeatherStore((s) => s.sunset)
-  const hasWeather = weatherCode != null && weatherTemp != null
-  const now = new Date()
-  const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
-
+/** The board identity pill: selector, edit, disconnect and the Board Warning control. */
+const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
+  { maxWidth, activeBoardId, activeBoard, bleStatus, isReplay, onOpenSelector, onDisconnect },
+  ref,
+) {
   const canDisconnect =
     bleStatus === 'connected' ||
     bleStatus === 'stale' ||
@@ -88,7 +85,107 @@ export function TopBar({
       ? theme.palette.green.color
       : bleStatus === 'error'
         ? theme.status.error.color
-        : theme.neutral.textSecondary
+        : theme.palette.slate.textSecondary
+
+  return (
+    <View ref={ref} style={[styles.pill, { maxWidth }]}>
+      <Pressable
+        style={styles.boardButton}
+        onPress={onOpenSelector}
+        testID="board-selector-trigger"
+        accessibilityLabel="Board selector"
+      >
+        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+        {isReplay && showDevControls && <ReplayBadge />}
+        <Text style={styles.boardText} numberOfLines={1}>
+          {name}
+        </Text>
+        <CaretDownIcon size={12} color={theme.palette.slate.textSecondary} weight="bold" />
+      </Pressable>
+      <View style={styles.divider} />
+      <Pressable
+        style={[styles.plugButton, !activeBoard && styles.iconRoundDisabled]}
+        disabled={!activeBoard}
+        onPress={() => {
+          if (!activeBoard) return
+          router.push({ pathname: routes.editBoard, params: { boardId: activeBoard.id } })
+        }}
+        testID="board-edit-button"
+      >
+        <PencilSimpleIcon
+          size={14}
+          color={activeBoard ? theme.palette.slate.textPrimary : theme.palette.slate.textMuted}
+          weight="bold"
+        />
+      </Pressable>
+      {canDisconnect && (
+        <>
+          <View style={styles.divider} />
+          <Pressable
+            style={styles.plugButton}
+            onPress={onDisconnect}
+            testID="board-disconnect-button"
+          >
+            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
+          </Pressable>
+        </>
+      )}
+      {activeBoardId && <BoardWarningControl boardId={activeBoardId} />}
+    </View>
+  )
+})
+
+export function TopBar({
+  boards,
+  activeBoardId,
+  activeBoard,
+  bleStatus,
+  onSelectBoard,
+  onAddBoard,
+  onDisconnect,
+  onWeatherPress,
+  activeNavigationTarget,
+  onNavigationPress,
+  onCancelNavigation,
+}: TopBarProps) {
+  const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
+  const boardPillMaxWidth = width - 116
+  const pillRef = useRef<View>(null)
+  const socialRef = useRef<View>(null)
+  const [selectorOpen, setSelectorOpen] = useState(false)
+  const [socialOpen, setSocialOpen] = useState(false)
+  const settingsRef = useRef<View>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
+  const routeProgress = useMapStore((s) => s.routeProgress)
+
+  const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
+  const nearbyBadge = useGroupRideStore((s) => s.badge)
+  const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
+  const weather = useWeatherStore((s) => s.weather)
+  const appStatus = useAppStatusStore((s) => s.status)
+  const availableUpdate = selectAvailableUpdate(appStatus)
+  // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
+  const versionWarning =
+    appStatus?.version.status === 'update-warning' || appStatus?.version.status === 'online-blocked'
+  const backup = useBackupSlot()
+  const trigger = settingsTriggerState({
+    versionWarning,
+    updateAvailable: availableUpdate !== null,
+    backup,
+  })
+  const navigationTargetIcon =
+    activeNavigationTarget?.type === 'mapPoint'
+      ? getMapPointKindIcon(activeNavigationTarget.point.category)
+      : activeNavigationTarget?.type === 'place'
+        ? getPlaceCategoryIcon(activeNavigationTarget.category)
+        : getMapPointKindIcon('direction')
+  // Along the path, from native. A straight line here claimed 679 m for a ride that is 2 km around
+  // the river; the dash while native has no Route Progress is the honest answer, not a reason to
+  // fall back to one.
+  const navigationDistance =
+    routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
 
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
@@ -98,91 +195,100 @@ export function TopBar({
             icon={rideActive ? BroadcastIcon : UsersThreeIcon}
             onPress={() => setSocialOpen(true)}
             accessibilityLabel="Social"
+            testID="social-drawer-trigger"
             dot={nearbyBadge && !rideActive ? theme.palette.groupRide.color : undefined}
             accent={rideActive ? theme.palette.groupRide.color : undefined}
           />
         </View>
-        <View ref={pillRef} style={styles.pill}>
-          <Pressable
-            style={styles.boardButton}
-            onPress={() => setSelectorOpen(true)}
-            testID="board-selector-trigger"
-            accessibilityLabel="Board selector"
-          >
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            {isReplay && <ReplayBadge />}
-            <Text style={styles.boardText} numberOfLines={1}>
-              {name}
-            </Text>
-            <CaretDownIcon size={12} color={theme.neutral.textSecondary} weight="bold" />
-          </Pressable>
-          <View style={styles.divider} />
-          <Pressable
-            style={[styles.plugButton, !activeBoard && styles.iconRoundDisabled]}
-            disabled={!activeBoard}
-            onPress={() => {
-              if (!activeBoard) return
-              router.push({ pathname: routes.editBoard, params: { boardId: activeBoard.id } })
-            }}
-            testID="board-edit-button"
-          >
-            <PencilSimpleIcon
-              size={14}
-              color={activeBoard ? theme.neutral.textPrimary : theme.neutral.textMuted}
-              weight="bold"
+        {activeNavigationTarget ? (
+          <View ref={pillRef} collapsable={false}>
+            <ActiveNavigationTopBar
+              boardPill={
+                <BoardPill
+                  maxWidth={boardPillMaxWidth}
+                  activeBoardId={activeBoardId}
+                  activeBoard={activeBoard}
+                  bleStatus={bleStatus}
+                  isReplay={isReplay}
+                  onOpenSelector={() => setSelectorOpen(true)}
+                  onDisconnect={onDisconnect}
+                />
+              }
+              maxWidth={Math.min(boardPillMaxWidth, 240)}
+              boardName={activeBoard?.name ?? 'No board'}
+              connected={bleStatus === 'connected' || bleStatus === 'stale'}
+              targetTitle={activeNavigationTarget.title}
+              targetIcon={navigationTargetIcon}
+              distanceLabel={navigationDistance}
+              riderColor={riderColor}
+              onNavigationPress={onNavigationPress}
+              onCancel={onCancelNavigation}
             />
-          </Pressable>
-          {canDisconnect && (
-            <>
-              <View style={styles.divider} />
-              <Pressable
-                style={styles.plugButton}
-                onPress={onDisconnect}
-                testID="board-disconnect-button"
-              >
-                <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
-              </Pressable>
-            </>
-          )}
-          {activeBoardId && <BoardWarningControl boardId={activeBoardId} />}
-        </View>
-        {/* An Update Warning / Online Block takes over the gear's icon and accent — same treatment
-            as an active group ride; a plain available update only badges it with a dot. Settings
-            stays this button's one destination, and the update is started from the pill inside. */}
-        <IconButton
-          icon={versionWarning ? ArrowFatLinesUpIcon : GearSixIcon}
-          onPress={() => router.push(routes.settings)}
-          onLongPress={() => router.push(routes.settingsComponents)}
-          accent={versionWarning ? theme.status.upgrade.color : undefined}
-          dot={!versionWarning && availableUpdate ? theme.status.upgrade.color : undefined}
-          accessibilityLabel={availableUpdate ? 'Settings, update available' : 'Settings'}
-          style={styles.iconRight}
-        />
-      </View>
-      {hasWeather && (
-        <Pressable style={styles.weatherRow} onPress={onWeatherPress}>
-          <WeatherStat
-            code={weatherCode!}
-            temperature={weatherTemp!}
-            hour={now.getHours()}
-            isNight={isNight}
-            precipProbability={weatherPrecip}
-            size="sm"
+          </View>
+        ) : (
+          <BoardPill
+            ref={pillRef}
+            maxWidth={boardPillMaxWidth}
+            activeBoardId={activeBoardId}
+            activeBoard={activeBoard}
+            bleStatus={bleStatus}
+            isReplay={isReplay}
+            onOpenSelector={() => setSelectorOpen(true)}
+            onDisconnect={onDisconnect}
           />
-        </Pressable>
-      )}
+        )}
+        {/* The gear wears whatever is happening inside the drawer — a required update, or a
+            running backup with its progress — the same way Social wears an active Group Ride. */}
+        <View ref={settingsRef} collapsable={false} style={styles.iconRight}>
+          <IconButton
+            icon={GearSixIcon}
+            takeover={
+              trigger.takeover
+                ? {
+                    icon: trigger.takeover === 'update' ? ArrowFatLinesUpIcon : ArrowsClockwiseIcon,
+                    accent: trigger.accent,
+                    progress: trigger.progress,
+                  }
+                : null
+            }
+            onPress={() => setSettingsOpen(true)}
+            onLongPress={() => router.push(routes.settingsComponents)}
+            dot={trigger.dot}
+            accessibilityLabel={trigger.accessibilityLabel}
+            testID="settings-drawer-trigger"
+          />
+        </View>
+      </View>
+      {weather ? (
+        <WeatherSidePill
+          icon={weather.icon}
+          temperature={weather.temperatureC}
+          precipProbability={weather.precipitationProbability}
+          verticalOffset={insets.top / 2}
+          onPress={onWeatherPress}
+        />
+      ) : null}
 
       <EdgeDrawer
         visible={socialOpen}
         triggerRef={socialRef}
+        edge="top"
         title="Social"
         icon={UsersThreeIcon}
+        backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet
-          accountWidget={<AccountWidget onNavigate={() => setSocialOpen(false)} />}
-          onNavigate={() => setSocialOpen(false)}
-        />
+        <SocialSheet onNavigate={() => setSocialOpen(false)} />
+      </EdgeDrawer>
+
+      <EdgeDrawer
+        visible={settingsOpen}
+        triggerRef={settingsRef}
+        edge="top"
+        backdropTestID="settings-drawer-backdrop"
+        onClose={() => setSettingsOpen(false)}
+      >
+        <SettingsSheet backup={backup} onNavigate={() => setSettingsOpen(false)} />
       </EdgeDrawer>
 
       <BoardSelectorSheet
@@ -211,6 +317,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 20,
   },
   row: {
@@ -224,10 +331,12 @@ const styles = StyleSheet.create({
   },
   iconRight: {
     position: 'absolute',
+    top: 0,
     right: 10,
   },
   iconLeft: {
     position: 'absolute',
+    top: 0,
     left: 10,
   },
   pill: {
@@ -236,17 +345,19 @@ const styles = StyleSheet.create({
     minHeight: 38,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.palette.slate.surfaceDeep,
     overflow: 'hidden',
   },
   boardButton: {
     flexDirection: 'row',
+    flexShrink: 1,
     alignItems: 'center',
     gap: 6,
     paddingLeft: 10,
     paddingRight: 8,
     minHeight: 38,
+    minWidth: 0,
   },
   statusDot: {
     width: 7,
@@ -254,27 +365,21 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   boardText: {
-    color: theme.neutral.textPrimary,
+    color: theme.palette.slate.textPrimary,
     fontSize: 13,
     fontWeight: '800',
-    maxWidth: 120,
+    maxWidth: 180,
     flexShrink: 1,
   },
   divider: {
     width: 1,
     height: 20,
-    backgroundColor: theme.neutral.border,
+    backgroundColor: theme.palette.slate.border,
   },
   plugButton: {
     width: 38,
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  weatherRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
   },
 })

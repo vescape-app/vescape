@@ -1,0 +1,198 @@
+name: iOS Internal Release
+
+run-name: iOS ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Immutable source commit to build
+        required: true
+        type: string
+      request_id:
+        description: Unique CLI dispatch correlation id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asc-publish
+  cancel-in-progress: false
+
+jobs:
+  gates:
+    name: Release gates
+    runs-on: blacksmith-6vcpu-macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - name: Verify immutable source
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run copy:shared
+      - name: Generate iOS project
+        run: bunx expo prebuild --platform ios --no-install
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
+          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
+          EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
+          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      - run: bun run release-notes:check
+      - run: bun run ts
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run knip
+      - run: bun run test:bun
+
+  build:
+    name: Build signed IPA and upload to TestFlight
+    needs: gates
+    runs-on: blacksmith-6vcpu-macos-26
+    outputs:
+      marketing_version: ${{ steps.release.outputs.marketing_version }}
+      build_number: ${{ steps.release.outputs.build_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - name: Check out trusted release tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-trusted
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Allocate artifact version
+        id: release
+        run: |
+          MARKETING_VERSION=$(bun -p "require('./package.json').version")
+          BUILD_NUMBER=${{ github.run_number }}
+          echo "marketing_version=$MARKETING_VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - run: bun run copy:shared
+      - name: Generate iOS project
+        run: bunx expo prebuild --platform ios --no-install
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
+          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
+          EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
+          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      - name: Verify native Sentry init in generated project
+        run: |
+          # Derive the main app target from the generated .xcodeproj rather than picking the first
+          # AppDelegate.swift on disk — app extensions must not be able to satisfy this gate.
+          PROJECT=$(ls -d ios/*.xcodeproj)
+          APP_DELEGATE="ios/$(basename "$PROJECT" .xcodeproj)/AppDelegate.swift"
+          bun run scripts/release/verifySentryNativeInit.ts "$APP_DELEGATE"
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+      - name: Install CocoaPods
+        run: pod install
+        working-directory: ios
+      - name: Decode ASC API key
+        run: |
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/asc.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Install trusted release lanes
+        run: cp .release-trusted/fastlane/Fastfile fastlane/Fastfile
+      - name: Build IPA and upload to TestFlight
+        run: bundle exec fastlane ios release
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_PATH: ${{ env.ASC_KEY_PATH }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          VERSION_CODE: ${{ steps.release.outputs.build_number }}
+          APP_VERSION: ${{ steps.release.outputs.marketing_version }}
+          EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
+          EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
+          EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
+          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      - name: Record artifact identity
+        run: |
+          jq -n \
+            --arg request_id "$REQUEST_ID" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg version "$MARKETING_VERSION" \
+            --argjson build_number "$BUILD_NUMBER" \
+            --argjson run_id "$RUN_ID" \
+            --arg run_url "$RUN_URL" \
+            --argjson run_attempt "$RUN_ATTEMPT" \
+            '{schemaVersion:1,requestId:$request_id,sourceSha:$source_sha,marketingVersion:$version,buildNumber:$build_number,workflow:{runId:$run_id,runUrl:$run_url,runAttempt:$run_attempt}}' \
+            > release-manifest-ios.json
+        env:
+          REQUEST_ID: ${{ inputs.request_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          MARKETING_VERSION: ${{ steps.release.outputs.marketing_version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-ios
+          path: release-manifest-ios.json
+          retention-days: 90
+      - name: Upload IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-ipa
+          path: '*.ipa'
+          if-no-files-found: ignore

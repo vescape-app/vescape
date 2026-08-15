@@ -27,7 +27,7 @@ describe('map camera controller', () => {
       type: 'FollowLive',
       gpsCamera,
       followHeadingDeg: 91,
-      navigationMode: 'gpsHeading',
+      orientationMode: 'gpsHeading',
       perspectiveEnabled: true,
       viewportHeight: 1000,
     })
@@ -52,7 +52,7 @@ describe('map camera controller', () => {
       type: 'FollowLive',
       gpsCamera,
       followHeadingDeg: 0,
-      navigationMode: 'freeRotate',
+      orientationMode: 'freeRotate',
       perspectiveEnabled: true,
       preserveHeading: 42,
     })
@@ -80,7 +80,7 @@ describe('map camera controller', () => {
         pitch: 0,
       },
       fallbackZoomLevel: 13,
-      navigationMode: 'gpsHeading',
+      orientationMode: 'gpsHeading',
     })
 
     expect(result.effect?.camera).toEqual({ pitch: 56 })
@@ -224,7 +224,7 @@ describe('map camera controller', () => {
         pitch: 3,
       },
       fallbackZoomLevel: 13,
-      navigationMode: 'northUp',
+      orientationMode: 'northUp',
       perspectiveEnabled: true,
     })
 

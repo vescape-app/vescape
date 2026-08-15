@@ -1,15 +1,9 @@
 import { useMemo } from 'react'
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import {
-  useAnimatedProps,
-  useAnimatedStyle,
-  useDerivedValue,
-  type SharedValue,
-} from 'react-native-reanimated'
+import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
-import { Text } from '@/components/base/Text'
 import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SparklineMaxBadge, type SparklinePoint } from '@/components/charts/Sparkline'
 import { buildSparklinePaths, SparklineLayer } from '@/components/charts/SparklineLayer'
@@ -31,12 +25,13 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import {
   AlertMarker,
-  AnimatedTextInput,
+  BG_ARC_COLOR,
   gaugeRampColor,
+  GaugeReadout,
   GlowGradient,
-  useCanvasSize,
+  type GaugeReadoutBox,
 } from '@/modules/board/components/gauge/gaugeShared'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useCanvasSize } from '@/hooks/useCanvasSize'
 
 interface DualGaugeProps {
   speedValue: SharedValue<number | null>
@@ -52,7 +47,6 @@ interface DualGaugeProps {
   dutyAlerts?: DualGaugeAlert[]
   compact?: boolean
   transparent?: boolean
-  split?: boolean
   containerStyle?: StyleProp<ViewStyle>
 }
 
@@ -64,6 +58,12 @@ const MARKER_INSET = 10
 const LEFT_ARC: Arc = { cx: 100, cy: 100, r: R, from: Math.PI, to: Math.PI / 2 }
 const RIGHT_ARC: Arc = { cx: 10, cy: 100, r: R, from: 0, to: Math.PI / 2 }
 
+// Readout box: line height is set explicitly so the drawn value keeps the same
+// vertical footprint the readout view used to reserve.
+const VALUE_FONT_SIZE = 36
+const VALUE_LINE_HEIGHT = 40
+const UNIT_FONT_SIZE = 10
+
 // Cropped viewBox per side — removes empty space so arc fills container width
 const CROP_PAD = 1
 const CROP_TOP = 12
@@ -71,6 +71,10 @@ const VB_CROP_W = R + CROP_PAD * 2
 const VB_CROP_H = VB_H - CROP_TOP
 const VB_CROP_LEFT_X = LEFT_ARC.cx - R - CROP_PAD
 const VB_CROP_RIGHT_X = RIGHT_ARC.cx - CROP_PAD
+
+// Arcs end at the arc centre line (cy), well above the bottom of the gauge box.
+// The touch row is clipped to that so it matches what the rider actually sees.
+const ARC_BOTTOM_RATIO = (LEFT_ARC.cy - CROP_TOP) / VB_CROP_H
 
 const SPARKLINE_HEIGHT = 28
 const SPARKLINE_TOP = 12
@@ -105,7 +109,6 @@ function QuarterArcLayer({
   hotRange,
   transform,
 }: QuarterArcLayerProps) {
-  const neutral = useResolvedNeutralColors()
   const isLeft = side === 'left'
   const arc = isLeft ? LEFT_ARC : RIGHT_ARC
 
@@ -130,7 +133,7 @@ function QuarterArcLayer({
       {/* Static background arc */}
       <Path
         path={isLeft ? BG_ARC_LEFT : BG_ARC_RIGHT}
-        color={neutral.border}
+        color={BG_ARC_COLOR}
         style="stroke"
         strokeWidth={STROKE}
         strokeCap="butt"
@@ -155,34 +158,28 @@ function QuarterArcLayer({
   )
 }
 
-function GaugeValue({
-  side,
+function GaugeValueLayer({
   value,
   color,
   hotRange,
   unit,
-  bounds,
-}: QuarterArcProps & { bounds: { top: number; bottom: number } }) {
-  const animatedValueProps = useAnimatedProps(() => {
+  box,
+}: Omit<QuarterArcProps, 'side' | 'max'> & { box: GaugeReadoutBox }) {
+  const valueText = useDerivedValue(() => {
     const current = value.value
-    const text = current != null ? Math.round(current).toString() : '—'
-    return { text, value: text }
+    return current != null ? Math.round(current).toString() : '—'
   })
-  const animatedValueStyle = useAnimatedStyle(() => ({
-    color: gaugeRampColor(value.value, color, hotRange),
-  }))
+  const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
   return (
-    <View
-      style={[side === 'left' ? styles.bowlLeft : styles.bowlRight, bounds]}
-      pointerEvents="none"
-    >
-      <AnimatedTextInput
-        editable={false}
-        animatedProps={animatedValueProps}
-        style={[styles.value, animatedValueStyle]}
-      />
-      <Text style={styles.unit}>{unit}</Text>
-    </View>
+    <GaugeReadout
+      text={valueText}
+      color={valueColor}
+      unit={unit}
+      box={box}
+      valueSize={VALUE_FONT_SIZE}
+      valueLineHeight={VALUE_LINE_HEIGHT}
+      unitSize={UNIT_FONT_SIZE}
+    />
   )
 }
 
@@ -198,6 +195,8 @@ interface GaugePairProps {
   speedSeries: SparklinePoint[]
   dutySeries: SparklinePoint[]
   windowMs?: number
+  onPressSpeed: () => void
+  onPressDuty: () => void
 }
 
 function GaugePair({
@@ -212,6 +211,8 @@ function GaugePair({
   speedSeries,
   dutySeries,
   windowMs,
+  onPressSpeed,
+  onPressDuty,
 }: GaugePairProps) {
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
@@ -252,9 +253,13 @@ function GaugePair({
     ],
     [cellWidth, scale],
   )
-  const valueBounds = {
-    top: SPARKLINE_HEIGHT + SPARKLINE_TOP + gaugeHeight * 0.1,
-    bottom: gaugeHeight * 0.05,
+  // Bowls the readouts are centered in, in canvas pixels. They used to be
+  // percentage-positioned overlay views; the numbers match those percentages.
+  const bowlTop = SPARKLINE_HEIGHT + SPARKLINE_TOP + gaugeHeight * 0.1
+  const bowl = {
+    y: bowlTop,
+    width: size.w * 0.4,
+    height: size.h - bowlTop - gaugeHeight * 0.05,
   }
   return (
     <View style={styles.gaugePair} onLayout={onLayout}>
@@ -288,26 +293,41 @@ function GaugePair({
             hotRange={dutyHotRange}
             transform={rightTransform}
           />
+          <GaugeValueLayer
+            value={speedValue}
+            color={telemetry.speed.color}
+            unit="km/h"
+            hotRange={speedHotRange}
+            box={{ ...bowl, x: size.w * 0.05 }}
+          />
+          <GaugeValueLayer
+            value={dutyValue}
+            color={telemetry.duty.color}
+            unit="%"
+            hotRange={dutyHotRange}
+            box={{ ...bowl, x: size.w * 0.55 }}
+          />
         </Canvas>
       ) : null}
-      <GaugeValue
-        side="left"
-        value={speedValue}
-        max={speedMax}
-        color={telemetry.speed.color}
-        unit="km/h"
-        hotRange={speedHotRange}
-        bounds={valueBounds}
-      />
-      <GaugeValue
-        side="right"
-        value={dutyValue}
-        max={dutyMax}
-        color={telemetry.duty.color}
-        unit="%"
-        hotRange={dutyHotRange}
-        bounds={valueBounds}
-      />
+      <View
+        style={[
+          styles.gaugeTouchRow,
+          { height: SPARKLINE_TOP + SPARKLINE_HEIGHT + gaugeHeight * ARC_BOTTOM_RATIO },
+        ]}
+      >
+        <Pressable
+          style={styles.halfPressable}
+          testID="gauge-speed"
+          onPress={onPressSpeed}
+          android_ripple={interaction.ripple}
+        />
+        <Pressable
+          style={styles.halfPressable}
+          testID="gauge-duty"
+          onPress={onPressDuty}
+          android_ripple={interaction.ripple}
+        />
+      </View>
     </View>
   )
 }
@@ -326,7 +346,6 @@ export function DualGauge({
   dutyAlerts = [],
   compact = false,
   transparent = false,
-  split = false,
   containerStyle,
 }: DualGaugeProps) {
   const router = useRouter()
@@ -340,8 +359,8 @@ export function DualGauge({
       ]}
     >
       <View style={styles.gaugeContent}>
-        <View style={[styles.row, split && styles.rowSplit]} pointerEvents="none">
-          <View style={[styles.halfPressable, split && styles.halfPressableSplit]}>
+        <View style={styles.row} pointerEvents="none">
+          <View style={styles.halfPressable}>
             <SparklineMaxBadge
               points={speedSeries ?? []}
               color={telemetry.speed.color}
@@ -349,7 +368,7 @@ export function DualGauge({
               position="left"
             />
           </View>
-          <View style={[styles.halfPressable, split && styles.halfPressableSplit]}>
+          <View style={styles.halfPressable}>
             <SparklineMaxBadge
               points={dutySeries ?? []}
               color={telemetry.duty.color}
@@ -369,19 +388,9 @@ export function DualGauge({
           speedSeries={speedSeries ?? []}
           dutySeries={dutySeries ?? []}
           windowMs={windowMs}
+          onPressSpeed={() => router.push(routes.controlSpeed)}
+          onPressDuty={() => router.push(routes.controlDuty)}
         />
-        <View style={styles.gaugeTouchRow}>
-          <Pressable
-            style={styles.halfPressable}
-            onPress={() => router.push(routes.controlSpeed)}
-            android_ripple={interaction.ripple}
-          />
-          <Pressable
-            style={styles.halfPressable}
-            onPress={() => router.push(routes.controlDuty)}
-            android_ripple={interaction.ripple}
-          />
-        </View>
       </View>
     </View>
   )
@@ -389,7 +398,7 @@ export function DualGauge({
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: theme.neutral.surface,
+    backgroundColor: theme.palette.slate.surface,
     borderRadius: 16,
     padding: 12,
     marginHorizontal: 4,
@@ -410,54 +419,15 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   gaugeContent: { position: 'relative' },
-  gaugeTouchRow: { position: 'absolute', inset: 0, flexDirection: 'row', gap: 32 },
+  gaugeTouchRow: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', gap: 32 },
   row: {
     flexDirection: 'row',
     gap: 32,
     position: 'relative',
   },
   gaugePair: { width: '100%', aspectRatio: 1.4, position: 'relative' },
-  rowSplit: {
-    justifyContent: 'space-between',
-  },
-  halfPressableSplit: {
-    flex: 4,
-  },
   svg: {
     width: '100%',
     height: '100%',
-  },
-  bowlLeft: {
-    position: 'absolute',
-    left: '5%',
-    right: '55%',
-    top: '10%',
-    bottom: '5%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bowlRight: {
-    position: 'absolute',
-    left: '55%',
-    right: '5%',
-    top: '10%',
-    bottom: '5%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  value: {
-    color: theme.neutral.textPrimary,
-    fontSize: 36,
-    fontFamily: 'monospace',
-    fontWeight: '700',
-    lineHeight: 40,
-    padding: 0,
-    textAlign: 'center',
-  },
-  unit: {
-    color: theme.neutral.textMuted,
-    fontSize: 10,
-    textAlign: 'center',
-    marginTop: 2,
   },
 })

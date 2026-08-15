@@ -1,9 +1,13 @@
 import Foundation
 import GRDB
 
-/// iOS schema generation stamped into backup manifests. Greenfield `v1` (see `TelemetryDatabase`),
-/// so restores only need integrity + format checks; GRDB's migrator reconciles the rest.
-internal let TELEMETRY_SCHEMA_VERSION = 1
+/// Schema generation stamped into backup manifests, and the ceiling a restore accepts. Shared with
+/// Android: the migrators move together, and the number is what tells a restore which migrations
+/// the incoming database already satisfies. It must match the newest migration in
+/// `TelemetryDatabase.migrator`.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `TELEMETRY_DATABASE_VERSION`
+internal let TELEMETRY_SCHEMA_VERSION = 31
 
 private let MANIFEST_ENTRY = "manifest.json"
 private let DATABASE_ENTRY = "db.sqlite"
@@ -16,9 +20,18 @@ private let DATABASE_ENTRY = "db.sqlite"
 /// GRDB pool in place; there is no Room `closeAndReset`, so `TelemetryDatabase.replaceDatabase`
 /// closes and reopens the pool.
 enum DatabaseBackupManager {
-  enum BackupError: Error {
+  /// `LocalizedError`, because the bridge rejects with `error.localizedDescription`: a bare `Error`
+  /// enum reaches JS as "undefined reason", which is what a failing restore used to report.
+  enum BackupError: LocalizedError {
     case databaseUnavailable
     case invalidBackup(String)
+
+    var errorDescription: String? {
+      switch self {
+      case .databaseUnavailable: return "Database unavailable"
+      case let .invalidBackup(reason): return reason
+      }
+    }
   }
 
   static func createBackup() throws -> [String: Any?] {
@@ -71,7 +84,7 @@ enum DatabaseBackupManager {
     guard let dbData = entries[DATABASE_ENTRY], !dbData.isEmpty else {
       throw BackupError.invalidBackup("Backup missing \(DATABASE_ENTRY)")
     }
-    try validateManifest(manifestData)
+    let schemaVersion = try validateManifest(manifestData)
 
     let workDir = fm.temporaryDirectory.appendingPathComponent("db-restore-\(UUID().uuidString)", isDirectory: true)
     try fm.createDirectory(at: workDir, withIntermediateDirectories: true)
@@ -80,7 +93,7 @@ enum DatabaseBackupManager {
     try dbData.write(to: restoredDb, options: .atomic)
     try validateDatabase(restoredDb)
 
-    try TelemetryDatabase.replaceDatabase(withFileAt: restoredDb)
+    try TelemetryDatabase.replaceDatabase(withFileAt: restoredDb, schemaVersion: schemaVersion)
   }
 
   // MARK: - Helpers
@@ -90,7 +103,11 @@ enum DatabaseBackupManager {
     return URL(fileURLWithPath: uriString)
   }
 
-  private static func validateManifest(_ data: Data) throws {
+  /// Returns the backup's schema generation, which the restore needs to reconcile a foreign
+  /// database against this app's migrations.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseBackupManager.kt
+  private static func validateManifest(_ data: Data) throws -> Int {
     guard
       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else { throw BackupError.invalidBackup("Unreadable manifest") }
@@ -98,9 +115,12 @@ enum DatabaseBackupManager {
       throw BackupError.invalidBackup("Unsupported backup format")
     }
     let schemaVersion = (object["schemaVersion"] as? NSNumber)?.intValue ?? -1
-    guard schemaVersion >= 1 else {
-      throw BackupError.invalidBackup("Backup schema version \(schemaVersion) is invalid")
+    guard (1...TELEMETRY_SCHEMA_VERSION).contains(schemaVersion) else {
+      throw BackupError.invalidBackup(
+        "Backup schema version \(schemaVersion) is newer than app schema \(TELEMETRY_SCHEMA_VERSION)"
+      )
     }
+    return schemaVersion
   }
 
   /// Integrity-check the incoming database before it replaces the live one.

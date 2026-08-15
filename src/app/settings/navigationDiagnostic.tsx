@@ -15,7 +15,7 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function NavigationDiagnosticScreen() {
-  const mapNavigationMode = useSettingsStore((s) => s.mapNavigationMode)
+  const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const [now, setNow] = useState(() => Date.now())
   const diagnostics = useNavigationDiagnosticsStore(
@@ -39,12 +39,12 @@ export default function NavigationDiagnosticScreen() {
   const vm = useMemo(
     () =>
       buildNavigationDiagnosticsViewModel({
-        mapNavigationMode,
+        mapOrientationMode,
         mapStyleKey,
         ...diagnostics,
         now,
       }),
-    [diagnostics, mapNavigationMode, mapStyleKey, now],
+    [diagnostics, mapOrientationMode, mapStyleKey, now],
   )
 
   return (

@@ -32,6 +32,7 @@ function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenCon
     enterHistoryMode: controller.enterHistoryMode,
     selectedSession: controller.selectedSession,
     sessionSamples: controller.sessionSamples,
+    sessionChartSamples: controller.sessionChartSamples,
     sessionGpsSamples: controller.sessionGpsSamples,
     sessionMarkers: controller.sessionMarkers,
     nextRide: controller.nextRide,
@@ -72,7 +73,6 @@ function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenCon
     selectRide: controller.selectRide,
     exitHistory: controller.exitHistory,
     removeSession: controller.removeSession,
-    onSeek: controller.onSeek,
     setActiveHistoryMapMetric: controller.setActiveHistoryMapMetric,
     mediaHistory: controller.mediaHistory,
     openMedia: controller.openMedia,
@@ -99,25 +99,25 @@ export function MainScreen({
   const handleHeadingChange = useCallback(
     (heading: number) => {
       cameraHeading.set(heading)
-      if (!(controller.mode === 'telemetry' && controller.mapNavigationMode === 'phoneHeading')) {
+      if (!(controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading')) {
         selectorHeading.set(heading)
       }
     },
-    [cameraHeading, controller.mapNavigationMode, controller.mode, selectorHeading],
+    [cameraHeading, controller.mapOrientationMode, controller.mode, selectorHeading],
   )
   const handlePhoneHeadingChange = useCallback(
     (heading: number | null) => {
       if (heading == null) return
-      if (controller.mode === 'telemetry' && controller.mapNavigationMode === 'phoneHeading') {
+      if (controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading') {
         selectorHeading.set(heading)
       }
     },
-    [controller.mapNavigationMode, controller.mode, selectorHeading],
+    [controller.mapOrientationMode, controller.mode, selectorHeading],
   )
   useEffect(() => {
-    if (controller.mode === 'telemetry' && controller.mapNavigationMode === 'phoneHeading') return
+    if (controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading') return
     selectorHeading.set(cameraHeading.value)
-  }, [cameraHeading, controller.mapNavigationMode, controller.mode, selectorHeading])
+  }, [cameraHeading, controller.mapOrientationMode, controller.mode, selectorHeading])
   const [offscreenMapIndicators, setOffscreenMapIndicators] = useState<
     OffscreenMapIndicatorState[]
   >([])
@@ -297,9 +297,10 @@ export function MainScreen({
       })
       clearSelectedMapPoints()
       setSelectedNavigationTarget(null)
-      controller.exitMapFocus()
+      // Deliberately stays on the map: the path is a proposal until the rider accepts it from the
+      // navigation sheet, which is what closes the map. See `onConfirmNavigation`.
     },
-    [clearSelectedMapPoints, controller, setDirectionPoint],
+    [clearSelectedMapPoints, setDirectionPoint],
   )
   const handleNavigateSelectedTarget = useCallback(async () => {
     if (!selectedNavigationTarget) return
@@ -467,7 +468,7 @@ export function MainScreen({
         history={mapHistoryProps}
         style={mapStyleProps}
         mapPoints={mapPointProps}
-        mapNavigationMode={controller.mapNavigationMode}
+        mapOrientationMode={controller.mapOrientationMode}
         rotationLocked={controller.rotationLocked}
         perspectiveEnabled={controller.perspectiveEnabled}
         onPerspectiveChange={controller.setPerspectiveEnabled}
@@ -503,8 +504,8 @@ export function MainScreen({
           heading: selectorHeading,
           mapStyleKey: controller.mapStyleKey,
           setMapStyleKey: controller.setMapStyleKey,
-          mapNavigationMode: controller.mapNavigationMode,
-          setMapNavigationMode: controller.setMapNavigationMode,
+          mapOrientationMode: controller.mapOrientationMode,
+          setMapOrientationMode: controller.setMapOrientationMode,
           mapSelector: controller.mapSelector,
           setMapSelector: controller.setMapSelector,
           enterMapFocus: controller.handleMapFocus,
@@ -513,7 +514,6 @@ export function MainScreen({
           exitWeather: controller.exitWeatherMode,
           enterLegalLimits: controller.enterLegalLimitsMode,
           exitLegalLimits: controller.exitLegalLimitsMode,
-          refreshWeather: controller.refreshWeather,
           weatherLocation: controller.liveLocations.at(-1) ?? controller.latestApproximateLocation,
           directionPoint: controller.directionPoint,
           activeNavigationTarget,

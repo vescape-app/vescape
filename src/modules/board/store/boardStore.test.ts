@@ -14,6 +14,7 @@ const getSettings = mock(async () => ({
   lastGpsLatitude: null,
   lastGpsLongitude: null,
   movingSpeedThresholdKmh: 3,
+  rideSplitGapMinutes: 30,
   freeSpinMaxSpeedDeltaKmh: 10,
   freeSpinStationaryBoardCapKmh: 15,
   mapStyleKey: 'onedark',
@@ -22,7 +23,7 @@ const getSettings = mock(async () => ({
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'northUp',
+  mapOrientationMode: 'northUp',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
 }))

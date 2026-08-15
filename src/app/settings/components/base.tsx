@@ -1,9 +1,19 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  cancelAnimation,
+  Easing,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated'
+import {
+  ArrowFatLinesUpIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowsClockwiseIcon,
+  CheckIcon,
   CubeIcon,
   FadersIcon,
   GearSixIcon,
@@ -13,21 +23,34 @@ import {
 } from 'phosphor-react-native'
 
 import { Banner } from '@/components/base/Banner'
+import { TickText } from '@/components/base/TickText'
+import { type MonoValueAlign } from '@/components/base/MonoValue'
 import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
 import { ScreenTitle } from '@/components/base/ScreenTitle'
-import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
-import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { theme, type MonoWeight } from '@/constants/theme'
 
 function IconButtonShowcase() {
   const [loading, setLoading] = useState(false)
   const [disabled, setDisabled] = useState(false)
   const [dot, setDot] = useState(true)
+  const [takeover, setTakeover] = useState('backup')
+  const [progress, setProgress] = useState('40%')
+
+  const activeTakeover =
+    takeover === 'none'
+      ? null
+      : takeover === 'update'
+        ? { icon: ArrowFatLinesUpIcon, accent: theme.settingsIcon.update }
+        : {
+            icon: ArrowsClockwiseIcon,
+            accent: theme.settingsIcon.sync,
+            progress: progress === 'none' ? undefined : Number.parseInt(progress, 10) / 100,
+          }
 
   return (
     <ShowcaseCard
@@ -37,6 +60,18 @@ function IconButtonShowcase() {
           <ToggleRow label="loading" value={loading} onToggle={setLoading} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
           <ToggleRow label="dot" value={dot} onToggle={setDot} />
+          <ChipRow
+            label="takeover"
+            options={['none', 'update', 'backup']}
+            selected={takeover}
+            onSelect={setTakeover}
+          />
+          <ChipRow
+            label="progress"
+            options={['none', '10%', '40%', '85%']}
+            selected={progress}
+            onSelect={setProgress}
+          />
         </>
       }
     >
@@ -68,6 +103,27 @@ function IconButtonShowcase() {
             icon={TrashIcon}
             size="lg"
             destructive
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+        </View>
+        <View style={{ gap: 8, alignItems: 'center' }}>
+          <IconButton
+            icon={GearSixIcon}
+            takeover={activeTakeover}
+            dot={dot ? theme.status.upgrade.color : undefined}
+            accessibilityLabel="Settings"
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <IconButton
+            icon={GearSixIcon}
+            size="lg"
+            takeover={activeTakeover}
+            dot={dot ? theme.status.upgrade.color : undefined}
+            accessibilityLabel="Settings"
             onPress={() => {}}
             loading={loading}
             disabled={disabled}
@@ -140,6 +196,15 @@ function ButtonShowcase() {
           />
           <Button
             style={{ flex: 1 }}
+            label="Enabled"
+            variant="success"
+            icon={CheckIcon}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
+            style={{ flex: 1 }}
             label="Delete"
             variant="destructive"
             onPress={() => {}}
@@ -176,10 +241,9 @@ function ButtonShowcase() {
 }
 
 function PlaceholderShowcase() {
-  const neutral = useResolvedNeutralColors()
   const [showTitle, setShowTitle] = useState(true)
   const [showAction, setShowAction] = useState(true)
-  const [color, setColor] = useState<string>(neutral.textMuted)
+  const [color, setColor] = useState<string>(theme.palette.slate.textMuted)
 
   return (
     <ShowcaseCard
@@ -190,7 +254,11 @@ function PlaceholderShowcase() {
           <ToggleRow label="showAction" value={showAction} onToggle={setShowAction} />
           <ChipRow
             label="iconColor"
-            options={[neutral.textMuted, theme.palette.sky.color, theme.status.error.color]}
+            options={[
+              theme.palette.slate.textMuted,
+              theme.palette.sky.color,
+              theme.status.error.color,
+            ]}
             selected={color}
             onSelect={setColor}
           />
@@ -250,11 +318,57 @@ function ScreenTitleShowcase() {
   )
 }
 
-function VescapeWordmarkShowcase() {
+function TickTextShowcase() {
+  const [weight, setWeight] = useState<MonoWeight>('700')
+  const [align, setAlign] = useState<MonoValueAlign>('right')
+  const value = useSharedValue<number | null>(0)
+
+  useEffect(() => {
+    value.value = withRepeat(withTiming(42.7, { duration: 3000, easing: Easing.linear }), -1, true)
+    return () => cancelAnimation(value)
+  }, [value])
+
   return (
-    <ShowcaseCard name="VescapeWordmark">
-      <View style={{ alignItems: 'center' }}>
-        <VescapeWordmark width={220} />
+    <ShowcaseCard
+      name="TickText / MonoValue"
+      controls={
+        <>
+          <ChipRow
+            label="weight"
+            options={['500', '600', '700', '800']}
+            selected={weight}
+            onSelect={(v) => setWeight(v as MonoWeight)}
+          />
+          <ChipRow
+            label="align"
+            options={['left', 'center', 'right']}
+            selected={align}
+            onSelect={(v) => setAlign(v as MonoValueAlign)}
+          />
+        </>
+      }
+    >
+      <View style={styles.tickBox}>
+        <TickText
+          value={value}
+          decimals={1}
+          unit=" km/h"
+          size={28}
+          weight={weight}
+          align={align}
+          color={theme.telemetry.speed}
+          style={styles.tickValue}
+        />
+        <TickText
+          value={value}
+          decimals={0}
+          unit="%"
+          size={12}
+          weight={weight}
+          align={align}
+          color={theme.palette.slate.textMuted}
+          style={styles.tickValue}
+        />
       </View>
     </ShowcaseCard>
   )
@@ -266,20 +380,28 @@ export default function BaseComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CubeIcon}
-          description="Button, IconButton, Banner, Placeholder, ScreenTitle, VescapeWordmark."
+          description="Button, IconButton, Banner, Placeholder, ScreenTitle, TickText."
         />
-        <VescapeWordmarkShowcase />
         <IconButtonShowcase />
         <ButtonShowcase />
         <PlaceholderShowcase />
         <BannerShowcase />
         <ScreenTitleShowcase />
+        <TickTextShowcase />
       </ScrollView>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.neutral.bg },
+  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
+  tickBox: {
+    gap: 6,
+    borderWidth: 1,
+    borderColor: theme.palette.slate.border,
+    borderRadius: 6,
+    padding: 8,
+  },
+  tickValue: { alignSelf: 'stretch' },
 })

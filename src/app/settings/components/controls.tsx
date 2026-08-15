@@ -34,6 +34,7 @@ import {
   WrenchIcon,
 } from 'phosphor-react-native'
 
+import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 import { IconHero } from '@/components/settings/IconHero'
 import { CircleButton } from '@/components/controls/CircleButton'
 import {
@@ -557,6 +558,8 @@ function AlertPresetControlShowcase() {
                 thresholdMax: null,
                 enabled: true,
                 soundType: metric === 'speed' || metric === 'duty' ? 'preset:tick' : 'preset:beep',
+                repeatEverySeconds: null,
+                beepCount: ALERT_BEEP_COUNT_DEFAULT,
                 createdAt: 0,
               }))
             : [],

@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { ALERT_BEEP_COUNT_DEFAULT } from 'vescape-core'
 
 import {
   batteryDrainAlertTestEasing,
@@ -40,6 +41,8 @@ test('preset test rules are the exact visible preset snapshot', () => {
       threshold: 28.8,
       thresholdMax: 36,
       soundType: 'preset:tick',
+      repeatEverySeconds: null,
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ])
 })
@@ -59,6 +62,8 @@ test('custom test rules exclude disabled rules and persistence fields', () => {
         soundType: 'preset:tick',
         enabled: true,
         createdAt: 1,
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
       {
         id: 'disabled',
@@ -68,6 +73,8 @@ test('custom test rules exclude disabled rules and persistence fields', () => {
         soundType: 'preset:beep',
         enabled: false,
         createdAt: 2,
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
     ],
   })
@@ -79,6 +86,8 @@ test('custom test rules exclude disabled rules and persistence fields', () => {
       threshold: 70,
       thresholdMax: 90,
       soundType: 'preset:tick',
+      repeatEverySeconds: null,
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
   ])
 })
@@ -98,6 +107,8 @@ test('manual rules coexist with preset rules in the test snapshot', () => {
         soundType: 'preset:beep',
         enabled: true,
         createdAt: 1,
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
     ],
   })
@@ -144,6 +155,8 @@ test('non-preset snapshots keep only enabled custom rules', () => {
         soundType: 'preset:tick',
         enabled: true,
         createdAt: 1,
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
       {
         id: 'disabled',
@@ -153,6 +166,8 @@ test('non-preset snapshots keep only enabled custom rules', () => {
         soundType: 'preset:beep',
         enabled: false,
         createdAt: 2,
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
     ],
   })
@@ -169,6 +184,8 @@ test('chart thresholds include range ceilings once in numeric order', () => {
         threshold: 80,
         thresholdMax: 90,
         soundType: 'preset:tick',
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
       {
         id: 'single',
@@ -176,6 +193,8 @@ test('chart thresholds include range ceilings once in numeric order', () => {
         threshold: 90,
         thresholdMax: null,
         soundType: 'preset:beep',
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
       },
     ]),
   ).toEqual([80, 90])

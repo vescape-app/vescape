@@ -7,7 +7,7 @@ import org.junit.Test
 
 class VescWriteQueueTest {
     @Test
-    fun neutralRemoteTiltReplacesStaleTiltAndPreemptsNormalTraffic() {
+    fun neutralRemoteInputReplacesStaleTiltAndPreemptsNormalTraffic() {
         val queue = VescWriteQueue()
         val inFlightPoll = byteArrayOf(1)
         val queuedPoll = byteArrayOf(2)
@@ -17,12 +17,12 @@ class VescWriteQueueTest {
         queue.enqueueNormal(inFlightPoll)
         assertArrayEquals(inFlightPoll, queue.startNext()!!.bytes)
         queue.enqueueNormal(queuedPoll)
-        queue.replaceRemoteTilt(staleTilt)
-        queue.replaceRemoteTilt(neutralTilt, urgent = true)
+        queue.replaceRemoteInput(staleTilt)
+        queue.replaceRemoteInput(neutralTilt, urgent = true)
 
         queue.completeInFlight()
         val next = queue.startNext()
-        assertEquals(VescWriteQueue.Write.RemoteTilt::class, next!!::class)
+        assertEquals(VescWriteQueue.Write.RemoteInput::class, next!!::class)
         assertArrayEquals(neutralTilt, next.bytes)
 
         queue.completeInFlight()
@@ -30,14 +30,14 @@ class VescWriteQueueTest {
     }
 
     @Test
-    fun onlyOneRemoteTiltWriteCanWaitBehindInFlightWrite() {
+    fun onlyOneRemoteInputWriteCanWaitBehindInFlightWrite() {
         val queue = VescWriteQueue()
         val first = byteArrayOf(1)
         val latest = byteArrayOf(2)
 
-        queue.replaceRemoteTilt(first)
+        queue.replaceRemoteInput(first)
         assertArrayEquals(first, queue.startNext()!!.bytes)
-        queue.replaceRemoteTilt(latest)
+        queue.replaceRemoteInput(latest)
         assertNull(queue.startNext())
 
         queue.completeInFlight()
@@ -47,17 +47,17 @@ class VescWriteQueueTest {
     }
 
     @Test
-    fun ordinaryRemoteTiltAndNormalTrafficAlternate() {
+    fun ordinaryRemoteInputAndNormalTrafficAlternate() {
         val queue = VescWriteQueue()
         val firstTilt = byteArrayOf(1)
         val poll = byteArrayOf(2)
         val nextTilt = byteArrayOf(3)
 
-        queue.replaceRemoteTilt(firstTilt)
+        queue.replaceRemoteInput(firstTilt)
         assertArrayEquals(firstTilt, queue.startNext()!!.bytes)
         queue.completeInFlight()
         queue.enqueueNormal(poll)
-        queue.replaceRemoteTilt(nextTilt)
+        queue.replaceRemoteInput(nextTilt)
 
         assertArrayEquals(poll, queue.startNext()!!.bytes)
         queue.completeInFlight()
@@ -71,24 +71,48 @@ class VescWriteQueueTest {
         val poll = byteArrayOf(2)
         val neutralTilt = byteArrayOf(3)
 
-        queue.replaceRemoteTilt(heldTilt)
+        queue.replaceRemoteInput(heldTilt)
         assertArrayEquals(heldTilt, queue.startNext()!!.bytes)
         queue.completeInFlight()
         queue.enqueueNormal(poll)
-        queue.replaceRemoteTilt(neutralTilt, urgent = true)
+        queue.replaceRemoteInput(neutralTilt, urgent = true)
 
         assertArrayEquals(neutralTilt, queue.startNext()!!.bytes)
     }
 
     @Test
-    fun refusedRemoteTiltWriteNeverOverwritesNewerTilt() {
+    fun routineRemoteInputNeverSwallowsAnUnsentUrgentStop() {
+        val queue = VescWriteQueue()
+        val poll = byteArrayOf(1)
+        val neutral = byteArrayOf(2)
+        val otherFeatureTick = byteArrayOf(3)
+        val newerNeutral = byteArrayOf(4)
+
+        queue.enqueueNormal(poll)
+        assertArrayEquals(poll, queue.startNext()!!.bytes)
+        queue.replaceRemoteInput(neutral, urgent = true)
+        // Remote Tilt and Board Move share this slot: a routine tick must not drop a pending stop.
+        queue.replaceRemoteInput(otherFeatureTick)
+
+        queue.completeInFlight()
+        assertArrayEquals(neutral, queue.startNext()!!.bytes)
+
+        // A newer stop still wins over an older one.
+        queue.completeInFlight()
+        queue.replaceRemoteInput(neutral, urgent = true)
+        queue.replaceRemoteInput(newerNeutral, urgent = true)
+        assertArrayEquals(newerNeutral, queue.startNext()!!.bytes)
+    }
+
+    @Test
+    fun refusedRemoteInputWriteNeverOverwritesNewerTilt() {
         val queue = VescWriteQueue()
         val refused = byteArrayOf(1)
         val latest = byteArrayOf(2)
 
-        queue.replaceRemoteTilt(refused)
+        queue.replaceRemoteInput(refused)
         assertArrayEquals(refused, queue.startNext()!!.bytes)
-        queue.replaceRemoteTilt(latest)
+        queue.replaceRemoteInput(latest)
         queue.retryInFlight()
 
         assertArrayEquals(latest, queue.startNext()!!.bytes)

@@ -38,8 +38,7 @@ class ConfigRWControllerLinkIntegrityTest {
             override fun connection() = ConfigConnectionSnapshot(
                 config = config,
                 phase = BoardPhase.Connected,
-                canId = null,
-                directConnection = true,
+                transport = BoardTransport.Direct,
                 fwVersion = "FW 6.05",
                 linkIntegrity = linkIntegrity,
             )

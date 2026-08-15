@@ -46,6 +46,20 @@ export function fmtPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`
 }
 
+/**
+ * Format a ride length in seconds as "8 min", "1 h 20 min" or "< 1 min" — how long something takes,
+ * not how long ago it was. Rounds up to the whole minute, because a route that takes forty seconds
+ * is a minute of riding and never zero.
+ */
+export function fmtRideDuration(seconds: number): string {
+  const totalMinutes = Math.ceil(Math.max(0, seconds) / 60)
+  if (totalMinutes < 1) return '< 1 min'
+  if (totalMinutes < 60) return `${totalMinutes} min`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
+}
+
 /** Format elapsed time since a timestamp, e.g. "5m ago", "2h ago", "3d ago". */
 export function fmtTimeAgo(atMs: number, nowMs = Date.now()): string {
   const diffMin = Math.max(0, Math.floor((nowMs - atMs) / 60_000))
@@ -54,6 +68,21 @@ export function fmtTimeAgo(atMs: number, nowMs = Date.now()): string {
   const diffH = Math.floor(diffMin / 60)
   if (diffH < 24) return `${diffH}h ago`
   return `${Math.floor(diffH / 24)}d ago`
+}
+
+/**
+ * Abbreviate a count so it stays narrow in a fixed-width slot: 999 → "999", 1240 → "1.2k",
+ * 100000 → "100k". Backup backlogs run to six figures and must not widen the tile that shows them.
+ */
+export function fmtCompactCount(value: number): string {
+  const n = Math.max(0, Math.round(value))
+  if (n < 1000) return String(n)
+  // Round before picking the suffix: 999_999 rounds to 1000k, which belongs in the next unit.
+  const k = n / 1000
+  const roundedK = k < 10 ? Number(k.toFixed(1)) : Math.round(k)
+  if (roundedK < 1000) return `${k < 10 ? k.toFixed(1) : roundedK}k`
+  const m = n / 1_000_000
+  return `${m < 10 ? m.toFixed(1) : Math.round(m)}M`
 }
 
 /** Format bytes to human-readable string (B, KB, MB). */

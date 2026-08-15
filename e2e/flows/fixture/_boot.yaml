@@ -1,0 +1,16 @@
+# Boot a fixture run (helper — shared by scripts/screenshots.ts and scripts/smoke.ts).
+#
+# Assumes a Release build with EXPO_PUBLIC_SCREENSHOTS=1 or EXPO_PUBLIC_SMOKE=1, app data cleared
+# and fixtures pushed by the runner. The app's own bootstrap restores the backup zip and starts the
+# replay session before it mounts, so this wait covers a database restore plus a replay handshake.
+#
+# Waiting on `battery-bar` rather than a blind settle: it is the first thing on screen that can only
+# be there once the live session is delivering, which is the state both runs need and neither can
+# assert by watching animations stop.
+appId: ${APP_ID}
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: battery-bar
+    timeout: 60000

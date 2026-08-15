@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 
 import {
   computeAutoRange,
+  computeAutoRangeFromValues,
   findNearestChartPointAtX,
   getChartPosition,
   getChartAlertMarkers,
@@ -109,6 +110,40 @@ test('computeAutoRange supports zero include and min span', () => {
   expect(range.y.max - range.y.min).toBeGreaterThanOrEqual(11)
 })
 
+test('a baseline holds the axis unless the ride overshoots it', () => {
+  const inside = computeAutoRangeFromValues([0, 41.6], {
+    includeZero: true,
+    minSpan: 10,
+    paddingRatio: 0.1,
+    baseline: { min: 0, max: 50 },
+  })
+  expect(inside).toEqual({ min: 0, max: 50 })
+
+  const over = computeAutoRangeFromValues([0, 62], {
+    includeZero: true,
+    minSpan: 10,
+    paddingRatio: 0.1,
+    baseline: { min: 0, max: 50 },
+  })
+  expect(over.min).toBe(0)
+  expect(over.max).toBeGreaterThan(62)
+})
+
+test('snap rounds the axis outward and keeps a floor of zero', () => {
+  const speed = computeAutoRangeFromValues([0, 57], {
+    includeZero: true,
+    minSpan: 10,
+    paddingRatio: 0.1,
+    snap: true,
+  })
+  expect(speed).toEqual({ min: 0, max: 70 })
+})
+
+test('minSpan widens a flat series instead of only scaling its padding', () => {
+  const flat = computeAutoRangeFromValues([50.1, 50.2], { minSpan: 5 })
+  expect(flat.max - flat.min).toBeGreaterThanOrEqual(5)
+})
+
 test('toExcludedRanges filters by metric map and merges nearby ranges', () => {
   const ranges = toExcludedRanges(
     [
@@ -173,4 +208,17 @@ test('splitChartLineSegments breaks line on large telemetry gap', () => {
   expect(segments).toHaveLength(2)
   expect(segments[0]).toHaveLength(3)
   expect(segments[1]).toHaveLength(2)
+})
+
+test('a sparsely sampled stretch survives as one-sample runs instead of vanishing', () => {
+  // Dense 50ms block, then samples seconds apart: every sparse neighbour exceeds the gap
+  // threshold, so each is its own run. Dropping them would blank the whole stretch.
+  const points: TelemetryChartPoint[] = [
+    ...Array.from({ length: 6 }, (_, i) => ({ date: new Date(1000 + i * 50), value: 4 })),
+    { date: new Date(9_000), value: 3 },
+    { date: new Date(14_000), value: 3 },
+    { date: new Date(20_000), value: 3 },
+  ]
+  const runs = splitChartLineSegments(points, { y: { min: 0, max: 10 } }, 100, 50, 30_000)
+  expect(runs.map((run) => run.length)).toEqual([6, 1, 1, 1])
 })
