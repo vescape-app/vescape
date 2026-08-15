@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 10,
     paddingBottom: 0,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   headerActions: {
     flexDirection: 'row',

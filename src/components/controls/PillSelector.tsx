@@ -29,7 +29,12 @@ import type { Icon } from 'phosphor-react-native'
 
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedControlColors } from '@/hooks/useTheme'
+import {
+  useResolvedColor,
+  useResolvedControlColors,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 
 interface ActiveTheme {
   bg: string
@@ -48,6 +53,7 @@ interface PillSelectorCtx {
   closeMenu: () => void
   addRef: React.RefObject<View | null>
   contained: boolean
+  variant: 'control' | 'lightTabs'
 }
 
 const PillSelectorContext = createContext<PillSelectorCtx | null>(null)
@@ -78,6 +84,7 @@ interface PillSelectorProps {
   centered?: boolean
   contained?: boolean
   fitContent?: boolean
+  variant?: 'control' | 'lightTabs'
   style?: StyleProp<ViewStyle>
   contentContainerStyle?: StyleProp<ViewStyle>
 }
@@ -108,11 +115,15 @@ export function PillSelector({
   centered = false,
   contained = false,
   fitContent = false,
+  variant = 'control',
   style,
   contentContainerStyle,
 }: PillSelectorProps) {
   'use no memo'
   const [menu, setMenu] = useState<MenuState | null>(null)
+  const neutral = useResolvedNeutralColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const addRef = useTriggerRef()
 
   const openMenu = useCallback(
@@ -129,9 +140,20 @@ export function PillSelector({
     : null
 
   return (
-    <PillSelectorContext.Provider value={{ activeId, openMenu, closeMenu, addRef, contained }}>
+    <PillSelectorContext.Provider
+      value={{ activeId, openMenu, closeMenu, addRef, contained, variant }}
+    >
       <View
-        style={[styles.container, contained && styles.containedContainer, fitContentStyle, style]}
+        style={[
+          styles.container,
+          contained && styles.containedContainer,
+          useLightTabs && {
+            backgroundColor: neutral.surface,
+            borderColor: neutral.border,
+          },
+          fitContentStyle,
+          style,
+        ]}
       >
         <ScrollView
           horizontal
@@ -285,7 +307,10 @@ export function PillSelectorItem({
   children,
 }: PillSelectorItemProps) {
   const control = useResolvedControlColors()
-  const { activeId, contained, openMenu, closeMenu } = usePillSelectorCtx()
+  const neutral = useResolvedNeutralColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const { activeId, contained, variant, openMenu, closeMenu } = usePillSelectorCtx()
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const pillRef = useRef<View>(null)
   const active = id === activeId
   const resolved = resolveItemState({
@@ -318,12 +343,15 @@ export function PillSelectorItem({
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [contained ? TRANSPARENT : control.background, control.backgroundPressed],
+        [
+          useLightTabs ? neutral.surface : contained ? TRANSPARENT : control.background,
+          useLightTabs ? control.background : control.backgroundPressed,
+        ],
       ),
       borderColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [contained ? TRANSPARENT : control.border, accentBorder],
+        [useLightTabs ? TRANSPARENT : contained ? TRANSPARENT : control.border, accentBorder],
       ),
     }),
     [
@@ -335,6 +363,9 @@ export function PillSelectorItem({
       control.background,
       control.backgroundPressed,
       control.border,
+      neutral.border,
+      neutral.surface,
+      useLightTabs,
     ],
   )
   const labelStyle = useAnimatedStyle(
@@ -365,6 +396,7 @@ export function PillSelectorItem({
         resolved.collapseLabel && styles.iconPill,
         resolved.collapseLabel && { maxWidth: activeWidth },
         contained && styles.containedPill,
+        useLightTabs && styles.lightTabPill,
         frameStyle,
       ]}
     >
@@ -517,6 +549,9 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 0,
+  },
+  lightTabPill: {
+    borderWidth: 1,
   },
   pillPressable: {
     height: 36,

@@ -12,7 +12,7 @@ import {
 } from '@rnmapbox/maps'
 import { WarningIcon } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
-import { processColor, View } from 'react-native'
+import { processColor } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
@@ -22,8 +22,8 @@ import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
 import { RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
 import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
-import { mainMapLayerStyles } from '@/screens/main/map/mainMapLayerStyles'
 import { MapPin } from '@/modules/map/components/MapPin'
+import { MapTargetReticle } from '@/modules/map/components/MapTargetReticle'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
@@ -394,13 +394,8 @@ function PendingNavigationTargetPin({
 }) {
   return (
     <MarkerView coordinate={coordinate} allowOverlap>
-      <Animated.View
-        entering={pendingNavigationTargetEntering}
-        style={[mainMapLayerStyles.pendingNavigationTarget, { borderColor: color }]}
-      >
-        <View
-          style={[mainMapLayerStyles.pendingNavigationTargetCore, { backgroundColor: color }]}
-        />
+      <Animated.View entering={pendingNavigationTargetEntering}>
+        <MapTargetReticle color={color} />
       </Animated.View>
     </MarkerView>
   )

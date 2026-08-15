@@ -5,6 +5,7 @@ import type { MapPoint } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import {
@@ -50,6 +51,7 @@ export function MapTargetSheetFrame({
   onFocusTarget?: () => void
   children: ReactNode
 }) {
+  const neutral = useResolvedNeutralColors()
   const isMapPoint = target.type === 'mapPoint'
   const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
   const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
@@ -61,13 +63,29 @@ export function MapTargetSheetFrame({
   const icon = createElement(IconComponent, { size: 18, color: textColor, weight: 'duotone' })
   const headerContent = (
     <>
-      <View style={[mapSheetStyles.mapTargetIcon, { borderColor: color }]}>{icon}</View>
+      <View
+        style={[
+          mapSheetStyles.mapTargetIcon,
+          { backgroundColor: neutral.surfaceDeep, borderColor: color },
+        ]}
+      >
+        {icon}
+      </View>
       <View style={mapSheetStyles.mapTargetTitleBlock}>{header}</View>
     </>
   )
 
   return (
-    <View style={[styles.sheet, { bottom }]}>
+    <View
+      style={[
+        styles.sheet,
+        {
+          bottom,
+          backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+          borderColor: theme.alpha(neutral.textSecondary, 0.3),
+        },
+      ]}
+    >
       <View style={styles.header}>
         {onFocusTarget ? (
           <Pressable

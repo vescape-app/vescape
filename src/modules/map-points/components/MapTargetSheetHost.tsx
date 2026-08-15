@@ -2,6 +2,7 @@ import { ArrowClockwiseIcon, CheckIcon, NavigationArrowIcon, XIcon } from 'phosp
 import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -82,6 +83,7 @@ export function MapTargetSheetHost({
   onFocusTarget,
   requireAccount,
 }: MapTargetSheetHostProps) {
+  const accents = useResolvedAccentColors()
   const actionColors = {
     color: actionColor,
     textColor: actionTextColor,
@@ -141,7 +143,10 @@ export function MapTargetSheetHost({
   if (!activeTarget || activeTargetSuppressed) return null
 
   const cancelAction = {
-    ...NAVIGATION_ACTION_COLORS.cancel,
+    color: accents.red.color,
+    textColor: accents.red.text,
+    borderColor: theme.alpha(accents.red.color, 0.4),
+    bgColor: theme.alpha(accents.red.color, 0.1),
     label: 'Cancel',
     accessibilityLabel: 'Cancel navigation',
     Icon: XIcon,
@@ -206,12 +211,6 @@ const NAVIGATION_ACTION_COLORS = {
     textColor: theme.palette.slate.textSecondary,
     borderColor: theme.palette.slate.border,
     bgColor: theme.alpha(theme.palette.slate.color, 0.12),
-  },
-  cancel: {
-    color: theme.palette.red.color,
-    textColor: theme.palette.red.text,
-    borderColor: theme.alpha(theme.palette.red.color, 0.4),
-    bgColor: theme.alpha(theme.palette.red.color, 0.1),
   },
 } as const
 

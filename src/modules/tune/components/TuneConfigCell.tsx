@@ -116,16 +116,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.control.border,
-    backgroundColor: theme.control.background,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     overflow: 'hidden',
   },
   cellDirty: {
-    backgroundColor: theme.control.background,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderColor: theme.palette.sky.border,
   },
   cellBoardChanged: {
-    backgroundColor: theme.control.background,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderColor: theme.palette.green.border,
   },
   cellRevertButton: {
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 10,
     bottom: 4,
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   cellProfileValue: {
-    color: theme.control.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 10,
     fontWeight: '800',
     marginTop: 1,
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   cellLabel: {
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '800',
     flex: 1,

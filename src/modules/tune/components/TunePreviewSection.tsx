@@ -34,7 +34,7 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
   const pitchInputActive = useSharedValue(false)
   const previewSpeedKmh = useSharedValue(15)
   const groundToBoardAngleDegrees = useSharedValue(0)
-  const previewGradientColor = theme.palette.slate.bg
+  const previewGradientColor = neutral.bg
   const previewGradientColors = [
     theme.alpha(previewGradientColor, 1),
     theme.alpha(previewGradientColor, 0.75),
@@ -166,10 +166,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 10,
     padding: 12,
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   previewToggleTitleRow: {
     flex: 1,
@@ -190,12 +190,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   previewToggleTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '900',
   },
   previewToggleDescription: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 10,
     fontWeight: '600',
   },

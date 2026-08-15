@@ -3,7 +3,7 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import { Canvas, LinearGradient, Rect, RoundedRect, vec } from '@shopify/react-native-skia'
 
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedControlColors } from '@/hooks/useTheme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneTileFillProps {
   fraction: number | null
@@ -21,7 +21,7 @@ function clamp01(value: number): number {
 }
 
 export function TuneTileFill({ fraction, color, fillHeightRatio = 0.42 }: TuneTileFillProps) {
-  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
   const resolvedColor = useResolvedColor(color ?? theme.palette.sky.color)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const onLayout = useCallback((event: LayoutChangeEvent) => {
@@ -67,7 +67,7 @@ export function TuneTileFill({ fraction, color, fillHeightRatio = 0.42 }: TuneTi
             width={trackWidth}
             height={LINE_THICKNESS}
             r={LINE_THICKNESS / 2}
-            color={control.divider}
+            color={neutral.border}
           />
           {fillWidth > 0 ? (
             <RoundedRect

@@ -40,7 +40,7 @@ export function Stepper({
         disabled={!canDecrement}
         testID={testIDPrefix ? `${testIDPrefix}-decrement` : undefined}
       >
-        <MinusIcon size={14} color={theme.neutral.textPrimary} weight="bold" />
+        <MinusIcon size={14} color={theme.control.icon} weight="bold" />
       </Pressable>
       <View style={[styles.valueWrap, fullWidth && styles.fullWidthValueWrap]}>
         <Text style={styles.stepperValue}>{value}</Text>
@@ -52,7 +52,7 @@ export function Stepper({
         disabled={!canIncrement}
         testID={testIDPrefix ? `${testIDPrefix}-increment` : undefined}
       >
-        <PlusIcon size={14} color={theme.neutral.textPrimary} weight="bold" />
+        <PlusIcon size={14} color={theme.control.icon} weight="bold" />
       </Pressable>
     </View>
   )
@@ -85,13 +85,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stepperValue: {
-    color: theme.neutral.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'center',
   },
   stepperUnit: {
-    color: theme.neutral.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 0,

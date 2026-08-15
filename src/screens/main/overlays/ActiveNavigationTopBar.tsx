@@ -11,6 +11,7 @@ import Animated, {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface ActiveNavigationTopBarProps {
   boardPill: ReactNode
@@ -79,7 +80,7 @@ function CancelButton({ color, onPress }: { color: string; onPress: () => void }
       }}
       style={styles.cancel}
     >
-      <XIcon size={12} color={color} weight="bold" />
+      <XIcon size={22} color={color} weight="bold" />
     </Pressable>
   )
 }
@@ -97,6 +98,7 @@ export function ActiveNavigationTopBar({
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
+  const neutral = useResolvedNeutralColors()
   const [navigationPrimary, setNavigationPrimary] = useState(true)
   const navigationPrimaryRef = useRef(true)
   const gestureTriggeredRef = useRef(false)
@@ -104,6 +106,7 @@ export function ActiveNavigationTopBar({
   const boardTextWidth = Math.max(0, width - 300)
   const targetTint = theme.alpha(riderColor, 0.12)
   const targetBorder = theme.alpha(riderColor, 0.7)
+  const targetPillWidth = Math.min(176, maxWidth)
 
   const navigationSwapStyle = useAnimatedStyle(() => ({
     opacity: interpolate(swapProgress.value, [0, 1], [0.78, 1]),
@@ -164,15 +167,26 @@ export function ActiveNavigationTopBar({
               onPress={onNavigationPress}
               style={[
                 styles.targetPill,
-                { minWidth: Math.min(166, maxWidth), maxWidth },
-                { borderColor: targetBorder, backgroundColor: targetTint },
+                {
+                  width: targetPillWidth,
+                  borderColor: targetBorder,
+                  backgroundColor: neutral.surface,
+                },
               ]}
             >
-              <View style={[styles.targetIcon, { borderColor: targetBorder }]}>
+              <View
+                style={[
+                  styles.targetIcon,
+                  { borderColor: targetBorder, backgroundColor: targetTint },
+                ]}
+              >
                 <TargetIcon icon={targetIcon} color={riderColor} />
               </View>
               <View style={styles.targetCopy}>
-                <Text numberOfLines={1} style={styles.targetTitle}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.targetTitle, { color: neutral.textPrimary }]}
+                >
                   {targetTitle}
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
@@ -276,13 +290,13 @@ const styles = StyleSheet.create({
     backgroundColor: theme.control.backgroundPressed,
   },
   targetCopy: {
-    flexGrow: 0,
+    flex: 1,
     flexShrink: 1,
     minWidth: 0,
-    paddingHorizontal: 8,
+    paddingLeft: 8,
+    paddingRight: 0,
   },
   targetTitle: {
-    color: theme.control.text,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -293,8 +307,9 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   cancel: {
-    width: 30,
-    height: 32,
+    width: 38,
+    height: 38,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

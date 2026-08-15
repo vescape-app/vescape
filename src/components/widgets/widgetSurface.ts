@@ -8,6 +8,14 @@ export const widgetSurface = {
   borderRadius: 18,
 } as const
 
+/** Large, secondary navigation rows used inside sheets and settings lists. */
+export const secondaryWidgetSurface = {
+  backgroundColor: theme.neutral.surfaceDeep,
+  borderColor: theme.neutral.border,
+  borderWidth: 1,
+  borderRadius: 18,
+} as const
+
 /** Flat canvas for read-only widgets; actions inside it provide their own interaction surface. */
 export const presentationWidgetSurface = {
   backgroundColor: theme.alpha(theme.palette.mono.black, 0),

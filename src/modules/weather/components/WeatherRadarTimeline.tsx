@@ -16,6 +16,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { MonoValue } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   formatRainViewerFrameTime,
   useRainViewerRadarStore,
@@ -74,6 +75,7 @@ function createRadarScrubGesture({
 }
 
 export function WeatherRadarTimeline() {
+  const neutral = useResolvedNeutralColors()
   const frames = useRainViewerRadarStore((state) => state.frames)
   const loading = useRainViewerRadarStore((state) => state.loading)
   const fetchRadar = useRainViewerRadarStore((state) => state.fetch)
@@ -175,7 +177,9 @@ export function WeatherRadarTimeline() {
   }))
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[styles.container, { backgroundColor: neutral.surface, borderColor: neutral.border }]}
+    >
       <IconButton
         icon={playing ? PauseIcon : PlayIcon}
         size="sm"
@@ -185,8 +189,16 @@ export function WeatherRadarTimeline() {
       />
       <View style={styles.timeline}>
         <View style={styles.timelineHeader}>
-          <MonoValue text={frameLabel} size={TIME_FONT_SIZE} weight="800" style={styles.timeText} />
-          <Text style={styles.rangeText}>{frameWindowLabel}</Text>
+          <MonoValue
+            text={frameLabel}
+            size={TIME_FONT_SIZE}
+            weight="800"
+            color={neutral.textPrimary}
+            style={styles.timeText}
+          />
+          <Text style={[styles.rangeText, { color: neutral.textSecondary }]}>
+            {frameWindowLabel}
+          </Text>
         </View>
         <GestureDetector gesture={scrubGesture}>
           <Animated.View
@@ -208,8 +220,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
-    borderColor: theme.alpha(theme.palette.slate.textSecondary, 0.3),
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row',
@@ -232,7 +242,6 @@ const styles = StyleSheet.create({
     width: 64,
   },
   rangeText: {
-    color: theme.palette.slate.textSecondary,
     fontSize: 11,
     fontWeight: '700',
   },

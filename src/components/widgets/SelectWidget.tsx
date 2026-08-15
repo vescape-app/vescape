@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretDownIcon, type Icon } from 'phosphor-react-native'
 
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface SelectWidgetProps {
@@ -102,14 +102,14 @@ export function SelectWidget({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.control.backgroundPressed,
+    backgroundColor: theme.neutral.surface,
   },
   disabled: {
     opacity: 0.5,
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '180deg' }],
   },
   description: {
-    color: theme.control.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     lineHeight: 16,
   },

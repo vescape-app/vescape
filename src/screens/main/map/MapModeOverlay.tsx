@@ -10,7 +10,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedControlColors } from '@/hooks/useTheme'
 import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
 import { getPlaceCategoryIcon } from '@/modules/map-points/constants/mapPointIcons'
 import { MapPointAddMenu } from '@/modules/map-points/components/MapPointAddMenu'
@@ -18,6 +18,7 @@ import { MapPointFilterMenu } from '@/modules/map-points/components/MapPointFilt
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
+import { MapTargetReticle } from '@/modules/map/components/MapTargetReticle'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { type MapSearchResult } from '@/modules/map/lib/search'
 import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
@@ -90,20 +91,6 @@ const centerPlacementPointerEntering = () => {
   }
 }
 
-const centerPlacementPulseEntering = () => {
-  'worklet'
-  return {
-    initialValues: {
-      opacity: 0.65,
-      transform: [{ scale: 0.75 }],
-    },
-    animations: {
-      opacity: withTiming(0, { duration: 320 }),
-      transform: [{ scale: withTiming(2.05, { duration: 320 }) }],
-    },
-  }
-}
-
 function CenterPlacementPointer({ color, pulseKey }: { color: string; pulseKey: number }) {
   return (
     <Animated.View
@@ -112,16 +99,7 @@ function CenterPlacementPointer({ color, pulseKey }: { color: string; pulseKey: 
       exiting={FadeOut.duration(140)}
       style={styles.centerPlacementPointer}
     >
-      {pulseKey > 0 ? (
-        <Animated.View
-          key={pulseKey}
-          entering={centerPlacementPulseEntering}
-          style={[styles.centerPlacementPulse, { borderColor: color }]}
-        />
-      ) : null}
-      <View style={[styles.centerPlacementBall, { borderColor: color }]}>
-        <View style={[styles.centerPlacementDot, { backgroundColor: color }]} />
-      </View>
+      <MapTargetReticle color={color} pulseKey={pulseKey} />
     </Animated.View>
   )
 }
@@ -163,6 +141,7 @@ function FullMapControls({
   onRequireMapAccount,
 }: FullMapControlsProps) {
   const accents = useResolvedAccentColors()
+  const control = useResolvedControlColors()
   const riderColor = useRiderStore((s) => s.riderColor)
   // Category visibility and Map Point creation are store truth, not screen wiring.
   const hiddenMapPointCategories = useMapPointStore((s) => s.hiddenMapPointCategories)
@@ -352,7 +331,10 @@ function FullMapControls({
         size="sm"
         testID="map-exit"
         onPress={handleExitMapFocus}
-        style={[styles.mapTopBackButton, { top }]}
+        style={[
+          styles.mapTopBackButton,
+          { top, backgroundColor: control.background, borderColor: control.border },
+        ]}
       />
       {searchOpen ? (
         <View style={[styles.mapSearchSheet, { top }]}>
@@ -433,7 +415,10 @@ function FullMapControls({
           icon={MagnifyingGlassIcon}
           size="sm"
           onPress={openSearch}
-          style={[styles.mapSearchButton, { top }]}
+          style={[
+            styles.mapSearchButton,
+            { top, backgroundColor: control.background, borderColor: control.border },
+          ]}
         />
       )}
       {bottomControlsVisible && !addMenuOpen ? (
@@ -809,28 +794,5 @@ const styles = StyleSheet.create({
     zIndex: 29,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  centerPlacementBall: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.4),
-  },
-  centerPlacementPulse: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.3),
-  },
-  centerPlacementDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
 })

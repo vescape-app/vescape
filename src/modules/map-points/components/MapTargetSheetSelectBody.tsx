@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import {
   MapPointDetails,
   MapTargetActionRow,
@@ -37,6 +38,7 @@ export function MapTargetSelectBody({
   onDismiss?: () => void
   onFocusTarget?: () => void
 }) {
+  const accents = useResolvedAccentColors()
   const point = target.type === 'mapPoint' ? target.point : null
 
   return (
@@ -74,7 +76,7 @@ export function MapTargetSelectBody({
             icon={PlusIcon}
             size="md"
             onPress={onAddFeature}
-            accent={theme.palette.cyan.text}
+            accent={accents.cyan.light}
             accessibilityLabel="Add map feature here"
           />
         ) : null}

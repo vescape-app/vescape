@@ -6,6 +6,7 @@ import type { MapPointCategory } from 'vescape-core'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 import {
@@ -43,6 +44,9 @@ export function MapPointAddMenu({
   onSelectCategory: (category: MapPointCategory) => void
   onSelectNavigationPoint: () => void
 }) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+
   if (!open) {
     return (
       <View style={[styles.mapAddAction, { bottom }]}>
@@ -54,10 +58,24 @@ export function MapPointAddMenu({
   }
 
   return (
-    <View style={[styles.mapAddSheet, { bottom: sheetBottom }]}>
+    <View
+      style={[
+        styles.mapAddSheet,
+        {
+          bottom: sheetBottom,
+          backgroundColor: neutral.surface,
+          borderColor: neutral.border,
+        },
+      ]}
+    >
       <View style={styles.mapAddSheetHeader}>
-        <View style={[mapSheetStyles.mapTargetIcon, { borderColor: theme.palette.cyan.color }]}>
-          <PlusIcon size={18} color={theme.palette.cyan.text} weight="bold" />
+        <View
+          style={[
+            mapSheetStyles.mapTargetIcon,
+            { backgroundColor: neutral.surfaceDeep, borderColor: accents.cyan.color },
+          ]}
+        >
+          <PlusIcon size={18} color={accents.cyan.text} weight="bold" />
         </View>
         <View style={mapSheetStyles.mapTargetTitleBlock}>
           <Text style={mapSheetStyles.mapTargetTitle} numberOfLines={1}>
@@ -83,8 +101,8 @@ export function MapPointAddMenu({
         <View style={styles.mapAddCompactRow}>
           {compactMapPointOptions.map((option) => {
             const IconComponent = getMapPointKindIcon(option.kind)
-            const color = getMapPointKindColor(option.kind)
-            const textColor = getMapPointKindTextColor(option.kind)
+            const color = getMapPointKindColor(option.kind, accents)
+            const textColor = getMapPointKindTextColor(option.kind, accents)
             return (
               <Pressable
                 key={option.kind}
@@ -113,8 +131,8 @@ export function MapPointAddMenu({
         <View style={styles.mapAddSecondaryRow}>
           {secondaryMapPointOptions.map((option) => {
             const IconComponent = getMapPointKindIcon(option.kind)
-            const color = getMapPointKindColor(option.kind)
-            const textColor = getMapPointKindTextColor(option.kind)
+            const color = getMapPointKindColor(option.kind, accents)
+            const textColor = getMapPointKindTextColor(option.kind, accents)
             return (
               <Pressable
                 key={option.kind}

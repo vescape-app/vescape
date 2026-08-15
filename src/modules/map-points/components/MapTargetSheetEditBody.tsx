@@ -132,6 +132,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   saveButton: {
+    flex: 1,
     backgroundColor: theme.palette.cyan.border,
     borderColor: theme.palette.cyan.border,
   },

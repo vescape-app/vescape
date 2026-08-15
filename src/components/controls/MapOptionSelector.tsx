@@ -2,7 +2,12 @@ import { type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
-import { useResolvedColor } from '@/hooks/useTheme'
+import {
+  useResolvedColor,
+  useResolvedControlColors,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 
 interface MapOption<Key extends string> {
   key: Key
@@ -17,6 +22,7 @@ interface MapOptionSelectorProps<Key extends string> {
   activeBackground: string
   collapsedAccessibilityLabel: string
   expanded: boolean
+  variant?: 'control' | 'lightTabs'
   size?: MapOptionSelectorSize
   options: MapOption<Key>[]
   onToggle: () => void
@@ -65,6 +71,7 @@ export function MapOptionSelector<Key extends string>({
   activeBackground,
   collapsedAccessibilityLabel,
   expanded,
+  variant = 'control',
   size = 'md',
   options,
   onToggle,
@@ -72,6 +79,10 @@ export function MapOptionSelector<Key extends string>({
 }: MapOptionSelectorProps<Key>) {
   const resolvedActiveColor = useResolvedColor(activeColor)
   const resolvedActiveBackground = useResolvedColor(activeBackground)
+  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const metrics = SELECTOR_METRICS[size]
   const optionCount = options.length
   const shellStyle = useAnimatedStyle(
@@ -97,7 +108,12 @@ export function MapOptionSelector<Key extends string>({
     <Animated.View
       style={[
         styles.container,
-        { height: metrics.height, borderRadius: metrics.radius },
+        {
+          height: metrics.height,
+          borderRadius: metrics.radius,
+          backgroundColor: useLightTabs ? neutral.surface : control.background,
+          borderColor: useLightTabs ? neutral.border : control.border,
+        },
         shellStyle,
       ]}
     >
@@ -117,6 +133,8 @@ export function MapOptionSelector<Key extends string>({
             activeColor={resolvedActiveColor}
             activeBackground={resolvedActiveBackground}
             activeBorder={theme.alpha(resolvedActiveColor, 0.6)}
+            inactiveBackground={useLightTabs ? neutral.surface : TRANSPARENT_OPTION_COLOR}
+            inactiveBorder={TRANSPARENT_OPTION_COLOR}
             metrics={metrics}
             onPress={() => {
               if (activeKey === option.key) {
@@ -163,6 +181,8 @@ interface MapOptionButtonProps {
   activeColor: string
   activeBackground: string
   activeBorder: string
+  inactiveBackground: string
+  inactiveBorder: string
   metrics: (typeof SELECTOR_METRICS)[MapOptionSelectorSize]
   onPress: () => void
 }
@@ -175,6 +195,8 @@ function MapOptionButton({
   activeColor,
   activeBackground,
   activeBorder,
+  inactiveBackground,
+  inactiveBorder,
   metrics,
   onPress,
 }: MapOptionButtonProps) {
@@ -182,12 +204,23 @@ function MapOptionButton({
     () => ({
       width: withTiming(getOptionWidth(metrics, expanded, selected), ANIMATION),
       backgroundColor: withTiming(
-        getOptionBackground(activeBackground, expanded, selected),
+        getOptionBackground(activeBackground, inactiveBackground, expanded, selected),
         ANIMATION,
       ),
-      borderColor: withTiming(getOptionBorder(activeBorder, expanded, selected), ANIMATION),
+      borderColor: withTiming(
+        getOptionBorder(activeBorder, inactiveBorder, expanded, selected),
+        ANIMATION,
+      ),
     }),
-    [activeBackground, activeBorder, expanded, metrics, selected],
+    [
+      activeBackground,
+      activeBorder,
+      expanded,
+      inactiveBackground,
+      inactiveBorder,
+      metrics,
+      selected,
+    ],
   )
   const labelStyle = useAnimatedStyle(
     () => ({
@@ -265,14 +298,24 @@ function getLabelMaxWidth(
   )
 }
 
-function getOptionBackground(activeBackground: string, expanded: boolean, selected: boolean) {
+function getOptionBackground(
+  activeBackground: string,
+  inactiveBackground: string,
+  expanded: boolean,
+  selected: boolean,
+) {
   'worklet'
-  return expanded && selected ? activeBackground : TRANSPARENT_OPTION_COLOR
+  return expanded && selected ? activeBackground : inactiveBackground
 }
 
-function getOptionBorder(activeBorder: string, expanded: boolean, selected: boolean) {
+function getOptionBorder(
+  activeBorder: string,
+  inactiveBorder: string,
+  expanded: boolean,
+  selected: boolean,
+) {
   'worklet'
-  return expanded && selected ? activeBorder : TRANSPARENT_OPTION_COLOR
+  return expanded && selected ? activeBorder : inactiveBorder
 }
 
 const styles = StyleSheet.create({

@@ -60,7 +60,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
                 <CompactStat key={item.key} item={item} />
               ))}
               <View style={styles.toggleCell}>
-                <View style={styles.expandedToggle}>
+                <View style={styles.toggle}>
                   <CaretUpIcon size={16} color={theme.control.icon} weight="bold" />
                 </View>
               </View>
@@ -329,11 +329,5 @@ const styles = StyleSheet.create({
     backgroundColor: theme.control.background,
     borderWidth: 1,
     borderColor: theme.control.border,
-  },
-  expandedToggle: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 })

@@ -49,6 +49,7 @@ export function MapModeTabs({
         activeId={activeId}
         contained
         fitContent
+        variant="lightTabs"
         style={styles.mapModePills}
         contentContainerStyle={styles.mapModePillsContent}
       >

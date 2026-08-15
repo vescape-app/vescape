@@ -5,7 +5,7 @@ import { CheckIcon, PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Input } from '@/components/forms/Input'
 import { TextPromptModal } from '@/components/modals/TextPromptModal'
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface InputWidgetProps {
@@ -152,7 +152,7 @@ function SquareInput({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
   },
   widgetRow: {
     padding: 16,
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.control.backgroundPressed,
+    backgroundColor: theme.neutral.surface,
   },
   text: {
     minWidth: 0,
@@ -187,14 +187,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
-    color: theme.control.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   value: {
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '700',
     flex: 1,

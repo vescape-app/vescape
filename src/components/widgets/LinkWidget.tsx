@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretRightIcon, type Icon } from 'phosphor-react-native'
 
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface LinkWidgetProps {
@@ -20,7 +20,7 @@ export function LinkWidget({
   icon: IconComponent,
   label,
   hint,
-  accent = theme.control.textMuted,
+  accent = theme.neutral.textMuted,
   size = 'full',
   disabled,
   onPress,
@@ -47,14 +47,14 @@ export function LinkWidget({
         </Text>
         {hint && size === 'full' ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
-      {square ? null : <CaretRightIcon size={18} color={theme.control.textMuted} weight="bold" />}
+      {square ? null : <CaretRightIcon size={18} color={theme.neutral.textMuted} weight="bold" />}
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
   },
   widgetRow: {
     flexDirection: 'row',
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.control.backgroundPressed,
+    backgroundColor: theme.neutral.surface,
   },
   disabled: {
     opacity: 0.45,
@@ -83,12 +83,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   label: {
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
   hint: {
-    color: theme.control.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
   },
 })
