@@ -149,8 +149,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     overflow: 'hidden',
   },
   weatherCanvas: {

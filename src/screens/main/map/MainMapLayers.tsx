@@ -12,7 +12,7 @@ import {
 } from '@rnmapbox/maps'
 import { WarningIcon } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { processColor, StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 import type { MapPoint, MapPointCategory } from 'vescape-core'
 
@@ -36,6 +36,7 @@ import {
   getMapPointKindTextColor,
 } from '@/modules/map-points/constants/mapPoints'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
 import { getFavoriteRouteSegments } from '@/modules/history/lib/favoriteRoute'
 import { resolveMarkerRenderData } from '@/modules/history/lib/markerOverlap'
@@ -68,7 +69,6 @@ import {
 import {
   DESTINATION_POINT_COLOR,
   DESTINATION_POINT_TEXT_COLOR,
-  GPS_POINT_COLOR,
 } from '@/screens/main/map/offscreenMapIndicators'
 import {
   getHistoryMetricBaseColor,
@@ -161,14 +161,17 @@ function LiveMapLayers({
   highContrastRoutes: boolean
 }) {
   const riderColor = useRiderStore((state) => state.riderColor)
-  const gpsPointColor = riderColor ?? GPS_POINT_COLOR
-  const trailColor = riderColor ?? MAP_DEFAULTS.trailColor
+  const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const gpsPointColor = riderColor ?? accents.purple.color
+  const trailColor = riderColor ?? accents.violet.color
   const trailGradientStart = riderColor
     ? theme.alpha(riderColor, 0)
-    : MAP_DEFAULTS.trailGradientStart
+    : theme.alpha(accents.violet.color, 0)
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
-    : MAP_DEFAULTS.trailGradientEnd
+    : theme.alpha(accents.violet.color, 0.85)
+  const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)
   const gpsPuckPositionShape = useMemo(
     () =>
       accuracyFix
@@ -210,7 +213,7 @@ function LiveMapLayers({
           <LineLayer
             id="center-live-trail-casing"
             style={{
-              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
               lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
               lineCap: 'round',
               lineJoin: 'round',
@@ -242,7 +245,7 @@ function LiveMapLayers({
             <ShapeSource id="center-gps-accuracy-source" shape={accuracyShape}>
               <FillLayer
                 id="center-gps-accuracy-fill"
-                style={{ fillColor: MAP_DEFAULTS.accuracyFillColor }}
+                style={{ fillColor: processColor(accuracyFillColor) as never }}
               />
             </ShapeSource>
           )}

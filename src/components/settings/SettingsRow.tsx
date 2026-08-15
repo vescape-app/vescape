@@ -39,7 +39,7 @@ export function SettingsRow({
       </View>
       {right}
       {showChevron ? (
-        <CaretRightIcon size={18} color={theme.palette.slate.color} weight="bold" />
+        <CaretRightIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
       ) : null}
     </View>
   )

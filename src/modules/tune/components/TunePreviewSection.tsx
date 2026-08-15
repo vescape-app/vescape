@@ -9,6 +9,7 @@ import type { TuneProfileFieldValue } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { TunePreview, TUNE_PREVIEW_DESCRIPTION } from '@/modules/tune/components/TunePreview'
 import {
   TunePreviewScenarioControls,
@@ -25,6 +26,8 @@ interface TunePreviewSectionProps {
 }
 
 export function TunePreviewSection({ fields, active, visible, children }: TunePreviewSectionProps) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const pitchInputDegrees = useSharedValue(0)
@@ -80,10 +83,10 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
                   value={previewEnabled}
                   onValueChange={setPreviewEnabled}
                   trackColor={{
-                    false: theme.palette.slate.border,
-                    true: theme.alpha(theme.tune.color, 0.6),
+                    false: neutral.border,
+                    true: theme.alpha(accents.purple.color, 0.6),
                   }}
-                  thumbColor={previewEnabled ? theme.tune.color : theme.palette.slate.textMuted}
+                  thumbColor={previewEnabled ? accents.purple.color : neutral.textMuted}
                   accessibilityLabel="Enable Tune Preview"
                 />
               </View>

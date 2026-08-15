@@ -11,7 +11,7 @@ import {
 
 import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { theme, type AlphaLevel } from '@/constants/theme'
+import { accentColors, theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
@@ -25,7 +25,9 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 
 export const BG_ARC_COLOR = theme.palette.slate.border
-const GAUGE_HOT_COLOR = theme.status.error.color
+const GAUGE_HOT_COLOR = accentColors.dark.red.color
+const ALERT_COLOR = accentColors.dark.yellow.color
+const ALERT_TEXT_COLOR = accentColors.dark.yellow.text
 
 /** Ramp the gauge color toward the hot color across the metric's hot range. */
 export function gaugeRampColor(
@@ -73,7 +75,7 @@ function AlertTick({ arc, fraction }: { arc: Arc; fraction: number }) {
   return (
     <Path
       path={path}
-      color={theme.palette.yellow.color}
+      color={ALERT_COLOR}
       style="stroke"
       strokeWidth={TICK_WIDTH}
       strokeCap="butt"
@@ -104,7 +106,7 @@ function AlertLabel({
       y={p.y + LABEL_FONT_SIZE / 2}
       text={text}
       font={font}
-      color={theme.palette.yellow.text}
+      color={ALERT_TEXT_COLOR}
     />
   )
 }
@@ -138,7 +140,7 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
           <RadialGradient
             c={vec(arc.cx, arc.cy)}
             r={arc.r}
-            colors={ALERT_OPACITIES.map((o) => theme.alpha(theme.palette.yellow.color, o))}
+            colors={ALERT_OPACITIES.map((o) => theme.alpha(ALERT_COLOR, o))}
             positions={ALERT_STOPS}
           />
         </Path>

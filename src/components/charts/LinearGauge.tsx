@@ -20,10 +20,12 @@ import {
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { interaction, theme } from '@/constants/theme'
+import { accentColors, interaction, theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
 
 const TRACK_COLOR = theme.palette.slate.border
+const ALERT_COLOR = accentColors.dark.yellow.color
 const LINE_THICK = 2
 // Sizes mirror the gauge, expressed against the line thickness (gauge STROKE):
 // alert tick 0.35× wide / 2× long, marker 1.5× wide. Marker length tracks bar height.
@@ -34,9 +36,9 @@ const MARKER_RATIO = 0.5
 // Band tint fades in over the first stretch past the threshold so the edge reads as a soft entry
 // rather than a wall, then holds flat: nothing about the rule escalates further along the scale.
 const ALERT_BAND_COLORS = [
-  theme.alpha(theme.palette.yellow.color, 0),
-  theme.alpha(theme.palette.yellow.color, 0.12),
-  theme.alpha(theme.palette.yellow.color, 0.12),
+  theme.alpha(ALERT_COLOR, 0),
+  theme.alpha(ALERT_COLOR, 0.12),
+  theme.alpha(ALERT_COLOR, 0.12),
 ]
 const ALERT_BAND_STOPS = [0, 0.3, 1]
 const VALUE_GAP = 6
@@ -259,7 +261,7 @@ function GaugeBar({ width, height, fraction, color, alerts, min, max, charging }
             y={lineY - TICK_LEN}
             width={TICK_W}
             height={TICK_LEN}
-            color={theme.palette.yellow.color}
+            color={ALERT_COLOR}
           />
         ))
       })}
@@ -324,6 +326,7 @@ export function LinearGauge({
   onPress,
   testID,
 }: LinearGaugeProps) {
+  const resolvedColor = useResolvedColor(color)
   const { width, onLayout } = useBarWidth()
   const height = compact ? BAR_H_COMPACT : BAR_H
   const fraction = value == null ? 0 : fractionOf(value, min, max)
@@ -344,7 +347,7 @@ export function LinearGauge({
             width={width}
             height={height}
             fraction={fraction}
-            color={color}
+            color={resolvedColor}
             alerts={alerts}
             min={min}
             max={max}
@@ -354,7 +357,7 @@ export function LinearGauge({
         {value != null && width > 0 ? (
           <View style={[styles.valueSlot, valueSlot, { top: valueSlotTop }]} pointerEvents="none">
             <Text
-              style={[styles.value, compact && styles.valueCompact, { color }]}
+              style={[styles.value, compact && styles.valueCompact, { color: resolvedColor }]}
               numberOfLines={1}
             >
               {valueText}

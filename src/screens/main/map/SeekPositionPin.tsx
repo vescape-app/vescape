@@ -2,7 +2,7 @@ import { CircleLayer, ShapeSource } from '@rnmapbox/maps'
 import { useCallback, useMemo, useRef } from 'react'
 import { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { scrubHeadMs } from '@/modules/history/lib/chartFocus'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
@@ -21,6 +21,8 @@ const SEEK_SOURCE_ID = 'center-seek-position-source'
  * no throttling: the ride's track is read on the UI thread, and only the result crosses over.
  */
 export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   const sourceRef = useRef<ShapeSource>(null)
 
   // Parallel arrays so the lookup can run in a worklet; the samples themselves cannot cross.
@@ -78,9 +80,9 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
         id="center-seek-position-circle"
         style={{
           circleRadius: SEEK_PIN_RADIUS,
-          circleColor: MAP_DEFAULTS.markerColor,
+          circleColor: accents.violet.color,
           circleStrokeWidth: 2,
-          circleStrokeColor: theme.palette.slate.bg,
+          circleStrokeColor: neutral.bg,
         }}
       />
     </ShapeSource>

@@ -234,8 +234,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   boardPillDotOnly: {
     width: 28,
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 15,
     borderWidth: 1,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   targetCopy: {
     flexGrow: 0,

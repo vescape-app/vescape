@@ -4,7 +4,7 @@ import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/chart
 import type { ChartSpec } from '@/components/charts/line/ChartStack'
 import { buildTimeline, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
-import { theme } from '@/constants/theme'
+import { accentColors, theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   EXTRA_CHART_METRICS,
@@ -34,7 +34,7 @@ const METRIC_CHART_HEIGHT = 40
  */
 const EXCLUSION_ROW = 1
 const GPS_GAP_ROW = 0
-const FAVORITE_WASH = theme.alpha(theme.status.favorite.color, 0.12)
+const FAVORITE_WASH = theme.alpha(accentColors.dark.yellow.color, 0.12)
 
 /** Every metric of a ride, plus derived pack percent. */
 export type HistorySeries = Record<HistoryMetricKey | 'batteryPercent', ChartSeriesData>
@@ -234,7 +234,7 @@ export function useMetricRamps(): HistoryRamps {
 
 /** Free-spin stretches read as a fault; anything else excluded is merely not counted. */
 function exclusionColor(reason: string): string {
-  return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
+  return reason === 'free_spin' ? accentColors.dark.yellow.color : theme.palette.slate.textSecondary
 }
 
 export function useChartExclusionBands() {
@@ -268,7 +268,7 @@ export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
     const sampleTimes = samples.map((sample) => sample.capturedAtMs)
     return toGpsGapRanges(gpsSamples, sampleTimes).map((range) => ({
       ...range,
-      color: theme.palette.red.color,
+      color: accentColors.dark.red.color,
       row: GPS_GAP_ROW,
     }))
   }, [gpsSamples, samples])

@@ -103,10 +103,10 @@ export function IconButton({
   const activeAccent = takeover?.accent ?? accent
   const iconColor = destructive
     ? theme.status.error.text
-    : (activeAccent ?? theme.palette.slate.textSecondary)
+    : (activeAccent ?? theme.neutral.textSecondary)
   const borderColor = destructive
     ? theme.status.error.border
-    : (activeAccent ?? theme.palette.slate.border)
+    : (activeAccent ?? theme.neutral.border)
   const progress = takeover?.progress
 
   const pulse = useSharedValue(0)
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
   },
   disabled: {
@@ -181,6 +181,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2,
-    borderColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.surfaceDeep,
   },
 })

@@ -13,6 +13,7 @@ import { telemetry } from '@/modules/board/constants/telemetry'
 import { routes } from '@/navigation/routes'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
@@ -56,6 +57,7 @@ interface BottomTelemetryStripProps {
 
 export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripProps) {
   useRenderRateWarning('BottomTelemetryStrip')
+  const neutral = useResolvedNeutralColors()
   const insets = useSafeAreaInsets()
   const bleStatus = useBleStore((s) => s.status)
   const imuConnected = bleStatus === 'connected'
@@ -74,7 +76,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     const a = tick.adc1.value
     const active = a != null && a > FOOTPAD_ACTIVE_V
     return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
+      borderColor: active ? theme.palette.green.text : neutral.textDim,
       backgroundColor: active ? theme.palette.green.text : 'transparent',
     }
   })
@@ -83,7 +85,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     const a = tick.adc2.value
     const active = a != null && a > FOOTPAD_ACTIVE_V
     return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
+      borderColor: active ? theme.palette.green.text : neutral.textDim,
       backgroundColor: active ? theme.palette.green.text : 'transparent',
     }
   })
@@ -195,9 +197,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               style={[
                 styles.imuMarker,
                 {
-                  borderColor: imuConnected
-                    ? theme.palette.purple.color
-                    : theme.palette.slate.textMuted,
+                  borderColor: imuConnected ? theme.palette.purple.color : theme.neutral.textMuted,
                 },
               ]}
             />
@@ -207,7 +207,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
                 {
                   backgroundColor: imuConnected
                     ? theme.palette.purple.color
-                    : theme.palette.slate.textMuted,
+                    : theme.neutral.textMuted,
                 },
                 imuLineStyle,
               ]}
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   subLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 8,
     fontWeight: '900',
     textTransform: 'uppercase',
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: theme.palette.slate.textDim,
+    borderColor: theme.neutral.textDim,
     backgroundColor: 'transparent',
   },
   cellPressed: {
