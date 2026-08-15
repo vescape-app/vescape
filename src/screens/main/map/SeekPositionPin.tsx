@@ -4,7 +4,6 @@ import { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
 
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { scrubHeadMs } from '@/modules/history/lib/chartFocus'
-import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
 
 const EMPTY_SEEK_SHAPE: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }

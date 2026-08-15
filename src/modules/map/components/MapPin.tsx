@@ -182,12 +182,7 @@ const styles = StyleSheet.create({
   iconPin: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
-    shadowColor: theme.neutral.surfaceDeep,
-    shadowOpacity: 0.22,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    backgroundColor: theme.alpha(theme.control.background, 0.85),
   },
   iconPinFrame: {
     width: 40,
@@ -196,16 +191,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconPinSelected: {
-    backgroundColor: theme.neutral.surfaceDeep,
-    shadowOpacity: 0.36,
-    shadowRadius: 5,
-    elevation: 6,
+    backgroundColor: theme.control.background,
     zIndex: 2,
   },
-  iconPinExpanded: {
-    shadowRadius: 7,
-    elevation: 8,
-  },
+  iconPinExpanded: {},
   selectedMapPoint: {
     width: 42,
     height: 42,

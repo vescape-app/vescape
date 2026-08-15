@@ -20,7 +20,7 @@ export function LinkWidget({
   icon: IconComponent,
   label,
   hint,
-  accent = theme.neutral.textSecondary,
+  accent = theme.control.textMuted,
   size = 'full',
   disabled,
   onPress,
@@ -47,7 +47,7 @@ export function LinkWidget({
         </Text>
         {hint && size === 'full' ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
-      {square ? null : <CaretRightIcon size={18} color={theme.neutral.textMuted} weight="bold" />}
+      {square ? null : <CaretRightIcon size={18} color={theme.control.textMuted} weight="bold" />}
     </Pressable>
   )
 }
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.neutral.surface,
+    backgroundColor: theme.control.backgroundPressed,
   },
   disabled: {
     opacity: 0.45,
@@ -83,12 +83,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   label: {
-    color: theme.neutral.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '700',
   },
   hint: {
-    color: theme.neutral.textMuted,
+    color: theme.control.textMuted,
     fontSize: 12,
   },
 })

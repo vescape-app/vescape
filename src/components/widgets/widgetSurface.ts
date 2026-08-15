@@ -1,11 +1,19 @@
 import { theme } from '@/constants/theme'
 
-/** Shared translucent surface shared by every widget. */
+/** Shared surface for widgets whose whole body is interactive. */
 export const widgetSurface = {
-  backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
-  borderColor: theme.neutral.border,
+  backgroundColor: theme.control.background,
+  borderColor: theme.control.border,
   borderWidth: 1,
   borderRadius: 18,
+} as const
+
+/** Flat canvas for read-only widgets; actions inside it provide their own interaction surface. */
+export const presentationWidgetSurface = {
+  backgroundColor: theme.alpha(theme.palette.mono.black, 0),
+  borderColor: theme.alpha(theme.palette.mono.black, 0),
+  borderWidth: 0,
+  borderRadius: 0,
 } as const
 
 /**

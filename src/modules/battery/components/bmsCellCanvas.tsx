@@ -1,18 +1,28 @@
 import { Canvas, Circle, RoundedRect } from '@shopify/react-native-skia'
+import { useMemo } from 'react'
 import { useDerivedValue, type DerivedValue } from 'react-native-reanimated'
 
 import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
-import { theme } from '@/constants/theme'
+import { accentColors, resolveAdaptiveColor, theme } from '@/constants/theme'
+import { useResolvedAccentColors, useThemeStore } from '@/hooks/useTheme'
 import type { BmsCellGroup, BmsSummary } from '@/modules/battery/lib'
 
-const COLOR_MIN = theme.status.warning.color
-const COLOR_MAX = theme.palette.yellow.color
-const COLOR_NORMAL = theme.palette.green.color
-const DOT_COLOR = theme.palette.green.color
+interface GroupColors {
+  min: string
+  max: string
+  normal: string
+}
 
-export function groupColor(extreme: BmsCellGroup['extreme']): string {
+export function groupColor(
+  extreme: BmsCellGroup['extreme'],
+  colors: GroupColors = {
+    min: accentColors.dark.amber.color,
+    max: accentColors.dark.yellow.color,
+    normal: accentColors.dark.green.color,
+  },
+): string {
   'worklet'
-  return extreme === 'min' ? COLOR_MIN : extreme === 'max' ? COLOR_MAX : COLOR_NORMAL
+  return extreme === 'min' ? colors.min : extreme === 'max' ? colors.max : colors.normal
 }
 
 /** Gap between columns in a row, and between stat slots. */
@@ -40,6 +50,7 @@ export interface BmsStatValue {
  * which is a native surface apiece for numbers that only tick with BMS frames.
  */
 export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width: number }) {
+  const appearance = useThemeStore((state) => state.resolvedTheme)
   const slot = (width - (values.length - 1) * COL_GAP) / values.length
   return (
     <Canvas style={{ width, height: STAT_VALUE_HEIGHT }} pointerEvents="none">
@@ -49,7 +60,7 @@ export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width
           text={value.text}
           size={STAT_VALUE_FONT_SIZE}
           weight="800"
-          color={value.color}
+          color={resolveAdaptiveColor(value.color, appearance) as string}
           align="center"
           x={index * (slot + COL_GAP)}
           y={0}
@@ -81,6 +92,15 @@ export const cellRowsHeight = (groupCount: number) =>
  * relaid out on every frame. Here it is one surface and a repaint.
  */
 export function BmsCellRows({ groupCount, summary, scale, width }: CellRowsProps) {
+  const accents = useResolvedAccentColors()
+  const colors = useMemo(
+    () => ({
+      min: accents.amber.color,
+      max: accents.yellow.color,
+      normal: accents.green.color,
+    }),
+    [accents.amber.color, accents.green.color, accents.yellow.color],
+  )
   const trackX = INDEX_WIDTH + COL_GAP
   const trackWidth = Math.max(0, width - trackX - COL_GAP - VALUE_WIDTH)
 
@@ -95,6 +115,7 @@ export function BmsCellRows({ groupCount, summary, scale, width }: CellRowsProps
           trackX={trackX}
           trackWidth={trackWidth}
           valueX={width - VALUE_WIDTH}
+          colors={colors}
         />
       ))}
     </Canvas>
@@ -108,6 +129,7 @@ function CellRowLayer({
   trackX,
   trackWidth,
   valueX,
+  colors,
 }: {
   index: number
   summary: DerivedValue<BmsSummary | null>
@@ -115,6 +137,7 @@ function CellRowLayer({
   trackX: number
   trackWidth: number
   valueX: number
+  colors: GroupColors
 }) {
   const top = index * (ROW_HEIGHT + ROW_GAP)
   const centerY = top + ROW_HEIGHT / 2
@@ -129,7 +152,9 @@ function CellRowLayer({
     const fraction = Math.max(0, Math.min(1, (group.voltage - low) / (span > 0 ? span : 1)))
     return fraction * trackWidth
   })
-  const cellColor = useDerivedValue(() => groupColor(summary.value?.groups[index]?.extreme ?? null))
+  const cellColor = useDerivedValue(() =>
+    groupColor(summary.value?.groups[index]?.extreme ?? null, colors),
+  )
   const dotOpacity = useDerivedValue(() => (summary.value?.groups[index]?.balancing ? 1 : 0))
   const voltageText = useDerivedValue(() => {
     const group = summary.value?.groups[index]
@@ -161,7 +186,7 @@ function CellRowLayer({
         cx={trackX + trackWidth - DOT_RADIUS}
         cy={centerY}
         r={DOT_RADIUS}
-        color={DOT_COLOR}
+        color={colors.normal}
         opacity={dotOpacity}
       />
       <MonoText

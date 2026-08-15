@@ -28,7 +28,13 @@ import {
   vec,
 } from '@shopify/react-native-skia'
 
-import { theme } from '@/constants/theme'
+import { resolveAdaptiveColor, theme } from '@/constants/theme'
+import {
+  useResolvedAccentColors,
+  useResolvedColor,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 import {
   getChartPosition,
   getChartTimeRangeBands,
@@ -52,7 +58,6 @@ const Y_AXIS_WIDTH = 34
 const CARD_HORIZONTAL_PADDING = 8
 const EXCLUSION_MARKER_HEIGHT = 1
 const EXCLUSION_MARKER_INSET = 1
-const ALERT_LINE_COLOR = theme.alpha(theme.palette.yellow.color, 0.1)
 const NO_ALERT_THRESHOLDS: number[] = []
 const EMPTY_MARKER_TABLE: MarkerTable = {
   ts: [],
@@ -141,10 +146,6 @@ function createScrubGesture({
       activeScrubTimeMs.value = null
       runOnJS(endDrag)(timeMs)
     })
-}
-
-function exclusionColor(reason: string): string {
-  return reason === 'free_spin' ? theme.palette.yellow.color : theme.palette.slate.textSecondary
 }
 
 function formatTime(date: Date): string {
@@ -417,6 +418,16 @@ export function TelemetryLineChart({
   timeRangeHighlights,
 }: TelemetryLineChartProps) {
   'use no memo'
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  const resolvedColor = useResolvedColor(color)
+  const resolvedSecondaryColor = useResolvedColor(secondary?.color ?? color)
+  const resolvedPointColor = useCallback(
+    (pointValue: number) =>
+      resolveAdaptiveColor(getPointColor?.(pointValue) ?? resolvedColor, appearance) as string,
+    [appearance, getPointColor, resolvedColor],
+  )
   const [chartWidth, setChartWidth] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const internalScrubTimeMs = useSharedValue<number | null>(null)
@@ -456,19 +467,20 @@ export function TelemetryLineChart({
         range,
         width: chartWidth,
         height,
-        color,
-        getPointColor,
+        color: resolvedColor,
+        getPointColor: getPointColor ? resolvedPointColor : undefined,
         formatValue,
         windowMs,
         secondary: displaySecondary,
       }),
     [
       chartWidth,
-      color,
+      resolvedColor,
       displayPoints,
       displaySecondary,
       formatValue,
       getPointColor,
+      resolvedPointColor,
       height,
       range,
       windowMs,
@@ -494,7 +506,7 @@ export function TelemetryLineChart({
   })
   const markerColor = useDerivedValue(() => {
     const idx = liveIdx.value
-    return idx >= 0 ? markerTableSV.value.colors[idx] : color
+    return idx >= 0 ? markerTableSV.value.colors[idx] : resolvedColor
   })
   const markerLineTop = useDerivedValue(() => vec(markerX.value, 0))
   const markerLineBottom = useDerivedValue(() => vec(markerX.value, height))
@@ -593,15 +605,29 @@ export function TelemetryLineChart({
   const timeLabels = useMemo(() => {
     return getChartTimeLabels(displayPoints, windowMs, timeMode)
   }, [displayPoints, timeMode, windowMs])
+  const resolvedTimeRangeHighlights = useMemo(
+    () =>
+      timeRangeHighlights?.map((highlight) => ({
+        ...highlight,
+        color: resolveAdaptiveColor(highlight.color, appearance) as string,
+      })),
+    [appearance, timeRangeHighlights],
+  )
   const timeRangeBands = useMemo(
-    () => getChartTimeRangeBands(displayPoints, timeRangeHighlights ?? [], chartWidth, windowMs),
-    [chartWidth, displayPoints, timeRangeHighlights, windowMs],
+    () =>
+      getChartTimeRangeBands(
+        displayPoints,
+        resolvedTimeRangeHighlights ?? [],
+        chartWidth,
+        windowMs,
+      ),
+    [chartWidth, displayPoints, resolvedTimeRangeHighlights, windowMs],
   )
 
   // Header readout: the live marker color wins whenever points carry their own
   // color, otherwise the secondary series color, otherwise the neutral token.
   const headerValueColor = secondary
-    ? color
+    ? resolvedColor
     : getPointColor
       ? markerColor
       : theme.palette.slate.textPrimary
@@ -624,7 +650,7 @@ export function TelemetryLineChart({
           valueText={liveValueText}
           valueColor={markerColor}
           secondaryValueText={secondary ? liveSecondaryValueText : undefined}
-          secondaryColor={secondary?.color}
+          secondaryColor={secondary ? resolvedSecondaryColor : undefined}
         />
       )}
 
@@ -675,7 +701,7 @@ export function TelemetryLineChart({
                     key={marker.value}
                     p1={vec(0, marker.y)}
                     p2={vec(chartWidth, marker.y)}
-                    color={ALERT_LINE_COLOR}
+                    color={theme.alpha(accents.yellow.color, 0.1)}
                     strokeWidth={1}
                   />
                 ))}
@@ -693,7 +719,9 @@ export function TelemetryLineChart({
                       width={bandWidth}
                       height={EXCLUSION_MARKER_HEIGHT}
                       r={0.5}
-                      color={exclusionColor(range.reason)}
+                      color={
+                        range.reason === 'free_spin' ? accents.yellow.color : neutral.textSecondary
+                      }
                       opacity={0.85}
                     />
                   )
@@ -705,7 +733,7 @@ export function TelemetryLineChart({
                     range={displaySecondary.range}
                     width={chartWidth}
                     height={height}
-                    color={displaySecondary.color}
+                    color={resolvedSecondaryColor}
                     windowMs={windowMs}
                   />
                 )}
@@ -715,8 +743,8 @@ export function TelemetryLineChart({
                   range={range}
                   width={chartWidth}
                   height={height}
-                  color={color}
-                  getPointColor={getPointColor}
+                  color={resolvedColor}
+                  getPointColor={getPointColor ? resolvedPointColor : undefined}
                   windowMs={windowMs}
                 />
               </Canvas>

@@ -278,9 +278,9 @@ function getOptionBorder(activeBorder: string, expanded: boolean, selected: bool
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
+    backgroundColor: theme.control.background,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.control.border,
   },
   options: {
     position: 'absolute',

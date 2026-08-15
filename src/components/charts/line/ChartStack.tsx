@@ -31,12 +31,8 @@ import {
 import { ChartTimeAxis } from '@/components/charts/line/ChartTimeAxis'
 import { LineChart } from '@/components/charts/line/LineChart'
 import { SCRUB_FONT_SIZE, useScrubReadout } from '@/components/charts/line/ScrubLayer'
-import {
-  compactBands,
-  compactCharts,
-  prepareStack,
-  toScrubTargets,
-} from '@/components/charts/line/stackData'
+import { toScrubTargets } from '@/components/charts/line/scrubTargets'
+import { compactBands, compactCharts, prepareStack } from '@/components/charts/line/stackData'
 import { useChartCamera } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/line/timeline'

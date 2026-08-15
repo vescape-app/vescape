@@ -93,7 +93,7 @@ export function useResolvedMapStyle({
         initialSatelliteTone.imagerySaturation,
         0.35,
         initialSatelliteTone.imageryContrast,
-        neutralColors[resolvedTheme].surfaceDeep,
+        neutralColors[resolvedTheme].bg,
       ),
     [initialSatelliteTone, resolvedTheme],
   )

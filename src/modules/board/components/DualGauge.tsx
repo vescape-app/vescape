@@ -25,13 +25,17 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import {
   AlertMarker,
-  BG_ARC_COLOR,
   gaugeRampColor,
   GaugeReadout,
   GlowGradient,
   type GaugeReadoutBox,
 } from '@/modules/board/components/gauge/gaugeShared'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import {
+  useResolvedAccentColors,
+  useResolvedNeutralColors,
+  useResolvedTelemetryColors,
+} from '@/hooks/useTheme'
 
 interface DualGaugeProps {
   speedValue: SharedValue<number | null>
@@ -109,13 +113,17 @@ function QuarterArcLayer({
   hotRange,
   transform,
 }: QuarterArcLayerProps) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   const isLeft = side === 'left'
   const arc = isLeft ? LEFT_ARC : RIGHT_ARC
 
   const arcPathValue = useDerivedValue(() =>
     svgPath(arcPath(arc, clamp01((value.value ?? 0) / max))),
   )
-  const arcColor = useDerivedValue(() => gaugeRampColor(value.value ?? 0, color, hotRange))
+  const arcColor = useDerivedValue(() =>
+    gaugeRampColor(value.value ?? 0, color, hotRange, accents.red.color),
+  )
   const wedgePathValue = useDerivedValue(() =>
     svgPath(wedgePath(arc, clamp01((value.value ?? 0) / max))),
   )
@@ -133,7 +141,7 @@ function QuarterArcLayer({
       {/* Static background arc */}
       <Path
         path={isLeft ? BG_ARC_LEFT : BG_ARC_RIGHT}
-        color={BG_ARC_COLOR}
+        color={neutral.border}
         style="stroke"
         strokeWidth={STROKE}
         strokeCap="butt"
@@ -165,11 +173,14 @@ function GaugeValueLayer({
   unit,
   box,
 }: Omit<QuarterArcProps, 'side' | 'max'> & { box: GaugeReadoutBox }) {
+  const accents = useResolvedAccentColors()
   const valueText = useDerivedValue(() => {
     const current = value.value
     return current != null ? Math.round(current).toString() : '—'
   })
-  const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
+  const valueColor = useDerivedValue(() =>
+    gaugeRampColor(value.value, color, hotRange, accents.red.color),
+  )
   return (
     <GaugeReadout
       text={valueText}
@@ -214,6 +225,7 @@ function GaugePair({
   onPressSpeed,
   onPressDuty,
 }: GaugePairProps) {
+  const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
   const scale = cellWidth / VB_CROP_W
@@ -266,18 +278,18 @@ function GaugePair({
       {scale > 0 ? (
         <Canvas style={styles.svg}>
           <Group transform={[{ translateY: SPARKLINE_TOP }]}>
-            <SparklineLayer paths={sparklinePaths[0]} color={telemetry.speed.color} showMax />
+            <SparklineLayer paths={sparklinePaths[0]} color={telemetryColors.speed} showMax />
           </Group>
           <Group
             transform={[{ translateX: cellWidth + SPARKLINE_GAP }, { translateY: SPARKLINE_TOP }]}
           >
-            <SparklineLayer paths={sparklinePaths[1]} color={telemetry.duty.color} showMax />
+            <SparklineLayer paths={sparklinePaths[1]} color={telemetryColors.duty} showMax />
           </Group>
           <QuarterArcLayer
             side="left"
             value={speedValue}
             max={speedMax}
-            color={telemetry.speed.color}
+            color={telemetryColors.speed}
             unit="km/h"
             alerts={speedAlerts}
             hotRange={speedHotRange}
@@ -287,7 +299,7 @@ function GaugePair({
             side="right"
             value={dutyValue}
             max={dutyMax}
-            color={telemetry.duty.color}
+            color={telemetryColors.duty}
             unit="%"
             alerts={dutyAlerts}
             hotRange={dutyHotRange}
@@ -295,14 +307,14 @@ function GaugePair({
           />
           <GaugeValueLayer
             value={speedValue}
-            color={telemetry.speed.color}
+            color={telemetryColors.speed}
             unit="km/h"
             hotRange={speedHotRange}
             box={{ ...bowl, x: size.w * 0.05 }}
           />
           <GaugeValueLayer
             value={dutyValue}
-            color={telemetry.duty.color}
+            color={telemetryColors.duty}
             unit="%"
             hotRange={dutyHotRange}
             box={{ ...bowl, x: size.w * 0.55 }}
@@ -349,6 +361,7 @@ export function DualGauge({
   containerStyle,
 }: DualGaugeProps) {
   const router = useRouter()
+  const telemetryColors = useResolvedTelemetryColors()
   return (
     <View
       style={[
@@ -363,7 +376,7 @@ export function DualGauge({
           <View style={styles.halfPressable}>
             <SparklineMaxBadge
               points={speedSeries ?? []}
-              color={telemetry.speed.color}
+              color={telemetryColors.speed}
               fmt={telemetry.speed.formatWithUnit}
               position="left"
             />
@@ -371,7 +384,7 @@ export function DualGauge({
           <View style={styles.halfPressable}>
             <SparklineMaxBadge
               points={dutySeries ?? []}
-              color={telemetry.duty.color}
+              color={telemetryColors.duty}
               fmt={telemetry.duty.formatWithUnit}
             />
           </View>
@@ -398,8 +411,7 @@ export function DualGauge({
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: theme.palette.slate.surface,
-    borderRadius: 16,
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0),
     padding: 12,
     marginHorizontal: 4,
     marginBottom: 6,

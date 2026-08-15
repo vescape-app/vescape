@@ -27,21 +27,21 @@ interface FloatingBarProps {
 
 const ALERT_CONFIG = {
   warning: {
-    bg: theme.status.warning.bg,
+    bg: theme.control.background,
     border: theme.status.warning.border,
-    text: theme.status.warning.text,
+    text: theme.control.text,
     btnBg: theme.status.warning.color,
   },
   error: {
-    bg: theme.status.error.bg,
+    bg: theme.control.background,
     border: theme.status.error.border,
-    text: theme.status.error.text,
+    text: theme.control.text,
     btnBg: theme.status.error.color,
   },
   upgrade: {
-    bg: theme.status.upgrade.bg,
+    bg: theme.control.background,
     border: theme.status.upgrade.border,
-    text: theme.status.upgrade.text,
+    text: theme.control.text,
     btnBg: theme.status.upgrade.color,
   },
 } as const

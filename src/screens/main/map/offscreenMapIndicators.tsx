@@ -290,12 +290,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: GPS_POINT_COLOR,
-    backgroundColor: theme.neutral.surfaceDeep,
-    shadowColor: theme.neutral.surfaceDeep,
-    shadowOpacity: 0.32,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    backgroundColor: theme.control.background,
   },
   offscreenMapArrowOrbit: {
     position: 'absolute',

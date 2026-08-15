@@ -56,20 +56,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.neutral.surface,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
     paddingVertical: 10,
   },
   soundOptionActive: {
     borderColor: theme.palette.sky.color,
-    backgroundColor: theme.palette.sky.bg,
+    backgroundColor: theme.control.backgroundPressed,
   },
   soundOptionText: {
-    color: theme.neutral.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
   soundOptionTextActive: {
-    color: theme.neutral.textPrimary,
+    color: theme.control.text,
   },
 })

@@ -23,7 +23,11 @@ import type { TuneProfileFieldValue } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
+import {
+  useResolvedAccentColors,
+  useResolvedNeutralColors,
+  useResolvedTelemetryColors,
+} from '@/hooks/useTheme'
 import {
   DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
   MAX_PITCH_INPUT_DEGREES,
@@ -116,6 +120,7 @@ export function TunePreview({
 }: TunePreviewProps) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
+  const telemetry = useResolvedTelemetryColors()
   const model = useMemo(
     () => createTunePreviewModel(fields),
     // Restart the animation loop after a model hot reload instead of retaining its old closure.
@@ -287,7 +292,7 @@ export function TunePreview({
                     y={SPEED_BASELINE}
                     text={speedStr}
                     font={speedFont}
-                    color={theme.telemetry.speed}
+                    color={telemetry.speed}
                   />
                 )}
               </Canvas>
@@ -319,7 +324,7 @@ export function TunePreview({
                     y={READOUT_BASELINE}
                     text={boardAngleStr}
                     font={readoutFont}
-                    color={theme.palette.sky.color}
+                    color={accents.sky.color}
                   />
                 )}
               </Canvas>
@@ -334,7 +339,7 @@ export function TunePreview({
                     y={READOUT_BASELINE}
                     text={targetAngleStr}
                     font={readoutFont}
-                    color={theme.palette.purple.light}
+                    color={accents.purple.light}
                   />
                 )}
               </Canvas>
@@ -349,7 +354,7 @@ export function TunePreview({
                   y={READOUT_BASELINE}
                   text={currentStr}
                   font={readoutFont}
-                  color={theme.telemetry.motorCurrent}
+                  color={telemetry.motorCurrent}
                 />
               )}
             </Canvas>
@@ -384,18 +389,13 @@ export function TunePreview({
               strokeWidth={1.5}
               strokeCap="round"
             />
-            <Path
-              path={targetPath}
-              style="stroke"
-              color={theme.palette.purple.light}
-              strokeWidth={1}
-            >
+            <Path path={targetPath} style="stroke" color={accents.purple.light} strokeWidth={1}>
               <DashPathEffect intervals={[6, 5]} />
             </Path>
             <Path
               path={deckPath}
               style="stroke"
-              color={theme.palette.sky.color}
+              color={accents.sky.color}
               strokeWidth={1}
               strokeCap="round"
             />
@@ -403,7 +403,7 @@ export function TunePreview({
               path={frontArrowPath}
               opacity={frontArrowOpacity}
               style="stroke"
-              color={theme.palette.sky.color}
+              color={accents.sky.color}
               strokeWidth={1.5}
               strokeCap="round"
               strokeJoin="round"
@@ -412,7 +412,7 @@ export function TunePreview({
               path={rearArrowPath}
               opacity={rearArrowOpacity}
               style="stroke"
-              color={theme.palette.sky.color}
+              color={accents.sky.color}
               strokeWidth={1.5}
               strokeCap="round"
               strokeJoin="round"

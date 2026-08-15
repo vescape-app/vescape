@@ -24,6 +24,31 @@
   <color name="vescape_neutral_text_secondary_alpha_030">#4D94A3B8</color>
   <color name="vescape_neutral_text_secondary_alpha_060">#9994A3B8</color>
 
+  <color name="vescape_control_background">#0F172A</color>
+  <color name="vescape_control_background_pressed">#1E293B</color>
+  <color name="vescape_control_background_disabled">#273449</color>
+  <color name="vescape_control_border">#334155</color>
+  <color name="vescape_control_divider">#334155</color>
+  <color name="vescape_control_text">#F1F5F9</color>
+  <color name="vescape_control_text_muted">#94A3B8</color>
+  <color name="vescape_control_icon">#F1F5F9</color>
+  <color name="vescape_control_background_alpha_085">#D90F172A</color>
+
+  <color name="vescape_telemetry_speed">#38BDF8</color>
+  <color name="vescape_telemetry_duty">#14B8A6</color>
+  <color name="vescape_telemetry_motor_current">#818CF8</color>
+  <color name="vescape_telemetry_batt_current">#60A5FA</color>
+  <color name="vescape_telemetry_controller_temp">#F97316</color>
+  <color name="vescape_telemetry_motor_temp">#EF4444</color>
+  <color name="vescape_telemetry_batt_voltage">#4ADE80</color>
+  <color name="vescape_telemetry_footpad1">#94A3B8</color>
+  <color name="vescape_telemetry_footpad2">#64748B</color>
+  <color name="vescape_telemetry_pitch">#A78BFA</color>
+  <color name="vescape_telemetry_roll">#C084FC</color>
+  <color name="vescape_telemetry_balance_pitch">#E879F9</color>
+  <color name="vescape_telemetry_altitude">#F59E0B</color>
+  <color name="vescape_telemetry_gps_accuracy">#4ADE80</color>
+
   <!-- Appearance-aware UI accents. Plain renderer colors stay in src/constants/theme.ts. -->
   <color name="vescape_accent_sky_color">#38BDF8</color>
   <color name="vescape_accent_sky_light">#7DD3FC</color>

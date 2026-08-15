@@ -72,15 +72,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surface,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
     overflow: 'hidden',
   },
   cellMissing: {
     opacity: 0.58,
   },
   cellReadOnly: {
-    borderColor: theme.neutral.border,
+    borderColor: theme.control.border,
   },
   alertButton: {
     position: 'absolute',
@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     paddingRight: 26,
   },
   label: {
-    color: theme.neutral.textPrimary,
+    color: theme.control.text,
     fontSize: 13,
     fontWeight: '800',
     flex: 1,

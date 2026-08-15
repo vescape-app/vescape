@@ -39,14 +39,17 @@ export function SettingsRow({
       </View>
       {right}
       {showChevron ? (
-        <CaretRightIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
+        <CaretRightIcon size={18} color={theme.neutral.textMuted} weight="bold" />
       ) : null}
     </View>
   )
 
   if (onPress) {
     return (
-      <Pressable style={styles.container} onPress={onPress}>
+      <Pressable
+        style={({ pressed }) => [styles.container, pressed && styles.containerPressed]}
+        onPress={onPress}
+      >
         {content}
         {children}
       </Pressable>
@@ -65,6 +68,9 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
+  containerPressed: {
+    backgroundColor: theme.neutral.surface,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -76,7 +82,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.neutral.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },

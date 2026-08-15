@@ -293,12 +293,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     gap: 8,
-    backgroundColor: theme.neutral.surfaceDeep,
-    shadowColor: theme.palette.mono.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 10,
+    backgroundColor: theme.control.background,
   },
   left: {
     flexDirection: 'row',
@@ -317,7 +312,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   detailText: {
-    color: theme.neutral.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

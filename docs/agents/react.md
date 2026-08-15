@@ -8,9 +8,9 @@ For visual design principles (colors, layout, typography, when to use cards), se
 
 Every color must come from the `theme` object in `src/constants/theme.ts`. Never hardcode a hex or rgba value directly in a component.
 
-Use `theme.neutral` for every appearance-aware surface, border, and neutral text/icon. Use `theme.palette.<hue>` for adaptive accent text, icons, borders, and tinted surfaces rendered by React Native. Raw `theme.palette.slate` values are fixed dark swatches for map JSON and other non-adaptive assets.
+Use `theme.neutral` for the white/read-only canvas, separators, and neutral copy. Use `theme.control` for interactive surfaces and their foregrounds. Use `theme.palette.<hue>` for adaptive accent text, icons, borders, and small tinted states rendered by React Native. Metric visuals use `theme.telemetry`. Raw `theme.palette.slate` values are fixed dark swatches for map JSON and other non-adaptive assets.
 
-The adaptive neutral and accent tokens are native color objects at runtime. Mapbox, Skia, Reanimated worklets, and string-valued state/options cannot consume them. Use `useResolvedNeutralColors()` and `useResolvedAccentColors()` from `src/hooks/useTheme.ts` in those paths and pass their plain string values into the renderer or data structure.
+The adaptive neutral, control, accent, and telemetry tokens are native color objects at runtime. Mapbox, Skia, Reanimated worklets, and string-valued state/options cannot consume them. Use the corresponding hooks from `src/hooks/useTheme.ts`: `useResolvedNeutralColors()`, `useResolvedControlColors()`, `useResolvedAccentColors()`, and `useResolvedTelemetryColors()`. Pass only their plain string values into the renderer or data structure.
 
 Filled actions use the resolved hue's `solid` background and `onSolid` content pair. Do not infer the foreground from `color`, `text`, or a fixed black/white value; the pair is contrast-checked separately for each appearance.
 
@@ -18,8 +18,8 @@ Filled actions use the resolved hue's `solid` background and `onSolid` content p
 import { theme } from '@/constants/theme'
 
 // ✅ Good
-backgroundColor: theme.neutral.surface,
-color: theme.wheel.color,
+backgroundColor: theme.control.background,
+color: theme.telemetry.speed,
 
 // ❌ Bad
 backgroundColor: '#1e293b',
@@ -77,7 +77,7 @@ import { ArrowLeftIcon, TrashIcon } from 'phosphor-react-native'
 - `destructive` shifts border to red-tinted and auto-tints icon to `theme.error.text` — no manual color needed
 - `loading` disables the button and shows an `ActivityIndicator` in the icon color
 - `style` accepts layout-level `ViewStyle` (position, margin, bottom/top/left/right)
-- One visual style only: `theme.neutral.surfaceDeep` bg at 72% opacity + `theme.neutral.textSecondary` border at 28% opacity
+- The default surface uses `theme.control.background`, `theme.control.border`, and `theme.control.icon`; destructive state changes the accent without abandoning the navy interaction language.
 
 ## Buttons
 

@@ -1,4 +1,3 @@
-import type { ScrubTarget } from '@/components/charts/line/ScrubLayer'
 import { buildSeriesPaths, type SeriesPaths } from '@/components/charts/line/seriesPaths'
 import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartBand, ChartSeriesSpec, ChartSpec } from '@/components/charts/line/types'
@@ -115,17 +114,5 @@ export function compactBands(
     ...band,
     startMs: toChartMs(band.startMs, timeline),
     endMs: toChartMs(band.endMs, timeline),
-  }))
-}
-
-/** What the scrub readout needs of a chart: a line to sample, and the axis it is read against. */
-export function toScrubTargets(chart: PreparedChart): ScrubTarget[] {
-  return chart.series.map((series) => ({
-    paths: series.paths,
-    color: series.color,
-    label: series.label,
-    unit: series.unit,
-    decimals: series.decimals,
-    range: (series.axis === 'right' ? chart.right : chart.left)?.range ?? chart.left.range,
   }))
 }

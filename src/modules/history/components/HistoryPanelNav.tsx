@@ -113,8 +113,13 @@ export function HistoryPanelNav({
             android_ripple={interaction.ripple}
             onPress={onOpenList}
           >
-            <HistoryRideLabel title={primaryLabel} subtitle={secondaryLabel} compact />
-            <CaretDownIcon size={12} color={theme.neutral.textSecondary} weight="bold" />
+            <HistoryRideLabel
+              title={primaryLabel}
+              subtitle={secondaryLabel}
+              compact
+              tone="control"
+            />
+            <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
           </Pressable>
         }
       />

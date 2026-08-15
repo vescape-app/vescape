@@ -25,7 +25,7 @@ export function SettingsCard({ children, separatorInset = 58 }: SettingsCardProp
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.neutral.surface,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.neutral.border,

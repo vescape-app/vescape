@@ -96,12 +96,12 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   label: {
-    color: theme.neutral.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '700',
   },
   hint: {
-    color: theme.neutral.textMuted,
+    color: theme.control.textMuted,
     fontSize: 12,
   },
   squareControl: {

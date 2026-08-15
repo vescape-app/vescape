@@ -32,7 +32,7 @@ export function CollapsibleWidget({
   icon: IconComponent,
   title,
   description,
-  accent = theme.neutral.textSecondary,
+  accent = theme.control.textMuted,
   collapsible = true,
   defaultExpanded = false,
   expandedHeight = 420,
@@ -101,9 +101,9 @@ export function CollapsibleWidget({
         </View>
         {collapsible ? (
           expanded ? (
-            <CaretUpIcon size={16} color={theme.neutral.textMuted} weight="bold" />
+            <CaretUpIcon size={16} color={theme.control.textMuted} weight="bold" />
           ) : (
-            <CaretDownIcon size={16} color={theme.neutral.textMuted} weight="bold" />
+            <CaretDownIcon size={16} color={theme.control.textMuted} weight="bold" />
           )
         ) : null}
       </Pressable>
@@ -146,12 +146,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    color: theme.neutral.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '800',
   },
   description: {
-    color: theme.neutral.textMuted,
+    color: theme.control.textMuted,
     fontSize: 12,
     lineHeight: 16,
   },

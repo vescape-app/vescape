@@ -152,6 +152,10 @@ function RootLayout() {
               options={{ title: 'Components' }}
             />
             <Stack.Screen
+              name={stackScreens.settingsComponentsTheme}
+              options={{ title: 'Theme foundations' }}
+            />
+            <Stack.Screen
               name={stackScreens.settingsNavigationDiagnostic}
               options={{ title: 'Navigation diagnostics' }}
             />

@@ -6,6 +6,7 @@ import type { WeatherIconSlug } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 
 const PILL_WIDTH = 38
@@ -31,6 +32,7 @@ function Snowflake({
   clock: SharedValue<number>
   flake: (typeof SNOWFLAKES)[number]
 }) {
+  const snowColor = useResolvedColor(theme.weather.snow)
   const y = useDerivedValue(
     () =>
       ((((clock.value / 1000) * flake.speed) % PILL_HEIGHT) + flake.phase * PILL_HEIGHT) %
@@ -41,7 +43,7 @@ function Snowflake({
   )
   const opacity = useDerivedValue(() => Math.min(y.value / 5, (PILL_HEIGHT - y.value) / 5, 0.75))
 
-  return <Circle cx={x} cy={y} r={flake.radius} color={theme.weather.snow} opacity={opacity} />
+  return <Circle cx={x} cy={y} r={flake.radius} color={snowColor} opacity={opacity} />
 }
 
 function Snowfall() {
@@ -56,6 +58,8 @@ function Snowfall() {
 }
 
 function RainWaterFill({ probability }: { probability: number }) {
+  const waterFillColor = useResolvedColor(theme.alpha(theme.palette.sky.color, 0.12))
+  const waterStrokeColor = useResolvedColor(theme.alpha(theme.palette.sky.light, 0.6))
   const clock = useClock()
   const fill = Math.min(1, Math.max(0, probability / 100))
   const surfaceY =
@@ -81,13 +85,8 @@ function RainWaterFill({ probability }: { probability: number }) {
 
   return (
     <Canvas pointerEvents="none" style={styles.weatherCanvas}>
-      <Path path={waterPath} color={theme.alpha(theme.palette.sky.color, 0.12)} />
-      <Path
-        path={wavePath}
-        color={theme.alpha(theme.palette.sky.light, 0.6)}
-        style="stroke"
-        strokeWidth={1.2}
-      />
+      <Path path={waterPath} color={waterFillColor} />
+      <Path path={wavePath} color={waterStrokeColor} style="stroke" strokeWidth={1.2} />
     </Canvas>
   )
 }
@@ -117,12 +116,7 @@ export function WeatherSidePill({
       ) : null}
       {icon === 'cloud-snow' ? <Snowfall /> : null}
       <View pointerEvents="none" style={styles.content}>
-        <WeatherIcon
-          icon={icon}
-          size={18}
-          color={theme.palette.slate.textSecondary}
-          weight="duotone"
-        />
+        <WeatherIcon icon={icon} size={18} color={theme.control.textMuted} weight="duotone" />
         <Text style={styles.temperature}>{temperature}°</Text>
         {precipProbability != null && precipProbability > 0 ? (
           <View style={styles.precipitation}>
@@ -149,8 +143,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
     overflow: 'hidden',
   },
   weatherCanvas: {
@@ -168,7 +162,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   temperature: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 12,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],

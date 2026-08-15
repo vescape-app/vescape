@@ -24,13 +24,13 @@ import type {
   ChartPlotBox,
   ChartYRange,
 } from '@/components/charts/line/types'
-import { theme } from '@/constants/theme'
+import { resolveAdaptiveColor } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 
 const LINE_WIDTH = 2
 const DOT_DIAMETER = 3.5
 const HEAD_RADIUS = 3
 /** A ring in the plot background, so the head reads as a marker rather than a bump in the line. */
-const HEAD_RING = theme.palette.slate.bg
 /** Parked off-canvas rather than hidden: a series with no samples costs nothing to skip. */
 const OFFSCREEN = -1_000
 
@@ -68,11 +68,27 @@ export function SeriesLayer({
   // React Compiler memoises hook results by its own rules, which do not know that a derived
   // value must be rebuilt when its declared dependencies change.
   'use no memo'
+  const resolvedColor = useResolvedColor(color)
+  const neutral = useResolvedNeutralColors()
+  const appearance = useThemeStore((state) => state.resolvedTheme)
 
   // Fixed y means a fixed gradient: this survives every pan and zoom untouched.
   const gradient = useMemo(
-    () => (ramp ? resolveRampGradient(ramp, yRange, plot.height) : null),
-    [plot.height, ramp, yRange],
+    () =>
+      ramp
+        ? resolveRampGradient(
+            {
+              ...ramp,
+              stops: ramp.stops.map((stop) => ({
+                ...stop,
+                color: resolveAdaptiveColor(stop.color, appearance) as string,
+              })),
+            },
+            yRange,
+            plot.height,
+          )
+        : null,
+    [appearance, plot.height, ramp, yRange],
   )
 
   /**
@@ -136,7 +152,7 @@ export function SeriesLayer({
     <>
       <Path
         path={linePath}
-        color={color}
+        color={resolvedColor}
         style="stroke"
         strokeWidth={LINE_WIDTH}
         strokeCap="round"
@@ -146,7 +162,7 @@ export function SeriesLayer({
       </Path>
       <Path
         path={dotPath}
-        color={color}
+        color={resolvedColor}
         style="stroke"
         strokeWidth={DOT_DIAMETER}
         strokeCap="round"
@@ -155,8 +171,8 @@ export function SeriesLayer({
       </Path>
       {showHead && (
         <Group transform={headTransform}>
-          <Circle cx={0} cy={0} r={HEAD_RADIUS} color={color} />
-          <Circle cx={0} cy={0} r={HEAD_RADIUS} color={HEAD_RING} style="stroke" strokeWidth={1} />
+          <Circle cx={0} cy={0} r={HEAD_RADIUS} color={resolvedColor} />
+          <Circle cx={0} cy={0} r={HEAD_RADIUS} color={neutral.bg} style="stroke" strokeWidth={1} />
         </Group>
       )}
     </>

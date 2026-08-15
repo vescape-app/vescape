@@ -4,7 +4,8 @@ import { computeAutoRangeFromValues, toExcludedRanges } from '@/components/chart
 import type { ChartSpec } from '@/components/charts/line/ChartStack'
 import { buildTimeline, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartBand, ChartColorRamp, ChartSeriesData } from '@/components/charts/line/types'
-import { accentColors, theme } from '@/constants/theme'
+import { accentColors, resolveAdaptiveColor, theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   EXTRA_CHART_METRICS,
@@ -221,24 +222,30 @@ function toColorRamp(range: MetricColorRange | null): ChartColorRamp | undefined
 export function useMetricRamps(): HistoryRamps {
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  const accents = useResolvedAccentColors()
   return useMemo(() => {
     const ramps = {} as HistoryRamps
     for (const def of HISTORY_CHART_DEFS) {
       ramps[def.key] = toColorRamp(
-        getHistoryMetricColorRange(def.key, def.color, hotRanges, gradientsEnabled),
+        getHistoryMetricColorRange(
+          def.key,
+          resolveAdaptiveColor(def.color, appearance) as string,
+          hotRanges,
+          gradientsEnabled,
+          accents.red.color,
+        ),
       )
     }
     return ramps
-  }, [gradientsEnabled, hotRanges])
+  }, [accents.red.color, appearance, gradientsEnabled, hotRanges])
 }
 
 /** Free-spin stretches read as a fault; anything else excluded is merely not counted. */
-function exclusionColor(reason: string): string {
-  return reason === 'free_spin' ? accentColors.dark.yellow.color : theme.palette.slate.textSecondary
-}
-
 export function useChartExclusionBands() {
   const sessionExclusions = useHistoryStore((s) => s.sessionExclusions)
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   return useMemo(() => {
     const bands = {} as Record<HistoryMetricKey, ChartBand[] | undefined>
     for (const def of HISTORY_CHART_DEFS) {
@@ -246,13 +253,13 @@ export function useChartExclusionBands() {
         ? toExcludedRanges(sessionExclusions, def.statKeys).map((range) => ({
             startMs: range.startMs,
             endMs: range.endMs,
-            color: exclusionColor(range.reason),
+            color: range.reason === 'free_spin' ? accents.yellow.color : neutral.textSecondary,
             row: EXCLUSION_ROW,
           }))
         : undefined
     }
     return bands
-  }, [sessionExclusions])
+  }, [accents.yellow.color, neutral.textSecondary, sessionExclusions])
 }
 
 /**
@@ -264,14 +271,15 @@ export function useChartExclusionBands() {
  */
 export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
   const gpsSamples = useHistoryStore((s) => s.sessionGpsSamples)
+  const accents = useResolvedAccentColors()
   return useMemo(() => {
     const sampleTimes = samples.map((sample) => sample.capturedAtMs)
     return toGpsGapRanges(gpsSamples, sampleTimes).map((range) => ({
       ...range,
-      color: accentColors.dark.red.color,
+      color: accents.red.color,
       row: GPS_GAP_ROW,
     }))
-  }, [gpsSamples, samples])
+  }, [accents.red.color, gpsSamples, samples])
 }
 
 /**

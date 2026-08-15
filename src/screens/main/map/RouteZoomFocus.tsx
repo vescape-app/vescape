@@ -19,6 +19,7 @@ import {
   type RouteTimeProgress,
 } from '@/modules/history/lib/routeProgress'
 import type { HistoryGpsSample, TelemetrySample } from '@/modules/history/store/historyStore'
+import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
 
 const DIM_COLOR = theme.alpha(theme.palette.slate.bg, 0.75)
 const CLEAR_COLOR = theme.alpha(theme.palette.slate.bg, 0)
@@ -62,6 +63,8 @@ export function RouteZoomFocus({
   gradientsEnabled,
   highContrastRoutes,
 }: RouteZoomFocusProps) {
+  const accents = useResolvedAccentColors()
+  const telemetryColors = useResolvedTelemetryColors()
   const [window, setWindow] = useState<ChartTimeRange | null>(null)
   const lastAppliedAt = useRef(0)
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -131,9 +134,20 @@ export function RouteZoomFocus({
         metric,
         hotRanges,
         gradientsEnabled,
+        colors: telemetryColors,
+        hotColor: accents.red.color,
       }),
     }
-  }, [gradientsEnabled, hotRanges, metric, rideGpsSamples, rideTelemetrySamples, window])
+  }, [
+    accents.red.color,
+    gradientsEnabled,
+    hotRanges,
+    metric,
+    rideGpsSamples,
+    rideTelemetrySamples,
+    telemetryColors,
+    window,
+  ])
 
   if (routeShape == null || gradient == null) return null
   return (
@@ -163,7 +177,7 @@ export function RouteZoomFocus({
           <LineLayer
             id="center-ride-zoom-slice-line"
             style={{
-              lineColor: getHistoryMetricBaseColor(metric),
+              lineColor: getHistoryMetricBaseColor(metric, telemetryColors),
               lineWidth: highContrastRoutes ? 5 : 4,
               lineCap: 'round',
               lineJoin: 'round',

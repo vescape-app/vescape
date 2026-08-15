@@ -51,9 +51,7 @@ function CompactBoardPill({
           style={[
             styles.statusDot,
             {
-              backgroundColor: connected
-                ? theme.palette.green.color
-                : theme.palette.slate.textMuted,
+              backgroundColor: connected ? theme.palette.green.color : theme.control.textMuted,
             },
           ]}
         />
@@ -234,8 +232,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
   },
   boardPillDotOnly: {
     width: 28,
@@ -256,7 +254,7 @@ const styles = StyleSheet.create({
   },
   boardName: {
     maxWidth: 52,
-    color: theme.palette.slate.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -275,7 +273,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 15,
     borderWidth: 1,
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.control.backgroundPressed,
   },
   targetCopy: {
     flexGrow: 0,
@@ -284,7 +282,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   targetTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 10,
     fontWeight: '800',
   },

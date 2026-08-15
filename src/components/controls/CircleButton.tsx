@@ -87,6 +87,21 @@ export function CircleButton({
 }
 
 function getCircleButtonColors(tone: CircleButtonTone, variant: CircleButtonVariant) {
+  if (tone === 'slate') {
+    if (variant === 'outline' || variant === 'ghost') {
+      return {
+        bg: theme.alpha(theme.palette.mono.black, 0),
+        border: theme.control.border,
+        icon: theme.control.icon,
+      }
+    }
+    return {
+      bg: theme.control.background,
+      border: theme.control.border,
+      icon: theme.control.icon,
+    }
+  }
+
   const token = toneTokens[tone]
   if (variant === 'solid') {
     return { bg: token.bg, border: token.color, icon: token.text }
@@ -97,7 +112,7 @@ function getCircleButtonColors(tone: CircleButtonTone, variant: CircleButtonVari
   if (variant === 'ghost') {
     return { bg: theme.alpha(theme.palette.mono.black, 0), border: token.border, icon: token.text }
   }
-  return { bg: token.bg, border: token.border, icon: token.text }
+  return { bg: theme.control.background, border: token.color, icon: token.light }
 }
 
 const styles = StyleSheet.create({

@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import { presentationWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface CanvasWidgetProps {
@@ -65,7 +65,7 @@ export function CanvasWidget({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...presentationWidgetSurface,
     padding: 16,
     gap: 10,
   },

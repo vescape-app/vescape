@@ -569,10 +569,7 @@ export function TuneDial({
           </Animated.View>
         </GestureDetector>
         <View
-          style={[
-            styles.indicatorTop,
-            { backgroundColor: resolvedColor, shadowColor: resolvedColor },
-          ]}
+          style={[styles.indicatorTop, { backgroundColor: resolvedColor }]}
           pointerEvents="none"
         />
         <View style={styles.valueBadgeAnchor} pointerEvents="none">
@@ -620,10 +617,6 @@ const styles = StyleSheet.create({
     height: RULER_LABEL_BAND_TOP - CURRENT_VALUE_TOP,
     marginLeft: -MARKER_LINE_WIDTH / 2,
     borderRadius: 2,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
-    elevation: 4,
   },
   valueBadgeAnchor: {
     position: 'absolute',

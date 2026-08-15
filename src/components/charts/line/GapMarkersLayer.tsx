@@ -6,11 +6,7 @@ import { projectX, viewportFor } from '@/components/charts/line/projection'
 import type { ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
-import { theme } from '@/constants/theme'
-
-const LINE_COLOR = theme.palette.slate.textMuted
-/** The same dim as the ride's own start and end labels — the seam times belong to that row. */
-const LABEL_COLOR = theme.palette.slate.textDim
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const DASH = [3, 3]
 /** Clearance between the seam and the times either side of it. */
 const LABEL_GAP = 4
@@ -84,6 +80,7 @@ type GapMarkerProps = Omit<GapMarkersCommonProps, 'timeline'> &
 function GapMarker(props: GapMarkerProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const neutral = useResolvedNeutralColors()
   const {
     chartMs,
     startMs,
@@ -110,7 +107,12 @@ function GapMarker(props: GapMarkerProps) {
   if (props.variant === 'seam') {
     return (
       <Group transform={transform}>
-        <Line p1={vec(0, props.top)} p2={vec(0, props.bottom)} color={LINE_COLOR} strokeWidth={1}>
+        <Line
+          p1={vec(0, props.top)}
+          p2={vec(0, props.bottom)}
+          color={neutral.textMuted}
+          strokeWidth={1}
+        >
           <DashPathEffect intervals={DASH} />
         </Line>
       </Group>
@@ -124,9 +126,15 @@ function GapMarker(props: GapMarkerProps) {
         x={-LABEL_GAP - startWidth}
         y={props.labelBaseline}
         text={startLabel}
-        color={LABEL_COLOR}
+        color={neutral.textDim}
       />
-      <Text font={font} x={LABEL_GAP} y={props.labelBaseline} text={endLabel} color={LABEL_COLOR} />
+      <Text
+        font={font}
+        x={LABEL_GAP}
+        y={props.labelBaseline}
+        text={endLabel}
+        color={neutral.textDim}
+      />
     </Group>
   )
 }

@@ -84,36 +84,44 @@ export function Button({
 
 const variantStyles = {
   primary: {
-    button: { backgroundColor: theme.palette.cyan.border },
-    text: { color: theme.palette.slate.textPrimary },
-    iconColor: theme.palette.slate.textPrimary,
-    indicatorColor: theme.palette.slate.textPrimary,
+    button: {
+      backgroundColor: theme.control.background,
+      borderWidth: 1,
+      borderColor: theme.control.border,
+    },
+    text: { color: theme.control.text },
+    iconColor: theme.control.icon,
+    indicatorColor: theme.control.icon,
   },
   accent: {
     button: {
-      backgroundColor: theme.palette.slate.surface,
+      backgroundColor: theme.control.background,
       borderWidth: 1,
-      borderColor: theme.palette.cyan.border,
+      borderColor: theme.palette.cyan.color,
     },
-    text: { color: theme.palette.cyan.text },
-    iconColor: theme.palette.cyan.text,
-    indicatorColor: theme.palette.cyan.text,
+    text: { color: theme.control.text },
+    iconColor: theme.palette.cyan.light,
+    indicatorColor: theme.palette.cyan.light,
   },
   tune: {
-    button: { backgroundColor: theme.tune.border },
-    text: { color: theme.palette.slate.textPrimary },
-    iconColor: theme.palette.slate.textPrimary,
-    indicatorColor: theme.palette.slate.textPrimary,
+    button: {
+      backgroundColor: theme.control.background,
+      borderWidth: 1,
+      borderColor: theme.tune.color,
+    },
+    text: { color: theme.control.text },
+    iconColor: theme.tune.light,
+    indicatorColor: theme.tune.light,
   },
   secondary: {
     button: {
-      backgroundColor: theme.palette.slate.surface,
+      backgroundColor: theme.control.background,
       borderWidth: 1,
-      borderColor: theme.palette.slate.border,
+      borderColor: theme.control.border,
     },
-    text: { color: theme.palette.slate.textSecondary },
-    iconColor: theme.palette.slate.textSecondary,
-    indicatorColor: theme.palette.slate.textSecondary,
+    text: { color: theme.control.textMuted },
+    iconColor: theme.control.textMuted,
+    indicatorColor: theme.control.textMuted,
   },
   success: {
     button: {

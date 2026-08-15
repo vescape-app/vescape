@@ -86,12 +86,13 @@ export function getTelemetrySampleMetricValue(
 export function makeMetricColorRange(
   baseColor: string,
   hotRange: MetricHotRange | null | undefined,
+  hotColor = accentColors.dark.red.color,
 ): MetricColorRange | null {
   if (!hotRange) return null
   const min = Math.min(hotRange.start, hotRange.end)
   const max = Math.max(hotRange.start, hotRange.end)
   if (min === max) return null
-  return { min, max, baseColor, hotColor: accentColors.dark.red.color }
+  return { min, max, baseColor, hotColor }
 }
 
 function isFiniteHotRange(value: MetricHotRange | undefined): value is MetricHotRange {
@@ -118,8 +119,13 @@ export function getHistoryMetricColorRange(
   baseColor: string,
   hotRanges?: HistoryMetricHotRanges,
   enabled = true,
+  hotColor = accentColors.dark.red.color,
 ): MetricColorRange | null {
-  return makeMetricColorRange(baseColor, getHistoryMetricHotRange(metric, hotRanges, enabled))
+  return makeMetricColorRange(
+    baseColor,
+    getHistoryMetricHotRange(metric, hotRanges, enabled),
+    hotColor,
+  )
 }
 
 export function getHistoryMetricKeyForControlId(

@@ -157,7 +157,7 @@ function Sheet({
   layout,
   title,
   icon: IconComponent,
-  iconColor = theme.palette.slate.textSecondary,
+  iconColor = theme.neutral.textSecondary,
   contentContainerStyle,
   children,
 }: SheetProps) {
@@ -721,16 +721,11 @@ const styles = StyleSheet.create({
   },
   sheet: {
     position: 'absolute',
-    backgroundColor: theme.alpha(theme.palette.slate.surface, 0.85),
+    backgroundColor: theme.neutral.bg,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
-    shadowColor: theme.palette.mono.black,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 18,
   },
   header: {
     flexDirection: 'row',
@@ -742,7 +737,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '800',
   },
@@ -766,7 +761,7 @@ const styles = StyleSheet.create({
    * fade is what conveys the drawer leaving.
    */
   drawerScrim: {
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.neutral.bg,
   },
   drawerBody: {
     paddingHorizontal: 12,
@@ -781,7 +776,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   drawerTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '300',
   },
@@ -793,7 +788,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 999,
-    backgroundColor: theme.alpha(theme.palette.slate.textSecondary, 0.6),
+    backgroundColor: theme.neutral.textMuted,
     marginVertical: 3,
   },
 })

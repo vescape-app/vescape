@@ -23,7 +23,9 @@ Selecting the explicit One Dark or Outdoors basemap applies a dark or light appe
 
 Neutral UI colors come from `theme.neutral`, while accent UI colors come from `theme.palette.<hue>`. Both are backed by iOS dynamic colors and Android day/night resources, so values captured by `StyleSheet.create` still update when the active appearance changes. `theme.palette.slate` remains a raw dark swatch for fixed dark map styles; do not use it for app surfaces or text.
 
-The light appearance uses a layered blue-gray canvas rather than pure white: `bg` is the darkest canvas, `surface` lifts cards and controls, and `surfaceDeep` supplies stronger framing for overlays, drawers, and vignettes. Renderer-bound alert yellows must use the resolved light palette so labels and range gradients retain contrast.
+The light appearance uses a pure-white canvas. Read-only content sits directly on that canvas and is separated with spacing, typography, or thin neutral rules rather than raised cards. Interactive controls use the dark navy `theme.control` family in both appearances, making affordances obvious without shadows. `surfaceDeep` is a restrained neutral fallback, not a default container background.
+
+Telemetry colors are appearance-specific. The light variants are darker than their dark-appearance counterparts so gauges, charts, routes, and small labels retain contrast against white. Use `theme.telemetry` for React Native styles and `useResolvedTelemetryColors()` for renderers.
 
 Non-React-Native renderers and worklets use the plain-string palettes from `useResolvedNeutralColors()` and `useResolvedAccentColors()`; native adaptive color objects must not cross into Mapbox, Skia, Reanimated worklets, or string-valued state.
 
@@ -42,9 +44,21 @@ Satellite keeps its own selected basemap across appearance changes. In light app
 | Muted text     | `theme.neutral.textMuted`     |
 | Dim text       | `theme.neutral.textDim`       |
 
+Interactive surfaces use a separate semantic family:
+
+| Role                | Token                              |
+| ------------------- | ---------------------------------- |
+| Control background  | `theme.control.background`         |
+| Pressed background  | `theme.control.backgroundPressed`  |
+| Disabled background | `theme.control.backgroundDisabled` |
+| Control border      | `theme.control.border`             |
+| Control divider     | `theme.control.divider`            |
+| Control text/icon   | `theme.control.text` / `.icon`     |
+| Muted control text  | `theme.control.textMuted`          |
+
 ## Layout Principles
 
-- **No decorative boxes.** Cards wrap only interactive groups (rows with inputs, switches, buttons). Do not wrap static info or labels in bordered containers.
+- **No decorative boxes or elevation.** Cards wrap only interactive groups (rows with inputs, switches, buttons). Do not wrap static info or labels in bordered containers, and do not use shadows to make hierarchy.
 - **Flat rows.** Settings-style rows are icon + label + control, no background box around the icon.
 - **Breathing room.** Use padding and gap, not borders, to separate content sections.
 - **Section titles** are uppercase, small (`12–13px`), muted (`theme.neutral.textMuted`), with letter-spacing.
@@ -82,22 +96,22 @@ Named hue swatches. Every hue exposes `.color`, `.alt` (alias of `.light`), `.li
 
 ### `telemetry`
 
-Single-color tokens for every metric. Use these for charts, sparklines, gauges, and live readouts so the same metric always has the same color.
+Appearance-specific tokens for every metric. Use these for charts, sparklines, gauges, and live readouts so the same metric keeps its identity while meeting the contrast needs of dark and white canvases.
 
-| Token            | Source hue              |
-| ---------------- | ----------------------- |
-| `speed`          | `palette.sky.light`     |
-| `duty`           | `palette.teal.color`    |
-| `motorCurrent`   | `palette.blue.color`    |
-| `battCurrent`    | `palette.blue.alt`      |
-| `motorTemp`      | `palette.red.color`     |
-| `controllerTemp` | `palette.orange.color`  |
-| `battVoltage`    | `palette.green.light`   |
-| `footpad1`       | `palette.slate.light`   |
-| `footpad2`       | `palette.slate.color`   |
-| `pitch`          | `palette.purple.color`  |
-| `roll`           | `palette.fuchsia.light` |
-| `balancePitch`   | `palette.pink.color`    |
+| Token            | Source hue             |
+| ---------------- | ---------------------- |
+| `speed`          | Speed / distance blue  |
+| `duty`           | Duty-cycle teal        |
+| `motorCurrent`   | Motor-current blue     |
+| `battCurrent`    | Battery-current blue   |
+| `motorTemp`      | Motor-temperature red  |
+| `controllerTemp` | Controller-temp orange |
+| `battVoltage`    | Battery green          |
+| `footpad1`       | Footpad neutral 1      |
+| `footpad2`       | Footpad neutral 2      |
+| `pitch`          | Pitch purple           |
+| `roll`           | Roll fuchsia           |
+| `balancePitch`   | Balance-pitch pink     |
 
 ### `map`
 

@@ -61,7 +61,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
               ))}
               <View style={styles.toggleCell}>
                 <View style={styles.expandedToggle}>
-                  <CaretUpIcon size={16} color={theme.neutral.textSecondary} weight="bold" />
+                  <CaretUpIcon size={16} color={theme.control.icon} weight="bold" />
                 </View>
               </View>
             </View>
@@ -79,7 +79,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
             ))}
             <View style={styles.toggleCell}>
               <View style={styles.toggle}>
-                <CaretDownIcon size={16} color={theme.neutral.textSecondary} weight="bold" />
+                <CaretDownIcon size={16} color={theme.control.icon} weight="bold" />
               </View>
             </View>
           </View>
@@ -299,10 +299,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   expandedPanel: {
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
-    borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    borderRadius: 12,
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0),
     paddingTop: 0,
     paddingBottom: 8,
     paddingLeft: 10,
@@ -329,9 +326,9 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.control.background,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
+    borderColor: theme.control.border,
   },
   expandedToggle: {
     width: 38,

@@ -23,11 +23,19 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
+import { routes } from '@/navigation/routes'
 
 const groups = [
   {
     title: 'Foundations',
     sections: [
+      {
+        label: 'Theme foundations',
+        hint: 'Canvas, interaction surfaces, semantic colors, and contrast',
+        route: routes.settingsComponentsTheme,
+        icon: SwatchesIcon,
+        color: theme.palette.violet.color,
+      },
       {
         label: 'Base',
         hint: 'Buttons, banners, placeholders, and other everyday building blocks',

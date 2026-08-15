@@ -101,12 +101,10 @@ export function IconButton({
   const Icon = takeover?.icon ?? RestingIcon
   // A takeover outranks `accent`: it is the state the Rider needs to see right now.
   const activeAccent = takeover?.accent ?? accent
-  const iconColor = destructive
-    ? theme.status.error.text
-    : (activeAccent ?? theme.neutral.textSecondary)
+  const iconColor = destructive ? theme.status.error.text : (activeAccent ?? theme.control.icon)
   const borderColor = destructive
     ? theme.status.error.border
-    : (activeAccent ?? theme.neutral.border)
+    : (activeAccent ?? theme.control.border)
   const progress = takeover?.progress
 
   const pulse = useSharedValue(0)
@@ -162,7 +160,7 @@ const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.control.background,
     borderWidth: 1,
   },
   disabled: {
@@ -181,6 +179,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2,
-    borderColor: theme.neutral.surfaceDeep,
+    borderColor: theme.control.background,
   },
 })

@@ -29,7 +29,7 @@ import type { Icon } from 'phosphor-react-native'
 
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
 import { theme } from '@/constants/theme'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedColor, useResolvedControlColors } from '@/hooks/useTheme'
 
 interface ActiveTheme {
   bg: string
@@ -284,7 +284,7 @@ export function PillSelectorItem({
   onPress,
   children,
 }: PillSelectorItemProps) {
-  const neutral = useResolvedNeutralColors()
+  const control = useResolvedControlColors()
   const { activeId, contained, openMenu, closeMenu } = usePillSelectorCtx()
   const pillRef = useRef<View>(null)
   const active = id === activeId
@@ -296,7 +296,6 @@ export function PillSelectorItem({
     badgeVisibility,
     hintVisibility,
   })
-  const accentBg = useResolvedColor(color?.bg ?? theme.palette.green.bg)
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
   const accentColor = useResolvedColor(color?.color ?? theme.palette.green.color)
   const inactiveAccent = theme.alpha(accentColor, 0.6)
@@ -319,23 +318,23 @@ export function PillSelectorItem({
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [contained ? TRANSPARENT : neutral.surface, accentBg],
+        [contained ? TRANSPARENT : control.background, control.backgroundPressed],
       ),
       borderColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [contained ? TRANSPARENT : neutral.border, accentBorder],
+        [contained ? TRANSPARENT : control.border, accentBorder],
       ),
     }),
     [
-      accentBg,
       accentBorder,
       activeWidth,
       resolved.collapseLabel,
       contained,
       inactiveWidth,
-      neutral.border,
-      neutral.surface,
+      control.background,
+      control.backgroundPressed,
+      control.border,
     ],
   )
   const labelStyle = useAnimatedStyle(
@@ -416,7 +415,7 @@ export function PillSelectorAdd({ testID, onPress }: PillSelectorAddProps) {
       style={[styles.addPill, contained && styles.containedAddPill]}
       onPress={onPress}
     >
-      <PlusIcon size={14} color={theme.palette.slate.color} weight="bold" />
+      <PlusIcon size={14} color={theme.control.icon} weight="bold" />
     </Pressable>
   )
 }
@@ -450,7 +449,7 @@ export function PillSelectorMenuItem({
     >
       <IconComp
         size={15}
-        color={danger ? theme.status.error.text : theme.neutral.textSecondary}
+        color={danger ? theme.status.error.text : theme.control.textMuted}
         weight="bold"
       />
       <Text style={[styles.menuItemText, danger && styles.menuItemTextDanger]}>{label}</Text>
@@ -477,9 +476,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     borderRadius: 19,
     overflow: 'hidden',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
+    backgroundColor: theme.control.background,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.control.border,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -543,7 +542,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   pillTextInactive: {
-    color: theme.neutral.textSecondary,
+    color: theme.control.textMuted,
   },
   addPill: {
     height: 36,
@@ -551,7 +550,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: theme.neutral.border,
+    borderColor: theme.control.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -573,10 +572,10 @@ const styles = StyleSheet.create({
   },
   menuItemSeparator: {
     borderTopWidth: 1,
-    borderTopColor: theme.neutral.surface,
+    borderTopColor: theme.control.divider,
   },
   menuItemText: {
-    color: theme.neutral.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -587,7 +586,7 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: theme.neutral.textDim,
+    backgroundColor: theme.control.textMuted,
   },
   enabledDot: {
     width: 6,
@@ -600,6 +599,6 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     borderWidth: 1.5,
-    borderColor: theme.neutral.textDim,
+    borderColor: theme.control.textMuted,
   },
 })

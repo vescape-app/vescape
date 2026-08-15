@@ -1,18 +1,14 @@
 import { Group, LinearGradient, Rect, RoundedRect, vec } from '@shopify/react-native-skia'
+import { useMemo } from 'react'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { projectX, viewportFor } from '@/components/charts/line/projection'
 import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera, ChartTimeRange } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 
-const DIM_COLOR = theme.alpha(theme.palette.slate.bg, 0.6)
-const EDGE_COLOR = theme.palette.amber.color
 const HANDLE_WIDTH = 3
-/** Amber pooling at each handle and fading towards the middle, so the edges read as grabbable. */
-const GLOW_IN = theme.alpha(EDGE_COLOR, 0.3)
-const GLOW_MID = theme.alpha(EDGE_COLOR, 0.12)
-const GLOW_OUT = theme.alpha(EDGE_COLOR, 0)
 
 export interface SelectionLayerProps {
   selection: SharedValue<ChartTimeRange | null>
@@ -52,6 +48,20 @@ export function SelectionLayer({
 }: SelectionLayerProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  const edgeColor = accents.amber.color
+  const dimColor = theme.alpha(neutral.bg, 0.6)
+  const glowColors = useMemo(
+    () => [
+      theme.alpha(edgeColor, 0.3),
+      theme.alpha(edgeColor, 0.12),
+      theme.alpha(edgeColor, 0),
+      theme.alpha(edgeColor, 0.12),
+      theme.alpha(edgeColor, 0.3),
+    ],
+    [edgeColor],
+  )
   const height = bottom - top
 
   // One worklet for both edges: every rect and gradient below is the same decision, and splitting
@@ -104,10 +114,10 @@ export function SelectionLayer({
     <Group opacity={opacity} clip={{ x: plotX, y: top, width: plotWidth, height }}>
       <Group transform={[{ translateX: plotX }]}>
         <Group transform={leftDim}>
-          <Rect x={0} y={top} width={plotWidth} height={height} color={DIM_COLOR} />
+          <Rect x={0} y={top} width={plotWidth} height={height} color={dimColor} />
         </Group>
         <Group transform={rightDim}>
-          <Rect x={0} y={top} width={plotWidth} height={height} color={DIM_COLOR} />
+          <Rect x={0} y={top} width={plotWidth} height={height} color={dimColor} />
         </Group>
 
         {/* One unit wide, stretched across the selection: amber at both edges, clear in the
@@ -117,7 +127,7 @@ export function SelectionLayer({
             <LinearGradient
               start={vec(0, 0)}
               end={vec(1, 0)}
-              colors={[GLOW_IN, GLOW_MID, GLOW_OUT, GLOW_MID, GLOW_IN]}
+              colors={glowColors}
               positions={[0, 0.15, 0.5, 0.85, 1]}
             />
           </Rect>
@@ -130,7 +140,7 @@ export function SelectionLayer({
             width={HANDLE_WIDTH}
             height={height}
             r={HANDLE_WIDTH / 2}
-            color={EDGE_COLOR}
+            color={edgeColor}
           />
         </Group>
         <Group transform={endHandle}>
@@ -140,7 +150,7 @@ export function SelectionLayer({
             width={HANDLE_WIDTH}
             height={height}
             r={HANDLE_WIDTH / 2}
-            color={EDGE_COLOR}
+            color={edgeColor}
           />
         </Group>
       </Group>

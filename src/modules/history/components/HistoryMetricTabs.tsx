@@ -49,7 +49,7 @@ export function HistoryMetricTabs({
             <View
               style={[
                 styles.metricTabLine,
-                { backgroundColor: active ? metric.color : theme.neutral.surface },
+                { backgroundColor: active ? metric.color : theme.control.textMuted },
               ]}
             />
             {metric.tabLabel ? (
@@ -99,8 +99,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
     overflow: 'hidden',
   },
   metricTabsWrapped: {
@@ -110,21 +110,21 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.neutral.surfaceDeep,
+    backgroundColor: theme.control.background,
     paddingHorizontal: 8,
     paddingTop: 10,
     paddingBottom: 10,
   },
   metricTabDivider: {
     borderRightWidth: 1,
-    borderRightColor: theme.neutral.border,
+    borderRightColor: theme.control.divider,
   },
   metricTabRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.border,
+    borderTopColor: theme.control.divider,
   },
   metricTabActive: {
-    backgroundColor: theme.palette.sky.bg,
+    backgroundColor: theme.control.backgroundPressed,
   },
   metricTabLine: {
     width: '60%',
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   metricTabText: {
-    color: theme.neutral.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 10,
     fontWeight: '700',
     width: '100%',
@@ -147,6 +147,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   metricTabTextActive: {
-    color: theme.palette.sky.text,
+    color: theme.control.text,
   },
 })

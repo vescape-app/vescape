@@ -18,8 +18,8 @@ import { BmsCellVoltagesView } from '@/modules/battery/components/BmsCellVoltage
 import { summarizeBms, summarizeBmsWindow } from '@/modules/battery/lib'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
-import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { resolveAdaptiveColor, theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   getHistoryMetricHotRange,
@@ -87,7 +87,13 @@ function generateChartData({
 function SparklineShowcase() {
   const [showMax, setShowMax] = useState(true)
   const [maxPosition, setMaxPosition] = useState<'left' | 'right'>('right')
-  const [color, setColor] = useState(telemetry.speed.color)
+  const colors = {
+    speed: telemetry.speed.color,
+    duty: telemetry.duty.color,
+    controller: telemetry.controllerTemp.color,
+    yellow: theme.palette.yellow.color,
+  } as const
+  const [colorKey, setColorKey] = useState<keyof typeof colors>('speed')
   const points = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
 
   return (
@@ -104,21 +110,16 @@ function SparklineShowcase() {
           />
           <ChipRow
             label="color"
-            options={[
-              telemetry.speed.color,
-              telemetry.duty.color,
-              telemetry.controllerTemp.color,
-              theme.palette.yellow.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
+            options={Object.keys(colors)}
+            selected={colorKey}
+            onSelect={(value) => setColorKey(value as keyof typeof colors)}
           />
         </>
       }
     >
       <Sparkline
         points={points}
-        color={color}
+        color={colors[colorKey]}
         height={32}
         fmtMax={(v) => `${v.toFixed(1)} V`}
         showMaxBadge={showMax}
@@ -290,6 +291,8 @@ function LinearGaugeShowcase() {
 }
 
 function RandomLineChartsShowcase() {
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  const accents = useResolvedAccentColors()
   const charts = useMemo(
     () => [
       {
@@ -338,13 +341,20 @@ function RandomLineChartsShowcase() {
   return (
     <ShowcaseCard name="TelemetryLineChart / random samples">
       {charts.map((chart) => {
+        const color = resolveAdaptiveColor(chart.metric.color, appearance) as string
         const range = computeAutoRange(chart.points, {
           includeZero: chart.key !== 'controller',
           minSpan: chart.metric.minSpan ?? 10,
           paddingRatio: 0.1,
           baseline: chart.key === 'controller' ? chart.metric.chartRange : undefined,
         })
-        const colorRange = getHistoryMetricColorRange(chart.metricKey, chart.metric.color)
+        const colorRange = getHistoryMetricColorRange(
+          chart.metricKey,
+          color,
+          undefined,
+          true,
+          accents.red.color,
+        )
         const currentPoint = chart.points.at(-1) ?? null
         return (
           <TelemetryLineChart
@@ -353,7 +363,7 @@ function RandomLineChartsShowcase() {
             value={currentPoint ? chart.metric.formatWithUnit(currentPoint.value) : '-'}
             points={chart.points}
             currentPoint={currentPoint}
-            color={chart.metric.color}
+            color={color}
             range={range}
             height={70}
             formatValue={chart.metric.formatWithUnit}
