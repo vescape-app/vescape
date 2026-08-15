@@ -1,5 +1,8 @@
 import { useMemo } from 'react'
+import { useLocalSearchParams } from 'expo-router'
 
+// PROTOTYPE — `?variant=A…E` renders the throwaway redesigns in src/screens/prototype/speed.
+import { SpeedPrototype } from '@/screens/prototype/speed/SpeedPrototype'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
 import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
@@ -16,6 +19,12 @@ const cfg = telemetry.speed
 const RANGE = { y: cfg.chartRange }
 
 export default function SpeedScreen() {
+  const { variant } = useLocalSearchParams<{ variant?: string }>()
+  if (variant) return <SpeedPrototype />
+  return <SpeedScreenCurrent />
+}
+
+function SpeedScreenCurrent() {
   const speed = useLiveMetric(liveSelectors.speed)
   const windowMs = useLiveWindowMs()
   const points = useMemo(() => toTelemetryChartPoints(speed), [speed])
