@@ -32,6 +32,7 @@ import { zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import { formatRideMeta, formatRideTime } from '@/modules/history/lib/rideFormat'
 import { useFavoriteStore } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
+import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 
 /** Tabs per row: the fourteen metrics wrap into two even rows. */
 const TAB_COLUMNS = 7
@@ -56,6 +57,7 @@ const MIN_METRIC_HEIGHT = 24
  * are offered here because here they cost nothing.
  */
 export function HistoryChartsScreen() {
+  useRenderRateWarning('HistoryChartsScreen')
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const session = useHistoryStore((s) => s.selectedSession)

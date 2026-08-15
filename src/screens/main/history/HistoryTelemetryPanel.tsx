@@ -16,6 +16,7 @@ import { stackChromeHeight } from '@/components/charts/line/chartLayout'
 import { routes } from '@/navigation/routes'
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { InfoModal } from '@/components/modals/InfoModal'
+import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import {
   isHistoryMetricKey,
   PANEL_CHART_METRICS,
@@ -122,6 +123,7 @@ export function HistoryTelemetryPanel({
   onHeightChange,
   trim,
 }: HistoryTelemetryPanelProps) {
+  useRenderRateWarning('HistoryTelemetryPanel')
   const insets = useSafeAreaInsets()
   const router = useRouter()
   // Speed is on by default and closable like any other line — the rider who wants the map back

@@ -41,6 +41,7 @@ import { useChartCamera } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartBand, ChartSpec, ChartTimeRange } from '@/components/charts/line/types'
+import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
 
 export type { ChartSpec } from '@/components/charts/line/types'
@@ -146,6 +147,7 @@ export function ChartStack({
 }: ChartStackProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  useRenderRateWarning('ChartStack')
   const [width, setWidth] = useState(0)
   const labelFont = useSkiaFont('600', LABEL_FONT_SIZE)
   const axisFont = useSkiaMonoFont('500', AXIS_FONT_SIZE)
