@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
 
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
@@ -17,12 +17,21 @@ import {
   buildRiderTargetPoints,
 } from '@/screens/main/map/trackedMapPoints'
 
+/**
+ * Grid the offscreen indicators are tracked on: about a metre.
+ *
+ * They point at things far enough away to be off screen, so a fix that moved by centimetres cannot
+ * change where the arrow points — but it does rebuild the tracked-point list and everything derived
+ * from it, once per fix, forever. Snapping to a metre keeps the arrows honest and the work rare.
+ */
+const TRACKING_GRID_DEG = 1e-5
+
 function usableCoordinate(location: { longitude: number; latitude: number } | null | undefined) {
   if (!location) return null
   if (!Number.isFinite(location.longitude) || !Number.isFinite(location.latitude)) return null
   return {
-    longitude: location.longitude,
-    latitude: location.latitude,
+    longitude: Math.round(location.longitude / TRACKING_GRID_DEG) * TRACKING_GRID_DEG,
+    latitude: Math.round(location.latitude / TRACKING_GRID_DEG) * TRACKING_GRID_DEG,
   }
 }
 
@@ -60,15 +69,22 @@ export function useLiveMapModel({
   const approximateGpsPuckActive =
     gpsPresentation.degraded ||
     (gpsFix == null && (latestApproximateLocation != null || initialApproximateFix != null))
-  const offscreenMapGpsCoordinate = useMemo(
-    () =>
-      usableCoordinate(gpsFix) ??
-      usableCoordinate(latestApproximateLocation) ??
-      usableCoordinate(initialApproximateFix) ??
-      usableCoordinate(accuracyFix) ??
-      usableCoordinate(cameraFix),
-    [accuracyFix, cameraFix, gpsFix, initialApproximateFix, latestApproximateLocation],
-  )
+  const trackingCoordinate =
+    usableCoordinate(gpsFix) ??
+    usableCoordinate(latestApproximateLocation) ??
+    usableCoordinate(initialApproximateFix) ??
+    usableCoordinate(accuracyFix) ??
+    usableCoordinate(cameraFix)
+  // Held by value, not by identity: a fix per second would otherwise hand every consumer a new
+  // object describing the same metre of pavement.
+  const trackedCoordinateRef = useRef(trackingCoordinate)
+  if (
+    trackedCoordinateRef.current?.latitude !== trackingCoordinate?.latitude ||
+    trackedCoordinateRef.current?.longitude !== trackingCoordinate?.longitude
+  ) {
+    trackedCoordinateRef.current = trackingCoordinate
+  }
+  const offscreenMapGpsCoordinate = trackedCoordinateRef.current
   const selectedMapPoint = useMemo(
     () =>
       mapPoints.find(
