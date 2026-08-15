@@ -439,15 +439,26 @@ interface PillSelectorAddProps {
 }
 
 export function PillSelectorAdd({ testID, onPress }: PillSelectorAddProps) {
-  const { addRef, contained } = usePillSelectorCtx()
+  const { addRef, contained, variant } = usePillSelectorCtx()
+  const control = useResolvedControlColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   return (
     <Pressable
       ref={addRef}
       testID={testID}
-      style={[styles.addPill, contained && styles.containedAddPill]}
+      style={[
+        styles.addPill,
+        contained && styles.containedAddPill,
+        useLightTabs && {
+          backgroundColor: control.background,
+          borderColor: control.border,
+          borderWidth: 1,
+        },
+      ]}
       onPress={onPress}
     >
-      <PlusIcon size={14} color={theme.control.icon} weight="bold" />
+      <PlusIcon size={16} color={control.icon} weight="bold" />
     </Pressable>
   )
 }

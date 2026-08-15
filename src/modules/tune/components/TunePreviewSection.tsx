@@ -51,9 +51,9 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
   if (!visible) return null
 
   return (
-    <View style={styles.tuneView}>
+    <View style={[styles.tuneView, { backgroundColor: neutral.bg }]}>
       <ScrollView
-        style={styles.formScroll}
+        style={[styles.formScroll, { backgroundColor: neutral.bg }]}
         contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
         contentInsetAdjustmentBehavior="automatic"
         stickyHeaderIndices={previewEnabled ? [0] : undefined}
@@ -123,7 +123,13 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
             />
           </View>
         ) : null}
-        <View style={[styles.content, previewEnabled && styles.contentWithPreview]}>
+        <View
+          style={[
+            styles.content,
+            { backgroundColor: neutral.bg },
+            previewEnabled && styles.contentWithPreview,
+          ]}
+        >
           {previewEnabled ? (
             <TunePreviewScenarioControls
               hillsPreset={hillsPreset}

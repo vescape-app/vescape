@@ -421,14 +421,14 @@ export function TunePreview({
               cx={centerX}
               cy={GROUND_Y - WHEEL_RADIUS}
               r={WHEEL_RADIUS}
-              color={theme.palette.slate.bg}
+              color={neutral.surface}
             />
             <Circle
               cx={centerX}
               cy={GROUND_Y - WHEEL_RADIUS}
               r={WHEEL_RADIUS}
               style="stroke"
-              color={theme.palette.slate.textSecondary}
+              color={neutral.textSecondary}
               strokeWidth={1}
             />
             <Path
@@ -442,7 +442,7 @@ export function TunePreview({
               cy={GROUND_Y - WHEEL_RADIUS}
               r={4}
               style="stroke"
-              color={theme.palette.slate.border}
+              color={neutral.border}
               strokeWidth={1}
             />
             {hillsEnabled ? (

@@ -5,6 +5,7 @@ import { CaretDownIcon, CheckIcon, type Icon as PhosphorIcon } from 'phosphor-re
 import { interaction, theme } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
 import type { SelectOption } from '@/components/forms/Select'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 
 const MAX_DROPDOWN_HEIGHT = 280
 
@@ -71,7 +72,7 @@ export function SelectCard<T extends string = string>({
           >
             {selectedOption?.label ?? 'Select…'}
           </Text>
-          <CaretDownIcon size={16} color={theme.control.textMuted} weight="bold" />
+          <CaretDownIcon size={16} color={theme.neutral.textMuted} weight="bold" />
         </View>
       </Pressable>
       {children}
@@ -112,12 +113,10 @@ export function SelectCard<T extends string = string>({
 
 const styles = StyleSheet.create({
   container: {
+    ...secondaryWidgetSurface,
     gap: 4,
-    borderWidth: 1,
-    borderColor: theme.control.border,
     borderRadius: 10,
     padding: 12,
-    backgroundColor: theme.control.background,
   },
   trigger: {
     flexDirection: 'row',
@@ -126,8 +125,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  title: { color: theme.control.text, fontSize: 13, fontWeight: '900' },
-  description: { color: theme.control.textMuted, fontSize: 10, fontWeight: '600' },
+  title: { color: theme.neutral.textPrimary, fontSize: 13, fontWeight: '900' },
+  description: { color: theme.neutral.textSecondary, fontSize: 10, fontWeight: '600' },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,13 +134,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   valueText: {
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
     fontSize: 11,
     fontWeight: '700',
     flexShrink: 1,
     paddingRight: 5,
   },
-  placeholderText: { color: theme.control.textMuted },
+  placeholderText: { color: theme.neutral.textMuted },
   option: {
     flexDirection: 'row',
     alignItems: 'center',

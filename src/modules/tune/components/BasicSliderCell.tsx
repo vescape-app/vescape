@@ -7,6 +7,7 @@ import type { BasicSliderItem } from '@/modules/tune/lib/sliderDefinitions'
 import { clamp, formatSliderValue } from '@/modules/tune/lib/sliderDefinitions'
 import { TuneTileFill } from '@/modules/tune/components/TuneTileFill'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface BasicSliderCellProps {
   item: BasicSliderItem
@@ -21,6 +22,7 @@ export const BasicSliderCell = forwardRef<View, BasicSliderCellProps>(function B
   { item, icon: IconComponent, color, editable, onPress, onResetFormula },
   ref,
 ) {
+  const neutral = useResolvedNeutralColors()
   const progress =
     item.value == null ? 0 : clamp(((item.value - item.min) / (item.max - item.min)) * 100, 0, 100)
 
@@ -29,6 +31,7 @@ export const BasicSliderCell = forwardRef<View, BasicSliderCellProps>(function B
       <Pressable
         style={[
           styles.cell,
+          { borderColor: neutral.border, backgroundColor: neutral.surfaceDeep },
           item.value == null && styles.cellMissing,
           !editable && styles.cellReadOnly,
         ]}
@@ -43,7 +46,7 @@ export const BasicSliderCell = forwardRef<View, BasicSliderCellProps>(function B
         <View style={styles.headerRow}>
           <View style={[styles.labelRow, item.modifiedManually && styles.labelRowWithAlert]}>
             <IconComponent size={15} color={color} weight="duotone" />
-            <Text style={styles.label} numberOfLines={1}>
+            <Text style={[styles.label, { color: neutral.textPrimary }]} numberOfLines={1}>
               {item.label}
             </Text>
           </View>

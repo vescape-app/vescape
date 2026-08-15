@@ -122,6 +122,7 @@ export default function TuneScreen() {
                 activeId={activeProfile?.id ?? ''}
                 contained
                 fitContent
+                variant="lightTabs"
                 style={styles.headerPills}
                 contentContainerStyle={styles.headerPillsContent}
               >

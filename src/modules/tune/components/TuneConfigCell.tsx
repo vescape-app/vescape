@@ -9,6 +9,7 @@ import { formatProfileValue } from '@/modules/tune/lib/sliderDefinitions'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 import { TuneTileFill } from '@/modules/tune/components/TuneTileFill'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneConfigCellProps {
   field: RefloatConfigField
@@ -38,6 +39,7 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
   },
   ref,
 ) {
+  const neutral = useResolvedNeutralColors()
   const canAcceptBoard = boardChanged && isDisplayableFieldValue(boardValue)
   const hasActions = dirty || canAcceptBoard
   const progressFraction =
@@ -54,7 +56,12 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
   return (
     <View ref={ref} style={styles.cellWrapper}>
       <Pressable
-        style={[styles.cell, dirty && styles.cellDirty, boardChanged && styles.cellBoardChanged]}
+        style={[
+          styles.cell,
+          { borderColor: neutral.border, backgroundColor: neutral.surfaceDeep },
+          dirty && styles.cellDirty,
+          boardChanged && styles.cellBoardChanged,
+        ]}
         onPress={onPress}
       >
         <TuneTileFill fraction={progressFraction} color={color} />
@@ -73,13 +80,22 @@ export const TuneConfigCell = forwardRef<View, TuneConfigCellProps>(function Tun
         ) : null}
         <View style={styles.cellHeaderRow}>
           <Text
-            style={[styles.cellLabel, hasActions && styles.cellLabelWithAction]}
+            style={[
+              styles.cellLabel,
+              { color: neutral.textPrimary },
+              hasActions && styles.cellLabelWithAction,
+            ]}
             numberOfLines={2}
           >
             {field.label}
           </Text>
         </View>
-        <Text style={styles.cellValue} numberOfLines={1} adjustsFontSizeToFit selectable>
+        <Text
+          style={[styles.cellValue, { color: neutral.textPrimary }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          selectable
+        >
           {formatTuneValue(field.value)}
         </Text>
         {dirty && isDisplayableFieldValue(savedValue) ? (
@@ -121,11 +137,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cellDirty: {
-    backgroundColor: theme.neutral.surfaceDeep,
     borderColor: theme.palette.sky.border,
   },
   cellBoardChanged: {
-    backgroundColor: theme.neutral.surfaceDeep,
     borderColor: theme.palette.green.border,
   },
   cellRevertButton: {
