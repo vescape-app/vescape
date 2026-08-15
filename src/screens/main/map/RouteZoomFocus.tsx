@@ -6,11 +6,19 @@ import type { ChartTimeRange } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
 import { zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import {
+  getHistoryMetricBaseColor,
+  getHistoryRouteMetricGradient,
+} from '@/modules/history/lib/historyRouteGradient'
+import type {
+  HistoryMetricHotRanges,
+  HistoryMetricKey,
+} from '@/modules/history/lib/metricColorScale'
+import {
   progressAtTime,
   routeTimeProgress,
   type RouteTimeProgress,
 } from '@/modules/history/lib/routeProgress'
-import type { HistoryGpsSample } from '@/modules/history/store/historyStore'
+import type { HistoryGpsSample, TelemetrySample } from '@/modules/history/store/historyStore'
 
 const DIM_COLOR = theme.alpha(theme.palette.slate.bg, 0.75)
 const CLEAR_COLOR = theme.alpha(theme.palette.slate.bg, 0)
@@ -30,6 +38,12 @@ const STOP_EPSILON = 1e-6
 interface RouteZoomFocusProps {
   rideGpsSamples: HistoryGpsSample[]
   routeShape: GeoJSON.Feature<GeoJSON.LineString> | null
+  /** Everything the focused stretch needs to be redrawn in the colours the route already uses. */
+  rideTelemetrySamples: TelemetrySample[]
+  metric: HistoryMetricKey
+  hotRanges: HistoryMetricHotRanges
+  gradientsEnabled: boolean
+  highContrastRoutes: boolean
 }
 
 /**
@@ -39,7 +53,15 @@ interface RouteZoomFocusProps {
  * changes as the rider pinches, and a layer here would otherwise re-render the whole map tree with
  * it. The geometry is uploaded once per ride; only this component's own gradient changes.
  */
-export function RouteZoomFocus({ rideGpsSamples, routeShape }: RouteZoomFocusProps) {
+export function RouteZoomFocus({
+  rideGpsSamples,
+  routeShape,
+  rideTelemetrySamples,
+  metric,
+  hotRanges,
+  gradientsEnabled,
+  highContrastRoutes,
+}: RouteZoomFocusProps) {
   const [window, setWindow] = useState<ChartTimeRange | null>(null)
   const lastAppliedAt = useRef(0)
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -79,19 +101,78 @@ export function RouteZoomFocus({ rideGpsSamples, routeShape }: RouteZoomFocusPro
     [progress, window],
   )
 
+  // The dim is one line over the whole ride, so where the route crosses itself the dimmed part is
+  // painted after — and on top of — the focused part. Drawing the focused stretch again as its own
+  // geometry puts it back on top, whatever the ride does with itself.
+  const focus = useMemo(() => {
+    if (window == null) return null
+    const lo = Math.min(window.startMs, window.endMs)
+    const hi = Math.max(window.startMs, window.endMs)
+    const coordinates: [number, number][] = []
+    const samples: HistoryGpsSample[] = []
+    for (const gps of rideGpsSamples) {
+      if (gps.capturedAtMs < lo) continue
+      if (gps.capturedAtMs > hi) break
+      coordinates.push([gps.longitude, gps.latitude])
+      samples.push(gps)
+    }
+    if (coordinates.length < 2) return null
+    return {
+      shape: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates },
+        properties: {},
+      } as GeoJSON.Feature<GeoJSON.LineString>,
+      // Rebuilt for the slice rather than reused: `line-progress` runs 0..1 along whatever
+      // geometry the layer draws, so the ride's own gradient would compress into the window.
+      gradient: getHistoryRouteMetricGradient({
+        gpsSamples: samples,
+        telemetrySamples: rideTelemetrySamples,
+        metric,
+        hotRanges,
+        gradientsEnabled,
+      }),
+    }
+  }, [gradientsEnabled, hotRanges, metric, rideGpsSamples, rideTelemetrySamples, window])
+
   if (routeShape == null || gradient == null) return null
   return (
-    <ShapeSource id="center-ride-zoom-focus-source" shape={routeShape} lineMetrics>
-      <LineLayer
-        id="center-ride-zoom-focus-line"
-        style={{
-          lineGradient: gradient,
-          lineWidth: DIM_WIDTH,
-          lineCap: 'round',
-          lineJoin: 'round',
-        }}
-      />
-    </ShapeSource>
+    <>
+      <ShapeSource id="center-ride-zoom-focus-source" shape={routeShape} lineMetrics>
+        <LineLayer
+          id="center-ride-zoom-focus-line"
+          style={{
+            lineGradient: gradient,
+            lineWidth: DIM_WIDTH,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        />
+      </ShapeSource>
+      {focus ? (
+        <ShapeSource id="center-ride-zoom-slice-source" shape={focus.shape} lineMetrics>
+          <LineLayer
+            id="center-ride-zoom-slice-casing"
+            style={{
+              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineWidth: highContrastRoutes ? 8 : 0,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+          />
+          <LineLayer
+            id="center-ride-zoom-slice-line"
+            style={{
+              lineColor: getHistoryMetricBaseColor(metric),
+              lineWidth: highContrastRoutes ? 5 : 4,
+              lineCap: 'round',
+              lineJoin: 'round',
+              ...(focus.gradient ? { lineGradient: focus.gradient } : {}),
+            }}
+          />
+        </ShapeSource>
+      ) : null}
+    </>
   )
 }
 

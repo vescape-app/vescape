@@ -532,6 +532,23 @@ export function HistoryMapLayers({
               ...(routeMetricGradient ? { lineGradient: routeMetricGradient } : {}),
             }}
           />
+        </ShapeSource>
+      )}
+      {/* Over the route, under the pins: the pins are landmarks of the whole ride and stay
+          readable however far the chart is zoomed in. */}
+      <RouteZoomFocus
+        rideGpsSamples={rideGpsSamples}
+        routeShape={rideRouteShape}
+        rideTelemetrySamples={rideTelemetrySamples}
+        metric={activeHistoryMapMetric}
+        hotRanges={hotRanges}
+        gradientsEnabled={gradientsEnabled}
+        highContrastRoutes={highContrastRoutes}
+      />
+      {/* Its own source, above the zoom focus: the scrub glow marks where the finger is on the
+          chart, which stays true whether or not that stretch is the one zoomed into. */}
+      {rideRouteShape && (
+        <ShapeSource id="center-ride-route-highlight-source" shape={rideRouteShape} lineMetrics>
           <LineLayer
             id="center-ride-route-highlight"
             style={{
@@ -544,9 +561,6 @@ export function HistoryMapLayers({
           />
         </ShapeSource>
       )}
-      {/* Over the route and its highlight, under the pins: the pins are landmarks of the whole
-          ride and stay readable however far the chart is zoomed in. */}
-      <RouteZoomFocus rideGpsSamples={rideGpsSamples} routeShape={rideRouteShape} />
       <TrimRouteHighlight rideGpsSamples={rideGpsSamples} />
       {rideRoute[0] && (
         <MapPin
