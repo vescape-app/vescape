@@ -9,9 +9,8 @@ import {
 } from '@/modules/history/lib/rideFormat'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
-import { HistoryStatsBar } from '@/screens/main/history/HistoryStatsBar'
 import { HistoryTelemetryPanel } from '@/screens/main/history/HistoryTelemetryPanel'
-import { TrimStatsBar } from '@/screens/main/history/TrimStatsBar'
+import { RangeStatsBar } from '@/screens/main/history/RangeStatsBar'
 import type { MainHistoryOverlayProps } from '@/screens/main/history/HistoryOverlay'
 
 interface HistoryRideDetailProps {
@@ -105,15 +104,12 @@ export function HistoryRideDetail({
             : undefined
         }
       />
-      {trimming ? (
-        <TrimStatsBar
-          session={session}
-          samples={history.sessionSamples}
-          gpsSamples={history.sessionGpsSamples}
-        />
-      ) : (
-        <HistoryStatsBar session={session} />
-      )}
+      <RangeStatsBar
+        session={session}
+        samples={history.sessionSamples}
+        gpsSamples={history.sessionGpsSamples}
+        trimming={trimming}
+      />
       <HistoryControls
         loading={busy}
         tab={history.historyTab}
