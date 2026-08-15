@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react'
+import { useCallback, useMemo, useState, type RefObject } from 'react'
 import type { View } from 'react-native'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
@@ -28,6 +28,9 @@ interface HistoryRideDetailProps {
   listButtonRef: RefObject<View | null>
 }
 
+/** Stable identity: a Favorite has no Favorite ranges drawn over it, and a fresh [] re-renders. */
+const NO_FAVORITE_RANGES: { startMs: number; endMs: number }[] = []
+
 /** The replayed ride: chart panel, stats and header. Shared by history mode and favorite mode. */
 export function HistoryRideDetail({
   history,
@@ -42,6 +45,45 @@ export function HistoryRideDetail({
   const [trimName, setTrimName] = useState('')
   const openFavorite = favoriteMode ? history.openFavorite : null
   const trimming = history.trimming
+
+  // Stable handlers, so the panel — which rebuilds every chart series it is handed — re-renders
+  // when the ride changes rather than every time this screen does.
+  const {
+    selectPreviousFavorite,
+    selectPreviousRide,
+    selectNextFavorite,
+    selectNextRide,
+    setHistorySheetVisible,
+    beginTrimFavorite,
+  } = history
+  const mediaAdd = history.mediaHistory.add
+  const handlePrevious = useCallback(() => {
+    void (favoriteMode ? selectPreviousFavorite() : selectPreviousRide())
+  }, [favoriteMode, selectPreviousFavorite, selectPreviousRide])
+  const handleNext = useCallback(() => {
+    void (favoriteMode ? selectNextFavorite() : selectNextRide())
+  }, [favoriteMode, selectNextFavorite, selectNextRide])
+  const handleOpenList = useCallback(() => setHistorySheetVisible(true), [setHistorySheetVisible])
+  const handleAddMedia = useCallback(() => void mediaAdd(), [mediaAdd])
+  const handleToggleFavorite = useCallback(() => {
+    setTrimName('')
+    beginTrimFavorite()
+  }, [beginTrimFavorite])
+  const trimSeedStartMs = history.trimSeed?.startMs
+  const trimSeedEndMs = history.trimSeed?.endMs
+  const updateTrimRange = history.updateTrimRange
+  const trimConfig = useMemo(
+    () =>
+      trimming && trimSeedStartMs != null && trimSeedEndMs != null
+        ? {
+            startMs: trimSeedStartMs,
+            endMs: trimSeedEndMs,
+            onChange: updateTrimRange,
+            onCommit: updateTrimRange,
+          }
+        : undefined,
+    [trimSeedEndMs, trimSeedStartMs, trimming, updateTrimRange],
+  )
 
   return (
     <>
@@ -70,7 +112,7 @@ export function HistoryRideDetail({
         }
         canNext={!trimming && (favoriteMode ? history.canNextFavorite : history.nextRide != null)}
         favoriteMode={favoriteMode}
-        favoriteRanges={favoriteMode ? [] : history.favorites}
+        favoriteRanges={favoriteMode ? NO_FAVORITE_RANGES : history.favorites}
         favorited={history.selectedSessionFavorite != null}
         actionDisabled={busy || history.favoritesSaving}
         mediaAssets={history.mediaHistory.assets}
@@ -78,31 +120,15 @@ export function HistoryRideDetail({
         mediaLoading={history.mediaHistory.loading}
         mediaError={history.mediaHistory.error}
         listButtonRef={listButtonRef}
-        onPrevious={() => {
-          void (favoriteMode ? history.selectPreviousFavorite() : history.selectPreviousRide())
-        }}
-        onNext={() => {
-          void (favoriteMode ? history.selectNextFavorite() : history.selectNextRide())
-        }}
-        onOpenList={() => history.setHistorySheetVisible(true)}
-        onAddMedia={() => void history.mediaHistory.add()}
+        onPrevious={handlePrevious}
+        onNext={handleNext}
+        onOpenList={handleOpenList}
+        onAddMedia={handleAddMedia}
         onOpenMedia={history.openMedia}
-        onToggleFavorite={() => {
-          setTrimName('')
-          history.beginTrimFavorite()
-        }}
+        onToggleFavorite={handleToggleFavorite}
         onMetricInteraction={history.setActiveHistoryMapMetric}
         onHeightChange={onPanelHeightChange}
-        trim={
-          trimming && history.trimSeed
-            ? {
-                startMs: history.trimSeed.startMs,
-                endMs: history.trimSeed.endMs,
-                onChange: history.updateTrimRange,
-                onCommit: history.updateTrimRange,
-              }
-            : undefined
-        }
+        trim={trimConfig}
       />
       <RangeStatsBar
         session={session}

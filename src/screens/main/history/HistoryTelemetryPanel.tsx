@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router'
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, {
   Easing,
@@ -92,7 +92,11 @@ export interface HistoryTrimConfig {
   onCommit: (startMs: number, endMs: number) => void
 }
 
-export function HistoryTelemetryPanel({
+/**
+ * Memoized: it rebuilds every chart series, range and path for the ride it is handed, so a render
+ * of the screen around it is not a reason to do that work again.
+ */
+export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
   startAtMs,
   endAtMs,
   movingStartAtMs,
@@ -378,7 +382,7 @@ export function HistoryTelemetryPanel({
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   panel: {
