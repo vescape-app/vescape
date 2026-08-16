@@ -121,9 +121,6 @@ export function PillSelector({
 }: PillSelectorProps) {
   'use no memo'
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const neutral = useResolvedNeutralColors()
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const addRef = useTriggerRef()
 
   const openMenu = useCallback(
@@ -144,16 +141,7 @@ export function PillSelector({
       value={{ activeId, openMenu, closeMenu, addRef, contained, variant }}
     >
       <View
-        style={[
-          styles.container,
-          contained && styles.containedContainer,
-          useLightTabs && {
-            backgroundColor: neutral.surface,
-            borderColor: neutral.border,
-          },
-          fitContentStyle,
-          style,
-        ]}
+        style={[styles.container, contained && styles.containedContainer, fitContentStyle, style]}
       >
         <ScrollView
           horizontal
@@ -323,7 +311,7 @@ export function PillSelectorItem({
   })
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
   const accentColor = useResolvedColor(color?.color ?? theme.palette.green.color)
-  const inactiveAccent = theme.alpha(accentColor, 0.6)
+  const inactiveAccent = useLightTabs ? control.textMuted : theme.alpha(accentColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
   const labelProgress = useSharedValue(resolved.showLabel ? 1 : 0)
 
@@ -344,8 +332,8 @@ export function PillSelectorItem({
         activeProgress.value,
         [0, 1],
         [
-          useLightTabs ? neutral.surface : contained ? TRANSPARENT : control.background,
-          useLightTabs ? control.background : control.backgroundPressed,
+          useLightTabs ? TRANSPARENT : contained ? TRANSPARENT : control.background,
+          useLightTabs ? neutral.surface : control.backgroundPressed,
         ],
       ),
       borderColor: interpolateColor(
@@ -363,7 +351,6 @@ export function PillSelectorItem({
       control.background,
       control.backgroundPressed,
       control.border,
-      neutral.border,
       neutral.surface,
       useLightTabs,
     ],
@@ -451,9 +438,10 @@ export function PillSelectorAdd({ testID, onPress }: PillSelectorAddProps) {
         styles.addPill,
         contained && styles.containedAddPill,
         useLightTabs && {
-          backgroundColor: control.background,
-          borderColor: control.border,
+          backgroundColor: TRANSPARENT,
+          borderColor: control.divider,
           borderWidth: 1,
+          borderStyle: 'dashed',
         },
       ]}
       onPress={onPress}

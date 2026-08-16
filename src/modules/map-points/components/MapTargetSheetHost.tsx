@@ -86,9 +86,9 @@ export function MapTargetSheetHost({
   const accents = useResolvedAccentColors()
   const actionColors = {
     color: actionColor,
-    textColor: actionTextColor,
+    textColor: theme.control.text,
     borderColor: actionColor,
-    bgColor: theme.alpha(actionColor, 0.12),
+    bgColor: theme.control.background,
   }
 
   if (selectedTarget) {
@@ -109,6 +109,8 @@ export function MapTargetSheetHost({
           Icon: NavigationArrowIcon,
           onPress: onNavigateSelected,
         }}
+        targetColor={actionColor}
+        targetTextColor={actionTextColor}
         onAddFeature={isMapPoint ? undefined : onAddFeature}
         onEdit={
           ownedByMe
@@ -144,9 +146,9 @@ export function MapTargetSheetHost({
 
   const cancelAction = {
     color: accents.red.color,
-    textColor: accents.red.text,
-    borderColor: theme.alpha(accents.red.color, 0.4),
-    bgColor: theme.alpha(accents.red.color, 0.1),
+    textColor: theme.control.text,
+    borderColor: accents.red.color,
+    bgColor: theme.control.background,
     label: 'Cancel',
     accessibilityLabel: 'Cancel navigation',
     Icon: XIcon,
@@ -202,15 +204,15 @@ export function MapTargetSheetHost({
 
 /**
  * The side actions read as different decisions from the confirm, so they leave the target's colour
- * to it: asking again is neutral work (slate), dropping the Navigation is destructive (red).
- * Emphasis is border and text on a dark tinted pill — never a bright fill; see `docs/design.md`.
+ * to it: asking again is neutral work (muted), dropping the Navigation is destructive (red).
+ * Both sit on the dark control surface with an accent border/icon, never a bright tinted fill.
  */
 const NAVIGATION_ACTION_COLORS = {
   recompute: {
-    color: theme.palette.slate.color,
-    textColor: theme.palette.slate.textSecondary,
-    borderColor: theme.palette.slate.border,
-    bgColor: theme.alpha(theme.palette.slate.color, 0.12),
+    color: theme.control.textMuted,
+    textColor: theme.control.textMuted,
+    borderColor: theme.control.border,
+    bgColor: theme.control.background,
   },
 } as const
 

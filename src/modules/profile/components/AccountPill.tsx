@@ -46,7 +46,7 @@ export function AccountPill({ onNavigate }: AccountPillProps) {
       <Pill onPress={() => navigate(routes.signIn)}>
         <UserCircleIcon size={18} color={theme.settingsIcon.account} weight="duotone" />
         <Text style={styles.label}>Sign in</Text>
-        <CaretRightIcon size={13} color={theme.palette.slate.textMuted} weight="bold" />
+        <CaretRightIcon size={13} color={theme.control.textMuted} weight="bold" />
       </Pill>
     )
   }
@@ -77,7 +77,7 @@ export function AccountPill({ onNavigate }: AccountPillProps) {
       {deviceAuthStatus === 'provisioning' ? (
         <ActivityIndicator size="small" color={theme.settingsIcon.account} />
       ) : (
-        <CaretRightIcon size={13} color={theme.palette.slate.textMuted} weight="bold" />
+        <CaretRightIcon size={13} color={theme.control.textMuted} weight="bold" />
       )}
     </Pill>
   )
@@ -96,7 +96,7 @@ function Pill({
     <Pressable
       style={({ pressed }) => [
         styles.pill,
-        tone ? { borderColor: tone } : null,
+        tone ? { borderColor: tone, backgroundColor: theme.status.error.bg } : null,
         pressed && { opacity: theme.interaction.pressedOpacity },
       ]}
       onPress={onPress}
@@ -118,8 +118,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
   },
   avatar: {
     width: 22,
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flexShrink: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 13,
     fontWeight: '700',
   },

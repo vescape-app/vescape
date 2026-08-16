@@ -31,14 +31,14 @@ export function MapStyleSwitch({
     activeKey === 'mapy' && !IS_MAPY_CONFIGURED ? MAP_STYLES[0].key : activeKey
   const activeStyle =
     availableStyles.find((style) => style.key === effectiveActiveKey) ?? MAP_STYLES[0]
-  const activeAccent = effectiveActiveKey === 'outdoors' ? accents.yellow.light : accents.sky.text
+  const activeAccent = effectiveActiveKey === 'outdoors' ? accents.yellow.color : accents.sky.color
   const options = availableStyles.map((style) => ({
     key: style.key,
     label: style.label,
     icon: (
       <style.Icon
         size={iconSize}
-        color={effectiveActiveKey === style.key ? activeAccent : theme.neutral.textSecondary}
+        color={effectiveActiveKey === style.key ? activeAccent : theme.palette.mono.white}
         weight={effectiveActiveKey === style.key ? 'fill' : 'bold'}
       />
     ),
@@ -52,6 +52,7 @@ export function MapStyleSwitch({
       activeBackground={theme.alpha(activeAccent, 0.12)}
       collapsedAccessibilityLabel={`Basemap: ${activeStyle.label}`}
       expanded={expanded}
+      variant="lightTabs"
       size={size}
       options={options}
       onToggle={onToggle}

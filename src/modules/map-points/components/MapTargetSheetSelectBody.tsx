@@ -47,7 +47,7 @@ export function MapTargetSelectBody({
       bottom={bottom}
       header={<MapTargetReadHeader target={target} />}
       fallbackColor={action.color}
-      fallbackTextColor={action.textColor}
+      fallbackTextColor={action.color}
       onDismiss={onDismiss}
       onFocusTarget={onFocusTarget}
     >

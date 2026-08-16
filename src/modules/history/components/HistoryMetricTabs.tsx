@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     borderTopColor: theme.control.divider,
   },
   metricTabActive: {
-    backgroundColor: theme.control.backgroundPressed,
+    backgroundColor: theme.neutral.surface,
   },
   metricTabLine: {
     width: '60%',
@@ -147,6 +147,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   metricTabTextActive: {
-    color: theme.control.text,
+    color: theme.neutral.textPrimary,
   },
 })

@@ -11,7 +11,6 @@ import Animated, {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface ActiveNavigationTopBarProps {
   boardPill: ReactNode
@@ -98,7 +97,6 @@ export function ActiveNavigationTopBar({
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
-  const neutral = useResolvedNeutralColors()
   const [navigationPrimary, setNavigationPrimary] = useState(true)
   const navigationPrimaryRef = useRef(true)
   const gestureTriggeredRef = useRef(false)
@@ -170,23 +168,20 @@ export function ActiveNavigationTopBar({
                 {
                   width: targetPillWidth,
                   borderColor: targetBorder,
-                  backgroundColor: neutral.surface,
+                  backgroundColor: theme.control.background,
                 },
               ]}
             >
               <View
                 style={[
                   styles.targetIcon,
-                  { borderColor: targetBorder, backgroundColor: targetTint },
+                  { borderColor: targetBorder, backgroundColor: theme.control.backgroundPressed },
                 ]}
               >
                 <TargetIcon icon={targetIcon} color={riderColor} />
               </View>
               <View style={styles.targetCopy}>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.targetTitle, { color: neutral.textPrimary }]}
-                >
+                <Text numberOfLines={1} style={[styles.targetTitle, { color: theme.control.text }]}>
                   {targetTitle}
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>

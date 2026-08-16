@@ -166,16 +166,14 @@ export function MapPointAddMenu({
             style={({ pressed }) => [
               styles.mapTargetNavigate,
               {
-                backgroundColor: theme.alpha(navigationAction.color, 0.12),
+                backgroundColor: theme.control.background,
                 borderColor: navigationAction.color,
               },
               pressed && mapSheetStyles.mapTargetNavigatePressed,
             ]}
           >
-            <NavigationArrowIcon size={18} color={navigationAction.textColor} weight="bold" />
-            <Text
-              style={[mapSheetStyles.mapTargetNavigateText, { color: navigationAction.textColor }]}
-            >
+            <NavigationArrowIcon size={18} color={navigationAction.color} weight="bold" />
+            <Text style={[mapSheetStyles.mapTargetNavigateText, { color: theme.control.text }]}>
               Navigate
             </Text>
           </Pressable>

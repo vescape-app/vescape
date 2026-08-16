@@ -232,7 +232,7 @@ export function MapTargetPrimaryAction({
         pressed && mapSheetStyles.mapTargetNavigatePressed,
       ]}
     >
-      <action.Icon size={compact ? 18 : 18} color={action.textColor} weight="bold" />
+      <action.Icon size={compact ? 18 : 18} color={action.color} weight="bold" />
       {iconOnly ? null : (
         <Text
           style={[

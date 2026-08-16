@@ -43,7 +43,7 @@ export function NavigationProfileSelector({
     icon: (
       <Icon
         size={optionIconSize}
-        color={activeProfile === key ? accents.green.light : theme.palette.slate.textSecondary}
+        color={activeProfile === key ? accents.green.color : theme.palette.slate.textSecondary}
         weight="bold"
       />
     ),
@@ -54,7 +54,7 @@ export function NavigationProfileSelector({
     <MapOptionSelector
       activeKey={activeProfile}
       activeIcon={<ActiveIcon size={iconSize} color={theme.palette.mono.white} weight="bold" />}
-      activeColor={accents.green.light}
+      activeColor={accents.green.color}
       activeBackground={theme.palette.slate.surfaceDeep}
       collapsedAccessibilityLabel={`Path follows: ${profileOption(activeProfile).label}`}
       expanded={open || expanded}

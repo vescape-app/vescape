@@ -111,8 +111,8 @@ export function MapOptionSelector<Key extends string>({
         {
           height: metrics.height,
           borderRadius: metrics.radius,
-          backgroundColor: useLightTabs ? neutral.surface : control.background,
-          borderColor: useLightTabs ? neutral.border : control.border,
+          backgroundColor: control.background,
+          borderColor: control.border,
         },
         shellStyle,
       ]}
@@ -131,9 +131,9 @@ export function MapOptionSelector<Key extends string>({
             selected={activeKey === option.key}
             expanded={expanded}
             activeColor={resolvedActiveColor}
-            activeBackground={resolvedActiveBackground}
+            activeBackground={useLightTabs ? neutral.surface : resolvedActiveBackground}
             activeBorder={theme.alpha(resolvedActiveColor, 0.6)}
-            inactiveBackground={useLightTabs ? neutral.surface : TRANSPARENT_OPTION_COLOR}
+            inactiveBackground={TRANSPARENT_OPTION_COLOR}
             inactiveBorder={TRANSPARENT_OPTION_COLOR}
             metrics={metrics}
             onPress={() => {

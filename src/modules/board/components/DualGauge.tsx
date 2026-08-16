@@ -31,11 +31,7 @@ import {
   type GaugeReadoutBox,
 } from '@/modules/board/components/gauge/gaugeShared'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
-import {
-  useResolvedAccentColors,
-  useResolvedNeutralColors,
-  useResolvedTelemetryColors,
-} from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
 
 interface DualGaugeProps {
   speedValue: SharedValue<number | null>
@@ -114,7 +110,6 @@ function QuarterArcLayer({
   transform,
 }: QuarterArcLayerProps) {
   const accents = useResolvedAccentColors()
-  const neutral = useResolvedNeutralColors()
   const isLeft = side === 'left'
   const arc = isLeft ? LEFT_ARC : RIGHT_ARC
 
@@ -141,7 +136,7 @@ function QuarterArcLayer({
       {/* Static background arc */}
       <Path
         path={isLeft ? BG_ARC_LEFT : BG_ARC_RIGHT}
-        color={neutral.border}
+        color={theme.palette.slate.border}
         style="stroke"
         strokeWidth={STROKE}
         strokeCap="butt"

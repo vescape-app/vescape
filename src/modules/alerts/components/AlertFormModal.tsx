@@ -542,21 +542,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   choiceActive: {
     backgroundColor: theme.palette.sky.bg,
   },
   choiceText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
   choiceTextActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   fieldHint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '500',
   },
