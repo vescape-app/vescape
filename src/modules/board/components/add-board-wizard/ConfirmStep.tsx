@@ -79,7 +79,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
         <View style={styles.divider} />
         <ConfirmRow
           icon={TextTIcon}
-          iconColor={theme.palette.yellow.color}
+          iconColor={theme.palette.orange.color}
           label="Name"
           value={wizard.name.trim() || 'Unnamed board'}
         />
@@ -88,7 +88,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             <View style={styles.divider} />
             <ConfirmRow
               icon={TextTIcon}
-              iconColor={theme.palette.yellow.color}
+              iconColor={theme.palette.orange.color}
               label="Description"
               value={wizard.description.trim()}
             />

@@ -101,10 +101,11 @@ export function IconButton({
   const Icon = takeover?.icon ?? RestingIcon
   // A takeover outranks `accent`: it is the state the Rider needs to see right now.
   const activeAccent = takeover?.accent ?? accent
-  const iconColor = destructive ? theme.status.error.text : (activeAccent ?? theme.control.icon)
-  const borderColor = destructive
-    ? theme.status.error.border
-    : (activeAccent ?? theme.control.border)
+  // `destructive` puts the icon on a navy control surface, so it uses the bright red tint
+  // (readable on navy in both appearances) instead of `status.error.text`, which is a dark
+  // red meant for light surfaces.
+  const iconColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.icon)
+  const borderColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.border)
   const progress = takeover?.progress
 
   const pulse = useSharedValue(0)

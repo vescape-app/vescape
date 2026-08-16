@@ -166,7 +166,7 @@ export function MapPointAddMenu({
             style={({ pressed }) => [
               styles.mapTargetNavigate,
               {
-                backgroundColor: theme.control.background,
+                backgroundColor: theme.alpha(theme.control.background, 0.85),
                 borderColor: navigationAction.color,
               },
               pressed && mapSheetStyles.mapTargetNavigatePressed,

@@ -88,7 +88,7 @@ export function MapTargetSheetHost({
     color: actionColor,
     textColor: theme.control.text,
     borderColor: actionColor,
-    bgColor: theme.control.background,
+    bgColor: theme.alpha(theme.control.background, 0.85),
   }
 
   if (selectedTarget) {
@@ -145,10 +145,10 @@ export function MapTargetSheetHost({
   if (!activeTarget || activeTargetSuppressed) return null
 
   const cancelAction = {
-    color: accents.red.color,
+    color: accents.red.light,
     textColor: theme.control.text,
-    borderColor: accents.red.color,
-    bgColor: theme.control.background,
+    borderColor: accents.red.light,
+    bgColor: theme.alpha(theme.control.background, 0.85),
     label: 'Cancel',
     accessibilityLabel: 'Cancel navigation',
     Icon: XIcon,
@@ -212,7 +212,7 @@ const NAVIGATION_ACTION_COLORS = {
     color: theme.control.textMuted,
     textColor: theme.control.textMuted,
     borderColor: theme.control.border,
-    bgColor: theme.control.background,
+    bgColor: theme.alpha(theme.control.background, 0.85),
   },
 } as const
 

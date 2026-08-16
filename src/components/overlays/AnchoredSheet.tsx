@@ -721,7 +721,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     position: 'absolute',
-    backgroundColor: theme.neutral.bg,
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.85),
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.neutral.border,
@@ -761,7 +761,7 @@ const styles = StyleSheet.create({
    * fade is what conveys the drawer leaving.
    */
   drawerScrim: {
-    backgroundColor: theme.neutral.bg,
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,

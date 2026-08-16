@@ -14,7 +14,7 @@ import type { WizardStepId } from '@/modules/board/hooks/useAddBoardWizard'
 
 const STEP_META: Record<WizardStepId, { label: string; icon: Icon; color: string }> = {
   scan: { label: 'Pair', icon: BluetoothIcon, color: theme.palette.sky.color },
-  name: { label: 'Name', icon: TextTIcon, color: theme.palette.yellow.color },
+  name: { label: 'Name', icon: TextTIcon, color: theme.palette.orange.color },
   battery: { label: 'Battery', icon: BatteryFullIcon, color: theme.palette.green.color },
   presets: { label: 'Alerts', icon: BellRingingIcon, color: theme.palette.amber.color },
   confirm: { label: 'Confirm', icon: CheckCircleIcon, color: theme.palette.purple.color },

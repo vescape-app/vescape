@@ -25,7 +25,7 @@ import { useResolvedColor } from '@/hooks/useTheme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
 
 const TRACK_COLOR = theme.palette.slate.border
-const ALERT_COLOR = accentColors.dark.yellow.color
+const ALERT_COLOR = accentColors.dark.orange.color
 const LINE_THICK = 2
 // Sizes mirror the gauge, expressed against the line thickness (gauge STROKE):
 // alert tick 0.35× wide / 2× long, marker 1.5× wide. Marker length tracks bar height.

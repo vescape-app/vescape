@@ -142,7 +142,7 @@ function AlertRuleRow({
       <View style={styles.ruleTypeIcon}>
         <TypeIcon
           size={18}
-          color={rule.enabled ? theme.palette.yellow.color : theme.neutral.textDim}
+          color={rule.enabled ? theme.palette.orange.color : theme.neutral.textDim}
           weight="duotone"
         />
       </View>
@@ -177,7 +177,7 @@ function AlertRuleRow({
         style={styles.ruleAction}
       >
         {rule.enabled ? (
-          <SpeakerHighIcon size={16} color={theme.palette.yellow.color} />
+          <SpeakerHighIcon size={16} color={theme.palette.orange.color} />
         ) : (
           <SpeakerSlashIcon size={16} color={theme.neutral.textDim} />
         )}
