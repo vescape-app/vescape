@@ -1,6 +1,6 @@
 ---
 name: burndown
-description: Burn down all task issues linked from a feature PR, one delegated subagent per issue, sequential on the PR branch. Each subagent implements, commits, pushes, gets a cross-agent review, and closes its issue. Use when the user invokes `/burndown`, points at a PR full of `ready-for-agent` issues, or says "implement all tasks from this PR".
+description: Burn down all task issues linked from a feature PR, one delegated subagent per issue, sequential on the PR branch. Each subagent implements, commits, pushes, and closes its issue; cross-agent review is per-task, at-end, or off. Undrafts the PR when the list hits zero. Use when the user invokes `/burndown`, points at a PR full of `ready-for-agent` issues, or says "implement all tasks from this PR".
 ---
 
 # Burndown
@@ -19,7 +19,8 @@ Caveman full style. Code/commands/paths/issue ids exact.
 /burndown 382                  # PR number
 /burndown                      # infer PR from current branch
 /burndown https://github.com/OWNER/REPO/pull/382
-/burndown 382 --only 379,381   # subset, keep dep order
+/burndown 382 --only 379,381   # subset, keep dep order (no undraft)
+/burndown 382 --review at-end  # skip the review-mode question
 ```
 
 No PR + no branch match -> ask. Never guess the PR.
@@ -63,6 +64,22 @@ Reason: later agents read earlier work and hook into seams it left. That is the 
 
 Show the queue to the user before spawning. One line per issue, with why-that-slot.
 
+## Step 2b — Ask review mode
+
+Ask once, before the first agent. Never assume — cross-agent review costs a full CLI run per invocation.
+
+| Mode       | What happens                                                                          | When it fits                                                                                                      |
+| ---------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `per-task` | each subagent runs `rr-codex` on its own diff, applies findings, then closes          | native/lifecycle work, load-bearing seams, high `complexity:*` — findings land while the author still has context |
+| `at-end`   | no subagent reviews; one `rr-codex` over the whole branch diff after the queue drains | cheaper, catches cross-issue interaction, but fixes land without the implementing agent's context                 |
+| `none`     | no cross-agent review at all                                                          | throwaway or trivial queues                                                                                       |
+
+Default suggestion: `per-task` when any issue is `complexity:high` or touches native/launch/build config, else `at-end`.
+
+Flag form skips the question: `/burndown 382 --review per-task|at-end|none`.
+
+Chosen mode changes Step 3's closing instructions and whether Step 4b runs. Nothing else.
+
 ## Step 3 — Delegate, one at a time
 
 One `Agent` call per issue. `subagent_type: general-purpose`, `model: "opus"`, low effort, `run_in_background: false`. Never batch two coding agents — they share the branch.
@@ -80,12 +97,20 @@ Required prompt contents:
 - No `Co-Authored-By`, no generated-with footer (repo rule).
 - Closing instructions, in order:
 
+Closing instructions on `per-task` mode:
+
 ```text
 1. `bun run ts` clean; run the native/unit target you touched (`bun run test:ios`, `bun run test:android`, `bun test <path>`).
 2. Commit short message referencing #<id>, push to origin/<branch>.
 3. Invoke `rr-codex` skill (Skill tool) for cross-agent review. Apply findings you judge correct; skip noise. Commit + push fixes.
 4. Invoke `done` skill with arg `<id>`.
 5. Report: files changed, decisions/deviations, review findings + disposition, issue closed y/n.
+```
+
+On `at-end` / `none` mode, drop step 3 and say so explicitly, or the agent invents its own review:
+
+```text
+3. Do NOT run any cross-agent review skill (`rr-codex`, `rr`, `rr-claude`). Review happens later at branch level.
 ```
 
 Ask for the report explicitly — subagent final output is not shown to the user, you relay it.
@@ -106,13 +131,42 @@ git diff <prev-sha>..HEAD --stat
 
 Agent failed or reported blocked -> investigate yourself (read files, logs), then re-delegate narrower. Do not fix it by hand.
 
-## Step 5 — Report
+## Step 4b — Branch-level review (`at-end` mode only)
+
+Queue drained. Run `rr-codex` once over the whole branch diff vs the PR base.
+
+You are still orchestrator — do not apply fixes yourself. Findings go to one fresh subagent (`/caveman`, opus, low, foreground) with: the review doc path, the branch, and `apply what you judge correct, skip noise, commit + push, do not reopen closed issues`. Findings that need a real design change instead of a fix -> surface to the user, propose a follow-up issue.
+
+Review after the issues are already closed means a finding cannot un-close its issue. That is the accepted cost of `at-end`; say it in the report.
+
+Skip on `none`.
+
+## Step 5 — Undraft the PR
+
+Queue empty and every issue actually `CLOSED` -> mark PR ready for review:
+
+```bash
+gh pr ready <n>
+```
+
+Skip and say why when:
+
+- Any issue still open, or an agent stopped short.
+- PR was not a draft to begin with (`isDraft: false`) -> no-op, don't announce it.
+- Only a subset ran (`--only`) and the PR still carries open tasks.
+
+Refresh the PR body too when later work changed what it claims (repo rule: keep PR description current). Deviations from the issue specs belong in the body, not only in chat — e.g. a constant that landed at a different value than the issue asked for.
+
+CI red is not a blocker for undrafting; report it, let the user decide.
+
+## Step 6 — Report
 
 After each issue: one short status line to user (issue, files, review outcome).
 
 Final report:
 
-- Table: issue | what landed | review findings.
+- Table: issue | what landed | review findings. Drop the findings column on `none`.
+- Review mode used, one line. On `at-end`, note that findings landed after the issues closed.
 - **Deviations worth your call** — where an agent departed from the issue spec (different constant, added mechanism, skipped a review finding). Name them, don't bury them.
 - **Not verified** — say plainly what no one proved. Native/device behavior, on-hardware acceptance criteria, anything only `xcodebuild`-compiled. Never let "issue closed" imply "observed working".
 - Stray commits / drift swept in.
