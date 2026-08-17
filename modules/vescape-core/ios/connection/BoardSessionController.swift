@@ -1398,6 +1398,30 @@ internal final class BoardSessionController: VescGattListener {
     liveActivity.update(currentLiveState())
   }
 
+  /// Reap Live Activities left behind by a process that died mid-ride (ADR 0034). Called at app
+  /// launch: an activity is an orphan only when nothing in this process wants it.
+  ///
+  /// Seam for #378 (headless CoreBluetooth restoration): `liveActivityIsClaimed` must also report
+  /// true while a restored session is still (re)attaching, so the resume can reuse the activity it
+  /// is about to adopt instead of finding it reaped.
+  func reapOrphanLiveActivities() {
+    guard !liveActivityIsClaimed else { return }
+    liveActivity.reapOrphans()
+  }
+
+  /// Whether a running or resuming session owns the on-screen activity. Today only a live session
+  /// can claim it; #378 adds the pending-resume arm.
+  private var liveActivityIsClaimed: Bool {
+    session?.isActive == true
+  }
+
+  /// End the activity for a stop that no session accepted — the widget's Stop on a ghost. Ending is
+  /// background-safe and needs no session, which is what makes a ghost killable at all.
+  func endOrphanLiveActivity() {
+    guard !liveActivityIsClaimed else { return }
+    liveActivity.end()
+  }
+
   private func endLiveActivity() {
     liveActivity.end()
     liveBatteryPercent = nil
@@ -1869,11 +1893,16 @@ enum BoardSessionCommands {
   @discardableResult
   static func stopRide() -> Bool {
     let controller = BoardSessionController.shared
-    return ManualBoardStop(
+    let accepted = ManualBoardStop(
       defaults: .standard,
       activeBoardId: { controller.connectedBoardId },
       stop: { controller.stopBoard() }
     ).perform()
+    // A stop no session accepted means the surface is a ghost from a killed process (ADR 0034).
+    // The session stays a no-op, but the Live Activity must still die — otherwise Stop on a ghost
+    // does nothing and the activity is unkillable from the widget.
+    if !accepted { controller.endOrphanLiveActivity() }
+    return accepted
   }
 }
 

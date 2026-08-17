@@ -16,34 +16,35 @@ struct RideActivityBundle: WidgetBundle {
 struct RideActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: RideActivityAttributes.self) { context in
-      RideActivityLockScreenView(state: context.state)
+      RideActivityLockScreenView(state: context.state, isStale: context.isStale)
         .padding()
         .activityBackgroundTint(Color.black.opacity(0.55))
         .activitySystemActionForegroundColor(.white)
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Label(context.state.deviceName, systemImage: boardSymbol(context.state))
+          Label(context.state.deviceName, systemImage: boardSymbol(context.state, context.isStale))
             .font(.caption)
             .lineLimit(1)
+            .opacity(context.isStale ? staleOpacity : 1)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          Text(context.state.shortCritical)
+          Text(context.isStale ? staleShortCritical : context.state.shortCritical)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(statusColor(context.state))
+            .foregroundStyle(statusColor(context.state, context.isStale))
         }
         DynamicIslandExpandedRegion(.bottom) {
-          RideActivityDetails(state: context.state)
+          RideActivityDetails(state: context.state, isStale: context.isStale)
         }
       } compactLeading: {
-        Image(systemName: boardSymbol(context.state))
-          .foregroundStyle(statusColor(context.state))
+        Image(systemName: boardSymbol(context.state, context.isStale))
+          .foregroundStyle(statusColor(context.state, context.isStale))
       } compactTrailing: {
-        Text(context.state.shortCritical)
+        Text(context.isStale ? staleShortCritical : context.state.shortCritical)
           .font(.caption2.weight(.semibold))
       } minimal: {
-        Image(systemName: boardSymbol(context.state))
-          .foregroundStyle(statusColor(context.state))
+        Image(systemName: boardSymbol(context.state, context.isStale))
+          .foregroundStyle(statusColor(context.state, context.isStale))
       }
     }
   }
@@ -52,37 +53,40 @@ struct RideActivityWidget: Widget {
 /// Full Lock Screen / banner presentation.
 private struct RideActivityLockScreenView: View {
   let state: RideActivityAttributes.ContentState
+  let isStale: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
-        Label(state.deviceName, systemImage: boardSymbol(state))
+        Label(state.deviceName, systemImage: boardSymbol(state, isStale))
           .font(.subheadline.weight(.semibold))
           .lineLimit(1)
         Spacer()
-        Text(state.shortCritical)
+        Text(isStale ? staleShortCritical : state.shortCritical)
           .font(.subheadline.weight(.bold))
-          .foregroundStyle(statusColor(state))
+          .foregroundStyle(statusColor(state, isStale))
       }
-      RideActivityDetails(state: state)
+      RideActivityDetails(state: state, isStale: isStale)
     }
+    .opacity(isStale ? staleOpacity : 1)
   }
 }
 
 /// Shared details and authenticated native stop for the Lock Screen and expanded Dynamic Island.
 private struct RideActivityDetails: View {
   let state: RideActivityAttributes.ContentState
+  let isStale: Bool
 
   var body: some View {
     HStack(alignment: .bottom, spacing: 12) {
-      RideStatusRow(state: state)
+      RideStatusRow(state: state, isStale: isStale)
       Spacer(minLength: 8)
       Button(intent: StopRideIntent()) {
         Label("Stop ride", systemImage: "stop.fill")
           .font(.caption.weight(.semibold))
       }
       .buttonStyle(.borderedProminent)
-      .tint(.red)
+      .tint(isStale ? .gray : .red)
     }
   }
 }
@@ -90,22 +94,33 @@ private struct RideActivityDetails: View {
 /// Shared status line + battery progress, used by both the Lock Screen and the expanded island.
 private struct RideStatusRow: View {
   let state: RideActivityAttributes.ContentState
+  let isStale: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text(state.statusText)
+      Text(isStale ? staleStatusText : state.statusText)
         .font(.footnote)
-        .foregroundStyle(state.faultCode != nil ? Color.orange : Color.secondary)
+        .foregroundStyle(staleAware(state.faultCode != nil ? Color.orange : Color.secondary))
         .lineLimit(1)
-      if let battery = state.batteryPercent {
+      if let battery = state.batteryPercent, !isStale {
         ProgressView(value: Double(battery), total: 100)
           .tint(batteryTint(battery))
       }
     }
   }
+
+  private func staleAware(_ color: Color) -> Color { isStale ? .secondary : color }
 }
 
-private func boardSymbol(_ state: RideActivityAttributes.ContentState) -> String {
+/// The activity outlived its `staleDate`: nothing has pushed a snapshot for a minute, so the app
+/// process is gone (killed or jetsammed) and the numbers on screen are history, not telemetry.
+/// The widget extension cannot ask the app anything — `context.isStale` is the only signal there is.
+private let staleStatusText = "Ride ended — no connection to the app"
+private let staleShortCritical = "—"
+private let staleOpacity = 0.45
+
+private func boardSymbol(_ state: RideActivityAttributes.ContentState, _ isStale: Bool) -> String {
+  if isStale { return "bolt.slash" }
   if state.faultCode != nil { return "exclamationmark.triangle.fill" }
   switch state.phase {
   case "connected": return "bolt.fill"
@@ -115,7 +130,8 @@ private func boardSymbol(_ state: RideActivityAttributes.ContentState) -> String
   }
 }
 
-private func statusColor(_ state: RideActivityAttributes.ContentState) -> Color {
+private func statusColor(_ state: RideActivityAttributes.ContentState, _ isStale: Bool) -> Color {
+  if isStale { return .secondary }
   if state.faultCode != nil { return .orange }
   switch state.phase {
   case "connected": return .green

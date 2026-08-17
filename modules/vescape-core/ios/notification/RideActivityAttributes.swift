@@ -1,9 +1,10 @@
 import ActivityKit
 import AppIntents
 
-/// Live Activity contract for the Board Session status surface — the iOS peer of Android's
-/// persistent foreground-service notification. One activity lives for the whole session; native
-/// updates its `ContentState` as the session moves through phases, battery steps, and faults.
+/// Live Activity contract for the Board Session status surface. One activity lives for the whole
+/// session; native updates its `ContentState` as the session moves through phases, battery steps,
+/// and faults. Liveness is not part of the state: it rides ActivityKit's `staleDate`/`isStale`, so
+/// a snapshot stranded by a killed process labels itself (ADR 0034).
 ///
 /// This single file is compiled into BOTH the `vescape-core` module pod (which drives it via
 /// `RideLiveActivityController`, globbed in by the podspec) and the `ride-activity` widget extension
@@ -13,6 +14,8 @@ import AppIntents
 /// The deployment target is iOS 17, matching the native Clerk SDK used by the app.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/notification/NotificationController.kt
+/// @platform-diff Android's notification is a foreground-service keep-alive as well as UI; this
+/// surface is render-only and grants the process no lifetime (see `RideLiveActivityController`).
 struct RideActivityAttributes: ActivityAttributes {
   /// Dynamic session state, mutated in place for the life of the activity.
   struct ContentState: Codable, Hashable {

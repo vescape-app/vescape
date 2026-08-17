@@ -156,6 +156,10 @@ public class VescapeCoreModule: Module {
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
       self.attachToCoordinator()
+      // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
+      // rendering a confident live session forever. Guarded by the coordinator so a running or
+      // resuming session keeps its own activity.
+      self.coordinator.reapOrphanLiveActivities()
       AppDataRepository.onDataChanged = { [weak self] scope in self?.sendAppDataChanged(scope) }
       // JS keeps a dumb mirror of the durable Board Warning registry; push the full board list on
       // every registry change (late subscribers self-heal via the snapshot above).
