@@ -61,6 +61,25 @@ final class RideLiveActivityController {
     }
   }
 
+  /// Re-take ownership of the activity a killed process left behind (ADR 0034 headless resume).
+  ///
+  /// `Activity.request` needs the foreground, so a background relaunch cannot mint a new activity:
+  /// the surviving one is adopted and updated instead (both background-safe). Falls back to `start`
+  /// when nothing survived — harmless in the background, where it simply fails to request and the
+  /// session runs without a surface until the app is next opened.
+  func resume(state: RideActivityAttributes.ContentState) {
+    let survivors = Activity<RideActivityAttributes>.activities
+    guard let adopted = survivors.first else {
+      start(state: state)
+      return
+    }
+    // One activity per session: anything beyond the adopted one is a duplicate ghost.
+    end(Array(survivors.dropFirst()))
+    activity = adopted
+    update(state)
+    startHeartbeat()
+  }
+
   /// Push a new snapshot to the running activity. Background-safe; a no-op when none is running.
   func update(_ state: RideActivityAttributes.ContentState) {
     guard let activity else { return }
