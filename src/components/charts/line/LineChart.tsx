@@ -5,6 +5,7 @@ import { Canvas, DashPathEffect, Group, Line, Text, vec } from '@shopify/react-n
 import { BandsLayer } from '@/components/charts/line/BandsLayer'
 import { AXIS_FONT_SIZE, computeChartRow } from '@/components/charts/line/chartLayout'
 import { formatAxisNumber } from '@/components/charts/line/chartFormat'
+import { projectY } from '@/components/charts/line/projection'
 import { useChartStack } from '@/components/charts/line/ChartStackContext'
 import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
 import { ScrubCursor, ScrubLayer } from '@/components/charts/line/ScrubLayer'
@@ -17,6 +18,7 @@ import { theme } from '@/constants/theme'
 
 const GRID_COLOR = theme.palette.slate.surface
 const AXIS_TEXT_COLOR = theme.palette.slate.textDim
+const THRESHOLD_COLOR = theme.alpha(theme.palette.yellow.color, 0.12)
 
 export interface LineChartProps {
   chart: PreparedChart
@@ -111,6 +113,17 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           color={GRID_COLOR}
           strokeWidth={0.5}
         />
+        {/* Thresholds are read against the value axis alone, so they need no camera: panning
+            moves the line under them, never them. */}
+        {chart.thresholds?.map((value) => (
+          <Line
+            key={value}
+            p1={vec(0, projectY(value, chart.left.range, plot.height))}
+            p2={vec(plot.width, projectY(value, chart.left.range, plot.height))}
+            color={THRESHOLD_COLOR}
+            strokeWidth={1}
+          />
+        ))}
       </Group>
 
       <Group clip={clip}>
