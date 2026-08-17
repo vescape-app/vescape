@@ -95,7 +95,7 @@ Required prompt contents:
 - Traps the issue flags (clock domains, threading, "verify before inventing a buffer").
 - Staging discipline: `git status` may show pre-existing drift -> stage only your own files, never `git add -A`.
 - No `Co-Authored-By`, no generated-with footer (repo rule).
-- Closing instructions, in order:
+- Closing instructions, in order — see below, varies by review mode.
 
 Closing instructions on `per-task` mode:
 
