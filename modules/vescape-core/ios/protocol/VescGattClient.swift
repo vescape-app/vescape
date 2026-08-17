@@ -349,6 +349,10 @@ extension VescGattClient: CBCentralManagerDelegate {
       if isDiscoveryScanning || pendingDiscoveryScan {
         listener?.onScanFailure("Bluetooth is off")
       }
+      // A restored session waiting to adopt its peripheral is not a failed connect: failing it here
+      // would tear the session down and drop the durable resume marker, so a later power-on could
+      // never finish the adoption. Radio off is a pause; the adoption stays deferred (ADR 0034).
+      if pendingRestoreAdoptId != nil { return }
       if peripheral != nil || connectTargetId != nil || pendingConnectId != nil {
         listener?.onGattFailure(code: "BLE_OFF", message: "Bluetooth is off")
       }
