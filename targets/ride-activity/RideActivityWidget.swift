@@ -112,10 +112,12 @@ private struct RideStatusRow: View {
   private func staleAware(_ color: Color) -> Color { isStale ? .secondary : color }
 }
 
-/// The activity outlived its `staleDate`: nothing has pushed a snapshot for a minute, so the app
-/// process is gone (killed or jetsammed) and the numbers on screen are history, not telemetry.
-/// The widget extension cannot ask the app anything — `context.isStale` is the only signal there is.
-private let staleStatusText = "Ride ended — no connection to the app"
+/// The activity outlived its `staleDate`: nothing has pushed a snapshot for a minute, so the numbers
+/// on screen are history, not telemetry. Deliberately not phrased as "ride ended" — stale means
+/// unknown, not terminal: the app is usually dead (killed or jetsammed), but a suspended process can
+/// still come back. The widget extension cannot ask the app anything, so `context.isStale` is the
+/// only signal there is.
+private let staleStatusText = "No connection to the app"
 private let staleShortCritical = "—"
 private let staleOpacity = 0.45
 

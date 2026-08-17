@@ -45,6 +45,8 @@ final class RideLiveActivityController {
   func start(state: RideActivityAttributes.ContentState) {
     let staleActivities = knownActivities()
     activity = nil
+    lastState = nil
+    stopHeartbeat()
     end(staleActivities)
     guard enabled else { return }
     let attributes = RideActivityAttributes()
