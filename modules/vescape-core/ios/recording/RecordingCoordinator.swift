@@ -12,9 +12,21 @@ internal final class RecordingCoordinator {
   private var enabled = false
   private var startedAtMs: Int64?
   private var requestedTelemetryRecordingEnabled = false
+  private var backgroundFlush: BackgroundFlushGuard?
 
   init(appData: AppDataRepository) {
     self.appData = appData
+    // Lives as long as the coordinator (process-level, below Expo module lifetime), so the flush
+    // still fires after a JS reload has torn the module down mid-ride.
+    backgroundFlush = BackgroundFlushGuard { [weak self] _ in self?.flushPendingTelemetry() }
+  }
+
+  /// Writes whatever `TelemetryRepository` still holds in memory. No-op when nothing is recording —
+  /// the raw debug `SessionRecorder` needs none of this, it writes each line straight to its file
+  /// handle with no buffer of its own.
+  private func flushPendingTelemetry() {
+    guard enabled else { return }
+    store.flushBlocking()
   }
 
   var telemetryRecordingEnabled: Bool { enabled }
