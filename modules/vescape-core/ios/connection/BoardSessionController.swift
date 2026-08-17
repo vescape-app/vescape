@@ -131,7 +131,10 @@ internal final class BoardSessionController: VescGattListener {
   private let appData: AppDataRepository
   private lazy var recordingCoordinator = RecordingCoordinator(appData: appData)
   private lazy var configController = ConfigRWController()
-  private lazy var gpsMonitor = GpsMonitor { [weak self] location in self?.onLocationUpdated(location) }
+  private lazy var gpsMonitor = GpsMonitor(
+    onLocation: { [weak self] location in self?.onLocationUpdated(location) },
+    onAuthorizationResolved: { [weak self] in self?.onStateChanged?() }
+  )
   private lazy var alertAudioPlayer = AlertAudioPlayer()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
   private let legalPolicyCatalog = LegalPolicyCatalog()
@@ -1621,7 +1624,7 @@ internal final class BoardSessionController: VescGattListener {
       message: "GPS Board Session summary",
       extra: [
         "recording_enabled": recordingCoordinator.telemetryRecordingEnabled,
-        "updates_started": gpsMonitor.active,
+        "updates_started": gpsMonitor.updatesStarted,
         "fix_count": gpsFixCount,
         "precise_fix_count": gpsPreciseFixCount,
         "first_fix_delay_ms": gpsFirstFixAt.map { $0 - startedAt },

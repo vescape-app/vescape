@@ -8,6 +8,9 @@ import Foundation
 /// `UIBackgroundModes.location` for continued ride updates.
 internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   private let onLocation: (TelemetryLocationCapture) -> Void
+  /// Fired when authorization resolves after `start()` has already returned, so the session's
+  /// published GPS state (active flag, error) does not sit stale until an unrelated change.
+  private let onAuthorizationResolved: () -> Void
   private var manager: CLLocationManager?
   /// True once updates are actually running. Until then the monitor may be pending: the manager
   /// exists and the permission dialog is open, and arming is completed from
@@ -18,11 +21,18 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   private var legalPolicyResolutionStarted = false
   private let legalPolicyResolver = LegalPolicyResolver()
 
-  init(onLocation: @escaping (TelemetryLocationCapture) -> Void) {
+  init(
+    onLocation: @escaping (TelemetryLocationCapture) -> Void,
+    onAuthorizationResolved: @escaping () -> Void
+  ) {
     self.onLocation = onLocation
+    self.onAuthorizationResolved = onAuthorizationResolved
   }
 
   var active: Bool { manager != nil }
+  /// Narrower than `active`: true only once `startUpdatingLocation()` actually ran, so diagnostics
+  /// can tell a pending permission dialog apart from flowing fixes.
+  var updatesStarted: Bool { armed }
   var error: String? { lastError }
   var authorization: String {
     switch CLLocationManager().authorizationStatus {
@@ -118,8 +128,10 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     switch manager.authorizationStatus {
     case .authorizedWhenInUse, .authorizedAlways:
       arm(manager)
+      onAuthorizationResolved()
     case .denied, .restricted:
       _ = fail()
+      onAuthorizationResolved()
     case .notDetermined:
       break
     @unknown default:
