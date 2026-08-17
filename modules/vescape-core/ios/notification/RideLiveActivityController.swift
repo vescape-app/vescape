@@ -26,12 +26,12 @@ final class RideLiveActivityController {
   /// How long a pushed snapshot stays believable. Updates are change-driven (phase, stepped battery
   /// percent, fault edges) with no guaranteed floor — a parked board can hold the same rounded
   /// voltage for minutes — so the controller pushes its own heartbeat below rather than letting a
-  /// quiet-but-alive ride flicker into the stale state. The window is 3× the heartbeat, so a single
-  /// missed tick never trips it, while a dead process self-labels within a minute.
-  private let staleWindow: TimeInterval = 60
+  /// quiet-but-alive ride flicker into the stale state. The window is 2× the heartbeat: a ghost
+  /// self-labels within ~5 s, while a single delayed tick still lands inside the window.
+  private let staleWindow: TimeInterval = 5
   /// Liveness beat: re-push the last snapshot while nothing else changes. Local `update()` calls are
   /// not rate-limited by ActivityKit (the session path already pushes up to 1 Hz), so this is cheap.
-  private let heartbeatInterval: TimeInterval = 20
+  private let heartbeatInterval: TimeInterval = 2.5
 
   private var activity: Activity<RideActivityAttributes>?
   private var lastState: RideActivityAttributes.ContentState?

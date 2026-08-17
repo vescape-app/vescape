@@ -57,15 +57,13 @@ private struct RideActivityLockScreenView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Label(state.deviceName, systemImage: boardSymbol(state, isStale))
-          .font(.subheadline.weight(.semibold))
-          .lineLimit(1)
-        Spacer()
-        Text(isStale ? staleShortCritical : state.shortCritical)
-          .font(.subheadline.weight(.bold))
-          .foregroundStyle(statusColor(state, isStale))
-      }
+      // No `shortCritical` here: the status line below already carries the battery segment plus the
+      // progress bar, so a second big percent is pure duplication. The compact Dynamic Island, which
+      // has no room for a status line, still renders it.
+      Label(state.deviceName, systemImage: boardSymbol(state, isStale))
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(statusColor(state, isStale))
+        .lineLimit(1)
       RideActivityDetails(state: state, isStale: isStale)
     }
     .opacity(isStale ? staleOpacity : 1)
