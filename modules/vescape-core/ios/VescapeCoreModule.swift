@@ -156,6 +156,10 @@ public class VescapeCoreModule: Module {
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
       self.attachToCoordinator()
+      // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
+      // rendering a confident live session forever. Guarded by the coordinator so a running or
+      // resuming session keeps its own activity.
+      self.coordinator.reapOrphanLiveActivities()
       AppDataRepository.onDataChanged = { [weak self] scope in self?.sendAppDataChanged(scope) }
       // JS keeps a dumb mirror of the durable Board Warning registry; push the full board list on
       // every registry change (late subscribers self-heal via the snapshot above).
@@ -1176,30 +1180,12 @@ public class VescapeCoreModule: Module {
     }
   }
 
-  /// Resolve a stored board's Board Link into a runtime connect config. Returns `nil` when the
-  /// board is unlinked (JS routes those to Board Probe instead). Dumb connect (ADR 0015): the
-  /// transport is read straight from the link, never rediscovered.
+  /// Resolve the selected board's connect config. The resolution itself lives on
+  /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
   private func connectConfig(boardId: String) -> BoardConnectConfig? {
-    guard let board = appData.getBoard(boardId) else { return nil }
-    guard let link = board["link"] as? [String: Any?] else { return nil }
-    guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
-    let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
-    let name = board["name"] as? String ?? "VESC Board"
-    let settings = appData.getSettings()
-    let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
-    return BoardConnectConfig(
-      appBoardId: boardId,
-      bleId: bleId,
-      name: name,
-      transport: transport,
-      linkVersion: AppDataRepository.intValue(link["linkVersion"] ?? nil),
-      hasBms: link["hasBms"] as? Bool,
-      vescFirmwareVersion: link["vescFirmwareVersion"] as? String,
-      refloatVersion: link["refloatVersion"] as? String,
-      refloatBaseVersion: link["refloatBaseVersion"] as? String,
-      pollIntervalMs: hz > 0 ? 1000 / hz : 0,
-      batteryConfig: AppDataRepository.normalizeBatteryConfig(board["batteryConfig"] ?? nil),
-      liveHistoryLimitMinutes: AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5,
+    BoardConnectConfig.resolve(
+      boardId: boardId,
+      appData: appData,
       recordingEnabled: requestedDebugRecordingEnabled
     )
   }

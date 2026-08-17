@@ -24,7 +24,10 @@ No args -> infer title from changes. Quoted string -> use as PR title.
 ## Preflight (stop on fail, ask user)
 
 1. `gh auth status` fail -> stop.
-2. `git status --porcelain` empty (no changes, nothing to commit, already pushed) -> check if PR exists for current branch. If yes, report URL. If no changes to push, stop.
+2. `git status --porcelain` empty -> not a failure, a common entry point (`/burn` already committed and pushed). Resolve in this order:
+   - PR exists for branch -> report URL, done.
+   - No PR but branch has commits ahead of `dev` (`git log --oneline dev..HEAD`) -> skip Steps 3-4, go straight to Step 5 and open the PR.
+   - No PR and nothing ahead of `dev` -> stop, nothing to ship.
 3. `gh pr list --head <branch>` returns >1 -> stop, ask which.
 
 ## Step 1 — Assess changes
@@ -83,20 +86,26 @@ EOF
 )"
 ```
 
-Title: use user-provided title, or infer from commit/changes. Keep under 70 chars.
+Title: use user-provided title, else derive scope in this order:
+
+1. `[Area] N - ...` prefix on the issue -> title the PR after the **feature**, not the single issue (`[Area] <feature noun>`), since siblings will land on the same branch.
+2. Parent PRD linked in the issue body -> PRD title.
+3. Single issue with no area group -> issue title.
+4. No issue -> infer from the diff.
+
+Keep under 70 chars.
 
 ### PR exists -> update
 
-Push new commits. If user provided context that should update the body, edit:
+Push new commits. Report the URL. **Leave the body alone** — auto-maintained PR descriptions are noise.
+
+Edit the body only when the user asks, or when the work made an existing claim false (body says "~30s", code landed 60s). Then fix that line only:
 
 ```bash
-gh pr edit <number> --body "$(cat <<'EOF'
-<updated body>
-EOF
-)"
+gh pr edit <number> --body-file <path>
 ```
 
-Don't remove existing entries.
+Never add generated sections, changelogs, or per-commit notes. Never remove existing entries.
 
 ## Step 6 — Report
 
@@ -107,7 +116,7 @@ Don't remove existing entries.
 
 ## Caller protocol
 
-Other skills (like `/to-pr`) can invoke `/pr` by following this skill's steps directly. When called by another skill:
+Other skills (like `/burndown`) can invoke `/pr` by following this skill's steps directly. When called by another skill:
 
 - Branch name may be pre-determined by caller -> use it, skip Step 2 inference.
 - Commit message may be pre-determined -> use it, skip inference.
