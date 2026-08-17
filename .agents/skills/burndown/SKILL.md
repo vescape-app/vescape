@@ -7,6 +7,8 @@ description: Burn down all task issues linked from a feature PR, one delegated s
 
 Feature PR carries N task issues. Burn list to zero. One subagent per issue, one at a time, same branch.
 
+Each issue is one `/burn` (`.agents/skills/burn`) — implement + verify + commit + close. This skill owns queue order, delegation, review mode, and the PR undraft; `/burn` owns the per-issue work.
+
 You are orchestrator. You do NOT edit project code — Read only. Plan, delegate, sanity-check, report.
 
 ## Comms
@@ -15,7 +17,12 @@ Terse. No filler, no preamble, no restating the task. Code/commands/paths/issue 
 
 ## Skill boundary
 
-This skill is project-local and shared across agents. Reference only repo skills in `.agents/skills/` and plain `gh`/`git`/`bun` commands. Never name a personal skill from the operator's own config — a subagent on another machine or another agent will not have it. Where the operator has a cross-agent review skill, they invoke or name it; this skill only decides _whether_ review happens.
+This skill is project-local and shared across agents, so it must not depend on any one operator's private skill dir.
+
+- Repo skills in `.agents/skills/` (`done`, `to-code`, `pr`, `e2e`, ...) — reference freely, every agent has them.
+- Plain `gh` / `git` / `bun` commands — always fine.
+- Widely-installed personal skills (`caveman`) — reference as optional only: `use /caveman if available`. Never as a hard requirement.
+- Cross-agent review skills (which CLI reviews the diff) — never hardcoded. The operator names the reviewer in Step 2b; this skill only decides _whether_ review happens.
 
 ## Invocation
 
@@ -90,7 +97,7 @@ Chosen mode changes Step 3's closing instructions and whether Step 4b runs. Noth
 
 One `Agent` call per issue. `subagent_type: general-purpose`, `model: "opus"`, low effort, `run_in_background: false`. Never batch two coding agents — they share the branch.
 
-Prompt must be fully self-contained — subagent has zero context. Open with a terseness instruction (`Be terse. No preamble.`) or the operator's brevity skill if they name one.
+Prompt must be fully self-contained — subagent has zero context. Open with `/caveman if available, else be terse` so the agent compresses its own output without failing when the skill is missing.
 
 Required prompt contents:
 
@@ -107,17 +114,17 @@ Required prompt contents:
 Closing instructions on `per-task` mode:
 
 ```text
-1. `bun run ts` clean; run the native/unit target you touched (`bun run test:ios`, `bun run test:android`, `bun test <path>`).
-2. Commit short message referencing #<id>, push to origin/<branch>.
-3. Run the cross-agent review named in this prompt. Apply findings you judge correct; skip noise. Commit + push fixes.
-4. Close the issue: `gh issue close <id> --comment "Resolved in PR #<pr-number>. <one line what landed>"` — repo convention, matches `.agents/skills/to-pr`. Note in the comment any acceptance criterion you could not verify (device-only checks).
-5. Report: files changed, decisions/deviations, review findings + disposition, issue closed y/n.
+1. Invoke the `burn` skill (`.agents/skills/burn`) with arg `<id>`. It implements, verifies, commits, closes, and pushes.
+2. Then run the cross-agent review named above on your diff. Apply findings you judge correct; skip noise. Commit + push fixes.
+3. Report: files changed, decisions/deviations, review findings + disposition, issue closed y/n.
 ```
 
-On `at-end` / `none` mode, drop step 3 and say so explicitly, or the agent invents its own review:
+Review lands after `/burn` closed the issue — a finding cannot un-close it. Acceptable: findings become follow-up commits on the same branch. Reviewing before close would mean two verification gates per issue.
+
+On `at-end` / `none` mode, replace step 2 explicitly, or the agent invents its own review:
 
 ```text
-3. Do NOT run any cross-agent or second-opinion review. Review happens later at branch level.
+2. Do NOT run any cross-agent or second-opinion review. Review happens later at branch level.
 ```
 
 Ask for the report explicitly — subagent final output is not shown to the user, you relay it.
@@ -142,7 +149,7 @@ Agent failed or reported blocked -> investigate yourself (read files, logs), the
 
 Queue drained. Run the operator's review once over the whole branch diff vs the PR base (`git diff <base>...HEAD`).
 
-You are still orchestrator — do not apply fixes yourself. Findings go to one fresh subagent (opus, low, foreground, terse) with: the review doc path, the branch, and `apply what you judge correct, skip noise, commit + push, do not reopen closed issues`. Findings that need a real design change instead of a fix -> surface to the user, propose a follow-up issue.
+You are still orchestrator — do not apply fixes yourself. Findings go to one fresh subagent (opus, low, foreground, `/caveman if available`) with: the review doc path, the branch, and `apply what you judge correct, skip noise, commit + push, do not reopen closed issues`. Findings that need a real design change instead of a fix -> surface to the user, propose a follow-up issue.
 
 Review after the issues are already closed means a finding cannot un-close its issue. That is the accepted cost of `at-end`; say it in the report.
 
@@ -162,7 +169,7 @@ Skip and say why when:
 - PR was not a draft to begin with (`isDraft: false`) -> no-op, don't announce it.
 - Only a subset ran (`--only`) and the PR still carries open tasks.
 
-Refresh the PR body too when later work changed what it claims (repo rule: keep PR description current). Deviations from the issue specs belong in the body, not only in chat — e.g. a constant that landed at a different value than the issue asked for.
+Body: touch it **only** to correct a claim the work made false — e.g. body says "~30s" but the code landed 60s. Fix that line, nothing else. No generated sections, no `## Implementation notes` template, no restating the diff. An untouched-but-still-true body is the correct outcome.
 
 CI red is not a blocker for undrafting; report it, let the user decide.
 
