@@ -9,6 +9,11 @@ import Foundation
 internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   private let onLocation: (TelemetryLocationCapture) -> Void
   private var manager: CLLocationManager?
+  /// True once updates are actually running. Until then the monitor may be pending: the manager
+  /// exists and the permission dialog is open, and arming is completed from
+  /// `locationManagerDidChangeAuthorization` once the rider taps Allow — so a first-run session
+  /// starts producing fixes without an app or session restart.
+  private var armed = false
   private var lastError: String?
   private var legalPolicyResolutionStarted = false
   private let legalPolicyResolver = LegalPolicyResolver()
@@ -33,31 +38,57 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     CLLocationManager().accuracyAuthorization == .fullAccuracy ? "full" : "reduced"
   }
 
+  /// Arms the monitor. On first run the permission dialog is asynchronous, so a `.notDetermined`
+  /// status is not a failure: the manager is kept and arming is finished by the authorization
+  /// delegate. Returns an error only for a decided refusal (denied/restricted).
   func start() -> String? {
-    let manager = CLLocationManager()
-    manager.delegate = self
-    manager.desiredAccuracy = kCLLocationAccuracyBest
-    manager.distanceFilter = kCLDistanceFilterNone
-    if manager.authorizationStatus == .notDetermined {
-      manager.requestWhenInUseAuthorization()
-    }
-    let status = manager.authorizationStatus
-    guard status == .authorizedWhenInUse || status == .authorizedAlways else {
-      lastError = "Location permission not granted"
-      return lastError
-    }
-    manager.allowsBackgroundLocationUpdates = true
-    manager.pausesLocationUpdatesAutomatically = false
-    manager.startUpdatingLocation()
+    let manager = self.manager ?? makeManager()
     self.manager = manager
-    lastError = nil
-    return nil
+    switch manager.authorizationStatus {
+    case .authorizedWhenInUse, .authorizedAlways:
+      arm(manager)
+      return nil
+    case .notDetermined:
+      lastError = nil
+      manager.requestWhenInUseAuthorization()
+      return nil
+    case .denied, .restricted:
+      return fail()
+    @unknown default:
+      return fail()
+    }
   }
 
   func stop() {
     manager?.stopUpdatingLocation()
     manager?.delegate = nil
     manager = nil
+    armed = false
+  }
+
+  private func makeManager() -> CLLocationManager {
+    let manager = CLLocationManager()
+    manager.delegate = self
+    manager.desiredAccuracy = kCLLocationAccuracyBest
+    manager.distanceFilter = kCLDistanceFilterNone
+    return manager
+  }
+
+  /// Idempotent: the authorization delegate also fires once right after manager creation, and
+  /// `start()` is called from several independent places (map, recording toggle, session start).
+  private func arm(_ manager: CLLocationManager) {
+    lastError = nil
+    guard !armed else { return }
+    armed = true
+    manager.allowsBackgroundLocationUpdates = true
+    manager.pausesLocationUpdatesAutomatically = false
+    manager.startUpdatingLocation()
+  }
+
+  private func fail() -> String? {
+    stop()
+    lastError = "Location permission not granted"
+    return lastError
   }
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -79,6 +110,21 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
       )
     )
     resolveInitialLegalPolicy(location)
+  }
+
+  /// Completes (or abandons) a start that was waiting on the permission dialog.
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    guard manager === self.manager else { return }
+    switch manager.authorizationStatus {
+    case .authorizedWhenInUse, .authorizedAlways:
+      arm(manager)
+    case .denied, .restricted:
+      _ = fail()
+    case .notDetermined:
+      break
+    @unknown default:
+      break
+    }
   }
 
   func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

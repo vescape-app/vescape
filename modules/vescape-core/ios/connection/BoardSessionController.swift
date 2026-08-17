@@ -156,7 +156,9 @@ internal final class BoardSessionController: VescGattListener {
   private var latestPreciseLocation: TelemetryLocationCapture?
   private let courseDeriver = GpsCourseDeriver()
   private var recentLocations: [[String: Any?]] = []
-  private var gpsError: String?
+  /// Lives in the monitor, not mirrored here: authorization can be answered after `start()` returns,
+  /// so a stored copy would go stale the moment the permission dialog resolves.
+  private var gpsError: String? { gpsMonitor.error }
   private var gpsSessionStartedAt: Int64?
   private var gpsFixCount = 0
   private var gpsPreciseFixCount = 0
@@ -428,7 +430,7 @@ internal final class BoardSessionController: VescGattListener {
   /// enough to make the marker jump off the recorded track.
   func startLocationUpdates() {
     guard replayTransport == nil else { return }
-    gpsError = gpsMonitor.start()
+    _ = gpsMonitor.start()
     onStateChanged?()
   }
 
@@ -621,7 +623,7 @@ internal final class BoardSessionController: VescGattListener {
     // session end stops the monitor anyway, so there is nothing to unwind here.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
     if replayTransport == nil {
-      gpsError = gpsMonitor.start()
+      _ = gpsMonitor.start()
     } else if gpsMonitor.active {
       gpsMonitor.stop()
     }
