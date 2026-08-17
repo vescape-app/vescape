@@ -11,7 +11,11 @@ You are orchestrator. You do NOT edit project code — Read only. Plan, delegate
 
 ## Comms
 
-Caveman full style. Code/commands/paths/issue ids exact.
+Terse. No filler, no preamble, no restating the task. Code/commands/paths/issue ids exact.
+
+## Skill boundary
+
+This skill is project-local and shared across agents. Reference only repo skills in `.agents/skills/` and plain `gh`/`git`/`bun` commands. Never name a personal skill from the operator's own config — a subagent on another machine or another agent will not have it. Where the operator has a cross-agent review skill, they invoke or name it; this skill only decides _whether_ review happens.
 
 ## Invocation
 
@@ -66,13 +70,15 @@ Show the queue to the user before spawning. One line per issue, with why-that-sl
 
 ## Step 2b — Ask review mode
 
-Ask once, before the first agent. Never assume — cross-agent review costs a full CLI run per invocation.
+Cross-agent review means: a second CLI agent reads the diff read-only and reports findings. The reviewer is whatever review skill the operator has configured — ask which one, or let them name it when they answer. This skill does not hardcode a reviewer.
 
-| Mode       | What happens                                                                          | When it fits                                                                                                      |
-| ---------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `per-task` | each subagent runs `rr-codex` on its own diff, applies findings, then closes          | native/lifecycle work, load-bearing seams, high `complexity:*` — findings land while the author still has context |
-| `at-end`   | no subagent reviews; one `rr-codex` over the whole branch diff after the queue drains | cheaper, catches cross-issue interaction, but fixes land without the implementing agent's context                 |
-| `none`     | no cross-agent review at all                                                          | throwaway or trivial queues                                                                                       |
+Ask once, before the first agent. Never assume — each review is a full extra CLI run.
+
+| Mode       | What happens                                                                      | When it fits                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `per-task` | each subagent gets its own diff reviewed, applies findings, then closes           | native/lifecycle work, load-bearing seams, high `complexity:*` — findings land while the author still has context |
+| `at-end`   | no subagent reviews; one review over the whole branch diff after the queue drains | cheaper, catches cross-issue interaction, but fixes land without the implementing agent's context                 |
+| `none`     | no cross-agent review at all                                                      | throwaway or trivial queues                                                                                       |
 
 Default suggestion: `per-task` when any issue is `complexity:high` or touches native/launch/build config, else `at-end`.
 
@@ -84,7 +90,7 @@ Chosen mode changes Step 3's closing instructions and whether Step 4b runs. Noth
 
 One `Agent` call per issue. `subagent_type: general-purpose`, `model: "opus"`, low effort, `run_in_background: false`. Never batch two coding agents — they share the branch.
 
-Prompt starts with literal line `/caveman`, then must be fully self-contained. Subagent has zero context.
+Prompt must be fully self-contained — subagent has zero context. Open with a terseness instruction (`Be terse. No preamble.`) or the operator's brevity skill if they name one.
 
 Required prompt contents:
 
@@ -95,6 +101,7 @@ Required prompt contents:
 - Traps the issue flags (clock domains, threading, "verify before inventing a buffer").
 - Staging discipline: `git status` may show pre-existing drift -> stage only your own files, never `git add -A`.
 - No `Co-Authored-By`, no generated-with footer (repo rule).
+- On `per-task` mode: the exact reviewer to use, named by the operator in Step 2b. The subagent cannot guess it.
 - Closing instructions, in order — see below, varies by review mode.
 
 Closing instructions on `per-task` mode:
@@ -102,15 +109,15 @@ Closing instructions on `per-task` mode:
 ```text
 1. `bun run ts` clean; run the native/unit target you touched (`bun run test:ios`, `bun run test:android`, `bun test <path>`).
 2. Commit short message referencing #<id>, push to origin/<branch>.
-3. Invoke `rr-codex` skill (Skill tool) for cross-agent review. Apply findings you judge correct; skip noise. Commit + push fixes.
-4. Invoke `done` skill with arg `<id>`.
+3. Run the cross-agent review named in this prompt. Apply findings you judge correct; skip noise. Commit + push fixes.
+4. Close the issue: `gh issue close <id> --comment "Resolved in PR #<pr-number>. <one line what landed>"` — repo convention, matches `.agents/skills/to-pr`. Note in the comment any acceptance criterion you could not verify (device-only checks).
 5. Report: files changed, decisions/deviations, review findings + disposition, issue closed y/n.
 ```
 
 On `at-end` / `none` mode, drop step 3 and say so explicitly, or the agent invents its own review:
 
 ```text
-3. Do NOT run any cross-agent review skill (`rr-codex`, `rr`, `rr-claude`). Review happens later at branch level.
+3. Do NOT run any cross-agent or second-opinion review. Review happens later at branch level.
 ```
 
 Ask for the report explicitly — subagent final output is not shown to the user, you relay it.
@@ -133,9 +140,9 @@ Agent failed or reported blocked -> investigate yourself (read files, logs), the
 
 ## Step 4b — Branch-level review (`at-end` mode only)
 
-Queue drained. Run `rr-codex` once over the whole branch diff vs the PR base.
+Queue drained. Run the operator's review once over the whole branch diff vs the PR base (`git diff <base>...HEAD`).
 
-You are still orchestrator — do not apply fixes yourself. Findings go to one fresh subagent (`/caveman`, opus, low, foreground) with: the review doc path, the branch, and `apply what you judge correct, skip noise, commit + push, do not reopen closed issues`. Findings that need a real design change instead of a fix -> surface to the user, propose a follow-up issue.
+You are still orchestrator — do not apply fixes yourself. Findings go to one fresh subagent (opus, low, foreground, terse) with: the review doc path, the branch, and `apply what you judge correct, skip noise, commit + push, do not reopen closed issues`. Findings that need a real design change instead of a fix -> surface to the user, propose a follow-up issue.
 
 Review after the issues are already closed means a finding cannot un-close its issue. That is the accepted cost of `at-end`; say it in the report.
 
