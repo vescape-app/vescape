@@ -1506,7 +1506,11 @@ internal final class BoardSessionController: VescGattListener {
       deviceName: config.name,
       canId: canId,
       telemetry: telemetry,
-      location: latestPreciseLocation
+      // Recorded frames refuse a stale fix (ADR 0034); live display keeps the last known one.
+      location: telemetryLocationFreshEnoughToRecord(
+        latestPreciseLocation,
+        capturedAtMs: telemetry.lastPacketAt
+      )
     )
   }
 
