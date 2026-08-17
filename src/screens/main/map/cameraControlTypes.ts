@@ -45,6 +45,8 @@ export interface UseCameraControlsParams {
     preview: ({ key: string } & HistoryPreviewTarget) | null
     previewRoute: [number, number][]
     rideRoute: [number, number][]
+    /** The stretch of the ride the telemetry chart is zoomed into; empty when it shows it all. */
+    focusRoute: [number, number][]
   }
   follow: {
     updatesEnabled: boolean

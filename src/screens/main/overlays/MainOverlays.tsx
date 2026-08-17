@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, type RefObject } from 'react'
 import { useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { MapPoint, MapPointPatch } from 'vescape-core'
@@ -16,7 +16,7 @@ import { MapModeOverlay } from '@/screens/main/map/MapModeOverlay'
 import { MapModeTabs } from '@/screens/main/map/MapModeTabs'
 import { MapVignette } from '@/screens/main/map/MapVignette'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
-import type { MapSelector } from '@/screens/main/mainScreenStore'
+import { useMainScreenStore, type MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
 import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStrip'
@@ -89,7 +89,10 @@ export function MainOverlays({
   history,
 }: MainOverlaysProps) {
   const insets = useSafeAreaInsets()
-  const [panelHeight, setPanelHeight] = useState(0)
+  // In the store rather than in state: the map camera frames the route into the space this panel
+  // leaves, and it lives in a different tree.
+  const panelHeight = useMainScreenStore((s) => s.historyPanelHeight)
+  const setPanelHeight = useMainScreenStore((s) => s.setHistoryPanelHeight)
   // Owned here because the telemetry drag fades the map vignette as well as the telemetry face.
   const revealProgress = useSharedValue(0)
   const dragOpacity = useSharedValue(0)

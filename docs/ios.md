@@ -119,10 +119,16 @@ iOS has no Android `ForegroundService` equivalent. A locked-screen ride cannot r
   - set `pausesLocationUpdatesAutomatically = false`;
   - request the location permission level needed for locked-screen ride recording.
 - Keep BLE polling and telemetry persistence in native Swift. JS should render state and send intents, not own durable ride work.
-- Add CoreBluetooth state preservation/restoration:
-  - create `CBCentralManager` with `CBCentralManagerOptionRestoreIdentifierKey`;
-  - implement `centralManager(_:willRestoreState:)`;
-  - restore retained peripherals, subscriptions, and pending connects into the native session runtime.
+- CoreBluetooth state preservation/restoration (done, #378 / ADR 0034):
+  - the Board Session central carries `CBCentralManagerOptionRestoreIdentifierKey`; the Board Probe
+    central stays bare;
+  - `VescapeLaunchSubscriber` (autolinked app-delegate subscriber) re-creates that central inside
+    `didFinishLaunching`, gated on the `SessionResumeStore` marker so a normal cold start starts no
+    BLE;
+  - `centralManager(_:willRestoreState:)` hands restored peripherals to `BoardSessionController`,
+    which rebuilds the session from the saved Board Link through the ordinary `beginSession` wiring:
+    recording keeps appending to the open recording, GPS re-arms, alerts and the Live Activity
+    resume, all with no JS involved.
 - Move live session ownership below Expo module lifetime:
   - use a native singleton/runtime, e.g. `VescapeCoreRuntime.shared`, to own `ConnectionCoordinator`;
   - Expo module attaches/detaches event sinks only;

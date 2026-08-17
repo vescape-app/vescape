@@ -20,6 +20,8 @@ import { useMapStore, type DirectionPoint } from '@/modules/map/store/mapStore'
 
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { PrivacyZonesMapLayer } from '@/modules/history/components/PrivacyZonesMapLayer'
+import { RouteZoomFocus } from '@/screens/main/map/RouteZoomFocus'
+import { SeekPositionPin } from '@/screens/main/map/SeekPositionPin'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { MAPY_TILE_URL_TEMPLATE } from '@/config/mapy'
@@ -35,7 +37,6 @@ import {
 } from '@/modules/map-points/constants/mapPoints'
 import { theme } from '@/constants/theme'
 import { makeCircleFeature, makeTrailLineString } from '@/helpers/mapGeometry'
-import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 import { getFavoriteRouteSegments } from '@/modules/history/lib/favoriteRoute'
 import { resolveMarkerRenderData } from '@/modules/history/lib/markerOverlap'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -297,26 +298,6 @@ function LiveMapLayers({
   )
 }
 
-// Subscribes to the scrub head directly so dragging the telemetry chart only re-renders this pin,
-// not the whole map/overlay tree. rideGpsSamples is a stable prop (changes only on session switch).
-function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
-  const seekTimeMs = useMainScreenStore((s) => s.seekTimeMs)
-  const seekPosition = useMemo(() => {
-    if (seekTimeMs == null || rideGpsSamples.length === 0) return null
-    const idx = findNearestSampleIndexByTime(rideGpsSamples, seekTimeMs)
-    return idx >= 0 ? rideGpsSamples[idx] : null
-  }, [seekTimeMs, rideGpsSamples])
-
-  if (!seekPosition || seekPosition.latitude == null || seekPosition.longitude == null) return null
-  return (
-    <MapPin
-      id="center-seek-position"
-      coordinate={[seekPosition.longitude, seekPosition.latitude]}
-      color={MAP_DEFAULTS.markerColor}
-    />
-  )
-}
-
 // Live sub-range highlight while trimming a Favorite. Subscribes to the trim range directly so a
 // drag only re-renders this layer, not the whole map. rideGpsSamples is a stable prop.
 function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
@@ -551,6 +532,23 @@ export function HistoryMapLayers({
               ...(routeMetricGradient ? { lineGradient: routeMetricGradient } : {}),
             }}
           />
+        </ShapeSource>
+      )}
+      {/* Over the route, under the pins: the pins are landmarks of the whole ride and stay
+          readable however far the chart is zoomed in. */}
+      <RouteZoomFocus
+        rideGpsSamples={rideGpsSamples}
+        routeShape={rideRouteShape}
+        rideTelemetrySamples={rideTelemetrySamples}
+        metric={activeHistoryMapMetric}
+        hotRanges={hotRanges}
+        gradientsEnabled={gradientsEnabled}
+        highContrastRoutes={highContrastRoutes}
+      />
+      {/* Its own source, above the zoom focus: the scrub glow marks where the finger is on the
+          chart, which stays true whether or not that stretch is the one zoomed into. */}
+      {rideRouteShape && (
+        <ShapeSource id="center-ride-route-highlight-source" shape={rideRouteShape} lineMetrics>
           <LineLayer
             id="center-ride-route-highlight"
             style={{

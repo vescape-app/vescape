@@ -47,8 +47,6 @@ import {
   type ChartTrimConfig,
 } from '@/components/charts/TelemetryChartTrim'
 
-export type { ChartTrimConfig } from '@/components/charts/TelemetryChartTrim'
-
 const DEFAULT_HEIGHT = 54
 const Y_AXIS_WIDTH = 34
 const CARD_HORIZONTAL_PADDING = 8
@@ -301,32 +299,57 @@ const ChartLineSegments = memo(function ChartLineSegments({
   getPointColor,
   windowMs,
 }: ChartLineSegmentsProps) {
-  const plainPaths = useMemo(
+  const plainRuns = useMemo(
     () =>
       !getPointColor && width > 0
         ? splitChartLineSegments(points, range, width, height, windowMs)
-            .filter((segment) => segment.length >= 2)
-            .map(buildLinePath)
+        : [],
+    [getPointColor, height, points, range, width, windowMs],
+  )
+  const plainPaths = useMemo(
+    () => plainRuns.filter((segment) => segment.length >= 2).map(buildLinePath),
+    [plainRuns],
+  )
+  const gradientRuns = useMemo(
+    () =>
+      getPointColor && width > 0
+        ? splitChartPointSegments(points, range, width, height, windowMs)
         : [],
     [getPointColor, height, points, range, width, windowMs],
   )
   const gradientSegments = useMemo(
     () =>
-      getPointColor && width > 0
-        ? splitChartPointSegments(points, range, width, height, windowMs)
-            .filter((segment) => segment.length >= 2)
-            .map((segment) => ({
-              path: buildLinePath(segment),
-              colors: segment.map((point) => getPointColor(point.point.value)),
-              positions: segment.map((point) => Math.max(0, Math.min(1, point.x / width))),
-            }))
-        : [],
-    [getPointColor, height, points, range, width, windowMs],
+      gradientRuns
+        .filter((segment) => segment.length >= 2)
+        .map((segment) => ({
+          path: buildLinePath(segment),
+          colors: segment.map((point) => getPointColor?.(point.point.value) ?? color),
+          positions: segment.map((point) => Math.max(0, Math.min(1, point.x / width))),
+        })),
+    [color, getPointColor, gradientRuns, width],
   )
+  // A stretch sampled slower than the gap threshold is all one-sample runs — no path can be
+  // stroked through it. Drawn as dots so sparse telemetry reads as sparse, not as missing.
+  const orphanDots = useMemo(
+    () =>
+      getPointColor
+        ? gradientRuns
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ ...segment[0], color: getPointColor(segment[0].point.value) }))
+        : plainRuns
+            .filter((segment) => segment.length === 1)
+            .map((segment) => ({ ...segment[0], color })),
+    [color, getPointColor, gradientRuns, plainRuns],
+  )
+
+  const dots = orphanDots.map((dot, index) => (
+    <Circle key={`dot-${index}`} cx={dot.x} cy={dot.y} r={1.5} color={dot.color} />
+  ))
 
   if (getPointColor) {
     return (
       <>
+        {dots}
         {gradientSegments.map((segment, index) => (
           <Path
             key={index}
@@ -350,6 +373,7 @@ const ChartLineSegments = memo(function ChartLineSegments({
 
   return (
     <>
+      {dots}
       {plainPaths.map((path, index) => (
         <Path
           key={index}

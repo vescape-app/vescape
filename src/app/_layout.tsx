@@ -186,6 +186,7 @@ function RootLayout() {
               name={stackScreens.devMapPlayground}
               options={{ title: 'Camera playground' }}
             />
+            <Stack.Screen name={stackScreens.historyCharts} options={{ headerShown: false }} />
             <Stack.Screen name={stackScreens.controlBatteryRaw} options={{ title: 'Raw BMS' }} />
             <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
             <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />

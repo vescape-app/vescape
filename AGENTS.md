@@ -19,6 +19,18 @@ Use **Oxfmt** (`bun run format`) for repository formatting. Do not run Prettier 
 apply Prettier-formatted rewrites; Prettier rewrites the style globally and causes
 `Formatter mismatch caught: Prettier rewrote style globally`.
 
+## Verification Budget
+
+Lefthook `pre-commit` already runs fmt, `ts`, lint, knip, and tests on staged files. Don't
+re-run `bun run check` after every edit — wasteful.
+
+- Big refactor, rename, move, deletion → `bun run ts` (+ `bun knip` after deletions).
+- Real logic change with tests → `bun test <path>`, that path only.
+- Check failed → re-run that one check until green.
+- Small edits (copy, style, props, docs) → nothing, let the hook catch it.
+
+Narrow command over full `bun run check`.
+
 ## Git Branch Names
 
 Do **not** add generated prefixes to branch names, including agent/tool names like `codex/`,
@@ -105,6 +117,7 @@ Rules:
 ## React Native
 
 React Native UI conventions, including icon usage, live in `docs/agents/react.md`.
+Skia canvas rules — gesture frame cost, transform-only animation, worklet and repaint traps — live in `docs/agents/skia.md`.
 Visual design language (colors, layout, typography) lives in `docs/design.md`.
 Clerk production authentication setup and Android email-link debugging live in `docs/agents/clerk-auth.md`.
 Mapbox dependency patches and their native camera semantics live in `docs/agents/mapbox-patches.md`.
@@ -116,11 +129,7 @@ When adding or changing a reusable UI component (or a new visual variant/state o
 
 ### Issue tracker
 
-Issues and PRDs are tracked in GitHub Issues for `KacperKozak/vescape`. See `docs/agents/issue-tracker.md`.
-
-### E2E tests
-
-Use the local `/e2e` skill for Maestro E2E runs. It covers fresh-shell execution, Android device checks, app install rules, and env-vs-project boundaries.
+Issues and PRDs are tracked in GitHub Issues for `vescape-app/vescape`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

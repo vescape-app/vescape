@@ -75,7 +75,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -90,6 +90,8 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onLiveTick") { self.observedEvents.remove("onLiveTick") }
     OnStartObserving("onLiveSeries") { self.observedEvents.insert("onLiveSeries") }
     OnStopObserving("onLiveSeries") { self.observedEvents.remove("onLiveSeries") }
+    OnStartObserving("onFocusedSeries") { self.observedEvents.insert("onFocusedSeries") }
+    OnStopObserving("onFocusedSeries") { self.observedEvents.remove("onFocusedSeries") }
     OnStartObserving("onTelemetryHistory") { self.observedEvents.insert("onTelemetryHistory") }
     OnStopObserving("onTelemetryHistory") { self.observedEvents.remove("onTelemetryHistory") }
     OnStartObserving("onBms") { self.observedEvents.insert("onBms") }
@@ -154,6 +156,10 @@ public class VescapeCoreModule: Module {
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
       self.attachToCoordinator()
+      // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
+      // rendering a confident live session forever. Guarded by the coordinator so a running or
+      // resuming session keeps its own activity.
+      self.coordinator.reapOrphanLiveActivities()
       AppDataRepository.onDataChanged = { [weak self] scope in self?.sendAppDataChanged(scope) }
       // JS keeps a dumb mirror of the durable Board Warning registry; push the full board list on
       // every registry change (late subscribers self-heal via the snapshot above).
@@ -277,6 +283,11 @@ public class VescapeCoreModule: Module {
       self.coordinator.setBmsSeriesFocused(focused)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setFocusedSeriesMetrics`
+    Function("setFocusedSeriesMetrics") { (metrics: [String]) in
+      self.coordinator.setFocusedSeriesMetrics(metrics)
+    }
+
     AsyncFunction("getCriticalRideNotificationPermissionStatus") { (promise: Promise) in
       UNUserNotificationCenter.current().getNotificationSettings { settings in
         promise.resolve(Self.notificationPermissionStatus(settings.authorizationStatus))
@@ -395,6 +406,18 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("setCompanionPresenceEnabled") { (enabled: Bool, promise: Promise) in
+      promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
+    }
+
+    AsyncFunction("getCompanionPresenceBoards") { (promise: Promise) in
+      promise.resolve([])
+    }
+
+    AsyncFunction("addCompanionPresenceBoard") { (_: String, promise: Promise) in
+      promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
+    }
+
+    AsyncFunction("removeCompanionPresenceBoard") { (_: String, promise: Promise) in
       promise.reject("UNSUPPORTED_PLATFORM", "Companion presence is Android-only")
     }
 
@@ -1157,30 +1180,12 @@ public class VescapeCoreModule: Module {
     }
   }
 
-  /// Resolve a stored board's Board Link into a runtime connect config. Returns `nil` when the
-  /// board is unlinked (JS routes those to Board Probe instead). Dumb connect (ADR 0015): the
-  /// transport is read straight from the link, never rediscovered.
+  /// Resolve the selected board's connect config. The resolution itself lives on
+  /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
   private func connectConfig(boardId: String) -> BoardConnectConfig? {
-    guard let board = appData.getBoard(boardId) else { return nil }
-    guard let link = board["link"] as? [String: Any?] else { return nil }
-    guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
-    let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
-    let name = board["name"] as? String ?? "VESC Board"
-    let settings = appData.getSettings()
-    let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
-    return BoardConnectConfig(
-      appBoardId: boardId,
-      bleId: bleId,
-      name: name,
-      transport: transport,
-      linkVersion: AppDataRepository.intValue(link["linkVersion"] ?? nil),
-      hasBms: link["hasBms"] as? Bool,
-      vescFirmwareVersion: link["vescFirmwareVersion"] as? String,
-      refloatVersion: link["refloatVersion"] as? String,
-      refloatBaseVersion: link["refloatBaseVersion"] as? String,
-      pollIntervalMs: hz > 0 ? 1000 / hz : 0,
-      batteryConfig: AppDataRepository.normalizeBatteryConfig(board["batteryConfig"] ?? nil),
-      liveHistoryLimitMinutes: AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5,
+    BoardConnectConfig.resolve(
+      boardId: boardId,
+      appData: appData,
       recordingEnabled: requestedDebugRecordingEnabled
     )
   }

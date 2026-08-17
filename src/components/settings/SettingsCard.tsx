@@ -4,16 +4,18 @@ import { theme } from '@/constants/theme'
 
 export type SettingsCardProps = {
   children: ReactNode
+  /** Separators align with row labels by default; 0 spans them edge to edge. */
+  separatorInset?: number
 }
 
-export function SettingsCard({ children }: SettingsCardProps) {
+export function SettingsCard({ children, separatorInset = 58 }: SettingsCardProps) {
   const items = Children.toArray(children)
 
   return (
     <View style={styles.card}>
       {items.map((child, index) => (
         <View key={index}>
-          {index > 0 ? <View style={styles.separator} /> : null}
+          {index > 0 ? <View style={[styles.separator, { marginLeft: separatorInset }]} /> : null}
           {child}
         </View>
       ))}
@@ -32,6 +34,5 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     backgroundColor: theme.palette.slate.border,
-    marginLeft: 58,
   },
 })

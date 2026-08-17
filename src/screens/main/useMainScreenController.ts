@@ -48,7 +48,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     setMapSelector,
     dismissMapSelector,
     setPerspectiveEnabled,
-    setSeekTimeMs,
     setActiveHistoryMapMetric,
   } = useMainScreenStore(
     useShallow((s) => ({
@@ -66,7 +65,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       setMapSelector: s.setMapSelector,
       dismissMapSelector: s.dismissMapSelector,
       setPerspectiveEnabled: s.setPerspectiveEnabled,
-      setSeekTimeMs: s.setSeekTimeMs,
       setActiveHistoryMapMetric: s.setActiveHistoryMapMetric,
     })),
   )
@@ -85,6 +83,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     sessions,
     selectedSession,
     sessionSamples,
+    sessionChartSamples,
     sessionGpsSamples,
     sessionMarkers,
     loadingSession,
@@ -101,6 +100,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       sessions: s.sessions,
       selectedSession: s.selectedSession,
       sessionSamples: s.sessionSamples,
+      sessionChartSamples: s.sessionChartSamples,
       sessionGpsSamples: s.sessionGpsSamples,
       sessionMarkers: s.sessionMarkers,
       loadingSession: s.loadingSession,
@@ -174,10 +174,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   useEffect(() => {
     void reloadMapPoints()
   }, [canContribute, reloadMapPoints])
-
-  useEffect(() => {
-    setSeekTimeMs(null)
-  }, [selectedSession, setSeekTimeMs])
 
   const weatherActive = mode === 'weather'
   const legalLimitsActive = mode === 'legalLimits'
@@ -424,6 +420,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     sessions,
     selectedSession,
     sessionSamples,
+    sessionChartSamples,
     sessionGpsSamples,
     sessionMarkers,
     mediaHistory,
@@ -457,7 +454,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     exitLegalLimitsMode,
     handleMapFocus,
     exitMapFocus,
-    onSeek: setSeekTimeMs,
     activeHistoryMapMetric,
     setActiveHistoryMapMetric,
   }

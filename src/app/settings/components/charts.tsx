@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
@@ -7,6 +7,8 @@ import { ChartLineUpIcon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { LinearGauge } from '@/components/charts/LinearGauge'
 import { IconHero } from '@/components/settings/IconHero'
+import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
+import { ChartStackShowcase } from '@/components/charts/line/ChartStackShowcase'
 import { TelemetryLineChart } from '@/components/charts/TelemetryLineChart'
 import { computeAutoRange, type TelemetryChartPoint } from '@/components/charts/chartMath'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
@@ -413,6 +415,38 @@ function TrimChartShowcase() {
   )
 }
 
+/** The overlay a detail chart wears until its focused series lands. */
+function ChartLoadingOverlayShowcase() {
+  const [loading, setLoading] = useState(true)
+  const points = useMemo(
+    () => generateChartData({ count: 120, base: 24, variance: 6, seed: 7 }),
+    [],
+  )
+  const currentPoint = points.at(-1) ?? null
+  const chartRange = computeAutoRange(points, { includeZero: true, minSpan: 10, paddingRatio: 0.1 })
+
+  return (
+    <ShowcaseCard name="ChartLoadingOverlay">
+      <Pressable onPress={() => setLoading((on) => !on)}>
+        <View>
+          <TelemetryLineChart
+            label="Tap to toggle the overlay"
+            value={currentPoint ? telemetry.speed.formatWithUnit(currentPoint.value) : '-'}
+            points={loading ? [] : points}
+            currentPoint={loading ? null : currentPoint}
+            color={telemetry.speed.color}
+            range={chartRange}
+            height={70}
+            formatValue={telemetry.speed.formatWithUnit}
+            containerStyle={styles.chartExample}
+          />
+          {loading ? <ChartLoadingOverlay /> : null}
+        </View>
+      </Pressable>
+    </ShowcaseCard>
+  )
+}
+
 const CELL_SCENARIOS = {
   'Small imbalance': {
     cells: [4.012, 4.03, 4.028, 4.031, 4.019, 4.03, 4.027, 4.03, 4.025, 4.029],
@@ -490,14 +524,16 @@ export default function ChartsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ChartLineUpIcon}
-          description="Sparkline, LinearGauge, SingleGauge, DualGauge, TelemetryLineChart, BmsCellVoltages."
+          description="Sparkline, LinearGauge, SingleGauge, DualGauge, TelemetryLineChart, ChartLoadingOverlay, BmsCellVoltages."
         />
+        <ChartStackShowcase />
         <SparklineShowcase />
         <LinearGaugeShowcase />
         <AnimatedSingleGaugeShowcase />
         <AnimatedDualGaugeShowcase />
         <RandomLineChartsShowcase />
         <TrimChartShowcase />
+        <ChartLoadingOverlayShowcase />
         <BmsCellVoltagesShowcase />
       </ScrollView>
     </SafeAreaView>
