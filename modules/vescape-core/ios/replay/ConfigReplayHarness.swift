@@ -23,6 +23,7 @@ enum ConfigReplayHarness {
       fwVersion: nil,
       refloatBaseVersion: nil,
       linkIntegrity: .trusted,
+      boardConfigValues: nil,
       isPollingActive: { false },
       stopPolling: {},
       startPolling: {},

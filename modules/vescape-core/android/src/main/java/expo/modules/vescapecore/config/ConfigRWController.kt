@@ -30,6 +30,11 @@ internal data class ConfigConnectionSnapshot(
     val transport: BoardTransport?,
     val fwVersion: String?,
     val linkIntegrity: LinkIntegrity,
+    /**
+     * The session's held Board Config Values. A fresh object carries the write base a tune push
+     * patches, which is what lets the push skip the pre-read entirely (ADR 0035).
+     */
+    val boardConfigValues: BoardConfigValues? = null,
 )
 
 internal interface ConfigRWControllerPort {
@@ -144,6 +149,7 @@ internal class ConfigRWController(
                         connectedBoardId,
                         connection.fwVersion,
                         connectedRefloatBaseVersion,
+                        connection.boardConfigValues?.writeBase,
                     ),
                 )
             }

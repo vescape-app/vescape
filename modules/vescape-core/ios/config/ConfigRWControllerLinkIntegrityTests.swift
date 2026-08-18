@@ -72,6 +72,7 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
       fwVersion: "FW 6.05",
       refloatBaseVersion: "3.0.7",
       linkIntegrity: linkIntegrity,
+      boardConfigValues: nil,
       isPollingActive: { true },
       stopPolling: { self.stoppedPolling = true },
       startPolling: {},

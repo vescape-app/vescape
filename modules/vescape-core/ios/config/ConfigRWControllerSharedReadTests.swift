@@ -43,6 +43,7 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
       fwVersion: "FW 6.05",
       refloatBaseVersion: "3.0.7",
       linkIntegrity: .trusted,
+      boardConfigValues: nil,
       isPollingActive: { false },
       stopPolling: {},
       startPolling: {},

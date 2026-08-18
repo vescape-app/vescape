@@ -68,6 +68,23 @@ internal object ConfigRWFsm {
             fwVersion = event.fwVersion,
             refloatBaseVersion = event.refloatBaseVersion,
         )
+        // A board takes one connection at a time, so while this session holds the link the config can
+        // only have changed through our own writes — the session's fresh bytes are still the board's
+        // bytes and back the write directly. Provisional values carry no write base by construction,
+        // so a cache-restored session falls through to the read (ADR 0035).
+        val writeBase = event.writeBase
+        if (writeBase != null) {
+            return sendWrite(
+                ctx = ctx,
+                schema = writeBase.schema,
+                rawConfig = writeBase.rawConfig,
+                packageSignature = writeBase.packageSignature,
+                failPhase = ConfigWritePhaseTag.SENDING_WRITE,
+                // The read path asks while collecting the schema; the skip path still needs the
+                // Refloat version for the snapshot this write returns (Tune Compatibility reads it).
+                requestInfo = true,
+            )
+        }
         val newState = ConfigRWState.WriteCollectingXml(
             ctx = ctx,
             xmlBytes = ByteArray(0),
@@ -472,26 +489,13 @@ internal object ConfigRWFsm {
         val rawConfig = configBytes.config
         return try {
             val schema = RefloatConfigSchemaParser.parse(xmlBytes)
-            val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
-            ConfigRWState.WriteAwaitingSetAck(
+            sendWrite(
                 ctx = ctx,
                 schema = schema,
-                originalConfig = rawConfig,
-                patchedConfig = patched,
-            ) to listOf(
-                ConfigRWEffect.CancelTimeout,
-                ConfigRWEffect.ScheduleTimeout(
-                    RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
-                    CONFIG_WRITE_TIMEOUT_MS,
-                ),
-                ConfigRWEffect.SendFrame(
-                    RefloatConfigProtocol.buildSetCustomConfig(
-                        ctx.transport,
-                        0,
-                        configBytes.packageSignature,
-                        patched,
-                    ),
-                ),
+                rawConfig = rawConfig,
+                packageSignature = configBytes.packageSignature,
+                failPhase = ConfigWritePhaseTag.READING_CONFIG,
+                requestInfo = false,
             )
         } catch (e: RefloatConfigSchemaException) {
             writeFailure(
@@ -499,19 +503,56 @@ internal object ConfigRWFsm {
                 e.message ?: "Unsupported schema",
                 phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = rawConfig,
             )
-        } catch (e: RefloatConfigEncodeException) {
-            writeFailure(
-                ctx, RefloatConfigErrorCode.CONFIG_ENCODE_FAILED,
-                e.message ?: "Encode failed",
-                phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = rawConfig,
-            )
-        } catch (e: Exception) {
-            writeFailure(
-                ctx, RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
-                e.message ?: "Write failed",
-                phase = ConfigWritePhaseTag.READING_CONFIG, rawConfig = rawConfig,
-            )
         }
+    }
+
+    /**
+     * Patch the write base bytes with the profile fields and send `COMM_SET_CUSTOM_CONFIG`. The base
+     * is either the bytes just read or the session's retained fresh bytes; either way the whole blob
+     * is patched in place, so fields outside the curated tune groups survive untouched.
+     */
+    private fun sendWrite(
+        ctx: WriteContext,
+        schema: RefloatConfigSchema,
+        rawConfig: ByteArray,
+        packageSignature: Long,
+        failPhase: ConfigWritePhaseTag,
+        requestInfo: Boolean,
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> = try {
+        val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
+        ConfigRWState.WriteAwaitingSetAck(
+            ctx = ctx,
+            schema = schema,
+            originalConfig = rawConfig,
+            patchedConfig = patched,
+        ) to listOfNotNull(
+            ConfigRWEffect.CancelTimeout,
+            ConfigRWEffect.ScheduleTimeout(
+                RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
+                CONFIG_WRITE_TIMEOUT_MS,
+            ),
+            if (requestInfo) ConfigRWEffect.SendFrame(RefloatConfigProtocol.buildGetInfo(ctx.transport)) else null,
+            ConfigRWEffect.SendFrame(
+                RefloatConfigProtocol.buildSetCustomConfig(
+                    ctx.transport,
+                    0,
+                    packageSignature,
+                    patched,
+                ),
+            ),
+        )
+    } catch (e: RefloatConfigEncodeException) {
+        writeFailure(
+            ctx, RefloatConfigErrorCode.CONFIG_ENCODE_FAILED,
+            e.message ?: "Encode failed",
+            phase = failPhase, rawConfig = rawConfig,
+        )
+    } catch (e: Exception) {
+        writeFailure(
+            ctx, RefloatConfigErrorCode.CONFIG_WRITE_FAILED,
+            e.message ?: "Write failed",
+            phase = failPhase, rawConfig = rawConfig,
+        )
     }
 
     private fun verifyAndCompleteWrite(

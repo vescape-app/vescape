@@ -175,6 +175,14 @@ internal final class ConfigRWController {
       fwVersion: connection.fwVersion,
       refloatVersion: nil
     )
+    // A board takes one connection at a time, so while this session holds the link the config can
+    // only have changed through our own writes — the session's `fresh` bytes are still the board's
+    // bytes and back the write directly. `provisional` values carry no write base by construction,
+    // so a cache-restored session falls through to the read (ADR 0035).
+    if let writeBase = connection.boardConfigValues?.writeBase {
+      sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, requestInfo: true, connection)
+      return
+    }
     state = .writeCollectingXml(ctx, [], nil)
     scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
     guard send(connection, RefloatConfigProtocol.buildGetInfo(transport: ctx.transport)) else { return }
@@ -361,25 +369,49 @@ internal final class ConfigRWController {
     let rawConfig = configBytes.config
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
+      sendWrite(ctx, schema, rawConfig, configBytes.packageSignature, .readingConfig, requestInfo: false, connection)
+    } catch let error as RefloatConfigSchemaException {
+      failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+    } catch {
+      failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
+    }
+  }
+
+  /// Patch the write base bytes with the profile fields and send `COMM_SET_CUSTOM_CONFIG`. The base
+  /// is either the bytes just read or the session's retained fresh bytes; either way the whole blob
+  /// is patched in place, so fields outside the curated tune groups survive untouched.
+  private func sendWrite(
+    _ ctx: ConfigWriteContext,
+    _ schema: RefloatConfigSchema,
+    _ rawConfig: [UInt8],
+    _ packageSignature: UInt32,
+    _ failPhase: ConfigWritePhase,
+    requestInfo: Bool,
+    _ connection: ConfigRWConnection
+  ) {
+    do {
       let patched = try RefloatConfigEncoder.encode(schema: schema, rawConfig: rawConfig, fields: ctx.profileFields)
       state = .writeAwaitingSetAck(ctx, schema, rawConfig, patched)
       cancelTimeout()
       scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)
+      // The read path already asked for it while collecting the schema; the skip path still needs
+      // the Refloat version for the snapshot this write returns (Tune Compatibility reads it).
+      if requestInfo {
+        guard send(connection, RefloatConfigProtocol.buildGetInfo(transport: ctx.transport)) else { return }
+      }
       _ = send(
         connection,
         RefloatConfigProtocol.buildSetCustomConfig(
           transport: ctx.transport,
           confInd: 0,
-          packageSignature: configBytes.packageSignature,
+          packageSignature: packageSignature,
           configBytes: patched
         )
       )
-    } catch let error as RefloatConfigSchemaException {
-      failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, connection: connection)
     } catch let error as RefloatConfigEncodeException {
-      failWrite(code: .CONFIG_ENCODE_FAILED, message: error.message, phase: .readingConfig, rawConfig: rawConfig, connection: connection)
+      failWrite(code: .CONFIG_ENCODE_FAILED, message: error.message, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
-      failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: .readingConfig, rawConfig: rawConfig, connection: connection)
+      failWrite(code: .CONFIG_WRITE_FAILED, message: error.localizedDescription, phase: failPhase, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     }
   }
 
@@ -613,6 +645,9 @@ internal struct ConfigRWConnection {
   let fwVersion: String?
   let refloatBaseVersion: String?
   let linkIntegrity: LinkIntegrity
+  /// The session's held Board Config Values. A `fresh` object carries the write base a tune push
+  /// patches, which is what lets the push skip the pre-read entirely (ADR 0035).
+  let boardConfigValues: BoardConfigValues?
   let isPollingActive: () -> Bool
   let stopPolling: () -> Void
   let startPolling: () -> Void

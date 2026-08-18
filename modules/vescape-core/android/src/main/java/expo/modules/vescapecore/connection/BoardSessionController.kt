@@ -364,6 +364,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         currentBoardTransport(),
                         fwVersionString,
                         boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
+                        boardConfigValues,
                     )
                 override fun isPollingActive() = pollingLoop.isActive
                 override fun stopPolling() = this@BoardSessionController.stopPolling()

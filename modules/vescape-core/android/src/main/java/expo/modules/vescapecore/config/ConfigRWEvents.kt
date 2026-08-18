@@ -22,6 +22,11 @@ internal sealed class ConfigRWEvent {
         val appBoardId: String?,
         val fwVersion: String?,
         val refloatBaseVersion: String?,
+        /**
+         * The session's fresh write base, when it holds one. Present means the write patches these
+         * retained bytes directly instead of reading the board first (ADR 0035).
+         */
+        val writeBase: BoardConfigWriteBase?,
     ) : ConfigRWEvent()
 
     data class XmlPayloadReceived(val payload: ByteArray) : ConfigRWEvent()
