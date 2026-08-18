@@ -44,6 +44,9 @@ export function useCameraPreviewGestures({
   const { cameraRef, currentCameraRef, engine, lastFollowKeyRef, previewPanActiveRef } = cameraRefs
   const previewPanBaseRef = useRef<CameraSnapshot | null>(null)
   const previewZoomBaseRef = useRef<CameraSnapshot | null>(null)
+  /** Whether the pinch actually drove the camera. Its handler also begins on a plain one-finger
+   * drag, and tearing a zoom down there would stomp the pan's own spring back to position. */
+  const previewZoomedRef = useRef(false)
   /** Whether the drag started from live follow, so a cancel returns to the live camera. */
   const previewPanFollowedRef = useRef(false)
   const imperativeHandleLatest = {
@@ -147,27 +150,76 @@ export function useCameraPreviewGestures({
 
   const beginPreviewZoom = useCallback(() => {
     const latest = imperativeHandleLatestRef.current
+    previewZoomedRef.current = false
     previewZoomBaseRef.current =
       latest.followGps && !latest.historyActive
         ? latest.getLiveFollowCamera()
         : currentCameraRef.current
   }, [currentCameraRef])
 
-  const previewZoomBy = useCallback((scale: number) => {
-    const latest = imperativeHandleLatestRef.current
-    const baseCamera = previewZoomBaseRef.current
-    if (!baseCamera || scale <= 0) return
-    const zoomLevel = clamp(baseCamera.zoomLevel + Math.log2(scale), MIN_ZOOM, MAP_DEFAULTS.maxZoom)
-    latest.setFollowZoomLevel(zoomLevel)
-    if (latest.followGps && !latest.historyActive) {
-      latest.applyLiveFollowCamera()
-    }
-  }, [])
+  const previewZoomBy = useCallback(
+    (scale: number) => {
+      const latest = imperativeHandleLatestRef.current
+      const baseCamera = previewZoomBaseRef.current
+      if (!baseCamera || scale <= 0) return
+      const zoomLevel = clamp(
+        baseCamera.zoomLevel + Math.log2(scale),
+        MIN_ZOOM,
+        MAP_DEFAULTS.maxZoom,
+      )
+      previewZoomedRef.current = true
+      latest.setFollowZoomLevel(zoomLevel)
+      // Drive the camera the way the reveal pan does instead of retargeting the springs. A spring
+      // target trails the fingers by its own time constant, which reads as a sluggish pinch — and
+      // the follow zoom it would ride on is a render behind anyway.
+      const followCamera =
+        latest.followGps && !latest.historyActive ? latest.getLiveFollowCamera() : baseCamera
+      const previewCamera = {
+        ...followCamera,
+        zoomLevel,
+        pitch: getPitchForZoom(zoomLevel, latest.perspectiveEnabled),
+      }
+      currentCameraRef.current = previewCamera
+      if (cameraFix) {
+        lastFollowKeyRef.current = liveFollowKey(cameraFix.timestamp, previewCamera)
+      }
+      engine.driveExternal(
+        {
+          centerCoordinate: previewCamera.centerCoordinate,
+          zoomLevel: previewCamera.zoomLevel,
+          heading: previewCamera.heading,
+          pitch: previewCamera.pitch,
+        },
+        { gesture: true },
+      )
+      cameraRef.current?.setCameraDirect({
+        center: previewCamera.centerCoordinate,
+        zoom: previewCamera.zoomLevel,
+        heading: previewCamera.heading,
+        pitch: previewCamera.pitch,
+      })
+    },
+    [cameraFix, cameraRef, currentCameraRef, engine, lastFollowKeyRef],
+  )
 
   const endPreviewZoom = useCallback(() => {
-    void imperativeHandleLatestRef.current
     previewZoomBaseRef.current = null
-  }, [])
+    if (!previewZoomedRef.current) return
+    previewZoomedRef.current = false
+    const latest = imperativeHandleLatestRef.current
+    // Leave gesture drive, then pin the zoom to where the fingers left it. Releasing alone coasts
+    // every axis on the gesture's velocity, and a pinch that ends while still spreading would keep
+    // zooming after the fingers are gone.
+    engine.release()
+    const current = currentCameraRef.current
+    if (current) {
+      engine.setTarget({
+        zoom: current.zoomLevel,
+        pitch: getPitchForZoom(current.zoomLevel, latest.perspectiveEnabled),
+      })
+    }
+    if (latest.followGps && !latest.historyActive) latest.applyLiveFollowCamera()
+  }, [currentCameraRef, engine])
 
   const restorePreviewPan = useCallback(() => {
     previewPanActiveRef.current = false
