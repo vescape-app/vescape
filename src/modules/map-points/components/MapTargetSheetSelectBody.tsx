@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
+import { useColoredAction, useResolvedAccentColors } from '@/hooks/useTheme'
 import {
   MapPointDetails,
   MapTargetActionRow,
@@ -93,6 +93,9 @@ function MapPointVoteButtons({
   onVote: (id: string, reaction: 'up' | 'down' | null) => boolean
 }) {
   const reaction = point.myReaction
+  // Active vote buttons wear the two-layer colored surface of their colour.
+  const upSurface = useColoredAction(theme.palette.cyan.color)
+  const downSurface = useColoredAction(theme.palette.red.color)
   return (
     <View style={styles.voteGroup}>
       <Pressable
@@ -101,13 +104,16 @@ function MapPointVoteButtons({
         onPress={() => onVote(point.id, reaction === 'up' ? null : 'up')}
         style={({ pressed }) => [
           styles.voteButton,
-          reaction === 'up' && styles.upButtonActive,
+          reaction === 'up' && {
+            borderColor: theme.palette.cyan.color,
+            backgroundColor: upSurface,
+          },
           pressed && mapSheetStyles.mapTargetNavigatePressed,
         ]}
       >
         <ThumbsUpIcon
           size={18}
-          color={reaction === 'up' ? theme.palette.cyan.text : theme.neutral.textPrimary}
+          color={reaction === 'up' ? theme.palette.cyan.light : theme.neutral.textPrimary}
           weight={reaction === 'up' ? 'fill' : 'bold'}
         />
       </Pressable>
@@ -117,13 +123,16 @@ function MapPointVoteButtons({
         onPress={() => onVote(point.id, reaction === 'down' ? null : 'down')}
         style={({ pressed }) => [
           styles.voteButton,
-          reaction === 'down' && styles.downButtonActive,
+          reaction === 'down' && {
+            borderColor: theme.palette.red.color,
+            backgroundColor: downSurface,
+          },
           pressed && mapSheetStyles.mapTargetNavigatePressed,
         ]}
       >
         <ThumbsDownIcon
           size={18}
-          color={reaction === 'down' ? theme.status.error.text : theme.neutral.textPrimary}
+          color={reaction === 'down' ? theme.palette.red.light : theme.neutral.textPrimary}
           weight={reaction === 'down' ? 'fill' : 'bold'}
         />
       </Pressable>
@@ -132,10 +141,6 @@ function MapPointVoteButtons({
 }
 
 const styles = StyleSheet.create({
-  downButtonActive: {
-    borderColor: theme.status.error.border,
-    backgroundColor: theme.status.error.bg,
-  },
   editButton: {
     minWidth: 88,
     height: 46,
@@ -151,10 +156,6 @@ const styles = StyleSheet.create({
   },
   editText: {
     color: theme.neutral.textPrimary,
-  },
-  upButtonActive: {
-    borderColor: theme.palette.cyan.border,
-    backgroundColor: theme.palette.cyan.bg,
   },
   voteButton: {
     width: 46,

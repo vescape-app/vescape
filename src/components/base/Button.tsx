@@ -7,6 +7,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { Text } from '@/components/base/Text'
+import { useColoredAction } from '@/hooks/useTheme'
 
 import { interaction, theme } from '@/constants/theme'
 
@@ -38,11 +39,12 @@ export function Button({
   style,
 }: ButtonProps) {
   const isDisabled = disabled || loading
+  const coloredAction = useColoredAction(accentColors[variant].border)
   const icon =
     IconComponent && !loading ? (
       <IconComponent
         size={size === 'sm' ? 13 : size === 'lg' ? 17 : 15}
-        color={variantStyles[variant].iconColor}
+        color={accentColors[variant].icon}
         weight="bold"
       />
     ) : null
@@ -52,7 +54,7 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md,
-        variantStyles[variant].button,
+        accentColors[variant].button(coloredAction),
         isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
@@ -64,7 +66,7 @@ export function Button({
       accessibilityLabel={accessibilityLabel ?? label}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={variantStyles[variant].indicatorColor} />
+        <ActivityIndicator size="small" color={accentColors[variant].indicator} />
       ) : iconPosition === 'left' ? (
         icon
       ) : null}
@@ -73,7 +75,7 @@ export function Button({
         style={[
           styles.label,
           size === 'sm' ? styles.labelSm : size === 'lg' ? styles.labelLg : styles.labelMd,
-          variantStyles[variant].text,
+          accentColors[variant].text,
         ]}
       >
         {label}
@@ -83,66 +85,72 @@ export function Button({
   )
 }
 
-const variantStyles = {
+const accentColors = {
   primary: {
-    button: {
+    border: theme.control.border,
+    icon: theme.control.icon,
+    indicator: theme.control.icon,
+    button: () => ({
       backgroundColor: theme.control.background,
       borderWidth: 1,
       borderColor: theme.control.border,
-    },
+    }),
     text: { color: theme.control.text },
-    iconColor: theme.control.icon,
-    indicatorColor: theme.control.icon,
   },
   accent: {
-    button: {
-      backgroundColor: theme.control.background,
+    border: theme.palette.cyan.color,
+    icon: theme.palette.cyan.light,
+    indicator: theme.palette.cyan.light,
+    button: (background: string) => ({
+      backgroundColor: background,
       borderWidth: 1,
       borderColor: theme.palette.cyan.color,
-    },
-    text: { color: theme.control.text },
-    iconColor: theme.palette.cyan.light,
-    indicatorColor: theme.palette.cyan.light,
+    }),
+    text: { color: theme.palette.cyan.light },
   },
   tune: {
-    button: {
-      backgroundColor: theme.control.background,
+    border: theme.tune.color,
+    icon: theme.tune.light,
+    indicator: theme.tune.light,
+    button: (background: string) => ({
+      backgroundColor: background,
       borderWidth: 1,
       borderColor: theme.tune.color,
-    },
-    text: { color: theme.control.text },
-    iconColor: theme.tune.light,
-    indicatorColor: theme.tune.light,
+    }),
+    text: { color: theme.tune.light },
   },
   secondary: {
-    button: {
+    border: theme.control.border,
+    icon: theme.control.textMuted,
+    indicator: theme.control.textMuted,
+    button: () => ({
       backgroundColor: theme.control.background,
       borderWidth: 1,
       borderColor: theme.control.border,
-    },
+    }),
     text: { color: theme.control.textMuted },
-    iconColor: theme.control.textMuted,
-    indicatorColor: theme.control.textMuted,
   },
   success: {
-    button: {
-      backgroundColor: theme.status.success.bg,
+    border: theme.palette.green.color,
+    icon: theme.palette.green.light,
+    indicator: theme.palette.green.light,
+    button: (background: string) => ({
+      backgroundColor: background,
       borderWidth: 1,
-      borderColor: theme.status.success.border,
-    },
-    text: { color: theme.status.success.text },
-    iconColor: theme.status.success.text,
-    indicatorColor: theme.status.success.text,
+      borderColor: theme.palette.green.color,
+    }),
+    text: { color: theme.palette.green.light },
   },
   destructive: {
-    button: {
-      backgroundColor: theme.status.error.bg,
+    border: theme.palette.red.color,
+    icon: theme.palette.red.light,
+    indicator: theme.palette.red.light,
+    button: (background: string) => ({
+      backgroundColor: background,
       borderWidth: 1,
-      borderColor: theme.status.error.border,
-    },
-    text: { color: theme.status.error.text },
-    iconColor: theme.status.error.text,
-    indicatorColor: theme.status.error.text,
+      borderColor: theme.palette.red.color,
+    }),
+    text: { color: theme.palette.red.light },
   },
 } as const
 

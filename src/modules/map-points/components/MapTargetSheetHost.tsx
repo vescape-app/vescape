@@ -2,7 +2,7 @@ import { ArrowClockwiseIcon, CheckIcon, NavigationArrowIcon, XIcon } from 'phosp
 import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
+import { useColoredAction, useResolvedAccentColors } from '@/hooks/useTheme'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -84,11 +84,13 @@ export function MapTargetSheetHost({
   requireAccount,
 }: MapTargetSheetHostProps) {
   const accents = useResolvedAccentColors()
+  const confirmSurface = useColoredAction(actionColor)
+  const cancelSurface = useColoredAction(accents.red.light)
   const actionColors = {
     color: actionColor,
-    textColor: theme.control.text,
+    textColor: actionColor,
     borderColor: actionColor,
-    bgColor: theme.alpha(theme.control.background, 0.85),
+    bgColor: confirmSurface,
   }
 
   if (selectedTarget) {
@@ -146,9 +148,9 @@ export function MapTargetSheetHost({
 
   const cancelAction = {
     color: accents.red.light,
-    textColor: theme.control.text,
+    textColor: accents.red.light,
     borderColor: accents.red.light,
-    bgColor: theme.alpha(theme.control.background, 0.85),
+    bgColor: cancelSurface,
     label: 'Cancel',
     accessibilityLabel: 'Cancel navigation',
     Icon: XIcon,

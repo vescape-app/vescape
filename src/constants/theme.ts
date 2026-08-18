@@ -113,6 +113,15 @@ function alpha(color: string, level: AlphaLevel): string {
   throw new Error(`Unsupported color format for alpha(): ${color}`)
 }
 
+/** Blend `over` on top of `base` at `level` (0–1). Both must be `#rrggbb` hex. */
+export function blend(base: string, over: string, level: number): string {
+  const parse = (hex: string) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16))
+  const [br, bg, bb] = parse(base)
+  const [or, og, ob] = parse(over)
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * level)
+  return `rgb(${mix(br, or)},${mix(bg, og)},${mix(bb, ob)})`
+}
+
 interface Hue {
   color: string
   /** Alternate shade within the same hue — aliases `light`. */
@@ -280,14 +289,14 @@ export const controlColors = {
     icon: '#f1f5f9',
   },
   light: {
-    background: '#28496e',
-    backgroundPressed: '#355e84',
-    backgroundDisabled: '#68809b',
-    border: '#4a6c93',
-    divider: '#577aa3',
-    text: '#f8fafc',
-    textMuted: '#cad7e4',
-    icon: '#f8fafc',
+    background: '#0f172a',
+    backgroundPressed: '#1e293b',
+    backgroundDisabled: '#273449',
+    border: '#334155',
+    divider: '#334155',
+    text: '#f1f5f9',
+    textMuted: '#94a3b8',
+    icon: '#f1f5f9',
   },
 } as const
 
@@ -360,6 +369,17 @@ export const control = {
     controlColors.light.textMuted,
   ),
   icon: adaptiveColor('control_icon', controlColors.dark.icon, controlColors.light.icon),
+} as const
+
+/**
+ * Colored-action surface — the "two-layer" colored button. On dark the accent alone (transparent
+ * base) carries the identity; on light the accent tints the navy control surface (navy base + the
+ * accent at `tint` on top), so a colored action keeps the weight of a filled control without a new
+ * palette color.
+ */
+export const coloredAction = {
+  /** Accent strength over the navy control base in light mode. */
+  tint: 0.3,
 } as const
 
 export const telemetryColors = {
@@ -573,6 +593,7 @@ export const theme = {
   tune,
   settingsIcon,
   alpha,
+  coloredAction,
   banner,
   weather,
   zone,

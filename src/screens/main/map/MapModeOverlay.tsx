@@ -76,8 +76,8 @@ export function MapModeOverlay({
   const accents = useResolvedAccentColors()
   const navigationAction = navigationActionColors(
     riderColor,
-    accents.green.solid,
-    accents.green.onSolid,
+    accents.green.light,
+    accents.green.light,
   )
 
   const focusTargetOnMap = useCallback(

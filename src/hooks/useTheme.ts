@@ -2,6 +2,8 @@ import { create } from 'zustand'
 
 import {
   accentColors,
+  blend,
+  coloredAction,
   controlColors,
   neutralColors,
   resolveAdaptiveColor,
@@ -53,4 +55,18 @@ export function useResolvedTelemetryColors() {
 export function useResolvedColor(color: string): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   return resolveAdaptiveColor(color, resolvedTheme) as string
+}
+
+/**
+ * Background of a colored-action button (trash, Ride it, accent/tune/success/destructive, tonal
+ * circles, map-sheet delete/save/vote). On dark the accent carries alone on a transparent base; on
+ * light the accent tints the navy control surface — the navy + accent at `coloredAction.tint`
+ * "two-layer" look, collapsed into one computed color (same pixels, no palette addition).
+ * Pass the accent as a resolved hex or adaptive token.
+ */
+export function useColoredAction(accent: string): string {
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  if (resolvedTheme === 'dark') return 'transparent'
+  const accentColor = resolveAdaptiveColor(accent, resolvedTheme) as string
+  return blend(controlColors.light.background, accentColor, coloredAction.tint)
 }

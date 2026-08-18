@@ -6,7 +6,11 @@ import type { MapPointCategory } from 'vescape-core'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
+import {
+  useColoredAction,
+  useResolvedAccentColors,
+  useResolvedNeutralColors,
+} from '@/hooks/useTheme'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 import {
@@ -46,6 +50,8 @@ export function MapPointAddMenu({
 }) {
   const accents = useResolvedAccentColors()
   const neutral = useResolvedNeutralColors()
+  // The Navigate button is a colored action: it wears the two-layer colored surface.
+  const navigateSurface = useColoredAction(navigationAction.color)
 
   if (!open) {
     return (
@@ -166,14 +172,14 @@ export function MapPointAddMenu({
             style={({ pressed }) => [
               styles.mapTargetNavigate,
               {
-                backgroundColor: theme.alpha(theme.control.background, 0.85),
+                backgroundColor: navigateSurface,
                 borderColor: navigationAction.color,
               },
               pressed && mapSheetStyles.mapTargetNavigatePressed,
             ]}
           >
             <NavigationArrowIcon size={18} color={navigationAction.color} weight="bold" />
-            <Text style={[mapSheetStyles.mapTargetNavigateText, { color: theme.control.text }]}>
+            <Text style={[mapSheetStyles.mapTargetNavigateText, { color: navigationAction.color }]}>
               Navigate
             </Text>
           </Pressable>
@@ -270,8 +276,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: theme.palette.green.bg,
     borderWidth: 1,
-    borderColor: theme.palette.green.border,
   },
 })

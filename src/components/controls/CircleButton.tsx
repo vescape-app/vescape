@@ -7,6 +7,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 
+import { useColoredAction } from '@/hooks/useTheme'
 import { interaction, theme } from '@/constants/theme'
 
 const SIZES = { xs: 32, sm: 38, md: 48, lg: 56 } as const
@@ -51,7 +52,11 @@ export function CircleButton({
 }: CircleButtonProps) {
   const dim = SIZES[size]
   const iconSize = ICON_SIZES[size]
-  const colors = getCircleButtonColors(tone, variant)
+  // Soft colored tones wear the two-layer colored surface (transparent on dark, navy+accent tint
+  // on light). Hook runs unconditionally; result used only for that combination.
+  const coloredAccent = tone !== 'slate' && variant === 'soft' ? toneTokens[tone].color : null
+  const coloredSurface = useColoredAction(coloredAccent ?? theme.control.background)
+  const colors = getCircleButtonColors(tone, variant, coloredSurface)
   const isDisabled = disabled || loading
 
   return (
@@ -86,7 +91,11 @@ export function CircleButton({
   )
 }
 
-function getCircleButtonColors(tone: CircleButtonTone, variant: CircleButtonVariant) {
+function getCircleButtonColors(
+  tone: CircleButtonTone,
+  variant: CircleButtonVariant,
+  coloredSurface: string,
+) {
   if (tone === 'slate') {
     if (variant === 'outline' || variant === 'ghost') {
       return {
@@ -112,7 +121,7 @@ function getCircleButtonColors(tone: CircleButtonTone, variant: CircleButtonVari
   if (variant === 'ghost') {
     return { bg: theme.alpha(theme.palette.mono.black, 0), border: token.border, icon: token.text }
   }
-  return { bg: theme.control.background, border: token.color, icon: token.light }
+  return { bg: coloredSurface, border: token.color, icon: token.light }
 }
 
 const styles = StyleSheet.create({

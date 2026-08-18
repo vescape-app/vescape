@@ -16,6 +16,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
+import { useColoredAction } from '@/hooks/useTheme'
 import { interaction, theme } from '@/constants/theme'
 
 const SIZES = { sm: 38, md: 50, lg: 54 } as const
@@ -106,6 +107,11 @@ export function IconButton({
   // red meant for light surfaces.
   const iconColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.icon)
   const borderColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.border)
+  // Colored actions (destructive, accent, takeover) wear the two-layer colored surface; a plain
+  // button keeps the navy control surface. Hook runs unconditionally; result ignored when plain.
+  const coloredAccent = destructive ? theme.palette.red.light : activeAccent
+  const coloredSurface = useColoredAction(coloredAccent ?? theme.control.background)
+  const background = coloredAccent ? coloredSurface : theme.control.background
   const progress = takeover?.progress
 
   const pulse = useSharedValue(0)
@@ -129,7 +135,13 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
         styles.base,
-        { width: dim, height: dim, borderRadius: dim / 2, borderColor },
+        {
+          width: dim,
+          height: dim,
+          borderRadius: dim / 2,
+          borderColor,
+          backgroundColor: background,
+        },
         isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
@@ -161,7 +173,6 @@ const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.control.background,
     borderWidth: 1,
   },
   disabled: {

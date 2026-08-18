@@ -24,15 +24,15 @@
   <color name="vescape_neutral_text_secondary_alpha_030">#4D475569</color>
   <color name="vescape_neutral_text_secondary_alpha_060">#99475569</color>
 
-  <color name="vescape_control_background">#28496E</color>
-  <color name="vescape_control_background_pressed">#355E84</color>
-  <color name="vescape_control_background_disabled">#68809B</color>
-  <color name="vescape_control_border">#4A6C93</color>
-  <color name="vescape_control_divider">#577AA3</color>
-  <color name="vescape_control_text">#F8FAFC</color>
-  <color name="vescape_control_text_muted">#CAD7E4</color>
-  <color name="vescape_control_icon">#F8FAFC</color>
-  <color name="vescape_control_background_alpha_085">#D928496E</color>
+  <color name="vescape_control_background">#0F172A</color>
+  <color name="vescape_control_background_pressed">#1E293B</color>
+  <color name="vescape_control_background_disabled">#273449</color>
+  <color name="vescape_control_border">#334155</color>
+  <color name="vescape_control_divider">#334155</color>
+  <color name="vescape_control_text">#F1F5F9</color>
+  <color name="vescape_control_text_muted">#94A3B8</color>
+  <color name="vescape_control_icon">#F1F5F9</color>
+  <color name="vescape_control_background_alpha_085">#D90F172A</color>
 
   <color name="vescape_telemetry_speed">#0284C7</color>
   <color name="vescape_telemetry_duty">#0D9488</color>
