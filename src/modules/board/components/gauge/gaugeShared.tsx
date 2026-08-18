@@ -14,7 +14,7 @@ import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gau
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   clamp01,
   normalizeFraction,
@@ -24,6 +24,7 @@ import {
   STROKE,
   type Arc,
 } from '@/modules/board/components/gauge/arcGeometry'
+import { textAdvanceWidth } from '../../../../helpers/skiaText'
 
 /** Ramp the gauge color toward the hot color across the metric's hot range. */
 export function gaugeRampColor(
@@ -98,7 +99,7 @@ function AlertLabel({
 }) {
   const accents = useResolvedAccentColors()
   const p = polar(arc, arc.r - LABEL_INSET, fraction)
-  const width = font.getTextWidth(text)
+  const width = textAdvanceWidth(font, text)
   return (
     <SkiaText
       x={p.x - width / 2}
@@ -202,7 +203,7 @@ export function GaugeReadout({
     if (!unitFont) return null
     const { ascent, descent } = unitFont.getMetrics()
     return {
-      x: box.x + (box.width - unitFont.getTextWidth(unit)) / 2,
+      x: box.x + (box.width - textAdvanceWidth(unitFont, unit)) / 2,
       y: top + valueLineHeight + UNIT_GAP + unitLineHeight / 2 - (ascent + descent) / 2,
     }
   }, [unitFont, unit, box.x, box.width, top, valueLineHeight, unitLineHeight])

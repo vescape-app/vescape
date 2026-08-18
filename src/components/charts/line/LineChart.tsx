@@ -5,6 +5,7 @@ import { Canvas, DashPathEffect, Group, Line, Text, vec } from '@shopify/react-n
 import { BandsLayer } from '@/components/charts/line/BandsLayer'
 import { AXIS_FONT_SIZE, computeChartRow } from '@/components/charts/line/chartLayout'
 import { formatAxisNumber } from '@/components/charts/line/chartFormat'
+import { projectY } from '@/components/charts/line/projection'
 import { useChartStack } from '@/components/charts/line/ChartStackContext'
 import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
 import { ScrubCursor, ScrubLayer } from '@/components/charts/line/ScrubLayer'
@@ -15,7 +16,11 @@ import type { PreparedChart } from '@/components/charts/line/stackData'
 import type { ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
 import { resolveAdaptiveColor } from '@/constants/theme'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
+
+const THRESHOLD_COLOR = theme.alpha(theme.palette.yellow.color, 0.12)
 
 export interface LineChartProps {
   chart: PreparedChart
@@ -115,6 +120,17 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           color={neutral.border}
           strokeWidth={0.5}
         />
+        {/* Thresholds are read against the value axis alone, so they need no camera: panning
+            moves the line under them, never them. */}
+        {chart.thresholds?.map((value) => (
+          <Line
+            key={value}
+            p1={vec(0, projectY(value, chart.left.range, plot.height))}
+            p2={vec(plot.width, projectY(value, chart.left.range, plot.height))}
+            color={THRESHOLD_COLOR}
+            strokeWidth={1}
+          />
+        ))}
       </Group>
 
       <Group clip={clip}>
@@ -228,7 +244,8 @@ function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
     ]
     return values.map((value, index) => {
       const text = formatAxisNumber(value)
-      const x = side === 'left' ? plot.x - 4 - font.getTextWidth(text) : plot.x + plot.width + 4
+      const x =
+        side === 'left' ? plot.x - 4 - textAdvanceWidth(font, text) : plot.x + plot.width + 4
       return { text, x, y: baselines[index] }
     })
   }, [font, plot, range, side])

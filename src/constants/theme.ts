@@ -113,7 +113,7 @@ function alpha(color: string, level: AlphaLevel): string {
   throw new Error(`Unsupported color format for alpha(): ${color}`)
 }
 
-type Hue = {
+interface Hue {
   color: string
   /** Alternate shade within the same hue — aliases `light`. */
   alt: string

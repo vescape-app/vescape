@@ -24,7 +24,7 @@ export interface ChartDomain {
 }
 
 /** An untouched camera belongs to no dataset, so it always resolves to the full domain. */
-const FULL_VIEW: ChartCamera = { spanMs: 0, endMs: null, key: '' }
+const FULL_VIEW: ChartCamera = { spanMs: 0, endMs: null, key: null }
 
 /**
  * Camera shared by every chart of a stack.

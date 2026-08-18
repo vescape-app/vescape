@@ -26,7 +26,7 @@ export function weatherIconColor(icon: WeatherIconSlug): string {
       return theme.weather.snow
     case 'cloud-lightning':
       return theme.weather.thunder
-    default:
+    case 'cloud':
       return theme.weather.cloud
   }
 }

@@ -38,7 +38,7 @@ const BAR_HEIGHT = 2
 const DOT_RADIUS = 2
 
 const STAT_VALUE_FONT_SIZE = 14
-export const STAT_VALUE_HEIGHT = Math.ceil(STAT_VALUE_FONT_SIZE * TEXT_LINE_RATIO)
+const STAT_VALUE_HEIGHT = Math.ceil(STAT_VALUE_FONT_SIZE * TEXT_LINE_RATIO)
 
 export interface BmsStatValue {
   text: DerivedValue<string>

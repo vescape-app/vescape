@@ -14,11 +14,11 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
-import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertFormModal } from '@/modules/alerts/components/AlertFormModal'
-import { type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
-import { type MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
-import { type AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
+import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
+import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
 
 /**
  * The rider's own Alert Rules for one control: rows with mute + delete, and the add/edit form.

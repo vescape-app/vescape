@@ -6,14 +6,11 @@ import { useShallow } from 'zustand/react/shallow'
 import { exitApp } from 'vescape-core'
 
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
+import { useMainScreenHistoryNavigation } from '@/screens/main/useMainScreenHistoryNavigation'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
-import {
-  getLatestSession,
-  getNextRideSession,
-  getPreviousRideSession,
-} from '@/screens/main/mainState'
+import { getNextRideSession, getPreviousRideSession } from '@/screens/main/mainState'
 import { useBleStore } from '@/modules/board/store/bleStore'
-import { useHistoryStore, type HistorySession } from '@/modules/history/store/historyStore'
+import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useHistoryFavorites } from '@/screens/main/history/useHistoryFavorites'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
@@ -28,9 +25,6 @@ import { useThemeStore } from '@/hooks/useTheme'
 interface UseMainScreenControllerArgs {
   mapRef: RefObject<MainMapHandle | null>
 }
-
-const TARGET_INITIAL_HISTORY_SESSIONS = 12
-const MAX_HISTORY_PREFETCH_PAGES = 8
 
 export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs) {
   const backPressedOnce = useRef(false)
@@ -233,87 +227,25 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     requestAnimationFrame(() => mapRef.current?.recenterLive())
   }, [enterTelemetry, mapRef])
 
-  const exitHistory = useCallback(() => {
-    setOpenMediaAssetId(null)
-    historyFavorites.resetHistoryFavorites()
-    void selectSession(null)
-    enterTelemetry()
-    requestAnimationFrame(() =>
-      mapRef.current?.recenterLive({ resetPadding: true, animationDuration: 0 }),
-    )
-  }, [enterTelemetry, historyFavorites, mapRef, selectSession])
-
-  const loadOlderHistoryPages = useCallback(
-    async (targetSessionCount = TARGET_INITIAL_HISTORY_SESSIONS) => {
-      let pagesLoaded = 0
-      while (
-        useHistoryStore.getState().hasMore &&
-        useHistoryStore.getState().sessions.length < targetSessionCount &&
-        pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
-      ) {
-        await useHistoryStore.getState().loadMore()
-        pagesLoaded += 1
-      }
-    },
-    [],
-  )
-
-  const enterHistoryMode = useCallback(async () => {
-    enterHistory()
-    void historyFavorites.loadFavorites()
-    await loadInitial()
-    await loadOlderHistoryPages()
-    if (useMainScreenStore.getState().mode !== 'history') return
-    const latest = getLatestSession(useHistoryStore.getState().sessions)
-    if (latest) {
-      await selectSession(latest)
-    }
-  }, [enterHistory, historyFavorites, loadInitial, loadOlderHistoryPages, selectSession])
-
-  const selectPreviousRide = useCallback(async () => {
-    setOpenMediaAssetId(null)
-    let previous = getPreviousRideSession(
-      useHistoryStore.getState().sessions,
-      useHistoryStore.getState().selectedSession,
-    )
-    let pagesLoaded = 0
-    while (
-      !previous &&
-      useHistoryStore.getState().hasMore &&
-      pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
-    ) {
-      await useHistoryStore.getState().loadMore()
-      previous = getPreviousRideSession(
-        useHistoryStore.getState().sessions,
-        useHistoryStore.getState().selectedSession,
-      )
-      pagesLoaded += 1
-    }
-    if (previous) await selectSession(previous)
-  }, [selectSession])
-
-  const selectNextRide = useCallback(async () => {
-    setOpenMediaAssetId(null)
-    const next = getNextRideSession(
-      useHistoryStore.getState().sessions,
-      useHistoryStore.getState().selectedSession,
-    )
-    if (next) await selectSession(next)
-  }, [selectSession])
-
-  const removeSession = useCallback(() => {
-    void removeSelectedSession()
-  }, [removeSelectedSession])
-
-  const selectRide = useCallback(
-    (session: HistorySession) => {
-      setOpenMediaAssetId(null)
-      setHistorySheetVisible(false)
-      void selectSession(session)
-      enterHistory()
-    },
-    [enterHistory, selectSession, setHistorySheetVisible],
-  )
+  const historyNavigation = useMainScreenHistoryNavigation({
+    mapRef,
+    enterHistory,
+    enterTelemetry,
+    historyFavorites,
+    loadInitial,
+    selectSession,
+    removeSelectedSession,
+    setHistorySheetVisible,
+    setOpenMediaAssetId,
+  })
+  const {
+    exitHistory,
+    enterHistoryMode,
+    selectPreviousRide,
+    selectNextRide,
+    removeSession,
+    selectRide,
+  } = historyNavigation
 
   const handleMapFocus = useCallback(() => {
     if (mode === 'map') return

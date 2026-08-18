@@ -116,7 +116,8 @@ function extraBoardValue(sample: TelemetrySample, metric: ExtraChartMetric): num
       return sample.adc1
     case 'footpadAdc2':
       return sample.adc2
-    default:
+    case 'altitude':
+    case 'gpsAccuracy':
       return null
   }
 }
@@ -127,7 +128,11 @@ function extraGpsValue(sample: HistoryGpsSample, metric: ExtraChartMetric): numb
       return sample.altitudeM
     case 'gpsAccuracy':
       return sample.accuracyM
-    default:
+    case 'pitch':
+    case 'roll':
+    case 'balancePitch':
+    case 'footpadAdc1':
+    case 'footpadAdc2':
       return null
   }
 }

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native'
+import type { ScrollView } from 'react-native'
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { AddBoardWizard } from '@/modules/board/components/AddBoardWizard'

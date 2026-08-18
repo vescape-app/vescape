@@ -5,12 +5,13 @@ import { useSharedValue } from 'react-native-reanimated'
 
 import { BmsCellVoltages } from '@/modules/battery/components/BmsCellVoltages'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
-import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
-import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
+import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
+import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { IconButton } from '@/components/base/IconButton'
-import { computeAutoRange } from '@/components/charts/chartMath'
-import { theme } from '@/constants/theme'
+import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
 import { telemetry } from '@/modules/board/constants/telemetry'
+import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
@@ -18,15 +19,12 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
 import { acquireBmsSeriesStream, releaseBmsSeriesStream } from '@/modules/board/store/bleStore'
 import { routes } from '@/navigation/routes'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const battVoltageCfg = telemetry.battVoltage
 const battCurrentCfg = telemetry.battCurrent
 const battPercentCfg = { ...battVoltageCfg, unit: '%', decimals: 0 }
-const formatPercent = (value: number) => `${Math.round(value)}%`
-const formatVoltage = battVoltageCfg.formatWithUnit
 
-const PERCENT_RANGE = { y: { min: 0, max: 100 } }
+const PERCENT_RANGE = { min: 0, max: 100 }
 
 export default function BatteryScreen() {
   const neutral = useResolvedNeutralColors()
@@ -60,9 +58,18 @@ export default function BatteryScreen() {
     }, []),
   )
 
-  const percentPoints = useMemo(() => toTelemetryChartPoints(batteryPercent), [batteryPercent])
-  const voltagePoints = useMemo(() => toTelemetryChartPoints(batteryVoltage), [batteryVoltage])
-  const currentPoints = useMemo(() => toTelemetryChartPoints(batteryCurrent), [batteryCurrent])
+  const percentSeries = useMemo(
+    () => toChartSeries(batteryPercent, windowMs),
+    [batteryPercent, windowMs],
+  )
+  const voltageSeries = useMemo(
+    () => toChartSeries(batteryVoltage, windowMs),
+    [batteryVoltage, windowMs],
+  )
+  const currentSeries = useMemo(
+    () => toChartSeries(batteryCurrent, windowMs),
+    [batteryCurrent, windowMs],
+  )
 
   const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
   const battery = useMemo(
@@ -74,29 +81,46 @@ export default function BatteryScreen() {
   // % line and only sag under load separates them. Auto-ranging stretches noise to full height.
   const voltageRange = useMemo(() => {
     if (battery.warning == null) {
-      return { y: { min: battery.minVoltage, max: battery.maxVoltage } }
+      return { min: battery.minVoltage, max: battery.maxVoltage }
     }
-    return computeAutoRange(voltagePoints, {
+    return computeAutoRangeFromValues(voltageSeries.vs, {
       includeZero: false,
       minSpan: 5,
       paddingRatio: 0.1,
       fallbackMin: 30,
       fallbackMax: 60,
     })
-  }, [battery, voltagePoints])
-  const currentRange = useMemo(
-    () => computeAutoRange(currentPoints, { baseline: battCurrentCfg.chartRange }),
-    [currentPoints],
-  )
+  }, [battery, voltageSeries])
 
-  const voltageSecondary = useMemo(
-    () => ({
-      points: voltagePoints,
-      range: voltageRange,
-      color: theme.alpha(neutral.textDim, 0.6),
-      formatValue: formatVoltage,
-    }),
-    [neutral.textDim, voltagePoints, voltageRange],
+  // Pack percent with voltage riding on the right axis, then pack current — one stack, so
+  // scrubbing either also moves the cell card above them.
+  const charts = useMemo(
+    () => [
+      toLiveChart({
+        key: 'batteryPercent',
+        metric: battPercentCfg,
+        data: percentSeries,
+        range: PERCENT_RANGE,
+        secondary: {
+          key: 'batteryVoltage',
+          data: voltageSeries,
+          range: voltageRange,
+          color: theme.alpha(neutral.textDim, 0.6),
+          label: battVoltageCfg.label,
+          unit: battVoltageCfg.unit,
+          decimals: battVoltageCfg.decimals,
+        },
+      }),
+      toLiveChart({
+        key: 'batteryCurrent',
+        metric: battCurrentCfg,
+        data: currentSeries,
+        range: computeAutoRangeFromValues(currentSeries.vs, {
+          baseline: battCurrentCfg.chartRange,
+        }),
+      }),
+    ],
+    [currentSeries, neutral.textDim, percentSeries, voltageRange, voltageSeries],
   )
 
   // Gauge reads the latest of the calm ~1Hz decimated series — the same SoC source/cadence the
@@ -117,26 +141,7 @@ export default function BatteryScreen() {
     >
       {/* Cell groups sit above the charts so a scrubbing thumb doesn't cover them. */}
       <BmsCellVoltages scrubTimeMs={scrubTimeMs} windowMs={windowMs} />
-      <MetricDetailChart
-        metric={battPercentCfg}
-        points={percentPoints}
-        range={PERCENT_RANGE}
-        formatValue={formatPercent}
-        windowMs={windowMs}
-        secondary={voltageSecondary}
-        scrubTimeMs={scrubTimeMs}
-        height={80}
-      />
-      <MetricDetailChart
-        label={battCurrentCfg.label}
-        metric={battCurrentCfg}
-        points={currentPoints}
-        range={currentRange}
-        windowMs={windowMs}
-        scrubTimeMs={scrubTimeMs}
-        reserveRightAxis
-        height={80}
-      />
+      <LiveChartStack charts={charts} scrubTimeMs={scrubTimeMs} />
     </ControlDetailLayout>
   )
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Animated, Dimensions, Modal, Pressable, StyleSheet, View } from 'react-native'
+import type { View } from 'react-native'
+import { Animated, Dimensions, Modal, Pressable, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {

@@ -24,7 +24,7 @@ import {
 
 export type HillsPresetId = 'flat' | 'large' | 'small' | 'pumptrack' | 'custom'
 
-export const HILLS_PRESETS: Record<
+const HILLS_PRESETS: Record<
   Exclude<HillsPresetId, 'custom'>,
   { label: string; heightMeters: number; spacingMeters: number }
 > = {

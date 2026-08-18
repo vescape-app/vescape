@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
 import { interaction, theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 interface HistoryStatsBarProps {
   session: HistorySession
@@ -200,7 +201,7 @@ function formatCount(value: number): string {
 }
 
 function formatDistance(valueM: number | null): Pick<StatItem, 'value' | 'unit'> {
-  if (valueM == null) return { value: '-' }
+  if (valueM == null) return { value: DASH }
   if (valueM < 1000) return { value: String(Math.round(valueM)), unit: 'm' }
   return { value: (valueM / 1000).toFixed(1), unit: 'km' }
 }
@@ -223,7 +224,7 @@ function formatSpeed(valueKmh: number): string {
 }
 
 function formatTemp(value: number | null): Pick<StatItem, 'value' | 'unit'> {
-  if (value == null) return { value: '-' }
+  if (value == null) return { value: DASH }
   return { value: String(Math.round(value)), unit: '°C' }
 }
 

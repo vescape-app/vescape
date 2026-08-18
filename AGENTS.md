@@ -49,7 +49,7 @@ Do not fix local machine, shell, PATH, Java, Android SDK, Maestro, or other CLI/
 
 ## Architecture Discipline
 
-This is a PoC, but keep it sharp:
+Keep the architecture sharp:
 
 - Native owns durable truth and long-lived work; JS renders state and sends intents.
 - Prefer clear architecture over compatibility, shortcuts, or hidden assumptions.
@@ -129,11 +129,7 @@ When adding or changing a reusable UI component (or a new visual variant/state o
 
 ### Issue tracker
 
-Issues and PRDs are tracked in GitHub Issues for `KacperKozak/vescape`. See `docs/agents/issue-tracker.md`.
-
-### E2E tests
-
-Use the local `/e2e` skill for Maestro E2E runs. It covers fresh-shell execution, Android device checks, app install rules, and env-vs-project boundaries.
+Issues and PRDs are tracked in GitHub Issues for `vescape-app/vescape`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

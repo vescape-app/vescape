@@ -37,7 +37,7 @@ import {
   verifyGhAuthentication,
   verifyRemoteCommit,
 } from './github'
-import { publishGithubPrerelease } from './githubPrerelease'
+import { publishGithubRelease } from './githubRelease'
 import { internalReleaseProgress, workflowElapsed } from './progress'
 import {
   bumpMarketingVersion,
@@ -46,7 +46,7 @@ import {
   verifyReleasePreparationReady,
 } from './prepare'
 import { Dashboard } from './dashboard/Dashboard'
-import { availableActions, type ActionId } from './dashboard/actions'
+import { availableActions, defaultActionIndex, type ActionId } from './dashboard/actions'
 import { initialReleaseState, loadReleaseState, type ReleaseState } from './dashboard/state'
 import { Confirm, Hint, Menu, Rule } from './ui'
 import {
@@ -84,7 +84,8 @@ const versionBumps: ReadonlyArray<{ bump: VersionBump; label: string }> = [
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
-const CONFIRM_INDEX = 1
+const CONFIRM_INDEX = 0
+const CANCEL_INDEX = 1
 
 export interface ReleaseCliOptions {
   initialPhase?: 'dashboard' | 'build-source'
@@ -152,6 +153,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   useEffect(() => {
     if (initialPhase === 'dashboard') loadDashboard()
+    // Preparation already fixed the commit to build; asking for it again answers nothing.
+    else if (initialSourceRef) void prepare()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -173,6 +176,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   }, [phase, sourceRef])
 
   const actions = availableActions(releaseState)
+
+  const activeRunId = releaseState.activeRun?.id ?? null
+  useEffect(() => {
+    if (phase === 'dashboard') setIndex(defaultActionIndex(actions, releaseState))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRunId])
 
   const prepareVersionMenu = async () => {
     goto('checking')
@@ -271,7 +280,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       setRolloutInput(String(next.rolloutPercentage ?? 10))
       goto('production-percentage')
     } else {
-      goto('production-confirm')
+      goto('production-confirm', CANCEL_INDEX)
     }
   }
 
@@ -344,7 +353,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     setProductionPlan({ ...productionPlan, rolloutPercentage: percentage })
-    goto('production-confirm')
+    goto('production-confirm', CANCEL_INDEX)
   }
 
   const prepareInternalRuns = async () => {
@@ -380,9 +389,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     const outcome = releaseOutcome(manifest)
     if (outcome.kind === 'success') {
-      setStatus(`Publishing v${manifest.marketingVersion} GitHub prerelease…`)
-      const githubRelease = await publishGithubPrerelease(repo, manifest)
-      setStatus(`Internal ready · GitHub prerelease ${githubRelease}`)
+      setStatus('Internal ready')
     } else if (outcome.kind === 'partial') {
       setStatus(`${outcome.succeeded} uploaded; ${outcome.failed} failed`)
       setRetryRunId(workflowRun.id)
@@ -429,8 +436,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   const dispatch = async (confirmedPlan: Plan) => {
     goto('dispatching')
-    setStatus(`Dispatching trusted Android and iOS workflows from ${confirmedPlan.workflowRef}…`)
+    setStatus(`Publishing the v${confirmedPlan.marketingVersion} GitHub release…`)
     try {
+      const githubRelease = await publishGithubRelease(confirmedPlan.repo, confirmedPlan)
+      setStatus(
+        `GitHub release ${githubRelease} · dispatching Android and iOS workflows from ${confirmedPlan.workflowRef}…`,
+      )
       const payload = createDispatchPayload(
         confirmedPlan.sourceSha,
         confirmedPlan.requestId,
@@ -725,10 +736,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             },
             {
               label: 'Next steps',
-              value: 'notes → commit dev → merge into main → push → Android + iOS internal build',
+              value:
+                'notes → commit dev → fast-forward main → push → GitHub release → Android + iOS internal build',
             },
           ]}
-          note="No Play upload, tag, GitHub Release, or production mutation happens yet."
+          note="No Play upload or production mutation happens yet."
           confirmLabel="Prepare and push this release candidate"
           index={index}
         />

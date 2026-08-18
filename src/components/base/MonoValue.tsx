@@ -10,6 +10,7 @@ import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 
 import { theme, type MonoWeight } from '@/constants/theme'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { textAdvanceWidth } from '../../helpers/skiaText'
 import { useResolvedColor } from '@/hooks/useTheme'
 
 export type MonoValueAlign = 'left' | 'center' | 'right'
@@ -73,7 +74,7 @@ export function MonoText({
   const textX = useDerivedValue(() => {
     if (!font || align === 'left') return x
     const box = typeof width === 'number' ? width : width.value
-    const free = box - font.getTextWidth(text.value)
+    const free = box - textAdvanceWidth(font, text.value)
     return x + (align === 'center' ? free / 2 : free)
   })
 

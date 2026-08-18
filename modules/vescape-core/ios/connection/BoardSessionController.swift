@@ -25,6 +25,41 @@ internal struct BoardConnectConfig {
   /// Raw debug Session Recorder gate (dev setting, `setDebugRecordingEnabled`). Replay sessions
   /// always run with `false` so a replay never re-records itself.
   var recordingEnabled = false
+
+  /// Resolve a stored board's Board Link into a runtime connect config. Returns `nil` when the
+  /// board is unlinked (JS routes those to Board Probe instead). Dumb connect (ADR 0015): the
+  /// transport is read straight from the link, never rediscovered.
+  ///
+  /// Shared by the JS connect bridge and the headless resume path (#378), which rebuilds the exact
+  /// same config from the same stored link after a state-restoration relaunch.
+  static func resolve(
+    boardId: String,
+    appData: AppDataRepository,
+    recordingEnabled: Bool = false
+  ) -> BoardConnectConfig? {
+    guard let board = appData.getBoard(boardId) else { return nil }
+    guard let link = board["link"] as? [String: Any?] else { return nil }
+    guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
+    let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
+    let name = board["name"] as? String ?? "VESC Board"
+    let settings = appData.getSettings()
+    let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
+    return BoardConnectConfig(
+      appBoardId: boardId,
+      bleId: bleId,
+      name: name,
+      transport: transport,
+      linkVersion: AppDataRepository.intValue(link["linkVersion"] ?? nil),
+      hasBms: link["hasBms"] as? Bool,
+      vescFirmwareVersion: link["vescFirmwareVersion"] as? String,
+      refloatVersion: link["refloatVersion"] as? String,
+      refloatBaseVersion: link["refloatBaseVersion"] as? String,
+      pollIntervalMs: hz > 0 ? 1000 / hz : 0,
+      batteryConfig: AppDataRepository.normalizeBatteryConfig(board["batteryConfig"] ?? nil),
+      liveHistoryLimitMinutes: AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil) ?? 5,
+      recordingEnabled: recordingEnabled
+    )
+  }
 }
 
 /// Owns the live Board Session: drives connect phases off GATT callbacks, seeds the stored
@@ -64,7 +99,13 @@ internal final class BoardSessionController: VescGattListener {
   /// Called whenever board or scan phase changes so the module can recompose `onLiveState`.
   var onStateChanged: (() -> Void)?
 
-  private lazy var gatt = VescGattClient(listener: self)
+  /// The one central carrying a CoreBluetooth restore identifier (ADR 0034), so a jetsam kill
+  /// mid-ride is recoverable: the board's next notification relaunches the app and iOS replays this
+  /// central's state into `onGattRestored`.
+  private lazy var gatt = VescGattClient(
+    listener: self,
+    restoreIdentifier: VescGattClient.sessionRestoreIdentifier
+  )
   /// Transport seam (ADR 0024): a replay session swaps in a `ReplayTransport` for its lifetime;
   /// everything else drives the real GATT client. Set on connect, cleared on session end. All
   /// session-facing link traffic goes through `transport`; scan stays on `gatt` (not session-bound).
@@ -131,7 +172,10 @@ internal final class BoardSessionController: VescGattListener {
   private let appData: AppDataRepository
   private lazy var recordingCoordinator = RecordingCoordinator(appData: appData)
   private lazy var configController = ConfigRWController()
-  private lazy var gpsMonitor = GpsMonitor { [weak self] location in self?.onLocationUpdated(location) }
+  private lazy var gpsMonitor = GpsMonitor(
+    onLocation: { [weak self] location in self?.onLocationUpdated(location) },
+    onAuthorizationResolved: { [weak self] in self?.onStateChanged?() }
+  )
   private lazy var alertAudioPlayer = AlertAudioPlayer()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
   private let legalPolicyCatalog = LegalPolicyCatalog()
@@ -156,7 +200,9 @@ internal final class BoardSessionController: VescGattListener {
   private var latestPreciseLocation: TelemetryLocationCapture?
   private let courseDeriver = GpsCourseDeriver()
   private var recentLocations: [[String: Any?]] = []
-  private var gpsError: String?
+  /// Lives in the monitor, not mirrored here: authorization can be answered after `start()` returns,
+  /// so a stored copy would go stale the moment the permission dialog resolves.
+  private var gpsError: String? { gpsMonitor.error }
   private var gpsSessionStartedAt: Int64?
   private var gpsFixCount = 0
   private var gpsPreciseFixCount = 0
@@ -428,7 +474,7 @@ internal final class BoardSessionController: VescGattListener {
   /// enough to make the marker jump off the recorded track.
   func startLocationUpdates() {
     guard replayTransport == nil else { return }
-    gpsError = gpsMonitor.start()
+    _ = gpsMonitor.start()
     onStateChanged?()
   }
 
@@ -440,6 +486,7 @@ internal final class BoardSessionController: VescGattListener {
   func setTelemetryRecordingEnabled(_ enabled: Bool) -> Bool {
     let ok = recordingCoordinator.setTelemetryRecordingEnabled(enabled)
     if enabled && ok { startLocationUpdates() }
+    syncResumeMarkerRecording()
     onStateChanged?()
     return ok
   }
@@ -563,10 +610,116 @@ internal final class BoardSessionController: VescGattListener {
 
   private let geigerSimulationId = "vescape.preview.geiger"
 
+  // MARK: - Headless resume (#378, ADR 0034)
+
+  /// Marker of the session this launch may have to resume, held from launch until restoration is
+  /// adopted (or the wait expires). While set, the Live Activity counts as claimed so the launch
+  /// reap does not kill the surface the resume is about to reuse.
+  private var pendingResume: SessionResumeMarker?
+  private var pendingResumeExpiry: DispatchWorkItem?
+  /// How long a launch waits for `willRestoreState` before deciding no restoration is coming.
+  /// CoreBluetooth delivers it inside the launch sequence, so this only guards the case where it
+  /// never arrives at all (marker outlived the connection).
+  private let pendingResumeWindowSeconds = 15.0
+
+  /// Called from the app-delegate subscriber inside `didFinishLaunching` (ADR 0034). CoreBluetooth
+  /// only replays preserved state to a central re-created with the same restore identifier during
+  /// launch — the session central is `lazy` and JS-triggered, which is far too late — so this
+  /// constructs it eagerly. Gated on the resume marker: a normal cold start spins up no BLE.
+  func prepareForLaunch() {
+    guard session == nil, pendingResume == nil else { return }
+    guard let marker = SessionResumeStore.shared.pending else { return }
+    pendingResume = marker
+    let expiry = DispatchWorkItem { [weak self] in self?.expirePendingResume() }
+    pendingResumeExpiry = expiry
+    DispatchQueue.main.asyncAfter(deadline: .now() + pendingResumeWindowSeconds, execute: expiry)
+    // Touching the lazy client is the whole point: its init builds the restore-identified central.
+    _ = gatt
+  }
+
+  /// No restoration arrived. Release the Live Activity claim so the launch reap can do its job on
+  /// what is, after all, a ghost. The marker itself is left alone: it is the trapdoor for the next
+  /// board notification, and a live session re-writes it anyway.
+  private func expirePendingResume() {
+    pendingResumeExpiry = nil
+    guard pendingResume != nil, session == nil else {
+      pendingResume = nil
+      return
+    }
+    pendingResume = nil
+    reapOrphanLiveActivities()
+  }
+
+  private func clearPendingResume() {
+    pendingResumeExpiry?.cancel()
+    pendingResumeExpiry = nil
+    pendingResume = nil
+  }
+
+  /// Rebuild the Board Session that was live when the process died. Reuses the ordinary session
+  /// wiring (`beginSession`) rather than duplicating it, so recording, GPS, alerts and the Live
+  /// Activity resume exactly as a foreground connect starts them — the only differences are where
+  /// the link comes from (a restored peripheral instead of a fresh connect) and that the recording
+  /// keeps appending to the open recording.
+  private func resumeSession(marker: SessionResumeMarker, restoredPeripheralIds: [String]) {
+    guard session == nil else { return }
+    guard let config = BoardConnectConfig.resolve(boardId: marker.appBoardId, appData: appData) else {
+      // Board unlinked or deleted while the app was dead — nothing to resume.
+      SessionResumeStore.shared.clear()
+      clearPendingResume()
+      reapOrphanLiveActivities()
+      return
+    }
+    gatt.recorder = { [weak self] in self?.recordingCoordinator.currentRecorder() }
+    batteryEstimator.ensureLoaded()
+    liveSeries.emit = { [weak self] name, body in self?.emit?(name, body) }
+    liveSeries.generation = { [weak self] in self?.connectionSeq ?? 0 }
+    liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
+    liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
+    // Re-arm the recording request *before* the session begins so `beginBoardSession` enables the
+    // telemetry store on its normal path. Nothing resets the store's tables: frames land in the
+    // same open recording and the existing gap-splitter explains the dead interval.
+    if marker.recordingActive {
+      _ = recordingCoordinator.setTelemetryRecordingEnabled(true)
+    }
+    beginSession(config: config, resume: true, onSuccess: {}, onError: { _, _ in })
+    let restoredId = restoredPeripheralIds.first {
+      $0.caseInsensitiveCompare(config.bleId) == .orderedSame
+    }
+    if let restoredId, gatt.adoptRestored(peripheralId: restoredId) {
+      recordConnectionDiagnostic(
+        "session_restored",
+        operation: "connect",
+        message: "Board Session resumed from CoreBluetooth state restoration",
+        extra: ["recording_active": marker.recordingActive]
+      )
+    } else {
+      // Restored with no usable peripheral: the link died while the process was dead. Persistent
+      // connect keeps retrying until the board comes back — the same path a mid-ride drop takes.
+      recordConnectionDiagnostic(
+        "session_restored",
+        operation: "connect",
+        message: "Board Session resumed without a restored peripheral",
+        extra: ["recording_active": marker.recordingActive]
+      )
+      transport.connect(peripheralId: config.bleId)
+    }
+    armConnectTimeout()
+    clearPendingResume()
+  }
+
+  /// Refresh the durable resume marker's recording flag; recording is toggled mid-session by
+  /// auto-recording at board-ready and by the JS switch.
+  private func syncResumeMarkerRecording() {
+    guard session != nil, replayTransport == nil else { return }
+    SessionResumeStore.shared.setRecordingActive(recordingCoordinator.telemetryRecordingEnabled)
+  }
+
   // MARK: - Session lifecycle
 
   private func beginSession(
     config: BoardConnectConfig,
+    resume: Bool = false,
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -621,7 +774,7 @@ internal final class BoardSessionController: VescGattListener {
     // session end stops the monitor anyway, so there is nothing to unwind here.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
     if replayTransport == nil {
-      gpsError = gpsMonitor.start()
+      _ = gpsMonitor.start()
     } else if gpsMonitor.active {
       gpsMonitor.stop()
     }
@@ -657,13 +810,35 @@ internal final class BoardSessionController: VescGattListener {
     if let session {
       updateLinkIntegrity(session.markOutdatedIfIncomplete(expected: config.linkIdentity()))
     }
+    // The trapdoor for a jetsam kill (ADR 0034): with this marker on disk the next launch
+    // re-creates the restore-identified central in `didFinishLaunching` and rebuilds this session.
+    // A replay has no board to relaunch for, so it writes nothing.
+    if replayTransport == nil {
+      SessionResumeStore.shared.save(
+        appBoardId: config.appBoardId,
+        bleId: config.bleId,
+        recordingActive: recordingCoordinator.telemetryRecordingEnabled,
+        nowMs: nowMs()
+      )
+    }
     // Start the Live Activity while foreground (connect is user-initiated); it then updates from
     // background BLE callbacks for the rest of the session. Mirrors Android showing the chip from
     // session start.
-    liveActivity.start(state: currentLiveState())
+    // A headless resume has no foreground to request one in, so it re-adopts the activity the dead
+    // process left behind instead (`Activity.request` fails in the background; `update` does not).
+    // Any background session start is in the same boat, restored or not: a headless relaunch that
+    // auto-connects instead of restoring must not end a surviving activity it cannot replace.
+    if resume || !appIsForeground {
+      liveActivity.resume(state: currentLiveState())
+    } else {
+      liveActivity.start(state: currentLiveState())
+    }
   }
 
   private func endSession(phase: BoardPhase, error: String?) {
+    // Nothing left to resurrect: drop the trapdoor so the next cold start stays BLE-free (ADR 0034).
+    SessionResumeStore.shared.clear()
+    clearPendingResume()
     boardMoveController.stop()
     // Final write so the persisted last battery is fresh, not up to 30s stale (runs before config clears).
     persistLastBattery(percent: latestBatterySoc, voltage: latestBatteryVoltage, now: nowMs(), force: true)
@@ -829,6 +1004,9 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func fail(code: String, message: String) {
+    // Same reasoning as `endSession`: no live session means nothing to resurrect.
+    SessionResumeStore.shared.clear()
+    clearPendingResume()
     recordConnectionDiagnostic(
       "ble_connect_failed",
       operation: "connect",
@@ -949,6 +1127,15 @@ internal final class BoardSessionController: VescGattListener {
       "rssi": rssi,
       "serviceUUIDs": serviceUUIDs,
     ])
+  }
+
+  /// CoreBluetooth replayed the session central's preserved state into this launch (ADR 0034).
+  /// Rebuild the Board Session natively — no JS is running, and none is needed.
+  func onGattRestored(peripheralIds: [String]) {
+    guard session == nil else { return }
+    guard let marker = pendingResume ?? SessionResumeStore.shared.pending else { return }
+    pendingResume = marker
+    resumeSession(marker: marker, restoredPeripheralIds: peripheralIds)
   }
 
   func onScanFailure(_ message: String) {
@@ -1266,6 +1453,8 @@ internal final class BoardSessionController: VescGattListener {
     recordConnectionDiagnostic("board_ready", operation: "connect", message: "Board telemetry received")
     if let config {
       recordingCoordinator.markBoardReady(config: config)
+      // Auto-recording may have just started the recording; the resume marker must agree.
+      syncResumeMarkerRecording()
     }
     if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
@@ -1393,6 +1582,28 @@ internal final class BoardSessionController: VescGattListener {
     liveActivity.update(currentLiveState())
   }
 
+  /// Reap Live Activities left behind by a process that died mid-ride (ADR 0034). Called at app
+  /// launch: an activity is an orphan only when nothing in this process wants it.
+  func reapOrphanLiveActivities() {
+    guard !liveActivityIsClaimed else { return }
+    liveActivity.reapOrphans()
+  }
+
+  /// Whether a running or resuming session owns the on-screen activity. The pending-resume arm
+  /// covers the window between a restoration launch and the rebuilt session adopting the activity:
+  /// reaping there would destroy the very surface the resume is about to reuse, and the background
+  /// launch could not mint a replacement (#378).
+  private var liveActivityIsClaimed: Bool {
+    session?.isActive == true || pendingResume != nil
+  }
+
+  /// End the activity for a stop that no session accepted — the widget's Stop on a ghost. Ending is
+  /// background-safe and needs no session, which is what makes a ghost killable at all.
+  func endOrphanLiveActivity() {
+    guard !liveActivityIsClaimed else { return }
+    liveActivity.end()
+  }
+
   private func endLiveActivity() {
     liveActivity.end()
     liveBatteryPercent = nil
@@ -1501,7 +1712,11 @@ internal final class BoardSessionController: VescGattListener {
       deviceName: config.name,
       canId: canId,
       telemetry: telemetry,
-      location: latestPreciseLocation
+      // Recorded frames refuse a stale fix (ADR 0034); live display keeps the last known one.
+      location: telemetryLocationFreshEnoughToRecord(
+        latestPreciseLocation,
+        capturedAtMs: telemetry.lastPacketAt
+      )
     )
   }
 
@@ -1619,7 +1834,7 @@ internal final class BoardSessionController: VescGattListener {
       message: "GPS Board Session summary",
       extra: [
         "recording_enabled": recordingCoordinator.telemetryRecordingEnabled,
-        "updates_started": gpsMonitor.active,
+        "updates_started": gpsMonitor.updatesStarted,
         "fix_count": gpsFixCount,
         "precise_fix_count": gpsPreciseFixCount,
         "first_fix_delay_ms": gpsFirstFixAt.map { $0 - startedAt },
@@ -1860,11 +2075,16 @@ enum BoardSessionCommands {
   @discardableResult
   static func stopRide() -> Bool {
     let controller = BoardSessionController.shared
-    return ManualBoardStop(
+    let accepted = ManualBoardStop(
       defaults: .standard,
       activeBoardId: { controller.connectedBoardId },
       stop: { controller.stopBoard() }
     ).perform()
+    // A stop no session accepted means the surface is a ghost from a killed process (ADR 0034).
+    // The session stays a no-op, but the Live Activity must still die — otherwise Stop on a ghost
+    // does nothing and the activity is unkillable from the widget.
+    if !accepted { controller.endOrphanLiveActivity() }
+    return accepted
   }
 }
 

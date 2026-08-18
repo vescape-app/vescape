@@ -148,6 +148,9 @@ internal final class BoardTransportDetector: VescGattListener {
 
   func onDeviceDiscovered(id: String, name: String, rssi: Int, serviceUUIDs: [String]) {}
   func onScanFailure(_ message: String) {}
+  /// The probe’s client is built without a restore identifier (ADR 0034) — probing is never
+  /// resurrected — so its central never restores and this can never fire.
+  func onGattRestored(peripheralIds: [String]) {}
   func onGattConnected() {
     recordDiagnostic(
       "board_probe_ble_connected",

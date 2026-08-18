@@ -9,7 +9,6 @@ interface TuneGroupGridProps {
   title: string
   subtitle?: string
   collapsible?: boolean
-  collapsedByDefault?: boolean
   children: React.ReactNode
 }
 
@@ -70,10 +69,9 @@ export function TuneGroupGrid({
   title,
   subtitle,
   collapsible = false,
-  collapsedByDefault = true,
   children,
 }: TuneGroupGridProps) {
-  const [collapsed, setCollapsed] = useState(collapsedByDefault)
+  const [collapsed, setCollapsed] = useState(true)
   const cells = Children.toArray(children)
   const rows = chunkCells(cells)
 

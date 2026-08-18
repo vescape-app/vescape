@@ -71,7 +71,7 @@ export function MapTargetEditBody({
             <MapPointMediaPreview assets={media.assets} onRemove={media.remove} />
             <MapPointMediaActions
               loading={media.saving}
-              onAdd={media.pick}
+              onAdd={() => void media.pick()}
               onCapturePhoto={() => void media.capture(['images'])}
               onCaptureVideo={() => void media.capture(['videos'])}
             />
@@ -96,7 +96,7 @@ export function MapTargetEditBody({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Save map feature"
-          onPress={handleSave}
+          onPress={() => void handleSave()}
           style={({ pressed }) => [
             mapTargetSheetChromeStyles.actionButton,
             styles.saveButton,

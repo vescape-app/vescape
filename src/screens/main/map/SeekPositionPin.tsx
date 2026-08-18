@@ -1,6 +1,7 @@
 import { CircleLayer, ShapeSource } from '@rnmapbox/maps'
 import { useCallback, useMemo, useRef } from 'react'
-import { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
+import { useAnimatedReaction } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { scrubHeadMs } from '@/modules/history/lib/chartFocus'
@@ -56,7 +57,7 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
       'worklet'
       const { ts, lon, lat } = track
       if (timeMs == null || ts.length === 0) {
-        runOnJS(moveTo)(0, 0, false)
+        scheduleOnRN(moveTo, 0, 0, false)
         return
       }
       // Binary search for the sample bracketing the moment, then take the nearer of the two.
@@ -68,7 +69,7 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
         else hi = mid
       }
       const index = lo > 0 && timeMs - ts[lo - 1] < ts[lo] - timeMs ? lo - 1 : lo
-      runOnJS(moveTo)(lon[index], lat[index], true)
+      scheduleOnRN(moveTo, lon[index], lat[index], true)
     },
     [moveTo, track],
   )

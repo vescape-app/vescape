@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
-export type SettingsSectionTitleProps = {
+export interface SettingsSectionTitleProps {
   children: string
 }
 

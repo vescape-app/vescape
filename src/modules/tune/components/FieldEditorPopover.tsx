@@ -5,7 +5,7 @@ import { CaretDownIcon, CheckIcon, FadersIcon, type Icon } from 'phosphor-react-
 
 import { Button } from '@/components/base/Button'
 import { Input } from '@/components/forms/Input'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
 import { theme } from '@/constants/theme'
 import { snapValue } from '@/modules/tune/lib/sliderDefinitions'

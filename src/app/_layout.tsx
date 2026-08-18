@@ -214,7 +214,9 @@ function RootLayout() {
             pointerEvents="box-none"
             style={{
               position: 'absolute',
-              top: Math.max(2, insets.top - 6),
+              // DevBadge owns 8px of real top hit padding; offset it so the visible pill stays put.
+              top: Math.max(2, insets.top - 6) - 8,
+              bottom: 0,
               left: 0,
               right: 0,
               zIndex: 100,

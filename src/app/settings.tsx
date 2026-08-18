@@ -25,7 +25,7 @@ import {
 
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
-import { formatBytes } from '@/helpers/format'
+import { DASH, formatBytes } from '@/helpers/format'
 import { IconButton } from '@/components/base/IconButton'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
@@ -38,7 +38,7 @@ import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { openAppUpdate } from 'vescape-core'
 
-const appVersion = Constants.expoConfig?.version ?? '–'
+const appVersion = Constants.expoConfig?.version ?? DASH
 
 export default function SettingsScreen() {
   const db = useSettingsDatabaseOps()
@@ -80,7 +80,7 @@ export default function SettingsScreen() {
             <View style={styles.headerItem}>
               <DatabaseIcon size={14} color={theme.status.warning.color} weight="duotone" />
               <Text style={styles.headerValue}>
-                {db.dbSize != null ? formatBytes(db.dbSize) : '–'}
+                {db.dbSize != null ? formatBytes(db.dbSize) : DASH}
               </Text>
             </View>
           </View>

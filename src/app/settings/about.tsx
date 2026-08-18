@@ -24,7 +24,7 @@ export default function AboutScreen() {
             iconColor={theme.palette.cyan.color}
             label="Privacy policy"
             hint="Data, Group Ride sharing, and contact"
-            onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+            onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
           />
         </SettingsCard>
         <SettingsCard>

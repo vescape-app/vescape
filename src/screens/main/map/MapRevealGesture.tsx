@@ -137,6 +137,13 @@ export function MapRevealGesture({
   onFinish,
 }: MapRevealGestureProps) {
   'use no memo'
+  // The detector only exists while a drag is possible and none is running yet, so any value left
+  // here by an earlier tree (a Fast Refresh mid-reveal) is stale and would fade the face out.
+  useEffect(() => {
+    progress.value = 0
+    dragOpacity.value = 0
+  }, [dragOpacity, progress])
+
   const handlePanStart = useLatestCallback(onPanStart)
   const handlePan = useLatestCallback(onPan)
   const handleZoomStart = useLatestCallback(onZoomStart)

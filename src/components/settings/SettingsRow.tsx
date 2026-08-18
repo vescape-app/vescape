@@ -1,11 +1,11 @@
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretRightIcon } from 'phosphor-react-native'
 import type { Icon, IconWeight } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
 
-export type SettingsRowProps = {
+export interface SettingsRowProps {
   icon: Icon
   iconColor?: string
   iconWeight?: IconWeight

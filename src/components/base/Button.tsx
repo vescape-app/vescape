@@ -69,6 +69,7 @@ export function Button({
         icon
       ) : null}
       <Text
+        numberOfLines={1}
         style={[
           styles.label,
           size === 'sm' ? styles.labelSm : size === 'lg' ? styles.labelLg : styles.labelMd,
@@ -171,6 +172,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontWeight: '700',
+    flexShrink: 1,
   },
   labelMd: {
     fontSize: 13,

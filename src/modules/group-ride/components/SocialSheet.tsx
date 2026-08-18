@@ -5,17 +5,12 @@ import {
   BroadcastIcon,
   ChartLineUpIcon,
   CrosshairIcon,
-  DeviceMobileIcon,
-  GaugeIcon,
-  BatteryMediumIcon,
   PaletteIcon,
   PlusIcon,
   SignOutIcon,
-  ThermometerSimpleIcon,
   UsersIcon,
   WarningIcon,
   XIcon,
-  type Icon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
 import { Button } from '@/components/base/Button'
@@ -25,20 +20,12 @@ import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { InputWidget } from '@/components/widgets/InputWidget'
 import { LinkWidget } from '@/components/widgets/LinkWidget'
 import { riderColorOptions } from '@/modules/group-ride/constants/riderColors'
-import {
-  batteryLevel,
-  type TelemetryLevel,
-  TELEMETRY_LEVEL_COLOR,
-  tempLevel,
-} from '@/modules/board/constants/telemetryThresholds'
-import { DASH, fmtDistance, fmtPercent, fmtSpeedKmh, fmtTempC } from '@/helpers/format'
-import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
-import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { routes } from '@/navigation/routes'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { theme } from '@/constants/theme'
+import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
 interface SocialSheetProps {
   /** Called before navigating away so the host can dismiss the sheet. */
@@ -238,181 +225,28 @@ function LiveBadge({ connected }: { connected: boolean }) {
   )
 }
 
-/** Three-column roster of the riders in the active ride. */
-function RosterGrid({
-  rows,
-  accent,
-  connected,
-}: {
-  rows: RosterRider[]
-  accent: string
-  connected: boolean
-}) {
-  return (
-    <View style={styles.grid}>
-      {rows.map((rider) => (
-        <RiderCell key={rider.id} rider={rider} accent={accent} connected={connected} />
-      ))}
-    </View>
-  )
-}
-
-interface RiderStat {
-  value?: string
-  level: TelemetryLevel
-}
-
-interface RiderStats {
-  speed: RiderStat
-  soc: RiderStat
-  motor: RiderStat
-  ctrl: RiderStat
-  phone: RiderStat
-}
-
-const NORMAL_STAT: RiderStat = { level: 'normal' }
-
-/** Per-Rider telemetry values for the roster stat grid, each carrying its alert level. */
-function riderStats(p: RosterRider['presence']): RiderStats {
-  if (!p)
-    return {
-      speed: NORMAL_STAT,
-      soc: NORMAL_STAT,
-      motor: NORMAL_STAT,
-      ctrl: NORMAL_STAT,
-      phone: NORMAL_STAT,
-    }
-  return {
-    speed: {
-      value: p.speed != null ? fmtSpeedKmh(p.speed) : undefined,
-      level: 'normal',
-    },
-    soc: {
-      value: p.soc != null ? fmtPercent(p.soc) : undefined,
-      level: batteryLevel(p.soc),
-    },
-    motor: {
-      value: p.motorTemp != null ? `M ${fmtTempC(p.motorTemp)}` : undefined,
-      level: tempLevel(p.motorTemp),
-    },
-    ctrl: {
-      value: p.ctrlTemp != null ? `C ${fmtTempC(p.ctrlTemp)}` : undefined,
-      level: tempLevel(p.ctrlTemp),
-    },
-    phone: {
-      value: p.phoneBattery != null ? fmtPercent(p.phoneBattery) : undefined,
-      level: 'normal',
-    },
-  }
-}
-
-/** One fixed column of the stat grid: its icon is always shown; a missing value reads as a dash.
- *  When `level` is warning/critical the icon and value adopt the matching alert color. */
-function StatCell({
-  icon: StatIcon,
-  value,
-  level = 'normal',
-}: {
-  icon: Icon
-  value?: string
-  level?: TelemetryLevel
-}) {
-  const alert = level !== 'normal'
-  const color = alert ? TELEMETRY_LEVEL_COLOR[level] : theme.neutral.textSecondary
-  return (
-    <View style={styles.statCell}>
-      <View style={styles.statIconSlot}>
-        <StatIcon size={11} color={color} weight="bold" />
-      </View>
-      <Text style={[styles.statValue, alert && { color }]} numberOfLines={1}>
-        {value ?? DASH}
-      </Text>
-    </View>
-  )
-}
-
-function RiderCell({
-  rider,
-  accent,
-  connected,
-}: {
-  rider: RosterRider
-  accent: string
-  connected: boolean
-}) {
-  const dotColor = rider.color || theme.neutral.textMuted
-  const boardName = rider.presence?.boardName?.trim() || 'Board not connected'
-  // Only claim a rider is "Live" when our own relay link is up — otherwise the roster is just
-  // the last snapshot we received and we can't know it's current.
-  const fresh = !rider.stale && connected
-  const statusColor = fresh ? accent : theme.neutral.textMuted
-  const status = fresh ? 'Live' : 'Stale'
-  const s = riderStats(rider.presence)
-
-  return (
-    <View style={styles.riderCell}>
-      <View style={styles.riderHead}>
-        <View style={[styles.riderDot, { backgroundColor: dotColor }]} />
-        <Text style={styles.riderName} numberOfLines={1}>
-          {rider.name}
-        </Text>
-        {rider.isSelf ? <Text style={styles.selfTag}>You</Text> : null}
-      </View>
-      <Text style={styles.riderBoard} numberOfLines={1}>
-        {boardName}
-      </Text>
-      <View style={styles.statGrid}>
-        <View style={styles.statRow}>
-          <View style={styles.statCell}>
-            <View style={styles.statIconSlot}>
-              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            </View>
-            <Text style={[styles.statValue, { color: statusColor }]} numberOfLines={1}>
-              {status}
-            </Text>
-          </View>
-          <StatCell icon={DeviceMobileIcon} value={s.phone.value} level={s.phone.level} />
-        </View>
-        <View style={styles.statRow}>
-          <StatCell icon={GaugeIcon} value={s.speed.value} level={s.speed.level} />
-          <StatCell icon={ThermometerSimpleIcon} value={s.motor.value} level={s.motor.level} />
-        </View>
-        <View style={styles.statRow}>
-          <StatCell icon={BatteryMediumIcon} value={s.soc.value} level={s.soc.level} />
-          <StatCell icon={ThermometerSimpleIcon} value={s.ctrl.value} level={s.ctrl.level} />
-        </View>
-      </View>
-    </View>
-  )
-}
-
-function NearbyRideBody({ nearby }: { nearby: NearbyRide[] }) {
-  const nearest = nearby[0]
-  const ride = nearest.ride
-  const name = ride.name?.trim() || `${ride.creator.name || 'Rider'}'s ride`
-  const extra = nearby.length - 1
-
-  return (
-    <>
-      <Text style={styles.rideName} numberOfLines={1}>
-        {name}
-      </Text>
-      <Text style={styles.rideMeta} numberOfLines={1}>
-        {ride.riderCount} {ride.riderCount === 1 ? 'rider' : 'riders'} ·{' '}
-        {fmtDistance(nearest.distanceM)} away
-      </Text>
-      {extra > 0 ? (
-        <Text style={styles.rideMetaDim}>
-          +{extra} more {extra === 1 ? 'ride' : 'rides'} nearby
-        </Text>
-      ) : null}
-    </>
-  )
-}
-
 const styles = StyleSheet.create({
-  list: {
-    gap: 12,
+  actionBtn: {
+    backgroundColor: theme.palette.groupRide.border,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  badgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  badgeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   colorDot: {
     width: 24,
@@ -440,116 +274,7 @@ const styles = StyleSheet.create({
   fill: {
     flex: 1,
   },
-  actionBtn: {
-    backgroundColor: theme.palette.groupRide.border,
-  },
-  rideName: {
-    color: theme.neutral.textPrimary,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  rideMeta: {
-    color: theme.neutral.textSecondary,
-    fontSize: 13,
-  },
-  rideMetaDim: {
-    color: theme.neutral.textSecondary,
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  badgeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  badgeLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  riderCell: {
-    // Fixed 3-up grid: a lone rider stays one column wide instead of stretching full width.
-    width: '31%',
-    gap: 2,
-  },
-  riderHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  riderDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  riderName: {
-    flexShrink: 1,
-    color: theme.neutral.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  selfTag: {
-    color: theme.palette.groupRide.light,
-    backgroundColor: theme.palette.groupRide.bg,
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    overflow: 'hidden',
-  },
-  riderBoard: {
-    color: theme.neutral.textSecondary,
-    fontSize: 12,
-  },
-  statGrid: {
-    gap: 2,
-    marginTop: 2,
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  statCell: {
-    flex: 1,
-    // Ignore content min-width so both columns split the row exactly 50/50 and stay aligned
-    // down the grid; overflowing values ellipsize instead of pushing the column right.
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  // Fixed-width glyph slot so every value's text starts at the same x regardless of the
-  // icon's (or status dot's) intrinsic width.
-  statIconSlot: {
-    width: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statValue: {
-    flexShrink: 1,
-    color: theme.neutral.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
+  list: {
+    gap: 12,
   },
 })

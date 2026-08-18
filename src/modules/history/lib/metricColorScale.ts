@@ -146,6 +146,8 @@ export function getHistoryMetricKeyForControlId(
       return 'batteryCurrent'
     case 'battery':
       return 'battery'
+    case undefined:
+      return null
     default:
       return null
   }

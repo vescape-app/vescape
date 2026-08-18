@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import type { View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretDownIcon, CheckIcon } from 'phosphor-react-native'
 

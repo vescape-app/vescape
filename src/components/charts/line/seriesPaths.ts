@@ -179,8 +179,12 @@ export interface ScrubSample {
 
 const NO_SAMPLE: ScrubSample = { sec: 0, value: 0, found: false }
 
-/** Sample of one tile closest to `sec`. Tile points ascend in x, so this is a binary search. */
-function nearestInTile(tile: SkPath, sec: number): ScrubSample {
+/**
+ * Sample of one path closest to `sec`. Points of a series path ascend in x, so this is a binary
+ * search. Used for tiles and for the strays path alike — a stray is two coincident points, which
+ * leaves the ordering intact.
+ */
+function nearestInPath(tile: SkPath, sec: number): ScrubSample {
   'worklet'
   const count = tile.countPoints()
   if (count === 0) return NO_SAMPLE
@@ -216,29 +220,37 @@ function nearestInTile(tile: SkPath, sec: number): ScrubSample {
  * Reading it back from the path keeps the samples themselves off the UI thread: the path is a
  * native object, and only the two numbers of the answer ever cross.
  *
- * Samples stranded alone between two gaps live in the level's strays rather than a tile and are
- * not searched; they are rare enough that a scrub landing on one falls to its neighbour.
+ * Samples stranded alone between two gaps are searched too. They are what a stretch sampled
+ * slower than the gap threshold is made of — a board that dropped to 2Hz mid-ride — and skipping
+ * them reported the end of the last connected run for the whole sparse stretch.
  */
 export function sampleAtSec(level: LevelTiles, sec: number): ScrubSample {
   'worklet'
+  let best = NO_SAMPLE
   const count = level.tiles.length
-  if (count === 0) return NO_SAMPLE
 
-  let lo = 0
-  let hi = count
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (level.endSec[mid] < sec) lo = mid + 1
-    else hi = mid
+  if (count > 0) {
+    let lo = 0
+    let hi = count
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (level.endSec[mid] < sec) lo = mid + 1
+      else hi = mid
+    }
+
+    const index = Math.min(lo, count - 1)
+    best = nearestInPath(level.tiles[index], sec)
+    // Landing between two tiles means landing in a gap: the tile before may hold the closer one.
+    if (index > 0 && level.startSec[index] > sec) {
+      const previous = nearestInPath(level.tiles[index - 1], sec)
+      if (previous.found && Math.abs(previous.sec - sec) < Math.abs(best.sec - sec)) best = previous
+    }
   }
 
-  const index = Math.min(lo, count - 1)
-  const best = nearestInTile(level.tiles[index], sec)
-  // Landing between two tiles means landing in a gap: the tile before may hold the closer sample.
-  if (index > 0 && level.startSec[index] > sec) {
-    const previous = nearestInTile(level.tiles[index - 1], sec)
-    if (previous.found && Math.abs(previous.sec - sec) < Math.abs(best.sec - sec)) return previous
-  }
+  if (!level.hasStrays) return best
+  const stray = nearestInPath(level.strays, sec)
+  if (!stray.found) return best
+  if (!best.found || Math.abs(stray.sec - sec) < Math.abs(best.sec - sec)) return stray
   return best
 }
 

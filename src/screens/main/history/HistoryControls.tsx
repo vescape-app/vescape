@@ -116,7 +116,6 @@ export function HistoryControls({
               id="history"
               label="History"
               icon={ClockCounterClockwiseIcon}
-              activeLabelOnly
               activeWidth={116}
               inactiveWidth={46}
               color={theme.palette.sky}
@@ -127,7 +126,6 @@ export function HistoryControls({
               id="favorites"
               label="Favorites"
               icon={StarIcon}
-              activeLabelOnly
               activeWidth={126}
               inactiveWidth={46}
               color={theme.palette.amber}

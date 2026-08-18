@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
+import { useAnimatedReaction } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { zoomWindowMs } from '@/modules/history/lib/chartFocus'
@@ -43,7 +44,7 @@ export function useSettledZoomWindow(): ChartTimeRange | null {
     () => zoomWindowMs.value,
     (next) => {
       'worklet'
-      runOnJS(settle)(next)
+      scheduleOnRN(settle, next)
     },
     [settle],
   )

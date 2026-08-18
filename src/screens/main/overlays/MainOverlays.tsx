@@ -10,7 +10,7 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import { WeatherMapOverlay } from '@/modules/weather/components/WeatherMapOverlay'
 import { HistoryOverlay, type MainHistoryOverlayProps } from '@/screens/main/history/HistoryOverlay'
-import { type MainMapHandle } from '@/screens/main/map/MainMap'
+import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapControls } from '@/screens/main/map/MapControls'
 import { MapModeOverlay } from '@/screens/main/map/MapModeOverlay'
 import { MapModeTabs } from '@/screens/main/map/MapModeTabs'
@@ -70,7 +70,7 @@ interface MainMapOverlayProps {
 interface MainOverlaysProps {
   mode: MainViewState
   mapRef: RefObject<MainMapHandle | null>
-  mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | void>
+  mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | undefined>
   board: MainBoardOverlayProps
   map: MainMapOverlayProps
   history: MainHistoryOverlayProps & { enterHistoryMode: () => void }

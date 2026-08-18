@@ -1,3 +1,5 @@
+import type { Weather } from 'vescape-core'
+import { useMemo } from 'react'
 import { CloudSunIcon, MapTrifoldIcon, SpeedometerIcon, type Icon } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
 
@@ -19,6 +21,20 @@ interface MapModeTabsProps {
 }
 
 /** The three map modes the rider switches between: Explore, Weather and Legal limits. */
+function makeWeatherModeIcon(weather: Weather | null, weatherColor: string): Icon {
+  return function WeatherModeIcon({ color, size, weight }) {
+    const iconSize = typeof size === 'number' ? size : 18
+    // PillSelectorItem passes the inactive accent as `color` when this segment is not selected;
+    // honor it so the icon turns neutral in light mode and keeps the weather hue when active.
+    const iconColor = color ?? weatherColor
+    return weather ? (
+      <WeatherIcon icon={weather.icon} size={iconSize} color={iconColor} weight={weight} />
+    ) : (
+      <CloudSunIcon size={size} color={iconColor} weight={weight} />
+    )
+  }
+}
+
 export function MapModeTabs({
   mode,
   top,
@@ -40,17 +56,11 @@ export function MapModeTabs({
   }
   const activeId = mode === 'legalLimits' ? 'legalLimits' : mode === 'weather' ? 'weather' : 'map'
 
-  const WeatherModeIcon: Icon = ({ color, size, weight }) => {
-    const iconSize = typeof size === 'number' ? size : 18
-    // PillSelectorItem passes the inactive accent as `color` when this segment is not selected;
-    // honor it so the icon turns neutral in light mode and keeps the weather hue when active.
-    const iconColor = color ?? weatherColor
-    return weather ? (
-      <WeatherIcon icon={weather.icon} size={iconSize} color={iconColor} weight={weight} />
-    ) : (
-      <CloudSunIcon size={size} color={iconColor} weight={weight} />
-    )
-  }
+  // Memoised: a fresh component identity every render would remount the pill's icon.
+  const WeatherModeIcon = useMemo<Icon>(
+    () => makeWeatherModeIcon(weather, weatherColor),
+    [weather, weatherColor],
+  )
 
   return (
     <View pointerEvents="box-none" style={[styles.mapModeTabs, { top }]}>
@@ -67,7 +77,6 @@ export function MapModeTabs({
           testID="map-mode-explore"
           label="Explore"
           icon={MapTrifoldIcon}
-          activeLabelOnly
           color={theme.palette.violet}
           activeWidth={116}
           onPress={() => {
@@ -79,7 +88,6 @@ export function MapModeTabs({
           testID="map-mode-weather"
           label="Weather"
           icon={WeatherModeIcon}
-          activeLabelOnly
           color={weatherSelection}
           activeWidth={142}
           inactiveWidth={58}
@@ -99,7 +107,6 @@ export function MapModeTabs({
           testID="map-mode-legal-limits"
           label="Legal limits"
           icon={SpeedometerIcon}
-          activeLabelOnly
           color={theme.palette.green}
           activeWidth={136}
           inactiveWidth={44}

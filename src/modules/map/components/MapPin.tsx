@@ -1,8 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
-import { type Icon } from 'phosphor-react-native'
-import { theme } from '@/constants/theme'
+import type { Icon } from 'phosphor-react-native'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface MapPinProps {
@@ -11,7 +10,6 @@ interface MapPinProps {
   color: string
   icon?: Icon
   iconColor?: string
-  bearingDeg?: number | null
   selected?: boolean
   navigationActive?: boolean
   expandSelected?: boolean
@@ -56,7 +54,6 @@ export function MapPin({
   color,
   icon: IconComponent,
   iconColor,
-  bearingDeg,
   selected = false,
   navigationActive = false,
   expandSelected = false,
@@ -124,33 +121,6 @@ export function MapPin({
             ]}
           >
             <IconComponent size={metrics.iconSize} color={iconColor ?? color} weight="bold" />
-          </View>
-        </View>
-      </PointAnnotation>
-    )
-  }
-
-  if (bearingDeg != null) {
-    return (
-      <PointAnnotation id={id} coordinate={coordinate} onSelected={onSelected}>
-        {/* collapsable={false}: see icon branch above (rnmapbox #3682). */}
-        <View
-          collapsable={false}
-          style={[styles.pin, { backgroundColor: neutral.surface, borderColor: color }]}
-        >
-          <View style={[styles.directionArrow, { transform: [{ rotate: `${bearingDeg}deg` }] }]}>
-            <View
-              style={[styles.directionWing, styles.directionWingOutline, styles.directionWingLeft]}
-            />
-            <View
-              style={[styles.directionWing, styles.directionWingOutline, styles.directionWingRight]}
-            />
-            <View
-              style={[styles.directionWing, styles.directionWingLeft, { borderColor: color }]}
-            />
-            <View
-              style={[styles.directionWing, styles.directionWingRight, { borderColor: color }]}
-            />
           </View>
         </View>
       </PointAnnotation>
@@ -250,32 +220,5 @@ const styles = StyleSheet.create({
     width: 11,
     height: 11,
     borderRadius: 5.5,
-  },
-  directionArrow: {
-    width: 27,
-    height: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  directionWing: {
-    position: 'absolute',
-    top: 2,
-    width: 3,
-    height: 20,
-    borderRadius: 1.5,
-    borderLeftWidth: 4,
-  },
-  directionWingOutline: {
-    top: 0,
-    height: 24,
-    borderRadius: 2.5,
-    borderLeftWidth: 7,
-    borderColor: theme.palette.mono.white,
-  },
-  directionWingLeft: {
-    transform: [{ translateX: -4.5 }, { rotate: '28deg' }],
-  },
-  directionWingRight: {
-    transform: [{ translateX: 4.5 }, { rotate: '-28deg' }],
   },
 })

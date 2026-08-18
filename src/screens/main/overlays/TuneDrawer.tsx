@@ -1,21 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
-import Animated, {
-  interpolateColor,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import {
-  FadersIcon,
-  FootprintsIcon,
-  LightbulbIcon,
-  SirenIcon,
-  SpeedometerIcon,
-  WarningCircleIcon,
-  type Icon,
-} from 'phosphor-react-native'
+import { FadersIcon, FootprintsIcon, LightbulbIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
 import { BoardMoveControl } from '@/modules/board/components/BoardMoveControl'
@@ -27,28 +13,24 @@ import {
 } from '@/modules/tune/components/TuneProfileMetadataModal'
 import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { SwitchWidget } from '@/components/widgets/SwitchWidget'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { widgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
+import { TuneProfilePill } from '@/screens/main/overlays/TuneProfilePill'
+import { LegalMapWidget, LegalModeWidget } from '@/screens/main/overlays/TuneDrawerLegalWidgets'
 import { errorMessage } from '@/helpers/error'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 
 interface TuneDrawerProps {
   onNavigate: () => void
   onOpenLegalLimits: () => void
 }
-
-const PROFILE_OPTION_WIDTH = 46
-const PROFILE_ACTIVE_WIDTH = 126
-const PROFILE_ANIMATION = { duration: 180 } as const
-const AnimatedText = Animated.createAnimatedComponent(Text)
 
 export function TuneDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   const [tuneSelectOpen, setTuneSelectOpen] = useState(false)
@@ -279,171 +261,6 @@ export function TuneDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   )
 }
 
-interface TuneProfilePillProps {
-  label: string
-  icon: Icon
-  active: boolean
-  color: ReturnType<typeof tuneProfileColorTheme>
-  onPress: () => void
-}
-
-function TuneProfilePill({
-  label,
-  icon: IconComponent,
-  active,
-  color,
-  onPress,
-}: TuneProfilePillProps) {
-  const neutral = useResolvedNeutralColors()
-  const resolvedBackground = useResolvedColor(color.bg)
-  const resolvedBorder = useResolvedColor(color.border)
-  const resolvedColor = useResolvedColor(color.color)
-  const fadedColor = theme.alpha(resolvedColor, 0.6)
-  const activeProgress = useSharedValue(active ? 1 : 0)
-
-  useEffect(() => {
-    activeProgress.value = withTiming(active ? 1 : 0, PROFILE_ANIMATION)
-  }, [active, activeProgress])
-
-  const frameStyle = useAnimatedStyle(
-    () => ({
-      width:
-        PROFILE_OPTION_WIDTH + (PROFILE_ACTIVE_WIDTH - PROFILE_OPTION_WIDTH) * activeProgress.value,
-      backgroundColor: interpolateColor(
-        activeProgress.value,
-        [0, 1],
-        [neutral.surfaceDeep, resolvedBackground],
-      ),
-      borderColor: interpolateColor(activeProgress.value, [0, 1], [neutral.border, resolvedBorder]),
-    }),
-    [neutral.border, neutral.surfaceDeep, resolvedBackground, resolvedBorder],
-  )
-  const labelStyle = useAnimatedStyle(
-    () => ({
-      opacity: activeProgress.value,
-      maxWidth: PROFILE_ACTIVE_WIDTH * activeProgress.value,
-      marginLeft: 7 * activeProgress.value,
-    }),
-    [],
-  )
-
-  return (
-    <Animated.View style={[styles.profilePill, frameStyle]}>
-      <Pressable
-        style={({ pressed }) => [styles.profilePillPressable, pressed && styles.profilePillPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ selected: active }}
-        onPress={onPress}
-      >
-        <IconComponent size={18} color={active ? resolvedColor : fadedColor} weight="duotone" />
-        <AnimatedText
-          style={[
-            styles.profilePillText,
-            { color: active ? resolvedColor : neutral.textMuted },
-            labelStyle,
-          ]}
-          numberOfLines={1}
-        >
-          {label}
-        </AnimatedText>
-      </Pressable>
-    </Animated.View>
-  )
-}
-
-interface LegalModeWidgetProps {
-  value: boolean
-  description: string
-  warning: boolean
-  onValueChange: (value: boolean) => void
-  onWarningPress: () => void
-}
-
-function LegalModeWidget({
-  value,
-  description,
-  warning,
-  onValueChange,
-  onWarningPress,
-}: LegalModeWidgetProps) {
-  const neutral = useResolvedNeutralColors()
-  const errorColor = useResolvedColor(theme.status.error.color)
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.legalModeCell,
-        styles.legalModeWidget,
-        value && styles.legalModeWidgetActive,
-        pressed && styles.legalModeWidgetPressed,
-      ]}
-      accessibilityRole="switch"
-      accessibilityLabel="Legal Mode"
-      accessibilityState={{ checked: value }}
-      onPress={() => onValueChange(!value)}
-    >
-      <SirenIcon size={22} color={theme.status.error.color} weight="duotone" />
-      <View style={styles.legalModeText}>
-        <View style={styles.legalModeTitleRow}>
-          <Text style={styles.legalModeLabel} numberOfLines={1}>
-            Legal mode
-          </Text>
-          {warning ? (
-            <Pressable
-              style={styles.legalWarningButton}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Legal road status warning"
-              onPress={(event) => {
-                event.stopPropagation()
-                onWarningPress()
-              }}
-            >
-              <WarningCircleIcon size={15} color={theme.status.error.color} weight="fill" />
-            </Pressable>
-          ) : null}
-        </View>
-        <Text style={styles.legalModeDescription} numberOfLines={1}>
-          {description}
-        </Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{
-          false: neutral.border,
-          true: theme.alpha(errorColor, 0.6),
-        }}
-        thumbColor={value ? errorColor : neutral.textMuted}
-        ios_backgroundColor={neutral.border}
-        accessibilityLabel="Legal Mode"
-      />
-    </Pressable>
-  )
-}
-
-function LegalMapWidget({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.legalMapWidget, pressed && styles.legalMapWidgetPressed]}
-      accessibilityRole="button"
-      accessibilityLabel="Legal limits map"
-      onPress={onPress}
-    >
-      <SpeedometerIcon size={24} color={theme.palette.green.color} weight="duotone" />
-      <View style={styles.legalMapText}>
-        <Text style={styles.legalMapLabel} numberOfLines={1}>
-          Map
-        </Text>
-        <Text style={styles.legalMapDescription} numberOfLines={1}>
-          limits
-        </Text>
-      </View>
-    </Pressable>
-  )
-}
-
 const styles = StyleSheet.create({
   content: {
     gap: 14,
@@ -452,51 +269,26 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingRight: 8,
   },
-  profilePill: {
-    width: PROFILE_OPTION_WIDTH,
-    height: PROFILE_OPTION_WIDTH,
-    borderRadius: PROFILE_OPTION_WIDTH / 2,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  profilePillPressable: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  profilePillPressed: {
-    backgroundColor: theme.neutral.surface,
-  },
-  profilePillText: {
-    color: theme.neutral.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
   remoteTiltBox: {
-    ...secondaryWidgetSurface,
+    ...widgetSurface,
     padding: 14,
+  },
+  quickDisabledNote: {
+    color: theme.palette.slate.textDim,
+    fontSize: 12,
+    fontWeight: '600',
   },
   quickGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
-  quickDisabledNote: {
-    color: theme.neutral.textDim,
-    fontSize: 12,
-    fontWeight: '600',
-  },
   quickCell: {
     width: '48%',
     flexGrow: 1,
   },
-  wideCell: {
-    width: '100%',
-  },
   legalGroup: {
-    ...secondaryWidgetSurface,
+    ...widgetSurface,
     width: '100%',
     overflow: 'hidden',
   },
@@ -505,89 +297,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
   },
-  legalModeCell: {
-    flex: 3,
-    flexBasis: 0,
-    minWidth: 0,
-  },
-  legalMapCell: {
-    width: 82,
-  },
   legalRowDivider: {
     width: 1,
     alignSelf: 'stretch',
-    backgroundColor: theme.neutral.border,
+    backgroundColor: theme.palette.slate.border,
   },
-  legalModeWidget: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-  },
-  legalModeWidgetActive: {
-    borderWidth: 1,
-    borderColor: theme.status.error.border,
-  },
-  legalModeWidgetPressed: {
-    backgroundColor: theme.neutral.surface,
-  },
-  legalModeText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 1,
-  },
-  legalModeTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legalModeLabel: {
-    color: theme.neutral.textPrimary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  legalModeDescription: {
-    color: theme.neutral.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  legalMapWidget: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 6,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-  },
-  legalMapWidgetPressed: {
-    backgroundColor: theme.neutral.surface,
-  },
-  legalMapText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 1,
-  },
-  legalMapLabel: {
-    color: theme.neutral.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  legalMapDescription: {
-    color: theme.neutral.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  legalWarningButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.neutral.surfaceDeep,
-    borderWidth: 1,
-    borderColor: theme.status.error.border,
+  legalMapCell: {
+    width: 82,
   },
 })

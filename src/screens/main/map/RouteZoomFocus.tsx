@@ -1,6 +1,7 @@
 import { LineLayer, ShapeSource, type LineLayerStyle } from '@rnmapbox/maps'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
+import { useAnimatedReaction } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import type { ChartTimeRange } from '@/components/charts/line/types'
 import { theme } from '@/constants/theme'
@@ -94,7 +95,7 @@ export function RouteZoomFocus({
     () => zoomWindowMs.value,
     (next) => {
       'worklet'
-      runOnJS(apply)(next)
+      scheduleOnRN(apply, next)
     },
     [apply],
   )

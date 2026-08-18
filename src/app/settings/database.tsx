@@ -39,7 +39,7 @@ export default function DatabaseSettingsScreen() {
                   db.rebuildState === 'running' && styles.rebuildButtonDisabled,
                   db.rebuildState === 'done' && styles.rebuildButtonDone,
                 ]}
-                onPress={db.handleRebuildBuckets}
+                onPress={() => void db.handleRebuildBuckets()}
                 disabled={db.rebuildState === 'running'}
               >
                 {db.rebuildState === 'done' && (

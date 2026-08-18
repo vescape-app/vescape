@@ -8,6 +8,7 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 /** 24×8 solid PNG — inline so the "loaded" case works without a network. */
 const OK_IMAGE =
@@ -103,7 +104,7 @@ const SAMPLE_NAMES = Object.keys(SAMPLES) as Sample[]
 function MarkdownShowcase() {
   const [sample, setSample] = useState<Sample>('overview')
   const [narrow, setNarrow] = useState(false)
-  const [lastLink, setLastLink] = useState('—')
+  const [lastLink, setLastLink] = useState(DASH)
 
   return (
     <ShowcaseCard

@@ -37,7 +37,7 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
 import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import { type LiveStatusSummary } from '@/modules/board/lib/liveMetricHistory'
+import type { LiveStatusSummary } from '@/modules/board/lib/liveMetricHistory'
 
 interface EventSubscription {
   remove(): void
@@ -94,9 +94,10 @@ interface BleActions {
 }
 
 type BleStore = BleState & BleActions
-type BleSet = {
-  (partial: Partial<BleStore> | ((state: BleStore) => Partial<BleStore>), replace?: false): void
-}
+type BleSet = (
+  partial: Partial<BleStore> | ((state: BleStore) => Partial<BleStore>),
+  replace?: false,
+) => void
 
 let liveSub: EventSubscription | null = null
 let liveTickSub: EventSubscription | null = null
@@ -113,7 +114,7 @@ let scanSub: EventSubscription | null = null
 let scanErrorSub: EventSubscription | null = null
 let settingsUnsubscribe: (() => void) | null = null
 
-let pendingDevices: Map<string, ScannedDevice> = new Map()
+let pendingDevices = new Map<string, ScannedDevice>()
 let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
 const SCAN_FLUSH_MS = 500
 
@@ -625,7 +626,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   },
 }))
 
-type HotModule = {
+interface HotModule {
   hot?: {
     dispose?: (callback: () => void) => void
   }

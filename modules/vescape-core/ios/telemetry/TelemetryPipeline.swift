@@ -59,6 +59,30 @@ internal struct TelemetryLocationCapture {
   }
 }
 
+/// How stale a GPS fix may be and still be stamped onto a recorded telemetry frame.
+///
+/// ADR 0034 "Recording never fabricates GPS": the trackers legitimately keep the last known fix
+/// alive for map display, but a recorded frame that repeats a dead fix invents a ride that never
+/// happened. Beyond this age the frame records no location and the route gap stays honest.
+///
+/// Both sides of the comparison are wall-clock epoch ms — `capturedAtMs` comes from the session
+/// clock (`SessionClock.nowMs()`), the fix timestamp from `CLLocation.timestamp`.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryMapper.kt `TELEMETRY_LOCATION_MAX_AGE_MS`
+internal let telemetryLocationMaxAgeMs: Int64 = 10_000
+
+/// The fix to record on a frame captured at `capturedAtMs`, or nil when the fix is too old.
+/// A fix stamped in the future (clock skew) counts as fresh.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryMapper.kt `freshEnoughToRecord`
+internal func telemetryLocationFreshEnoughToRecord(
+  _ location: TelemetryLocationCapture?,
+  capturedAtMs: Int64
+) -> TelemetryLocationCapture? {
+  guard let location else { return nil }
+  return capturedAtMs - location.timestamp <= telemetryLocationMaxAgeMs ? location : nil
+}
+
 internal struct TelemetryCapture {
   let capturedAtMs: Int64
   let elapsedRealtimeMs: Int64

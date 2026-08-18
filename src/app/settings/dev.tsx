@@ -1,7 +1,14 @@
 import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { RecordIcon, CompassIcon, SwatchesIcon, ToolboxIcon, CodeIcon } from 'phosphor-react-native'
+import {
+  CameraRotateIcon,
+  CodeIcon,
+  NavigationArrowIcon,
+  RecordIcon,
+  SwatchesIcon,
+  ToolboxIcon,
+} from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -9,7 +16,8 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 
-const devPages = [
+// @parity /src/components/dev/DevBadge.tsx `DEV_PAGE_SHORTCUTS`
+const DEV_PAGE_SHORTCUTS = [
   {
     label: 'Components library',
     hint: 'Browse all UI components with live props',
@@ -28,14 +36,14 @@ const devPages = [
     label: 'Navigation diagnostics',
     hint: 'Live map heading, GPS, and fallback evidence',
     route: routes.settingsNavigationDiagnostic,
-    icon: CompassIcon,
+    icon: NavigationArrowIcon,
     iconColor: theme.palette.sky.color,
   },
   {
     label: 'Camera playground',
     hint: 'Tune the spring camera engine against fake GPS',
     route: routes.devMapPlayground,
-    icon: CompassIcon,
+    icon: CameraRotateIcon,
     iconColor: theme.palette.violet.color,
   },
   {
@@ -56,7 +64,7 @@ export default function DevSettingsScreen() {
           description="Diagnostics, local verification, and component previews."
         />
         <SettingsCard>
-          {devPages.map((page) => (
+          {DEV_PAGE_SHORTCUTS.map((page) => (
             <SettingsRow
               key={page.label}
               icon={page.icon}

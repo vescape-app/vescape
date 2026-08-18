@@ -6,7 +6,7 @@ import { useResolvedNeutralColors } from '@/hooks/useTheme'
 const WORDMARK = require('@/../assets/logo/Vescape-text.svg')
 const ASPECT_RATIO = 1221 / 375
 
-type VescapeWordmarkProps = {
+interface VescapeWordmarkProps {
   width?: number
   style?: StyleProp<ViewStyle>
 }

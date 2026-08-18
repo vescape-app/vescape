@@ -9,20 +9,12 @@ interface ColorPickerProps {
   /** Selectable swatches. */
   colors: readonly string[]
   onChange: (color: string | null) => void
-  /** When true, tapping the selected swatch clears the selection. */
-  allowClear?: boolean
   /** Swatch diameter. */
   size?: number
 }
 
 /** A wrap of color swatches; the selected one shows a ring + check. Presentational. */
-export function ColorPicker({
-  value,
-  colors,
-  onChange,
-  allowClear = true,
-  size = 34,
-}: ColorPickerProps) {
+export function ColorPicker({ value, colors, onChange, size = 34 }: ColorPickerProps) {
   return (
     <View style={styles.grid}>
       {colors.map((color) => {
@@ -31,7 +23,7 @@ export function ColorPicker({
         return (
           <Pressable
             key={color}
-            onPress={() => onChange(selected && allowClear ? null : color)}
+            onPress={() => onChange(selected ? null : color)}
             accessibilityLabel={`Color ${color}`}
             accessibilityState={{ selected }}
             android_ripple={interaction.rippleBorderless}

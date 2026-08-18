@@ -46,8 +46,13 @@ const ALERT_CONFIG = {
   },
 } as const
 
-type SpinnerPill = { kind: 'spinner'; text: string; color: string; onPress: () => void }
-type ActionPill = {
+interface SpinnerPill {
+  kind: 'spinner'
+  text: string
+  color: string
+  onPress: () => void
+}
+interface ActionPill {
   kind: 'action'
   text: string
   buttonText: string

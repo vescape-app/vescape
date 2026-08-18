@@ -43,7 +43,7 @@ export default function IndexRoute() {
         bleStatus={connection.bleStatus}
         onStopScan={connection.handleCancel}
         onRetryConnect={connection.handleRetryConnect}
-        onSelectBoard={connection.handleSelectBoard}
+        onSelectBoard={(id) => void connection.handleSelectBoard(id)}
         onAddBoard={connection.handleAddBoard}
       />
     </View>

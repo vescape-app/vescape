@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { WarningIcon } from 'phosphor-react-native'
 
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
 import { worstSeverity } from '@/modules/board/lib/boardWarnings'
