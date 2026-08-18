@@ -98,7 +98,7 @@ class SyncCursorMigrationTest {
 
   @Test
   fun migrationsTargetTheCurrentSchemaVersion() {
-    assertEquals(38, TELEMETRY_DATABASE_VERSION)
+    assertEquals(39, TELEMETRY_DATABASE_VERSION)
     assertEquals(31, TelemetryDatabase.MIGRATION_31_32.startVersion)
     assertEquals(32, TelemetryDatabase.MIGRATION_31_32.endVersion)
     assertEquals(32, TelemetryDatabase.MIGRATION_32_33.startVersion)

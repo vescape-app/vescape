@@ -69,7 +69,7 @@ class BoardTombstoneTest {
 
   @Test
   fun migrationTargetsTheCurrentSchemaVersion() {
-    assertEquals(38, TELEMETRY_DATABASE_VERSION)
+    assertEquals(39, TELEMETRY_DATABASE_VERSION)
     assertEquals(33, TelemetryDatabase.MIGRATION_33_34.startVersion)
     assertEquals(34, TelemetryDatabase.MIGRATION_33_34.endVersion)
   }
