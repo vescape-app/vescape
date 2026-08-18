@@ -13,10 +13,6 @@ on:
         description: Unique CLI dispatch correlation id
         required: true
         type: string
-      release_body:
-        description: Codex-authored GitHub release body, drafted by the CLI before dispatch
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -337,41 +333,3 @@ jobs:
       - name: Fail partial or unsuccessful release
         if: needs.upload_phone.result != 'success' || needs.upload_wear.result != 'success'
         run: exit 1
-
-  github_release:
-    name: Publish GitHub release
-    needs: [build, upload_phone, upload_wear]
-    permissions:
-      contents: write
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.source_sha }}
-          fetch-depth: 0
-      - name: Tag the built source commit
-        run: |
-          TAG="v$MARKETING_VERSION"
-          EXISTING=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)
-          if test -n "$EXISTING"; then
-            test "$EXISTING" = "$SOURCE_SHA"
-          else
-            git tag "$TAG" "$SOURCE_SHA"
-            git push origin "refs/tags/$TAG"
-          fi
-        env:
-          MARKETING_VERSION: ${{ needs.build.outputs.marketing_version }}
-          SOURCE_SHA: ${{ inputs.source_sha }}
-      - name: Create the release from the drafted body
-        run: |
-          TAG="v$MARKETING_VERSION"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists"
-            exit 0
-          fi
-          printf '%s\n' "$RELEASE_BODY" > release-body.md
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --latest --notes-file release-body.md
-        env:
-          MARKETING_VERSION: ${{ needs.build.outputs.marketing_version }}
-          RELEASE_BODY: ${{ inputs.release_body }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
