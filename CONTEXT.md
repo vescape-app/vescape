@@ -1,6 +1,6 @@
-# VESC App PoC Context
+# Vescape App Context
 
-This context defines the shared language for the VESC-based board app. The app centers on live board state, ride recording, ride history, and safety-sensitive Refloat tuning.
+This context defines the shared language for the Vescape app. The app centers on live board state, ride recording, ride history, and safety-sensitive Refloat tuning.
 
 ## Language
 

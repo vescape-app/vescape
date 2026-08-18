@@ -49,7 +49,7 @@ Do not fix local machine, shell, PATH, Java, Android SDK, Maestro, or other CLI/
 
 ## Architecture Discipline
 
-This is a PoC, but keep it sharp:
+Keep the architecture sharp:
 
 - Native owns durable truth and long-lived work; JS renders state and sends intents.
 - Prefer clear architecture over compatibility, shortcuts, or hidden assumptions.
