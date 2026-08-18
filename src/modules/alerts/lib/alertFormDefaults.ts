@@ -6,13 +6,13 @@ import {
   type AlertSoundType,
 } from 'vescape-core'
 
-import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { telemetryByControlId } from '@/modules/board/constants/telemetry'
 import {
   DEFAULT_ALERT_SEEDS,
   type TelemetryAlertTab as AlertTab,
 } from '@/modules/board/constants/telemetryThresholds'
-import { type DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
+import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 
 export function getPresetsForCategory(category: AlertSoundCategory): AlertSound[] {
   return getAlertSounds().filter((p) => p.category === category)

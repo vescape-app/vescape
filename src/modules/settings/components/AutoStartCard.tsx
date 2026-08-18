@@ -13,9 +13,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true)
 }
 
-export type AutoStartBoard = { id: string; name: string; bleId: string }
+export interface AutoStartBoard {
+  id: string
+  name: string
+  bleId: string
+}
 
-export type AutoStartCardProps = {
+export interface AutoStartCardProps {
   /** Master switch — off means nothing wakes the app, whatever boards are armed. */
   enabled: boolean
   /** Every linked board, armed or not. */

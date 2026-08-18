@@ -24,7 +24,7 @@ import {
 
 import { Banner } from '@/components/base/Banner'
 import { TickText } from '@/components/base/TickText'
-import { type MonoValueAlign } from '@/components/base/MonoValue'
+import type { MonoValueAlign } from '@/components/base/MonoValue'
 import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'

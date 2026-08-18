@@ -4,9 +4,9 @@ import { previewAlertSound } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
-import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { getAlertDialConfig } from '@/modules/alerts/lib/alertFormDefaults'
 import {
-  getAlertDialConfig,
   getMessagePlaceholders,
   renderPreviewTemplate,
 } from '@/modules/alerts/lib/alertFormDefaults'

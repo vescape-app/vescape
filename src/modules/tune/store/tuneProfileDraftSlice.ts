@@ -22,6 +22,7 @@ import type {
   TuneProfileStore,
 } from '@/modules/tune/store/tuneProfileStoreTypes'
 import { useTuneSnapshotStore } from '@/modules/tune/store/tuneSnapshotStore'
+import { omitKey } from '@/helpers/records'
 
 type TuneProfileDraftSlice = Pick<
   TuneProfileActions,
@@ -47,12 +48,9 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
     set((state) => {
       if (!state.activeProfile) return state
       const savedValue = state.activeProfile.fields[fieldId]
-      const draftFields = { ...state.draftFields }
-      if (sameFieldValue(value, savedValue)) {
-        delete draftFields[fieldId]
-      } else {
-        draftFields[fieldId] = value
-      }
+      const draftFields = sameFieldValue(value, savedValue)
+        ? omitKey(state.draftFields, fieldId)
+        : { ...state.draftFields, [fieldId]: value }
       return {
         draftFields,
         hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,
@@ -80,8 +78,7 @@ export const createTuneProfileDraftSlice: SliceFactory = (set, get) => ({
 
   revertField(fieldId) {
     set((state) => {
-      const draftFields = { ...state.draftFields }
-      delete draftFields[fieldId]
+      const draftFields = omitKey(state.draftFields, fieldId)
       return {
         draftFields,
         hasDirtyFields: Object.keys(dirtyFields(state.activeProfile, draftFields)).length > 0,

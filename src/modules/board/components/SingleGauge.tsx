@@ -4,10 +4,10 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
   normalizeFraction,

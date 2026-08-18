@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { ArrowUpIcon, ArrowsClockwiseIcon, NavigationArrowIcon } from 'phosphor-react-native'
 
 import { MapOptionSelector } from '@/components/controls/MapOptionSelector'
-import type {} from '@/modules/alerts/lib/alertPresets'
+
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'

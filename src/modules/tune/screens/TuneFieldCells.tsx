@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { View } from 'react-native'
+import type { View } from 'react-native'
 import type { RefloatConfigField, TuneProfileFieldValue } from 'vescape-core'
 
 import { theme } from '@/constants/theme'

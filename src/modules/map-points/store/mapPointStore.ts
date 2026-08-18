@@ -115,9 +115,9 @@ export const useMapPointStore = create<MapPointState & MapPointActions>((set, ge
         target.longitude,
         target.radiusMeters,
       )
-      const read = [...nearby.items].sort(byDistance)
+      const sorted = [...nearby.items].sort(byDistance)
       set((s) => {
-        const mapPoints = sameMapPoints(s.mapPoints, read) ? s.mapPoints : read
+        const mapPoints = sameMapPoints(s.mapPoints, sorted) ? s.mapPoints : sorted
         return {
           mapPoints,
           truncated: nearby.truncated,

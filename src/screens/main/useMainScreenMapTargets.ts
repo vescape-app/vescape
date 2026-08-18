@@ -26,7 +26,9 @@ export function useMainScreenMapTargets(
   const [longPressMapTarget, setLongPressMapTarget] = useState<MapSelection | null>(null)
   const [activeNavigationTarget, setActiveNavigationTarget] = useState<MapSelection | null>(null)
   const dismissMapSelector = controller.dismissMapSelector
-  const mapInteractionHandlerRef = useRef<(selection?: MapSelection) => boolean | void>(() => {})
+  const mapInteractionHandlerRef = useRef<(selection?: MapSelection) => boolean | undefined>(
+    () => {},
+  )
   const handleMapInteraction = useCallback(() => {
     dismissMapSelector()
     mapInteractionHandlerRef.current()

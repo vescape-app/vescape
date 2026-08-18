@@ -1,6 +1,9 @@
 import { theme } from '@/constants/theme'
 
-type TelemetryChartRange = { min: number; max: number }
+interface TelemetryChartRange {
+  min: number
+  max: number
+}
 
 export interface TelemetryMetricConfig {
   label: string

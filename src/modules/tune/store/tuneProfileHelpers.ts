@@ -13,6 +13,7 @@ import {
   DEFAULT_TUNE_PROFILE_ICON,
 } from '@/modules/tune/lib/profileMetadata'
 import type { TuneProfileBoardDiff } from '@/modules/tune/store/tuneProfileStoreTypes'
+import { omitKey } from '@/helpers/records'
 
 export function sameFieldValue(
   a: TuneProfileFieldValue | undefined,
@@ -72,13 +73,8 @@ export function nextDraftWithField(
   value: TuneProfileFieldValue,
 ): Record<string, TuneProfileFieldValue> {
   const savedValue = profile.fields[fieldId]
-  const next = { ...draftFields }
-  if (sameFieldValue(value, savedValue)) {
-    delete next[fieldId]
-  } else {
-    next[fieldId] = value
-  }
-  return next
+  if (sameFieldValue(value, savedValue)) return omitKey(draftFields, fieldId)
+  return { ...draftFields, [fieldId]: value }
 }
 
 export function isCompatibleProfile(

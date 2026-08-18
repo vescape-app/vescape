@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ScrollView } from 'react-native'
 import {
   Keyboard,
-  ScrollView,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,

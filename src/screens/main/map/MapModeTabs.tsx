@@ -1,3 +1,5 @@
+import type { Weather } from 'vescape-core'
+import { useMemo } from 'react'
 import { CloudSunIcon, MapTrifoldIcon, SpeedometerIcon, type Icon } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
 
@@ -18,6 +20,17 @@ interface MapModeTabsProps {
 }
 
 /** The three map modes the rider switches between: Explore, Weather and Legal limits. */
+function makeWeatherModeIcon(weather: Weather | null, weatherColor: string): Icon {
+  return function WeatherModeIcon({ color, size, weight }) {
+    const iconSize = typeof size === 'number' ? size : 18
+    return weather ? (
+      <WeatherIcon icon={weather.icon} size={iconSize} color={weatherColor} weight={weight} />
+    ) : (
+      <CloudSunIcon size={size} color={color} weight={weight} />
+    )
+  }
+}
+
 export function MapModeTabs({
   mode,
   top,
@@ -34,14 +47,11 @@ export function MapModeTabs({
   }
   const activeId = mode === 'legalLimits' ? 'legalLimits' : mode === 'weather' ? 'weather' : 'map'
 
-  const WeatherModeIcon: Icon = ({ color, size, weight }) => {
-    const iconSize = typeof size === 'number' ? size : 18
-    return weather ? (
-      <WeatherIcon icon={weather.icon} size={iconSize} color={weatherColor} weight={weight} />
-    ) : (
-      <CloudSunIcon size={size} color={color} weight={weight} />
-    )
-  }
+  // Memoised: a fresh component identity every render would remount the pill's icon.
+  const WeatherModeIcon = useMemo<Icon>(
+    () => makeWeatherModeIcon(weather, weatherColor),
+    [weather, weatherColor],
+  )
 
   return (
     <View pointerEvents="box-none" style={[styles.mapModeTabs, { top }]}>

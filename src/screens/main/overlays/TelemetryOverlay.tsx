@@ -15,7 +15,7 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
-import { type MainMapHandle } from '@/screens/main/map/MainMap'
+import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapRevealGesture } from '@/screens/main/map/MapRevealGesture'
 import {
   OffscreenMapIndicator,

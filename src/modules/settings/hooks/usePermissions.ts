@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
-import { Permission, PermissionsAndroid, Platform } from 'react-native'
+import type { Permission } from 'react-native'
+import { PermissionsAndroid, Platform } from 'react-native'
 
 export type PermissionStatus = 'unknown' | 'granted' | 'denied'
 

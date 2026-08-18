@@ -2,7 +2,7 @@ import { Children, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { theme } from '@/constants/theme'
 
-export type SettingsCardProps = {
+export interface SettingsCardProps {
   children: ReactNode
   /** Separators align with row labels by default; 0 spans them edge to edge. */
   separatorInset?: number

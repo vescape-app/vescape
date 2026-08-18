@@ -50,7 +50,7 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
         }
         return snapshot
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (readGeneration === generation) {
           set({
             status: 'error',

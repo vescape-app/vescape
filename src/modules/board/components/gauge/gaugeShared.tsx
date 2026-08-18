@@ -13,7 +13,7 @@ import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   clamp01,
   normalizeFraction,

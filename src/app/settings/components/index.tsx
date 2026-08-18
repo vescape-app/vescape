@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, type Href } from 'expo-router'
 import {
   ChartLineUpIcon,
   ListIcon,
@@ -165,7 +165,7 @@ export default function ComponentsIndex() {
                   iconColor={s.color}
                   label={s.label}
                   hint={s.hint}
-                  onPress={() => router.push(s.route as any)}
+                  onPress={() => router.push(s.route as Href)}
                 />
               ))}
             </SettingsCard>

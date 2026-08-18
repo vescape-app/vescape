@@ -27,7 +27,7 @@ import {
   PillSelectorMenuItem,
   PillSelector,
 } from '@/components/controls/PillSelector'
-import type {} from '@/modules/alerts/lib/alertPresets'
+
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { theme } from '@/constants/theme'
 

@@ -126,15 +126,14 @@ export function useScrubReadout({
     const measured: ChartReadout[] = []
     let widest = 0
 
-    for (let c = 0; c < charts.length; c += 1) {
-      const { targets, plot } = charts[c]
+    for (const chart of charts) {
+      const { targets, plot } = chart
 
       const rows: string[] = []
       const dots: number[] = []
       let longest = 0
 
-      for (let i = 0; i < targets.length; i += 1) {
-        const target = targets[i]
+      for (const target of targets) {
         const { paths } = target
         const sample = sampleAtSec(paths.raw, (chartMs - paths.domainStartMs) / 1000)
         if (!sample.found) {
@@ -166,10 +165,10 @@ export function useScrubReadout({
     // One side for the whole stack: the banners move together, and they move only when the
     // widest of them would otherwise run off the plot.
     const onRight = cursorX + BANNER_OFFSET + widest <= plotWidth
-    for (let c = 0; c < measured.length; c += 1) {
-      const { width } = measured[c]
+    for (const banner of measured) {
+      const { width } = banner
       const x = onRight ? cursorX + BANNER_OFFSET : cursorX - BANNER_OFFSET - width
-      measured[c].x = Math.min(Math.max(x, 0), Math.max(plotWidth - width, 0))
+      banner.x = Math.min(Math.max(x, 0), Math.max(plotWidth - width, 0))
     }
 
     return { time, cursorX, charts: measured }

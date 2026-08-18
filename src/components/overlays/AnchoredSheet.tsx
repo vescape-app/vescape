@@ -29,7 +29,7 @@ const SCREEN_EDGE_PADDING = 10
 /** Fraction of the screen height a sheet is allowed to occupy. */
 const HEIGHT_FRACTION = 0.75
 
-type SheetLayoutMode = {
+interface SheetLayoutMode {
   mode: 'floating'
   matchTriggerWidth: boolean
   minWidth?: number

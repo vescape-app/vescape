@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { interaction, theme } from '@/constants/theme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
 import {
