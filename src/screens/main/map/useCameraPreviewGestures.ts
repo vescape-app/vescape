@@ -27,6 +27,15 @@ interface UseCameraPreviewGesturesParams {
   setFollowZoomLevel: (zoomLevel: number) => void
 }
 
+/** Live follow only counts while a fix backs it: otherwise the follow camera is a fallback guess. */
+function followingLive(latest: {
+  cameraFix: GpsFix | null
+  followGps: boolean
+  historyActive: boolean
+}) {
+  return latest.cameraFix != null && latest.followGps && !latest.historyActive
+}
+
 export function useCameraPreviewGestures({
   cameraRefs,
   cameraFix,
@@ -51,6 +60,7 @@ export function useCameraPreviewGestures({
   const previewPanFollowedRef = useRef(false)
   const imperativeHandleLatest = {
     applyLiveFollowCamera,
+    cameraFix,
     followGps,
     getFollowHeadingDeg,
     getLiveFollowCamera,
@@ -151,10 +161,9 @@ export function useCameraPreviewGestures({
   const beginPreviewZoom = useCallback(() => {
     const latest = imperativeHandleLatestRef.current
     previewZoomedRef.current = false
-    previewZoomBaseRef.current =
-      latest.followGps && !latest.historyActive
-        ? latest.getLiveFollowCamera()
-        : currentCameraRef.current
+    previewZoomBaseRef.current = followingLive(latest)
+      ? latest.getLiveFollowCamera()
+      : currentCameraRef.current
   }, [currentCameraRef])
 
   const previewZoomBy = useCallback(
@@ -172,8 +181,7 @@ export function useCameraPreviewGestures({
       // Drive the camera the way the reveal pan does instead of retargeting the springs. A spring
       // target trails the fingers by its own time constant, which reads as a sluggish pinch — and
       // the follow zoom it would ride on is a render behind anyway.
-      const followCamera =
-        latest.followGps && !latest.historyActive ? latest.getLiveFollowCamera() : baseCamera
+      const followCamera = followingLive(latest) ? latest.getLiveFollowCamera() : baseCamera
       const previewCamera = {
         ...followCamera,
         zoomLevel,
@@ -218,20 +226,26 @@ export function useCameraPreviewGestures({
         pitch: getPitchForZoom(current.zoomLevel, latest.perspectiveEnabled),
       })
     }
-    if (latest.followGps && !latest.historyActive) latest.applyLiveFollowCamera()
+    if (followingLive(latest)) latest.applyLiveFollowCamera()
   }, [currentCameraRef, engine])
 
   const restorePreviewPan = useCallback(() => {
     previewPanActiveRef.current = false
     enterCameraMode({ kind: 'liveFollow' })
-    // A cancelled drag returns to live follow, so ride back to where the rider
-    // is now — the camera captured at drag start is already stale by a fix or two.
+    // A cancelled drag returns to live follow, so ride back to where the rider is now — the
+    // camera captured at drag start is already stale by a fix or two. Without a fix there is no
+    // rider to ride back to, and live follow would answer with the fallback camera, a whole
+    // continent's worth of zoom out: stay on the drag's own anchor instead.
+    const wantsLive = previewPanFollowedRef.current || !previewPanBaseRef.current
     const restoreCamera =
-      previewPanFollowedRef.current || !previewPanBaseRef.current
-        ? getLiveFollowCamera()
-        : previewPanBaseRef.current
+      cameraFix == null
+        ? (previewPanBaseRef.current ?? currentCameraRef.current)
+        : wantsLive
+          ? getLiveFollowCamera()
+          : previewPanBaseRef.current
     previewPanFollowedRef.current = false
     previewPanBaseRef.current = null
+    if (!restoreCamera) return
     if (cameraFix) {
       lastFollowKeyRef.current = liveFollowKey(cameraFix.timestamp, restoreCamera)
     }
@@ -246,6 +260,7 @@ export function useCameraPreviewGestures({
     })
   }, [
     cameraFix,
+    currentCameraRef,
     engine,
     enterCameraMode,
     getLiveFollowCamera,
