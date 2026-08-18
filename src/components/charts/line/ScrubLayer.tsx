@@ -1,7 +1,6 @@
 import { Circle, Group, Rect, RoundedRect, Text } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { AXIS_FONT_SIZE } from '@/components/charts/line/chartLayout'
 import { formatClock } from '@/components/charts/line/chartFormat'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
 import { sampleAtSec, type SeriesPaths } from '@/components/charts/line/seriesPaths'

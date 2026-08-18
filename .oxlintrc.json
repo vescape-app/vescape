@@ -36,6 +36,11 @@
 
     "typescript/array-type": ["warn", { "default": "array" }],
     "typescript/consistent-type-assertions": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/no-meaningless-void-operator": "off",
+    "typescript/unbound-method": "off",
     "typescript/no-empty-object-type": "error",
     "typescript/no-extra-non-null-assertion": "error",
     "typescript/no-require-imports": [
@@ -59,11 +64,11 @@
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn",
 
-    "complexity": ["error", 30],
-    "max-lines": ["error", { "max": 830, "skipBlankLines": true, "skipComments": true }],
+    "complexity": ["error", 28],
+    "max-lines": ["error", { "max": 560, "skipBlankLines": true, "skipComments": true }],
     "max-lines-per-function": [
       "error",
-      { "max": 480, "skipBlankLines": true, "skipComments": true, "IIFEs": true }
+      { "max": 390, "skipBlankLines": true, "skipComments": true, "IIFEs": true }
     ]
   },
   "overrides": [

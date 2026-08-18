@@ -1,12 +1,12 @@
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useRef, useState, type ElementRef } from 'react'
+import { useCallback, useRef, useState, type ComponentRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
@@ -62,7 +62,7 @@ export default function MapComponentsShowcase() {
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
   const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
-  const cameraRef = useRef<ElementRef<typeof Camera>>(null)
+  const cameraRef = useRef<ComponentRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
 
   const handleMapLoaded = useCallback(() => {

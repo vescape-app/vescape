@@ -18,9 +18,8 @@ interface SparklineProps {
   points: SparklinePoint[]
   color: string
   height?: number
-  fmtMax?: (value: number) => string
   showMaxBadge?: boolean
-  maxPosition?: 'left' | 'right'
+  fmtMax?: (value: number) => string
   range?: SparklineRange
   minSpan?: number
   windowMs?: number
@@ -71,7 +70,6 @@ export function Sparkline({
   height = DEFAULT_HEIGHT,
   fmtMax,
   showMaxBadge = true,
-  maxPosition = 'right',
   range,
   minSpan = 0,
   windowMs,
@@ -88,7 +86,7 @@ export function Sparkline({
   return (
     <View style={styles.wrap}>
       {fmtMax && showMaxBadge ? (
-        <SparklineMaxBadge points={points} color={color} fmt={fmtMax} position={maxPosition} />
+        <SparklineMaxBadge points={points} color={color} fmt={fmtMax} position="right" />
       ) : null}
       <View style={{ height }} onLayout={onLayout}>
         {width > 0 ? (

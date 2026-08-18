@@ -42,7 +42,7 @@ export interface LodPyramid {
   maxValue: number
 }
 
-export const EMPTY_PYRAMID: LodPyramid = {
+const EMPTY_PYRAMID: LodPyramid = {
   raw: { ts: [], vs: [] },
   levels: [],
   gapMs: Number.POSITIVE_INFINITY,

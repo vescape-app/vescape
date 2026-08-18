@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Gesture } from 'react-native-gesture-handler'
-import { runOnJS, useSharedValue, type SharedValue } from 'react-native-reanimated'
+import { useSharedValue, type SharedValue } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import { MIN_SPAN_MS, projectX, unprojectX, viewportFor } from '@/components/charts/line/projection'
 import {
@@ -288,7 +289,7 @@ export function useChartGestures({
         if (isSecondTap) fitToDomain()
         if (onChartTouch) {
           const index = chartAtY(event.y)
-          if (index >= 0) runOnJS(onChartTouch)(index)
+          if (index >= 0) scheduleOnRN(onChartTouch, index)
         }
       })
       .onStart((event) => {
@@ -355,7 +356,7 @@ export function useChartGestures({
         const now = Date.now()
         if (now - lastNotifyAt.value < SELECTION_NOTIFY_MS) return
         lastNotifyAt.value = now
-        runOnJS(onSelectionPreview)(moved)
+        scheduleOnRN(onSelectionPreview, moved)
       })
       .onFinalize(() => {
         'worklet'
@@ -366,7 +367,7 @@ export function useChartGestures({
         scrubTimeMs.value = null
         // Committed on release rather than per frame: the range is what the rest of the app acts
         // on, and re-running that for every pixel of a drag is what a shared value exists to avoid.
-        if (range != null && onSelectionCommit) runOnJS(onSelectionCommit)(range)
+        if (range != null && onSelectionCommit) scheduleOnRN(onSelectionCommit, range)
       })
 
     return Gesture.Simultaneous(pinch, drag, scrub)

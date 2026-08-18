@@ -12,7 +12,6 @@ import {
 import { Text } from '@/components/base/Text'
 import { IconHero } from '@/components/settings/IconHero'
 import { DeviceRow } from '@/components/base/DeviceRow'
-import { InfoBadge } from '@/components/base/InfoBadge'
 import { StepTimeline, type StepState, type TimelineStep } from '@/components/base/StepTimeline'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
@@ -40,17 +39,6 @@ function DeviceRowShowcase() {
         rssi={Number(rssi)}
         onPress={() => {}}
       />
-    </ShowcaseCard>
-  )
-}
-
-function InfoBadgeShowcase() {
-  return (
-    <ShowcaseCard name="InfoBadge">
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <InfoBadge label="Motor temp" onPress={() => {}} />
-        <InfoBadge label="Overcurrent" danger onPress={() => {}} />
-      </View>
     </ShowcaseCard>
   )
 }
@@ -231,10 +219,9 @@ export default function BoardComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, InfoBadge, StepTimeline, BoardWarningRow, ReplayBadge, TelemetryCell — board- and connection-flavored components."
+          description="DeviceRow, StepTimeline, BoardWarningRow, ReplayBadge, TelemetryCell — board- and connection-flavored components."
         />
         <DeviceRowShowcase />
-        <InfoBadgeShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
         <ReplayBadgeShowcase />

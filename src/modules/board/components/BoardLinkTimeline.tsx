@@ -160,77 +160,83 @@ interface PickerHandles {
 }
 
 /** Resolve the fixed checklist rows for the current phase. */
-function buildSteps(
-  phase: BoardLinkPhase,
+function pickingSteps(
   progress: BoardProbeProgressEvent | null,
   candidates: BoardCandidate[],
-  bleId: string | null | undefined,
+  connected: string,
   picker: PickerHandles,
 ): TimelineStep[] {
-  const reach = progress ? STEP_REACH[progress.step] : 0
-  const connected = `Connected to ${bleId ?? '…'}`
+  const single = candidates.length === 1 ? candidates[0] : null
+  // The BMS and Identity rows describe one candidate: the only one, or the pick.
+  const resolved = single ?? picker.selected ?? candidates[0] ?? null
+  const canIds =
+    progress?.canIds ??
+    candidates.map((c) => c.transport).filter((t): t is number => typeof t === 'number')
+  return [
+    row('connect', 'done', connected),
+    row('handshake', 'done', 'VESC service ready'),
+    row('scan', 'done', canScanCaption(canIds)),
+    single
+      ? row('transport', 'done', formatBoardTransport(single.transport))
+      : {
+          ...row('transport', 'done', 'Several transports answered — pick one'),
+          content: <TransportPicker candidates={candidates} picker={picker} />,
+        },
+    resolved?.hasBms
+      ? row('bms', 'done', 'Smart BMS answered')
+      : row('bms', 'absent', 'No smart BMS'),
+    identityRow(resolved),
+  ]
+}
 
-  if (phase === 'picking') {
-    const single = candidates.length === 1 ? candidates[0] : null
-    // The BMS and Identity rows describe one candidate: the only one, or the pick.
-    const resolved = single ?? picker.selected ?? candidates[0] ?? null
-    const canIds =
-      progress?.canIds ??
-      candidates.map((c) => c.transport).filter((t): t is number => typeof t === 'number')
-    return [
-      row('connect', 'done', connected),
-      row('handshake', 'done', 'VESC service ready'),
-      row('scan', 'done', canScanCaption(canIds)),
-      single
-        ? row('transport', 'done', formatBoardTransport(single.transport))
-        : {
-            ...row('transport', 'done', 'Several transports answered — pick one'),
-            content: <TransportPicker candidates={candidates} picker={picker} />,
-          },
-      resolved?.hasBms
-        ? row('bms', 'done', 'Smart BMS answered')
-        : row('bms', 'absent', 'No smart BMS'),
-      identityRow(resolved),
-    ]
-  }
+function failedSteps(
+  progress: BoardProbeProgressEvent | null,
+  connected: string,
+  reach: number,
+): TimelineStep[] {
+  const didConnect = reach >= 1
+  const didHandshake = reach >= 2
+  const didScan = reach >= 3
+  return [
+    row(
+      'connect',
+      didConnect ? 'done' : 'failed',
+      didConnect ? connected : 'Could not open BLE connection',
+    ),
+    row(
+      'handshake',
+      didHandshake ? 'done' : didConnect ? 'failed' : 'pending',
+      didHandshake
+        ? 'VESC service ready'
+        : didConnect
+          ? 'VESC service not ready'
+          : STEP_DESC.handshake,
+    ),
+    row(
+      'scan',
+      didScan ? 'done' : 'pending',
+      didScan ? canScanCaption(progress?.canIds) : STEP_DESC.scan,
+    ),
+    row(
+      'transport',
+      didScan ? 'failed' : 'pending',
+      didScan ? 'No transport returned telemetry' : STEP_DESC.transport,
+    ),
+    row('bms', 'absent', 'No BMS answer'),
+    row('identity', 'absent', 'No firmware info'),
+  ]
+}
 
-  if (phase === 'failed') {
-    const didConnect = reach >= 1
-    const didHandshake = reach >= 2
-    const didScan = reach >= 3
-    return [
-      row(
-        'connect',
-        didConnect ? 'done' : 'failed',
-        didConnect ? connected : 'Could not open BLE connection',
-      ),
-      row(
-        'handshake',
-        didHandshake ? 'done' : didConnect ? 'failed' : 'pending',
-        didHandshake
-          ? 'VESC service ready'
-          : didConnect
-            ? 'VESC service not ready'
-            : STEP_DESC.handshake,
-      ),
-      row(
-        'scan',
-        didScan ? 'done' : 'pending',
-        didScan ? canScanCaption(progress?.canIds) : STEP_DESC.scan,
-      ),
-      row(
-        'transport',
-        didScan ? 'failed' : 'pending',
-        didScan ? 'No transport returned telemetry' : STEP_DESC.transport,
-      ),
-      row('bms', 'absent', 'No BMS answer'),
-      row('identity', 'absent', 'No firmware info'),
-    ]
-  }
-
-  // Live linking: the spinner walks the rows in probe order, each upgrading to
-  // its result the moment the probe reports it. A caption is written once and
-  // never rewritten — facts that arrive later land in later rows.
+/**
+ * Live linking: the spinner walks the rows in probe order, each upgrading to its result the moment
+ * the probe reports it. A caption is written once and never rewritten — facts that arrive later
+ * land in later rows.
+ */
+function liveSteps(
+  progress: BoardProbeProgressEvent | null,
+  connected: string,
+  reach: number,
+): TimelineStep[] {
   const transportLabel =
     progress?.transport != null ? formatBoardTransport(progress.transport) : null
   const liveDone: Partial<Record<StepKey, string>> = {
@@ -251,6 +257,21 @@ function buildSteps(
       STEP_DESC[key]
     return { key, icon: STEP_ICON[key], label: STEP_LABEL[key], state, caption }
   })
+}
+
+function buildSteps(
+  phase: BoardLinkPhase,
+  progress: BoardProbeProgressEvent | null,
+  candidates: BoardCandidate[],
+  bleId: string | null | undefined,
+  picker: PickerHandles,
+): TimelineStep[] {
+  const reach = progress ? STEP_REACH[progress.step] : 0
+  const connected = `Connected to ${bleId ?? '…'}`
+
+  if (phase === 'picking') return pickingSteps(progress, candidates, connected, picker)
+  if (phase === 'failed') return failedSteps(progress, connected, reach)
+  return liveSteps(progress, connected, reach)
 }
 
 function row(key: StepKey, state: StepState, caption: string): TimelineStep {
