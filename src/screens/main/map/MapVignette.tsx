@@ -1,93 +1,168 @@
-import { useEffect, useMemo } from 'react'
-import { StyleSheet, View } from 'react-native'
-import Animated, {
+import { useEffect, type ReactNode } from 'react'
+import { StyleSheet, useWindowDimensions, View } from 'react-native'
+
+import { theme } from '@/constants/theme'
+import {
+  Canvas,
+  Group,
+  LinearGradient,
+  RadialGradient,
+  Rect,
+  vec,
+} from '@shopify/react-native-skia'
+import {
   Easing,
-  useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 
-import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface MapVignetteProps {
   mode: MainViewState
   panelHeight?: number
+  /** Kept for call-site compatibility; Skia gradients have no global IDs. */
   idPrefix?: string
   topOnly?: boolean
   visible?: boolean
   fadeOutProgress?: SharedValue<number>
 }
 
-function rgba(hex: string, alpha: number): string {
-  const value = hex.slice(1)
-  const red = Number.parseInt(value.slice(0, 2), 16)
-  const green = Number.parseInt(value.slice(2, 4), 16)
-  const blue = Number.parseInt(value.slice(4, 6), 16)
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
-}
-
-/**
- * Heavy gradient: the dashboard/telemetry face. Same weight across modes so the home face reads
- * consistently; fades out as the rider enters the map.
- */
-function homeGradient(color: string, topOnly: boolean, light: boolean): string {
-  const edge = 0.85
-  const middle = light ? 0.3 : 0.3
-  const radialEdge = light ? 0.34 : 0.34
-  const layers = [
-    `linear-gradient(to bottom, ${rgba(color, edge)} 0%, ${rgba(color, middle)} 48%, ${rgba(color, 0)} 66%)`,
-  ]
-  if (!topOnly) {
-    layers.push(
-      `linear-gradient(to top, ${rgba(color, edge)} 0%, ${rgba(color, middle)} 54%, ${rgba(color, 0)} 58%)`,
-      `radial-gradient(ellipse at center, ${rgba(color, light ? 0.04 : 0.02)} 34%, ${rgba(color, radialEdge)} 100%)`,
-    )
-  }
-  return layers.join(', ')
-}
-
-/**
- * Lighter edge vignette shown over the map/weather/legal-limits face. Fades in as the home
- * gradient fades out, restoring the dashboard → map crossfade.
- */
-function mapEdgeGradient({
-  mode,
-  color,
-  topOnly,
-  light,
-}: {
-  mode: MainViewState
+interface VignetteLayerProps {
   color: string
-  topOnly: boolean
-  light: boolean
-}): string {
-  const edge = mode === 'weather' ? 0.78 : mode === 'legalLimits' ? 0.6 : 0.45
-  const middle = mode === 'weather' ? 0.36 : mode === 'legalLimits' ? 0.3 : 0.18
-  const radialEdge = light ? 0.16 : 0.12
-  const topEnd = mode === 'weather' ? 30 : 18
-  const bottomStart = mode === 'weather' ? 70 : 82
-  const layers = [
-    `linear-gradient(to bottom, ${rgba(color, edge)} 0%, ${rgba(color, middle)} ${topEnd}%, ${rgba(color, 0)} 66%)`,
-  ]
-  if (!topOnly) {
-    layers.push(
-      `linear-gradient(to top, ${rgba(color, edge)} 0%, ${rgba(color, middle)} ${100 - bottomStart}%, ${rgba(color, 0)} 58%)`,
-      `radial-gradient(ellipse at center, ${rgba(color, light ? 0.03 : 0.02)} 34%, ${rgba(color, radialEdge)} 100%)`,
-    )
-  }
-  return layers.join(', ')
+  width: number
+  height: number
+  opacity: { value: number }
+  radial?: number[]
+  top: number[]
+  topPositions: number[]
+  topEnd: number
+  bottom?: number[]
+  bottomPositions?: number[]
+  bottomStart?: number
+  children?: ReactNode
 }
 
-/**
- * Readability wash over the map. Fabric gradients avoid the Android Skia shader crash that forced
- * the previous implementation off. Light appearance fades into a white canvas; dark appearance
- * keeps the established deep-edge treatment. Two stacked layers crossfade on `mode` change — the
- * heavy home gradient fades out as the lighter map-edge gradient fades in — restoring the
- * dashboard → map transition.
- */
+const RADIAL_POSITIONS = [0, 0.4, 0.68, 1]
+const TOP_POSITIONS = [0, 0.7, 1]
+const MAP_EDGE_POSITIONS = [0, 0.55, 1]
+const HISTORY_TOP_POSITIONS = [0, 0.52, 1]
+const HISTORY_BOTTOM_POSITIONS = [0, 0.5, 0.6, 1]
+
+function mapEdgeVignetteSpace(mode: MainViewState) {
+  if (mode === 'weather') {
+    return {
+      levels: [0.78, 0.36, 0],
+      topEnd: 0.3,
+      bottomStart: 0.7,
+    }
+  }
+
+  if (mode === 'legalLimits') {
+    return {
+      levels: [0.6, 0.3, 0],
+      topEnd: 0.18,
+      bottomStart: 0.82,
+    }
+  }
+
+  return {
+    levels: [0.45, 0.18, 0],
+    topEnd: 0.18,
+    bottomStart: 0.82,
+  }
+}
+
+function vignetteOpacity(color: string, level: number) {
+  return theme.alpha(color, level as 0 | 0.12 | 0.3 | 0.6 | 0.85)
+}
+
+function VignetteLayer({
+  color,
+  width,
+  height,
+  opacity,
+  radial,
+  top,
+  topPositions,
+  topEnd,
+  bottom,
+  bottomPositions,
+  bottomStart,
+  children,
+}: VignetteLayerProps) {
+  const radialRadius = width * 0.68
+  const radialScaleY = (height * 0.62) / radialRadius
+  const radialBaseHeight = height / radialScaleY
+  const radialBaseTop = (height - radialBaseHeight) / 2
+
+  return (
+    <Group opacity={opacity}>
+      {radial != null ? (
+        <Group origin={vec(width / 2, height / 2)} transform={[{ scaleY: radialScaleY }]}>
+          <Rect x={0} y={radialBaseTop} width={width} height={radialBaseHeight}>
+            <RadialGradient
+              c={vec(width / 2, height / 2)}
+              r={radialRadius}
+              colors={radial.map((level) => vignetteOpacity(color, level))}
+              positions={RADIAL_POSITIONS}
+            />
+          </Rect>
+        </Group>
+      ) : null}
+      <Rect x={0} y={0} width={width} height={height * topEnd}>
+        <LinearGradient
+          start={vec(0, 0)}
+          end={vec(0, height * topEnd)}
+          colors={top.map((level) => vignetteOpacity(color, level))}
+          positions={topPositions}
+        />
+      </Rect>
+      {bottom != null && bottomStart != null ? (
+        <Rect x={0} y={height * bottomStart} width={width} height={height * (1 - bottomStart)}>
+          <LinearGradient
+            start={vec(0, height)}
+            end={vec(0, height * bottomStart)}
+            colors={bottom.map((level) => vignetteOpacity(color, level))}
+            positions={bottomPositions}
+          />
+        </Rect>
+      ) : null}
+      {children}
+    </Group>
+  )
+}
+
+function AnimatedHistoryBottomGradient({
+  color,
+  width,
+  height,
+  bottomStart,
+}: {
+  color: string
+  width: number
+  height: number
+  bottomStart: SharedValue<number>
+}) {
+  const y = useDerivedValue(() => height * bottomStart.value)
+  const gradientEnd = useDerivedValue(() => vec(0, height * bottomStart.value))
+  const gradientHeight = useDerivedValue(() => height * (1 - bottomStart.value))
+
+  return (
+    <Rect x={0} y={y} width={width} height={gradientHeight}>
+      <LinearGradient
+        start={vec(0, height)}
+        end={gradientEnd}
+        colors={[0.85, 0.6, 0.3, 0].map((level) => vignetteOpacity(color, level))}
+        positions={HISTORY_BOTTOM_POSITIONS}
+      />
+    </Rect>
+  )
+}
+
 export function MapVignette({
   mode,
   panelHeight = 0,
@@ -96,66 +171,96 @@ export function MapVignette({
   fadeOutProgress,
 }: MapVignetteProps) {
   const neutral = useResolvedNeutralColors()
-  const appearance = useThemeStore((state) => state.resolvedTheme)
-  const light = appearance === 'light'
-  const color = light ? neutral.bg : neutral.surfaceDeep
-  const isHome = mode === 'telemetry'
-  const isMapFace = mode === 'map' || mode === 'weather' || mode === 'legalLimits'
-
-  const homePresence = useSharedValue(visible && (isHome || mode === 'history') ? 1 : 0)
-  const mapPresence = useSharedValue(visible && isMapFace ? 1 : 0)
+  const { width, height } = useWindowDimensions()
+  const mapSurfaceVisible = mode === 'map' || mode === 'weather' || mode === 'legalLimits'
+  const mapEdgeSpace = mapEdgeVignetteSpace(mode === 'telemetry' ? 'map' : mode)
+  const homeOpacity = useSharedValue(visible && mode === 'telemetry' ? 1 : 0)
+  const mapSurfaceOpacity = useSharedValue(visible && mapSurfaceVisible ? 1 : 0)
+  const panelTop = panelHeight > 0 ? Math.max(0.2, 1 - panelHeight / height) : 0.55
+  const historyBottomStart = Math.max(0.05, panelTop - 0.28)
+  const historyBottomStartValue = useSharedValue(historyBottomStart)
+  const homeLayerOpacity = useDerivedValue(
+    () => homeOpacity.value * (1 - (fadeOutProgress?.value ?? 0)),
+  )
+  const mapSurfaceLayerOpacity = useDerivedValue(() =>
+    Math.min(1, mapSurfaceOpacity.value + homeOpacity.value * (fadeOutProgress?.value ?? 0)),
+  )
+  const historyLayerOpacity = useDerivedValue(() =>
+    withTiming(visible && mode === 'history' ? 1 : 0, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    }),
+  )
 
   useEffect(() => {
     const transition = { duration: 280, easing: Easing.out(Easing.cubic) }
-    homePresence.value = withTiming(visible && (isHome || mode === 'history') ? 1 : 0, transition)
-    mapPresence.value = withTiming(visible && isMapFace ? 1 : 0, transition)
-  }, [homePresence, isMapFace, isHome, mapPresence, mode, visible])
+    homeOpacity.value = withTiming(visible && mode === 'telemetry' ? 1 : 0, transition)
+    mapSurfaceOpacity.value = withTiming(visible && mapSurfaceVisible ? 1 : 0, transition)
+  }, [homeOpacity, mapSurfaceOpacity, mapSurfaceVisible, mode, visible])
 
-  const homeOpacity = useDerivedValue(
-    () => homePresence.value * (1 - (fadeOutProgress?.value ?? 0)),
-  )
-  const mapOpacity = useDerivedValue(() => mapPresence.value * (1 - (fadeOutProgress?.value ?? 0)))
-
-  const homeBg = useMemo(() => homeGradient(color, topOnly, light), [color, light, topOnly])
-  const mapBg = useMemo(
-    () => mapEdgeGradient({ mode, color, topOnly, light }),
-    [color, light, mode, topOnly],
-  )
-
-  const homeStyle = useAnimatedStyle(() => ({ opacity: homeOpacity.value }))
-  const mapStyle = useAnimatedStyle(() => ({ opacity: mapOpacity.value }))
-
-  if (mode === 'history') {
-    // A single gradient layer: dark at the top and bottom edges, clear through the middle.
-    // One layer means no two-half overlap and no center seam.
-    return (
-      <Animated.View pointerEvents="none" style={[styles.wrap, homeStyle]}>
-        <View
-          style={[
-            styles.gradient,
-            {
-              experimental_backgroundImage: `linear-gradient(to bottom, ${rgba(color, 0.85)} 0%, ${rgba(color, 0.3)} 30%, ${rgba(color, 0)} 45%, ${rgba(color, 0)} 55%, ${rgba(color, 0.3)} 70%, ${rgba(color, 0.85)} 100%)`,
-            },
-          ]}
-        />
-      </Animated.View>
-    )
-  }
+  useEffect(() => {
+    historyBottomStartValue.value = withTiming(historyBottomStart, {
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+    })
+  }, [historyBottomStart, historyBottomStartValue])
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.wrap]}>
-      <Animated.View style={[styles.layer, homeStyle]}>
-        <View style={[styles.gradient, { experimental_backgroundImage: homeBg }]} />
-      </Animated.View>
-      <Animated.View style={[styles.layer, mapStyle]}>
-        <View style={[styles.gradient, { experimental_backgroundImage: mapBg }]} />
-      </Animated.View>
-    </Animated.View>
+    <View pointerEvents="none" style={styles.wrap}>
+      <Canvas style={styles.canvas}>
+        <VignetteLayer
+          color={neutral.surfaceDeep}
+          width={width}
+          height={height}
+          opacity={homeLayerOpacity}
+          radial={topOnly ? undefined : [0, 0.12, 0.3, 0.6]}
+          top={[0.85, 0.3, 0]}
+          topPositions={TOP_POSITIONS}
+          topEnd={0.34}
+          bottom={topOnly ? undefined : [0.85, 0.3, 0]}
+          bottomPositions={TOP_POSITIONS}
+          bottomStart={topOnly ? undefined : 0.66}
+        />
+        <VignetteLayer
+          color={neutral.surfaceDeep}
+          width={width}
+          height={height}
+          opacity={mapSurfaceLayerOpacity}
+          top={mapEdgeSpace.levels}
+          topPositions={MAP_EDGE_POSITIONS}
+          topEnd={mapEdgeSpace.topEnd}
+          bottom={topOnly ? undefined : mapEdgeSpace.levels}
+          bottomPositions={MAP_EDGE_POSITIONS}
+          bottomStart={topOnly ? undefined : mapEdgeSpace.bottomStart}
+        />
+        {!topOnly ? (
+          <VignetteLayer
+            color={neutral.surfaceDeep}
+            width={width}
+            height={height}
+            opacity={historyLayerOpacity}
+            radial={[0, 0.12, 0.3, 0.6]}
+            top={[0.85, 0.6, 0]}
+            topPositions={HISTORY_TOP_POSITIONS}
+            topEnd={0.24}
+          >
+            <AnimatedHistoryBottomGradient
+              color={neutral.surfaceDeep}
+              width={width}
+              height={height}
+              bottomStart={historyBottomStartValue}
+            />
+          </VignetteLayer>
+        ) : null}
+      </Canvas>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  wrap: { ...StyleSheet.absoluteFill },
-  layer: { ...StyleSheet.absoluteFill },
-  gradient: { flex: 1 },
+  wrap: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 4,
+  },
+  canvas: StyleSheet.absoluteFill,
 })
