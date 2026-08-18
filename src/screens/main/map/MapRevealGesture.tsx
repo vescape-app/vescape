@@ -14,10 +14,14 @@ interface MapRevealGestureProps {
   onZoom: (scale: number) => void
   onZoomEnd: () => void
   onReveal: () => void
+  /** A pinch started after the drag had already committed — undo the reveal. */
+  onRevealCancel: () => void
   onFinish: (revealed: boolean) => void
 }
 
 const REVEAL_DISTANCE_DP = 120
+/** How long a finished single-finger drag waits for a pinch to claim the touch sequence. */
+const PINCH_GRACE_MS = 120
 const FADE_TIMING = { duration: 260 } as const
 const REVEAL_SPRING = {
   damping: 18,
@@ -34,16 +38,53 @@ function createMapRevealGesture({
   onZoom,
   onZoomEnd,
   onReveal,
+  onRevealCancel,
   onFinish,
 }: MapRevealGestureProps) {
   let completed = false
   let pinching = false
+  // Sticky for the whole touch sequence: once a second finger has been down, this was a pinch.
+  let multiTouch = false
+  // The pan is single-pointer, so it finalizes the instant a second finger lands — before the
+  // pinch it belongs to has begun. Settling there would tear down the gesture (and with it the
+  // chance to undo a reveal), so the settle waits for the pinch, or for the grace window.
+  let pendingSettle: { revealed: boolean } | null = null
+  let settleTimer: ReturnType<typeof setTimeout> | null = null
+
+  const settle = (revealed: boolean) => {
+    if (!revealed) {
+      progress.value = withSpring(0, REVEAL_SPRING)
+      dragOpacity.value = withTiming(0, FADE_TIMING)
+    }
+    onFinish(revealed)
+  }
+
+  const deferSettle = (revealed: boolean) => {
+    pendingSettle = { revealed }
+    if (settleTimer) clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => {
+      settleTimer = null
+      const deferred = pendingSettle
+      pendingSettle = null
+      if (deferred) settle(deferred.revealed)
+    }, PINCH_GRACE_MS)
+  }
+
+  const flushSettle = (revealed: boolean) => {
+    if (settleTimer) {
+      clearTimeout(settleTimer)
+      settleTimer = null
+    }
+    pendingSettle = null
+    settle(revealed)
+  }
 
   const pan = Gesture.Pan()
     .runOnJS(true)
     .maxPointers(1)
     .minDistance(4)
-    .onTouchesDown(() => {
+    .onTouchesDown((event) => {
+      multiTouch = event.numberOfTouches > 1
       completed = false
       progress.value = 0
       dragOpacity.value = 0
@@ -61,7 +102,9 @@ function createMapRevealGesture({
     })
     .onUpdate((event) => {
       const distance = Math.hypot(event.translationX, event.translationY)
-      const shouldReveal = distance >= REVEAL_DISTANCE_DP
+      // A second finger on the screen means a pinch, never a reveal — the drag may still pan the
+      // map preview, but it must not commit the mode switch.
+      const shouldReveal = distance >= REVEAL_DISTANCE_DP && !multiTouch && !pinching
       const nextProgress = Math.min(1, distance / REVEAL_DISTANCE_DP)
       dragOpacity.value = nextProgress
       // The map always tracks the finger one to one. A drag that never reaches
@@ -85,23 +128,32 @@ function createMapRevealGesture({
     })
     .onFinalize(() => {
       const wasCompleted = completed
-      if (pinching) {
-        completed = false
+      completed = false
+      // A pinch is running, or a second finger just landed and one is about to begin: hold the
+      // settle so the reveal can still be undone.
+      if (pinching || multiTouch) {
+        deferSettle(wasCompleted)
         return
       }
-      if (!completed) {
-        progress.value = withSpring(0, REVEAL_SPRING)
-        dragOpacity.value = withTiming(0, FADE_TIMING)
-      }
-      completed = false
-      onFinish(wasCompleted)
+      settle(wasCompleted)
     })
 
   const pinch = Gesture.Pinch()
     .runOnJS(true)
     .onBegin(() => {
       pinching = true
+      // The fingers of a pinch rarely land together: the first one can travel past the reveal
+      // distance before the second arrives, committing a mode switch the rider never asked for.
+      // Undo it as soon as the pinch proves the intent was a zoom.
+      if (completed || pendingSettle?.revealed) onRevealCancel()
+      if (settleTimer) {
+        clearTimeout(settleTimer)
+        settleTimer = null
+      }
+      // Whatever the pan left pending is now a plain cancel, settled when the pinch ends.
+      if (pendingSettle) pendingSettle = { revealed: false }
       completed = false
+      multiTouch = true
       progress.value = 0
       dragOpacity.value = 0
       onZoomStart()
@@ -112,6 +164,7 @@ function createMapRevealGesture({
     .onFinalize(() => {
       pinching = false
       onZoomEnd()
+      if (pendingSettle) flushSettle(false)
     })
 
   return Gesture.Simultaneous(pan, pinch)
@@ -134,6 +187,7 @@ export function MapRevealGesture({
   onZoom,
   onZoomEnd,
   onReveal,
+  onRevealCancel,
   onFinish,
 }: MapRevealGestureProps) {
   'use no memo'
@@ -150,6 +204,7 @@ export function MapRevealGesture({
   const handleZoom = useLatestCallback(onZoom)
   const handleZoomEnd = useLatestCallback(onZoomEnd)
   const handleReveal = useLatestCallback(onReveal)
+  const handleRevealCancel = useLatestCallback(onRevealCancel)
   const handleFinish = useLatestCallback(onFinish)
 
   const gesture = useMemo(
@@ -163,6 +218,7 @@ export function MapRevealGesture({
         onZoom: handleZoom,
         onZoomEnd: handleZoomEnd,
         onReveal: handleReveal,
+        onRevealCancel: handleRevealCancel,
         onFinish: handleFinish,
       }),
     [
@@ -171,6 +227,7 @@ export function MapRevealGesture({
       handlePan,
       handlePanStart,
       handleReveal,
+      handleRevealCancel,
       handleZoom,
       handleZoomEnd,
       handleZoomStart,

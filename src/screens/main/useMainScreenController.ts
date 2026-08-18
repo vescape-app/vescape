@@ -204,6 +204,12 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     mapRef.current?.recenterLive()
   }, [enterTelemetry, mapRef])
 
+  // An accidental reveal undone mid-pinch: back to telemetry without touching the camera, which
+  // the pinch is still driving.
+  const cancelMapFocus = useCallback(() => {
+    enterTelemetry()
+  }, [enterTelemetry])
+
   const enterWeatherMode = useCallback(() => {
     enterWeather()
     mapRef.current?.focusWeather()
@@ -386,6 +392,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     exitLegalLimitsMode,
     handleMapFocus,
     exitMapFocus,
+    cancelMapFocus,
     activeHistoryMapMetric,
     setActiveHistoryMapMetric,
   }

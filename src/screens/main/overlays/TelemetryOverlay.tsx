@@ -52,6 +52,8 @@ interface TelemetryOverlayProps {
   onStopScan: () => void
   onRetryConnect: () => void
   onEnterMapFocus: () => void
+  /** Undoes an accidental reveal when the drag turns out to be a pinch. */
+  onCancelMapFocus: () => void
   onEnterWeather: () => void
   onEnterLegalLimits: () => void
   onEnterHistory: () => void
@@ -80,6 +82,7 @@ export function TelemetryOverlay({
   onStopScan,
   onRetryConnect,
   onEnterMapFocus,
+  onCancelMapFocus,
   onEnterWeather,
   onEnterLegalLimits,
   onEnterHistory,
@@ -144,6 +147,13 @@ export function TelemetryOverlay({
     onEnterMapFocus()
   }, [onEnterMapFocus])
 
+  const handleRevealCancel = useCallback(() => {
+    if (!revealCommittedRef.current) return
+    revealCommittedRef.current = false
+    mapRef.current?.restorePreviewPan()
+    onCancelMapFocus()
+  }, [mapRef, onCancelMapFocus])
+
   const handleRevealFinish = useCallback(
     (revealed: boolean) => {
       const actuallyRevealed = revealed || revealCommittedRef.current || mode === 'map'
@@ -174,6 +184,7 @@ export function TelemetryOverlay({
           onZoom={handleRevealZoom}
           onZoomEnd={handleRevealZoomEnd}
           onReveal={handleReveal}
+          onRevealCancel={handleRevealCancel}
           onFinish={handleRevealFinish}
         />
       ) : null}

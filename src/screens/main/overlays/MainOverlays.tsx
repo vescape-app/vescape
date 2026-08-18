@@ -45,6 +45,7 @@ interface MainMapOverlayProps {
   setMapSelector: (selector: MapSelector) => void
   enterMapFocus: () => void
   exitMapFocus: () => void
+  cancelMapFocus: () => void
   enterWeather: () => void
   exitWeather: () => void
   enterLegalLimits: () => void
@@ -134,6 +135,7 @@ export function MainOverlays({
         onStopScan={board.onStopScan}
         onRetryConnect={board.onRetryConnect}
         onEnterMapFocus={map.enterMapFocus}
+        onCancelMapFocus={map.cancelMapFocus}
         onEnterWeather={map.enterWeather}
         onEnterLegalLimits={map.enterLegalLimits}
         onEnterHistory={() => void history.enterHistoryMode()}
