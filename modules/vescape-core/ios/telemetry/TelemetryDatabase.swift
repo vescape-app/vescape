@@ -526,6 +526,10 @@ enum TelemetryDatabase {
       try BoardConfigStore.createTables(db)
     }
 
+    migrator.registerMigration("v34_board_config_change_notices") { db in
+      try db.execute(sql: "CREATE TABLE IF NOT EXISTS board_config_change_notices (board_id TEXT NOT NULL PRIMARY KEY, detected_at INTEGER NOT NULL, diffs_json TEXT NOT NULL)")
+    }
+
     return migrator
   }
 }

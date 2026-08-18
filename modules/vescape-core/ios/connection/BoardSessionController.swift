@@ -1331,12 +1331,13 @@ internal final class BoardSessionController: VescGattListener {
   /// Take ownership of the Board Config Values a read or write just produced: they become this
   /// session's config truth, get cached for the next connect, and feed warning evaluation.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onBoardConfigValues`
-  private func onBoardConfigValues(_ values: BoardConfigValues) {
+  private func onBoardConfigValues(_ values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
     // The link can go `mismatched` (or the Board change) while a read is on the wire; those bytes
     // describe a board this session no longer owns, so they must not repopulate what was cleared.
     guard values.boardId == config?.appBoardId, linkIntegrity == .trusted else { return }
     boardConfigValues = values
-    BoardConfigStore.shared.save(values)
+    if origin == .freshRead { BoardConfigStore.shared.saveFresh(values) }
+    else { BoardConfigStore.shared.save(values) }
     evaluateConfigSafety(values)
   }
 
@@ -2021,7 +2022,7 @@ internal final class BoardSessionController: VescGattListener {
         self?.recordConnectionDiagnostic(name, operation: "config_rw", message: properties["message"] as? String ?? name, extra: properties)
       },
       loadProfile: { profileId in TuneProfileStore.shared.getTuneProfile(profileId) },
-      onBoardConfigValues: { [weak self] values in self?.onBoardConfigValues(values) }
+      onBoardConfigValues: { [weak self] values, origin in self?.onBoardConfigValues(values, origin: origin) }
     )
   }
 
@@ -2041,7 +2042,7 @@ internal final class BoardSessionController: VescGattListener {
       sendPayload: { _ in false },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
-      onBoardConfigValues: { _ in }
+      onBoardConfigValues: { _, _ in }
     )
   }
 

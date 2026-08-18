@@ -50,7 +50,7 @@ internal interface ConfigRWControllerPort {
      * Hand the freshly decoded Board Config Values to the session controller, which holds them as the
      * session's config truth, caches them, and runs warning evaluation.
      */
-    fun onBoardConfigValues(values: BoardConfigValues)
+    fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin)
 }
 
 // @parity /modules/vescape-core/ios/config/ConfigRWController.swift
@@ -198,7 +198,7 @@ internal class ConfigRWController(
     private fun completeRead(effect: ConfigRWEffect.EmitReadComplete) {
         val callbacks = readCallbacks.toList().also { readCallbacks.clear() }
         resumePolling(effect.resumePolling)
-        effect.boardConfigValues?.let(port::onBoardConfigValues)
+        effect.boardConfigValues?.let { port.onBoardConfigValues(it, BoardConfigOperationOrigin.FRESH_READ) }
         val map = effect.snapshot.toMap()
         for (pending in callbacks) pending.onSuccess(map)
     }
@@ -210,7 +210,7 @@ internal class ConfigRWController(
     }
     private fun completeWrite(effect: ConfigRWEffect.EmitWriteComplete) {
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
-        effect.boardConfigValues?.let(port::onBoardConfigValues)
+        effect.boardConfigValues?.let { port.onBoardConfigValues(it, BoardConfigOperationOrigin.VESCAPE_WRITE) }
         callbacks?.onSuccess?.invoke(effect.snapshot.toMap())
     }
     private fun failWrite(effect: ConfigRWEffect.EmitWriteFailure) {
@@ -231,3 +231,5 @@ internal class ConfigRWController(
     private fun PendingConfigRead.noCanId(operation: String) = onError(RefloatConfigErrorCode.CAN_ID_UNAVAILABLE.name, "Cannot $operation Refloat config before CAN id discovery")
     private fun PendingConfigWrite.noCanId(operation: String) = onError(RefloatConfigErrorCode.CAN_ID_UNAVAILABLE.name, "Cannot $operation config before CAN id discovery")
 }
+
+internal enum class BoardConfigOperationOrigin { FRESH_READ, VESCAPE_WRITE }

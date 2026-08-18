@@ -614,3 +614,10 @@ data class BoardConfigValuesEntity(
   @ColumnInfo(name = "captured_at")
   val capturedAt: Long,
 )
+
+@Entity(tableName = "board_config_change_notices")
+data class BoardConfigChangeNoticeEntity(
+  @PrimaryKey @ColumnInfo(name = "board_id") val boardId: String,
+  @ColumnInfo(name = "detected_at") val detectedAt: Long,
+  @ColumnInfo(name = "diffs_json") val diffsJson: String,
+)

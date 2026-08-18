@@ -159,7 +159,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
       loadProfile: { _ in
         ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["tuned": 7.0] as [String: Any]]
       },
-      onBoardConfigValues: { _ in }
+      onBoardConfigValues: { _, _ in }
     )
   }
 }

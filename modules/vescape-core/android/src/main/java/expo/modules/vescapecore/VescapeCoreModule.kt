@@ -172,6 +172,7 @@ class VescapeCoreModule : Module() {
       "onAppDataChanged",
       "onBoardWarnings",
       "onBoardConfigValues",
+      "onBoardConfigChangeNotice",
       "onAppStatus",
       "onNavigation",
       "onRouteProgress",
@@ -283,6 +284,8 @@ class VescapeCoreModule : Module() {
       sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
     }
     OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { startObserving("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
@@ -616,6 +619,8 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getBoardConfigValues") {
       CoreForegroundService.getBoardConfigValues()
     }
+    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
+    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       BoardWarningRegistry.get(context).clearWarning(boardId, kind)
     }

@@ -26,6 +26,7 @@ import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
+import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.location.GpsMonitor
@@ -376,8 +377,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
                     this@BoardSessionController.diagnosticProperties(config, category)
                 override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) =
                     this@BoardSessionController.dumpRefloatConfigDebug(xmlBytes, configBytes)
-                override fun onBoardConfigValues(values: BoardConfigValues) =
-                    this@BoardSessionController.onBoardConfigValues(values)
+                override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) =
+                    this@BoardSessionController.onBoardConfigValues(values, origin)
             },
         )
     }
@@ -1507,14 +1508,18 @@ private var wearAutoLaunchOnConnect = true
      * session's config truth, get cached for the next connect, and feed warning evaluation.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onBoardConfigValues`
      */
-    private fun onBoardConfigValues(values: BoardConfigValues) {
+    private fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
         // The link can go `Mismatched` (or the Board change) while a read is on the wire; those bytes
         // describe a board this session no longer owns, so they must not repopulate what was cleared.
         if (values.boardId != boardConfig?.appBoardId) return
         if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
         boardConfigValues = values
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch { repo.saveBoardConfigValues(values) }
+        CoreForegroundService.appDataScope.launch {
+            if (origin == BoardConfigOperationOrigin.FRESH_READ) {
+                repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+            } else repo.saveBoardConfigValues(values)
+        }
         evaluateConfigSafety(values)
     }
 

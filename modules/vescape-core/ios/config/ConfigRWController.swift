@@ -466,7 +466,7 @@ internal final class ConfigRWController {
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    connection.onBoardConfigValues(values)
+    connection.onBoardConfigValues(values, .freshRead)
     let map = snapshot.toMap()
     for callbacks in pending { callbacks.onSuccess(map) }
   }
@@ -478,7 +478,7 @@ internal final class ConfigRWController {
     state = .idle
     cancelTimeout()
     if resume { connection.startPolling() }
-    connection.onBoardConfigValues(values)
+    connection.onBoardConfigValues(values, .vescapeWrite)
     pending?.onSuccess(snapshot.toMap())
   }
 
@@ -653,8 +653,10 @@ internal struct ConfigRWConnection {
   let loadProfile: (String) -> [String: Any?]?
   /// Hand the freshly decoded Board Config Values to the session controller, which holds them as the
   /// session's config truth, caches them, and runs warning evaluation.
-  let onBoardConfigValues: (BoardConfigValues) -> Void
+  let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void
 }
+
+internal enum BoardConfigOperationOrigin { case freshRead, vescapeWrite }
 
 private extension BoardTransport {
   var canId: Int? {

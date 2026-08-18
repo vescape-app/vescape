@@ -1453,6 +1453,23 @@ export interface BoardConfigValuesEvent {
   values: BoardConfigValues | null
 }
 
+/** @parity native BoardConfigChangeNotice peers. */
+export interface BoardConfigChangeDiff {
+  fieldId: string
+  label: string
+  unit: string | null
+  oldValue: number | boolean | null
+  newValue: number | boolean | null
+}
+export interface BoardConfigChangeNotice {
+  boardId: string
+  detectedAtMs: number
+  diffs: BoardConfigChangeDiff[]
+}
+export interface BoardConfigChangeNoticeEvent {
+  notice: BoardConfigChangeNotice | null
+}
+
 /**
  * Release Policy outcome for the installed marketing version, resolved **by the server**. Native
  * never evaluates SemVer ranges and JS never sees one — both only carry the resolved slug.
@@ -1783,6 +1800,7 @@ type VescapeCoreEvents = {
   onBoardWarnings: (event: BoardWarningsEvent) => void
   /** Board Config Values arrived, changed, or were cleared (`values: null`). */
   onBoardConfigValues: (event: BoardConfigValuesEvent) => void
+  onBoardConfigChangeNotice: (event: BoardConfigChangeNoticeEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
@@ -1911,6 +1929,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<void>
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
+  getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
+  dismissBoardConfigChangeNotice(boardId: string): Promise<void>
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
@@ -2548,6 +2568,14 @@ export async function clearAllBoardWarnings(boardId: string): Promise<void> {
 export async function getBoardConfigValues(): Promise<BoardConfigValues | null> {
   return native.getBoardConfigValues()
 }
+export async function getBoardConfigChangeNotice(
+  boardId: string,
+): Promise<BoardConfigChangeNotice | null> {
+  return native.getBoardConfigChangeNotice(boardId)
+}
+export async function dismissBoardConfigChangeNotice(boardId: string): Promise<void> {
+  return native.dismissBoardConfigChangeNotice(boardId)
+}
 
 /** Dev-only: inject a fake Board Warning to exercise the fire → persist → emit pipe without a detector. */
 export async function devInjectBoardWarning(
@@ -2973,6 +3001,11 @@ export function addBoardConfigValuesListener(
   cb: (event: BoardConfigValuesEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardConfigValues', cb)
+}
+export function addBoardConfigChangeNoticeListener(
+  cb: (event: BoardConfigChangeNoticeEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onBoardConfigChangeNotice', cb)
 }
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {

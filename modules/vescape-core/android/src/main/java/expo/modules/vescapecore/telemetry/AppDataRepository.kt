@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.config.BoardConfigValues
+import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -204,6 +205,8 @@ class AppDataRepository private constructor(private val context: Context) {
 
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
     dao.deleteBoardWithSettings(id)
+    dao.deleteBoardConfigValues(id)
+    dao.deleteBoardConfigChangeNotice(id)
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
@@ -241,6 +244,26 @@ class AppDataRepository private constructor(private val context: Context) {
     )
   }
 
+  internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
+    val boardId = values.boardId ?: return@withContext null
+    val base = values.refloatBaseVersion ?: return@withContext null
+    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, values.valuesJson(), values.capturedAtMs)) { old ->
+      val oldValues = old?.let { BoardConfigValues.lastKnown(boardId, base, it.capturedAt, it.valuesJson).values } ?: return@replaceBaselineAndNotice null
+      val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, values.writeBase?.schema)
+      diffs.takeIf { it.isNotEmpty() }?.let { BoardConfigChangeNoticeEntity(boardId, values.capturedAtMs, BoardConfigChangeNotice(boardId, values.capturedAtMs, it).diffsJson()) }
+    }
+    row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+  }
+
+  internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
+    dao.getBoardConfigChangeNotice(boardId)?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+  }
+
+  suspend fun dismissBoardConfigChangeNotice(boardId: String) = withContext(Dispatchers.IO) {
+    dao.deleteBoardConfigChangeNotice(boardId)
+    CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to null))
+  }
+
   /**
    * Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
    * behind the link is not the one those offsets were decoded against.
@@ -249,6 +272,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
     if (boardId.isBlank()) return@withContext
     dao.deleteBoardConfigValues(boardId)
+    dao.deleteBoardConfigChangeNotice(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {

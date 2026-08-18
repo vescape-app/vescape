@@ -76,7 +76,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onBoardConfigValues", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onBoardConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -115,6 +115,8 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onBoardConfigValues", ["values": self.coordinator.boardConfigValuesMap()])
     }
     OnStopObserving("onBoardConfigValues") { self.observedEvents.remove("onBoardConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { self.observedEvents.insert("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { self.observedEvents.remove("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
       self.observedEvents.insert("onAppStatus")
       // Late subscriber: replay the current App Status so JS is immediately consistent.
@@ -173,6 +175,7 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.onChange = { [weak self] boardId, warnings in
         self?.sendBoardWarnings(boardId, warnings)
       }
+      BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
       self.autoConnectSelectedBoard()
     }
 
@@ -193,6 +196,7 @@ public class VescapeCoreModule: Module {
       self.detachFromCoordinator()
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
+      BoardConfigStore.onNoticeChanged = nil
       AppStatusCoordinator.shared.onChange = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
@@ -587,6 +591,8 @@ public class VescapeCoreModule: Module {
     AsyncFunction("getBoardConfigValues") { (promise: Promise) in
       promise.resolve(self.coordinator.boardConfigValuesMap())
     }
+    AsyncFunction("getBoardConfigChangeNotice") { (boardId: String, promise: Promise) in promise.resolve(BoardConfigStore.shared.loadNotice(boardId: boardId)?.toMap()) }
+    AsyncFunction("dismissBoardConfigChangeNotice") { (boardId: String, promise: Promise) in BoardConfigStore.shared.dismissNotice(boardId: boardId); promise.resolve(nil) }
 
     AsyncFunction("devReportCleanBoardWarning") { (boardId: String, kind: String, promise: Promise) in
       BoardWarningRegistry.shared.reportCleanEvaluation(boardId: boardId, kind: kind)

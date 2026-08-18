@@ -145,6 +145,7 @@ final class AppDataRepository {
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM boards WHERE id = ?", arguments: [id])
     }
+    BoardConfigStore.shared.clear(boardId: id)
     notifyDataChanged(.boards)
   }
 

@@ -23,6 +23,8 @@ import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
+import { startBoardConfigChangeNoticeSync } from '@/modules/board/store/boardConfigChangeNoticeStore'
+import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardConfigChangeNoticeModal'
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
@@ -86,6 +88,7 @@ function RootLayout() {
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopBoardConfigValuesSync = startBoardConfigValuesSync()
+    const stopBoardConfigChangeNoticeSync = startBoardConfigChangeNoticeSync()
     const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
@@ -96,6 +99,7 @@ function RootLayout() {
       stopAppDataSync()
       stopBoardWarningsSync()
       stopBoardConfigValuesSync()
+      stopBoardConfigChangeNoticeSync()
       stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()
       stopAppStatusSync()
@@ -118,6 +122,7 @@ function RootLayout() {
       __experimental_resourceCache={resourceCache}
     >
       <DeviceAuthSync />
+      <BoardConfigChangeNoticeModal />
       <DiagnosticErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <Stack
