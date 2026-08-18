@@ -251,7 +251,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
             // travels back past the threshold by this metric's re-arm margin.
             val armed = armedState[rule.id] ?: true
             if (!triggered) {
-                if (!armed && hasRearmed(compareValue, rule, aboveDir)) {
+                if (!armed && hasRearmed(compareValue, rule, effective.first, aboveDir)) {
                     armedState[rule.id] = true
                     lastFiredAt.remove(rule.id)
                 }
@@ -312,10 +312,13 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         return (percent + (rule.thresholdOffset ?: return null)) to rule.thresholdMaxOffset?.let { percent + it }
     }
 
-    /** True once a fired rule's metric has travelled back past its threshold by the re-arm margin. */
-    private fun hasRearmed(compareValue: Double, rule: AlertRuleEntity, aboveDir: Boolean): Boolean {
-        val margin = alertRearmMargin(rule.controlId, rule.threshold)
-        return if (aboveDir) compareValue < rule.threshold - margin else compareValue > rule.threshold + margin
+    /**
+     * True once a fired rule's metric has travelled back past its effective threshold by the re-arm margin.
+     * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `hasRearmed`
+     */
+    private fun hasRearmed(compareValue: Double, rule: AlertRuleEntity, effectiveThreshold: Double, aboveDir: Boolean): Boolean {
+        val margin = alertRearmMargin(rule.controlId, effectiveThreshold)
+        return if (aboveDir) compareValue < effectiveThreshold - margin else compareValue > effectiveThreshold + margin
     }
 
     private fun alertRearmMargin(controlId: String, threshold: Double): Double =

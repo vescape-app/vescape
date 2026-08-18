@@ -12,14 +12,25 @@ interface State {
   load: (boardId: string | null) => Promise<void>
   dismiss: () => Promise<void>
 }
+
+let loadGeneration = 0
+
 export const useBoardConfigChangeNoticeStore = create<State>((set, get) => ({
   notice: null,
   async load(boardId) {
-    set({ notice: boardId ? await getBoardConfigChangeNotice(boardId) : null })
+    const generation = ++loadGeneration
+    if (!boardId) {
+      set({ notice: null })
+      return
+    }
+    const notice = await getBoardConfigChangeNotice(boardId)
+    if (generation === loadGeneration && useBoardStore.getState().activeBoardId === boardId)
+      set({ notice })
   },
   async dismiss() {
     const notice = get().notice
     if (!notice) return
+    loadGeneration += 1
     set({ notice: null })
     await dismissBoardConfigChangeNotice(notice.boardId)
   },
@@ -30,8 +41,12 @@ export function startBoardConfigChangeNoticeSync(): () => void {
     void useBoardConfigChangeNoticeStore.getState().load(useBoardStore.getState().activeBoardId)
   const noticeSub = addBoardConfigChangeNoticeListener(({ notice }) => {
     const active = useBoardStore.getState().activeBoardId
-    if (notice === null || notice.boardId === active)
+    if (notice === null) {
+      pull()
+    } else if (notice.boardId === active) {
+      loadGeneration += 1
       useBoardConfigChangeNoticeStore.setState({ notice })
+    }
   })
   const boardSub = useBoardStore.subscribe((state, previous) => {
     if (state.activeBoardId !== previous.activeBoardId) pull()

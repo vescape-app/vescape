@@ -333,7 +333,7 @@ internal final class AlertEngine {
       // back past the threshold by this metric's re-arm margin.
       let armed = armedState[rule.id] ?? true
       if !triggered {
-        if !armed && hasRearmed(compareValue, rule: rule, aboveDir: aboveDir) {
+        if !armed && hasRearmed(compareValue, rule: rule, effectiveThreshold: effective.0, aboveDir: aboveDir) {
           armedState[rule.id] = true
           lastFiredAt.removeValue(forKey: rule.id)
         }
@@ -400,10 +400,11 @@ internal final class AlertEngine {
     )
   }
 
-  /// True once a fired rule's metric has travelled back past its threshold by the re-arm margin.
-  private func hasRearmed(_ compareValue: Double, rule: AlertRule, aboveDir: Bool) -> Bool {
-    let margin = alertRearmMargin(rule.controlId, rule.threshold)
-    return aboveDir ? compareValue < rule.threshold - margin : compareValue > rule.threshold + margin
+  /// True once a fired rule's metric has travelled back past its effective threshold by the re-arm margin.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `hasRearmed`
+  private func hasRearmed(_ compareValue: Double, rule: AlertRule, effectiveThreshold: Double, aboveDir: Bool) -> Bool {
+    let margin = alertRearmMargin(rule.controlId, effectiveThreshold)
+    return aboveDir ? compareValue < effectiveThreshold - margin : compareValue > effectiveThreshold + margin
   }
 
   private func alertRearmMargin(_ controlId: String, _ threshold: Double) -> Double {

@@ -43,6 +43,18 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.99)).isEmpty)
   }
 
+  func testConfigRelativeDutyRearmsAgainstUpdatedEffectiveThreshold() {
+    let relative = rule(threshold: 70, thresholdKind: "config-relative", configFieldId: "tiltback_duty", thresholdOffset: -10)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.9])
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.81)).count, 1)
+
+    engine.updateBoardConfigValues(["tiltback_duty": 0.95])
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.79)).isEmpty)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.9])
+
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.81)).count, 1)
+  }
+
   private func telemetry(
     dutyCycle: Double = 0.0,
     speed: Double = 0.0,

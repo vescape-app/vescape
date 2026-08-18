@@ -1766,7 +1766,7 @@ export type CriticalRideNotificationPermissionStatus =
   | 'not-determined'
   | 'denied'
   | 'authorized'
-  | 'last-known'
+  | 'provisional'
   | 'ephemeral'
   | 'unknown'
 

@@ -51,6 +51,18 @@ class AlertEngineTest {
         assertTrue(engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.99)).isEmpty())
     }
 
+    @Test fun `config relative duty rearms against updated effective threshold`() {
+        val relative = rule(threshold = 70.0, thresholdKind = "config-relative", configFieldId = "tiltback_duty", thresholdOffset = -10.0)
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.9))
+        assertEquals(1, engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.81)).size)
+
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.95))
+        assertTrue(engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.79)).isEmpty())
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.9))
+
+        assertEquals(1, engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.81)).size)
+    }
+
     private fun telemetry(
         dutyCycle: Double = 0.0,
         speed: Double = 0.0,
