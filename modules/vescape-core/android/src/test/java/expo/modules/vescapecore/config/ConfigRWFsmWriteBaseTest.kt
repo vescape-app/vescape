@@ -13,7 +13,7 @@ import org.junit.Test
 /**
  * Trust session config on write (#396): a push backed by the session's fresh Board Config Values
  * patches the retained bytes and goes straight to `COMM_SET_CUSTOM_CONFIG`. Without a write base —
- * provisional values, or none at all — the write still reads the board first.
+ * lastKnown values, or none at all — the write still reads the board first.
  *
  * @parity /modules/vescape-core/ios/config/ConfigRWControllerWriteBaseTests.swift
  */
@@ -86,22 +86,22 @@ class ConfigRWFsmWriteBaseTest {
 
         val demoted = fresh.demotedToProvisional()
 
-        assertEquals(BoardConfigFreshness.PROVISIONAL, demoted.freshness)
+        assertEquals(BoardConfigFreshness.LAST_KNOWN, demoted.freshness)
         assertEquals(null, demoted.writeBase)
         assertEquals(fresh.values, demoted.values)
     }
 
     @Test
-    fun provisionalValuesCarryNoWriteBase() {
-        val provisional = BoardConfigValues.provisional(
+    fun lastKnownValuesCarryNoWriteBase() {
+        val lastKnown = BoardConfigValues.lastKnown(
             boardId = "board-1",
             refloatBaseVersion = "3.0.7",
             capturedAtMs = 0,
             valuesJson = """{"tuned":1.0}""",
         )
 
-        assertEquals(BoardConfigFreshness.PROVISIONAL, provisional.freshness)
-        assertEquals(null, provisional.writeBase)
+        assertEquals(BoardConfigFreshness.LAST_KNOWN, lastKnown.freshness)
+        assertEquals(null, lastKnown.writeBase)
     }
 
     private fun writeBase() = BoardConfigWriteBase(schema, rawConfig, 0xDEADBEEF)

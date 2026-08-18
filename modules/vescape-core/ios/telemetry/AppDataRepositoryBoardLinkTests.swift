@@ -17,7 +17,7 @@ final class AppDataRepositoryBoardLinkTests: XCTestCase {
     let link = roundTrip([
       "bleId": "AA:BB",
       "transport": "direct",
-      "linkVersion": 3,
+      "linkVersion": 4,
       "hasBms": true,
       "vescFirmwareVersion": "FW 6.05",
       "refloatVersion": "2.1.0",
@@ -27,7 +27,7 @@ final class AppDataRepositoryBoardLinkTests: XCTestCase {
 
     XCTAssertEqual(link?["bleId"] as? String, "AA:BB")
     XCTAssertEqual(link?["transport"] as? String, "direct")
-    XCTAssertEqual(link?["linkVersion"] as? Int, 3)
+    XCTAssertEqual(link?["linkVersion"] as? Int, 4)
     XCTAssertEqual(link?["hasBms"] as? Bool, true)
     XCTAssertEqual(link?["vescFirmwareVersion"] as? String, "FW 6.05")
     XCTAssertEqual(link?["refloatVersion"] as? String, "2.1.0")
@@ -39,7 +39,7 @@ final class AppDataRepositoryBoardLinkTests: XCTestCase {
     let link = roundTrip([
       "bleId": "AA:BB",
       "transport": 84,
-      "linkVersion": 3,
+      "linkVersion": 4,
       "hasBms": false,
       "vescFirmwareVersion": "FW 6.05",
       "refloatVersion": "2.1.0",

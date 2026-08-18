@@ -29,11 +29,19 @@ import { interaction, theme } from '@/constants/theme'
 /**
  * One row per real probe activity, in the order the probe performs them:
  * open GATT → discover the VESC service → ping the CAN bus → prove a transport
- * with a telemetry request → wait for a BMS answer → read the Refloat identity.
+ * with a telemetry request → wait for a BMS answer → read identity → acquire complete config.
  */
-type StepKey = 'connect' | 'handshake' | 'scan' | 'transport' | 'bms' | 'identity'
+type StepKey = 'connect' | 'handshake' | 'scan' | 'transport' | 'bms' | 'identity' | 'config'
 
-const STEP_KEYS: StepKey[] = ['connect', 'handshake', 'scan', 'transport', 'bms', 'identity']
+const STEP_KEYS: StepKey[] = [
+  'connect',
+  'handshake',
+  'scan',
+  'transport',
+  'bms',
+  'identity',
+  'config',
+]
 
 const STEP_LABEL: Record<StepKey, string> = {
   connect: 'Connecting',
@@ -42,6 +50,7 @@ const STEP_LABEL: Record<StepKey, string> = {
   transport: 'Transport',
   bms: 'Smart BMS',
   identity: 'Firmware',
+  config: 'Board config',
 }
 
 const STEP_ICON: Record<StepKey, Icon> = {
@@ -51,6 +60,7 @@ const STEP_ICON: Record<StepKey, Icon> = {
   transport: PathIcon,
   bms: BatteryChargingIcon,
   identity: CpuIcon,
+  config: LightningIcon,
 }
 
 /** What each step does — shown until a concrete result replaces it. */
@@ -61,6 +71,7 @@ const STEP_DESC: Record<StepKey, string> = {
   transport: 'Waiting for telemetry proof',
   bms: 'Waiting for a BMS answer',
   identity: 'Reading firmware versions',
+  config: 'Reading complete Refloat config',
 }
 
 /**
@@ -75,6 +86,7 @@ const STEP_REACH: Record<BoardProbeStep, number> = {
   probing: 3,
   bms: 4,
   identity: 5,
+  config: 6,
   completed: STEP_KEYS.length,
   failed: -1,
 }
@@ -186,6 +198,11 @@ function pickingSteps(
       ? row('bms', 'done', 'Smart BMS answered')
       : row('bms', 'absent', 'No smart BMS'),
     identityRow(resolved),
+    row(
+      'config',
+      progress?.step === 'completed' ? 'done' : progress?.step === 'config' ? 'active' : 'pending',
+      progress?.step === 'completed' ? 'Last Known values saved' : STEP_DESC.config,
+    ),
   ]
 }
 
@@ -224,6 +241,7 @@ function failedSteps(
     ),
     row('bms', 'absent', 'No BMS answer'),
     row('identity', 'absent', 'No firmware info'),
+    row('config', progress?.step === 'config' ? 'failed' : 'pending', STEP_DESC.config),
   ]
 }
 

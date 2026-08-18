@@ -177,7 +177,7 @@ internal final class ConfigRWController {
     )
     // A board takes one connection at a time, so while this session holds the link the config can
     // only have changed through our own writes — the session's `fresh` bytes are still the board's
-    // bytes and back the write directly. `provisional` values carry no write base by construction,
+    // bytes and back the write directly. `lastKnown` values carry no write base by construction,
     // so a cache-restored session falls through to the read (ADR 0035).
     if let writeBase = connection.boardConfigValues?.writeBase {
       sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, connection)

@@ -50,7 +50,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
   func testProvisionalValuesReadBeforeWriting() {
     let sent = SentFrames()
     let controller = ConfigRWController()
-    let provisional = BoardConfigValues.provisional(
+    let lastKnown = BoardConfigValues.lastKnown(
       boardId: "board-1",
       refloatBaseVersion: "3.0.7",
       capturedAtMs: 0,
@@ -59,7 +59,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
 
     controller.consumeWrite(
       profileId: "profile-1",
-      connection: connection(provisional, sent),
+      connection: connection(lastKnown, sent),
       onSuccess: { _ in },
       onError: { _, _ in }
     )
@@ -102,7 +102,7 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
   func testLinkDropDemotesFreshValuesSoTheyCannotBackAWrite() {
     let demoted = fresh().demotedToProvisional()
 
-    XCTAssertEqual(demoted.freshness, .provisional)
+    XCTAssertEqual(demoted.freshness, .lastKnown)
     XCTAssertNil(demoted.writeBase)
     XCTAssertEqual(demoted.number("untouched"), 42.0)
   }

@@ -188,7 +188,7 @@ export function useTuneScreenData() {
   ])
 
   // Only the fresh Tune Snapshot backs the board diff and "accept board value": a diff is a
-  // comparison against the board, and a provisional value is not board truth (ADR 0035).
+  // comparison against the board, and a lastKnown value is not board truth (ADR 0035).
   useEffect(() => {
     setBoardSnapshot(boardSnapshot)
   }, [boardSnapshot, setBoardSnapshot])

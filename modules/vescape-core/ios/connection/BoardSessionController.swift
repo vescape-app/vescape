@@ -760,7 +760,7 @@ internal final class BoardSessionController: VescGattListener {
     vescLiveFirmware = nil
     self.config = config
     // Something to show before the fresh read lands: the cache for this Board + Refloat base
-    // version, restored as `provisional` (never a write base — see #396).
+    // version, restored as `lastKnown` (never a write base — see #396).
     boardConfigValues = restoredBoardConfigValues(config)
     if let session {
       lastEmittedLinkIntegrity = session.startLinkIntegrityCheck(expected: config.linkIdentity())
@@ -1340,7 +1340,7 @@ internal final class BoardSessionController: VescGattListener {
     evaluateConfigSafety(values)
   }
 
-  /// The cached values for the connecting Board, as `provisional`.
+  /// The cached values for the connecting Board, as `lastKnown`.
   private func restoredBoardConfigValues(_ config: BoardConnectConfig) -> BoardConfigValues? {
     guard let base = config.refloatBaseVersion else { return nil }
     return BoardConfigStore.shared.load(boardId: config.appBoardId, refloatBaseVersion: base)
@@ -1469,7 +1469,7 @@ internal final class BoardSessionController: VescGattListener {
 
   private var lastEmittedLinkIntegrity: LinkIntegrity = .unknown
   private var boardConfigReadScheduled = false
-  /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `provisional`
+  /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `lastKnown`
   /// while it is the cache restored on connect. Native-owned truth; JS mirrors it through
   /// `getBoardConfigValues` + `onBoardConfigValues`.
   ///

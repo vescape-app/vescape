@@ -119,7 +119,7 @@ export interface BoardProbeResult {
  * `connecting` → `handshake` (service discovery) → `pinging` (CAN scan) → per
  * candidate transport `probing` (waiting for telemetry proof) → `bms` (transport
  * confirmed, waiting for a BMS answer) → `identity` (BMS answered, waiting for
- * the Refloat info reply). Steps whose reply never comes are skipped — the probe
+ * the Refloat info reply) → `config` (selected candidate's full schema/config read). Steps whose reply never comes are skipped — the probe
  * window closing resolves them. With several responding CAN ids the sequence
  * revisits `probing` for the next candidate. Final facts are still read from the
  * returned {@link BoardCandidate}s; detail stays in Diagnostic Events.
@@ -135,6 +135,7 @@ export type BoardProbeStep =
   | 'probing'
   | 'bms'
   | 'identity'
+  | 'config'
   | 'completed'
   | 'failed'
 
@@ -162,7 +163,7 @@ export type LinkIntegrity = 'unknown' | 'checking' | 'trusted' | 'outdated' | 'm
  */
 export interface BoardLink {
   /** Durable Board Link schema version. Missing/lower versions are normalized as legacy links. */
-  linkVersion?: 3
+  linkVersion?: 4
   bleId: string
   transport: BoardTransport
   /**
@@ -1411,12 +1412,12 @@ export interface BoardWarningsEvent {
 
 /**
  * Whether a Board Config Values object was read from the board in the current Board Session
- * (`fresh`) or restored from the per-Board cache on connect (`provisional`). Both render the same;
+ * (`fresh`) or restored as Last Known values on connect (`last-known`). Both render the same;
  * the distinction only gates config writes (ADR 0035).
  * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigFreshness`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigFreshness`
  */
-export type BoardConfigFreshness = 'fresh' | 'provisional'
+export type BoardConfigFreshness = 'fresh' | 'last-known'
 
 /**
  * This Board Session's Refloat configuration as JS sees it: the decoded field map plus how fresh it
@@ -1430,7 +1431,7 @@ export type BoardConfigFreshness = 'fresh' | 'provisional'
  */
 export interface BoardConfigValues {
   boardId: string | null
-  /** Refloat base version the values were decoded against — the cache scope (ADR 0022). */
+  /** Refloat base version the values were decoded against — Tune Compatibility scope (ADR 0022). */
   refloatBaseVersion: string | null
   capturedAtMs: number
   freshness: BoardConfigFreshness
@@ -1440,7 +1441,7 @@ export interface BoardConfigValues {
 
 /**
  * Board Config Values changed. Nullable so clearing is expressible: fires when the post-trust read
- * lands, after a config write, when the cache is restored as provisional, and with `values: null` on
+ * lands, after a config write, when Last Known values are restored, and with `values: null` on
  * disconnect, board switch and `mismatched` link integrity.
  *
  * Deliberately not part of Live State — it changes once per session and is far too wide for an event
@@ -1737,7 +1738,7 @@ export type CriticalRideNotificationPermissionStatus =
   | 'not-determined'
   | 'denied'
   | 'authorized'
-  | 'provisional'
+  | 'last-known'
   | 'ephemeral'
   | 'unknown'
 
@@ -1839,6 +1840,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   selectBoard(boardId: string): Promise<void>
   stopBoard(): Promise<void>
   probeBoardLink(bleId: string, probeId: string): Promise<BoardProbeResult>
+  finalizeBoardLink(
+    probeId: string,
+    boardId: string,
+    bleId: string,
+    candidate: BoardCandidate,
+  ): Promise<BoardLink>
   cancelBoardProbe(probeId: string): void
   setDebugRecordingEnabled(enabled: boolean): void
   listDebugRecordings(): Promise<DebugRecording[]>
@@ -2255,6 +2262,21 @@ export async function probeBoardLink(bleId: string, probeId: string): Promise<Bo
   }
 
   return native.probeBoardLink(bleId, probeId)
+}
+
+/**
+ * Verify selected probe candidate's full config and persist Last Known values before returning v4.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardLink`
+ */
+export async function finalizeBoardLink(
+  probeId: string,
+  boardId: string,
+  bleId: string,
+  candidate: BoardCandidate,
+): Promise<BoardLink> {
+  if (E2E_ENABLED) return e2eFake.finalizeBoardLink(bleId, candidate)
+  return native.finalizeBoardLink(probeId, boardId, bleId, candidate)
 }
 
 /** Cancel an in-flight native Board Probe if it still matches the operation id. */

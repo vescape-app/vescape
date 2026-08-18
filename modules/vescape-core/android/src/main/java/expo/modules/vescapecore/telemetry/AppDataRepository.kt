@@ -208,15 +208,15 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * Cached Board Config Values for this Board + Refloat base version, as `provisional` — displayable,
-   * never a write base (ADR 0035). Null when nothing is cached for that scope.
+   * Last Known Board Config Values for this Board + Refloat base version — displayable, never a
+   * write base (ADR 0035). Null when none exist for that scope.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `load`
    */
   internal suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValues? =
     withContext(Dispatchers.IO) {
       if (boardId.isBlank() || refloatBaseVersion.isBlank()) return@withContext null
       val row = dao.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@withContext null
-      BoardConfigValues.provisional(
+      BoardConfigValues.lastKnown(
         boardId = boardId,
         refloatBaseVersion = refloatBaseVersion,
         capturedAtMs = row.capturedAt,
@@ -225,8 +225,7 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
-   * Cache the values just read from the board. Values without a Board or Refloat base version are not
-   * cacheable — there is no scope to restore them into.
+   * Persist values just read from the board. Values need both Board and Tune Compatibility scope.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `save`
    */
   internal suspend fun saveBoardConfigValues(values: BoardConfigValues): Unit = withContext(Dispatchers.IO) {
@@ -243,7 +242,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
-   * Drop every cached scope for a Board. Called when link integrity goes `mismatched`: the firmware
+   * Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
    * behind the link is not the one those offsets were decoded against.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `clear`
    */
@@ -758,7 +757,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 }
 
-private const val BOARD_LINK_VERSION = 3
+private const val BOARD_LINK_VERSION = 4
 private val boardLinkStringIdentityKeys = listOf(
   "vescFirmwareVersion",
   "refloatVersion",

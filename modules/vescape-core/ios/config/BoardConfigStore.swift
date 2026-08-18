@@ -1,11 +1,11 @@
 import Foundation
 import GRDB
 
-/// DB-backed cache of the last decoded Board Config Values, one row per Board and Refloat base
+/// DB-backed Last Known Board Config Values, one row per Board and Refloat base
 /// version — the same scoping Tune Compatibility uses (ADR 0022), because field offsets only mean
 /// anything against the firmware they were read from.
 ///
-/// A restored row comes back `provisional`: displayable, never a write base. The row is kept while
+/// A restored row comes back `lastKnown`: displayable, never a write base. The row is kept while
 /// link integrity is `outdated` and deleted for the whole Board when it goes `mismatched`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getBoardConfigValues`
@@ -25,7 +25,7 @@ struct BoardConfigStore {
     self.resolveWriter = { dbWriter }
   }
 
-  /// Create the Board Config Values cache table. Called from the app-data `DatabaseMigrator` and
+  /// Create the Last Known Board Config Values table. Called from the app-data `DatabaseMigrator` and
   /// reused by tests so the schema stays single-source. Mirrors Android `BoardConfigValuesEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
@@ -41,8 +41,7 @@ struct BoardConfigStore {
     try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_board_config_values_board_id ON board_config_values(board_id)")
   }
 
-  /// The cached values for this Board + Refloat base version, as `provisional`. Nil when nothing is
-  /// cached for that scope.
+  /// Last Known values for this Board + Refloat base version. Nil when none exist for that scope.
   func load(boardId: String, refloatBaseVersion: String) -> BoardConfigValues? {
     guard !boardId.isEmpty, !refloatBaseVersion.isEmpty, let writer = resolveWriter() else { return nil }
     let row = try? writer.read { db in
@@ -53,7 +52,7 @@ struct BoardConfigStore {
       )
     }
     guard let row = row ?? nil else { return nil }
-    return BoardConfigValues.provisional(
+    return BoardConfigValues.lastKnown(
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
       capturedAtMs: row["captured_at"],
@@ -61,8 +60,7 @@ struct BoardConfigStore {
     )
   }
 
-  /// Cache the values just read from the board. Rows without a Board or Refloat base version are not
-  /// cacheable — there is no scope to restore them into.
+  /// Persist values just read from the board. Rows need both Board and Tune Compatibility scope.
   func save(_ values: BoardConfigValues) {
     guard
       let boardId = values.boardId, !boardId.isEmpty,
@@ -83,7 +81,7 @@ struct BoardConfigStore {
     }
   }
 
-  /// Drop every cached scope for a Board. Called when link integrity goes `mismatched`: the firmware
+  /// Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
   /// behind the link is not the one those offsets were decoded against.
   func clear(boardId: String) {
     guard !boardId.isEmpty, let writer = resolveWriter() else { return }

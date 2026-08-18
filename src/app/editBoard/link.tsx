@@ -39,7 +39,7 @@ export default function BoardLinkScreen() {
   const [bleId] = useState(() => routeBleId ?? board?.link?.bleId ?? null)
   const existingLink = board?.link ?? null
 
-  const link = useBoardLink(bleId)
+  const link = useBoardLink(bleId, boardId)
   const [saving, setSaving] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
 
@@ -53,10 +53,12 @@ export default function BoardLinkScreen() {
   }, [])
 
   const handleSave = async () => {
-    if (!board || !link.selectedLink) return
+    if (!board) return
     setSaving(true)
     try {
-      await updateBoard({ ...board, link: link.selectedLink })
+      const finalized = link.selectedLink ?? (await link.finalize())
+      if (!finalized) return
+      await updateBoard({ ...board, link: finalized })
       router.back()
     } catch (err) {
       console.log('[board-link] save failed', err)
@@ -118,8 +120,8 @@ export default function BoardLinkScreen() {
             style={styles.upgradeButton}
             label="Save link"
             onPress={handleSave}
-            disabled={link.phase !== 'picking' || link.selectedLink == null}
-            loading={saving}
+            disabled={link.phase !== 'picking' || link.selected == null || link.isFinalizing}
+            loading={saving || link.isFinalizing}
             testID="board-link-save"
           />
         </View>

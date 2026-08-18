@@ -1519,7 +1519,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
-     * Restore the cached values for the connecting Board as `provisional`, so consumers have
+     * Restore the cached values for the connecting Board as `lastKnown`, so consumers have
      * something before this session's fresh read lands. Never a write base (#396).
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoredBoardConfigValues`
      */
@@ -1534,7 +1534,7 @@ private var wearAutoLaunchOnConnect = true
                 // The load is async, so re-check everything that could have moved since: the session
                 // must still be the one that asked, on the same Board and Refloat base version, with a
                 // link that has not gone `Mismatched` (which clears the cache). And the session's own
-                // read wins — never downgrade fresh values to a cached provisional.
+                // read wins — never downgrade fresh values to a cached lastKnown.
                 if (session == null || !isCurrentBoardSession(session)) return@post
                 if (boardConfig?.appBoardId != boardId) return@post
                 if (boardConfig?.refloatBaseVersion != refloatBaseVersion) return@post
@@ -1671,7 +1671,7 @@ private var wearAutoLaunchOnConnect = true
     private var boardConfigReadScheduled = false
 
     /**
-     * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `PROVISIONAL`
+     * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `LAST_KNOWN`
      * while it is the cache restored on connect. Native-owned truth; JS mirrors it through
      * `getBoardConfigValues` + `onBoardConfigValues`.
      *

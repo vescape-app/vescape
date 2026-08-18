@@ -4,7 +4,7 @@ import org.json.JSONObject
 
 /**
  * Whether a Board Config Values object was read from the board in the current Board Session
- * ([FRESH]) or restored from the per-Board cache on connect ([PROVISIONAL]).
+ * ([FRESH]) or restored from the per-Board cache on connect ([LAST_KNOWN]).
  *
  * Provisional values may be displayed, but never back a config write: the cache was filled while some
  * earlier session held the link, and the window since then is exactly where another tool could have
@@ -14,7 +14,7 @@ import org.json.JSONObject
  */
 internal enum class BoardConfigFreshness(val wire: String) {
   FRESH("fresh"),
-  PROVISIONAL("provisional"),
+  LAST_KNOWN("last-known"),
 }
 
 /**
@@ -73,7 +73,7 @@ internal data class BoardConfigValues(
    * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
    */
   /**
-   * Demote to provisional, dropping the write base. Called when the BLE link drops: the values stay
+   * Demote to lastKnown, dropping the write base. Called when the BLE link drops: the values stay
    * worth showing, but the disconnected window is exactly where another central could have written
    * the board, so they may no longer back a write (ADR 0035).
    *
@@ -81,7 +81,7 @@ internal data class BoardConfigValues(
    */
   fun demotedToProvisional(): BoardConfigValues =
     if (freshness != BoardConfigFreshness.FRESH) this
-    else copy(freshness = BoardConfigFreshness.PROVISIONAL, writeBase = null)
+    else copy(freshness = BoardConfigFreshness.LAST_KNOWN, writeBase = null)
 
   fun toBridgeMap(): Map<String, Any?> = mapOf(
     "boardId" to boardId,
@@ -98,8 +98,8 @@ internal data class BoardConfigValues(
   fun valuesJson(): String = JSONObject(values).toString()
 
   companion object {
-    /** Rebuild a cached object. Always provisional and always without a write base. */
-    fun provisional(
+    /** Rebuild a cached object. Always lastKnown and always without a write base. */
+    fun lastKnown(
       boardId: String?,
       refloatBaseVersion: String?,
       capturedAtMs: Long,
@@ -108,7 +108,7 @@ internal data class BoardConfigValues(
       boardId = boardId,
       refloatBaseVersion = refloatBaseVersion,
       capturedAtMs = capturedAtMs,
-      freshness = BoardConfigFreshness.PROVISIONAL,
+      freshness = BoardConfigFreshness.LAST_KNOWN,
       values = decodeValuesJson(valuesJson),
       writeBase = null,
     )

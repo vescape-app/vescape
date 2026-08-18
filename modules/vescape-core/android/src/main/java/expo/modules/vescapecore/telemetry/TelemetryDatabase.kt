@@ -580,8 +580,8 @@ abstract class TelemetryDatabase : RoomDatabase() {
      * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v32_alert_repeat`
      */
     /**
-     * Board Config Values cache: the last decoded Refloat config per Board + Refloat base version,
-     * restored as `provisional` on connect (#393).
+     * Last Known Board Config Values: latest decoded Refloat config per Board + base version,
+     * restored as `lastKnown` on connect (#393).
      * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v33_board_config_values`
      */
     internal val MIGRATION_32_33 = object : Migration(32, 33) {

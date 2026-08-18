@@ -519,8 +519,8 @@ enum TelemetryDatabase {
       }
     }
 
-    // Board Config Values cache: the last decoded Refloat config per Board + Refloat base version,
-    // restored as `provisional` on connect (#393).
+    // Last Known Board Config Values: latest decoded Refloat config per Board + base version,
+    // restored as `lastKnown` on connect (#393).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
     migrator.registerMigration("v33_board_config_values") { db in
       try BoardConfigStore.createTables(db)

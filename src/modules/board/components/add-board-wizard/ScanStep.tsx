@@ -43,7 +43,7 @@ export function ScanStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Pro
 }
 
 function LinkStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
-  const link = useBoardLink(wizard.bleId || null)
+  const link = useBoardLink(wizard.bleId || null, wizard.boardId)
 
   return (
     <ScrollView
@@ -68,9 +68,12 @@ function LinkStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
               style={styles.upgradeButton}
               label="Save link"
               icon={CheckCircleIcon}
-              disabled={link.selectedLink == null}
+              disabled={link.selected == null || link.isFinalizing}
+              loading={link.isFinalizing}
               onPress={() => {
-                if (link.selectedLink) wizard.onDeviceProbed(link.selectedLink)
+                void link.finalize().then((finalized) => {
+                  if (finalized) wizard.onDeviceProbed(finalized)
+                })
               }}
               testID="add-board-link-save"
             />

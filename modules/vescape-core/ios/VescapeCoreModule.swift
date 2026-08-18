@@ -33,6 +33,7 @@ public class VescapeCoreModule: Module {
   /// Retains the in-flight Board Probe across its async BLE lifecycle. Only one runs at a time —
   /// the probe owns the single BLE link (see Android `probeBoardLink`).
   private var activeProbe: ActiveBoardProbe?
+  private var completedProbes: [String: TransportDetection.Result] = [:]
 
   /// Frontend liveness gate. False while the app is backgrounded so the high-frequency telemetry
   /// firehose (`onLiveTick` at the board's poll rate, `onTelemetryHistory`, `onLiveSeries`) never
@@ -507,6 +508,13 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("probeBoardLink") { (bleId: String, probeId: String, promise: Promise) in
       DispatchQueue.main.async { self.startProbe(bleId: bleId, probeId: probeId, promise: promise) }
+    }
+
+    AsyncFunction("finalizeBoardLink") {
+      (probeId: String, boardId: String, bleId: String, candidate: [String: Any?], promise: Promise) in
+      DispatchQueue.main.async {
+        self.finalizeBoardLink(probeId: probeId, boardId: boardId, bleId: bleId, rawCandidate: candidate, promise: promise)
+      }
     }
 
     Function("cancelBoardProbe") { (probeId: String) in
@@ -1103,6 +1111,7 @@ public class VescapeCoreModule: Module {
       onComplete: { [weak self] result in
         guard self?.activeProbe?.id == probeId else { return }
         self?.activeProbe = nil
+        self?.completedProbes[probeId] = result
         promise.resolve(
           self?.probeResultToBridge(result) ?? [
             "outcome": "none",
@@ -1122,11 +1131,97 @@ public class VescapeCoreModule: Module {
   }
 
   private func cancelActiveProbe(probeId: String? = nil, reason: String) {
+    if let probeId { completedProbes.removeValue(forKey: probeId) }
     guard let activeProbe else { return }
     if let probeId, activeProbe.id != probeId { return }
     self.activeProbe = nil
     activeProbe.detector.cancel(reason: reason)
     activeProbe.promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+  }
+
+  /// Finalize only a candidate returned by this native probe; config persistence precedes v4.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardLink`
+  /// @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
+  private func finalizeBoardLink(
+    probeId: String, boardId: String, bleId: String,
+    rawCandidate: [String: Any?], promise: Promise
+  ) {
+    guard let result = completedProbes[probeId] else {
+      promise.reject("PROBE_NOT_FOUND", "Board Probe is no longer finalizable")
+      return
+    }
+    guard let transport = BoardTransport.fromBridge(rawCandidate["transport"] ?? nil),
+      let candidate = result.candidates.first(where: { $0.transport == transport }) else {
+      promise.reject("PROBE_CANDIDATE_UNVERIFIED", "Candidate was not confirmed by this Board Probe")
+      return
+    }
+    guard let baseVersion = candidate.refloatBaseVersion, !baseVersion.isEmpty else {
+      promise.reject("PROBE_CONFIG_IDENTITY_MISSING", "Refloat Tune Compatibility is required")
+      return
+    }
+    let previous = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion)?.capturedAtMs ?? Int64.min
+    sendEvent("onBoardProbeProgress", [
+      "probeId": probeId, "step": "config", "elapsedMs": 0, "transport": transport.bridgeValue,
+    ])
+    coordinator.connect(
+      config: BoardConnectConfig(
+        appBoardId: boardId, bleId: bleId, name: "Board Probe", transport: transport,
+        linkVersion: 4, hasBms: candidate.hasBms,
+        vescFirmwareVersion: candidate.vescFirmwareVersion,
+        refloatVersion: candidate.refloatVersion, refloatBaseVersion: baseVersion,
+        pollIntervalMs: 100, batteryConfig: nil, liveHistoryLimitMinutes: 5
+      ),
+      onSuccess: { [weak self] in
+        self?.awaitProbeConfig(
+          probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+          previousCapturedAt: previous, attemptsRemaining: 120, promise: promise
+        )
+      },
+      onError: { [weak self] code, message in
+        self?.completedProbes.removeValue(forKey: probeId)
+        self?.coordinator.stopBoard()
+        promise.reject(code, message)
+      }
+    )
+  }
+
+  private func awaitProbeConfig(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
+    attemptsRemaining: Int, promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    let baseVersion = candidate.refloatBaseVersion!
+    if let values = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion),
+      values.capturedAtMs > previousCapturedAt {
+      completedProbes.removeValue(forKey: probeId)
+      coordinator.stopBoard()
+      promise.resolve([
+        "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
+        "hasBms": candidate.hasBms,
+        "vescFirmwareVersion": candidate.vescFirmwareVersion,
+        "refloatVersion": candidate.refloatVersion,
+        "refloatBaseVersion": baseVersion,
+      ] as [String: Any?])
+      return
+    }
+    guard attemptsRemaining > 0 else {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      promise.reject("PROBE_CONFIG_TIMEOUT", "Full Refloat config was not acquired")
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.awaitProbeConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousCapturedAt, attemptsRemaining: attemptsRemaining - 1,
+        promise: promise
+      )
+    }
   }
 
   private func probeResultToBridge(_ result: TransportDetection.Result) -> [String: Any?] {

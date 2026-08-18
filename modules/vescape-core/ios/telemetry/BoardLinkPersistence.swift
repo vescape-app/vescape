@@ -3,7 +3,7 @@ import Foundation
 /// Pure Board Link persistence shape shared by GRDB-backed app storage and SwiftPM tests.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `toMap` / `toBoardSettingEntities`
 internal enum BoardLinkPersistence {
-  static let version = 3
+  static let version = 4
 
   private static let stringIdentityKeys = [
     "vescFirmwareVersion",

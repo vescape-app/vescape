@@ -2,7 +2,7 @@ import XCTest
 @testable import VescapeCore
 
 /// Board Config Values contract (#393): the decoded map spans the whole schema in real types, a field
-/// the bytes cannot supply is absent rather than guessed, and a cached object comes back provisional
+/// the bytes cannot supply is absent rather than guessed, and a cached object comes back lastKnown
 /// with its bools intact.
 ///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/BoardConfigValuesTest.kt
@@ -94,14 +94,14 @@ final class BoardConfigValuesTests: XCTestCase {
       writeBase: nil
     )
 
-    let restored = BoardConfigValues.provisional(
+    let restored = BoardConfigValues.lastKnown(
       boardId: "board-1",
       refloatBaseVersion: "3.0",
       capturedAtMs: 7,
       valuesJson: fresh.valuesJson()
     )
 
-    XCTAssertEqual(restored.freshness, .provisional)
+    XCTAssertEqual(restored.freshness, .lastKnown)
     XCTAssertNil(restored.writeBase)
     XCTAssertEqual(restored.number("tiltback_duty"), 0.8)
     // A cached bool must not come back as 1.0.

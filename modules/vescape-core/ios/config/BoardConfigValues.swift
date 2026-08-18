@@ -1,7 +1,7 @@
 import Foundation
 
 /// Whether a Board Config Values object was read from the board in the current Board Session
-/// (`fresh`) or restored from the per-Board cache on connect (`provisional`).
+/// (`fresh`) or restored from the per-Board cache on connect (`lastKnown`).
 ///
 /// Provisional values may be displayed, but never back a config write: the cache was filled while
 /// some earlier session held the link, and the window since then is exactly where another tool could
@@ -10,7 +10,7 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt
 enum BoardConfigFreshness: String {
   case fresh
-  case provisional
+  case lastKnown
 }
 
 /// The only valid base for a Refloat config write: the raw bytes exactly as the board sent them, the
@@ -85,7 +85,7 @@ struct BoardConfigValues {
     return json
   }
 
-  /// Demote to `provisional`, dropping the write base. Called when the BLE link drops: the values
+  /// Demote to `lastKnown`, dropping the write base. Called when the BLE link drops: the values
   /// stay worth showing, but the disconnected window is exactly where another central could have
   /// written the board, so they may no longer back a write (ADR 0035).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `demotedToProvisional`
@@ -95,14 +95,14 @@ struct BoardConfigValues {
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
       capturedAtMs: capturedAtMs,
-      freshness: .provisional,
+      freshness: .lastKnown,
       values: values,
       writeBase: nil
     )
   }
 
-  /// Rebuild a cached object. Always `provisional` and always without a write base.
-  static func provisional(
+  /// Rebuild a cached object. Always `lastKnown` and always without a write base.
+  static func lastKnown(
     boardId: String?,
     refloatBaseVersion: String?,
     capturedAtMs: Int64,
@@ -112,7 +112,7 @@ struct BoardConfigValues {
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
       capturedAtMs: capturedAtMs,
-      freshness: .provisional,
+      freshness: .lastKnown,
       values: decodeValuesJson(valuesJson),
       writeBase: nil
     )

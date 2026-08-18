@@ -11,7 +11,7 @@ final class BoardSession {
   private(set) var isActive = true
   private(set) var linkIntegrity: LinkIntegrity = .unknown
   private(set) var linkIntegrityProbeStarted = false
-  private var observations = LinkIdentity(linkVersion: 3)
+  private var observations = LinkIdentity(linkVersion: 4)
 
   init(id: Int64) {
     self.id = id
@@ -116,7 +116,7 @@ struct LinkIdentity {
   // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
   // version strings, so it is not required here; matches/mismatches still compare it when present.
   var isComplete: Bool {
-    linkVersion == 3 &&
+    linkVersion == 4 &&
       hasBms != nil &&
       !(firmware?.isEmpty ?? true) &&
       !(refloatVersion?.isEmpty ?? true)

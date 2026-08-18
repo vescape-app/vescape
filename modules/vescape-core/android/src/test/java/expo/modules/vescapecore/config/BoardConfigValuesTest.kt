@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * Board Config Values contract (#393): the decoded map spans the whole schema in real types, a field
- * the bytes cannot supply is absent rather than guessed, and a cached object comes back provisional
+ * the bytes cannot supply is absent rather than guessed, and a cached object comes back lastKnown
  * with its bools intact.
  *
  * @parity /modules/vescape-core/ios/config/BoardConfigValuesTests.swift
@@ -106,7 +106,7 @@ class BoardConfigValuesTest {
   }
 
   @Test
-  fun provisionalRoundTripKeepsTypesAndHasNoWriteBase() {
+  fun lastKnownRoundTripKeepsTypesAndHasNoWriteBase() {
     val fresh = BoardConfigValues(
       boardId = "board-1",
       refloatBaseVersion = "3.0",
@@ -116,14 +116,14 @@ class BoardConfigValuesTest {
       writeBase = null,
     )
 
-    val restored = BoardConfigValues.provisional(
+    val restored = BoardConfigValues.lastKnown(
       boardId = "board-1",
       refloatBaseVersion = "3.0",
       capturedAtMs = 7,
       valuesJson = fresh.valuesJson(),
     )
 
-    assertEquals(BoardConfigFreshness.PROVISIONAL, restored.freshness)
+    assertEquals(BoardConfigFreshness.LAST_KNOWN, restored.freshness)
     assertNull(restored.writeBase)
     assertEquals(0.8, restored.number("tiltback_duty")!!, 1e-9)
     // A cached bool must not come back as 1.0.
