@@ -37,7 +37,7 @@ import {
   verifyGhAuthentication,
   verifyRemoteCommit,
 } from './github'
-import { publishGithubPrerelease } from './githubPrerelease'
+import { composeGithubReleaseBody, publishGithubRelease } from './githubRelease'
 import { internalReleaseProgress, workflowElapsed } from './progress'
 import {
   bumpMarketingVersion,
@@ -380,9 +380,9 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     const outcome = releaseOutcome(manifest)
     if (outcome.kind === 'success') {
-      setStatus(`Publishing v${manifest.marketingVersion} GitHub prerelease…`)
-      const githubRelease = await publishGithubPrerelease(repo, manifest)
-      setStatus(`Internal ready · GitHub prerelease ${githubRelease}`)
+      setStatus(`Checking the v${manifest.marketingVersion} GitHub release…`)
+      const githubRelease = await publishGithubRelease(repo, manifest)
+      setStatus(`Internal ready · GitHub release ${githubRelease}`)
     } else if (outcome.kind === 'partial') {
       setStatus(`${outcome.succeeded} uploaded; ${outcome.failed} failed`)
       setRetryRunId(workflowRun.id)
@@ -429,12 +429,18 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   const dispatch = async (confirmedPlan: Plan) => {
     goto('dispatching')
-    setStatus(`Dispatching trusted Android and iOS workflows from ${confirmedPlan.workflowRef}…`)
+    setStatus(`Asking local Codex for the v${confirmedPlan.marketingVersion} release body…`)
     try {
+      const releaseBody = await composeGithubReleaseBody(
+        confirmedPlan.sourceSha,
+        confirmedPlan.marketingVersion,
+      )
+      setStatus(`Dispatching trusted Android and iOS workflows from ${confirmedPlan.workflowRef}…`)
       const payload = createDispatchPayload(
         confirmedPlan.sourceSha,
         confirmedPlan.requestId,
         confirmedPlan.workflowRef,
+        releaseBody,
       )
       setIosRun(null)
       await dispatchInternalBuild(confirmedPlan.repo, payload)

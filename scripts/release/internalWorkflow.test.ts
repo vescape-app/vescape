@@ -8,9 +8,21 @@ const workflow = readFileSync(
 )
 
 describe('internal release workflow contract', () => {
-  test('keeps tag and GitHub Release writes outside CI', () => {
+  test('publishes tag and release only after both internal uploads succeed', () => {
     expect(workflow).toMatch(/permissions:\n\s+contents: read/)
-    expect(workflow).not.toMatch(/git tag|git push|gh release/)
+    const job = workflow.slice(workflow.indexOf('  github_release:'))
+    expect(job).toContain('needs: [build, upload_phone, upload_wear]')
+    expect(job).toMatch(/permissions:\n\s+contents: write/)
+    expect(job).not.toContain('if: always()')
+    expect(job).toContain('git push origin "refs/tags/$TAG"')
+    expect(job).toContain('--verify-tag --latest --notes-file release-body.md')
+    expect(job).not.toContain('--prerelease')
+  })
+
+  test('publishes the body drafted before dispatch instead of running Codex in CI', () => {
+    expect(workflow).toContain('release_body:')
+    expect(workflow).toContain('RELEASE_BODY: ${{ inputs.release_body }}')
+    expect(workflow).not.toContain('codex')
   })
 
   test('restores downloaded AABs under the paths expected by Fastlane', () => {
