@@ -42,11 +42,20 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
     }
 
     const readGeneration = ++generation
-    set({ status: 'loading', snapshot: null, error: null })
+    // Deliberately keeps whatever is already displayed: a re-read of the same config must not blink
+    // the screen back to a loading state, and a prefill has to survive the read starting.
+    set({ status: 'loading', error: null })
     readInFlight = nativeGetRefloatConfigSnapshot()
       .then((snapshot) => {
         if (readGeneration === generation) {
-          set({ status: 'ready', snapshot, error: null })
+          set((state) => ({
+            status: 'ready',
+            // Same raw config as what is on screen -> keep the object, so nothing downstream
+            // recomputes. A differing hash is a plain refresh, not a diff prompt.
+            snapshot:
+              state.snapshot?.rawConfigHash === snapshot.rawConfigHash ? state.snapshot : snapshot,
+            error: null,
+          }))
         }
         return snapshot
       })

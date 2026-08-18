@@ -3,9 +3,15 @@ import type { RefloatConfigGroup, RefloatConfigSnapshot, TuneProfileFieldValue }
 
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import { useTuneSnapshotStore } from '@/modules/tune/store/tuneSnapshotStore'
-import { APP_TUNE_FIELD_BY_ID, APP_TUNE_GROUPS } from '@/modules/tune/lib/fields'
+import { APP_TUNE_FIELD_BY_ID } from '@/modules/tune/lib/fields'
+import {
+  boardConfigPrefill,
+  groupsFromFieldValues,
+  type TuneBoardValues,
+} from '@/modules/tune/lib/boardConfigPrefill'
 import {
   canRunFirmwareCommand,
   firmwareCommandBlockedMessage,
@@ -40,30 +46,6 @@ export async function refreshBoardSnapshotAndProfiles({
   if (boardId && boardId === selectedBoardId) {
     await loadProfiles(boardId, snapshot).catch(() => [])
   }
-}
-
-function groupsFromProfileFields(
-  fields: Record<string, TuneProfileFieldValue> | null,
-): RefloatConfigGroup[] {
-  if (!fields) return []
-  return APP_TUNE_GROUPS.map((group) => ({
-    id: group.id,
-    title: group.title,
-    fields: group.fields.flatMap((field) => {
-      const value = fields[field.id]
-      if (!isDisplayableFieldValue(value)) return []
-      return [
-        {
-          id: field.id,
-          label: field.label,
-          value,
-          unit: field.unit,
-          min: field.min,
-          max: field.max,
-        },
-      ]
-    }),
-  })).filter((group) => group.fields.length > 0)
 }
 
 function groupsWithProfileValues(
@@ -110,6 +92,14 @@ export function useTuneScreenData() {
     (boardSnapshot?.boardId == null && selectedBoardId != null)
       ? boardSnapshot
       : null
+  const boardConfigValues = useBoardConfigValuesStore((s) => s.values)
+  // Cached board values render while the session read is still on the wire; the fresh snapshot
+  // replaces them the moment it lands (ADR 0035).
+  const prefill = useMemo(
+    () => (boardSnapshot ? null : boardConfigPrefill(boardConfigValues, selectedBoardId)),
+    [boardConfigValues, boardSnapshot, selectedBoardId],
+  )
+  const boardValues: TuneBoardValues | null = boardSnapshot ?? prefill
   const tuneCompatibility =
     currentBoardSnapshot?.refloatBaseVersion ?? selectedBoard?.link?.refloatBaseVersion ?? null
   const tuneCompatibilityIssue = useMemo(
@@ -183,21 +173,23 @@ export function useTuneScreenData() {
   useEffect(() => {
     if (!boardConnected || !firmwareCommandsTrusted) {
       clearBoardSnapshot()
-      setBoardSnapshot(null)
       return
     }
+    // The session read is authoritative until the link drops (ADR 0035), so re-entering the screen
+    // reuses what it produced instead of putting a second read on the wire.
+    if (currentBoardSnapshot) return
     void retryBoardSnapshot()
   }, [
     boardConnected,
     clearBoardSnapshot,
+    currentBoardSnapshot,
     firmwareCommandsTrusted,
     retryBoardSnapshot,
-    setBoardSnapshot,
   ])
 
   useEffect(() => {
-    setBoardSnapshot(boardSnapshot)
-  }, [boardSnapshot, setBoardSnapshot])
+    setBoardSnapshot(boardValues)
+  }, [boardValues, setBoardSnapshot])
 
   const profileFields = useMemo(
     () => (activeProfile ? { ...activeProfile.fields, ...draftFields } : null),
@@ -206,7 +198,7 @@ export function useTuneScreenData() {
 
   const profileState = useMemo<ProfileState>(() => {
     if (!selectedBoardId) return { phase: 'loading', error: null }
-    if (boardConnected && boardSnapshotStatus === 'loading' && !activeProfile) {
+    if (boardConnected && boardSnapshotStatus === 'loading' && !activeProfile && !prefill) {
       return { phase: 'loading', error: null }
     }
     if (profileLoading && !activeProfile) return { phase: 'loading', error: null }
@@ -232,17 +224,18 @@ export function useTuneScreenData() {
     profileBoardId,
     profileError,
     profileLoading,
+    prefill,
     profiles.length,
     selectedBoardId,
     tuneCompatibilityIssue,
   ])
 
   const displayGroups = useMemo(() => {
-    if (boardSnapshot) {
-      return groupsWithProfileValues(boardSnapshot.groups, profileFields)
+    if (boardValues) {
+      return groupsWithProfileValues(boardValues.groups, profileFields)
     }
-    return groupsFromProfileFields(profileFields)
-  }, [boardSnapshot, profileFields])
+    return groupsFromFieldValues(profileFields)
+  }, [boardValues, profileFields])
 
   const basicSliders = useMemo(() => basicSlidersFromGroups(displayGroups), [displayGroups])
 

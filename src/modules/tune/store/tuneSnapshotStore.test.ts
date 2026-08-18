@@ -136,3 +136,36 @@ test.each([
   expect(useTuneSnapshotStore.getState().status).toBe('error')
   expect(useTuneSnapshotStore.getState().error).toBe(message)
 })
+
+test('keeps the displayed snapshot while a re-read is in flight', async () => {
+  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
+  await useTuneSnapshotStore.getState().read()
+  getRefloatConfigSnapshot.mockImplementation(() => new Promise<RefloatConfigSnapshot>(() => {}))
+
+  void useTuneSnapshotStore.getState().read()
+
+  expect(useTuneSnapshotStore.getState().status).toBe('loading')
+  expect(useTuneSnapshotStore.getState().snapshot).toEqual(snapshot)
+})
+
+test('a matching raw config hash leaves the displayed snapshot untouched', async () => {
+  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
+  await useTuneSnapshotStore.getState().read()
+  const displayed = useTuneSnapshotStore.getState().snapshot
+  getRefloatConfigSnapshot.mockImplementation(async () => ({ ...snapshot, capturedAt: 2000 }))
+
+  await useTuneSnapshotStore.getState().read()
+
+  expect(useTuneSnapshotStore.getState().snapshot).toBe(displayed)
+})
+
+test('a differing raw config hash replaces the displayed snapshot', async () => {
+  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
+  await useTuneSnapshotStore.getState().read()
+  const fresh = { ...snapshot, rawConfigHash: 'raw-2' }
+  getRefloatConfigSnapshot.mockImplementation(async () => fresh)
+
+  await useTuneSnapshotStore.getState().read()
+
+  expect(useTuneSnapshotStore.getState().snapshot).toEqual(fresh)
+})

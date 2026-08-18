@@ -210,14 +210,6 @@ test('computes board diff against saved profile independently of draft edits', a
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
   useTuneProfileStore.getState().setDraftField('kp', 25)
   useTuneProfileStore.getState().setBoardSnapshot({
-    capturedAt: 1000,
-    boardId: 'board-1',
-    canId: 0,
-    schemaHash: 'schema',
-    rawConfigHash: 'raw',
-    rawConfigLength: 2,
-    fwVersion: null,
-    missingFieldIds: [],
     groups: [
       {
         id: 'general',
@@ -266,14 +258,6 @@ test('does not mark rounded-equivalent board values as changed', async () => {
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
   useTuneProfileStore.getState().setBoardSnapshot({
-    capturedAt: 1000,
-    boardId: 'board-1',
-    canId: 0,
-    schemaHash: 'schema',
-    rawConfigHash: 'raw',
-    rawConfigLength: 2,
-    fwVersion: null,
-    missingFieldIds: [],
     groups: [
       {
         id: 'general',
@@ -301,14 +285,6 @@ test('does not mark board-only snapshot fields as board diffs', async () => {
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
   useTuneProfileStore.getState().setBoardSnapshot({
-    capturedAt: 1000,
-    boardId: 'board-1',
-    canId: 0,
-    schemaHash: 'schema',
-    rawConfigHash: 'raw',
-    rawConfigLength: 2,
-    fwVersion: null,
-    missingFieldIds: [],
     groups: [
       {
         id: 'general',
@@ -365,14 +341,6 @@ test('accepts board values into draft and saves through normal profile flow', as
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
   useTuneProfileStore.getState().setBoardSnapshot({
-    capturedAt: 1000,
-    boardId: 'board-1',
-    canId: 0,
-    schemaHash: 'schema',
-    rawConfigHash: 'raw',
-    rawConfigLength: 2,
-    fwVersion: null,
-    missingFieldIds: [],
     groups: [
       {
         id: 'general',
@@ -411,14 +379,6 @@ test('accept all board values ignores board-only snapshot fields', async () => {
 
   await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
   useTuneProfileStore.getState().setBoardSnapshot({
-    capturedAt: 1000,
-    boardId: 'board-1',
-    canId: 0,
-    schemaHash: 'schema',
-    rawConfigHash: 'raw',
-    rawConfigLength: 2,
-    fwVersion: null,
-    missingFieldIds: [],
     groups: [
       {
         id: 'general',

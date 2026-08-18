@@ -22,6 +22,11 @@ export const reactNativeStub = {
       return { cancel: () => {} }
     },
   },
+  // Stores that re-pull on foreground subscribe at module scope; nothing changes state in tests.
+  AppState: {
+    currentState: 'active',
+    addEventListener: (_event: string, _cb: unknown) => ({ remove: () => {} }),
+  },
 }
 
 mock.module('react-native', () => ({ ...reactNativeStub }))
