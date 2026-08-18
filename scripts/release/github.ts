@@ -61,8 +61,6 @@ export interface DispatchPayload {
     source_sha: string
     request_id: string
   }
-  /** Codex-authored GitHub release body; the Android workflow publishes the release with it. */
-  releaseBody: string
 }
 
 export interface PromotionDispatchPayload {
@@ -123,16 +121,13 @@ export function createDispatchPayload(
   sourceSha: string,
   requestId: string,
   workflowRef: string,
-  releaseBody: string,
 ): DispatchPayload {
   if (!/^[0-9a-f]{40}$/i.test(sourceSha))
     throw new Error('Source SHA must be a full 40-character SHA')
   if (!/^[0-9a-f-]{36}$/i.test(requestId)) throw new Error('Request ID must be a UUID')
-  if (!releaseBody.trim()) throw new Error('Release body must not be empty')
   return {
     ref: workflowRef,
     inputs: { source_sha: sourceSha.toLowerCase(), request_id: requestId },
-    releaseBody,
   }
 }
 
@@ -307,9 +302,7 @@ async function dispatchBuildWorkflow(
 }
 
 export async function dispatchInternalBuild(repo: string, payload: DispatchPayload): Promise<void> {
-  await dispatchBuildWorkflow(repo, WORKFLOW_FILE, payload, 'Workflow dispatch failed', [
-    `inputs[release_body]=${payload.releaseBody}`,
-  ])
+  await dispatchBuildWorkflow(repo, WORKFLOW_FILE, payload, 'Workflow dispatch failed')
 }
 
 export async function dispatchIosInternalBuild(

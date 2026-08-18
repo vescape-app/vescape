@@ -9,13 +9,9 @@ import { theme } from '@/constants/theme'
 interface StepperWidgetProps {
   icon?: Icon
   label: string
-  previousIcon?: Icon
-  nextIcon?: Icon
   accent?: string
   size?: Extract<WidgetSize, 'half' | 'full'>
   disabled?: boolean
-  previousAccessibilityLabel?: string
-  nextAccessibilityLabel?: string
   onPrevious: () => void
   onNext: () => void
 }
@@ -24,13 +20,9 @@ interface StepperWidgetProps {
 export function StepperWidget({
   icon: IconComponent,
   label,
-  previousIcon = CaretDownIcon,
-  nextIcon = CaretUpIcon,
   accent = theme.palette.slate.textSecondary,
   size = 'full',
   disabled,
-  previousAccessibilityLabel = `${label} back`,
-  nextAccessibilityLabel = `${label} forward`,
   onPrevious,
   onNext,
 }: StepperWidgetProps) {
@@ -42,16 +34,16 @@ export function StepperWidget({
       </Text>
       <View style={styles.actions}>
         <IconButton
-          icon={previousIcon}
+          icon={CaretDownIcon}
           disabled={disabled}
           onPress={onPrevious}
-          accessibilityLabel={previousAccessibilityLabel}
+          accessibilityLabel={`${label} back`}
         />
         <IconButton
-          icon={nextIcon}
+          icon={CaretUpIcon}
           disabled={disabled}
           onPress={onNext}
-          accessibilityLabel={nextAccessibilityLabel}
+          accessibilityLabel={`${label} forward`}
         />
       </View>
     </View>

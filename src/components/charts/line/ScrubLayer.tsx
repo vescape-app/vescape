@@ -1,7 +1,6 @@
 import { Circle, Group, Rect, RoundedRect, Text } from '@shopify/react-native-skia'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { AXIS_FONT_SIZE } from '@/components/charts/line/chartLayout'
 import { formatClock } from '@/components/charts/line/chartFormat'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
 import { sampleAtSec, type SeriesPaths } from '@/components/charts/line/seriesPaths'
@@ -9,6 +8,7 @@ import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline
 import type { ChartCamera, ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 const CURSOR_COLOR = theme.palette.slate.border
 const BANNER_BG = theme.alpha(theme.palette.slate.surfaceDeep, 0.85)
@@ -126,19 +126,18 @@ export function useScrubReadout({
     const measured: ChartReadout[] = []
     let widest = 0
 
-    for (let c = 0; c < charts.length; c += 1) {
-      const { targets, plot } = charts[c]
+    for (const chart of charts) {
+      const { targets, plot } = chart
 
       const rows: string[] = []
       const dots: number[] = []
       let longest = 0
 
-      for (let i = 0; i < targets.length; i += 1) {
-        const target = targets[i]
+      for (const target of targets) {
         const { paths } = target
         const sample = sampleAtSec(paths.raw, (chartMs - paths.domainStartMs) / 1000)
         if (!sample.found) {
-          rows.push('—')
+          rows.push(DASH)
           longest = Math.max(longest, 1)
           dots.push(OFFSCREEN, OFFSCREEN)
           continue
@@ -166,10 +165,10 @@ export function useScrubReadout({
     // One side for the whole stack: the banners move together, and they move only when the
     // widest of them would otherwise run off the plot.
     const onRight = cursorX + BANNER_OFFSET + widest <= plotWidth
-    for (let c = 0; c < measured.length; c += 1) {
-      const { width } = measured[c]
+    for (const banner of measured) {
+      const { width } = banner
       const x = onRight ? cursorX + BANNER_OFFSET : cursorX - BANNER_OFFSET - width
-      measured[c].x = Math.min(Math.max(x, 0), Math.max(plotWidth - width, 0))
+      banner.x = Math.min(Math.max(x, 0), Math.max(plotWidth - width, 0))
     }
 
     return { time, cursorX, charts: measured }

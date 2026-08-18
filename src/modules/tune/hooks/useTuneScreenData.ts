@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import {
-  type RefloatConfigGroup,
-  type RefloatConfigSnapshot,
-  type TuneProfileFieldValue,
-} from 'vescape-core'
+import type { RefloatConfigGroup, RefloatConfigSnapshot, TuneProfileFieldValue } from 'vescape-core'
 
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'

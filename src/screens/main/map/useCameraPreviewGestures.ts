@@ -63,30 +63,23 @@ export function useCameraPreviewGestures({
   })
 
   const beginPreviewPan = useCallback(() => {
-    const {
-      followGps,
-      getFollowHeadingDeg,
-      gpsCamera,
-      historyActive,
-      perspectiveEnabled,
-      setFollowGps,
-    } = imperativeHandleLatestRef.current
+    const latest = imperativeHandleLatestRef.current
     previewPanActiveRef.current = true
-    previewPanFollowedRef.current = followGps && !historyActive
+    previewPanFollowedRef.current = latest.followGps && !latest.historyActive
     // Anchor on what is actually on screen, not on the camera live follow would
     // like to be at: grabbing the map mid-ride must not teleport it first.
     previewPanBaseRef.current = currentCameraRef.current ?? {
-      ...gpsCamera,
-      heading: getFollowHeadingDeg(),
-      pitch: getPitchForZoom(gpsCamera.zoomLevel, perspectiveEnabled),
+      ...latest.gpsCamera,
+      heading: latest.getFollowHeadingDeg(),
+      pitch: getPitchForZoom(latest.gpsCamera.zoomLevel, latest.perspectiveEnabled),
     }
-    setFollowGps(false)
+    latest.setFollowGps(false)
   }, [currentCameraRef, previewPanActiveRef])
 
   const previewPanBy = useCallback(
     (deltaX: number, deltaY: number, revealProgress: number) => {
-      const { perspectiveEnabled, setFollowGps } = imperativeHandleLatestRef.current
-      setFollowGps(false)
+      const latest = imperativeHandleLatestRef.current
+      latest.setFollowGps(false)
       const baseCamera = previewPanBaseRef.current
       if (!baseCamera) return
       const zoomLevel = clamp(
@@ -104,7 +97,7 @@ export function useCameraPreviewGestures({
           basePitch: baseCamera.pitch,
           zoom: zoomLevel,
           revealProgress,
-          perspectiveEnabled,
+          perspectiveEnabled: latest.perspectiveEnabled,
         }),
       }
       currentCameraRef.current = previewCamera
@@ -153,20 +146,21 @@ export function useCameraPreviewGestures({
   }, [currentCameraRef, engine, previewPanActiveRef])
 
   const beginPreviewZoom = useCallback(() => {
-    const { followGps, getLiveFollowCamera, historyActive } = imperativeHandleLatestRef.current
+    const latest = imperativeHandleLatestRef.current
     previewZoomBaseRef.current =
-      followGps && !historyActive ? getLiveFollowCamera() : currentCameraRef.current
+      latest.followGps && !latest.historyActive
+        ? latest.getLiveFollowCamera()
+        : currentCameraRef.current
   }, [currentCameraRef])
 
   const previewZoomBy = useCallback((scale: number) => {
-    const { applyLiveFollowCamera, followGps, historyActive, setFollowZoomLevel } =
-      imperativeHandleLatestRef.current
+    const latest = imperativeHandleLatestRef.current
     const baseCamera = previewZoomBaseRef.current
     if (!baseCamera || scale <= 0) return
     const zoomLevel = clamp(baseCamera.zoomLevel + Math.log2(scale), MIN_ZOOM, MAP_DEFAULTS.maxZoom)
-    setFollowZoomLevel(zoomLevel)
-    if (followGps && !historyActive) {
-      applyLiveFollowCamera()
+    latest.setFollowZoomLevel(zoomLevel)
+    if (latest.followGps && !latest.historyActive) {
+      latest.applyLiveFollowCamera()
     }
   }, [])
 

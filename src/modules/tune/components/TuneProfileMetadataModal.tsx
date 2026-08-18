@@ -64,7 +64,7 @@ interface TuneProfileMetadataModalContentProps extends Omit<
   initialValue: Partial<TuneProfileMetadataValue>
 }
 
-type PaletteTheme = {
+interface PaletteTheme {
   bg: string
   border: string
   color: string

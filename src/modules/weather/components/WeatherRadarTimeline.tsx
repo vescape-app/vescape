@@ -1,16 +1,17 @@
 import { PauseIcon, PlayIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutChangeEvent, StyleSheet, View } from 'react-native'
+import type { LayoutChangeEvent } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   Easing,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
   withTiming,
 } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import { IconButton } from '@/components/base/IconButton'
 import { MonoValue } from '@/components/base/MonoValue'
@@ -56,7 +57,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
-      runOnJS(commitManualFrame)(nextIndex)
+      scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onUpdate((event) => {
       'worklet'
@@ -65,7 +66,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
-      runOnJS(commitManualFrame)(nextIndex)
+      scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onFinalize(() => {
       'worklet'
@@ -132,9 +133,9 @@ export function WeatherRadarTimeline() {
   useEffect(() => {
     if (!playing || frames.length <= 1) return undefined
     const interval = setInterval(() => {
-      const frameCount = frameCountRef.current
-      if (frameCount <= 1) return
-      const nextIndex = (frameIndexRef.current + 1) % frameCount
+      const liveFrameCount = frameCountRef.current
+      if (liveFrameCount <= 1) return
+      const nextIndex = (frameIndexRef.current + 1) % liveFrameCount
       frameIndexRef.current = nextIndex
       useRainViewerRadarStore.getState().setFrameIndex(nextIndex, 'auto')
     }, FRAME_INTERVAL_MS)

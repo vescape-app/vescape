@@ -25,17 +25,16 @@ describe('release workflow dispatch', () => {
   test('pins the trusted definition to main and passes source separately', () => {
     const sha = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01'
     const requestId = '7f787fe8-4a30-4fcf-a3b1-4a9dd8606e38'
-    expect(createDispatchPayload(sha, requestId, 'main', '- Faster startup\n')).toEqual({
+    expect(createDispatchPayload(sha, requestId, 'main')).toEqual({
       ref: 'main',
       inputs: { source_sha: sha.toLowerCase(), request_id: requestId },
-      releaseBody: '- Faster startup\n',
     })
   })
 
   test('targets an explicit trusted workflow branch', () => {
     const sha = 'a'.repeat(40)
     const requestId = crypto.randomUUID()
-    expect(createDispatchPayload(sha, requestId, 'dev', '- Notes\n').ref).toBe('dev')
+    expect(createDispatchPayload(sha, requestId, 'dev').ref).toBe('dev')
   })
 
   test('correlates the exact structured run title', () => {

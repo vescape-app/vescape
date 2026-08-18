@@ -18,7 +18,7 @@ import Animated, {
 import { IconButton } from '@/components/base/IconButton'
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {

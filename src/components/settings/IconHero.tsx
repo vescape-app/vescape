@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 import { theme } from '@/constants/theme'
 
-type IconHeroProps = {
+interface IconHeroProps {
   icon?: Icon
   media?: ReactNode
   title?: string

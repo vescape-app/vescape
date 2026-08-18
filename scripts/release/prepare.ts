@@ -235,16 +235,18 @@ export async function prepareReleaseCandidate(
   const pathsToStage = ['package.json']
   if (changedPaths.includes(notesPath)) pathsToStage.push(notesPath)
   await checked('git', ['add', ...pathsToStage], 'Cannot stage release candidate')
-  await checked('git', ['commit', '-m', marketingVersion], 'Cannot commit release candidate')
+  await checked(
+    'git',
+    ['commit', '-m', `release: ${marketingVersion}`],
+    'Cannot commit release candidate',
+  )
   try {
     await checked('git', ['checkout', 'main'], 'Cannot switch to main')
-    await checked(
-      'git',
-      ['merge', 'dev', '--no-ff', '-m', `release: ${marketingVersion}`],
-      'Cannot merge dev into main',
-    )
-    await checked('git', ['checkout', 'dev'], 'Cannot switch back to dev')
-    await checked('git', ['merge', '--ff-only', 'main'], 'Cannot align dev with main')
+    try {
+      await checked('git', ['merge', '--ff-only', 'dev'], 'Cannot fast-forward main to dev')
+    } finally {
+      await checked('git', ['checkout', 'dev'], 'Cannot switch back to dev')
+    }
     await checked(
       'git',
       ['push', '--atomic', 'origin', 'dev', 'main'],
@@ -252,10 +254,7 @@ export async function prepareReleaseCandidate(
     )
   } catch (error) {
     const branch = await command('git', ['branch', '--show-current'])
-    if (branch.stdout === 'main') {
-      await command('git', ['merge', '--abort'])
-      await command('git', ['checkout', 'dev'])
-    }
+    if (branch.stdout === 'main') await command('git', ['checkout', 'dev'])
     throw error
   }
   const sourceSha = (

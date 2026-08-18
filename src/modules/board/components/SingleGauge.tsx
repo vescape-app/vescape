@@ -4,10 +4,10 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
 import { Text } from '@/components/base/Text'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
   normalizeFraction,
@@ -26,6 +26,7 @@ import {
   LABEL_FONT_SIZE,
 } from '@/modules/board/components/gauge/gaugeShared'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import { DASH } from '@/helpers/format'
 
 interface SingleGaugeProps {
   value: SharedValue<number | null>
@@ -78,7 +79,7 @@ function HalfArc({
 
   const valueText = useDerivedValue(() => {
     const current = value.value
-    if (current == null) return '—'
+    if (current == null) return DASH
     return decimals === 0 ? Math.round(current).toString() : current.toFixed(decimals)
   })
 

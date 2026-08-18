@@ -12,6 +12,7 @@ import {
 
 import { formatBytes } from '@/helpers/format'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import { errorMessage } from '@/helpers/error'
 
 type OpState = 'idle' | 'running' | 'done' | 'error'
 
@@ -55,9 +56,9 @@ export function useSettingsDatabaseOps() {
       setRebuildState('done')
       setRebuildResult(null)
       setRebuildProgress(null)
-    } catch (e: any) {
+    } catch (e) {
       setRebuildState('error')
-      setRebuildResult(e?.message ?? 'Unknown error')
+      setRebuildResult(errorMessage(e, 'Unknown error'))
       setRebuildProgress(null)
     }
   }, [])
@@ -75,9 +76,9 @@ export function useSettingsDatabaseOps() {
       setBackupState('done')
       setBackupResult(`${backup.name} (${formatBytes(backup.sizeBytes)})`)
       refreshDatabaseSize()
-    } catch (e: any) {
+    } catch (e) {
       setBackupState('error')
-      setBackupResult(e?.message ?? 'Backup failed')
+      setBackupResult(errorMessage(e, 'Backup failed'))
     }
   }, [refreshDatabaseSize])
 
@@ -100,9 +101,9 @@ export function useSettingsDatabaseOps() {
       setRestoreState('done')
       setRestoreResult('Database restored')
       await reloadRuntime()
-    } catch (e: any) {
+    } catch (e) {
       setRestoreState('error')
-      setRestoreResult(e?.message ?? 'Restore failed')
+      setRestoreResult(errorMessage(e, 'Restore failed'))
     }
   }, [])
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { FocusedSeriesEvent } from 'vescape-core'
+import { omitKey } from '@/helpers/records'
 
 /**
  * High-resolution live series for the metrics a `/control` detail chart currently has
@@ -40,9 +41,7 @@ export const useFocusedSeriesStore = create<FocusedSeriesState>((set) => ({
   clearMetric: (metric) =>
     set((state) => {
       if (!(metric in state.series)) return state
-      const series = { ...state.series }
-      delete series[metric]
-      return { series }
+      return { series: omitKey(state.series, metric) }
     }),
   clear: () =>
     set({

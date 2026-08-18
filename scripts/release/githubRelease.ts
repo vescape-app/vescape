@@ -3,8 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { generateGithubReleaseBody } from '../release-notes/codex'
-import type { ReleaseManifest } from './contracts'
-import { releaseOutcome } from './contracts'
 
 export interface ReleaseCommandResult {
   exitCode: number
@@ -36,10 +34,7 @@ function requireCommand(result: ReleaseCommandResult, label: string): string {
   return result.stdout
 }
 
-/**
- * Codex authors the release body locally before dispatch, so CI can publish the release itself
- * without a Codex install: the commit range is already fixed by the source commit being built.
- */
+/** Codex authors the release body locally, from the commit range fixed by the source commit. */
 export async function composeGithubReleaseBody(
   sourceSha: string,
   marketingVersion: string,
@@ -81,21 +76,17 @@ export async function composeGithubReleaseBody(
 }
 
 /**
- * Fallback for a release whose workflow published no release — an older run, or a CI publish that
- * failed. The internal workflow owns the normal path.
+ * The GitHub release is published from the release commit, before any build: the tag and the notes
+ * describe the source, not the artifacts. Play upload outcomes live in the release manifest.
  */
 export async function publishGithubRelease(
   repo: string,
-  manifest: ReleaseManifest,
+  target: { marketingVersion: string; sourceSha: string },
   dependencies: GithubReleaseDependencies = {},
 ): Promise<'created' | 'existing'> {
-  if (releaseOutcome(manifest).kind !== 'success') {
-    throw new Error('Cannot publish a GitHub release for an unsuccessful internal release')
-  }
-
   const run = dependencies.run ?? runReleaseCommand
-  const tag = `v${manifest.marketingVersion}`
-  const sourceSha = manifest.sourceSha.toLowerCase()
+  const tag = `v${target.marketingVersion}`
+  const sourceSha = target.sourceSha.toLowerCase()
 
   requireCommand(await run('git', ['fetch', 'origin', '--tags']), 'Cannot refresh Git tags')
   requireCommand(
@@ -146,7 +137,7 @@ export async function publishGithubRelease(
   ])
   if (existingRelease.exitCode === 0) return 'existing'
 
-  const body = await composeGithubReleaseBody(sourceSha, manifest.marketingVersion, {
+  const body = await composeGithubReleaseBody(sourceSha, target.marketingVersion, {
     ...dependencies,
     run,
   })

@@ -20,7 +20,7 @@ const summary: TelemetrySummary = {
 }
 
 const getTelemetryHistory = mock(async () => [] as TelemetryMinuteBucket[])
-type HistoryRangeResult = {
+interface HistoryRangeResult {
   boardSamples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
@@ -133,7 +133,7 @@ test('removes selected session from history and selects next ride', async () => 
 
   await useHistoryStore.getState().loadInitial()
   await useHistoryStore.getState().selectSession(useHistoryStore.getState().sessions[1])
-  await (useHistoryStore.getState() as any).removeSelectedSession()
+  await useHistoryStore.getState().removeSelectedSession()
 
   expect(deleteTelemetryRange).toHaveBeenCalledWith({
     fromMs: selected.startAtMs,
@@ -411,7 +411,7 @@ test('loads older history pages and merges sessions', async () => {
   useHistoryStore.setState({ hasMore: true })
   await useHistoryStore.getState().loadMore()
 
-  expect((getTelemetryHistory.mock.calls as any[])[1][0]).toEqual({
+  expect((getTelemetryHistory.mock.calls as unknown[][])[1][0]).toEqual({
     limit: 100,
     cursorBeforeMs: oldestLoaded.bucketStartMs - 1,
   })

@@ -13,7 +13,7 @@ import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   clamp01,
   normalizeFraction,
@@ -23,6 +23,7 @@ import {
   STROKE,
   type Arc,
 } from '@/modules/board/components/gauge/arcGeometry'
+import { textAdvanceWidth } from '../../../../helpers/skiaText'
 
 export const BG_ARC_COLOR = theme.palette.slate.border
 const GAUGE_HOT_COLOR = theme.status.error.color
@@ -97,7 +98,7 @@ function AlertLabel({
   font: SkFont
 }) {
   const p = polar(arc, arc.r - LABEL_INSET, fraction)
-  const width = font.getTextWidth(text)
+  const width = textAdvanceWidth(font, text)
   return (
     <SkiaText
       x={p.x - width / 2}
@@ -199,7 +200,7 @@ export function GaugeReadout({
     if (!unitFont) return null
     const { ascent, descent } = unitFont.getMetrics()
     return {
-      x: box.x + (box.width - unitFont.getTextWidth(unit)) / 2,
+      x: box.x + (box.width - textAdvanceWidth(unitFont, unit)) / 2,
       y: top + valueLineHeight + UNIT_GAP + unitLineHeight / 2 - (ascent + descent) / 2,
     }
   }, [unitFont, unit, box.x, box.width, top, valueLineHeight, unitLineHeight])

@@ -1,4 +1,5 @@
 import type { BoardWarning, BoardWarningKind, BoardWarningSeverity } from 'vescape-core'
+import { DASH } from '@/helpers/format'
 
 /**
  * Rider-facing titles per Board Warning kind. Keyed by the exhaustive `BoardWarningKind` union, so adding a
@@ -122,7 +123,7 @@ function humanizeKey(key: string): string {
 }
 
 function formatValue(value: unknown): string {
-  if (value == null) return '—'
+  if (value == null) return DASH
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3)
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   return String(value)

@@ -9,7 +9,7 @@ import {
   type AlertPresetMetric,
   type AlertPresetSelection,
 } from '@/modules/alerts/lib/alertPresets'
-import { type DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
+import type { DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
