@@ -78,6 +78,7 @@ export function useMapSearch({
 
   const handleSearchQueryChange = useCallback((query: string) => {
     setSearchQuery(query)
+    setSearchResults([])
     setSearchError(null)
     if (query.trim().length < 2) {
       searchRequestIdRef.current += 1
@@ -85,6 +86,34 @@ export function useMapSearch({
       setSearchLoading(false)
     }
   }, [])
+
+  const submitSearch = useCallback(async () => {
+    if (normalizedSearchQuery.length < 2) return null
+    const cacheKey = `${normalizedSearchQuery}|${searchProximityKey}`
+    const cached = searchCacheRef.current.get(cacheKey)
+    if (cached) return cached[0] ?? null
+
+    const requestId = searchRequestIdRef.current + 1
+    searchRequestIdRef.current = requestId
+    setSearchLoading(true)
+    try {
+      const results = await searchMapResults(normalizedSearchQuery, { proximity: searchProximity })
+      if (requestId === searchRequestIdRef.current) {
+        searchCacheRef.current.set(cacheKey, results)
+        setSearchResults(results)
+        setSearchError(null)
+        setSearchLoading(false)
+      }
+      return results[0] ?? null
+    } catch (error) {
+      if (requestId === searchRequestIdRef.current) {
+        setSearchResults([])
+        setSearchError(error instanceof Error ? error.message : 'Mapbox search failed')
+        setSearchLoading(false)
+      }
+      return null
+    }
+  }, [normalizedSearchQuery, searchProximity, searchProximityKey])
 
   const resetSearch = useCallback(() => {
     searchRequestIdRef.current += 1
@@ -101,6 +130,7 @@ export function useMapSearch({
     searchLoading,
     searchError,
     handleSearchQueryChange,
+    submitSearch,
     resetSearch,
   }
 }

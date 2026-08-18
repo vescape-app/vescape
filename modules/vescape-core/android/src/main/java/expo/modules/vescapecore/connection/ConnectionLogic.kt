@@ -15,15 +15,14 @@ internal const val DETECT_PROBE_TIMEOUT_MS = 2_500L
 
 internal fun boardReadyTimeoutMs(attempt: Int): Long = ReconnectPolicy.boardReadyTimeoutMs(attempt)
 
-internal fun isPollingCapable(canId: Int?, directConnection: Boolean): Boolean =
-    canId != null || directConnection
+/** A Board can only be polled once its Board Link carries a detected transport. */
+internal fun isPollingCapable(transport: BoardTransport?): Boolean = transport != null
 
 internal fun shouldStartPollingOnReady(
-    canId: Int?,
-    directConnection: Boolean,
+    transport: BoardTransport?,
     pollRunnable: Any?,
 ): Boolean =
-    pollRunnable == null && isPollingCapable(canId, directConnection)
+    pollRunnable == null && isPollingCapable(transport)
 
 /** Raw service state needed to report one rider-facing Board phase. */
 internal data class ReportedBoardPhaseInput(

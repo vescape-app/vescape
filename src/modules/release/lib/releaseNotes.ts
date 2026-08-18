@@ -3,8 +3,7 @@ export interface BundledReleaseNote {
   markdown: string
 }
 
-const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?(?:-([0-9A-Za-z.-]+))?$/
-const RELEASE_TRAIN_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/
 
 interface ParsedVersion {
   core: readonly [number, number, number]
@@ -15,19 +14,9 @@ export function parseMarketingVersion(version: string): ParsedVersion | null {
   const match = VERSION_PATTERN.exec(version)
   if (!match) return null
   return {
-    core: [Number(match[1]), Number(match[2]), match[3] === undefined ? 0 : Number(match[3])],
+    core: [Number(match[1]), Number(match[2]), Number(match[3])],
     prerelease: match[4]?.split('.') ?? [],
   }
-}
-
-export function parseReleaseTrain(version: string): readonly [number, number] | null {
-  const match = RELEASE_TRAIN_PATTERN.exec(version)
-  return match ? [Number(match[1]), Number(match[2])] : null
-}
-
-export function releaseTrainForVersion(version: string): string | null {
-  const parsed = parseMarketingVersion(version)
-  return parsed ? `${parsed.core[0]}.${parsed.core[1]}` : null
 }
 
 export function compareMarketingVersions(left: string, right: string): number {

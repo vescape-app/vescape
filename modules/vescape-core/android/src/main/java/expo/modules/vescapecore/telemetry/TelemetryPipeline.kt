@@ -20,12 +20,16 @@ private fun Map<String, Any?>.excluded(key: String): Boolean =
     (this["metricExclusions"] as? Map<*, *>)?.get(key) == true
 
 /**
- * Every live metric the JS UI renders from the decimated series: the center-screen
- * sparklines (strip + dual gauge + battery) plus, temporarily, the `/control` detail
- * charts (which used to stream raw full samples — see the perf note on `useLiveMetric`).
- * Kept in sync with `liveSelectors` on the JS side, keyed by the same names: any
- * abs/scale/exclusion is applied here *before* min/max bucketing so native decimation
- * matches what JS would compute, and the UI renders the values verbatim.
+ * Center-screen live metrics streamed continuously as the decimated `onLiveSeries`
+ * firehose (strip + dual gauge + battery sparklines). Kept in sync with `liveSelectors`
+ * on the JS side, keyed by the same names: any abs/scale/exclusion is applied here
+ * *before* min/max bucketing so native decimation matches what JS would compute, and
+ * the UI renders the values verbatim.
+ *
+ * Detail-only metrics live in [FOCUSED_ONLY_SERIES_METRICS] and are not streamed
+ * globally — a `/control` detail screen pulls them via [focusedSeries] on focus.
+ *
+ * @parity /modules/vescape-core/src/index.ts `liveSelectors`
  */
 internal val LIVE_SERIES_METRICS = listOf(
     LiveSeriesMetric("motorTemp") { row -> row.num("tempMotor")?.takeIf { it > 0 } },
@@ -40,13 +44,43 @@ internal val LIVE_SERIES_METRICS = listOf(
     LiveSeriesMetric("duty") { row ->
         if (row.excluded("max_duty")) null else row.num("dutyCycle")?.let { kotlin.math.abs(it) * 100 }
     },
-    // Detail-chart-only metrics (no center sparkline). Here so `/control` screens can
-    // read the cheap decimated series instead of the full-sample firehose.
+)
+
+/** Detail-chart-only metrics (no center sparkline). Served only via [focusedSeries]. */
+internal val FOCUSED_ONLY_SERIES_METRICS = listOf(
     LiveSeriesMetric("pitch") { row -> row.num("pitch") },
     LiveSeriesMetric("roll") { row -> row.num("roll") },
     LiveSeriesMetric("balancePitch") { row -> row.num("balancePitch") },
     LiveSeriesMetric("footpadAdc1") { row -> row.num("adc1") },
     LiveSeriesMetric("footpadAdc2") { row -> row.num("adc2") },
+)
+
+/** Every live metric a `/control` detail chart can focus (center + detail-only). */
+internal val ALL_SERIES_METRICS = LIVE_SERIES_METRICS + FOCUSED_ONLY_SERIES_METRICS
+
+/** Exclusion keys whose contiguous spans ride along with a focused series for overlay bands. */
+internal val LIVE_EXCLUSION_KEYS = listOf(METRIC_AVG_SPEED, METRIC_MAX_SPEED, METRIC_MAX_DUTY)
+
+/**
+ * Focused detail-chart resolution: fixed-width time buckets, uncapped, and narrower than
+ * the board packet interval (~30–50ms) so at most one sample lands per bucket — the focused
+ * series is effectively full-resolution. Payload therefore scales with the sample count of
+ * the live window, not with a bucket budget: only mounted `/control` detail charts pay it.
+ * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `focusedBucketWidthMs`
+ */
+internal const val FOCUSED_SERIES_BUCKET_WIDTH_MS = 20L
+
+/**
+ * Render-ready focused series for one metric plus its excluded spans, per exclusion key.
+ * [spanMs] and [sampleRateHz] describe the data actually held (not the configured window),
+ * so the detail screen can caption exactly what the rider is looking at.
+ */
+internal data class FocusedSeries(
+    val series: DoubleArray,
+    val exclusions: Map<String, DoubleArray>,
+    val windowMs: Long,
+    val spanMs: Long,
+    val sampleRateHz: Double,
 )
 
 internal data class ProcessedTelemetry(
@@ -158,6 +192,75 @@ internal class TelemetryPipeline(
             )
         }
         return result
+    }
+
+    /**
+     * Full-resolution series for a single focused metric on [FOCUSED_SERIES_BUCKET_WIDTH_MS]
+     * buckets — narrower than the packet interval, so every sample survives while the fixed
+     * absolute bucket grid keeps the line stable as the window slides. Rides with the
+     * contiguous excluded spans per exclusion key so the detail chart can redraw its overlay
+     * bands. Pass [spans] to reuse one exclusion scan across every metric of an emit tick.
+     * Returns null for an unknown metric key.
+     */
+    fun focusedSeries(metricKey: String, spans: Map<String, DoubleArray>? = null): FocusedSeries? {
+        val metric = ALL_SERIES_METRICS.find { it.key == metricKey } ?: return null
+        val rows = synchronized(recentLock) { if (recentTelemetry.isEmpty()) null else recentTelemetry.toList() }
+            ?: return FocusedSeries(DoubleArray(0), emptyMap(), recentWindowMs(), 0L, 0.0)
+        val windowMs = recentWindowMs()
+        val bucketCount = (windowMs / FOCUSED_SERIES_BUCKET_WIDTH_MS).toInt().coerceAtLeast(1)
+        val series = LiveSeriesDownsampler.downsampleMinMax(
+            rows,
+            bucketCount,
+            windowMs,
+            { (it["lastPacketAt"] as Number).toLong() },
+            metric.select,
+        )
+        val spanMs = sampleSpanMs(rows)
+        return FocusedSeries(
+            series,
+            spans ?: excludedSpans(rows),
+            windowMs,
+            spanMs,
+            if (spanMs > 0L) (rows.size - 1) * 1000.0 / spanMs else 0.0,
+        )
+    }
+
+    /** Elapsed time between the oldest and newest retained sample, 0 when fewer than two. */
+    private fun sampleSpanMs(rows: List<Map<String, Any?>>): Long {
+        if (rows.size < 2) return 0L
+        val first = (rows.first()["lastPacketAt"] as? Number)?.toLong() ?: return 0L
+        val last = (rows.last()["lastPacketAt"] as? Number)?.toLong() ?: return 0L
+        return (last - first).coerceAtLeast(0L)
+    }
+
+    /** Excluded spans for the current window — shared by every metric of one emit tick. */
+    fun focusedExclusionSpans(): Map<String, DoubleArray> =
+        excludedSpans(synchronized(recentLock) { recentTelemetry.toList() })
+
+    /**
+     * Contiguous [start, end] runs (flat `[s0, e0, s1, e1, ...]`) per exclusion key across
+     * the window. JS unions the keys a screen cares about and merges them into overlay bands.
+     */
+    private fun excludedSpans(rows: List<Map<String, Any?>>): Map<String, DoubleArray> {
+        val out = HashMap<String, DoubleArray>(LIVE_EXCLUSION_KEYS.size)
+        for (key in LIVE_EXCLUSION_KEYS) {
+            val spans = ArrayList<Double>()
+            var startTs = Long.MIN_VALUE
+            var endTs = Long.MIN_VALUE
+            for (row in rows) {
+                val ts = (row["lastPacketAt"] as? Number)?.toLong() ?: continue
+                if (row.excluded(key)) {
+                    if (startTs == Long.MIN_VALUE) startTs = ts
+                    endTs = ts
+                } else if (startTs != Long.MIN_VALUE) {
+                    spans.add(startTs.toDouble()); spans.add(endTs.toDouble())
+                    startTs = Long.MIN_VALUE
+                }
+            }
+            if (startTs != Long.MIN_VALUE) { spans.add(startTs.toDouble()); spans.add(endTs.toDouble()) }
+            if (spans.isNotEmpty()) out[key] = spans.toDoubleArray()
+        }
+        return out
     }
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `armStaleWatchdog` */

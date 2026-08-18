@@ -1,43 +1,45 @@
 import { useEffect, type RefObject } from 'react'
 import type { LocationEvent } from 'vescape-core'
 
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { getNavigationFallbackReason } from '@/modules/map/lib/navigationDiagnostics'
 import type { PhoneHeadingStatus } from '@/modules/map/lib/phoneHeading'
 import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDiagnosticsStore'
 
 export function useNavigationDiagnosticsSync({
   gpsFix,
-  retainedGpsBearing,
+  courseDeg,
+  courseSourceTimestamp,
   phoneHeadingDegRef,
   phoneHeadingStatus,
   gpsPinBearingDeg,
   displayedCameraHeading,
-  mapNavigationMode,
+  mapOrientationMode,
 }: {
   gpsFix: LocationEvent | null
-  retainedGpsBearing: { bearingDeg: number; sourceTimestamp: number } | null
+  courseDeg: number | null
+  courseSourceTimestamp: number | null
   phoneHeadingDegRef: RefObject<number | null>
   phoneHeadingStatus: PhoneHeadingStatus | 'idle'
   gpsPinBearingDeg: number | null
   displayedCameraHeading: number
-  mapNavigationMode: MapNavigationMode
+  mapOrientationMode: MapOrientationMode
 }) {
   const updateNavigationDiagnostics = useNavigationDiagnosticsStore((state) => state.update)
 
   useEffect(() => {
     updateNavigationDiagnostics({
       gpsFix,
-      retainedGpsBearingDeg: retainedGpsBearing?.bearingDeg ?? null,
-      retainedGpsBearingAt: retainedGpsBearing?.sourceTimestamp ?? null,
+      retainedGpsBearingDeg: courseDeg,
+      retainedGpsBearingAt: courseSourceTimestamp,
       phoneHeadingDeg: phoneHeadingDegRef.current,
       phoneHeadingStatus,
       activeDisplayHeadingDeg: gpsPinBearingDeg,
       cameraHeadingDeg: displayedCameraHeading,
       fallbackReason: getNavigationFallbackReason({
-        mapNavigationMode,
+        mapOrientationMode,
         gpsFix,
-        retainedGpsBearingDeg: retainedGpsBearing?.bearingDeg ?? null,
+        retainedGpsBearingDeg: courseDeg,
         phoneHeadingDeg: phoneHeadingDegRef.current,
         phoneHeadingStatus,
       }),
@@ -46,11 +48,11 @@ export function useNavigationDiagnosticsSync({
     displayedCameraHeading,
     gpsFix,
     gpsPinBearingDeg,
-    mapNavigationMode,
+    mapOrientationMode,
     phoneHeadingDegRef,
     phoneHeadingStatus,
-    retainedGpsBearing?.bearingDeg,
-    retainedGpsBearing?.sourceTimestamp,
+    courseDeg,
+    courseSourceTimestamp,
     updateNavigationDiagnostics,
   ])
 }

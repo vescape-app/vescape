@@ -6,12 +6,13 @@ import * as Updates from 'expo-updates'
 import {
   addTelemetryRebuildProgressListener,
   backupDatabase,
-  getDatabaseSizeBytes,
   rebuildTelemetryBuckets,
   restoreDatabase,
 } from 'vescape-core'
 
 import { formatBytes } from '@/helpers/format'
+import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
+import { errorMessage } from '@/helpers/error'
 
 type OpState = 'idle' | 'running' | 'done' | 'error'
 
@@ -26,7 +27,7 @@ async function reloadRuntime() {
 }
 
 export function useSettingsDatabaseOps() {
-  const [dbSize, setDbSize] = useState<number | null>(null)
+  const { bytes: dbSize, refresh: refreshDatabaseSize } = useDatabaseSize()
   const [rebuildState, setRebuildState] = useState<OpState>('idle')
   const [rebuildResult, setRebuildResult] = useState<string | null>(null)
   const [backupState, setBackupState] = useState<OpState>('idle')
@@ -38,16 +39,6 @@ export function useSettingsDatabaseOps() {
     current: number
     total: number
   } | null>(null)
-
-  const refreshDatabaseSize = useCallback(() => {
-    getDatabaseSizeBytes()
-      .then(setDbSize)
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    refreshDatabaseSize()
-  }, [refreshDatabaseSize])
 
   useEffect(() => {
     const subscription = addTelemetryRebuildProgressListener((event) => {
@@ -65,9 +56,9 @@ export function useSettingsDatabaseOps() {
       setRebuildState('done')
       setRebuildResult(null)
       setRebuildProgress(null)
-    } catch (e: any) {
+    } catch (e) {
       setRebuildState('error')
-      setRebuildResult(e?.message ?? 'Unknown error')
+      setRebuildResult(errorMessage(e, 'Unknown error'))
       setRebuildProgress(null)
     }
   }, [])
@@ -85,9 +76,9 @@ export function useSettingsDatabaseOps() {
       setBackupState('done')
       setBackupResult(`${backup.name} (${formatBytes(backup.sizeBytes)})`)
       refreshDatabaseSize()
-    } catch (e: any) {
+    } catch (e) {
       setBackupState('error')
-      setBackupResult(e?.message ?? 'Backup failed')
+      setBackupResult(errorMessage(e, 'Backup failed'))
     }
   }, [refreshDatabaseSize])
 
@@ -110,11 +101,11 @@ export function useSettingsDatabaseOps() {
       setRestoreState('done')
       setRestoreResult('Database restored')
       await reloadRuntime()
-    } catch (e: any) {
+    } catch (e) {
       setRestoreState('error')
-      setRestoreResult(e?.message ?? 'Restore failed')
+      setRestoreResult(errorMessage(e, 'Restore failed'))
     }
-  }, [refreshDatabaseSize])
+  }, [])
 
   const rebuildHint =
     rebuildState === 'error' && rebuildResult

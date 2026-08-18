@@ -1,8 +1,8 @@
 # Mapbox patches
 
-This project carries a Bun patch for `@rnmapbox/maps@10.3.1`:
+This project carries a Bun patch for `@rnmapbox/maps@10.3.2`:
 
-- `patches/@rnmapbox%2Fmaps@10.3.1.patch`
+- `patches/@rnmapbox%2Fmaps@10.3.2.patch`
 - registered in `package.json#patchedDependencies`
 - applied automatically by `bun install`
 
@@ -38,6 +38,25 @@ stopping when automatic tilt changes.
 Use `setCameraDirect` only for camera properties that must track an already-running native camera
 gesture or animation. Continue using normal `setCamera` for intentional app-driven camera moves,
 such as focus, mode changes, recentering, and animated perspective toggles.
+
+## Cancelling native camera motion
+
+```ts
+cameraRef.current?.cancelCameraAnimations()
+```
+
+- iOS: `mapView.camera.cancelAnimations()`
+- Android: `mapView.camera.cancelAllAnimators()`
+
+The counterpart to the property above. `setCameraDirect` writes camera state without touching
+native animators, which is exactly what pitch-follows-zoom needs and exactly what an app-driven
+camera move cannot live with: a fling started before the move keeps writing the camera every frame
+and overwrites each frame the spring engine writes. The visible symptom is a recenter that lands
+and then drifts on in the direction of the throw, ignoring repeated taps.
+
+`src/screens/main/map/useCameraControls.ts` wires it to the camera engine's `cancelNativeMotion`,
+which fires once when an app-issued target claims the camera — never per frame, and not for
+retargets inside a move the engine already owns.
 
 The current native bridge intentionally accepts only `pitch` and `heading`. Do not broaden it to
 arbitrary camera options without a concrete use case and gesture-behavior verification.

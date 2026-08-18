@@ -28,7 +28,6 @@ export interface ProductionPlan {
   tracks: ReleaseTrackConfig
   operation: ProductionOperation
   rolloutPercentage?: number
-  freezeWarning: string | null
 }
 
 export function promotionFields(promotionPlan: PromotionPlan): ConfirmField[] {

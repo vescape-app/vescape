@@ -1,10 +1,16 @@
-import { existsSync, readdirSync } from 'fs'
+import { existsSync, readdirSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join } from 'path'
+import { sdkRoot } from './lib/androidSdk.ts'
+import { listAdbDevices, pickDevice, type AdbDevice } from './lib/devices.ts'
 
 const ROOT = join(import.meta.dir, '..')
-const PACKAGE = 'app.vescape'
-const ACTIVITY = `${PACKAGE}/.wear.MainActivity`
+/**
+ * The activity class comes from the module's Kotlin namespace, which withWearMirror leaves alone;
+ * only the applicationId follows the Expo profile, so the component has to be fully qualified.
+ */
+const ACTIVITY_CLASS = 'app.vescape.wear.MainActivity'
+const WEAR_GRADLE = join(ROOT, 'android', 'wearos', 'build.gradle')
 const DEBUG_APK = join(
   ROOT,
   'android',
@@ -25,8 +31,14 @@ const DEBUG_APK = join(
 const PHONE_KEYSTORE = join(ROOT, 'android', 'app', 'debug.keystore')
 const SIGNED_APK = join(tmpdir(), 'wearos-debug-phone-cert-signed.apk')
 
-const COMMANDS = ['build', 'test', 'install'] as const
+const COMMANDS = ['build', 'test', 'install', 'emulator', 'replay', 'pair'] as const
 type Command = (typeof COMMANDS)[number]
+
+/** Wear AVD booted by `emulator`. Overridable so the AVD name is not baked into the repo. */
+const WEAR_AVD = process.env.WEAR_AVD ?? 'WearLarge'
+
+/** Lane fixtures the emulator build replays, keyed by the `replay` intent extra MainActivity reads. */
+const REPLAY_FIXTURES = ['ride', 'sweep'] as const
 
 function fail(message: string): never {
   console.error(`\nwear: ${message}`)
@@ -72,9 +84,25 @@ function syncNative() {
   run(['bun', 'run', 'scripts/native-sync.ts', 'android'])
 }
 
+/**
+ * withWearMirror stamps the watch module with the phone's applicationId, which carries the Expo
+ * profile suffix — a dev prebuild installs `app.vescape.dev` alongside the store `app.vescape`.
+ * Read it back from the generated module so install, launch and smoke check all target the app this
+ * run just built instead of whichever build happens to own the unsuffixed id.
+ */
+function applicationId() {
+  if (!existsSync(WEAR_GRADLE)) fail(`missing ${WEAR_GRADLE} — run \`bun run android\` once`)
+
+  const applicationId = readFileSync(WEAR_GRADLE, 'utf8').match(
+    /applicationId\s+['"]([^'"]+)['"]/,
+  )?.[1]
+  if (!applicationId) fail(`applicationId missing from ${WEAR_GRADLE}`)
+
+  return applicationId
+}
+
 function buildTools() {
-  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
-  if (!sdk) fail('ANDROID_HOME / ANDROID_SDK_ROOT not set')
+  const sdk = sdkRoot()
 
   const dir = join(sdk, 'build-tools')
   if (!existsSync(dir)) fail(`no build-tools installed under ${dir}`)
@@ -110,33 +138,40 @@ function signWithPhoneCert() {
   ])
 }
 
-/**
- * The OnePlus Watch 3 shows up twice over mDNS, so pick devices by what they are rather than by a
- * remembered transport id: only a watch reports `ro.build.characteristics=watch`.
- */
-function findWatch() {
-  const lines = capture(['adb', 'devices'])
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes('\tdevice'))
+/** Cache keys for the last pick on each side of the pairing; see lib/lastDevice. */
+const LAST_WATCH_KEY = 'wear-device'
+const LAST_PHONE_KEY = 'android-device'
 
-  const watches = lines
-    .map((line) => line.split('\t')[0])
-    .filter((serial) =>
-      capture(['adb', '-s', serial, 'shell', 'getprop', 'ro.build.characteristics']).includes(
-        'watch',
-      ),
-    )
+const watches = () => listAdbDevices().filter((device) => device.isWatch)
 
-  if (watches.length === 0) fail('no Wear OS device connected (`adb devices` shows none)')
-  if (watches.length > 1) {
-    console.log(`wear: ${watches.length} watch transports (mDNS duplicate), using ${watches[0]}`)
-  }
-
-  return watches[0]
+function findWatch(requested: string | null): Promise<AdbDevice> {
+  return pickDevice({
+    title: 'Wear device',
+    items: watches(),
+    id: (watch) => watch.hardware,
+    label: (watch) => watch.name,
+    aliases: (watch) => [watch.serial, watch.expoName],
+    requested,
+    cacheKey: LAST_WATCH_KEY,
+    emptyMessage: 'wear: no Wear OS device connected (`adb devices` shows none)',
+  })
 }
 
-function install(serial: string) {
+/** The phone side of a pairing: any connected non-watch device. */
+function findPhone(requested: string | null): Promise<AdbDevice> {
+  return pickDevice({
+    title: 'Phone',
+    items: listAdbDevices().filter((device) => !device.isWatch),
+    id: (phone) => phone.hardware,
+    label: (phone) => phone.name,
+    aliases: (phone) => [phone.serial, phone.expoName],
+    requested,
+    cacheKey: LAST_PHONE_KEY,
+    emptyMessage: 'wear: no phone connected (`adb devices` shows none)',
+  })
+}
+
+function install(serial: string, packageName: string) {
   const result = Bun.spawnSync(['adb', '-s', serial, 'install', '-r', SIGNED_APK], {
     cwd: ROOT,
     env: process.env,
@@ -154,11 +189,11 @@ function install(serial: string) {
   }
 
   console.log('\nwear: incompatible existing install, reinstalling')
-  run(['adb', '-s', serial, 'uninstall', PACKAGE])
+  run(['adb', '-s', serial, 'uninstall', packageName])
   run(['adb', '-s', serial, 'install', SIGNED_APK])
 }
 
-function launch(serial: string) {
+function launch(serial: string, packageName: string) {
   // Already-granted (or not-yet-requestable) is not a failure worth aborting the launch for.
   capture([
     'adb',
@@ -167,14 +202,14 @@ function launch(serial: string) {
     'shell',
     'pm',
     'grant',
-    PACKAGE,
+    packageName,
     'android.permission.POST_NOTIFICATIONS',
   ])
 
   // The crash buffer is persistent, so anything already in it predates this install and would make
   // the smoke check fail on a healthy app. Clear it here and everything it holds afterwards is ours.
   run(['adb', '-s', serial, 'logcat', '-b', 'crash', '-c'])
-  run(['adb', '-s', serial, 'shell', 'am', 'start', '-W', '-n', ACTIVITY])
+  run(['adb', '-s', serial, 'shell', 'am', 'start', '-W', '-n', `${packageName}/${ACTIVITY_CLASS}`])
 }
 
 function smokeCheck(serial: string) {
@@ -195,11 +230,145 @@ function smokeCheck(serial: string) {
   console.log('\nwear: installed, launched, no crash in the watch log')
 }
 
-const command = process.argv[2] as Command | undefined
+/**
+ * Boots the Wear AVD detached, so the shell that started it is free again. A normal emulator launch
+ * mirrors its paired phone; fixture playback is entered explicitly through `wear:replay`.
+ */
+function startEmulator() {
+  const binary = join(sdkRoot(), 'emulator', 'emulator')
+  if (!existsSync(binary)) fail(`no emulator installed at ${binary}`)
+
+  const running = capture(['adb', 'devices'])
+    .split('\n')
+    .slice(1)
+    .map((line) => line.split(/\s+/)[0])
+    .filter((serial) => serial?.startsWith('emulator-'))
+    .some((serial) =>
+      capture(['adb', '-s', serial, 'shell', 'getprop', 'ro.build.characteristics']).includes(
+        'watch',
+      ),
+    )
+  if (running) {
+    console.log('wear: a watch emulator is already running')
+    return
+  }
+
+  console.log(`\n> emulator -avd ${WEAR_AVD}\n`)
+  Bun.spawn([binary, '-avd', WEAR_AVD], { stdio: ['ignore', 'ignore', 'ignore'] }).unref()
+  console.log(`wear: booting ${WEAR_AVD} (override with WEAR_AVD)`)
+}
+
+/** Wear companion pairing port. The companion looks for an emulator behind this forward. */
+const PAIR_PORT = 5601
+
+/** The Wear OS companion on the phone; `pair` opens it once the forward is up. */
+const COMPANION_PACKAGE = 'com.google.android.apps.wear.companion'
+
+/**
+ * Bridges a watch emulator to a phone. The Data Layer has no radio between an AVD and a phone, so
+ * the companion reaches the emulator through an adb forward on the *phone's* port 5601 instead.
+ * The forward dies with every adb server restart or replug, so this is a re-runnable repair, not a
+ * one-time setup: the pairing itself survives, only the tunnel has to come back.
+ */
+async function pairEmulator(requestedPhone: string | null) {
+  const watch = watches().find((it) => it.isEmulator)
+  if (!watch) fail('no watch emulator running — start one with `bun run wear:emulator`')
+
+  const phone = await findPhone(requestedPhone)
+  run(['adb', '-s', phone.serial, 'forward', `tcp:${PAIR_PORT}`, `tcp:${PAIR_PORT}`])
+
+  if (
+    !capture(['adb', '-s', phone.serial, 'shell', 'pm', 'list', 'packages']).includes(
+      COMPANION_PACKAGE,
+    )
+  ) {
+    fail(`no Wear OS companion on ${phone.name} — install "Wear OS" from Play, then re-run`)
+  }
+  run([
+    'adb',
+    '-s',
+    phone.serial,
+    'shell',
+    'monkey',
+    '-p',
+    COMPANION_PACKAGE,
+    '-c',
+    'android.intent.category.LAUNCHER',
+    '1',
+  ])
+
+  console.log(`\nwear: ${watch.name} bridged to ${phone.name}`)
+  console.log('wear: already paired once? the companion reconnects on its own — nothing to do')
+  console.log(
+    'wear: first time? in the companion: menu > Pair with emulator, then clear every permission it asks for',
+  )
+  console.log(
+    `wear: verify with \`adb -s ${watch.serial} shell dumpsys activity service WearableService | grep NodeInfo\``,
+  )
+}
+
+/**
+ * Restarts the Mirror on the chosen lane fixture. `-S` because a running activity keeps the intent
+ * it was started with, so without it the extra is delivered but never read.
+ */
+async function startReplay(fixture: string, requested: string | null) {
+  const serial = (await findWatch(requested)).serial
+  const packageName = applicationId()
+  console.log(`\nwear: replaying ${fixture} on ${serial}`)
+  run([
+    'adb',
+    '-s',
+    serial,
+    'shell',
+    'am',
+    'start',
+    '-S',
+    '-n',
+    `${packageName}/${ACTIVITY_CLASS}`,
+    '--es',
+    'replay',
+    fixture,
+  ])
+}
+
+const args = process.argv.slice(2)
+
+// `--device` skips the picker, and is the only way to choose a watch without a TTY.
+const deviceFlag = args.findIndex((arg) => arg === '--device' || arg === '-d')
+const requested = deviceFlag === -1 ? null : (args[deviceFlag + 1] ?? null)
+if (deviceFlag !== -1) {
+  if (!requested) fail('--device needs a serial or model')
+  args.splice(deviceFlag, 2)
+}
+
+const command = args[0] as Command | undefined
 if (!command || !COMMANDS.includes(command)) {
-  console.error(`Usage: bun run scripts/wear.ts <${COMMANDS.join('|')}>`)
+  console.error(`Usage: bun run scripts/wear.ts <${COMMANDS.join('|')}> [--device <serial|model>]`)
   process.exit(1)
 }
+
+if (command === 'pair') {
+  await pairEmulator(requested)
+  process.exit(0)
+}
+
+if (command === 'emulator') {
+  startEmulator()
+  process.exit(0)
+}
+
+if (command === 'replay') {
+  const fixture = args[1] ?? 'ride'
+  if (!REPLAY_FIXTURES.includes(fixture as (typeof REPLAY_FIXTURES)[number])) {
+    fail(`unknown fixture ${fixture} — expected ${REPLAY_FIXTURES.join(' | ')}`)
+  }
+  await startReplay(fixture, requested)
+  process.exit(0)
+}
+
+// Asked before anything is built: a prompt that appears after a minute of Gradle reads as a build
+// that finished, and the answer cannot change what gets built anyway.
+const target = command === 'install' ? await findWatch(requested) : null
 
 syncNative()
 
@@ -208,11 +377,13 @@ if (command === 'test') {
 } else {
   gradle(':wearos:assembleDebug')
 
-  if (command === 'install') {
+  if (target) {
     signWithPhoneCert()
-    const serial = findWatch()
-    install(serial)
-    launch(serial)
+    const serial = target.serial
+    const packageName = applicationId()
+    console.log(`\nwear: targeting ${packageName} on ${serial}`)
+    install(serial, packageName)
+    launch(serial, packageName)
     smokeCheck(serial)
   }
 }

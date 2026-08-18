@@ -2,7 +2,7 @@ import { ImagesSquareIcon } from 'phosphor-react-native'
 import type { RefObject } from 'react'
 import type { View } from 'react-native'
 
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { MediaHistoryGallery } from '@/modules/history/components/MediaHistoryGallery'
 import type { MediaAssetInput, MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 

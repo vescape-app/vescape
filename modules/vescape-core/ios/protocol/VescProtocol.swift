@@ -14,7 +14,83 @@ internal let COMM_SET_CHUCK_DATA = 35
 internal let REFLOAT_MAGIC = 101
 internal let REFLOAT_GET_INFO = 0
 internal let REFLOAT_GET_ALLDATA = 10
+internal let REFLOAT_RC_MOVE = 7
+internal let REFLOAT_REMOTE = 15
 internal let REMOTE_TILT_CENTER = 128
+
+/// Board Move input range for the Refloat 1.3+ `REMOTE` byte (`-128` is ignored by firmware).
+internal let BOARD_MOVE_INPUT_MAX = 127
+
+/// Motor current a full-scale `RC_MOVE` request asks for, in tenths of an amp.
+private let RC_MOVE_CURRENT_MAX_DECIAMPS = 60
+
+/// `RC_MOVE` runs for `time` firmware steps of ~1s; the controller re-sends before it lapses.
+private let RC_MOVE_TIME_STEPS = 1
+
+/// Which Refloat command carries app-driven Board Move for a given firmware.
+///
+/// Refloat 1.3 replaced the current/time `RC_MOVE` payload with a single signed remote-input byte,
+/// so the wire format is chosen from the linked base version.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `BoardMoveGeneration`
+/// @parity /modules/vescape-core/src/index.ts `startBoardMove`
+internal enum BoardMoveGeneration {
+  /// Refloat 1.0–1.2: `RC_MOVE` with explicit current and time bytes.
+  case rcMove
+
+  /// Refloat 1.3+: `REMOTE` with one signed input byte.
+  case remote
+
+  /// Resolves the generation from a normalized Refloat base version such as `"1.2.0"`. Unknown or
+  /// unparseable versions fall back to `.remote`: a wrong guess only means the board ignores the
+  /// command.
+  static func forBaseVersion(_ baseVersion: String?) -> BoardMoveGeneration {
+    let parts = baseVersion?.split(separator: ".") ?? []
+    guard let major = parts.first.flatMap({ Int($0) }) else { return .remote }
+    let minor = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+    return (major > 1 || (major == 1 && minor >= 3)) ? .remote : .rcMove
+  }
+}
+
+/// Builds a Board Move command: motor output while the board is disengaged, not tilt. `input` is
+/// `-127...127`, where `0` stops. Firmware applies it only in the ready (disengaged) state and
+/// clamps the resulting output itself.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildBoardMoveCommand`
+internal func buildBoardMoveCommand(
+  transport: BoardTransport,
+  generation: BoardMoveGeneration,
+  input: Int
+) -> [UInt8] {
+  precondition(
+    (-BOARD_MOVE_INPUT_MAX...BOARD_MOVE_INPUT_MAX).contains(input),
+    "Board move input must be between -\(BOARD_MOVE_INPUT_MAX) and \(BOARD_MOVE_INPUT_MAX)"
+  )
+  let payload: [UInt8]
+  switch generation {
+  case .remote:
+    payload = [
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_REMOTE),
+      UInt8(bitPattern: Int8(input)),
+    ]
+  case .rcMove:
+    let direction: UInt8 = input >= 0 ? 1 : 0
+    let current = abs(input) * RC_MOVE_CURRENT_MAX_DECIAMPS / BOARD_MOVE_INPUT_MAX
+    let time = current == 0 ? 1 : RC_MOVE_TIME_STEPS
+    payload = [
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_RC_MOVE),
+      direction,
+      UInt8(current),
+      UInt8(time),
+      UInt8(current + time),
+    ]
+  }
+  return transport.frame(payload)
+}
 
 internal enum VescUartUUIDs {
   static let service = UUID(uuidString: "6e400001-b5a3-f393-e0a9-e50e24dcca9e")!

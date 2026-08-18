@@ -292,10 +292,6 @@ function sanitize(dbPath: string, rides: number): void {
   db.exec("UPDATE app_settings SET value_json = ? WHERE key = 'selectedBoardId'", [
     JSON.stringify(boardId),
   ])
-  // The sparkline window a capture run has to sit and wait out before shooting the hero panel.
-  // Keep it at the app default — a longer window buys no more visible line and costs the run that
-  // much extra wall time.
-  db.exec("UPDATE app_settings SET value_json = '5' WHERE key = 'liveHistoryLimit'")
 
   // Rebase: the newest ride ends now, minute-aligned so bucket keys stay on their minute.
   const lastEnd = windows.at(-1)!.endMs

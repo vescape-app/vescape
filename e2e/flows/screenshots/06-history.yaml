@@ -2,9 +2,14 @@ appId: ${APP_ID}
 ---
 - tapOn:
     id: history-button
+# Entering History opens the newest ride's detail directly — there is no list to pick from first.
+# Waiting on the metric tabs rather than the map: the row appears once the ride's samples are
+# loaded, so the screenshot cannot catch a half-drawn sparkline.
 - extendedWaitUntil:
     visible:
-      id: history-session-sheet
+      id: history-metric-tab-duty
     timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 20000
 - takeScreenshot: ${OUT_DIR}/06-history
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

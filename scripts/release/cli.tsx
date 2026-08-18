@@ -7,13 +7,17 @@ import {
   createDispatchPayload,
   createPromotionDispatchPayload,
   createProductionDispatchPayload,
+  describeSourceRef,
+  type SourceRefPreview,
   dispatchInternalBuild,
+  dispatchIosInternalBuild,
   dispatchOpenPromotion,
   dispatchProduction,
   downloadManifest,
   downloadPromotionManifest,
   downloadProductionManifest,
   failedWorkflowJobs,
+  findDispatchedIosRun,
   findDispatchedRun,
   findPromotionRun,
   findProductionRun,
@@ -23,7 +27,6 @@ import {
   listInternalWorkflowRuns,
   listProductionCandidates,
   marketingVersion,
-  releaseTrainFreezeWarning,
   type ReleaseTrackConfig,
   type ProductionCandidate,
   releaseTrackConfig,
@@ -34,7 +37,7 @@ import {
   verifyGhAuthentication,
   verifyRemoteCommit,
 } from './github'
-import { publishGithubPrerelease } from './githubPrerelease'
+import { publishGithubRelease } from './githubRelease'
 import { internalReleaseProgress, workflowElapsed } from './progress'
 import {
   bumpMarketingVersion,
@@ -43,7 +46,7 @@ import {
   verifyReleasePreparationReady,
 } from './prepare'
 import { Dashboard } from './dashboard/Dashboard'
-import { availableActions, type ActionId } from './dashboard/actions'
+import { availableActions, defaultActionIndex, type ActionId } from './dashboard/actions'
 import { initialReleaseState, loadReleaseState, type ReleaseState } from './dashboard/state'
 import { Confirm, Hint, Menu, Rule } from './ui'
 import {
@@ -81,7 +84,8 @@ const versionBumps: ReadonlyArray<{ bump: VersionBump; label: string }> = [
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
-const CONFIRM_INDEX = 1
+const CONFIRM_INDEX = 0
+const CANCEL_INDEX = 1
 
 export interface ReleaseCliOptions {
   initialPhase?: 'dashboard' | 'build-source'
@@ -99,6 +103,10 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const initialRef =
     initialSourceRef ?? process.argv.find((value) => value.startsWith('--sha='))?.slice(6) ?? 'HEAD'
   const [sourceRef, setSourceRef] = useState(initialRef)
+  // The prefilled ref is a suggestion: the first keystroke replaces it instead of appending to it.
+  const [sourceRefEdited, setSourceRefEdited] = useState(false)
+  const [sourcePreview, setSourcePreview] = useState<SourceRefPreview | null>(null)
+  const [sourceChecking, setSourceChecking] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialPhase)
   const [status, setStatus] = useState('')
   const [releaseState, setReleaseState] = useState<ReleaseState>(initialReleaseState)
@@ -117,6 +125,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [bumpIndex, setBumpIndex] = useState(1)
   const [rolloutInput, setRolloutInput] = useState('10')
   const [run, setRun] = useState<{ id: number; url: string } | null>(null)
+  const [iosRun, setIosRun] = useState<{ id: number; url: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [retryRunId, setRetryRunId] = useState<number | null>(null)
 
@@ -130,6 +139,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     goto('error')
   }
 
+  const gotoBuildSource = () => {
+    setSourceRefEdited(false)
+    goto('build-source')
+  }
+
   const loadDashboard = () => {
     setReleaseState(initialReleaseState())
     setStatus('')
@@ -139,10 +153,35 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   useEffect(() => {
     if (initialPhase === 'dashboard') loadDashboard()
+    // Preparation already fixed the commit to build; asking for it again answers nothing.
+    else if (initialSourceRef) void prepare()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (phase !== 'build-source') return
+    let active = true
+    setSourceChecking(true)
+    const timer = setTimeout(() => {
+      void describeSourceRef(sourceRef).then((preview) => {
+        if (!active) return
+        setSourcePreview(preview)
+        setSourceChecking(false)
+      })
+    }, 120)
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [phase, sourceRef])
+
   const actions = availableActions(releaseState)
+
+  const activeRunId = releaseState.activeRun?.id ?? null
+  useEffect(() => {
+    if (phase === 'dashboard') setIndex(defaultActionIndex(actions, releaseState))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRunId])
 
   const prepareVersionMenu = async () => {
     goto('checking')
@@ -234,15 +273,14 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       candidate.manifest.marketingVersion,
       candidate.manifest.sourceSha,
     )
-    const freezeWarning = await releaseTrainFreezeWarning(candidate.manifest.marketingVersion)
-    const next = { ...basePlan, candidate, notesPath, freezeWarning }
+    const next = { ...basePlan, candidate, notesPath }
     setProductionPlan(next)
     setStatus('')
     if (next.operation === 'promote' || next.operation === 'advance') {
       setRolloutInput(String(next.rolloutPercentage ?? 10))
       goto('production-percentage')
     } else {
-      goto('production-confirm')
+      goto('production-confirm', CANCEL_INDEX)
     }
   }
 
@@ -271,7 +309,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         tracks,
         operation,
         rolloutPercentage: 10,
-        freezeWarning: null,
       }
       if (operation === 'promote') {
         setProductionCandidates(available)
@@ -316,7 +353,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     setProductionPlan({ ...productionPlan, rolloutPercentage: percentage })
-    goto('production-confirm')
+    goto('production-confirm', CANCEL_INDEX)
   }
 
   const prepareInternalRuns = async () => {
@@ -352,9 +389,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     const outcome = releaseOutcome(manifest)
     if (outcome.kind === 'success') {
-      setStatus(`Publishing v${manifest.marketingVersion} GitHub prerelease…`)
-      const githubRelease = await publishGithubPrerelease(repo, manifest)
-      setStatus(`Internal ready · GitHub prerelease ${githubRelease}`)
+      setStatus('Internal ready')
     } else if (outcome.kind === 'partial') {
       setStatus(`${outcome.succeeded} uploaded; ${outcome.failed} failed`)
       setRetryRunId(workflowRun.id)
@@ -401,23 +436,32 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   const dispatch = async (confirmedPlan: Plan) => {
     goto('dispatching')
-    setStatus(`Dispatching trusted workflow from ${confirmedPlan.workflowRef}…`)
+    setStatus(`Publishing the v${confirmedPlan.marketingVersion} GitHub release…`)
     try {
-      await dispatchInternalBuild(
-        confirmedPlan.repo,
-        createDispatchPayload(
-          confirmedPlan.sourceSha,
-          confirmedPlan.requestId,
-          confirmedPlan.workflowRef,
-        ),
+      const githubRelease = await publishGithubRelease(confirmedPlan.repo, confirmedPlan)
+      setStatus(
+        `GitHub release ${githubRelease} · dispatching Android and iOS workflows from ${confirmedPlan.workflowRef}…`,
       )
+      const payload = createDispatchPayload(
+        confirmedPlan.sourceSha,
+        confirmedPlan.requestId,
+        confirmedPlan.workflowRef,
+      )
+      setIosRun(null)
+      await dispatchInternalBuild(confirmedPlan.repo, payload)
+      await dispatchIosInternalBuild(confirmedPlan.repo, payload)
       goto('waiting')
-      setStatus('Waiting for structured workflow run…')
+      setStatus('Waiting for structured workflow runs…')
       let workflowRun = null
-      for (let attempt = 0; attempt < 30 && !workflowRun; attempt += 1) {
-        workflowRun = await findDispatchedRun(confirmedPlan.repo, confirmedPlan.requestId)
-        if (!workflowRun) await sleep(2_000)
+      let iosWorkflowRun = null
+      for (let attempt = 0; attempt < 30 && !(workflowRun && iosWorkflowRun); attempt += 1) {
+        if (!workflowRun)
+          workflowRun = await findDispatchedRun(confirmedPlan.repo, confirmedPlan.requestId)
+        if (!iosWorkflowRun)
+          iosWorkflowRun = await findDispatchedIosRun(confirmedPlan.repo, confirmedPlan.requestId)
+        if (!(workflowRun && iosWorkflowRun)) await sleep(2_000)
       }
+      if (iosWorkflowRun) setIosRun({ id: iosWorkflowRun.id, url: iosWorkflowRun.html_url })
       if (!workflowRun) throw new Error('Dispatch succeeded, but its workflow run was not found')
       await watchInternalRun(confirmedPlan.repo, workflowRun)
     } catch (caught) {
@@ -521,7 +565,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     else if (id === 'halt') void prepareProduction('halt')
     else if (id === 'resume') void prepareProduction('resume')
     else if (id === 'status') void prepareProduction('status')
-    else if (id === 'build') goto('build-source')
+    else if (id === 'build') gotoBuildSource()
     else if (id === 'prepare') void prepareVersionMenu()
     else loadDashboard()
   }
@@ -562,10 +606,20 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     if (phase === 'build-source') {
-      if (key.return) void prepare()
-      else if (key.escape) loadDashboard()
-      else if (key.backspace || key.delete) setSourceRef((value) => value.slice(0, -1))
-      else if (input && !key.ctrl && !key.meta) setSourceRef((value) => value + input)
+      if (key.return) {
+        if (sourcePreview) void prepare()
+      } else if (key.escape) loadDashboard()
+      else if (key.backspace || key.delete) {
+        setSourceRefEdited(true)
+        setSourceRef((value) => (sourceRefEdited ? value.slice(0, -1) : ''))
+      } else if (input && !key.ctrl && !key.meta) {
+        // Buffered stdin can deliver control characters (bare LF does not set key.return)
+        const typed = input.replace(/[^\w./-]/g, '')
+        if (typed) {
+          setSourceRefEdited(true)
+          setSourceRef((value) => (sourceRefEdited ? value + typed : typed))
+        }
+      }
       return
     }
     if (phase === 'candidate') {
@@ -597,8 +651,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       moveIndex(key, 2)
       if (key.return) {
         if (index === CONFIRM_INDEX && plan) void dispatch(plan)
-        else goto('build-source')
-      } else if (key.escape) goto('build-source')
+        else gotoBuildSource()
+      } else if (key.escape) gotoBuildSource()
       return
     }
     if (phase === 'promote-confirm') {
@@ -682,10 +736,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             },
             {
               label: 'Next steps',
-              value: 'notes → commit dev → merge into main → push → Internal build',
+              value:
+                'notes → commit dev → fast-forward main → push → GitHub release → Android + iOS internal build',
             },
           ]}
-          note="No Play upload, tag, GitHub Release, or production mutation happens yet."
+          note="No Play upload or production mutation happens yet."
           confirmLabel="Prepare and push this release candidate"
           index={index}
         />
@@ -695,7 +750,18 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           <Text bold>Build and send to Internal</Text>
           <Text>
             Source commit: <Text color="yellow">{sourceRef || ' '}</Text>
+            {sourceRefEdited ? '' : ' (typing replaces this)'}
           </Text>
+          {sourcePreview ? (
+            <Text color={sourcePreview.releasedBranch ? 'green' : 'yellow'}>
+              {sourcePreview.sha.slice(0, 12)} {sourcePreview.subject}
+              {sourcePreview.releasedBranch ? '' : ' · not on origin/main'}
+            </Text>
+          ) : (
+            <Text color={sourceChecking ? 'gray' : 'red'}>
+              {sourceChecking ? 'Resolving…' : 'Unknown ref · nothing to build'}
+            </Text>
+          )}
           <Hint>Type a git ref or SHA · Enter continues · Esc cancels</Hint>
         </Box>
       )}
@@ -762,12 +828,15 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           fields={[
             { label: 'Repository', value: plan.repo },
             {
-              label: 'Workflow',
-              value: `${plan.workflowRef}:.github/workflows/release-android.yml`,
+              label: 'Workflows',
+              value: `${plan.workflowRef}:.github/workflows/release-android.yml + release-ios.yml`,
             },
             { label: 'Source SHA', value: plan.sourceSha },
             { label: 'Marketing version', value: plan.marketingVersion },
-            { label: 'Destination', value: 'phone internal + Wear internal only' },
+            {
+              label: 'Destination',
+              value: 'phone internal + Wear internal + TestFlight internal only',
+            },
           ]}
           confirmLabel="Create workflow run"
           index={index}
@@ -786,7 +855,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         <Confirm
           title={`Production ${productionPlan.operation}`}
           fields={productionFields(productionPlan)}
-          warning={productionPlan.freezeWarning}
           note="Trusted workflow revalidates source ancestry, canonical notes, and both live Play tracks."
           confirmLabel="Run explicitly approved production operation"
           index={index}
@@ -841,6 +909,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       {run && phase !== 'dashboard' && (
         <Text>
           Run: {run.id} · {run.url}
+        </Text>
+      )}
+      {iosRun && phase !== 'dashboard' && (
+        <Text>
+          iOS run: {iosRun.id} · {iosRun.url}
         </Text>
       )}
       {phase === 'complete' && (

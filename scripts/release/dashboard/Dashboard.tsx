@@ -61,7 +61,6 @@ export function Dashboard({
       <Text>
         {column('dev', 13)}
         <Text bold>{column(state.devVersion ?? '…', 10)}</Text>
-        {column(state.train ? `train ${state.train}` : '', 24)}
         <Text dimColor>{state.notesPath ?? ''}</Text>
       </Text>
       <Rule />

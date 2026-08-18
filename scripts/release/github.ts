@@ -10,9 +10,10 @@ import type {
   WorkflowRun,
 } from './contracts'
 import { parseProductionManifest, parsePromotionManifest, parseReleaseManifest } from './contracts'
-import { releaseTrainNotesPath } from './prepare'
+import { releaseNotesPath } from './prepare'
 
 const WORKFLOW_FILE = 'release-android.yml'
+const IOS_WORKFLOW_FILE = 'release-ios.yml'
 const PROMOTION_WORKFLOW_FILE = 'promote-open.yml'
 const PRODUCTION_WORKFLOW_FILE = 'promote-production.yml'
 
@@ -38,15 +39,20 @@ async function checkedGh(args: string[], label: string): Promise<string> {
   return result.stdout
 }
 
-async function checkedGit(args: string[], label: string): Promise<string> {
+async function git(args: string[]): Promise<GhResult> {
   const process = Bun.spawn(['git', ...args], { stdout: 'pipe', stderr: 'pipe' })
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     new Response(process.stdout).text(),
     new Response(process.stderr).text(),
   ])
-  if (exitCode !== 0) throw new Error(`${label}: ${stderr.trim() || stdout.trim()}`)
-  return stdout.trim()
+  return { exitCode, stdout: stdout.trim(), stderr: stderr.trim() }
+}
+
+async function checkedGit(args: string[], label: string): Promise<string> {
+  const result = await git(args)
+  if (result.exitCode !== 0) throw new Error(`${label}: ${result.stderr || result.stdout}`)
+  return result.stdout
 }
 
 export interface DispatchPayload {
@@ -114,7 +120,7 @@ export interface ArtifactRun {
 export function createDispatchPayload(
   sourceSha: string,
   requestId: string,
-  workflowRef = 'main',
+  workflowRef: string,
 ): DispatchPayload {
   if (!/^[0-9a-f]{40}$/i.test(sourceSha))
     throw new Error('Source SHA must be a full 40-character SHA')
@@ -220,18 +226,32 @@ export async function repositoryDefaultBranch(repo: string): Promise<string> {
   return value
 }
 
-export async function resolveSourceSha(ref: string): Promise<string> {
-  const process = Bun.spawn(['git', 'rev-parse', '--verify', `${ref}^{commit}`], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-  ])
-  if (exitCode !== 0) throw new Error(`Cannot resolve commit "${ref}": ${stderr.trim()}`)
-  return stdout.trim().toLowerCase()
+export async function resolveSourceSha(input: string): Promise<string> {
+  const ref = input.trim()
+  const result = await git(['rev-parse', '--verify', `${ref}^{commit}`])
+  if (result.exitCode !== 0) throw new Error(`Cannot resolve commit "${ref}": ${result.stderr}`)
+  return result.stdout.toLowerCase()
+}
+
+export interface SourceRefPreview {
+  sha: string
+  subject: string
+  releasedBranch: boolean
+}
+
+/** Non-throwing preview of what a typed ref points at, so the build screen can show it live. */
+export async function describeSourceRef(input: string): Promise<SourceRefPreview | null> {
+  const ref = input.trim()
+  if (!ref) return null
+  const described = await git(['show', '-s', '--format=%H%n%s', `${ref}^{commit}`])
+  if (described.exitCode !== 0) return null
+  const [sha = '', ...subjectLines] = described.stdout.split('\n')
+  const ancestry = await git(['merge-base', '--is-ancestor', sha, 'origin/main'])
+  return {
+    sha: sha.toLowerCase(),
+    subject: subjectLines.join(' ').trim(),
+    releasedBranch: ancestry.exitCode === 0,
+  }
 }
 
 export async function verifyRemoteCommit(repo: string, sourceSha: string): Promise<void> {
@@ -256,22 +276,40 @@ export async function marketingVersion(repo: string, sourceSha: string): Promise
   return packageJson.version
 }
 
-export async function dispatchInternalBuild(repo: string, payload: DispatchPayload): Promise<void> {
+async function dispatchBuildWorkflow(
+  repo: string,
+  workflowFile: string,
+  payload: DispatchPayload,
+  label: string,
+  extraInputs: readonly string[] = [],
+): Promise<void> {
   await checkedGh(
     [
       'api',
       '--method',
       'POST',
-      `repos/${repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
+      `repos/${repo}/actions/workflows/${workflowFile}/dispatches`,
       '--raw-field',
       `ref=${payload.ref}`,
       '--raw-field',
       `inputs[source_sha]=${payload.inputs.source_sha}`,
       '--raw-field',
       `inputs[request_id]=${payload.inputs.request_id}`,
+      ...extraInputs.flatMap((field) => ['--raw-field', field]),
     ],
-    'Workflow dispatch failed',
+    label,
   )
+}
+
+export async function dispatchInternalBuild(repo: string, payload: DispatchPayload): Promise<void> {
+  await dispatchBuildWorkflow(repo, WORKFLOW_FILE, payload, 'Workflow dispatch failed')
+}
+
+export async function dispatchIosInternalBuild(
+  repo: string,
+  payload: DispatchPayload,
+): Promise<void> {
+  await dispatchBuildWorkflow(repo, IOS_WORKFLOW_FILE, payload, 'iOS workflow dispatch failed')
 }
 
 export async function dispatchOpenPromotion(
@@ -316,11 +354,10 @@ export async function dispatchProduction(
   )
 }
 
-export function parseWorkflowRuns(value: unknown, requestId: string): WorkflowRun | null {
+function parseRunsByTitle(value: unknown, title: string): WorkflowRun | null {
   if (!value || typeof value !== 'object') throw new Error('Workflow runs response is invalid')
   const runs = (value as { workflow_runs?: unknown }).workflow_runs
   if (!Array.isArray(runs)) throw new Error('Workflow runs response has no workflow_runs')
-  const title = `Internal ${requestId}`
   const match = runs.find(
     (run): run is WorkflowRun =>
       !!run &&
@@ -329,6 +366,14 @@ export function parseWorkflowRuns(value: unknown, requestId: string): WorkflowRu
       typeof (run as WorkflowRun).id === 'number',
   )
   return match ?? null
+}
+
+export function parseWorkflowRuns(value: unknown, requestId: string): WorkflowRun | null {
+  return parseRunsByTitle(value, `Internal ${requestId}`)
+}
+
+export function parseIosWorkflowRuns(value: unknown, requestId: string): WorkflowRun | null {
+  return parseRunsByTitle(value, `iOS ${requestId}`)
 }
 
 export function parsePromotionWorkflowRuns(value: unknown, requestId: string): WorkflowRun | null {
@@ -375,6 +420,20 @@ export async function findDispatchedRun(
     'Cannot list workflow runs',
   )
   return parseWorkflowRuns(JSON.parse(output), requestId)
+}
+
+export async function findDispatchedIosRun(
+  repo: string,
+  requestId: string,
+): Promise<WorkflowRun | null> {
+  const output = await checkedGh(
+    [
+      'api',
+      `repos/${repo}/actions/workflows/${IOS_WORKFLOW_FILE}/runs?event=workflow_dispatch&per_page=50`,
+    ],
+    'Cannot list iOS workflow runs',
+  )
+  return parseIosWorkflowRuns(JSON.parse(output), requestId)
 }
 
 export async function findPromotionRun(
@@ -736,12 +795,11 @@ export async function canonicalNotesPath(
   marketingVersion: string,
   ref = 'main',
 ): Promise<string> {
-  const path = releaseTrainNotesPath(marketingVersion)
-  const train = path.slice('release-notes/'.length, -'.md'.length)
+  const path = releaseNotesPath(marketingVersion)
   await checkedGh(
     [
       'api',
-      `repos/${repo}/contents/release-notes/${encodeURIComponent(train)}.md?ref=${encodeURIComponent(ref)}`,
+      `repos/${repo}/contents/release-notes/${encodeURIComponent(marketingVersion)}.md?ref=${encodeURIComponent(ref)}`,
       '--silent',
     ],
     `Canonical release notes missing at ${path} on ${ref}`,
@@ -776,44 +834,6 @@ export async function listPrereleaseTags(repo: string, limit = 20): Promise<stri
   return parseReleases(JSON.parse(output))
     .filter((release) => release.isPrerelease)
     .map((release) => release.tagName)
-}
-
-export function trainFreezeWarning(
-  notesPath: string,
-  firstProductionTag: string,
-  firstProductionAt: number,
-  notesModifiedAt: number,
-): string | null {
-  if (notesModifiedAt <= firstProductionAt) return null
-  return `${notesPath} changed after ${firstProductionTag} reached production; train is frozen. Put late release notes in next train.`
-}
-
-export async function releaseTrainFreezeWarning(marketingVersion: string): Promise<string | null> {
-  const notesPath = releaseTrainNotesPath(marketingVersion)
-  const train = notesPath.slice('release-notes/'.length, -'.md'.length)
-  await checkedGit(['fetch', 'origin', 'main', '--tags'], 'Cannot refresh release train history')
-  const tags = await checkedGit(
-    [
-      'for-each-ref',
-      '--sort=creatordate',
-      '--format=%(refname:short) %(creatordate:unix)',
-      `refs/tags/v${train}.*`,
-    ],
-    `Cannot inspect production tags for train ${train}`,
-  )
-  const first = tags.split('\n').find((line) => line.length > 0)
-  if (!first) return null
-  const match = /^(v\S+) (\d+)$/.exec(first)
-  if (!match) throw new Error(`Invalid production tag metadata "${first}"`)
-  const notesModifiedAt = Number(
-    await checkedGit(
-      ['log', '-1', '--format=%ct', 'origin/main', '--', notesPath],
-      `Cannot inspect history for ${notesPath}`,
-    ),
-  )
-  if (!Number.isSafeInteger(notesModifiedAt) || notesModifiedAt < 1)
-    throw new Error(`Cannot find history for ${notesPath}`)
-  return trainFreezeWarning(notesPath, match[1], Number(match[2]), notesModifiedAt)
 }
 
 export async function downloadPromotionManifest(runId: number): Promise<PromotionManifest> {

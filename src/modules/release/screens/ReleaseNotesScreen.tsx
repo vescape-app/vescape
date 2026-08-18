@@ -8,13 +8,12 @@ import { Placeholder } from '@/components/base/Placeholder'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { bundledReleaseNotes } from '@/modules/release/generated/releaseNotes'
-import { releaseTrainForVersion, selectReleaseNotes } from '@/modules/release/lib/releaseNotes'
+import { selectReleaseNotes } from '@/modules/release/lib/releaseNotes'
 
 const installedVersion = Constants.expoConfig?.version
-const currentTrain = installedVersion ? releaseTrainForVersion(installedVersion) : null
 
 export function ReleaseNotesScreen() {
-  const notes = selectReleaseNotes(bundledReleaseNotes, currentTrain ?? undefined)
+  const notes = selectReleaseNotes(bundledReleaseNotes, installedVersion)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -28,7 +27,7 @@ export function ReleaseNotesScreen() {
         ) : (
           notes.map((note) => (
             <View key={note.version} style={styles.release}>
-              <Text style={styles.version}>Train {note.version}</Text>
+              <Text style={styles.version}>{note.version}</Text>
               <Markdown>{note.markdown}</Markdown>
             </View>
           ))

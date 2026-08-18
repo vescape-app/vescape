@@ -5,5 +5,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Speed'
     timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 20000
 - takeScreenshot: ${OUT_DIR}/02-speed
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

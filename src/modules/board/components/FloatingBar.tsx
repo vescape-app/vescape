@@ -11,7 +11,7 @@ import {
   type FloatingStatusPillModel,
 } from '@/components/controls/FloatingBar'
 import { routes } from '@/navigation/routes'
-import { screenshotModeEnabled } from '@/config/screenshotMode'
+import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { getConnectedLinkIntegrityWarning } from '@/modules/board/lib/boardLinkIntegrity'
@@ -46,8 +46,13 @@ const ALERT_CONFIG = {
   },
 } as const
 
-type SpinnerPill = { kind: 'spinner'; text: string; color: string; onPress: () => void }
-type ActionPill = {
+interface SpinnerPill {
+  kind: 'spinner'
+  text: string
+  color: string
+  onPress: () => void
+}
+interface ActionPill {
   kind: 'action'
   text: string
   buttonText: string
@@ -245,10 +250,10 @@ export function FloatingBar({
     <FloatingBarFrame bottomOffset={bottomOffset}>
       {/* Connection state — "No board added", "Connecting…", link warnings — is rider tooling that
           only appears when something is wrong or in flight. None of it belongs in a store frame. */}
-      {uiPill && !screenshotModeEnabled ? <FloatingStatusPill pill={uiPill} /> : null}
+      {uiPill && showDevControls ? <FloatingStatusPill pill={uiPill} /> : null}
       {/* The REC control is rider tooling, not product surface — a store screenshot shows the ride,
           not the capture affordance. */}
-      {!screenshotModeEnabled && (
+      {showDevControls && (
         <FloatingActionPill
           icon={recording ? (paused ? PauseIcon : StopIcon) : RecordIcon}
           label={recording ? (paused ? 'PAUSED' : 'STOP') : 'REC'}

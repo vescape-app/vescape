@@ -1,8 +1,8 @@
-import type { Camera } from '@rnmapbox/maps'
 import { useCallback, useEffect, useRef, type RefObject } from 'react'
 
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
+import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
 import { panPreservingCamera } from '@/screens/main/map/panPreservingCamera'
@@ -11,7 +11,7 @@ import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
 const RIDER_FOCUS_MIN_ZOOM = 15
 
 export function useMainMapFocusActions({
-  cameraRef,
+  engine,
   currentCameraRef,
   historyActive,
   riderFocusRows,
@@ -21,7 +21,7 @@ export function useMainMapFocusActions({
   onEnterMapMode,
   onMapInteraction,
 }: {
-  cameraRef: RefObject<Camera | null>
+  engine: CameraEngine
   currentCameraRef: RefObject<CameraSnapshot | null>
   historyActive: boolean
   riderFocusRows: RosterRider[]
@@ -44,10 +44,10 @@ export function useMainMapFocusActions({
     if (!rider?.presence) return
     handledRiderFocusNonceRef.current = riderFocusRequest.nonce
     setFollowGps(false)
-    panPreservingCamera(cameraRef, currentCameraRef, [rider.presence.lng, rider.presence.lat], {
+    panPreservingCamera(engine, currentCameraRef, [rider.presence.lng, rider.presence.lat], {
       minZoomLevel: RIDER_FOCUS_MIN_ZOOM,
     })
-  }, [cameraRef, currentCameraRef, historyActive, riderFocusRequest, riderFocusRows, setFollowGps])
+  }, [currentCameraRef, engine, historyActive, riderFocusRequest, riderFocusRows, setFollowGps])
 
   const handleOffscreenIndicatorPress = useCallback(
     (indicator: OffscreenMapIndicatorState) => {
@@ -66,7 +66,7 @@ export function useMainMapFocusActions({
 
       setFollowGps(false)
       panPreservingCamera(
-        cameraRef,
+        engine,
         currentCameraRef,
         indicator.type === 'direction' && directionPoint
           ? [directionPoint.longitude, directionPoint.latitude]
@@ -74,9 +74,9 @@ export function useMainMapFocusActions({
       )
     },
     [
-      cameraRef,
       currentCameraRef,
       directionPoint,
+      engine,
       focusRider,
       onEnterMapMode,
       onMapInteraction,
@@ -89,11 +89,11 @@ export function useMainMapFocusActions({
     if (!directionPoint) return
     onMapInteraction()
     setFollowGps(false)
-    panPreservingCamera(cameraRef, currentCameraRef, [
+    panPreservingCamera(engine, currentCameraRef, [
       directionPoint.longitude,
       directionPoint.latitude,
     ])
-  }, [cameraRef, currentCameraRef, directionPoint, onMapInteraction, setFollowGps])
+  }, [currentCameraRef, directionPoint, engine, onMapInteraction, setFollowGps])
 
   return { handleOffscreenIndicatorPress, handleFocusDirectionPoint }
 }

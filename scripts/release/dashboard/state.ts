@@ -18,7 +18,7 @@ import {
   type ArtifactRun,
   type ReleaseTrackConfig,
 } from '../github'
-import { currentMarketingVersion, releaseTrain, releaseTrainNotesPath } from '../prepare'
+import { currentMarketingVersion, releaseNotesPath } from '../prepare'
 
 export interface TrackRow {
   marketingVersion: string
@@ -59,7 +59,6 @@ export interface ProductionRow extends TrackRow {
 export interface ReleaseState {
   repo: string | null
   devVersion: string | null
-  train: string | null
   notesPath: string | null
   tracks: ReleaseTrackConfig | null
   internal: TrackRow | null
@@ -78,7 +77,6 @@ export function initialReleaseState(): ReleaseState {
   return {
     repo: null,
     devVersion: null,
-    train: null,
     notesPath: null,
     tracks: null,
     internal: null,
@@ -187,8 +185,7 @@ export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void)
     const devVersion = await currentMarketingVersion()
     emit({
       devVersion,
-      train: releaseTrain(devVersion),
-      notesPath: releaseTrainNotesPath(devVersion),
+      notesPath: releaseNotesPath(devVersion),
     })
 
     await verifyGhAuthentication()

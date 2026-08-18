@@ -45,7 +45,7 @@ function alpha(color: string, level: AlphaLevel): string {
   throw new Error(`Unsupported color format for alpha(): ${color}`)
 }
 
-type Hue = {
+interface Hue {
   color: string
   /** Alternate shade within the same hue — aliases `light`. */
   alt: string
@@ -132,6 +132,8 @@ export const telemetry = {
   pitch: palette.purple.light,
   roll: palette.fuchsia.color,
   balancePitch: palette.fuchsia.light,
+  altitude: palette.amber.color,
+  gpsAccuracy: palette.green.light,
 } as const
 
 export const map = {
@@ -189,6 +191,31 @@ export const status = {
 /** Tune Profile actions and entry points. */
 export const tune = palette.purple
 
+/**
+ * Icon accent per settings destination. A destination keeps one color wherever it is offered — the
+ * Settings Drawer, the settings screens and any future entry point all read the same token, so
+ * recoloring a destination is a single edit here.
+ */
+export const settingsIcon = {
+  account: palette.cyan.color,
+  sync: palette.cyan.color,
+  update: status.upgrade.color,
+  database: status.warning.color,
+  /** Board Link and BLE connection share the "pairing" purple. */
+  link: palette.purple.color,
+  connection: palette.purple.color,
+  liveTelemetry: telemetry.speed,
+  diagnostics: status.warning.color,
+  map: palette.sky.color,
+  watch: palette.amber.color,
+  privacyZones: palette.green.color,
+  filters: palette.purple.color,
+  graphs: palette.cyan.color,
+  advanced: palette.slate.light,
+  dev: palette.yellow.color,
+  about: palette.cyan.color,
+} as const
+
 /** Banner callouts — flat row, accent icon + neutral text. */
 export const banner = {
   info: { icon: status.info.color },
@@ -242,9 +269,20 @@ export const interaction = {
 export type FontWeight = '300' | '400' | '500' | '600' | '700' | '800' | '900'
 
 /** App-wide UI font family for a given weight. Load via `useFonts` in
- *  `src/app/_layout.tsx` before first render. Monospace readouts
- *  (`fontFamily: 'monospace'`) bypass this token by inlining their value. */
+ *  `src/app/_layout.tsx` before first render. Monospace readouts bypass this
+ *  token and use `mono()` instead. */
 export const font = (weight: FontWeight = '500') => `Raleway-${weight}`
+
+/** Weights shipped as static JetBrains Mono instances, same one-file-per-weight
+ *  rule as Raleway. Only the weights readouts actually use are bundled. */
+export type MonoWeight = '500' | '600' | '700' | '800'
+
+/** Monospace family for numeric readouts. Fixed advance width keeps fast-ticking
+ *  digits from reflowing, which the platform `'monospace'` alias could not
+ *  guarantee across iOS and Android. Live values render through
+ *  `MonoValue`/`TickText` on Skia; this token is for the static labels beside
+ *  them. */
+export const mono = (weight: MonoWeight = '700') => `JetBrainsMono-${weight}`
 
 export const theme = {
   palette,
@@ -252,10 +290,12 @@ export const theme = {
   map,
   status,
   tune,
+  settingsIcon,
   alpha,
   banner,
   weather,
   zone,
   interaction,
   font,
+  mono,
 } as const

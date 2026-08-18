@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Vescape sygnet outline, mirrored from assets/logo/vescape-sygnet.svg on a 667x667 viewport.
+         Shared by the launcher, monochrome and splash vectors so the mark has one definition; each
+         one supplies its own fill and its own scale into the frame it has to fit. -->
+    <string name="sygnet_path" translatable="false">M583.175 324.243H547.783L608 179.669H452.324C446.408 179.669 441.073 183.231 438.806 188.692L313.773 489.835C297.683 528.587 242.847 528.763 226.509 490.115L136.173 276.42C131.146 264.529 114.302 264.498 109.23 276.371L60.335 390.841H148.901L112.599 423.51H10.8545L79.1865 263.538C95.5783 225.163 150.016 225.264 166.265 263.7L256.602 477.395L256.847 477.946C262.183 489.347 278.7 489.11 283.601 477.309L408.634 176.165C415.965 158.508 433.205 147 452.324 147H656.998L583.175 324.243Z</string>
+</resources>

@@ -1,19 +1,20 @@
 import { PauseIcon, PlayIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutChangeEvent, StyleSheet, TextInput, View } from 'react-native'
+import type { LayoutChangeEvent } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   Easing,
-  runOnJS,
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
   withTiming,
 } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import { IconButton } from '@/components/base/IconButton'
+import { MonoValue } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
@@ -22,7 +23,7 @@ import {
 } from '@/modules/weather/store/rainViewerRadarStore'
 
 const FRAME_INTERVAL_MS = 450
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput)
+const TIME_FONT_SIZE = 12
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
   'worklet'
@@ -56,7 +57,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
-      runOnJS(commitManualFrame)(nextIndex)
+      scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onUpdate((event) => {
       'worklet'
@@ -65,7 +66,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
-      runOnJS(commitManualFrame)(nextIndex)
+      scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onFinalize(() => {
       'worklet'
@@ -132,9 +133,9 @@ export function WeatherRadarTimeline() {
   useEffect(() => {
     if (!playing || frames.length <= 1) return undefined
     const interval = setInterval(() => {
-      const frameCount = frameCountRef.current
-      if (frameCount <= 1) return
-      const nextIndex = (frameIndexRef.current + 1) % frameCount
+      const liveFrameCount = frameCountRef.current
+      if (liveFrameCount <= 1) return
+      const nextIndex = (frameIndexRef.current + 1) % liveFrameCount
       frameIndexRef.current = nextIndex
       useRainViewerRadarStore.getState().setFrameIndex(nextIndex, 'auto')
     }, FRAME_INTERVAL_MS)
@@ -174,11 +175,6 @@ export function WeatherRadarTimeline() {
     left: `${progress.value * 100}%`,
   }))
 
-  const frameLabelProps = useAnimatedProps(() => ({
-    text: frameLabel.value,
-    value: frameLabel.value,
-  }))
-
   return (
     <View style={styles.container}>
       <IconButton
@@ -190,13 +186,7 @@ export function WeatherRadarTimeline() {
       />
       <View style={styles.timeline}>
         <View style={styles.timelineHeader}>
-          <AnimatedTextInput
-            animatedProps={frameLabelProps}
-            defaultValue="Radar"
-            editable={false}
-            pointerEvents="none"
-            style={styles.timeText}
-          />
+          <MonoValue text={frameLabel} size={TIME_FONT_SIZE} weight="800" style={styles.timeText} />
           <Text style={styles.rangeText}>{frameWindowLabel}</Text>
         </View>
         <GestureDetector gesture={scrubGesture}>
@@ -240,12 +230,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   timeText: {
-    color: theme.palette.slate.textPrimary,
-    fontFamily: theme.font('800'),
-    fontSize: 12,
-    margin: 0,
-    minWidth: 48,
-    padding: 0,
+    width: 64,
   },
   rangeText: {
     color: theme.palette.slate.textSecondary,

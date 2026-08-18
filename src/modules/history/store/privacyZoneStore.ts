@@ -10,8 +10,6 @@ import {
 
 export type { PrivacyZone } from 'vescape-core'
 
-import { generateId } from '@/helpers/id'
-
 interface PrivacyZoneState {
   zones: PrivacyZone[]
   loaded: boolean

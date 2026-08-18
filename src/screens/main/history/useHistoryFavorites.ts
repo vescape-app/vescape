@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { zoomWindowMs } from '@/modules/history/lib/chartFocus'
 import {
   favoriteSessionId,
   favoriteToSession,
@@ -116,7 +117,7 @@ export function useHistoryFavorites(
   const beginTrimFavorite = useCallback(() => {
     const session = useHistoryStore.getState().selectedSession
     if (!session) return
-    const range = initialFavoriteTrimRangeForSession(session)
+    const range = initialFavoriteTrimRangeForSession(session, zoomWindowMs.value)
     editingFavoriteIdRef.current = null
     setTrimSeed(range)
     useMainScreenStore.getState().beginTrim(range)

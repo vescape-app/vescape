@@ -3,27 +3,30 @@ import type { StyleProp, ViewStyle } from 'react-native'
 
 import { DualGauge } from '@/modules/board/components/DualGauge'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
+import { boardTopSpeedKmh } from '@/modules/alerts/lib/boardAlertSettings'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs, useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { getHistoryMetricHotRange } from '@/modules/history/lib/metricColorScale'
 
-const SPEED_MAX = 50
 const DUTY_MAX = 100
 
 interface DualGaugeIndicatorProps {
   compact?: boolean
   transparent?: boolean
-  split?: boolean
   containerStyle?: StyleProp<ViewStyle>
 }
 
 export function DualGaugeIndicator({
   compact,
   transparent,
-  split,
   containerStyle,
 }: DualGaugeIndicatorProps) {
+  // Full-scale follows the active Board's Top Speed, same as the speed detail gauge — otherwise
+  // a 30 km/h board's alert markers sit in a different place on each screen.
+  const activeBoard = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
+  const speedMax = boardTopSpeedKmh(activeBoard)
   const speedSeries = useLiveSeries('speed')
   const dutySeries = useLiveSeries('duty')
   const windowMs = useLiveWindowMs()
@@ -41,6 +44,7 @@ export function DualGaugeIndicator({
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [alertRules],
   )
@@ -53,6 +57,7 @@ export function DualGaugeIndicator({
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [alertRules],
   )
@@ -64,7 +69,7 @@ export function DualGaugeIndicator({
       speedSeries={speedSeries}
       dutySeries={dutySeries}
       windowMs={windowMs}
-      speedMax={SPEED_MAX}
+      speedMax={speedMax}
       dutyMax={DUTY_MAX}
       speedHotRange={speedHotRange}
       dutyHotRange={dutyHotRange}
@@ -72,7 +77,6 @@ export function DualGaugeIndicator({
       dutyAlerts={dutyAlerts}
       compact={compact}
       transparent={transparent}
-      split={split}
       containerStyle={containerStyle}
     />
   )

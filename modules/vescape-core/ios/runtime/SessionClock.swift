@@ -10,11 +10,24 @@ import Foundation
 ///
 /// The rule is deliberately all-or-nothing: mixing wall time and session time inside one session
 /// produces data that disagrees with the code reading it. Real elapsed-time throttles that guard a
-/// resource rather than describe the ride stay on wall time.
+/// resource rather than describe the ride stay on wall time — but a throttle whose *rate* should
+/// track the data feeding it divides its interval by `speed`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/runtime/SessionClock.kt
 internal protocol SessionClock: AnyObject {
   func nowMs() -> Int64
+
+  /// How fast session time is currently running against real time. Always 1.0 for a real session; a
+  /// replay warming up its live window runs faster.
+  ///
+  /// Consumers that emit on a wall-clock interval — the bridge throttles in `LiveSeriesEmitter` —
+  /// divide by this so their cadence tracks the rate of the data rather than emitting one enormous
+  /// batch per interval.
+  var speed: Double { get }
+}
+
+extension SessionClock {
+  var speed: Double { 1.0 }
 }
 
 /// Wall time, unshifted: what every session that is not a replay runs on.

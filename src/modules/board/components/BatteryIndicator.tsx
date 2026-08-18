@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 
 import { LinearGauge } from '@/components/charts/LinearGauge'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { TELEMETRY_THRESHOLDS } from '@/modules/board/constants/telemetryThresholds'
 import { theme } from '@/constants/theme'
@@ -81,6 +81,7 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
               id: rule.id,
               threshold: rule.threshold,
               thresholdMax: rule.thresholdMax,
+              repeats: rule.repeatEverySeconds != null,
             }))
         : [],
     [alertRules, batteryConfigured],

@@ -22,6 +22,8 @@ internal const val COMM_SET_CHUCK_DATA = 35
 internal const val REFLOAT_MAGIC = 101
 internal const val REFLOAT_GET_INFO = 0
 internal const val REFLOAT_GET_ALLDATA = 10
+internal const val REFLOAT_RC_MOVE = 7
+internal const val REFLOAT_REMOTE = 15
 private const val REFLOAT_FAULT_MODE = 69
 
 /** Neutral position of the remote-tilt slider (0..255). */
@@ -42,6 +44,88 @@ internal fun buildRemoteTiltCommand(transport: BoardTransport, value: Int): Byte
             (255 - value).toByte(),
         ),
     )
+}
+
+/**
+ * Which Refloat command carries app-driven Board Move for a given firmware.
+ *
+ * Refloat 1.3 replaced the current/time `RC_MOVE` payload with a single signed
+ * remote-input byte, so the wire format is chosen from the linked base version.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `BoardMoveGeneration`
+ * @parity /modules/vescape-core/src/index.ts `startBoardMove`
+ */
+internal enum class BoardMoveGeneration {
+    /** Refloat 1.0–1.2: `RC_MOVE` with explicit current and time bytes. */
+    RcMove,
+
+    /** Refloat 1.3+: `REMOTE` with one signed input byte. */
+    Remote;
+
+    companion object {
+        /**
+         * Resolves the generation from a normalized Refloat base version such as
+         * `"1.2.0"`. Unknown or unparseable versions fall back to [Remote]: a
+         * wrong guess only means the board ignores the command.
+         */
+        fun forBaseVersion(baseVersion: String?): BoardMoveGeneration {
+            val parts = baseVersion?.split('.') ?: return Remote
+            val major = parts.getOrNull(0)?.toIntOrNull() ?: return Remote
+            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            return if (major > 1 || (major == 1 && minor >= 3)) Remote else RcMove
+        }
+    }
+}
+
+/** Board Move input range for the Refloat 1.3+ `REMOTE` byte (`-128` is ignored by firmware). */
+internal const val BOARD_MOVE_INPUT_MAX = 127
+
+/** Motor current a full-scale `RC_MOVE` request asks for, in tenths of an amp. */
+private const val RC_MOVE_CURRENT_MAX_DECIAMPS = 60
+
+/** `RC_MOVE` runs for `time` firmware steps of ~1s; the controller re-sends before it lapses. */
+private const val RC_MOVE_TIME_STEPS = 1
+
+/**
+ * Builds a Board Move command: motor output while the board is disengaged, not
+ * tilt. `input` is `-127..127`, where `0` stops. Firmware applies it only in the
+ * ready (disengaged) state and clamps the resulting output itself.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildBoardMoveCommand`
+ */
+internal fun buildBoardMoveCommand(
+    transport: BoardTransport,
+    generation: BoardMoveGeneration,
+    input: Int,
+): ByteArray {
+    require(input in -BOARD_MOVE_INPUT_MAX..BOARD_MOVE_INPUT_MAX) {
+        "Board move input must be between -$BOARD_MOVE_INPUT_MAX and $BOARD_MOVE_INPUT_MAX"
+    }
+    val payload = when (generation) {
+        BoardMoveGeneration.Remote -> byteArrayOf(
+            COMM_CUSTOM_APP_DATA.toByte(),
+            REFLOAT_MAGIC.toByte(),
+            REFLOAT_REMOTE.toByte(),
+            input.toByte(),
+        )
+
+        BoardMoveGeneration.RcMove -> {
+            val direction = if (input >= 0) 1 else 0
+            val current =
+                abs(input) * RC_MOVE_CURRENT_MAX_DECIAMPS / BOARD_MOVE_INPUT_MAX
+            val time = if (current == 0) 1 else RC_MOVE_TIME_STEPS
+            byteArrayOf(
+                COMM_CUSTOM_APP_DATA.toByte(),
+                REFLOAT_MAGIC.toByte(),
+                REFLOAT_RC_MOVE.toByte(),
+                direction.toByte(),
+                current.toByte(),
+                time.toByte(),
+                (current + time).toByte(),
+            )
+        }
+    }
+    return transport.frame(payload)
 }
 
 /** Decodes the human-readable portion of a COMM_FW_VERSION response. */

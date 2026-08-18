@@ -1,9 +1,0 @@
-# Screenshot capture boot (helper — see scripts/screenshots.ts).
-# Assumes a Release build with EXPO_PUBLIC_SCREENSHOTS=1, app data cleared and fixtures pushed by
-# the runner. The app's own bootstrap restores the backup zip and starts the replay session, so the
-# first wait covers a database restore plus a replay handshake and is deliberately generous.
-appId: ${APP_ID}
----
-- launchApp
-- waitForAnimationToEnd:
-    timeout: 20000

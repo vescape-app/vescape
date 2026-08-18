@@ -1,7 +1,11 @@
 import Foundation
 import GRDB
 
-internal let PROFILE_SESSION_GAP_MS: Int64 = 10 * 60_000
+/// Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
+/// @parity /src/modules/history/lib/sessions.ts `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
+internal let DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
+internal let DEFAULT_RIDE_SPLIT_GAP_MS = Int64(DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
 internal let PROFILE_BREAK_BOUNDARIES: Set<String> = ["disconnected", "app_stop", "error"]
 
 internal struct ProfileStatsMonth: Equatable, Hashable {
@@ -34,26 +38,44 @@ internal final class ProfileStatsRepository {
   private init() {}
 
   func getTotalProfileStats() -> [String: Any?] {
+    let gapMs = rideSplitGapMs()
     let buckets = allBuckets()
-    return computeProfileStatsForBuckets(buckets: buckets, markers: markersForBuckets(buckets), month: nil)
+    return computeProfileStatsForBuckets(
+      buckets: buckets,
+      markers: markersForBuckets(buckets, gapMs: gapMs),
+      month: nil,
+      gapMs: gapMs
+    )
+  }
+
+  /// Rider-set ride split gap, so profile stats count the same rides the history list shows.
+  private func rideSplitGapMs() -> Int64 {
+    let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
+    return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
   }
 
   func getMonthlyProfileStats(_ options: [String: Any]) -> [String: Any?] {
     guard let year = telemetryInt(options["year"]), let month = telemetryInt(options["month"]), (1...12).contains(month) else {
       return emptyProfileStats()
     }
+    let gapMs = rideSplitGapMs()
     let buckets = allBuckets()
     return computeProfileStatsForBuckets(
       buckets: buckets,
-      markers: markersForBuckets(buckets),
-      month: ProfileStatsMonth(year: year, month: month)
+      markers: markersForBuckets(buckets, gapMs: gapMs),
+      month: ProfileStatsMonth(year: year, month: month),
+      gapMs: gapMs
     )
   }
 
   func getProfileStatMonths() -> [[String: Any?]] {
+    let gapMs = rideSplitGapMs()
     let buckets = allBuckets()
-    return computeProfileStatMonthsForBuckets(buckets: buckets, markers: markersForBuckets(buckets))
-      .map { ["year": $0.year, "month": $0.month] }
+    return computeProfileStatMonthsForBuckets(
+      buckets: buckets,
+      markers: markersForBuckets(buckets, gapMs: gapMs),
+      gapMs: gapMs
+    ).map { ["year": $0.year, "month": $0.month] }
   }
 
   private func allBuckets() -> [Row] {
@@ -63,9 +85,9 @@ internal final class ProfileStatsRepository {
     }) ?? []
   }
 
-  private func markersForBuckets(_ buckets: [Row]) -> [Row] {
+  private func markersForBuckets(_ buckets: [Row], gapMs: Int64) -> [Row] {
     guard let pool, !buckets.isEmpty else { return [] }
-    let fromMs = (buckets.map { $0["first_sample_at_ms"] as Int64 }.min() ?? 0) - PROFILE_SESSION_GAP_MS
+    let fromMs = (buckets.map { $0["first_sample_at_ms"] as Int64 }.min() ?? 0) - gapMs
     let toMs = (buckets.map { $0["last_sample_at_ms"] as Int64 }.max() ?? 0) + TELEMETRY_BUCKET_SIZE_MS
     return (try? pool.read { db in
       try Row.fetchAll(
@@ -81,9 +103,10 @@ internal func computeProfileStatsForBuckets(
   buckets: [Row],
   markers: [Row],
   month: ProfileStatsMonth?,
-  calendar: Calendar = .current
+  calendar: Calendar = .current,
+  gapMs: Int64 = DEFAULT_RIDE_SPLIT_GAP_MS
 ) -> [String: Any?] {
-  let sessions = groupProfileSessions(buckets: buckets, markers: markers)
+  let sessions = groupProfileSessions(buckets: buckets, markers: markers, gapMs: gapMs)
     .filter { $0.avgSpeedSampleCount > 0 }
   let included = month.map { target in
     sessions.filter { profileMonth($0.startAtMs, calendar: calendar) == target }
@@ -120,9 +143,10 @@ internal func computeProfileStatsForBuckets(
 internal func computeProfileStatMonthsForBuckets(
   buckets: [Row],
   markers: [Row],
-  calendar: Calendar = .current
+  calendar: Calendar = .current,
+  gapMs: Int64 = DEFAULT_RIDE_SPLIT_GAP_MS
 ) -> [ProfileStatsMonth] {
-  Array(Set(groupProfileSessions(buckets: buckets, markers: markers)
+  Array(Set(groupProfileSessions(buckets: buckets, markers: markers, gapMs: gapMs)
     .filter { $0.avgSpeedSampleCount > 0 }
     .map { profileMonth($0.startAtMs, calendar: calendar) }))
     .sorted {
@@ -130,7 +154,11 @@ internal func computeProfileStatMonthsForBuckets(
     }
 }
 
-internal func groupProfileSessions(buckets: [Row], markers: [Row]) -> [ProfileSessionAggregate] {
+internal func groupProfileSessions(
+  buckets: [Row],
+  markers: [Row],
+  gapMs: Int64 = DEFAULT_RIDE_SPLIT_GAP_MS
+) -> [ProfileSessionAggregate] {
   guard !buckets.isEmpty else { return [] }
   var sessions: [ProfileSessionAggregate] = []
   var current: ProfileSessionAggregate?
@@ -141,7 +169,7 @@ internal func groupProfileSessions(buckets: [Row], markers: [Row]) -> [ProfileSe
     let boundary = markerBoundaryForProfileBucket(bucket, markers: markers)
     let deviceId = bucket["device_id"] as String
     let breakByDevice = current == nil || current?.deviceId != deviceId
-    let breakByGap = previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > PROFILE_SESSION_GAP_MS } ?? false
+    let breakByGap = previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false
     let breakByBoundary = boundary.map { PROFILE_BREAK_BOUNDARIES.contains($0) } ?? false
 
     if breakByDevice || breakByGap || breakByBoundary {

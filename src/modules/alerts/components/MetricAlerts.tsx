@@ -1,17 +1,17 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { type SharedValue } from 'react-native-reanimated'
+import type { SharedValue } from 'react-native-reanimated'
 import type { AlertTestRule } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
-import { type DerivedBatteryConfig } from '@/modules/battery/lib/types'
+import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetControl'
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
-import { type MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
+import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
@@ -27,8 +27,7 @@ interface MetricAlertsProps {
   /** Live telemetry value driving the gauge needle; absent renders the offline preview. */
   liveValue?: SharedValue<number | null>
   hotRange?: MetricAlertsHotRange | null
-  /** Screen telemetry placed after the preset gauge but before its controls. */
-  detailContent?: ReactNode
+  /** Detail-screen Alerts heading, placed directly below the gauge. */
   controlsHeader?: ReactNode
   /** Optional precomputed snapshot shared with the screen's chart markers. */
   ruleSnapshot?: AlertTestRule[]
@@ -47,7 +46,6 @@ export function MetricAlerts({
   unit,
   liveValue,
   hotRange,
-  detailContent,
   controlsHeader,
   ruleSnapshot,
 }: MetricAlertsProps) {
@@ -62,6 +60,7 @@ export function MetricAlerts({
           id: rule.id,
           threshold: rule.threshold,
           thresholdMax: rule.thresholdMax,
+          repeats: rule.repeatEverySeconds != null,
         })),
     [controller?.rules],
   )
@@ -101,7 +100,6 @@ export function MetricAlerts({
           hotRange={hotRange}
           disabled={batteryBlocked}
           testRules={visibleRuleSnapshot}
-          detailContent={detailContent}
           controlsHeader={controlsHeader}
           onCustomize={controller.customize}
           onDiscardCustom={() => setConfirmingDiscard(true)}

@@ -1,22 +1,34 @@
 import { useMemo } from 'react'
 
-import { computeAutoRange } from '@/components/charts/chartMath'
+import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
-import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
+import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { MetricDetailGauge } from '@/modules/board/components/MetricDetailGauge'
-import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
+import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { liveSelectors, useLiveMetric } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 const cfg = telemetry.battCurrent
+const CHART_HEIGHT = 120
 
 export default function BatteryCurrentScreen() {
   const batteryCurrent = useLiveMetric(liveSelectors.batteryCurrent)
   const windowMs = useLiveWindowMs()
-  const points = useMemo(() => toTelemetryChartPoints(batteryCurrent), [batteryCurrent])
-  const range = useMemo(() => computeAutoRange(points, { baseline: cfg.chartRange }), [points])
+
+  const charts = useMemo(() => {
+    const data = toChartSeries(batteryCurrent, windowMs)
+    return [
+      toLiveChart({
+        key: 'batteryCurrent',
+        metric: cfg,
+        data,
+        range: computeAutoRangeFromValues(data.vs, { baseline: cfg.chartRange }),
+        height: CHART_HEIGHT,
+      }),
+    ]
+  }, [batteryCurrent, windowMs])
 
   return (
     <ControlDetailLayout
@@ -25,7 +37,7 @@ export default function BatteryCurrentScreen() {
       unit={cfg.unit}
       gauge={<MetricDetailGauge metric={cfg} value={liveTelemetryRuntime.values.batteryCurrent} />}
     >
-      <MetricDetailChart metric={cfg} points={points} range={range} windowMs={windowMs} />
+      <LiveChartStack charts={charts} />
     </ControlDetailLayout>
   )
 }

@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { extname, join, parse, relative } from 'path'
 
 const ROOT = join(import.meta.dir, '..')
@@ -90,6 +90,19 @@ export function copyShared(root = ROOT, { quiet = false } = {}) {
     mkdirSync(target.dest, { recursive: true })
 
     log(`\n  ${relative(root, target.src)} → ${relative(root, target.dest)}`)
+
+    // Copying alone leaves orphans behind: a fixture renamed in `shared/` kept shipping under its
+    // old name inside the Android APK for a week, and showed up in the Replay UI as a recording
+    // that no longer existed in the repo. Only names this target would produce survive, so a
+    // destination it shares with anything else is left alone.
+    const expected = new Set(
+      sharedSources(target).map((source) => parse(sharedOutput(target, source)).base),
+    )
+    for (const file of readdirSync(target.dest)) {
+      if (!target.extensions.has(extname(file).toLowerCase()) || expected.has(file)) continue
+      rmSync(join(target.dest, file))
+      log(`    ✗ ${file} (removed, no longer in ${relative(root, target.src)})`)
+    }
 
     for (const source of sharedSources(target)) {
       const output = sharedOutput(target, source)

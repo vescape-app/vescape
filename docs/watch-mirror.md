@@ -24,8 +24,8 @@ internal-build, Internal status/resume, open-promotion, and production actions.
 Status/resume discovers recent GitHub workflow runs, then shows the live job, step, elapsed time, and
 estimated remaining range; it does not depend on terminal-local state. Open promotion selects one
 successful internal manifest and promotes the manifest's exact existing codes. Canonical rider-facing
-notes are bundled by release train from `release-notes/<major>.<minor>.md`; internal builds and open
-promotion tolerate a missing current-train file. Open promotion never rebuilds or uploads an AAB.
+notes are bundled per marketing version from `release-notes/<major>.<minor>.<patch>.md`; internal
+builds and open promotion tolerate a missing file for the current version. Open promotion never rebuilds or uploads an AAB.
 Track IDs come from the `PLAY_PHONE_INTERNAL_TRACK`, `PLAY_PHONE_OPEN_TRACK`,
 `PLAY_WEAR_INTERNAL_TRACK`, and `PLAY_WEAR_OPEN_TRACK` repository variables. Production targets use
 `PLAY_PHONE_PRODUCTION_TRACK` and `PLAY_WEAR_PRODUCTION_TRACK`. Defaults are `internal`, `beta`,
@@ -169,3 +169,35 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 - No board telemetry on phone: no Board Session, so there is no Watch Frame source.
 
 The watch switches to `DISCONNECTED` when no Watch Frame arrives for about three watch ticks.
+
+## Phone → Watch Channels
+
+Three channels, split by how often the data changes:
+
+| Path         | Transport            | Cadence             | Payload                                       |
+| ------------ | -------------------- | ------------------- | --------------------------------------------- |
+| `/telemetry` | `MessageClient`      | every watch tick    | Watch Frame: packed Float32 lanes, positional |
+| `/route`     | Data Layer item      | per route change    | encoded polyline, versioned binary            |
+| `/settings`  | Data Layer `DataMap` | per settings change | rider settings, key-value                     |
+
+`MessageClient` drops undelivered sends, which is right for a frame that is stale in 250 ms and wrong
+for cold state — hence the Data Layer for the other two, where the last value stays on the watch
+across a disconnect and is read again on every watch app start.
+
+`/settings` is a `DataMap` rather than a packed frame because settings accrete one at a time: an
+unknown key is ignored by an older watch, and a key an older phone never sends leaves the watch on
+its own default. That is what makes it the place to put the next mirrored setting, and why it needs
+no version byte the way `/route` and the Watch Frame do.
+
+Adding a mirrored setting:
+
+1. Field on `WatchSettings` + key constant, both sides (`modules/vescape-core/.../watch/WatchSettings.kt`
+   and `watch/wearos/.../WatchSettings.kt`, linked by `@parity`).
+2. Map it in `AppSettings.toWatchSettings()`; put it in `WatchSettingsPusher`.
+3. Read it in `MainActivity.readSettings`.
+4. If the setting is written from JS, add its key to the `updateSetting` reload list in
+   `VescapeCoreModule.kt` — the pusher runs off applied settings, so without that the watch only sees
+   the change at the next service start.
+
+The rider colour is the first of these: pick a colour on the phone and the wrist route, chevron and
+rider dot follow it. The Wear Mirror is Android-only, so none of this has an iOS peer.

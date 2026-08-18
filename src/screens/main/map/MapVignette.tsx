@@ -234,7 +234,7 @@ export function MapVignette({
             radial={[0, 0.12, 0.3, 0.6]}
             top={[0.85, 0.6, 0]}
             topPositions={HISTORY_TOP_POSITIONS}
-            topEnd={0.38}
+            topEnd={0.24}
           >
             <AnimatedHistoryBottomGradient
               width={width}

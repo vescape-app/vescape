@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import type { Board } from 'vescape-core'
 
 import {
   boardNeedsLink,
@@ -83,5 +84,15 @@ describe('boardNeedsLink', () => {
     expect(boardNeedsLink(undefined)).toBe(true)
     expect(boardNeedsLink({ link: null })).toBe(true)
     expect(boardNeedsLink({ link: { bleId: 'AA', transport: 'direct' } })).toBe(false)
+    expect(boardNeedsLink({ link: { bleId: 'AA', transport: 36 } })).toBe(false)
+  })
+
+  // The BoardLink type promises a transport, but persisted links predate that promise: native
+  // builds SessionConfig.transport via BoardTransport.fromBridge, which decodes a missing or junk
+  // value to null and then refuses the session with NEEDS_LINK. Route those to re-linking rather
+  // than to a connect that can only time out.
+  it('needs a link when the persisted link carries no detected transport', () => {
+    const corrupt = { link: { bleId: 'AA' } } as unknown as Pick<Board, 'link'>
+    expect(boardNeedsLink(corrupt)).toBe(true)
   })
 })

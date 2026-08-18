@@ -2,7 +2,7 @@ import { useNavigation } from 'expo-router'
 import { BellRingingIcon } from 'phosphor-react-native'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
-import { type SharedValue } from 'react-native-reanimated'
+import type { SharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
 import { MetricAlerts } from '@/modules/alerts/components/MetricAlerts'
@@ -13,6 +13,7 @@ import {
 import { asAlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
 import { useBoardMetricAlerts } from '@/modules/alerts/hooks/useMetricAlerts'
 import { theme } from '@/constants/theme'
+import { FocusedSeriesCaption } from '@/modules/board/components/FocusedSeriesCaption'
 import { MetricDetailAlertContext } from '@/modules/board/components/metricDetailAlertContext'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import {
@@ -52,16 +53,24 @@ export function ControlDetailLayout({
     navigation.setOptions({ title })
   }, [title, navigation])
 
+  // The caption travels with the charts: whichever branch renders `children`, it sits above them.
+  const charts = (
+    <>
+      <FocusedSeriesCaption />
+      {children}
+    </>
+  )
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {controlId ? (
         <ControlDetailAlerts controlId={controlId} unit={unit} liveValue={liveValue} gauge={gauge}>
-          {children}
+          {charts}
         </ControlDetailAlerts>
       ) : (
         <>
           {gauge}
-          {children}
+          {charts}
         </>
       )}
     </ScrollView>
@@ -69,8 +78,8 @@ export function ControlDetailLayout({
 }
 
 /**
- * Bind one control's gauge, history chart, and alert controls to one immutable rule snapshot.
- * Preset metrics place their chart inside MetricAlerts so the shared slider lands below it.
+ * Bind one control's gauge, alert controls, and history chart to one immutable rule snapshot.
+ * Alert controls stay directly below the main gauge; telemetry charts follow the complete block.
  */
 function ControlDetailAlerts({
   controlId,
@@ -135,23 +144,25 @@ function ControlDetailAlerts({
   return (
     <MetricDetailAlertContext value={alertContext}>
       {asAlertPresetMetric(controlId) && controller ? (
-        <MetricAlerts
-          controller={controller}
-          unit={unit}
-          liveValue={liveValue}
-          hotRange={hotRange}
-          ruleSnapshot={ruleSnapshot}
-          detailContent={children}
-          controlsHeader={<AlertsHeader />}
-        />
+        <>
+          <MetricAlerts
+            controller={controller}
+            unit={unit}
+            liveValue={liveValue}
+            hotRange={hotRange}
+            ruleSnapshot={ruleSnapshot}
+            controlsHeader={<AlertsHeader />}
+          />
+          {children}
+        </>
       ) : (
         <>
           {gauge}
-          {children}
           <View style={styles.alertsSection}>
             <AlertsHeader />
             {alerts}
           </View>
+          {children}
         </>
       )}
     </MetricDetailAlertContext>

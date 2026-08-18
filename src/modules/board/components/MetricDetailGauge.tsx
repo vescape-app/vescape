@@ -4,7 +4,7 @@ import type { SharedValue } from 'react-native-reanimated'
 import { SpeakerHighIcon, StopIcon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
@@ -47,6 +47,7 @@ export function MetricDetailGauge({
               id: rule.id,
               threshold: rule.threshold,
               thresholdMax: rule.thresholdMax,
+              repeats: rule.repeatEverySeconds != null,
             })),
     [alertRules, metric.controlId],
   )

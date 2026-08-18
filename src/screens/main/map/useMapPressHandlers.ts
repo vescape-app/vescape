@@ -1,5 +1,5 @@
 import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useEffect, useRef, type ElementRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, type ComponentRef, type RefObject } from 'react'
 
 import {
   coordinateSelection,
@@ -24,9 +24,9 @@ export function useMapPressHandlers({
   onMapInteraction,
   onLongPressTarget,
 }: {
-  mapViewRef: RefObject<ElementRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   enabled: boolean
-  onRawMapPress: (selection: MapSelection) => boolean | void
+  onRawMapPress: (selection: MapSelection) => boolean | undefined
   onMapPress: (selection: MapSelection) => void
   onMapInteraction: () => void
   onLongPressTarget: (target: { latitude: number; longitude: number }) => void

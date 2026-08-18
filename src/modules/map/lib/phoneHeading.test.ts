@@ -4,7 +4,6 @@ import {
   deadBandPhoneHeading,
   type DeviceMotionMeasurement,
   phoneHeadingFromDeviceMotion,
-  phoneHeadingAnimationDuration,
   phoneHeadingSmoothingAlphaForTest,
   phoneHeadingUpdateIntervalMs,
   smoothPhoneHeading,
@@ -59,14 +58,13 @@ describe('phoneHeading', () => {
     expect(smoothPhoneHeading(10, 350)).toBeCloseTo(8.756)
   })
 
-  test('uses adaptive smoothing and no camera animation', () => {
+  test('uses adaptive smoothing', () => {
     expect(phoneHeadingSmoothingAlphaForTest(0, 2)).toBeLessThan(
       phoneHeadingSmoothingAlphaForTest(0, 90),
     )
     expect(smoothPhoneHeading(0, 90)).toBe(6)
     expect(smoothPhoneHeading(0, 90, 0.5)).toBe(3)
     expect(phoneHeadingUpdateIntervalMs()).toBe(16)
-    expect(phoneHeadingAnimationDuration()).toBe(0)
   })
 
   test('suppresses stationary jitter after smoothing without blocking real movement', () => {

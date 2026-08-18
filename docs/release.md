@@ -2,45 +2,42 @@
 
 How Vescape versions, notes, and Android releases work.
 
-## Trains
-
-A **train** is a `major.minor` version line (`1.0`, `1.1`). It exists implicitly: bumping the app to `1.1.0` starts train `1.1` — no ceremony.
-
-- **New train (minor bump)** — a fresh "what's new" story worth its own page.
-- **Patch within a train** — an addendum: fixes and follow-ups to the current story.
-
-Unsure which to pick? It's low-stakes: features added in a patch still land in the current train's notes, and an over-eager minor bump only costs one extra notes file.
-
 ## Release notes: two tiers
 
-| Tier                               | Where                                      | Audience     | Authoring                                                    |
-| ---------------------------------- | ------------------------------------------ | ------------ | ------------------------------------------------------------ |
-| Train notes `release-notes/X.X.md` | Bundled into the app ("what's new" screen) | Riders       | Codex draft, hand-curated, `New / Improved / Fixed` sections |
-| Patch notes                        | GitHub Release body per `vX.Y.Z`           | Devs/testers | Codex-refined commit log, no curation                        |
+| Tier                                   | Where                                      | Audience     | Authoring                                                    |
+| -------------------------------------- | ------------------------------------------ | ------------ | ------------------------------------------------------------ |
+| Version notes `release-notes/X.Y.Z.md` | Bundled into the app ("what's new" screen) | Riders       | Codex draft, hand-curated, `New / Improved / Fixed` sections |
+| Patch notes                            | GitHub Release body per `vX.Y.Z`           | Devs/testers | Codex-refined commit log, no curation                        |
 
-Train notes stay editable while the train is pre-production. Once the train reaches production they are **frozen** — late edits trigger a CLI warning (typo fixes are fine; features belong in the next train).
+One file per marketing version, covering only that version. Codex drafts it from the diff between
+the previous release tag and the candidate, so a patch's notes describe the patch — nothing else.
+
+A shipped version's notes are **never rewritten**: the copy riders read stays the copy they read.
+Late outcomes belong in the next version's file.
+
+The app lists every version at or below the installed one, newest first.
 
 ## Tags and GitHub Releases
 
 - Every version that passes an internal build gets an immutable tag `vX.Y.Z` on its build's `source_sha`, plus a GitHub **prerelease** with codex-generated patch notes. The CLI creates both after the internal workflow succeeds (workflows stay `contents: read`).
 - **Prerelease flag = not on production yet.** A version that fails Open just stays a prerelease forever; the fix ships as the next patch.
-- Production promote validates the train notes file exists, then flips the existing Release to full + latest. It creates nothing new.
+- Production promote validates the version's notes file exists at the exact source SHA, then flips the existing Release to full + latest. It creates nothing new.
 - A version that fails the internal build gets no tag — the number is burned, nothing is visible.
 
 ## Lifecycle example
 
 ```text
-prod = 1.0.3 (train 1.0, frozen)
+prod = 1.0.3
 
-prepare  → minor → 1.1.0, draft release-notes/1.1.md (or skip)
+prepare  → minor → 1.1.0, draft release-notes/1.1.0.md (or skip)
 internal → build fails → no tag
-prepare  → patch → 1.1.1
+prepare  → patch → 1.1.1, draft release-notes/1.1.1.md from 1.0.3..HEAD
 internal → success → tag v1.1.1 + GH prerelease
 promote  → open track (soak)
-prepare  → patch → 1.1.2, CLI: "new commits since 1.1.md — update?" → re-prompt codex
+prepare  → patch → 1.1.2, draft release-notes/1.1.2.md from v1.1.1..HEAD
 internal → success → tag v1.1.2 + prerelease
 promote  → open → production
-           validates 1.1.md, flips v1.1.2 to latest, freezes train 1.1
+           validates 1.1.2.md, flips v1.1.2 to latest
 ```
 
 ## Pieces

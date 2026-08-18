@@ -9,7 +9,7 @@ import {
 } from 'vescape-core'
 import { generateId } from '@/helpers/id'
 
-export type { AlertRule, AlertSoundType } from 'vescape-core'
+export type { AlertSoundType } from 'vescape-core'
 
 interface AlertsState {
   /**
@@ -21,21 +21,25 @@ interface AlertsState {
   rules: AlertRule[]
 }
 
+/**
+ * Everything the rider can author on a rule. Grouped rather than passed positionally: a rule now
+ * carries a shape (threshold / range), a sound, a repeat cadence and a beep count, and every one of
+ * those travels together from the form to the store to native.
+ */
+export interface AlertRuleDraft {
+  threshold: number
+  thresholdMax: number | null
+  soundType: AlertSoundType
+  /** Seconds between repeats while past the threshold; `null` ⇒ announce once per crossing. */
+  repeatEverySeconds: number | null
+  beepCount: number
+}
+
 interface AlertsActions {
   /** Bind the store to a Board and load its rules. `null` clears to an empty rule set. */
   load(boardId: string | null): Promise<void>
-  add(
-    controlId: string,
-    threshold: number,
-    thresholdMax?: number | null,
-    soundType?: AlertSoundType,
-  ): void
-  update(
-    id: string,
-    threshold: number,
-    thresholdMax: number | null,
-    soundType: AlertSoundType,
-  ): void
+  add(controlId: string, draft: AlertRuleDraft): void
+  update(id: string, draft: AlertRuleDraft): void
   upsert(rule: AlertRule): Promise<void>
   setEnabled(id: string, enabled: boolean): Promise<void>
   toggle(id: string): Promise<void>
@@ -64,27 +68,25 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
     }
   },
 
-  add(controlId, threshold, thresholdMax = null, soundType = 'preset:beep') {
+  add(controlId, draft) {
     const boardId = get().boardId
     if (!boardId) return
     const rule: AlertRule = {
       boardId,
       id: generateId(),
       controlId,
-      threshold,
-      thresholdMax: thresholdMax ?? null,
       enabled: true,
-      soundType,
       createdAt: Date.now(),
+      ...draft,
     }
     set((s) => ({ rules: [...s.rules, rule] }))
     void upsertAlertRule(rule)
   },
 
-  update(id, threshold, thresholdMax, soundType) {
+  update(id, draft) {
     const rule = get().rules.find((r) => r.id === id)
     if (!rule) return
-    const updated = { ...rule, threshold, thresholdMax, soundType }
+    const updated = { ...rule, ...draft }
     set((s) => ({ rules: s.rules.map((r) => (r.id === id ? updated : r)) }))
     void upsertAlertRule(updated)
   },

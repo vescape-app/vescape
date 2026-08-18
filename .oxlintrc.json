@@ -1,0 +1,101 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "import"],
+  "categories": {},
+  "ignorePatterns": ["dist", "android", "ios", "vendor", ".agents"],
+  "env": {
+    "browser": true,
+    "es2024": true,
+    "node": true
+  },
+  "globals": {
+    "__DEV__": "readonly",
+    "ErrorUtils": "readonly"
+  },
+  "rules": {
+    "no-dupe-class-members": "error",
+    "no-dupe-keys": "error",
+    "no-duplicate-case": "error",
+    "no-empty-character-class": "error",
+    "no-empty-pattern": "error",
+    "no-extend-native": "error",
+    "no-extra-bind": "error",
+    "no-redeclare": "error",
+    "no-unreachable": "error",
+    "no-unsafe-negation": "error",
+    "no-unused-expressions": "error",
+    "no-unused-labels": "error",
+    "no-unused-vars": "warn",
+    "no-shadow": "error",
+    "no-var": "error",
+    "no-with": "error",
+    "unicode-bom": "error",
+    "use-isnan": "error",
+    "valid-typeof": "error",
+
+    "import/first": "warn",
+    "import/no-empty-named-blocks": "error",
+
+    "typescript/array-type": ["warn", { "default": "array" }],
+    "typescript/consistent-type-assertions": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/consistent-generic-constructors": "error",
+    "typescript/consistent-type-definitions": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/dot-notation": "error",
+    "typescript/no-dynamic-delete": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/no-invalid-void-type": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/non-nullable-type-assertion-style": "error",
+    "typescript/prefer-for-of": "error",
+    "typescript/prefer-function-type": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/no-meaningless-void-operator": "off",
+    "typescript/unbound-method": "off",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-extra-non-null-assertion": "error",
+    "typescript/no-require-imports": [
+      "warn",
+      {
+        "allow": [
+          "\\.(aac|aiff|avif|bmp|caf|db|gif|heic|html|jpeg|jpg|json|m4a|m4v|mov|mp3|mp4|mpeg|mpg|otf|pdf|png|psd|svg|ttf|wav|webm|webp|xml|yaml|yml|zip)$"
+        ]
+      }
+    ],
+    "typescript/no-unused-vars": [
+      "warn",
+      { "vars": "all", "args": "none", "ignoreRestSiblings": true, "caughtErrors": "all" }
+    ],
+    "no-useless-constructor": "off",
+    "typescript/no-useless-constructor": "off",
+    "typescript/no-wrapper-object-types": "error",
+
+    "react/no-this-in-sfc": "error",
+    "react/no-unstable-nested-components": ["error", { "allowAsProps": true }],
+    "react/no-unknown-property": "error",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+
+    "complexity": ["error", 28],
+    "max-lines": ["error", { "max": 560, "skipBlankLines": true, "skipComments": true }],
+    "max-lines-per-function": [
+      "error",
+      { "max": 390, "skipBlankLines": true, "skipComments": true, "IIFEs": true }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.{js,jsx,ts,tsx}", "**/*.spec.{js,jsx,ts,tsx}", "**/__tests__/**"],
+      "rules": {
+        "max-lines": "off",
+        "max-lines-per-function": "off"
+      }
+    }
+  ]
+}

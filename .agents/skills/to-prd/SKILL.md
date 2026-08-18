@@ -3,7 +3,7 @@ name: to-prd
 description: Turn the current conversation context into a PRD and publish it to the project issue tracker. Use when user wants to create a PRD from the current context.
 ---
 
-This skill takes the current conversation context and VESC app codebase understanding and produces a PRD. Do NOT interview the user except for the explicit approval gates below - synthesize what you already know.
+This skill takes the current conversation context and Vescape app codebase understanding and produces a PRD. Do NOT interview the user except for the explicit approval gates below - synthesize what you already know.
 
 The issue tracker, app-area labels, and triage label vocabulary live in `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`. Domain docs live in `CONTEXT.md` and `docs/adr/`.
 
@@ -45,7 +45,7 @@ Use this, or should I create/use another prefix? My fallback suggestion: [Firmwa
 
 ## Process
 
-1. Explore the repo to understand the current state of the VESC app codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the PRD, and respect any ADRs in the area you're touching.
+1. Explore the repo to understand the current state of the Vescape app codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the PRD, and respect any ADRs in the area you're touching.
 
 For this app, check likely JS/TS route or domain files plus native Android/iOS module entrypoints when the PRD crosses the bridge. Useful starting areas include `src/tune/`, `src/components/`, `src/hooks/`, `modules/vescape-core/`, `modules/vesc-native/`, `docs/tune.md`, `CONTEXT.md`, and relevant ADRs under `docs/adr/`.
 

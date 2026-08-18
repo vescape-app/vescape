@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import { screenshotModeEnabled } from '@/config/screenshotMode'
+import { captureMode } from '@/config/env'
 
 const WINDOW_MS = 1_000
 const DEFAULT_THRESHOLD = 5
@@ -21,7 +21,7 @@ export function useRenderRateWarning(label: string, threshold = DEFAULT_THRESHOL
   })
 
   useEffect(() => {
-    if (!__DEV__ || screenshotModeEnabled) return
+    if (!__DEV__ || captureMode) return
     const id = setInterval(() => {
       const count = countRef.current
       countRef.current = 0

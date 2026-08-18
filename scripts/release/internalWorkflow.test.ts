@@ -8,9 +8,11 @@ const workflow = readFileSync(
 )
 
 describe('internal release workflow contract', () => {
-  test('keeps tag and GitHub Release writes outside CI', () => {
+  test('leaves GitHub releases to the CLI and keeps read-only contents', () => {
     expect(workflow).toMatch(/permissions:\n\s+contents: read/)
-    expect(workflow).not.toMatch(/git tag|git push|gh release/)
+    expect(workflow).not.toContain('github_release:')
+    expect(workflow).not.toContain('gh release create')
+    expect(workflow).not.toContain('codex')
   })
 
   test('restores downloaded AABs under the paths expected by Fastlane', () => {

@@ -1,7 +1,8 @@
-import type { Camera as CameraRef } from '@rnmapbox/maps'
 import type { RefObject } from 'react'
 
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
+import { toEngineTarget } from '@/modules/map/lib/cameraEngine/cameraTarget'
+import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
 
@@ -10,7 +11,7 @@ import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
  * Shared by every "focus this point" flow so they stay visually identical.
  */
 export function panPreservingCamera(
-  cameraRef: RefObject<CameraRef | null>,
+  engine: CameraEngine,
   currentCameraRef: RefObject<CameraSnapshot | null>,
   centerCoordinate: [number, number],
   options?: { minZoomLevel?: number },
@@ -20,12 +21,12 @@ export function panPreservingCamera(
     options?.minZoomLevel == null
       ? current?.zoomLevel
       : Math.max(current?.zoomLevel ?? MAP_DEFAULTS.persistedGpsFallbackZoom, options.minZoomLevel)
-  cameraRef.current?.setCamera({
-    centerCoordinate,
-    zoomLevel,
-    heading: current?.heading,
-    pitch: current?.pitch,
-    animationDuration: MAP_DEFAULTS.animationDuration,
-    animationMode: 'easeTo',
-  })
+  engine.setTarget(
+    toEngineTarget({
+      centerCoordinate,
+      zoomLevel,
+      heading: current?.heading,
+      pitch: current?.pitch,
+    }),
+  )
 }

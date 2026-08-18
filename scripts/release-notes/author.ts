@@ -27,9 +27,7 @@ if (await Bun.file(destination).exists()) {
 }
 
 console.log('Release-note plan')
-console.log(
-  `  Previous published release: ${plan.previous ? `${plan.previous.name} (${plan.previous.tagName})` : 'none'}`,
-)
+console.log(`  Previous release: ${plan.previous ? plan.previous.tagName : 'none'}`)
 console.log(`  Target SHA: ${plan.targetSha}`)
 console.log(`  Marketing version: ${plan.marketingVersion}`)
 console.log(`  Compared range: ${plan.comparison}`)

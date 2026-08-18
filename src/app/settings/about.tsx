@@ -1,4 +1,4 @@
-import { Linking, ScrollView, StyleSheet, View } from 'react-native'
+import { Linking, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { CrownIcon, PaletteIcon, ShieldCheckIcon, UsersIcon } from 'phosphor-react-native'
 
@@ -24,7 +24,7 @@ export default function AboutScreen() {
             iconColor={theme.palette.cyan.color}
             label="Privacy policy"
             hint="Data, Group Ride sharing, and contact"
-            onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+            onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
           />
         </SettingsCard>
         <SettingsCard>

@@ -4,7 +4,7 @@
  *
  * @parity /scripts/lib/iosCapture.ts
  */
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { basename, dirname, join } from 'path'
 
@@ -14,15 +14,16 @@ import {
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
   runOrDie,
-  screenshotBuildEnv,
+  fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
+  type FixtureRunMode,
 } from './captureDriver.ts'
-import { select, type SelectOption } from './select.ts'
+import { listAdbDevices, pickDevice } from './devices.ts'
 
 const OUT_DIR = 'screenshots/android'
 
-/** Mirrors `screenshotFixtureDir` in `src/config/screenshotMode.ts`. */
+/** Mirrors `fixtureDir` in `src/config/fixtureSession.ts`. */
 const DEVICE_FIXTURE_DIR = `/storage/emulated/0/Android/data/${applicationId}/files`
 
 /** Play's phone screenshots are cut to this; anything else has to be rescaled by hand. */
@@ -49,6 +50,8 @@ function emulatorBin(): string {
 interface Device {
   serial: string
   name: string
+  /** What `expo run:android --device` matches; see AdbDevice.expoName. */
+  expoName: string
 }
 
 async function attachedSerials(): Promise<string[]> {
@@ -60,27 +63,11 @@ async function attachedSerials(): Promise<string[]> {
     .map((line) => line.split('\t')[0].trim())
 }
 
-/** The AVD behind a running emulator serial, which is also the name Expo knows it by. */
-async function runningAvdName(serial: string): Promise<string | null> {
-  if (!serial.startsWith('emulator-')) return null
-  const out = await capture(['adb', '-s', serial, 'emu', 'avd', 'name'])
-  return out.split('\n')[0].trim() || null
-}
-
-async function attachedDevices(): Promise<Device[]> {
-  const out = await capture(['adb', 'devices', '-l'])
-  const lines = out
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes(' device ') || line.includes('\tdevice'))
-
-  return Promise.all(
-    lines.map(async (line) => {
-      const serial = line.split(/\s+/)[0].trim()
-      const name = (await runningAvdName(serial)) ?? /model:(\S+)/.exec(line)?.[1] ?? serial
-      return { serial, name }
-    }),
-  )
+/** Phones only: the store set and the smoke flows are phone UI, and a watch cannot run either. */
+function attachedPhones(): Device[] {
+  return listAdbDevices()
+    .filter((device) => !device.isWatch)
+    .map(({ serial, name, expoName }) => ({ serial, name, expoName }))
 }
 
 async function listAvds(): Promise<string[]> {
@@ -117,7 +104,7 @@ async function bootAvd(name: string): Promise<Device> {
       const booted = (
         await capture(['adb', '-s', serial, 'shell', 'getprop', 'sys.boot_completed'])
       ).trim()
-      if (booted === '1') return { serial, name }
+      if (booted === '1') return { serial, name, expoName: name }
     }
     await Bun.sleep(2000)
   }
@@ -132,48 +119,42 @@ function shortSerial(serial: string): string {
 
 type DeviceChoice = { kind: 'attached'; device: Device } | { kind: 'avd'; name: string }
 
-async function chooseDevice(attached: Device[]): Promise<DeviceChoice> {
-  const options: SelectOption<DeviceChoice>[] = attached.map((device) => ({
-    label: device.name,
-    value: { kind: 'attached', device },
-    hint: shortSerial(device.serial),
-  }))
+/** Cache key for the last capture device picked; see lib/lastDevice. */
+const LAST_DEVICE_KEY = 'capture-android'
+
+async function chooseDevice(attached: Device[], requested: string | null): Promise<DeviceChoice> {
+  const options: DeviceChoice[] = attached.map((device) => ({ kind: 'attached', device }))
 
   // An AVD that is already up is listed once, as the running device — offering to "boot" it again
   // would be the same device under a second name.
   const running = new Set(attached.map((device) => device.name))
   for (const name of await listAvds()) {
     if (running.has(name)) continue
-    options.push({
-      label: `boot ${name}`,
-      value: { kind: 'avd', name },
-      hint: avdResolution(name) ?? 'AVD',
-    })
+    options.push({ kind: 'avd', name })
   }
 
-  if (options.length === 0) {
-    console.error('No device attached and no AVD available.')
-    process.exit(1)
-  }
-  if (options.length === 1) return options[0].value
-  return select('Android capture device', options)
+  return pickDevice({
+    title: 'Android capture device',
+    items: options,
+    id: (choice) => (choice.kind === 'avd' ? choice.name : choice.device.name),
+    label: (choice) => (choice.kind === 'avd' ? `boot ${choice.name}` : choice.device.name),
+    aliases: (choice) =>
+      choice.kind === 'avd' ? [] : [choice.device.serial, choice.device.expoName],
+    hint: (choice) =>
+      choice.kind === 'avd'
+        ? (avdResolution(choice.name) ?? 'AVD')
+        : shortSerial(choice.device.serial),
+    requested,
+    cacheKey: LAST_DEVICE_KEY,
+    emptyMessage: 'No phone attached and no AVD available.',
+  })
 }
 
-async function resolveDevice(requested: string | null): Promise<Device> {
-  const attached = await attachedDevices()
-
-  if (requested) {
-    const match = attached.find((d) => d.serial === requested || d.name === requested)
-    if (!match) {
-      console.error(`No attached device matches "${requested}".`)
-      process.exit(1)
-    }
-    return match
-  }
-
-  const choice = await chooseDevice(attached)
+async function resolveDevice(requested: string | null, mode: FixtureRunMode): Promise<Device> {
+  const choice = await chooseDevice(attachedPhones(), requested)
   const device = choice.kind === 'avd' ? await bootAvd(choice.name) : choice.device
-  await warnOnResolution(device.serial)
+  // Only the store set has to come off one screen size; a smoke run asserts on text, not pixels.
+  if (mode === 'screenshots') await warnOnResolution(device.serial)
   return device
 }
 
@@ -185,17 +166,12 @@ async function warnOnResolution(device: string): Promise<void> {
   }
 }
 
-const ANIMATION_SCALES = [
-  'window_animation_scale',
-  'transition_animation_scale',
-  'animator_duration_scale',
-]
-
 export async function createAndroidDriver(
   requestedDevice: string | null,
   replay: string,
+  mode: FixtureRunMode = 'screenshots',
 ): Promise<CaptureDriver> {
-  const device = await resolveDevice(requestedDevice)
+  const device = await resolveDevice(requestedDevice, mode)
   const adb = (...rest: string[]) => capture(['adb', '-s', device.serial, ...rest])
 
   return {
@@ -205,12 +181,30 @@ export async function createAndroidDriver(
     deviceLabel: `${device.name} (${device.serial})`,
 
     async buildAndInstall() {
-      console.log('› Building the Android screenshot Release build…')
+      console.log(`› Building the Android ${mode} Release build…`)
       await runOrDie(['bun', 'run', 'native:sync', 'android'])
+      // Release on both modes. The store set has to be the shipped build, and a smoke run gets a
+      // self-contained APK out of it — no Metro server to start and no dev-client launcher screen
+      // to tap through before the first flow step.
       // `--device` takes Expo's device name, not the adb serial.
+      //
+      // `--no-bundler` is what makes this command *return*. Without it Expo installs the APK, opens
+      // the dev-client URL and then stays attached streaming logs — on a terminal that reads as a
+      // build that finished, but on CI the step simply hangs until the job times out. A release
+      // build embeds its bundle, so there is nothing for a bundler to serve either way (the repo's
+      // own `android:release` script passes it for the same reason).
       await runOrDie(
-        ['bunx', 'expo', 'run:android', '--variant', 'release', '--device', device.name],
-        screenshotBuildEnv(replay),
+        [
+          'bunx',
+          'expo',
+          'run:android',
+          '--variant',
+          'release',
+          '--no-bundler',
+          '--device',
+          device.expoName,
+        ],
+        fixtureBuildEnv(mode, replay),
       )
     },
 
@@ -228,12 +222,41 @@ export async function createAndroidDriver(
       await adb('shell', 'pm', 'clear', applicationId)
 
       if (existsSync(FIXTURE_ZIP)) {
-        await adb('push', FIXTURE_ZIP, `${DEVICE_FIXTURE_DIR}/${basename(FIXTURE_ZIP)}`)
-        // `pm clear` deleted the external files dir, so the push is what recreates it — owned by
-        // `shell:ext_data_rw`, mode `rwxrws---`. The app is neither owner nor in that group and
-        // cannot traverse its own directory, so `restoreDatabase` fails with EACCES and the run
-        // silently captures an empty app. Reopening both levels is what makes the push readable.
+        const remote = `${DEVICE_FIXTURE_DIR}/${basename(FIXTURE_ZIP)}`
+        // `pm clear` deleted the external files dir, and `adb push` cannot always recreate it: its
+        // `secure_mkdirs` is refused on the FUSE-backed `Android/data` of an emulator image, so the
+        // push fails outright with ENOENT. `adb shell mkdir` goes through the sdcard mount as
+        // `shell` and is allowed, which is the same explicit `mkdir` the iOS driver does after it
+        // wipes the container.
+        await adb('shell', 'mkdir', '-p', DEVICE_FIXTURE_DIR)
+        // The recreated dir is owned by `shell:ext_data_rw`, mode `rwxrws---`. The app is neither
+        // owner nor in that group and cannot traverse its own directory, so `restoreDatabase` fails
+        // with EACCES and the run silently captures an empty app. Reopening both levels is what
+        // makes the push readable.
         await adb('shell', 'chmod', '777', DEVICE_FIXTURE_DIR, dirname(DEVICE_FIXTURE_DIR))
+        // The push does not land on `Android/data` directly: `adb push` chowns what it writes, and
+        // FUSE refuses that ("remote fchown failed: Operation not permitted") *after* transferring
+        // the bytes, so the push exits non-zero on a file that is actually there. Staging through
+        // `/data/local/tmp` (plain ext4, owned by `shell`) keeps the exit code meaningful, and
+        // `cp` as `shell` into the reopened dir needs no chown at all.
+        const staging = `/data/local/tmp/${basename(FIXTURE_ZIP)}`
+        await runOrDie(['adb', '-s', device.serial, 'push', FIXTURE_ZIP, staging])
+        await adb('shell', 'cp', staging, remote)
+        // `cp` keeps the creating process's umask, so the copy lands unreadable to the app's uid.
+        await adb('shell', 'chmod', '666', remote)
+        await adb('shell', 'rm', '-f', staging)
+        // `capture` discards exit codes, so a rejected copy used to reach the flows as an app with
+        // an empty database — the run then failed several steps later on a missing board, pointing
+        // at the app rather than at the staging that never happened. Assert the whole file landed.
+        const expected = statSync(FIXTURE_ZIP).size
+        const staged = (await adb('shell', 'stat', '-c', '%s', remote)).trim()
+        if (staged !== String(expected)) {
+          console.error(
+            `Fixture zip did not land on ${device.name} at ${remote}: ` +
+              `expected ${expected} bytes, got "${staged}".`,
+          )
+          process.exit(1)
+        }
       } else {
         warnMissingFixture()
       }
@@ -256,6 +279,22 @@ export async function createAndroidDriver(
       }
     },
 
+    async requireAwakeDisplay() {
+      // KEYCODE_WAKEUP, then ask the window manager to drop the keyguard. A swipe-only lock goes
+      // away here; a PIN, pattern or biometric one cannot be dismissed from adb, and should not be.
+      await adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
+      await adb('shell', 'wm', 'dismiss-keyguard')
+
+      const window = await adb('shell', 'dumpsys', 'window')
+      if (!/mDreamingLockscreen=true/.test(window)) return
+
+      console.error(
+        `${device.name} is locked and its keyguard is secured, so the flows would drive a lock ` +
+          'screen. Unlock the device and run again with --no-build.',
+      )
+      process.exit(1)
+    },
+
     async pinLocation() {
       // `geo fix` is an emulator console command; a physical device would need a mock provider app,
       // which is well past what a screenshot run should install.
@@ -268,9 +307,15 @@ export async function createAndroidDriver(
     },
 
     async setChrome(clean: boolean) {
-      for (const scale of ANIMATION_SCALES) {
-        await adb('shell', 'settings', 'put', 'global', scale, clean ? '0' : '1')
-      }
+      // Demo mode exists so panels do not disagree on clock or battery. A smoke run photographs
+      // nothing, so it leaves the device's own status bar alone.
+      if (mode === 'smoke') return
+
+      // Animation scales are deliberately left alone. Turning them off device-wide makes a frame
+      // deterministic by abolishing the thing being photographed, and it outlives the run: a failed
+      // flow used to leave every app on the device without animations, with nothing on screen to say
+      // why. The flows wait for animations to finish instead — `waitForAnimationToEnd` before each
+      // shot, which is the same guarantee scoped to the run.
 
       // SystemUI demo mode pins the status bar so panels do not disagree on clock or battery.
       await adb('shell', 'settings', 'put', 'global', 'sysui_demo_allowed', clean ? '1' : '0')

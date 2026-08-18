@@ -79,6 +79,7 @@ private func ttsSampleAlert(soundType: String) -> FiredAlert {
     thresholdMax: nil,
     soundType: soundType,
     rangeDepth: nil,
+    beepCount: alertBeepCountDefault,
     firedAt: alertNowMs()
   )
 }
@@ -297,13 +298,20 @@ internal final class AlertAudioPlayer {
 
   // MARK: - Single
 
-  /// Triple-beep pattern (0 / 500ms / 1000ms) ported from Android `playSingle`.
-  func playSingle(soundType: String) {
+  /// Play one announcement: `beepCount` plays of the rule's sound, `alertBeepSpacingMs` apart.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
+  func playSingle(soundType: String, beepCount: Int = alertBeepCountDefault) {
     guard !released else { return }
     let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
+    let beeps = normalizedAlertBeepCount(beepCount)
     play(preset.fileName)
-    geigerQueue.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.play(preset.fileName) }
-    geigerQueue.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.play(preset.fileName) }
+    guard beeps > 1 else { return }
+    let spacing = alertBeepSpacingMs / 1000
+    for index in 1..<beeps {
+      geigerQueue.asyncAfter(deadline: .now() + spacing * Double(index)) { [weak self] in
+        self?.play(preset.fileName)
+      }
+    }
   }
 
   // MARK: - Preview

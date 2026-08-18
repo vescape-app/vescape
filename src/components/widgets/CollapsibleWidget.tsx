@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
-import { useEdgeDrawerScrollToOpenEdge } from '@/components/overlays/AnchoredSheet'
+import { useEdgeDrawerScrollToOpenEdge } from '@/components/overlays/EdgeDrawer'
 import { widgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 

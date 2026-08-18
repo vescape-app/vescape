@@ -23,9 +23,7 @@ describe('production promotion workflow contract', () => {
     expect(validation).toBeLessThan(mutation)
     expect(workflow).toContain('git merge-base --is-ancestor "$SOURCE_SHA" origin/main')
     expect(workflow).toContain('git show "$SOURCE_SHA:package.json"')
-    expect(workflow).toContain('IFS=. read -r TRAIN_MAJOR TRAIN_MINOR _ <<< "$MARKETING_VERSION"')
-    expect(workflow).toContain('TRAIN_VERSION="$TRAIN_MAJOR.$TRAIN_MINOR"')
-    expect(workflow).toContain('git cat-file -e "$SOURCE_SHA:release-notes/$TRAIN_VERSION.md"')
+    expect(workflow).toContain('git cat-file -e "$SOURCE_SHA:release-notes/$MARKETING_VERSION.md"')
     expect(workflow).toContain('promotion-manifest')
   })
 

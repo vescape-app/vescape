@@ -16,7 +16,7 @@ Caveman style. Short. Command facts.
 ```bash
 bun run wear:build     # native sync + :wearos:assembleDebug
 bun run wear:test      # native sync + :wearos:testDebugUnitTest
-bun run wear:install   # build + sign with phone cert + install + launch + smoke check
+bun run wear           # build + sign with phone cert + install + launch + smoke check
 ```
 
 Each command runs `native:sync android` first, so `watch/wearos` edits reach `android/wearos` via
@@ -27,20 +27,27 @@ prebuild (`withWearMirror`). No manual `rm -rf android/wearos && cp -R`.
 - Durable Wear source: `watch/wearos`.
 - Generated native target: `android/wearos`. Gitignored. Do not make lasting edits there.
 - Use Gradle for native Android builds. Package manager rules still: no `npm`, `yarn`, `pnpm`, `npx`.
-- `wear:install` picks the watch by `ro.build.characteristics=watch`, not a remembered transport id.
+- `wear` picks the watch by `ro.build.characteristics=watch`, not a remembered transport id.
+- Device choice is the shared picker (`scripts/lib/devices.ts`), same as `ss` and `bun run android`:
+  watches only here, last pick on top, auto-taken after 3s unless a key is pressed. No TTY -> pass
+  `--device <name|serial>`, e.g. `bun run wear --device WearLarge`. Same flag on `wear:replay`.
+  mDNS duplicates of one watch collapse by `ro.serialno`, never prompt.
 - Do not uninstall unless install says `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (the script handles that case itself) or user asks.
 
 ## Known Devices
 
 - Watch: OnePlus Watch 3 / `OPWWE231`.
-- Phone package and watch package both: `app.vescape`.
-- Watch activity: `app.vescape/.wear.MainActivity`.
-- Watch often appears twice via mDNS. Script picks the first watch and says so.
+- Phone package and watch package match, including the Expo profile suffix: dev prebuild installs
+  `app.vescape.dev`, store build is `app.vescape`. Both can sit on the watch at once, two icons.
+- Watch activity class is always `app.vescape.wear.MainActivity`, so the component is
+  `<applicationId>/app.vescape.wear.MainActivity`. `wear` reads the applicationId back from the
+  generated `android/wearos/build.gradle` — do not hardcode `app.vescape`.
+- Watch often appears twice via mDNS. Script collapses the duplicate by `ro.serialno`.
 
 ## Why the re-sign
 
 Data Layer needs same package + same cert on phone and watch. Gradle signs the watch APK with its own
-debug key, so `wear:install` re-signs with the phone debug cert (`android/app/debug.keystore`).
+debug key, so `wear` re-signs with the phone debug cert (`android/app/debug.keystore`).
 
 Cert mismatch shows up in watch logs as:
 
@@ -51,7 +58,7 @@ WearableService: Failed to deliver message ... action=/telemetry
 
 ## Smoke Check
 
-`wear:install` already fails on a fresh crash in the watch log. For the ongoing notification:
+`wear` already fails on a fresh crash in the watch log. For the ongoing notification:
 
 ```bash
 adb -s <watch-serial> shell dumpsys notification --noredact | rg -i "app.vescape|vescape_watch_mirror|Telemetry mirror active|numOngoing" -n -C 2

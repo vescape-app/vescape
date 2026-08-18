@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
 import { interaction, theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 interface HistoryStatsBarProps {
   session: HistorySession
@@ -69,6 +70,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
               {secondaryStats.map((item) => (
                 <CompactStat key={item.key} item={item} />
               ))}
+              <View style={styles.toggleCell} />
             </View>
           </View>
         ) : (
@@ -124,6 +126,13 @@ function sessionToStats(session: HistorySession): StatItem[] {
       accent: theme.palette.sky.color,
     },
     {
+      key: 'rideTime',
+      label: 'Time',
+      ...formatDuration(rideDurationMs(session)),
+      icon: ClockCountdownIcon,
+      accent: theme.palette.purple.color,
+    },
+    {
       key: 'topSpeed',
       label: 'Top Speed',
       value: formatSpeed(session.maxSpeedKmh),
@@ -132,27 +141,20 @@ function sessionToStats(session: HistorySession): StatItem[] {
       accent: theme.telemetry.speed,
     },
     {
+      key: 'avgSpeed',
+      label: 'Avg Speed',
+      value: formatSpeed(session.avgSpeedKmh),
+      unit: 'km/h',
+      icon: RepeatIcon,
+      accent: theme.palette.sky.light,
+    },
+    {
       key: 'maxDuty',
       label: 'Max Duty',
       value: formatDuty(session.maxDuty),
       unit: '%',
       icon: LightningIcon,
       accent: theme.telemetry.duty,
-    },
-    {
-      key: 'rideTime',
-      label: 'Time',
-      ...formatDuration(rideDurationMs(session)),
-      icon: ClockCountdownIcon,
-      accent: theme.palette.purple.color,
-    },
-    {
-      key: 'avgSpeed',
-      label: 'Avg Speed',
-      value: formatSpeed(session.avgSpeedKmh),
-      unit: 'km/h',
-      icon: RepeatIcon,
-      accent: theme.palette.teal.color,
     },
     {
       key: 'mosfetTemp',
@@ -199,12 +201,15 @@ function formatCount(value: number): string {
 }
 
 function formatDistance(valueM: number | null): Pick<StatItem, 'value' | 'unit'> {
-  if (valueM == null) return { value: '-' }
+  if (valueM == null) return { value: DASH }
   if (valueM < 1000) return { value: String(Math.round(valueM)), unit: 'm' }
   return { value: (valueM / 1000).toFixed(1), unit: 'km' }
 }
 
 function formatDuration(valueMs: number): Pick<StatItem, 'value' | 'unit'> {
+  // A zoomed window is often shorter than a minute, and "1 min" for eight seconds of riding is
+  // a wrong number rather than a rounded one.
+  if (valueMs < 60_000) return { value: String(Math.max(1, Math.round(valueMs / 1000))), unit: 's' }
   const totalMinutes = Math.max(1, Math.round(valueMs / 60_000))
   if (totalMinutes < 60) return { value: String(totalMinutes), unit: 'min' }
   const hours = Math.floor(totalMinutes / 60)
@@ -219,7 +224,7 @@ function formatSpeed(valueKmh: number): string {
 }
 
 function formatTemp(value: number | null): Pick<StatItem, 'value' | 'unit'> {
-  if (value == null) return { value: '-' }
+  if (value == null) return { value: DASH }
   return { value: String(Math.round(value)), unit: '°C' }
 }
 
@@ -229,7 +234,9 @@ function formatDuty(value: number): string {
 
 function formatWh(value: number): Pick<StatItem, 'value' | 'unit'> {
   if (value < 1) return { value: (value * 1000).toFixed(0), unit: 'mWh' }
-  return { value: value.toFixed(1), unit: 'Wh' }
+  // Whole watt-hours: the cell is one line of a five-across bar, and the decimal was the digit
+  // that pushed the number into shrinking to fit.
+  return { value: String(Math.round(value)), unit: 'Wh' }
 }
 
 const styles = StyleSheet.create({

@@ -5,5 +5,7 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Battery'
     timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 20000
 - takeScreenshot: ${OUT_DIR}/03-battery
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

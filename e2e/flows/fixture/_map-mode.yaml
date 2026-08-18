@@ -1,0 +1,21 @@
+# Enter map mode. The mode tabs only exist there, and map mode is reached by the reveal pan gesture
+# (MapRevealGesture) rather than a button or a route — see the note on overlays in issue #318.
+appId: ${APP_ID}
+---
+# Slow and retried, both for the same reason: `MapRevealGesture`'s pan runs `.runOnJS(true)`, so its
+# `onUpdate` competes with the replay's telemetry on the JS thread. A fast swipe delivers few motion
+# events, and when they are coalesced or dropped the accumulated translation never reaches the
+# 120 dp reveal distance — the gesture springs back and the mode tabs never mount. A longer swipe
+# samples more events, and a failed attempt leaves the screen exactly where it started, so retrying
+# is safe. This is the flow's slowest step on a loaded device; it is not padding.
+- retry:
+    maxRetries: 3
+    commands:
+      - swipe:
+          start: 50%, 60%
+          end: 50%, 20%
+          duration: 800
+      - extendedWaitUntil:
+          visible:
+            id: map-mode-weather
+          timeout: 15000

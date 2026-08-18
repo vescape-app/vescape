@@ -1,17 +1,15 @@
 import { parseMarketingVersion } from '../../src/modules/release/lib/releaseNotes'
 
-export interface PublishedRelease {
+export interface ReleaseTag {
   tagName: string
-  name: string
-  publishedAt: string
+  sha: string
 }
 
 export interface ReleaseNotePlan {
-  repo: string
   targetSha: string
   targetRef: string
   marketingVersion: string
-  previous: (PublishedRelease & { sha: string }) | null
+  previous: ReleaseTag | null
   comparison: string
   diffBase: string
 }
@@ -42,37 +40,20 @@ async function checked(program: string, args: string[], label: string): Promise<
   return result.stdout
 }
 
-export function parsePublishedReleases(value: unknown): PublishedRelease[] {
-  if (!Array.isArray(value)) throw new Error('GitHub releases response is invalid')
-  return value
-    .filter(
-      (release): release is Record<string, unknown> =>
-        !!release &&
-        typeof release === 'object' &&
-        release.draft === false &&
-        release.prerelease === false &&
-        typeof release.tag_name === 'string' &&
-        typeof release.published_at === 'string',
-    )
-    .map((release) => ({
-      tagName: release.tag_name as string,
-      name:
-        typeof release.name === 'string' && release.name
-          ? release.name
-          : (release.tag_name as string),
-      publishedAt: release.published_at as string,
-    }))
-    .toSorted((left, right) => right.publishedAt.localeCompare(left.publishedAt))
-}
-
-export function parseHistoricalProductionTags(value: string): PublishedRelease[] {
+/** Candidate bases: every version tag this repo cuts, prerelease (`v*`) or production. */
+// Annotated tags resolve through the dereferenced commit; lightweight tags point at it directly.
+export function parseReleaseTags(value: string): ReleaseTag[] {
   return value
     .split('\n')
-    .map((tagName) => tagName.trim())
+    .map((line) => line.trim())
     .filter(Boolean)
-    .flatMap((tagName) => {
-      const match = /^production-(\d+\.\d+\.\d+)$/.exec(tagName)
-      return match ? [{ tagName, name: match[1], publishedAt: '' }] : []
+    .flatMap((line) => {
+      const [tagName, objectName, dereferenced] = line.split(' ')
+      if (!tagName || !objectName) throw new Error(`Invalid tag metadata "${line}"`)
+      const sha = dereferenced || objectName
+      return /^(v|production-)\d+\.\d+\.\d+$/.test(tagName)
+        ? [{ tagName, sha: sha.toLowerCase() }]
+        : []
     })
 }
 
@@ -80,11 +61,6 @@ export async function resolveReleaseNotePlan(
   targetRef: string,
   versionOverride?: string,
 ): Promise<ReleaseNotePlan> {
-  const repo = await checked(
-    'gh',
-    ['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner'],
-    'Cannot resolve repository',
-  )
   const targetSha = (
     await checked(
       'git',
@@ -100,40 +76,27 @@ export async function resolveReleaseNotePlan(
     throw new Error(`Invalid marketing version "${String(marketingVersion)}"`)
   }
 
-  const response = await checked(
-    'gh',
-    ['api', `repos/${repo}/releases?per_page=100`],
-    'Cannot list published releases',
-  )
-  const releases = parsePublishedReleases(JSON.parse(response))
-  const historicalTags = parseHistoricalProductionTags(
+  const tags = parseReleaseTags(
     await checked(
       'git',
-      ['tag', '--list', 'production-*', '--sort=-version:refname'],
-      'Cannot list historical production tags',
+      ['for-each-ref', '--format=%(refname:short) %(objectname) %(*objectname)', 'refs/tags/*'],
+      'Cannot list release tags',
     ),
   )
-  const candidates = [...releases, ...historicalTags].filter(
-    (candidate, index, all) =>
-      all.findIndex((other) => other.tagName === candidate.tagName) === index,
-  )
-  let previous: ReleaseNotePlan['previous'] = null
+  let previous: ReleaseTag | null = null
   let previousDistance = Number.POSITIVE_INFINITY
-  for (const release of candidates) {
-    const resolved = await command('git', ['rev-parse', '--verify', `${release.tagName}^{commit}`])
-    if (resolved.exitCode !== 0) continue
-    const sha = resolved.stdout.toLowerCase()
-    if (sha === targetSha) continue
-    const ancestor = await command('git', ['merge-base', '--is-ancestor', sha, targetSha])
+  for (const tag of tags) {
+    if (tag.sha === targetSha) continue
+    const ancestor = await command('git', ['merge-base', '--is-ancestor', tag.sha, targetSha])
     if (ancestor.exitCode !== 0) continue
-    const distanceResult = await command('git', ['rev-list', '--count', `${sha}..${targetSha}`])
+    const distanceResult = await command('git', ['rev-list', '--count', `${tag.sha}..${targetSha}`])
     const distance = Number(distanceResult.stdout)
     if (
       distanceResult.exitCode === 0 &&
       Number.isSafeInteger(distance) &&
       distance < previousDistance
     ) {
-      previous = { ...release, sha }
+      previous = tag
       previousDistance = distance
     }
   }
@@ -142,7 +105,6 @@ export async function resolveReleaseNotePlan(
     ? previous.sha
     : await checked('git', ['hash-object', '-t', 'tree', '/dev/null'], 'Cannot create empty tree')
   return {
-    repo,
     targetSha,
     targetRef,
     marketingVersion,

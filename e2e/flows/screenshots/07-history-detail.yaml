@@ -3,13 +3,8 @@ appId: ${APP_ID}
 ---
 - tapOn:
     id: history-button
-- extendedWaitUntil:
-    visible:
-      id: history-session-sheet
-    timeout: 30000
-- tapOn:
-    id: 'history-session-row-.*'
-    index: 0
+# The newest ride is already open — same one the ride list's first row would have selected, so
+# there is nothing to pick.
 - extendedWaitUntil:
     visible:
       id: history-metric-tab-duty
@@ -20,5 +15,7 @@ appId: ${APP_ID}
     id: history-metric-tab-tempMotor
 - tapOn:
     id: history-metric-tab-tempController
+- waitForAnimationToEnd:
+    timeout: 20000
 - takeScreenshot: ${OUT_DIR}/07-history-detail
-- runFlow: _home.yaml
+- runFlow: ../fixture/_home.yaml

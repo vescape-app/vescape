@@ -15,11 +15,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
+import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.TelemetryRepository
+import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
@@ -66,6 +68,14 @@ data class SessionConfig(
      * `recordingEnabled = false` and `autoReconnect = false`.
      */
     val replayRecordingName: String? = null,
+    /**
+     * How much of the recording plays faster than real time before playback settles to 1×, and how
+     * much faster. `0` — the default and what the dev Replay UI uses — is a plain 1× replay.
+     *
+     * @see expo.modules.vescapecore.replay.ReplayClock
+     */
+    val replayWarmupMs: Long = 0L,
+    val replayWarmupSpeed: Double = 1.0,
 )
 
 internal data class PendingStart(
@@ -218,6 +228,20 @@ class CoreForegroundService : Service() {
 
         fun stopRemoteTilt(): Boolean = instance?.controller?.stopRemoteTilt() ?: false
 
+        fun startBoardMove(input: Int): Boolean = instance?.controller?.startBoardMove(input) ?: false
+
+        fun stopBoardMove(): Boolean = instance?.controller?.stopBoardMove() ?: false
+
+        /** Wrist Board Move tick (ADR-0033). Dropped when no session is running — nothing to move. */
+        fun watchMove(direction: Int) {
+            instance?.controller?.watchMove(direction)
+        }
+
+        /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
+        internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
+            instance?.controller?.watchMirrorWakeLevel(level)
+        }
+
         fun pushProfileToBoard(
             context: Context,
             profileId: String,
@@ -324,6 +348,16 @@ class CoreForegroundService : Service() {
             instance?.controller?.updateGroupRideIdentity(riderId, riderName, riderColor)
         }
 
+        /**
+         * Offer a compass reading to whatever Debug Recording is running. No service, no session or
+         * no active recorder means it is simply dropped — JS pushes these unconditionally while the
+         * map's heading layer is live, and native is the one that knows whether anything is
+         * recording.
+         */
+        fun recordPhoneHeading(context: Context, headingDeg: Double) {
+            instance?.controller?.recordPhoneHeading(headingDeg)
+        }
+
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {
             RecordingCoordinator.requestTelemetryRecording(enabled)
             instance?.controller?.setTelemetryRecordingEnabled(enabled)
@@ -332,6 +366,10 @@ class CoreForegroundService : Service() {
 
         fun setBmsSeriesFocused(focused: Boolean) {
             instance?.controller?.setBmsSeriesFocused(focused)
+        }
+
+        fun setFocusedSeriesMetrics(metrics: List<String>) {
+            instance?.controller?.setFocusedSeriesMetrics(metrics)
         }
 
         fun setLiveHistoryLimit(limit: Number?) {
@@ -393,6 +431,9 @@ class CoreForegroundService : Service() {
                 ?: idleState(AppDataRepository.get(context.applicationContext))
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
+
+        /** Live rider position for Navigation; null while the service is not up. */
+        fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
         private fun idleState(repository: AppDataRepository): Map<String, Any?> {
             val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }

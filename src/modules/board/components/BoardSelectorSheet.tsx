@@ -22,6 +22,8 @@ interface BoardSelectorSheetProps {
   onAddBoard: () => void
 }
 
+const PULL_RATE_FONT_SIZE = 11
+
 export function BoardSelectorSheet({
   visible,
   triggerRef,
@@ -71,7 +73,8 @@ export function BoardSelectorSheet({
                   value={liveTelemetryRuntime.values.pullRateHz}
                   decimals={0}
                   unit=" Hz"
-                  style={styles.pullRate}
+                  size={PULL_RATE_FONT_SIZE}
+                  color={theme.palette.slate.textMuted}
                 />
               )}
             </View>
@@ -159,11 +162,6 @@ const styles = StyleSheet.create({
   },
   boardNameActive: {
     color: theme.palette.slate.textPrimary,
-  },
-  pullRate: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
   },
   addRow: {
     flexDirection: 'row',

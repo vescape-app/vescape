@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
 import {
-  DEFAULT_GLIDE_MS,
   glideDurationMs,
   interpolateFix,
   type FixCoordinate,
@@ -27,22 +26,6 @@ import {
  * fixes stamped a second apart within milliseconds of each other; pacing anything to those stamps
  * would leave it a long way behind what is actually on screen.
  */
-export function useFixGlideMs(fix: FixCoordinate | null): number {
-  const [glideMs, setGlideMs] = useState(DEFAULT_GLIDE_MS)
-  const previousArrivalRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    if (fix == null) return
-    const arrivedAt = Date.now()
-    const next = glideDurationMs(previousArrivalRef.current, arrivedAt)
-    previousArrivalRef.current = arrivedAt
-    const frame = requestAnimationFrame(() => setGlideMs(next))
-    return () => cancelAnimationFrame(frame)
-  }, [fix])
-
-  return glideMs
-}
-
 export function useSmoothedFix<T extends FixCoordinate>(fix: T | null): T | null {
   const [smoothed, setSmoothed] = useState<T | null>(fix)
   const fromRef = useRef<FixCoordinate | null>(null)

@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Splash shown at cold start (SplashScreen API), replacing the default launcher-icon splash. -->
-    <style name="Theme.Vescape.Splash" parent="Theme.SplashScreen">
+    <!-- IconBackground, not plain Theme.SplashScreen: core-splashscreen only honours
+         windowSplashScreenIconBackgroundColor under this parent, and silently ignores it otherwise. -->
+    <style name="Theme.Vescape.Splash" parent="Theme.SplashScreen.IconBackground">
         <!-- Wear branded launch requires a black background, not the app surface color. -->
         <item name="windowSplashScreenBackground">@android:color/black</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <!-- The sygnet is a hairline mark, far too thin to read as an icon on black. The icon
+             background fills the whole 48x48dp frame with the app surface color so branded launch
+             shows an icon-sized shape, matching assets/images/icon.png. -->
+        <item name="windowSplashScreenIconBackgroundColor">#111827</item>
         <item name="postSplashScreenTheme">@android:style/Theme.DeviceDefault</item>
     </style>
 </resources>

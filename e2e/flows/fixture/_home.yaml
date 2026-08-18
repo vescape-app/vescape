@@ -1,0 +1,66 @@
+# Return to the live telemetry home from whatever panel is open (helper — shared by the screenshot
+# and smoke runs).
+#
+# Every dismissal goes through an on-screen affordance rather than `back`: Android's hardware back is
+# handled by `useMainScreenController`, but iOS has no equivalent for overlay state (map, weather,
+# legal limits and history are view states, not routes), and Maestro's `back` does not dismiss a
+# JS-rendered drawer either. Tapping the control the rider taps keeps this flow identical on both
+# platforms, which is the contract for the store set: one flow, two platforms, the same panels.
+#
+# Every exit lands straight on telemetry (`enterTelemetry`), so at most one branch fires.
+#
+# It ends on the `battery-bar` wait and nothing more. A settle belongs to whatever the caller does
+# next — the screenshot panels each wait out their own before their shot — and a blanket one here
+# would be charged to every panel twice, on a screen whose live gauges never stop animating and so
+# never return early.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: weather-exit
+    commands:
+      - tapOn:
+          id: weather-exit
+- runFlow:
+    when:
+      visible:
+        id: legal-limits-exit
+    commands:
+      - tapOn:
+          id: legal-limits-exit
+- runFlow:
+    when:
+      visible:
+        id: history-back
+    commands:
+      - tapOn:
+          id: history-back
+- runFlow:
+    when:
+      visible:
+        id: social-drawer-backdrop
+    commands:
+      # A point, not the element: the backdrop is a full-screen `Pressable` *behind* the drawer, so
+      # tapping its centre lands on the drawer content and the drawer stays open. The lower screen
+      # is backdrop everywhere the drawer does not reach.
+      - tapOn:
+          point: 50%, 90%
+- runFlow:
+    when:
+      visible:
+        id: header-back
+    commands:
+      - tapOn:
+          id: header-back
+- runFlow:
+    when:
+      visible:
+        id: map-exit
+    commands:
+      - tapOn:
+          id: map-exit
+- extendedWaitUntil:
+    visible:
+      id: battery-bar
+    timeout: 30000

@@ -64,7 +64,7 @@ env:
 jobs:
   production:
     name: Exact production rollout and GitHub Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -89,9 +89,7 @@ jobs:
           git fetch origin main
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
           test "$(git show "$SOURCE_SHA:package.json" | jq -r .version)" = "$MARKETING_VERSION"
-          IFS=. read -r TRAIN_MAJOR TRAIN_MINOR _ <<< "$MARKETING_VERSION"
-          TRAIN_VERSION="$TRAIN_MAJOR.$TRAIN_MINOR"
-          git cat-file -e "$SOURCE_SHA:release-notes/$TRAIN_VERSION.md"
+          git cat-file -e "$SOURCE_SHA:release-notes/$MARKETING_VERSION.md"
         env:
           REQUEST_ID: ${{ inputs.request_id }}
           OPEN_PROMOTION_RUN_ID: ${{ inputs.open_promotion_run_id }}

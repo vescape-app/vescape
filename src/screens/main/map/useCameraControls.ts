@@ -1,13 +1,5 @@
 import type { Camera as CameraRef } from '@rnmapbox/maps'
-import {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
 
 import { zoomLevelForDelta } from '@/helpers/mapGeometry'
@@ -18,9 +10,8 @@ import {
   reduceMapCameraIntent,
   type MapCameraMode,
 } from '@/modules/map/lib/cameraController'
+import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import {
-  cameraDistanceTo,
-  cameraMoveDuration,
   clamp,
   liveFollowKey,
   MIN_ZOOM,
@@ -30,6 +21,7 @@ import {
 import type { UseCameraControlsParams } from '@/screens/main/map/cameraControlTypes'
 import { useCameraIntentCommands } from '@/screens/main/map/useCameraIntentCommands'
 import { useCameraPreviewGestures } from '@/screens/main/map/useCameraPreviewGestures'
+import { useMainMapImperativeHandle } from '@/screens/main/map/useMainMapImperativeHandle'
 import { useHistoryCameraFraming } from '@/screens/main/map/useHistoryCameraFraming'
 
 export type { CameraSnapshot, HistoryPreviewTarget }
@@ -40,7 +32,7 @@ export function useCameraControls({
   persistedFallback,
   perspectiveEnabled,
   mapViewport,
-  mapNavigationMode,
+  mapOrientationMode,
   heading,
   history,
   follow,
@@ -54,34 +46,61 @@ export function useCameraControls({
     preview: historyPreview,
     previewRoute: historyPreviewRoute,
     rideRoute,
+    focusRoute: historyFocusRoute,
     selectionKey: historySelectionKey,
   } = history
-  const { animationDuration: followAnimationDuration, updatesEnabled: liveFollowUpdatesEnabled } =
-    follow
+  const { updatesEnabled: liveFollowUpdatesEnabled } = follow
   const cameraRef = useRef<CameraRef>(null)
   const currentCameraRef = useRef<CameraSnapshot | null>(null)
-  const historyPreviewTargetRef = useRef<HistoryPreviewTarget | null>(null)
   const lastFollowKeyRef = useRef<string | null>(null)
   const followZoomLevelRef = useRef<number | null>(null)
+  const previewPanActiveRef = useRef(false)
   const previousGpsHeadingModeRef = useRef(gpsMode && !phoneMode)
-  const phoneHeadingCameraSuspensionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recenterLiveRef = useRef<
     ((options?: { resetPadding?: boolean; animationDuration?: number }) => void) | null
   >(null)
   const controllerStateRef = useRef(initialMapCameraControllerState)
+  // Every camera write funnels through the spring engine; retargets stay
+  // velocity-continuous no matter which feature asks for the camera next.
+  // applyFrame only ever runs from the engine's frame loop, never during render.
+  // eslint-disable-next-line react-hooks/refs
+  const [engine] = useState(() =>
+    createCameraEngine({
+      // setCameraDirect deliberately does not interrupt native camera
+      // animations (see docs/agents/mapbox-patches.md), so a fling outlives
+      // every frame the engine writes unless it is cancelled outright.
+      cancelNativeMotion: () => cameraRef.current?.cancelCameraAnimations(),
+      applyFrame: (camera: EngineCamera) => {
+        currentCameraRef.current = camera
+        cameraRef.current?.setCameraDirect({
+          center: camera.centerCoordinate,
+          zoom: camera.zoomLevel,
+          heading: camera.heading,
+          pitch: camera.pitch,
+          padding: camera.padding,
+        })
+      },
+    }),
+  )
+  useEffect(() => {
+    // Fast Refresh and React's development effect checks preserve hook state while cleaning up
+    // effects. Reactivate that retained engine before camera commands can reach it again.
+    engine.resume()
+    return () => engine.destroy()
+  }, [engine])
   const cameraRefs = useMemo(
     () => ({
       cameraRef,
       currentCameraRef,
       controllerStateRef,
       followZoomLevelRef,
-      historyPreviewTargetRef,
       lastFollowKeyRef,
+      previewPanActiveRef,
+      engine,
     }),
-    [],
+    [engine],
   )
   const [cameraMode, setCameraModeRaw] = useState<MapCameraMode>({ kind: 'liveFollow' })
-  const [phoneHeadingCameraSuspended, setPhoneHeadingCameraSuspended] = useState(false)
   const { width: windowWidth, height: viewportHeight } = useWindowDimensions()
   const historyViewport = useMemo(
     () =>
@@ -119,26 +138,6 @@ export function useCameraControls({
     [setCameraModeState],
   )
 
-  const suspendPhoneHeadingCamera = useCallback(
-    (animationDuration: number) => {
-      if (!phoneMode) return
-      if (phoneHeadingCameraSuspensionTimeoutRef.current) {
-        clearTimeout(phoneHeadingCameraSuspensionTimeoutRef.current)
-        phoneHeadingCameraSuspensionTimeoutRef.current = null
-      }
-      if (animationDuration <= 0) {
-        setPhoneHeadingCameraSuspended(false)
-        return
-      }
-      setPhoneHeadingCameraSuspended(true)
-      phoneHeadingCameraSuspensionTimeoutRef.current = setTimeout(() => {
-        phoneHeadingCameraSuspensionTimeoutRef.current = null
-        setPhoneHeadingCameraSuspended(false)
-      }, animationDuration)
-    },
-    [phoneMode],
-  )
-
   const setFollowGps = useCallback(
     (enabled: boolean) => {
       if (enabled) {
@@ -166,10 +165,8 @@ export function useCameraControls({
 
   const stopCameraAnimation = useCallback(() => {
     setFollowGps(false)
-    const current = currentCameraRef.current
-    if (!current) return
-    cameraRef.current?.setCamera({ ...current, animationDuration: 0 })
-  }, [setFollowGps])
+    engine.stop()
+  }, [engine, setFollowGps])
 
   const gpsCamera = useMemo(() => {
     if (!cameraFix) {
@@ -195,13 +192,13 @@ export function useCameraControls({
   const getLiveFollowCamera = useCallback(() => {
     const baseZoomLevel = followZoomLevelRef.current ?? gpsCamera.zoomLevel
     const manualFollowZoom = followZoomLevelRef.current != null
-    const effectiveNavigationMode =
-      mapNavigationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapNavigationMode
+    const effectiveOrientationMode =
+      mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode
     const effect = reduceMapCameraIntent(controllerStateRef.current, {
       type: 'FollowLive',
       gpsCamera: { ...gpsCamera, zoomLevel: baseZoomLevel },
       followHeadingDeg: getFollowDeg(),
-      navigationMode: effectiveNavigationMode,
+      orientationMode: effectiveOrientationMode,
       perspectiveEnabled,
       viewportHeight,
       preserveHeading: resetOnRecenter ? undefined : currentCameraRef.current?.heading,
@@ -216,73 +213,58 @@ export function useCameraControls({
   }, [
     gpsCamera,
     getFollowDeg,
-    mapNavigationMode,
+    mapOrientationMode,
     phoneReady,
     perspectiveEnabled,
     resetOnRecenter,
     viewportHeight,
   ])
 
-  const applyLiveFollowCamera = useCallback(
-    (animationDuration: number) => {
-      if (!cameraFix) return
-      const followCamera = getLiveFollowCamera()
-      lastFollowKeyRef.current = liveFollowKey(cameraFix.timestamp, followCamera)
-      currentCameraRef.current = followCamera
-      cameraRef.current?.setCamera({
-        ...followCamera,
-        animationDuration,
-        animationMode: 'easeTo',
-      })
-    },
-    [cameraFix, getLiveFollowCamera],
-  )
+  const applyLiveFollowCamera = useCallback(() => {
+    if (!cameraFix) return
+    const followCamera = getLiveFollowCamera()
+    lastFollowKeyRef.current = liveFollowKey(cameraFix.timestamp, followCamera)
+    engine.setTarget({
+      center: followCamera.centerCoordinate,
+      zoom: followCamera.zoomLevel,
+      heading: followCamera.heading,
+      pitch: followCamera.pitch,
+      padding: followCamera.padding,
+    })
+  }, [cameraFix, engine, getLiveFollowCamera])
 
   const recenterLive = useCallback(
     (options?: { resetPadding?: boolean; animationDuration?: number }) => {
       enterCameraMode({ kind: 'liveFollow' })
-      if (!cameraFix) return
       const followCamera = getLiveFollowCamera()
-      lastFollowKeyRef.current = liveFollowKey(cameraFix.timestamp, followCamera)
-      const duration =
-        options?.animationDuration ??
-        cameraMoveDuration(
-          cameraDistanceTo(currentCameraRef.current, cameraFix),
-          MAP_DEFAULTS.animationDuration,
-        )
-      suspendPhoneHeadingCamera(duration)
-      currentCameraRef.current = followCamera
-      cameraRef.current?.setCamera({
-        ...followCamera,
-        ...(options?.resetPadding
-          ? {
-              padding: followCamera.padding ?? {
-                paddingBottom: 0,
-                paddingTop: 0,
-                paddingLeft: 0,
-                paddingRight: 0,
-              },
-            }
-          : {}),
-        animationDuration: duration,
-        animationMode: 'easeTo',
-      })
+      lastFollowKeyRef.current = cameraFix ? liveFollowKey(cameraFix.timestamp, followCamera) : null
+      const target = {
+        center: followCamera.centerCoordinate,
+        zoom: followCamera.zoomLevel,
+        heading: followCamera.heading,
+        pitch: followCamera.pitch,
+        padding: options?.resetPadding
+          ? (followCamera.padding ?? {
+              paddingBottom: 0,
+              paddingTop: 0,
+              paddingLeft: 0,
+              paddingRight: 0,
+            })
+          : followCamera.padding,
+      }
+      if (options?.animationDuration === 0) {
+        engine.snap(target)
+      } else {
+        engine.setTarget(target)
+      }
       onHeadingChange(followCamera.heading)
     },
-    [cameraFix, enterCameraMode, getLiveFollowCamera, onHeadingChange, suspendPhoneHeadingCamera],
+    [cameraFix, engine, enterCameraMode, getLiveFollowCamera, onHeadingChange],
   )
 
   useEffect(() => {
     recenterLiveRef.current = recenterLive
   }, [recenterLive])
-  useEffect(
-    () => () => {
-      if (phoneHeadingCameraSuspensionTimeoutRef.current) {
-        clearTimeout(phoneHeadingCameraSuspensionTimeoutRef.current)
-      }
-    },
-    [],
-  )
 
   const { getHistoryPreviewCamera, previewHistorySession } = useHistoryCameraFraming({
     cameraRefs,
@@ -291,6 +273,7 @@ export function useCameraControls({
     preview: historyPreview,
     previewRoute: historyPreviewRoute,
     rideRoute,
+    focusRoute: historyFocusRoute,
     viewport: historyViewport,
     perspectiveEnabled,
     dispatchCameraIntent,
@@ -302,7 +285,6 @@ export function useCameraControls({
     cameraFix,
     followGps,
     gpsCamera,
-    gpsHeadingMode: gpsMode,
     historyActive,
     perspectiveEnabled,
     applyLiveFollowCamera,
@@ -311,13 +293,13 @@ export function useCameraControls({
     getLiveFollowCamera,
     setFollowGps,
     setFollowZoomLevel,
-    suspendPhoneHeadingCamera,
   })
   const intentCommands = useCameraIntentCommands({
     cameraRefs,
     gpsCamera,
-    mapNavigationMode,
+    mapOrientationMode,
     perspectiveEnabled,
+    viewport: historyViewport,
     dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,
     setFollowGps,
@@ -325,84 +307,15 @@ export function useCameraControls({
     onPerspectiveChange,
   })
 
-  const imperativeHandleLatest = {
+  useMainMapImperativeHandle(ref, {
+    currentCameraRef,
     getViewfinderCoordinateFromMap,
     gpsCamera,
     intentCommands,
     previewGestures,
     previewHistorySession,
     recenterLive,
-  }
-  const imperativeHandleLatestRef = useRef(imperativeHandleLatest)
-  useLayoutEffect(() => {
-    imperativeHandleLatestRef.current = imperativeHandleLatest
   })
-  useImperativeHandle(
-    ref,
-    () => ({
-      recenterLive(options?: { resetPadding?: boolean; animationDuration?: number }) {
-        imperativeHandleLatestRef.current.recenterLive(options)
-      },
-      previewHistorySession(preview: HistoryPreviewTarget) {
-        imperativeHandleLatestRef.current.previewHistorySession(preview)
-      },
-      beginPreviewPan() {
-        imperativeHandleLatestRef.current.previewGestures.beginPreviewPan()
-      },
-      previewPanBy(...args: [number, number, number?, number?]) {
-        imperativeHandleLatestRef.current.previewGestures.previewPanBy(...args)
-      },
-      endPreviewPan() {
-        imperativeHandleLatestRef.current.previewGestures.endPreviewPan()
-      },
-      beginPreviewZoom() {
-        imperativeHandleLatestRef.current.previewGestures.beginPreviewZoom()
-      },
-      previewZoomBy(scale: number) {
-        imperativeHandleLatestRef.current.previewGestures.previewZoomBy(scale)
-      },
-      endPreviewZoom() {
-        imperativeHandleLatestRef.current.previewGestures.endPreviewZoom()
-      },
-      restorePreviewPan() {
-        imperativeHandleLatestRef.current.previewGestures.restorePreviewPan()
-      },
-      async getViewfinderCoordinate() {
-        const { getViewfinderCoordinateFromMap, gpsCamera } = imperativeHandleLatestRef.current
-        const coordinate = await getViewfinderCoordinateFromMap?.()
-        if (coordinate) return coordinate
-        const center = currentCameraRef.current?.centerCoordinate ?? gpsCamera.centerCoordinate
-        return { longitude: center[0], latitude: center[1] }
-      },
-      resetRotation() {
-        imperativeHandleLatestRef.current.intentCommands.resetRotation()
-      },
-      togglePerspective() {
-        imperativeHandleLatestRef.current.intentCommands.togglePerspective()
-      },
-      setPadding(bottom: number) {
-        imperativeHandleLatestRef.current.intentCommands.setPadding(bottom)
-      },
-      zoomBy(delta: number) {
-        imperativeHandleLatestRef.current.intentCommands.zoomBy(delta)
-      },
-      focusCoordinate(coordinate: [number, number]) {
-        imperativeHandleLatestRef.current.intentCommands.focusCoordinate(coordinate)
-      },
-      centerCoordinatePreservingCamera(coordinate: [number, number]) {
-        imperativeHandleLatestRef.current.intentCommands.centerCoordinatePreservingCamera(
-          coordinate,
-        )
-      },
-      focusWeather() {
-        imperativeHandleLatestRef.current.intentCommands.focusWeather()
-      },
-      focusLegalLimits() {
-        imperativeHandleLatestRef.current.intentCommands.focusLegalLimits()
-      },
-    }),
-    [],
-  )
 
   useEffect(() => {
     if (
@@ -414,20 +327,13 @@ export function useCameraControls({
       controllerStateRef.current.mode.kind !== 'liveFollow'
     )
       return
-    historyPreviewTargetRef.current = null
     const followCamera = getLiveFollowCamera()
     const nextFollowKey = liveFollowKey(cameraFix.timestamp, followCamera)
     if (lastFollowKeyRef.current === nextFollowKey) return
-    applyLiveFollowCamera(
-      cameraMoveDuration(
-        cameraDistanceTo(currentCameraRef.current, cameraFix),
-        followAnimationDuration,
-      ),
-    )
+    applyLiveFollowCamera()
   }, [
     applyLiveFollowCamera,
     cameraFix,
-    followAnimationDuration,
     followGps,
     getLiveFollowCamera,
     historyActive,
@@ -457,14 +363,16 @@ export function useCameraControls({
   return {
     cameraRef,
     currentCameraRef,
+    engine,
+    previewPanActiveRef,
     gpsCamera,
     followGps,
     setFollowGps,
     stopCameraAnimation,
     setFollowZoomLevel,
     recenterLive,
+    fitRoute: intentCommands.fitRoute,
     getLiveFollowCamera,
     getHistoryPreviewCamera,
-    phoneHeadingCameraSuspended,
   }
 }

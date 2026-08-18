@@ -79,7 +79,63 @@ best-effort per-thread CPU. After manually preparing the same screen, skip setup
 bun run perf --label telemetry --seconds 20 --no-setup
 ```
 
-Future board-session flows should use an E2E native simulation mode instead of mocking JS stores. Native still owns Board Session, BLE/GPS, telemetry, and durable storage.
+Future board-session flows should use an E2E native simulation mode instead of mocking JS stores. Native still owns Board Session, BLE/GPS, telemetry, and durable storage. The smoke run below is
+the first step of that: it boots from fixtures and a replay instead of `e2eFake`.
+
+## Smoke
+
+`bun run smoke` walks the screens a rider actually opens — live telemetry, map modes, Ride History,
+the add-board wizard — and asserts on them. Android only, like the E2E suite.
+
+```sh
+bun run smoke                      # picks a device, builds, runs every flow
+bun run smoke --no-build           # reuse the smoke build already installed
+bun run smoke --flow 03-history    # one flow against the installed build
+bun run smoke --device <serial>    # skip the picker
+```
+
+It shares its boot with the screenshot capture below — Release build, restored fixture database,
+Debug Recording replayed through the real telemetry pipeline — and that is the whole point.
+`EXPO_PUBLIC_E2E=1` reroutes board and telemetry reads to `e2eFake` (~40 call sites in
+`modules/vescape-core/src/index.ts`), so the flows in `e2e/flows/*.yaml` assert against a fake and
+cannot catch a native regression. A smoke build sets `EXPO_PUBLIC_SMOKE=1` instead: nothing between
+the recorded BLE chunks and the rendered gauge is faked.
+
+One thing stays faked, and only one. An emulator or a desk-bound phone has no board to advertise, so
+BLE _discovery_ falls back to `e2eFake.scan()` — `FAKE_SCAN` in `modules/vescape-core/src/index.ts`.
+That fake stands in for absent hardware; every other `E2E_ENABLED` branch stands in for absent data,
+which fixtures and replay now supply.
+
+The replay recording has to outlast the flows that need it. `replay-thor301.jsonl` is a 13-minute
+ride, and a full pass can run longer than that — Maestro spends most of its time waiting for a live
+view hierarchy to settle. Flows 01-03 finish inside the window; `04-add-board` is written to work
+whether the session is still up or has already ended on its own.
+
+Flow order is load-bearing. `04-add-board` runs last because saving a board hands it to the
+connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
+down with it. That flow therefore asserts the wizard and the durable write, not a connection: a
+replay runs under a synthetic `replay:` board id (ADR 0024) and cannot stand in for a chosen board's
+session. Binding a replay to a given board id is native work; until then the board-connect path
+stays covered by the E2E suite's `connect-board`.
+
+Waits are on things the app renders, never on `waitForAnimationToEnd`. A live telemetry screen never
+stops animating, so that command spends its whole timeout every time. `e2e/flows/fixture/_boot.yaml`
+waits on `battery-bar` (only present once the session is delivering) and the map flow waits on each
+mode's own exit control.
+
+`map-settled` — the marker `MainMap` publishes from Mapbox's idle event — is _not_ used, despite
+looking made for this. It never appears in Maestro's view hierarchy even with the map fully drawn,
+and it has no caller anywhere in the repo, so it appears never to have worked. Fixing or deleting it
+is a follow-up.
+
+Maestro itself is the slow part of a smoke run, and it is not something the flows can tune away.
+`hierarchyBasedTap` waits for the view hierarchy to stop changing before it trusts a tap, and on
+these screens `accessibilityText` carries live values (`"93%, 80.0V"`), so it never does — a single
+tap on the telemetry screen can cost 20-40s. That is the price of asserting against a live UI rather
+than a frozen fake.
+
+`e2e/flows/fixture/` holds what the two runs share: the boot, the return-to-home dismissal ladder
+and the map reveal gesture.
 
 ## Store screenshots
 
@@ -126,7 +182,7 @@ render-rate warning).
 Data comes from two existing mechanisms, no new native code:
 
 - durable (history, boards, tunes, alerts): a backup zip at `shared/fixtures/screenshot-db.zip`,
-  staged into the app's fixture dir (`src/config/screenshotMode.ts`) and restored by
+  staged into the app's fixture dir (`src/config/fixtureSession.ts`) and restored by
   `restoreDatabase` on startup — Room on Android, GRDB on iOS, already `@parity` peers.
 - live (home hero panel): `startDebugReplay` at 1x through the real telemetry pipeline.
 
@@ -141,7 +197,7 @@ other board, renames the board/tunes/rider and the device MAC, then rebases ever
 newest ride reads as today. Re-run it when the dates look stale. Without the zip the run still
 works, with empty history.
 
-Fixture names travel as build-time env (`EXPO_PUBLIC_SCREENSHOTS_REPLAY`, `EXPO_PUBLIC_SCREENSHOTS_DB`)
+Fixture names travel as build-time env (`EXPO_PUBLIC_FIXTURE_REPLAY`, `EXPO_PUBLIC_FIXTURE_DB`)
 rather than a manifest file the app reads. On Android `expo-file-system` sandboxes paths outside the
 app's document and cache directories, so it cannot read the external files dir the runner pushes
 into — only native `restoreDatabase` can, via a `ContentResolver` open.
@@ -167,7 +223,8 @@ Other flags: `--replay <name>` (default `replay-thor301`), `--no-wait` (skip the
 
 The hero panel is captured last. `TelemetryPipeline.liveSeries` buckets the sparkline over
 `liveHistoryLimit` minutes of receipt timestamps, so filling it takes that much session time. Replay
-warmup covers the first three minutes up front: it plays as fast as it decodes against a clock
-shifted that far into the past, which fills the window instead of compressing the samples into a
-fraction of it (ADR 0024). The run waits out only whatever window is left beyond the warmup. The
-replay recording must be at least as long as the whole run.
+warmup covers the first six minutes up front: it plays at 30× against a clock shifted that far into
+the past, which fills the window instead of compressing the samples into a fraction of it (ADR
+0024). The window is wider than the sparkline's own, so the run waits out nothing beyond the twelve
+seconds the warmup itself costs. The replay recording must be at least as long as the whole run —
+warmup included, since it spends recording too.

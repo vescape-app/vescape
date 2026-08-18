@@ -4,28 +4,20 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { withSpring, withTiming, type SharedValue } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
-import { getBreakoutReleasePan, getResistedRevealPan } from '@/modules/map/lib/mapRevealMotion'
 
 interface MapRevealGestureProps {
   progress: SharedValue<number>
   dragOpacity: SharedValue<number>
   onPanStart: () => void
-  onPan: (
-    totalX: number,
-    totalY: number,
-    animationDuration?: number,
-    revealProgress?: number,
-  ) => void
+  onPan: (totalX: number, totalY: number, revealProgress: number) => void
   onZoomStart: () => void
   onZoom: (scale: number) => void
   onZoomEnd: () => void
   onReveal: () => void
-  onFinish: (revealed: boolean, accumulatedX?: number, accumulatedY?: number) => void
+  onFinish: (revealed: boolean) => void
 }
 
 const REVEAL_DISTANCE_DP = 120
-const RESISTANCE_AT_BREAK = 0.38
-const BREAK_RELEASE_MS = 100
 const FADE_TIMING = { duration: 260 } as const
 const REVEAL_SPRING = {
   damping: 18,
@@ -45,11 +37,6 @@ function createMapRevealGesture({
   onFinish,
 }: MapRevealGestureProps) {
   let completed = false
-  let appliedX = 0
-  let appliedY = 0
-  let breakoutX = 0
-  let breakoutY = 0
-  let breakoutStartedAt = 0
   let pinching = false
 
   const pan = Gesture.Pan()
@@ -58,32 +45,17 @@ function createMapRevealGesture({
     .minDistance(4)
     .onTouchesDown(() => {
       completed = false
-      appliedX = 0
-      appliedY = 0
-      breakoutX = 0
-      breakoutY = 0
-      breakoutStartedAt = 0
       progress.value = 0
       dragOpacity.value = 0
     })
     .onBegin(() => {
       completed = false
-      appliedX = 0
-      appliedY = 0
-      breakoutX = 0
-      breakoutY = 0
-      breakoutStartedAt = 0
       progress.value = 0
       dragOpacity.value = 0
       onPanStart()
     })
     .onStart(() => {
       completed = false
-      appliedX = 0
-      appliedY = 0
-      breakoutX = 0
-      breakoutY = 0
-      breakoutStartedAt = 0
       progress.value = 0
       dragOpacity.value = 0
     })
@@ -91,21 +63,11 @@ function createMapRevealGesture({
       const distance = Math.hypot(event.translationX, event.translationY)
       const shouldReveal = distance >= REVEAL_DISTANCE_DP
       const nextProgress = Math.min(1, distance / REVEAL_DISTANCE_DP)
-      const easedProgress = nextProgress * nextProgress
       dragOpacity.value = nextProgress
-
+      // The map always tracks the finger one to one. A drag that never reaches
+      // the reveal distance is undone by the spring back to live follow.
       if (completed) {
-        const releasedPan = getBreakoutReleasePan(
-          event.translationX,
-          event.translationY,
-          breakoutX,
-          breakoutY,
-          Date.now() - breakoutStartedAt,
-          BREAK_RELEASE_MS,
-        )
-        appliedX = releasedPan.x
-        appliedY = releasedPan.y
-        onPan(appliedX, appliedY, undefined, 1)
+        onPan(event.translationX, event.translationY, 1)
         return
       }
 
@@ -113,42 +75,18 @@ function createMapRevealGesture({
         completed = true
         progress.value = 1
         dragOpacity.value = 1
-        const resistedPan = getResistedRevealPan(
-          event.translationX,
-          event.translationY,
-          REVEAL_DISTANCE_DP,
-          RESISTANCE_AT_BREAK,
-        )
-        appliedX = resistedPan.x
-        appliedY = resistedPan.y
-        breakoutX = resistedPan.x
-        breakoutY = resistedPan.y
-        breakoutStartedAt = Date.now()
-        onPan(appliedX, appliedY, undefined, 1)
+        onPan(event.translationX, event.translationY, 1)
         onReveal()
         return
       }
 
-      const resistedPan = getResistedRevealPan(
-        event.translationX,
-        event.translationY,
-        REVEAL_DISTANCE_DP,
-        RESISTANCE_AT_BREAK,
-      )
-      appliedX = resistedPan.x
-      appliedY = resistedPan.y
-      progress.value = easedProgress
-      onPan(appliedX, appliedY, undefined, nextProgress)
+      progress.value = nextProgress * nextProgress
+      onPan(event.translationX, event.translationY, nextProgress)
     })
-    .onFinalize((event) => {
+    .onFinalize(() => {
       const wasCompleted = completed
       if (pinching) {
         completed = false
-        appliedX = 0
-        appliedY = 0
-        breakoutX = 0
-        breakoutY = 0
-        breakoutStartedAt = 0
         return
       }
       if (!completed) {
@@ -156,11 +94,6 @@ function createMapRevealGesture({
         dragOpacity.value = withTiming(0, FADE_TIMING)
       }
       completed = false
-      appliedX = 0
-      appliedY = 0
-      breakoutX = 0
-      breakoutY = 0
-      breakoutStartedAt = 0
       onFinish(wasCompleted)
     })
 
@@ -169,11 +102,6 @@ function createMapRevealGesture({
     .onBegin(() => {
       pinching = true
       completed = false
-      appliedX = 0
-      appliedY = 0
-      breakoutX = 0
-      breakoutY = 0
-      breakoutStartedAt = 0
       progress.value = 0
       dragOpacity.value = 0
       onZoomStart()
@@ -209,6 +137,13 @@ export function MapRevealGesture({
   onFinish,
 }: MapRevealGestureProps) {
   'use no memo'
+  // The detector only exists while a drag is possible and none is running yet, so any value left
+  // here by an earlier tree (a Fast Refresh mid-reveal) is stale and would fade the face out.
+  useEffect(() => {
+    progress.value = 0
+    dragOpacity.value = 0
+  }, [dragOpacity, progress])
+
   const handlePanStart = useLatestCallback(onPanStart)
   const handlePan = useLatestCallback(onPan)
   const handleZoomStart = useLatestCallback(onZoomStart)

@@ -1,6 +1,6 @@
 import type { LinkIntegrity } from 'vescape-core'
 
-export type LinkIntegrityWarning = {
+export interface LinkIntegrityWarning {
   text: string
   buttonText: string
   severity: 'warning' | 'error'

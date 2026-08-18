@@ -3,8 +3,8 @@ import {
   assertReleasePreparationStatus,
   bumpMarketingVersion,
   parsePorcelainPaths,
-  prepareTrainNotes,
-  releaseTrainNotesPath,
+  prepareReleaseNotes,
+  releaseNotesPath,
 } from './prepare'
 
 describe('release candidate version bump', () => {
@@ -31,13 +31,13 @@ describe('release candidate version bump', () => {
       assertReleasePreparationStatus({
         baseVersion: '0.83.1',
         workingVersion: '0.83.2',
-        changedPaths: ['package.json', 'release-notes/0.83.md'],
+        changedPaths: ['package.json', 'release-notes/0.83.2.md'],
         noteExists: true,
       }),
     ).not.toThrow()
   })
 
-  test('allows resuming a release draft that skipped train notes', () => {
+  test('allows resuming a release draft that skipped notes', () => {
     expect(() =>
       assertReleasePreparationStatus({
         baseVersion: '0.83.1',
@@ -53,53 +53,42 @@ describe('release candidate version bump', () => {
       assertReleasePreparationStatus({
         baseVersion: '0.83.1',
         workingVersion: '0.83.2',
-        changedPaths: ['package.json', 'release-notes/0.83.md', 'src/app.ts'],
+        changedPaths: ['package.json', 'release-notes/0.83.2.md', 'src/app.ts'],
         noteExists: true,
       }),
     ).toThrow('Commit or stash')
   })
 
-  test('rejects a release draft that deletes existing train notes', () => {
+  test('rejects a release draft that deletes existing notes', () => {
     expect(() =>
       assertReleasePreparationStatus({
         baseVersion: '0.83.1',
         workingVersion: '0.83.2',
-        changedPaths: ['package.json', 'release-notes/0.83.md'],
+        changedPaths: ['package.json', 'release-notes/0.83.2.md'],
         noteExists: false,
       }),
     ).toThrow('Commit or stash')
   })
 
-  test('resolves patch versions to their release-train notes', () => {
-    expect(releaseTrainNotesPath('0.84.3')).toBe('release-notes/0.84.md')
-    expect(releaseTrainNotesPath('0.84.3-rc.1')).toBe('release-notes/0.84.md')
+  test('resolves every version to its own notes file', () => {
+    expect(releaseNotesPath('0.84.3')).toBe('release-notes/0.84.3.md')
   })
 })
 
-describe('release-train authoring flow', () => {
+describe('release-note authoring flow', () => {
   const markdown = '## Improved\n\n- Better release flow.\n'
 
-  function dependencies(options: {
-    exists: boolean
-    choice: 'draft' | 'skip' | 'keep' | 'edit' | 'reprompt'
-  }) {
+  function dependencies(options: { exists: boolean; choice: 'draft' | 'skip' }) {
     let exists = options.exists
     const calls: string[] = []
     const deps = {
       exists: async () => exists,
       read: async () => markdown,
       select: async () => options.choice,
-      author: async () => {
-        calls.push('author')
+      author: async (version: string) => {
+        calls.push(`author:${version}`)
         exists = true
       },
-      edit: async () => {
-        calls.push('edit')
-      },
-      reprompt: async (_path: string, commits: string) => {
-        calls.push(`reprompt:${commits}`)
-      },
-      commits: async () => 'abc1234 Add rider feature',
       validate: () => calls.push('validate'),
       build: async () => {
         calls.push('build')
@@ -109,27 +98,21 @@ describe('release-train authoring flow', () => {
     return { calls, deps }
   }
 
-  test('minor bump can skip creating a train file', async () => {
+  test('skips notes when the author declines to draft them', async () => {
     const { calls, deps } = dependencies({ exists: false, choice: 'skip' })
-    expect(await prepareTrainNotes('minor', '0.85.0', deps)).toBe('release-notes/0.85.md')
+    expect(await prepareReleaseNotes('0.85.1', deps)).toBe('release-notes/0.85.1.md')
     expect(calls).toEqual([])
   })
 
-  test('minor bump can author and validate a new train file with Codex', async () => {
+  test('drafts and validates notes for the exact version', async () => {
     const { calls, deps } = dependencies({ exists: false, choice: 'draft' })
-    await prepareTrainNotes('minor', '0.85.0', deps)
-    expect(calls).toEqual(['author', 'validate', 'build'])
+    await prepareReleaseNotes('0.85.1', deps)
+    expect(calls).toEqual(['author:0.85.1', 'validate', 'build'])
   })
 
-  test('patch bump keeps valid train notes without changing them', async () => {
-    const { calls, deps } = dependencies({ exists: true, choice: 'keep' })
-    await prepareTrainNotes('patch', '0.84.1', deps)
+  test('reuses accepted notes without redrafting them', async () => {
+    const { calls, deps } = dependencies({ exists: true, choice: 'draft' })
+    await prepareReleaseNotes('0.85.1', deps)
     expect(calls).toEqual(['validate', 'build'])
-  })
-
-  test('patch bump re-prompts Codex with commits since the train file changed', async () => {
-    const { calls, deps } = dependencies({ exists: true, choice: 'reprompt' })
-    await prepareTrainNotes('patch', '0.84.1', deps)
-    expect(calls).toEqual(['reprompt:abc1234 Add rider feature', 'validate', 'build'])
   })
 })

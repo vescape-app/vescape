@@ -1,38 +1,31 @@
 import { describe, expect, test } from 'bun:test'
 
-import {
-  compareMarketingVersions,
-  parseMarketingVersion,
-  releaseTrainForVersion,
-  selectReleaseNotes,
-} from './releaseNotes'
+import { compareMarketingVersions, parseMarketingVersion, selectReleaseNotes } from './releaseNotes'
 
 describe('release-note selection', () => {
   test('shows installed and older versions newest-first', () => {
     const notes = [
-      { version: '0.82', markdown: 'old' },
-      { version: '0.84', markdown: 'future' },
-      { version: '0.83', markdown: 'current' },
+      { version: '0.83.0', markdown: 'old' },
+      { version: '0.84.0', markdown: 'future' },
+      { version: '0.83.1', markdown: 'current' },
     ]
 
     expect(selectReleaseNotes(notes, '0.83.1')).toEqual([
-      { version: '0.83', markdown: 'current' },
-      { version: '0.82', markdown: 'old' },
+      { version: '0.83.1', markdown: 'current' },
+      { version: '0.83.0', markdown: 'old' },
     ])
   })
 
-  test('parses and compares train versions with full marketing versions', () => {
-    expect(parseMarketingVersion('1.12')).not.toBeNull()
-    expect(compareMarketingVersions('1.12', '1.12.0')).toBe(0)
-    expect(compareMarketingVersions('1.12', '1.11.9')).toBeGreaterThan(0)
-    expect(releaseTrainForVersion('1.12.3')).toBe('1.12')
-    expect(releaseTrainForVersion('1.12.3-rc.1')).toBe('1.12')
-    expect(releaseTrainForVersion('latest')).toBeNull()
+  test('parses and compares full marketing versions only', () => {
+    expect(parseMarketingVersion('1.12')).toBeNull()
+    expect(parseMarketingVersion('latest')).toBeNull()
+    expect(compareMarketingVersions('1.12.0', '1.11.9')).toBeGreaterThan(0)
+    expect(compareMarketingVersions('1.12.0-rc.1', '1.12.0')).toBeLessThan(0)
   })
 
-  test('tolerates missing notes for the installed train', () => {
-    expect(selectReleaseNotes([{ version: '0.83', markdown: 'old' }], '0.84')).toEqual([
-      { version: '0.83', markdown: 'old' },
+  test('tolerates missing notes for the installed version', () => {
+    expect(selectReleaseNotes([{ version: '0.83.0', markdown: 'old' }], '0.84.0')).toEqual([
+      { version: '0.83.0', markdown: 'old' },
     ])
   })
 
@@ -42,6 +35,7 @@ describe('release-note selection', () => {
   })
 
   test('selects notes when the runtime does not provide Array.toSorted', () => {
+    /* eslint-disable no-extend-native -- deliberately stubbing the prototype to test the fallback */
     const original = Array.prototype.toSorted
     Object.defineProperty(Array.prototype, 'toSorted', { configurable: true, value: undefined })
     try {

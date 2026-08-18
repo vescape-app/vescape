@@ -41,7 +41,7 @@ internal interface VescGattListener {
 internal interface SessionTransport {
     fun connect(deviceId: String)
     fun sendPayload(payload: ByteArray): Boolean
-    fun sendRemoteTilt(payload: ByteArray, urgent: Boolean = false): Boolean
+    fun sendRemoteInput(payload: ByteArray, urgent: Boolean = false): Boolean
     fun clear(markIntentional: Boolean = true)
 }
 
@@ -82,12 +82,12 @@ internal class VescGattClient(
     }
 
     /**
-     * Enqueue transient remote tilt. Only latest unsent value survives, so an
+     * Enqueue transient remote input (tilt or Board Move). Only latest unsent value survives, so an
      * emergency neutral command cannot sit behind stale tilt commands.
      */
-    override fun sendRemoteTilt(payload: ByteArray, urgent: Boolean): Boolean {
+    override fun sendRemoteInput(payload: ByteArray, urgent: Boolean): Boolean {
         if (gatt == null || txChar == null) return false
-        writeQueue.replaceRemoteTilt(VescPacketCodec.encode(payload), urgent)
+        writeQueue.replaceRemoteInput(VescPacketCodec.encode(payload), urgent)
         return drainWriteQueue()
     }
 

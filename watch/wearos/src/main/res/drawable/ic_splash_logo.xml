@@ -6,14 +6,21 @@
     android:height="667dp"
     android:viewportWidth="667"
     android:viewportHeight="667">
-    <!-- The splash icon is masked to a circle, so the sygnet is scaled to the inner ~2/3 of the
-         48x48dp icon frame; at full size its left/right tips are clipped by the mask. -->
+    <!-- The splash icon is masked to a circle of radius ~222 (the inner 2/3 of the 48x48dp icon
+         frame), so the sygnet has to fit that circle rather than the square viewport. Its ink spans
+         (10.9, 423.5) to (657, 147), whose smallest enclosing circle is centred at (334, 285) with
+         radius 351 — off the viewport centre, because the mark is wide and sits high. Scaling about
+         the viewport centre alone therefore clips the top-right tip first, which is what 0.66 did.
+         Scaling by 0.56 gives radius 197 and translating down by 27 moves that enclosing circle onto
+         the mask centre, leaving ~26 units (2.8dp of the 48dp icon) of breathing room between the
+         mark and the edge of the icon background disc. -->
     <group
         android:pivotX="333.5"
         android:pivotY="333.5"
-        android:scaleX="0.66"
-        android:scaleY="0.66">
-    <path android:pathData="M583.175 324.243H547.783L608 179.669H452.324C446.408 179.669 441.073 183.231 438.806 188.692L313.773 489.835C297.683 528.587 242.847 528.763 226.509 490.115L136.173 276.42C131.146 264.529 114.302 264.498 109.23 276.371L60.335 390.841H148.901L112.599 423.51H10.8545L79.1865 263.538C95.5783 225.163 150.016 225.264 166.265 263.7L256.602 477.395L256.847 477.946C262.183 489.347 278.7 489.11 283.601 477.309L408.634 176.165C415.965 158.508 433.205 147 452.324 147H656.998L583.175 324.243Z">
+        android:scaleX="0.56"
+        android:scaleY="0.56"
+        android:translateY="27">
+    <path android:pathData="@string/sygnet_path">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
