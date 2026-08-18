@@ -14,6 +14,7 @@ import { theme } from '@/constants/theme'
 import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { reverseGeocodeMapCoordinate } from '@/modules/map/lib/search'
+import { useMapStore } from '@/modules/map/store/mapStore'
 
 interface MainScreenProps {
   activeBoard: Board | undefined
@@ -312,6 +313,35 @@ export function MainScreen({
     },
     [navigateToTarget],
   )
+
+  // A location shared from another app arrives as a plain coordinate, and from here on it is
+  // treated exactly like a target the rider picked themselves: same Direction Point, same sheet,
+  // same camera. Nothing about it is shared onward — it never becomes a Map Point.
+  const pendingSharedLocation = useMapStore((s) => s.pendingSharedLocation)
+  const consumeSharedLocation = useMapStore((s) => s.consumeSharedLocation)
+  const handleMapFocus = controller.handleMapFocus
+  useEffect(() => {
+    if (!pendingSharedLocation) return
+    consumeSharedLocation()
+    const { latitude, longitude, name } = pendingSharedLocation
+    const id = `shared-${longitude.toFixed(6)}-${latitude.toFixed(6)}`
+    // A named payload is a place, and stays one: a coordinate target is renamed "Direction point"
+    // on the way in, which would throw away the name the other app sent.
+    const target: MapSelection = name
+      ? { type: 'place', id, latitude, longitude, title: name, subtitle: null, category: null }
+      : {
+          type: 'coordinate',
+          id,
+          latitude,
+          longitude,
+          title: 'Shared location',
+          subtitle: null,
+          loadingDetails: true,
+        }
+    handleMapFocus()
+    void navigateToTarget(target)
+    mapRef.current?.focusCoordinate([longitude, latitude])
+  }, [consumeSharedLocation, handleMapFocus, navigateToTarget, pendingSharedLocation])
 
   useEffect(() => {
     if (!selectedNavigationTarget?.loadingDetails) return

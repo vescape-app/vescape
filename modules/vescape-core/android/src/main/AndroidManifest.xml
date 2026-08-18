@@ -43,6 +43,27 @@
         <data android:scheme="wear" android:host="*" android:pathPrefix="/command"/>
       </intent-filter>
     </service>
+    <!-- Vescape as a location share destination. `SEND text/plain` is how map apps share a place;
+         `geo:` covers apps that hand out a location URI instead. Deliberately not autoVerified http
+         links: Vescape is an option in the chooser, never the app that swallows map links. -->
+    <activity
+      android:name=".sharing.ShareTargetActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:theme="@android:style/Theme.NoDisplay">
+      <intent-filter>
+        <action android:name="android.intent.action.SEND"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:mimeType="text/plain"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="geo"/>
+      </intent-filter>
+    </activity>
     <provider
       android:name=".service.AutoConnectProvider"
       android:authorities="${applicationId}.auto-connect"

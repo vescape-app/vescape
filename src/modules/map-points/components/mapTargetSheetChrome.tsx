@@ -1,4 +1,11 @@
-import { MapPinIcon, ThumbsDownIcon, ThumbsUpIcon, XIcon, type Icon } from 'phosphor-react-native'
+import {
+  MapPinIcon,
+  ShareNetworkIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+  XIcon,
+  type Icon,
+} from 'phosphor-react-native'
 import { createElement, type ReactNode } from 'react'
 import { Pressable, StyleSheet, TextInput, View } from 'react-native'
 import type { MapPoint } from 'vescape-core'
@@ -19,6 +26,7 @@ import {
 } from '@/modules/map-points/constants/mapPoints'
 import type { MapPointMediaAsset } from '@/modules/map-points/store/mapPointPhotoFiles'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
+import { shareLocation, sharedLocationFromSelection } from '@/modules/map/lib/shareLocation'
 
 export interface MapTargetSheetAction {
   label: string
@@ -81,6 +89,16 @@ export function MapTargetSheetFrame({
         ) : (
           <View style={styles.focusArea}>{headerContent}</View>
         )}
+        {/* Every sheet shows the same share action, so a Map Point, a Direction Point, a search
+            result and a bare dropped pin all leave Vescape the same way. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Share this location"
+          onPress={() => void shareLocation(sharedLocationFromSelection(target))}
+          style={({ pressed }) => [styles.close, pressed && mapSheetStyles.mapTargetClosePressed]}
+        >
+          <ShareNetworkIcon size={19} color={theme.palette.slate.textSecondary} weight="bold" />
+        </Pressable>
         {onDismiss ? (
           <Pressable
             accessibilityRole="button"

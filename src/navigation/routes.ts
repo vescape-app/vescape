@@ -43,10 +43,12 @@ export const routes = {
   settingsReleaseNotes: '/settings/release-notes' as Href,
   devMapPlayground: '/dev/map-playground' as Href,
   historyCharts: '/history/charts' as Href,
+  sharedLocation: '/shared-location' as Href,
 } as const
 
 export const stackScreens = {
   home: 'index',
+  sharedLocation: 'shared-location',
   profileStats: 'profile-stats',
   signIn: 'sign-in',
   account: 'account',

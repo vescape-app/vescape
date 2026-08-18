@@ -128,6 +128,12 @@ function RootLayout() {
             }}
           >
             <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
+            {/* A location shared from another app lands here, hands it to the map and replaces
+                itself — chrome would only flash on the way through. */}
+            <Stack.Screen
+              name={stackScreens.sharedLocation}
+              options={{ headerShown: false, animation: 'none' }}
+            />
             <Stack.Screen name={stackScreens.profileStats} options={{ title: 'Profile stats' }} />
             {/* Clerk's native views render their own header — a second Expo header
                 would duplicate the back/dismiss layer. */}
