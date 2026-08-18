@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { Animated } from 'react-native'
 
 /**
@@ -8,19 +8,25 @@ import { Animated } from 'react-native'
 export function useMapRevealAnimation({
   settingsLoaded,
   cameraReady,
+  setCameraReady,
   centerCoordinate,
 }: {
   settingsLoaded: boolean
   cameraReady: boolean
+  setCameraReady: Dispatch<SetStateAction<boolean>>
   centerCoordinate: [number, number]
 }) {
   const mapRevealedRef = useRef(false)
+
   const [mapOpacity] = useState(() => new Animated.Value(0))
 
+  // A new first camera hides the map again and waits for that camera to settle: clearing readiness
+  // is what re-arms the reveal below, so a fix landing mid-fade cannot leave the map at zero.
   useEffect(() => {
     if (mapRevealedRef.current) return
     mapOpacity.setValue(0)
-  }, [centerCoordinate, mapOpacity])
+    setCameraReady(false)
+  }, [centerCoordinate, mapOpacity, setCameraReady])
 
   useEffect(() => {
     if (!settingsLoaded || !cameraReady) return
@@ -33,5 +39,5 @@ export function useMapRevealAnimation({
     })
   }, [cameraReady, mapOpacity, settingsLoaded])
 
-  return { mapOpacity, mapRevealedRef }
+  return { mapOpacity }
 }

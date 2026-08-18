@@ -119,15 +119,9 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   gaugeContent: { position: 'relative' },
-  gaugeTouchRow: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', gap: 32 },
   row: {
     flexDirection: 'row',
     gap: 32,
     position: 'relative',
-  },
-  gaugePair: { width: '100%', aspectRatio: 1.4, position: 'relative' },
-  svg: {
-    width: '100%',
-    height: '100%',
   },
 })

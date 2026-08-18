@@ -391,6 +391,7 @@ export const MainMap = memo(
     const { mapOpacity } = useMapRevealAnimation({
       settingsLoaded,
       cameraReady,
+      setCameraReady,
       centerCoordinate: gpsCamera.centerCoordinate,
     })
 
