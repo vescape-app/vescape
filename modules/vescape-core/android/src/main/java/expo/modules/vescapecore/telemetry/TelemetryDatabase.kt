@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 32
+internal const val TELEMETRY_DATABASE_VERSION = 33
 
 @Database(
   entities = [
@@ -32,6 +32,7 @@ internal const val TELEMETRY_DATABASE_VERSION = 32
     BoardWarningEntity::class,
     FavoriteEntity::class,
     FavoriteMediaEntity::class,
+    BoardConfigValuesEntity::class,
   ],
   version = TELEMETRY_DATABASE_VERSION,
   exportSchema = false,
@@ -578,6 +579,28 @@ abstract class TelemetryDatabase : RoomDatabase() {
      *
      * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v32_alert_repeat`
      */
+    /**
+     * Board Config Values cache: the last decoded Refloat config per Board + Refloat base version,
+     * restored as `provisional` on connect (#393).
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v33_board_config_values`
+     */
+    internal val MIGRATION_32_33 = object : Migration(32, 33) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS board_config_values (
+            board_id TEXT NOT NULL,
+            refloat_base_version TEXT NOT NULL,
+            values_json TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            PRIMARY KEY (board_id, refloat_base_version)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_board_config_values_board_id ON board_config_values(board_id)")
+      }
+    }
+
     internal val MIGRATION_31_32 = object : Migration(31, 32) {
       override fun migrate(db: SupportSQLiteDatabase) {
         if (!hasColumn(db, "alerts", "repeat_every_seconds")) {
@@ -648,6 +671,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_29_30,
             MIGRATION_30_31,
             MIGRATION_31_32,
+            MIGRATION_32_33,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

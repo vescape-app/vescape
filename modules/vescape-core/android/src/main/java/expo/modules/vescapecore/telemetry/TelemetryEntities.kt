@@ -587,3 +587,30 @@ data class FavoriteMediaEntity(
     "filename" to filename,
   )
 }
+
+/**
+ * Cached Board Config Values: the last decoded Refloat config for one Board and Refloat base version,
+ * restored as `provisional` on connect so consumers have something before this session's fresh read
+ * lands (ADR 0035). Scoped like Tune Compatibility (ADR 0022) — field offsets only mean anything
+ * against the firmware they were read from — and deleted for the whole Board on `mismatched` link
+ * integrity.
+ *
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift
+ */
+@Entity(
+  tableName = "board_config_values",
+  primaryKeys = ["board_id", "refloat_base_version"],
+  indices = [
+    Index(value = ["board_id"]),
+  ],
+)
+data class BoardConfigValuesEntity(
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  @ColumnInfo(name = "refloat_base_version")
+  val refloatBaseVersion: String,
+  @ColumnInfo(name = "values_json")
+  val valuesJson: String,
+  @ColumnInfo(name = "captured_at")
+  val capturedAt: Long,
+)

@@ -562,6 +562,15 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
+  suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigValues(values: BoardConfigValuesEntity)
+
+  @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigValues(boardId: String)
+
   // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
   // inside the range is never touched here.
   // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift

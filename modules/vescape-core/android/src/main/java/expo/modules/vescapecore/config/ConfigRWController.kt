@@ -6,7 +6,6 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.isPollingCapable
 import expo.modules.vescapecore.diagnostics.newOperationId
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.runtime.Scheduler
@@ -42,7 +41,11 @@ internal interface ConfigRWControllerPort {
     fun captureDiagnostic(name: String, properties: Map<String, Any?>)
     fun diagnosticProperties(config: SessionConfig?, category: String): Map<String, Any?>
     fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray)
-    fun evaluateConfigSafety(values: ConfigSafetyValues)
+    /**
+     * Hand the freshly decoded Board Config Values to the session controller, which holds them as the
+     * session's config truth, caches them, and runs warning evaluation.
+     */
+    fun onBoardConfigValues(values: BoardConfigValues)
 }
 
 // @parity /modules/vescape-core/ios/config/ConfigRWController.swift
@@ -53,22 +56,48 @@ internal class ConfigRWController(
     private val port: ConfigRWControllerPort,
 ) {
     private var state: ConfigRWState = ConfigRWState.Idle
-    private var readCallbacks: PendingConfigRead? = null
+    /**
+     * Every consumer waiting on the current read. A read started in the background (post-trust config
+     * acquisition) is joined by a later caller instead of rejecting it with `CONFIG_REQUEST_IN_FLIGHT`
+     * — one board read serves them all.
+     */
+    private val readCallbacks = mutableListOf<PendingConfigRead>()
     private var writeCallbacks: PendingConfigWrite? = null
     private var timeoutHandle: Cancellable? = null
 
     val isInFlight: Boolean get() = state !is ConfigRWState.Idle
 
+    /** Whether the in-flight operation is a read (joinable) rather than a write (not). */
+    private val isReadInFlight: Boolean
+        get() = state is ConfigRWState.ReadCollectingXml || state is ConfigRWState.ReadAwaitingConfig
+
     fun consumeRead(pending: PendingConfigRead) {
-        if (isInFlight) return pending.inFlight()
+        if (isInFlight) {
+            // Join the read already on the wire; it completes for every waiter at once. A write is
+            // still exclusive.
+            if (!isReadInFlight) return pending.inFlight()
+            readCallbacks += pending
+            return
+        }
         val connection = port.connection()
         if (!connection.connected()) return pending.notConnected()
         if (!connection.trusted()) return pending.linkNotTrusted()
         val transport = connection.transport ?: return pending.noCanId("read")
         val wasPolling = port.isPollingActive()
         port.stopPolling()
-        readCallbacks = pending
-        dispatch(ConfigRWEvent.StartRead(newOperationId(), connection.canIdOrNull(), transport, wasPolling, connection.config?.appBoardId, connection.fwVersion))
+        readCallbacks.clear()
+        readCallbacks += pending
+        dispatch(
+            ConfigRWEvent.StartRead(
+                newOperationId(),
+                connection.canIdOrNull(),
+                transport,
+                wasPolling,
+                connection.config?.appBoardId,
+                connection.fwVersion,
+                connection.config?.refloatBaseVersion,
+            ),
+        )
     }
 
     fun consumeWrite(pending: PendingConfigWrite) {
@@ -105,7 +134,18 @@ internal class ConfigRWController(
                 val wasPolling = port.isPollingActive()
                 port.stopPolling()
                 writeCallbacks = pending
-                dispatch(ConfigRWEvent.StartWrite(newOperationId(), connection.canIdOrNull(), transport, wasPolling, fields, connectedBoardId, connection.fwVersion))
+                dispatch(
+                    ConfigRWEvent.StartWrite(
+                        newOperationId(),
+                        connection.canIdOrNull(),
+                        transport,
+                        wasPolling,
+                        fields,
+                        connectedBoardId,
+                        connection.fwVersion,
+                        connectedRefloatBaseVersion,
+                    ),
+                )
             }
         }
     }
@@ -143,20 +183,21 @@ internal class ConfigRWController(
     }
 
     private fun completeRead(effect: ConfigRWEffect.EmitReadComplete) {
-        val callbacks = readCallbacks.also { readCallbacks = null }
+        val callbacks = readCallbacks.toList().also { readCallbacks.clear() }
         resumePolling(effect.resumePolling)
-        effect.safety?.let(port::evaluateConfigSafety)
-        callbacks?.onSuccess?.invoke(effect.snapshot.toMap())
+        effect.boardConfigValues?.let(port::onBoardConfigValues)
+        val map = effect.snapshot.toMap()
+        for (pending in callbacks) pending.onSuccess(map)
     }
     private fun failRead(effect: ConfigRWEffect.EmitReadFailure) {
-        val callbacks = readCallbacks.also { readCallbacks = null }; resumePolling(effect.resumePolling)
+        val callbacks = readCallbacks.toList().also { readCallbacks.clear() }; resumePolling(effect.resumePolling)
         val name = if (effect.code == RefloatConfigErrorCode.CONFIG_DECODE_FAILED || effect.code == RefloatConfigErrorCode.UNSUPPORTED_SCHEMA) "config_decode_failed" else "config_read_failed"
         port.captureDiagnostic(name, port.diagnosticProperties(port.connection().config, "config_read") + mapOf("operation_id" to effect.opId, "message" to effect.message, "error_code" to effect.code.name, "firmware" to port.connection().fwVersion) + DiagnosticReporter.configBlobProperties(effect.rawConfig))
-        callbacks?.onError?.invoke(effect.code.name, effect.message)
+        for (pending in callbacks) pending.onError(effect.code.name, effect.message)
     }
     private fun completeWrite(effect: ConfigRWEffect.EmitWriteComplete) {
         val callbacks = writeCallbacks.also { writeCallbacks = null }; resumePolling(effect.resumePolling)
-        effect.safety?.let(port::evaluateConfigSafety)
+        effect.boardConfigValues?.let(port::onBoardConfigValues)
         callbacks?.onSuccess?.invoke(effect.snapshot.toMap())
     }
     private fun failWrite(effect: ConfigRWEffect.EmitWriteFailure) {

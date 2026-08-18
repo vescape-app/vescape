@@ -3,17 +3,17 @@ import Foundation
 
 /// Config-scoped Board Warning replay harness (ADR 0024): reconstructs the Refloat config read from a
 /// `.jsonl` Debug Recording by driving the **real** `ConfigRWController` with the recorded `rx`
-/// packets, then returns the decoded `ConfigSafetyValues` the config-safety detector evaluates.
+/// packets, then returns the decoded `BoardConfigValues` the config-safety detector evaluates.
 /// Nothing is re-implemented: the same reassembler, protocol parser, schema parser, and config
 /// decoder the live session uses run here; only the transport (request sending) and side effects are
 /// stubbed, exactly as the transport-seam replay does for the telemetry-scoped detectors.
 ///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/replay/ConfigReplayHarness.kt
 enum ConfigReplayHarness {
-  /// Decoded config-safety values from the recording's config read, or nil when the recording holds
+  /// Board Config Values decoded from the recording's config read, or nil when the recording holds
   /// no completable config exchange (the config-scoped detector then evaluates nothing).
-  static func decodeSafetyValues(_ jsonl: String) -> ConfigSafetyValues? {
-    final class Capture { var value: ConfigSafetyValues? }
+  static func decodeBoardConfigValues(_ jsonl: String) -> BoardConfigValues? {
+    final class Capture { var value: BoardConfigValues? }
     let capture = Capture()
     let controller = ConfigRWController()
     let connection = ConfigRWConnection(
@@ -31,7 +31,7 @@ enum ConfigReplayHarness {
       sendPayload: { _ in true },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
-      evaluateConfigSafety: { capture.value = $0 }
+      onBoardConfigValues: { capture.value = $0 }
     )
     controller.consumeRead(connection: connection, onSuccess: { _ in }, onError: { _, _ in })
 

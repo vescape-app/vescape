@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -204,6 +205,51 @@ class AppDataRepository private constructor(private val context: Context) {
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
     dao.deleteBoardWithSettings(id)
     notifyDataChanged(AppDataScope.BOARDS)
+  }
+
+  /**
+   * Cached Board Config Values for this Board + Refloat base version, as `provisional` — displayable,
+   * never a write base (ADR 0035). Null when nothing is cached for that scope.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `load`
+   */
+  internal suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValues? =
+    withContext(Dispatchers.IO) {
+      if (boardId.isBlank() || refloatBaseVersion.isBlank()) return@withContext null
+      val row = dao.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@withContext null
+      BoardConfigValues.provisional(
+        boardId = boardId,
+        refloatBaseVersion = refloatBaseVersion,
+        capturedAtMs = row.capturedAt,
+        valuesJson = row.valuesJson,
+      )
+    }
+
+  /**
+   * Cache the values just read from the board. Values without a Board or Refloat base version are not
+   * cacheable — there is no scope to restore them into.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `save`
+   */
+  internal suspend fun saveBoardConfigValues(values: BoardConfigValues): Unit = withContext(Dispatchers.IO) {
+    val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
+    val refloatBaseVersion = values.refloatBaseVersion?.takeIf { it.isNotBlank() } ?: return@withContext
+    dao.upsertBoardConfigValues(
+      BoardConfigValuesEntity(
+        boardId = boardId,
+        refloatBaseVersion = refloatBaseVersion,
+        valuesJson = values.valuesJson(),
+        capturedAt = values.capturedAtMs,
+      ),
+    )
+  }
+
+  /**
+   * Drop every cached scope for a Board. Called when link integrity goes `mismatched`: the firmware
+   * behind the link is not the one those offsets were decoded against.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `clear`
+   */
+  internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
+    if (boardId.isBlank()) return@withContext
+    dao.deleteBoardConfigValues(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {

@@ -10,6 +10,7 @@ internal sealed class ConfigRWEvent {
         val wasPolling: Boolean,
         val appBoardId: String?,
         val fwVersion: String?,
+        val refloatBaseVersion: String?,
     ) : ConfigRWEvent()
 
     data class StartWrite(
@@ -20,6 +21,7 @@ internal sealed class ConfigRWEvent {
         val profileFields: Map<String, Any>,
         val appBoardId: String?,
         val fwVersion: String?,
+        val refloatBaseVersion: String?,
     ) : ConfigRWEvent()
 
     data class XmlPayloadReceived(val payload: ByteArray) : ConfigRWEvent()

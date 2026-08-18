@@ -14,14 +14,21 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     tiltbackHv: Double? = 64.5,
     tiltbackDuty: Double? = 0.80,
     movingFaultDisabled: Bool? = false
-  ) -> ConfigSafetyValues {
-    ConfigSafetyValues(
-      faultAdc1: faultAdc1,
-      faultAdc2: faultAdc2,
-      tiltbackLv: tiltbackLv,
-      tiltbackHv: tiltbackHv,
-      tiltbackDuty: tiltbackDuty,
-      movingFaultDisabled: movingFaultDisabled
+  ) -> BoardConfigValues {
+    var map: [String: Any] = [:]
+    map[ConfigSafetyDetector.faultAdc1Id] = faultAdc1
+    map[ConfigSafetyDetector.faultAdc2Id] = faultAdc2
+    map[ConfigSafetyDetector.tiltbackLvId] = tiltbackLv
+    map[ConfigSafetyDetector.tiltbackHvId] = tiltbackHv
+    map[ConfigSafetyDetector.tiltbackDutyId] = tiltbackDuty
+    map[ConfigSafetyDetector.movingFaultDisabledId] = movingFaultDisabled
+    return BoardConfigValues(
+      boardId: "board",
+      refloatBaseVersion: "2.0",
+      capturedAtMs: 0,
+      freshness: .fresh,
+      values: map,
+      writeBase: nil
     )
   }
 

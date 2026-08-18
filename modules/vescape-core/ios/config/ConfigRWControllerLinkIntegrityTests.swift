@@ -78,7 +78,7 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
       sendPayload: { _ in self.sentPayload = true; return true },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in self.loadedProfile = true; return nil },
-      evaluateConfigSafety: { _ in }
+      onBoardConfigValues: { _ in }
     )
   }
 }
