@@ -292,14 +292,14 @@ export function TunePreview({
       ) : (
         <TunePreviewHeader
           speedStr={speedStr}
-        boardAngleStr={boardAngleStr}
-        targetAngleStr={targetAngleStr}
-        currentStr={currentStr}
-        speedFont={speedFont}
-        readoutFont={readoutFont}
-        readoutBoldFont={readoutBoldFont}
-        onHelp={onHelp}
-        onDisable={onDisable}
+          boardAngleStr={boardAngleStr}
+          targetAngleStr={targetAngleStr}
+          currentStr={currentStr}
+          speedFont={speedFont}
+          readoutFont={readoutFont}
+          readoutBoldFont={readoutBoldFont}
+          onHelp={onHelp}
+          onDisable={onDisable}
           description={TUNE_PREVIEW_DESCRIPTION}
         />
       )}
