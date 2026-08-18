@@ -35,6 +35,7 @@ import {
 } from '@/components/overlays/measureTrigger'
 import {
   DRAWER_INITIAL_OPEN_FRACTION,
+  edgeDrawerContentResizeOffset,
   edgeDrawerDismissOpacity,
   edgeDrawerHasCommitted,
   edgeDrawerRestoreOffset,
@@ -505,12 +506,24 @@ export function EdgeDrawer({
         return
       }
 
-      const bottomDrawerWasFullyOpen = !opensFromTop && scrollOffsetRef.current >= previousRange - 1
-      if (!initialFocusRef && bottomDrawerWasFullyOpen && range > previousRange) {
-        requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({ y: range, animated: true })
+      // Content grows over many frames, so this follows every one of them from the live offset —
+      // a per-frame "was the drawer fully open?" test loses the race after the first frame and
+      // leaves the drawer stranded half faded.
+      const pinsToOwnEdge = !opensFromTop && range !== previousRange && !initialFocusRef
+      if (pinsToOwnEdge) {
+        const pinnedOffset = edgeDrawerContentResizeOffset({
+          offset: scrollOffset.value,
+          range,
+          previousRange,
+          height,
         })
-      } else if (autoScrollOnContentExpand && contentHeight > previousContentHeight) {
+        scrollOffsetRef.current = pinnedOffset
+        scrollOffset.value = pinnedOffset
+        scrollRef.current?.scrollTo({ y: pinnedOffset, animated: false })
+        return
+      }
+
+      if (autoScrollOnContentExpand && contentHeight > previousContentHeight) {
         const addedHeight = contentHeight - previousContentHeight
         const targetOffset = opensFromTop
           ? Math.min(range, scrollOffsetRef.current + addedHeight)
