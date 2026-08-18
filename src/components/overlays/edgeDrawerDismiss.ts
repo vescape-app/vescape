@@ -124,3 +124,27 @@ export function edgeDrawerScrollEndAction({
   if (visibleFraction < 1) return 'restore'
   return 'stay-open'
 }
+
+/**
+ * Where a bottom drawer's scroll offset belongs after its content changed size.
+ *
+ * Offset *is* visible presence for a bottom drawer, so content growing under it would read as the
+ * drawer retreating toward its edge and fade it out with no gesture left to bring it back. Growth
+ * is therefore absorbed into the offset (the drawer stays pinned to its own edge), and the result
+ * never lands below the fully-opaque resting offset. Shrinking needs no absorption: the native
+ * clamp already walks the offset down with the content end.
+ */
+export function edgeDrawerContentResizeOffset({
+  offset,
+  range,
+  previousRange,
+  height,
+}: {
+  offset: number
+  range: number
+  previousRange: number
+  height: number
+}): number {
+  const grown = range > previousRange ? offset + (range - previousRange) : offset
+  return clamp(Math.max(grown, edgeDrawerRestoreOffset(range, height, false)), 0, range)
+}

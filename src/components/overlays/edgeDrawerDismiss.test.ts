@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   COMMIT_FRACTION,
   DRAWER_INITIAL_OPEN_FRACTION,
+  edgeDrawerContentResizeOffset,
   edgeDrawerDismissOpacity,
   edgeDrawerOnScreenPixels,
   edgeDrawerRestoreOffset,
@@ -170,5 +171,47 @@ describe('edgeDrawerScrollEndAction', () => {
       const action = edgeDrawerScrollEndAction({ fullyHidden: false, visibleFraction: fraction })
       expect(['close', 'restore', 'stay-open']).toContain(action)
     }
+  })
+})
+
+describe('edgeDrawerContentResizeOffset', () => {
+  const height = 900
+
+  test('absorbs growth so the drawer stays put instead of fading', () => {
+    const offset = edgeDrawerContentResizeOffset({
+      offset: 500,
+      previousRange: 500,
+      range: 700,
+      height,
+    })
+    expect(offset).toBe(700)
+    expect(edgeDrawerVisibleFraction({ offset, range: 700, height, opensFromTop: false })).toBe(1)
+  })
+
+  test('follows growth that arrives one frame at a time', () => {
+    let offset = 500
+    let range = 500
+    for (const grown of [520, 560, 620, 690]) {
+      offset = edgeDrawerContentResizeOffset({ offset, previousRange: range, range: grown, height })
+      range = grown
+      expect(edgeDrawerVisibleFraction({ offset, range, height, opensFromTop: false })).toBe(1)
+    }
+  })
+
+  test('leaves shrinking content to the native clamp', () => {
+    expect(
+      edgeDrawerContentResizeOffset({ offset: 700, previousRange: 900, range: 700, height }),
+    ).toBe(700)
+  })
+
+  test('never lands below the fully opaque resting offset', () => {
+    const range = 900
+    const offset = edgeDrawerContentResizeOffset({
+      offset: 100,
+      previousRange: 800,
+      range,
+      height,
+    })
+    expect(offset).toBe(edgeDrawerRestoreOffset(range, height, false))
   })
 })
