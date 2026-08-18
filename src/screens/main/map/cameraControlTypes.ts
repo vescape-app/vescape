@@ -6,6 +6,7 @@ import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
 import type { RouteCameraViewport } from '@/modules/map/lib/routeCamera'
 import type { CameraSnapshot, HistoryPreviewTarget } from '@/modules/map/lib/cameraMotion'
+import type { MainMapHandle } from '@/screens/main/map/MainMap'
 
 export interface GpsFix {
   latitude: number
@@ -26,7 +27,7 @@ export interface CameraControlRefs {
 }
 
 export interface UseCameraControlsParams {
-  ref: ForwardedRef<any>
+  ref: ForwardedRef<MainMapHandle>
   cameraFix: GpsFix | null
   persistedFallback: [number, number] | null
   perspectiveEnabled: boolean
@@ -45,6 +46,8 @@ export interface UseCameraControlsParams {
     preview: ({ key: string } & HistoryPreviewTarget) | null
     previewRoute: [number, number][]
     rideRoute: [number, number][]
+    /** The stretch of the ride the telemetry chart is zoomed into; empty when it shows it all. */
+    focusRoute: [number, number][]
   }
   follow: {
     updatesEnabled: boolean

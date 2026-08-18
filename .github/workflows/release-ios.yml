@@ -24,7 +24,7 @@ concurrency:
 jobs:
   gates:
     name: Release gates
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on: blacksmith-6vcpu-macos-26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,7 +68,7 @@ jobs:
   build:
     name: Build signed IPA and upload to TestFlight
     needs: gates
-    runs-on: blacksmith-6vcpu-macos-15
+    runs-on: blacksmith-6vcpu-macos-26
     outputs:
       marketing_version: ${{ steps.release.outputs.marketing_version }}
       build_number: ${{ steps.release.outputs.build_number }}

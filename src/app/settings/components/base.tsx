@@ -13,6 +13,7 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowsClockwiseIcon,
+  CheckIcon,
   CubeIcon,
   FadersIcon,
   GearSixIcon,
@@ -23,12 +24,11 @@ import {
 
 import { Banner } from '@/components/base/Banner'
 import { TickText } from '@/components/base/TickText'
-import { type MonoValueAlign } from '@/components/base/MonoValue'
+import type { MonoValueAlign } from '@/components/base/MonoValue'
 import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
-import { ScreenTitle } from '@/components/base/ScreenTitle'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme, type MonoWeight } from '@/constants/theme'
@@ -167,9 +167,8 @@ function ButtonShowcase() {
       }
     >
       <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button
-            style={{ flex: 1 }}
             label="Primary"
             variant="primary"
             onPress={() => {}}
@@ -177,7 +176,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Secondary"
             variant="secondary"
             onPress={() => {}}
@@ -185,7 +183,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Tune"
             variant="tune"
             icon={FadersIcon}
@@ -194,7 +191,14 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
+            label="Enabled"
+            variant="success"
+            icon={CheckIcon}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
             label="Delete"
             variant="destructive"
             onPress={() => {}}
@@ -300,23 +304,21 @@ function BannerShowcase() {
   )
 }
 
-function ScreenTitleShowcase() {
-  return (
-    <ShowcaseCard name="ScreenTitle">
-      <ScreenTitle title="Dashboard" />
-    </ShowcaseCard>
-  )
-}
-
 function TickTextShowcase() {
   const [weight, setWeight] = useState<MonoWeight>('700')
   const [align, setAlign] = useState<MonoValueAlign>('right')
+  const [empty, setEmpty] = useState(false)
   const value = useSharedValue<number | null>(0)
 
   useEffect(() => {
+    if (empty) {
+      cancelAnimation(value)
+      value.value = null
+      return
+    }
     value.value = withRepeat(withTiming(42.7, { duration: 3000, easing: Easing.linear }), -1, true)
     return () => cancelAnimation(value)
-  }, [value])
+  }, [empty, value])
 
   return (
     <ShowcaseCard
@@ -335,6 +337,7 @@ function TickTextShowcase() {
             selected={align}
             onSelect={(v) => setAlign(v as MonoValueAlign)}
           />
+          <ToggleRow label="no value (unit placeholder)" value={empty} onToggle={setEmpty} />
         </>
       }
     >
@@ -370,13 +373,12 @@ export default function BaseComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CubeIcon}
-          description="Button, IconButton, Banner, Placeholder, ScreenTitle, TickText."
+          description="Button, IconButton, Banner, Placeholder, TickText."
         />
         <IconButtonShowcase />
         <ButtonShowcase />
         <PlaceholderShowcase />
         <BannerShowcase />
-        <ScreenTitleShowcase />
         <TickTextShowcase />
       </ScrollView>
     </SafeAreaView>

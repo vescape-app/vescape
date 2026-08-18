@@ -16,12 +16,12 @@ describe('history camera', () => {
     expect(camera?.padding).toEqual({
       paddingTop: ROUTE_CAMERA.routePaddingPx + 90,
       paddingRight: ROUTE_CAMERA.sidePaddingPx,
-      paddingBottom: ROUTE_CAMERA.routePaddingPx + 180,
+      paddingBottom: ROUTE_CAMERA.routePaddingPx + ROUTE_CAMERA.defaultBottomInsetPx,
       paddingLeft: ROUTE_CAMERA.sidePaddingPx,
     })
   })
 
-  test('keeps route padding stable when bottom interface height changes', () => {
+  test('fits the route above the bottom interface, and reframes when it grows', () => {
     const base = getRouteFitCamera({
       route: [
         [19, 50],
@@ -35,11 +35,14 @@ describe('history camera', () => {
         [19, 50],
         [19.1, 50.1],
       ],
-      viewport: { width: 390, height: 844, bottomInset: 180 },
+      viewport: { width: 390, height: 844, bottomInset: 320 },
       maxZoom: 19,
     })
 
-    expect(withInset?.padding).toEqual(base?.padding)
+    expect(withInset?.padding.paddingBottom).toBe(ROUTE_CAMERA.routePaddingPx + 320)
+    expect(withInset?.padding.paddingBottom).toBeGreaterThan(base!.padding.paddingBottom)
+    // Less room means the route has to be drawn smaller to still fit inside it.
+    expect(withInset!.zoomLevel).toBeLessThan(base!.zoomLevel)
   })
 
   test('centers route independently from navigation mode camera offsets', () => {

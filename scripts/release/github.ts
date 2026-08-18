@@ -120,7 +120,7 @@ export interface ArtifactRun {
 export function createDispatchPayload(
   sourceSha: string,
   requestId: string,
-  workflowRef = 'main',
+  workflowRef: string,
 ): DispatchPayload {
   if (!/^[0-9a-f]{40}$/i.test(sourceSha))
     throw new Error('Source SHA must be a full 40-character SHA')
@@ -281,6 +281,7 @@ async function dispatchBuildWorkflow(
   workflowFile: string,
   payload: DispatchPayload,
   label: string,
+  extraInputs: readonly string[] = [],
 ): Promise<void> {
   await checkedGh(
     [
@@ -294,6 +295,7 @@ async function dispatchBuildWorkflow(
       `inputs[source_sha]=${payload.inputs.source_sha}`,
       '--raw-field',
       `inputs[request_id]=${payload.inputs.request_id}`,
+      ...extraInputs.flatMap((field) => ['--raw-field', field]),
     ],
     label,
   )

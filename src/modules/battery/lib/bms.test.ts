@@ -70,7 +70,7 @@ describe('summarizeBms', () => {
     expect(summary.groups[1].balancing).toBe(true)
 
     const noFlags = summarizeBms(makeBms([3.9, 4.1]))!
-    expect(noFlags.groups.every((g) => g.balancing === false)).toBe(true)
+    expect(noFlags.groups.every((g) => !g.balancing)).toBe(true)
   })
 
   it('ignores zero/garbage cells when computing extremes but keeps them as rows', () => {

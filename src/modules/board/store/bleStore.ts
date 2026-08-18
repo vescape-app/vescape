@@ -14,12 +14,13 @@ import {
   addLiveStateListener,
   addLiveTickListener,
   addLiveSeriesListener,
-  addTelemetryHistoryListener,
+  addFocusedSeriesListener,
   addBmsListener,
   addBmsSeriesListener,
   addLocationListener,
   getRemoteTiltState as nativeGetRemoteTiltState,
   setBmsSeriesFocused as nativeSetBmsSeriesFocused,
+  setFocusedSeriesMetrics as nativeSetFocusedSeriesMetrics,
   type BoardPhase,
   type GpsPhase,
   type ScanStatus,
@@ -34,8 +35,9 @@ import {
 
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
+import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import { type LiveStatusSummary } from '@/modules/board/lib/liveMetricHistory'
+import type { LiveStatusSummary } from '@/modules/board/lib/liveMetricHistory'
 
 interface EventSubscription {
   remove(): void
@@ -92,36 +94,35 @@ interface BleActions {
 }
 
 type BleStore = BleState & BleActions
-type BleSet = {
-  (partial: Partial<BleStore> | ((state: BleStore) => Partial<BleStore>), replace?: false): void
-}
+type BleSet = (
+  partial: Partial<BleStore> | ((state: BleStore) => Partial<BleStore>),
+  replace?: false,
+) => void
 
 let liveSub: EventSubscription | null = null
 let liveTickSub: EventSubscription | null = null
 let liveSeriesSub: EventSubscription | null = null
-let historySub: EventSubscription | null = null
+let focusedSeriesSub: EventSubscription | null = null
 let bmsSub: EventSubscription | null = null
 let bmsSeriesSub: EventSubscription | null = null
 let locationSub: EventSubscription | null = null
-// The raw full-sample stream only runs while a detail chart is mounted. Ref-counted
-// so native stops emitting `onTelemetryHistory` whenever no chart needs it.
-let fullSampleStreamRefs = 0
+// The high-res focused stream only runs while a `/control` detail chart is mounted.
+// Ref-counted per metric so native emits `onFocusedSeries` only for focused metrics.
+const focusedSeriesRefs = new Map<string, number>()
 let bmsSeriesStreamRefs = 0
 let scanSub: EventSubscription | null = null
 let scanErrorSub: EventSubscription | null = null
 let settingsUnsubscribe: (() => void) | null = null
 
-let pendingDevices: Map<string, ScannedDevice> = new Map()
+let pendingDevices = new Map<string, ScannedDevice>()
 let scanFlushTimer: ReturnType<typeof setTimeout> | null = null
 const SCAN_FLUSH_MS = 500
 
 // Cold-path publish throttle. The 31Hz tick → SharedValues path stays unthrottled (no render);
 // this only caps how often the store snapshot bumps, which re-renders the SVG sparklines, live
-// charts and map trail. History flushes at ~3Hz and GPS adds more, so an unthrottled publish
-// saturates the JS thread. First few samples publish immediately so the UI populates on connect.
+// charts and map trail. GPS fixes drive it, so an unthrottled publish saturates the JS thread.
 let liveHistoryPublishTimer: ReturnType<typeof setTimeout> | null = null
 const LIVE_HISTORY_PUBLISH_MS = 1000
-const LIVE_HISTORY_IMMEDIATE_SAMPLE_COUNT = 3
 
 const MAC_ADDRESS_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i
 
@@ -143,21 +144,26 @@ const EMPTY_LIVE_STATUS: LiveStatusSummary = {
 
 function removeLiveSubscriptions(): void {
   removeBmsSeriesStream(useBleStore.setState as BleSet)
+  removeFocusedSeriesStream()
   liveSub?.remove()
   liveTickSub?.remove()
   liveSeriesSub?.remove()
-  historySub?.remove()
   bmsSub?.remove()
   locationSub?.remove()
   liveSub = null
   liveTickSub = null
   liveSeriesSub = null
-  historySub = null
   bmsSub = null
   locationSub = null
-  fullSampleStreamRefs = 0
   useLiveSeriesStore.getState().clear()
   clearLiveHistoryPublishTimer()
+}
+
+/** Detach the focused-series bridge sub and clear its JS window; keeps the per-metric ref counts. */
+function removeFocusedSeriesStream(): void {
+  focusedSeriesSub?.remove()
+  focusedSeriesSub = null
+  useFocusedSeriesStore.getState().clear()
 }
 
 function clearLiveHistoryPublishTimer(): void {
@@ -235,6 +241,7 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
       : liveTelemetryRuntime.getSnapshot()
   } else {
     useLiveSeriesStore.getState().clear()
+    useFocusedSeriesStore.getState().clear()
     live = liveTelemetryRuntime.clearBoardTelemetry()
   }
 
@@ -274,6 +281,7 @@ function sameRemoteTilt(a: RemoteTiltState | null, b: RemoteTiltState | null): b
 function resetLivePresentation(set: BleSet): void {
   clearLiveHistoryPublishTimer()
   useLiveSeriesStore.getState().clear()
+  useFocusedSeriesStore.getState().clear()
   const live = liveTelemetryRuntime.reset()
   set({
     liveLocationHistory: live.liveLocationHistory,
@@ -379,8 +387,8 @@ function installLiveSubscriptions(set: BleSet): void {
       useLiveSeriesStore.getState().setSeries(event.metrics, event.generation)
     })
   }
-  // The raw full-sample stream (`historySub`) is installed on demand by
-  // acquireFullSampleStream, only while a detail chart is mounted.
+  // The high-res `onFocusedSeries` stream attaches on demand via acquireFocusedSeries,
+  // only while a `/control` detail chart is mounted.
   if (!bmsSub) {
     bmsSub = addBmsListener((bms) => {
       set({ latestBms: bms })
@@ -394,49 +402,59 @@ function installLiveSubscriptions(set: BleSet): void {
   }
 }
 
-function installHistorySub(set: BleSet): void {
-  if (historySub) return
-  // Cold path: batched full samples → history buffer → throttled store publish for detail charts.
-  historySub = addTelemetryHistoryListener((batch) => {
-    if (!batch.samples.some((sample) => acceptsBoardTelemetry(sample.generation))) return
-    const publishImmediately =
-      liveTelemetryRuntime.getSnapshot().liveStatus.boardSampleCount <
-      LIVE_HISTORY_IMMEDIATE_SAMPLE_COUNT
-    const lastAccepted = liveTelemetryRuntime.ingestHistoryBatch(batch.samples)
-    if (lastAccepted == null) return
-    if (publishImmediately) {
-      clearLiveHistoryPublishTimer()
-      publishLiveSnapshot(set)
-    } else {
-      scheduleLiveSnapshot(set)
-    }
+/** Push the current focused-metric set to native (the union of everything held). */
+function syncFocusedSeriesMetrics(): void {
+  nativeSetFocusedSeriesMetrics([...focusedSeriesRefs.keys()])
+}
+
+/** Attach the `onFocusedSeries` bridge sub once; idempotent. */
+function ensureFocusedSeriesSub(): void {
+  if (focusedSeriesSub) return
+  focusedSeriesSub = addFocusedSeriesListener((event) => {
+    if (!acceptsBoardTelemetry(event.generation)) return
+    // Drop a late event for a metric already released — it must not restore stale series.
+    if (!focusedSeriesRefs.has(event.metric)) return
+    useFocusedSeriesStore.getState().apply(event)
   })
 }
 
-/**
- * Opens the raw full-sample stream for a detail chart. Ref-counted: the first
- * acquirer seeds the JS window from native's in-memory history (so the chart
- * paints the full window immediately) and subscribes; later acquirers share it.
- */
-export function acquireFullSampleStream(): void {
-  fullSampleStreamRefs += 1
-  if (fullSampleStreamRefs > 1) return
-  const set = useBleStore.setState as BleSet
-  try {
-    applyLiveState(nativeGetLiveState(), set)
-  } catch {
-    // No live state yet (not connected) — the stream still attaches for new samples.
-  }
-  installHistorySub(set)
+/** Re-arm focus after a (re)connect: subscriptions were torn down but the ref counts survive. */
+function reapplyFocusedSeries(): void {
+  if (focusedSeriesRefs.size === 0) return
+  ensureFocusedSeriesSub()
+  syncFocusedSeriesMetrics()
 }
 
-/** Releases a detail chart's hold; the last release stops native's firehose. */
-export function releaseFullSampleStream(): void {
-  if (fullSampleStreamRefs === 0) return
-  fullSampleStreamRefs -= 1
-  if (fullSampleStreamRefs > 0) return
-  historySub?.remove()
-  historySub = null
+/**
+ * Focuses one metric's high-res stream for a mounted `/control` detail chart. Ref-counted per
+ * metric: the first hold on any metric attaches the `onFocusedSeries` bridge sub; each new metric
+ * re-pushes the focus set so native starts emitting it (and an immediate snapshot).
+ */
+export function acquireFocusedSeries(metric: string): void {
+  const prev = focusedSeriesRefs.get(metric) ?? 0
+  focusedSeriesRefs.set(metric, prev + 1)
+  ensureFocusedSeriesSub()
+  if (prev === 0) syncFocusedSeriesMetrics()
+}
+
+/** Releases a detail chart's hold on a metric; the last hold overall detaches the bridge sub. */
+export function releaseFocusedSeries(metric: string): void {
+  const prev = focusedSeriesRefs.get(metric) ?? 0
+  if (prev === 0) return
+  if (prev > 1) {
+    focusedSeriesRefs.set(metric, prev - 1)
+    return
+  }
+  focusedSeriesRefs.delete(metric)
+  useFocusedSeriesStore.getState().clearMetric(metric)
+  syncFocusedSeriesMetrics()
+  if (focusedSeriesRefs.size === 0) {
+    focusedSeriesSub?.remove()
+    focusedSeriesSub = null
+    // No listener left to refresh exclusions/generation — drop them so a later
+    // focus doesn't briefly render bands from the previous session.
+    useFocusedSeriesStore.getState().clear()
+  }
 }
 
 /** Opens the focused Live BMS Series bridge stream for the battery detail view. */
@@ -553,6 +571,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
       if (bmsSeriesStreamRefs > 0) {
         nativeSetBmsSeriesFocused(true)
       }
+      reapplyFocusedSeries()
     } catch {
       get().syncNativeState()
     }
@@ -607,7 +626,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   },
 }))
 
-type HotModule = {
+interface HotModule {
   hot?: {
     dispose?: (callback: () => void) => void
   }

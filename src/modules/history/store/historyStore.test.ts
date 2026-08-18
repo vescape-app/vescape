@@ -20,7 +20,7 @@ const summary: TelemetrySummary = {
 }
 
 const getTelemetryHistory = mock(async () => [] as TelemetryMinuteBucket[])
-type HistoryRangeResult = {
+interface HistoryRangeResult {
   boardSamples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
@@ -133,7 +133,7 @@ test('removes selected session from history and selects next ride', async () => 
 
   await useHistoryStore.getState().loadInitial()
   await useHistoryStore.getState().selectSession(useHistoryStore.getState().sessions[1])
-  await (useHistoryStore.getState() as any).removeSelectedSession()
+  await useHistoryStore.getState().removeSelectedSession()
 
   expect(deleteTelemetryRange).toHaveBeenCalledWith({
     fromMs: selected.startAtMs,
@@ -153,6 +153,9 @@ test('selects ride immediately while loading its full route', async () => {
     id: 'current',
     startAtMs: 5_000_000,
     endAtMs: 5_060_000,
+    // Known geography, so selecting it takes one range call and no GPS preview.
+    firstLatitude: 52,
+    firstLongitude: 18,
   })
   const next = block({
     id: 'next',
@@ -192,14 +195,9 @@ test('selects ride immediately while loading its full route', async () => {
   expect(useHistoryStore.getState().selectedSession?.id).toBe(
     useHistoryStore.getState().sessions[1].id,
   )
-  expect(useHistoryStore.getState().sessionSamples).toEqual([
-    expect.objectContaining({
-      capturedAtMs: next.startAtMs,
-      deviceId: next.deviceId,
-      latitude: next.firstLatitude,
-      longitude: next.firstLongitude,
-    }),
-  ])
+  // Samples never outlive the ride they belong to: the charts would otherwise rebuild the whole
+  // previous dataset against the new ride's bounds while the real samples are still loading.
+  expect(useHistoryStore.getState().sessionSamples).toEqual([])
   await Promise.resolve()
   expect(getHistoryRange).toHaveBeenLastCalledWith({
     fromMs: next.startAtMs,
@@ -271,7 +269,7 @@ test('loads the full route immediately but keeps loading visible for at least 15
   expect(wait).toHaveBeenCalledWith(150)
   expect(getHistoryRange).toHaveBeenCalledTimes(1)
   expect(useHistoryStore.getState().loadingSession).toBe(true)
-  expect(useHistoryStore.getState().sessionSamples[0]?.id).toBe(0)
+  expect(useHistoryStore.getState().sessionSamples).toEqual([])
 
   finishMinimumLoading()
   await select
@@ -413,7 +411,7 @@ test('loads older history pages and merges sessions', async () => {
   useHistoryStore.setState({ hasMore: true })
   await useHistoryStore.getState().loadMore()
 
-  expect((getTelemetryHistory.mock.calls as any[])[1][0]).toEqual({
+  expect((getTelemetryHistory.mock.calls as unknown[][])[1][0]).toEqual({
     limit: 100,
     cursorBeforeMs: oldestLoaded.bucketStartMs - 1,
   })

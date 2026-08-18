@@ -42,3 +42,9 @@ test('watch route span follows zoom and clamps unusable extremes', () => {
   expect(watchRouteSpanMeters(1, 52, 1080)).toBe(2_000)
   expect(watchRouteSpanMeters(14, 52, 0)).toBeNull()
 })
+
+test('a hair of zoom drift asks for the same area', () => {
+  // What a settling camera reports: the same view, reported to a few decimals of zoom.
+  expect(nearbyRadiusMeters(15.02, 52)).toBe(nearbyRadiusMeters(15.0, 52))
+  expect(nearbyRadiusMeters(12.03, 52)).toBe(nearbyRadiusMeters(12.0, 52))
+})

@@ -1,13 +1,5 @@
 import type { Camera as CameraRef } from '@rnmapbox/maps'
-import {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWindowDimensions } from 'react-native'
 
 import { zoomLevelForDelta } from '@/helpers/mapGeometry'
@@ -29,6 +21,7 @@ import {
 import type { UseCameraControlsParams } from '@/screens/main/map/cameraControlTypes'
 import { useCameraIntentCommands } from '@/screens/main/map/useCameraIntentCommands'
 import { useCameraPreviewGestures } from '@/screens/main/map/useCameraPreviewGestures'
+import { useMainMapImperativeHandle } from '@/screens/main/map/useMainMapImperativeHandle'
 import { useHistoryCameraFraming } from '@/screens/main/map/useHistoryCameraFraming'
 
 export type { CameraSnapshot, HistoryPreviewTarget }
@@ -53,6 +46,7 @@ export function useCameraControls({
     preview: historyPreview,
     previewRoute: historyPreviewRoute,
     rideRoute,
+    focusRoute: historyFocusRoute,
     selectionKey: historySelectionKey,
   } = history
   const { updatesEnabled: liveFollowUpdatesEnabled } = follow
@@ -279,6 +273,7 @@ export function useCameraControls({
     preview: historyPreview,
     previewRoute: historyPreviewRoute,
     rideRoute,
+    focusRoute: historyFocusRoute,
     viewport: historyViewport,
     perspectiveEnabled,
     dispatchCameraIntent,
@@ -312,84 +307,15 @@ export function useCameraControls({
     onPerspectiveChange,
   })
 
-  const imperativeHandleLatest = {
+  useMainMapImperativeHandle(ref, {
+    currentCameraRef,
     getViewfinderCoordinateFromMap,
     gpsCamera,
     intentCommands,
     previewGestures,
     previewHistorySession,
     recenterLive,
-  }
-  const imperativeHandleLatestRef = useRef(imperativeHandleLatest)
-  useLayoutEffect(() => {
-    imperativeHandleLatestRef.current = imperativeHandleLatest
   })
-  useImperativeHandle(
-    ref,
-    () => ({
-      recenterLive(options?: { resetPadding?: boolean; animationDuration?: number }) {
-        imperativeHandleLatestRef.current.recenterLive(options)
-      },
-      previewHistorySession(preview: HistoryPreviewTarget) {
-        imperativeHandleLatestRef.current.previewHistorySession(preview)
-      },
-      beginPreviewPan() {
-        imperativeHandleLatestRef.current.previewGestures.beginPreviewPan()
-      },
-      previewPanBy(...args: [number, number, number]) {
-        imperativeHandleLatestRef.current.previewGestures.previewPanBy(...args)
-      },
-      endPreviewPan() {
-        imperativeHandleLatestRef.current.previewGestures.endPreviewPan()
-      },
-      beginPreviewZoom() {
-        imperativeHandleLatestRef.current.previewGestures.beginPreviewZoom()
-      },
-      previewZoomBy(scale: number) {
-        imperativeHandleLatestRef.current.previewGestures.previewZoomBy(scale)
-      },
-      endPreviewZoom() {
-        imperativeHandleLatestRef.current.previewGestures.endPreviewZoom()
-      },
-      restorePreviewPan() {
-        imperativeHandleLatestRef.current.previewGestures.restorePreviewPan()
-      },
-      async getViewfinderCoordinate() {
-        const { getViewfinderCoordinateFromMap, gpsCamera } = imperativeHandleLatestRef.current
-        const coordinate = await getViewfinderCoordinateFromMap?.()
-        if (coordinate) return coordinate
-        const center = currentCameraRef.current?.centerCoordinate ?? gpsCamera.centerCoordinate
-        return { longitude: center[0], latitude: center[1] }
-      },
-      resetRotation() {
-        imperativeHandleLatestRef.current.intentCommands.resetRotation()
-      },
-      togglePerspective() {
-        imperativeHandleLatestRef.current.intentCommands.togglePerspective()
-      },
-      setPadding(bottom: number) {
-        imperativeHandleLatestRef.current.intentCommands.setPadding(bottom)
-      },
-      zoomBy(delta: number) {
-        imperativeHandleLatestRef.current.intentCommands.zoomBy(delta)
-      },
-      focusCoordinate(coordinate: [number, number]) {
-        imperativeHandleLatestRef.current.intentCommands.focusCoordinate(coordinate)
-      },
-      centerCoordinatePreservingCamera(coordinate: [number, number]) {
-        imperativeHandleLatestRef.current.intentCommands.centerCoordinatePreservingCamera(
-          coordinate,
-        )
-      },
-      focusWeather() {
-        imperativeHandleLatestRef.current.intentCommands.focusWeather()
-      },
-      focusLegalLimits() {
-        imperativeHandleLatestRef.current.intentCommands.focusLegalLimits()
-      },
-    }),
-    [],
-  )
 
   useEffect(() => {
     if (

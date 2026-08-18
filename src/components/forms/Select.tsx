@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View, type TextStyle } from 'react-native'
+import type { TextStyle, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretDownIcon, CheckIcon } from 'phosphor-react-native'
 
@@ -28,8 +29,8 @@ export function Select<T extends string = string>({
   value,
   onChange,
   placeholder = 'Select…',
-  style,
   textStyle,
+  style,
 }: SelectProps<T>) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)

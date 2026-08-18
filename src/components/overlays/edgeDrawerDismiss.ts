@@ -124,3 +124,32 @@ export function edgeDrawerScrollEndAction({
   if (visibleFraction < 1) return 'restore'
   return 'stay-open'
 }
+
+/**
+ * Where a bottom drawer's scroll offset belongs after its content changed size.
+ *
+ * Offset *is* visible presence for a bottom drawer, so content growing under it would read as the
+ * drawer retreating toward its edge and fade it out with no gesture left to bring it back. Growth
+ * is therefore absorbed into the offset (the drawer stays pinned to its own edge).
+ *
+ * The fully-opaque floor only applies to a drawer that was already opaque. A drawer the user is
+ * dragging toward dismissal is deliberately below that mark, and a resize landing mid-drag must not
+ * snap it back up under the finger. Shrinking needs no absorption beyond the clamp to the new
+ * range: the native clamp already walks the offset down with the content end.
+ */
+export function edgeDrawerContentResizeOffset({
+  offset,
+  range,
+  previousRange,
+  height,
+}: {
+  offset: number
+  range: number
+  previousRange: number
+  height: number
+}): number {
+  const grown = range > previousRange ? offset + (range - previousRange) : offset
+  const wasOpaque = offset >= edgeDrawerRestoreOffset(previousRange, height, false)
+  const pinned = wasOpaque ? Math.max(grown, edgeDrawerRestoreOffset(range, height, false)) : grown
+  return clamp(pinned, 0, range)
+}

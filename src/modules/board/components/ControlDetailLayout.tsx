@@ -2,7 +2,7 @@ import { useNavigation } from 'expo-router'
 import { BellRingingIcon } from 'phosphor-react-native'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
-import { type SharedValue } from 'react-native-reanimated'
+import type { SharedValue } from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
 import { MetricAlerts } from '@/modules/alerts/components/MetricAlerts'
@@ -13,6 +13,7 @@ import {
 import { asAlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
 import { useBoardMetricAlerts } from '@/modules/alerts/hooks/useMetricAlerts'
 import { theme } from '@/constants/theme'
+import { FocusedSeriesCaption } from '@/modules/board/components/FocusedSeriesCaption'
 import { MetricDetailAlertContext } from '@/modules/board/components/metricDetailAlertContext'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import {
@@ -52,16 +53,24 @@ export function ControlDetailLayout({
     navigation.setOptions({ title })
   }, [title, navigation])
 
+  // The caption travels with the charts: whichever branch renders `children`, it sits above them.
+  const charts = (
+    <>
+      <FocusedSeriesCaption />
+      {children}
+    </>
+  )
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {controlId ? (
         <ControlDetailAlerts controlId={controlId} unit={unit} liveValue={liveValue} gauge={gauge}>
-          {children}
+          {charts}
         </ControlDetailAlerts>
       ) : (
         <>
           {gauge}
-          {children}
+          {charts}
         </>
       )}
     </ScrollView>

@@ -4,7 +4,7 @@ import {
   DeviceMobileIcon,
   NavigationArrowIcon,
 } from 'phosphor-react-native'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 

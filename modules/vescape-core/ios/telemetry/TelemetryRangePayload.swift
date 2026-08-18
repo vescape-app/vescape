@@ -2,6 +2,10 @@ import ExpoModulesCore
 import Foundation
 import GRDB
 
+/// Bottom history chart overview; full samples remain available for map and chart screen.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `HISTORY_CHART_OVERVIEW_SAMPLES`
+private let HISTORY_CHART_OVERVIEW_SAMPLES = 600
+
 // The bridge edge of Ride History reads. `NativeArrayBuffer` is an Expo type, so the columnar range
 // payload — and the one query that returns it — live here instead of in `TelemetryRepository.swift`.
 // That keeps the repository, the DAO and the migrator free of the Expo runtime, which is what lets
@@ -40,12 +44,25 @@ extension TelemetryRepository {
         arguments: [fromMs, toMs, deviceId, deviceId]
       ).map(exclusionMap)
       let percents = self.batteryPercents(sampleRows, configs: configs, windowMs: windowMs)
+      let overviewIndices = evenlySpacedIndices(sampleRows.count, limit: HISTORY_CHART_OVERVIEW_SAMPLES)
+      let overviewRows = overviewIndices.map { sampleRows[$0] }
+      let overviewPercents = overviewIndices.map { percents[$0] }
       return mergeTelemetryPayload(sampleColumns(sampleRows, batteryPercents: percents), [
+        "chartColumns": sampleColumns(overviewRows, batteryPercents: overviewPercents)["boardColumns"],
+        "chartCount": overviewRows.count,
         "gpsSamples": gpsMaps(sampleRows),
         "markers": markers.map(markerMap),
         "exclusions": exclusions,
       ])
     }) ?? emptyRangePayload()
+  }
+}
+
+private func evenlySpacedIndices(_ count: Int, limit: Int) -> [Int] {
+  guard count > limit else { return Array(0..<count) }
+  let denominator = limit - 1
+  return (0..<limit).map { index in
+    (index * (count - 1) + denominator / 2) / denominator
   }
 }
 
@@ -110,6 +127,8 @@ internal func emptyRangePayload() -> [String: Any?] {
     "boardCount": 0,
     "boardDevices": [] as [String?],
     "boardDeviceNames": [] as [String],
+    "chartColumns": NativeArrayBuffer.allocate(size: 0),
+    "chartCount": 0,
     "gpsSamples": [] as [[String: Any?]],
     "markers": [] as [[String: Any?]],
     "exclusions": [] as [[String: Any?]],

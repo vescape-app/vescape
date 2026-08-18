@@ -84,6 +84,14 @@ const config: ExpoConfig = {
         // source-map upload additionally needs SENTRY_AUTH_TOKEN.
         organization: process.env.SENTRY_ORG,
         project: process.env.SENTRY_PROJECT,
+        // `sentry.gradle` (applied by this plugin) only uploads the JS bundle and its source
+        // maps. NDK debug files need the separate Sentry Android Gradle Plugin, without which
+        // every native frame in a segfault stays `?` — including our own vescape-core code
+        // (VESCAPE-1D). React Native's own prebuilt .so files ship stripped, so frames inside
+        // RN/Hermes stay unresolved either way.
+        experimental_android: {
+          enableAndroidGradlePlugin: true,
+        },
       },
     ],
     [

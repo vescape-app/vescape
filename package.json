@@ -1,6 +1,6 @@
 {
   "name": "vescape",
-  "version": "0.86.0",
+  "version": "0.88.1",
   "private": true,
   "license": "GPL-3.0-or-later",
   "author": "Kacper Kozak",
@@ -14,6 +14,7 @@
     "prebuild": "expo prebuild",
     "native:sync": "bun run scripts/native-sync.ts",
     "android": "bun run scripts/android.ts",
+    "android:emulator": "bun run scripts/android-emulator.ts",
     "android:release": "bun run scripts/android.ts --variant release --no-bundler",
     "android:e2e": "EXPO_PUBLIC_E2E=1 bun run android",
     "ios": "bun run native:sync ios && expo run:ios --device",
@@ -26,7 +27,7 @@
     "wear:pair": "bun run scripts/wear.ts pair",
     "wear:replay": "bun run scripts/wear.ts replay",
     "relay:reverse": "bun run scripts/relay-reverse.ts",
-    "lint": "oxlint src",
+    "lint": "oxlint --type-aware src",
     "format": "oxfmt . '!.agents/skills/**'",
     "format:check": "oxfmt --check . '!.agents/skills/**'",
     "clear": "bun run scripts/clear.ts",
@@ -105,6 +106,7 @@
     "lefthook": "^2.1.10",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.78.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "sharp": "^0.35.3",
     "typescript": "^6"
   },

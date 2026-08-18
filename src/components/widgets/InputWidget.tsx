@@ -18,8 +18,6 @@ interface InputWidgetProps {
   accessibilityLabel?: string
   /** Optional visual rendered at the leading edge of a row input. */
   leading?: ReactNode
-  /** Optional control rendered at the widget's trailing edge, before the edit button. */
-  accessory?: ReactNode
   /** Optional content shown below the input while the row is being edited. */
   editingContent?: ReactNode
   /** Keep the row editor open when the input loses focus, so inline controls remain usable. */
@@ -40,7 +38,6 @@ function RowInput({
   onCommit,
   accessibilityLabel,
   leading,
-  accessory,
   editingContent,
   commitOnBlur = true,
 }: InputWidgetProps) {
@@ -85,7 +82,6 @@ function RowInput({
             )}
           </View>
         </View>
-        {accessory}
         <Pressable
           onPress={editing ? commit : startEdit}
           hitSlop={10}
@@ -114,7 +110,6 @@ function SquareInput({
   onCommit,
   accessibilityLabel,
   leading,
-  accessory,
 }: InputWidgetProps) {
   const [open, setOpen] = useState(false)
 
@@ -131,7 +126,6 @@ function SquareInput({
           <Text style={styles.value} numberOfLines={2}>
             {value?.trim() || placeholder}
           </Text>
-          {accessory}
         </View>
       </Pressable>
       <TextPromptModal

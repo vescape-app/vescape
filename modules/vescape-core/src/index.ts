@@ -693,6 +693,8 @@ export interface MetricExclusion {
 
 export interface HistoryRange {
   boardSamples: TelemetrySample[]
+  /** Native-decimated overview used by the compact ride chart. */
+  chartSamples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   exclusions: MetricExclusion[]
@@ -723,11 +725,17 @@ const BMS_SERIES_BALANCE_LANE_BITS = 30
  * lanes/sample, row-major) plus a device dictionary, instead of an array of ~25-field objects. This
  * replaces N×25 per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
  */
+/**
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `getRange`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getRange`
+ */
 interface NativeHistoryRange {
   boardColumns: ArrayBuffer
   boardCount: number
   boardDevices: (string | null)[]
   boardDeviceNames: string[]
+  chartColumns?: ArrayBuffer
+  chartCount?: number
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   exclusions: MetricExclusion[]
@@ -744,12 +752,16 @@ const nullableLane = (value: number): number | null => (Number.isNaN(value) ? nu
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt
  */
-function decodeBoardSamples(range: NativeHistoryRange): TelemetrySample[] {
-  const { boardCount, boardDevices, boardDeviceNames } = range
-  if (!boardCount || !range.boardColumns) return []
-  const lanes = new Float64Array(range.boardColumns)
-  const samples = new Array<TelemetrySample>(boardCount)
-  for (let i = 0; i < boardCount; i++) {
+function decodeBoardSamples(
+  range: NativeHistoryRange,
+  columns: ArrayBuffer = range.boardColumns,
+  count: number = range.boardCount,
+): TelemetrySample[] {
+  const { boardDevices, boardDeviceNames } = range
+  if (!count || !columns) return []
+  const lanes = new Float64Array(columns)
+  const samples = new Array<TelemetrySample>(count)
+  for (let i = 0; i < count; i++) {
     const o = i * SAMPLE_COLUMN_COUNT
     const deviceIndex = lanes[o + 2]
     samples[i] = {
@@ -1046,7 +1058,7 @@ export interface AppSettings {
   boardMoveStrengthPercent: number
   /** Play on/off sounds on board connect and involuntary disconnect. */
   connectionSoundsEnabled: boolean
-  /** Android-only: use CompanionDeviceManager presence to connect selected board when nearby. */
+  /** Android-only: use CompanionDeviceManager presence to connect associated boards when nearby. */
   companionPresenceEnabled: boolean
   /**
    * Board Warnings master switch (kill switch). Off ⇒ native runs no warning detector evaluation
@@ -1109,6 +1121,12 @@ export interface AppSettings {
    * only the IDs — never the server messages themselves. Absent/empty means nothing acknowledged.
    */
   dismissedCommunityMessageIds: string[]
+}
+
+export interface CompanionPresenceBoard {
+  boardId: string
+  name: string
+  bleId: string
 }
 
 export interface DiagnosticStatus {
@@ -1203,6 +1221,26 @@ export interface TelemetryHistoryEvent {
  */
 export interface LiveSeriesEvent {
   metrics: Record<string, number[]>
+  generation: number
+}
+
+/**
+ * High-resolution series for the one metric a `/control` detail chart has focused,
+ * emitted natively at full resolution (20ms buckets). `series` and each `exclusions` entry
+ * are flat `[ts0, v0, ts1, v1, ...]` / `[start0, end0, ...]` arrays. Excluded spans ride
+ * along per exclusion key so JS can rebuild overlay bands without raw samples.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/LiveSeriesEmitter.kt `emitFocusedSeries`
+ * @parity /modules/vescape-core/ios/telemetry/LiveSeriesEmitter.swift `emitFocusedSeries`
+ */
+export interface FocusedSeriesEvent {
+  metric: string
+  series: number[]
+  exclusions: Record<string, number[]>
+  windowMs: number
+  /** Elapsed time actually covered by the retained samples (≤ `windowMs` right after connect). */
+  spanMs: number
+  /** Measured packet rate over `spanMs`; 0 until two samples exist. */
+  sampleRateHz: number
   generation: number
 }
 
@@ -1673,8 +1711,10 @@ type VescapeCoreEvents = {
   onLiveState: (event: LiveStateEvent) => void
   /** High-frequency (per-frame) scalar tick for live gauges. No history, no nested arrays. */
   onLiveTick: (event: TelemetryEvent) => void
-  /** Decimated per-metric min/max sparkline series (~1Hz) for the live strip + detail charts. */
+  /** Decimated per-metric min/max sparkline series (~1Hz) for the live strip. */
   onLiveSeries: (event: LiveSeriesEvent) => void
+  /** Full-resolution series for each focused `/control` detail-chart metric (~1Hz). */
+  onFocusedSeries: (event: FocusedSeriesEvent) => void
   /** Batched full samples (~3Hz) for history buffer and detail charts. */
   onTelemetryHistory: (event: TelemetryHistoryEvent) => void
   onBms: (event: BmsEvent) => void
@@ -1740,6 +1780,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateGroupRideIdentity(riderId: string, riderName: string, riderColor: string | null): void
   setTelemetryRecordingEnabled(enabled: boolean): void
   setBmsSeriesFocused(focused: boolean): void
+  setFocusedSeriesMetrics(metrics: string[]): void
   reloadAlertRules(): void
   getCriticalRideNotificationPermissionStatus(): Promise<CriticalRideNotificationPermissionStatus>
   requestCriticalRideNotificationPermission(): Promise<CriticalRideNotificationPermissionStatus>
@@ -1782,6 +1823,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getRemoteTiltState(): RemoteTiltState | null
   setSelectedBoard(boardId: string | null): void
   setCompanionPresenceEnabled(enabled: boolean): Promise<void>
+  getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]>
+  addCompanionPresenceBoard(boardId: string): Promise<void>
+  removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
   getTelemetrySamples(options: {
     fromMs: number
@@ -2033,6 +2077,11 @@ export function setTelemetryRecordingEnabled(enabled: boolean): void {
 /** Open/close native bridge pushes for the Live BMS Series. Native retention keeps running. */
 export function setBmsSeriesFocused(focused: boolean): void {
   native.setBmsSeriesFocused(focused)
+}
+
+/** Set the metric keys the high-res `onFocusedSeries` stream covers (empty array to stop it). */
+export function setFocusedSeriesMetrics(metrics: string[]): void {
+  native.setFocusedSeriesMetrics(metrics)
 }
 
 /** Tell the Android foreground service to re-read alert rules from native storage. */
@@ -2339,11 +2388,15 @@ export async function getHistoryRange(options: {
   deviceId?: string
   limit?: number
 }): Promise<HistoryRange> {
-  const range = E2E_ENABLED
+  const range: NativeHistoryRange = E2E_ENABLED
     ? e2eFake.getHistoryRange(options)
     : await native.getHistoryRange(options)
   return {
     boardSamples: decodeBoardSamples(range),
+    chartSamples:
+      range.chartColumns && range.chartCount != null
+        ? decodeBoardSamples(range, range.chartColumns, range.chartCount)
+        : decodeBoardSamples(range),
     gpsSamples: range.gpsSamples,
     markers: range.markers,
     exclusions: range.exclusions,
@@ -2786,6 +2839,21 @@ export async function setCompanionPresenceEnabled(enabled: boolean): Promise<voi
   return native.setCompanionPresenceEnabled(enabled)
 }
 
+export async function getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]> {
+  if (E2E_ENABLED) return e2eFake.getCompanionPresenceBoards()
+  return native.getCompanionPresenceBoards()
+}
+
+export async function addCompanionPresenceBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) return e2eFake.addCompanionPresenceBoard(boardId)
+  return native.addCompanionPresenceBoard(boardId)
+}
+
+export async function removeCompanionPresenceBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) return e2eFake.removeCompanionPresenceBoard(boardId)
+  return native.removeCompanionPresenceBoard(boardId)
+}
+
 export function seedE2EData(flow: string): void {
   if (E2E_ENABLED) {
     e2eFake.seedE2EData(flow)
@@ -2865,6 +2933,12 @@ export function addLiveSeriesListener(cb: (event: LiveSeriesEvent) => void): Eve
   }
 
   return emitter.addListener('onLiveSeries', cb)
+}
+
+export function addFocusedSeriesListener(
+  cb: (event: FocusedSeriesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onFocusedSeries', cb)
 }
 
 export function addTelemetryHistoryListener(

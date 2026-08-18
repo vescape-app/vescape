@@ -7,144 +7,27 @@ import {
   deleteTelemetryRange,
   type HistoryGpsSample,
   type HistoryMarker,
-  type MetricExclusion,
   type TelemetryMinuteBucket,
   type TelemetrySample,
-  type TelemetrySummary,
 } from 'vescape-core'
 import { groupHistorySessions, type HistorySession } from '@/modules/history/lib/sessions'
-import { wait } from '@/helpers/wait'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
-interface HistoryState {
-  blocks: TelemetryMinuteBucket[]
-  sessions: HistorySession[]
-  liveBlocks: TelemetryMinuteBucket[]
-  selectedBlock: TelemetryMinuteBucket | null
-  selectedSession: HistorySession | null
-  samples: TelemetrySample[]
-  gpsSamples: HistoryGpsSample[]
-  sessionSamples: TelemetrySample[]
-  sessionGpsSamples: HistoryGpsSample[]
-  sessionMarkers: HistoryMarker[]
-  sessionExclusions: MetricExclusion[]
-  liveSamples: TelemetrySample[]
-  liveGpsSamples: HistoryGpsSample[]
-  markers: HistoryMarker[]
-  summary: TelemetrySummary | null
-  loading: boolean
-  loadingSamples: boolean
-  loadingSession: boolean
-  sessionTruncated: boolean
-  error: string | undefined
-  hasMore: boolean
-}
-
-interface HistoryActions {
-  loadInitial: () => Promise<void>
-  loadMore: () => Promise<void>
-  refreshLive: () => Promise<void>
-  selectBlock: (block: TelemetryMinuteBucket | null) => Promise<void>
-  selectSession: (session: HistorySession | null) => Promise<void>
-  refreshSummary: () => Promise<void>
-  regroupSessions: () => void
-  removeSelectedSession: () => Promise<void>
-  clearHistory: () => Promise<void>
-}
+import { INITIAL_HISTORY_STATE, type HistoryStore } from '@/modules/history/store/historyStoreTypes'
+import { createHistorySelectionSlice } from '@/modules/history/store/historySelectionSlice'
 
 const PAGE_SIZE = 100
-const MIN_SESSION_SAMPLE_LIMIT = 10_000
-const PREVIEW_SAMPLE_LIMIT = 240
-const MIN_SESSION_LOADING_MS = 150
 let liveRefreshInFlight = false
 let liveRefreshVersion = 0
-let sessionLoadVersion = 0
-
-function bucketToPreviewSample(bucket: TelemetryMinuteBucket): TelemetrySample {
-  return {
-    id: 0,
-    capturedAtMs: bucket.bucketStartMs,
-    deviceId: bucket.deviceId,
-    deviceName: bucket.deviceName,
-    speedKmh: bucket.avgSpeedKmh,
-    batteryVoltage: bucket.minBatteryVoltage ?? 0,
-    batteryPercent: null,
-    motorCurrent: bucket.maxMotorCurrent,
-    batteryCurrent: bucket.maxBatteryCurrent,
-    dutyCycle: bucket.maxDuty,
-    pitch: 0,
-    roll: 0,
-    balancePitch: 0,
-    balanceCurrent: 0,
-    erpm: 0,
-    state: 0,
-    switchState: 0,
-    adc1: 0,
-    adc2: 0,
-    odometer: null,
-    tempMosfet: bucket.maxTempMosfet,
-    tempMotor: bucket.maxTempMotor,
-    hasFault: bucket.faultCount > 0,
-    faultCode: 0,
-    latitude: bucket.firstLatitude,
-    longitude: bucket.firstLongitude,
-  }
-}
-
-function buildPreviewSamples(
-  blocks: TelemetryMinuteBucket[],
-  session: HistorySession,
-): TelemetrySample[] {
-  const blockSet = new Set(session.blockIds)
-  return blocks
-    .filter((b) => blockSet.has(b.id))
-    .sort((a, b) => a.bucketStartMs - b.bucketStartMs)
-    .map(bucketToPreviewSample)
-}
 
 /** Rider-set ride split gap. Read per grouping call so a settings change re-groups on next load. */
 function rideSplitGapMs() {
   return useSettingsStore.getState().rideSplitGapMinutes * 60_000
 }
 
-function getSessionRangeOptions(session: HistorySession) {
-  return {
-    fromMs: session.startAtMs,
-    toMs: session.endAtMs,
-    ...(session.deviceId ? { deviceId: session.deviceId } : {}),
-  }
-}
-
-function getSessionPreviewLimit(session: HistorySession) {
-  return Math.min(PREVIEW_SAMPLE_LIMIT, Math.max(1, session.sampleCount + 1))
-}
-
-function getSessionSampleLimit(session: HistorySession) {
-  return Math.max(MIN_SESSION_SAMPLE_LIMIT, session.sampleCount + 1)
-}
-
-export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) => ({
-  blocks: [],
-  sessions: [],
-  liveBlocks: [],
-  selectedBlock: null,
-  selectedSession: null,
-  samples: [],
-  gpsSamples: [],
-  sessionSamples: [],
-  sessionGpsSamples: [],
-  sessionMarkers: [],
-  sessionExclusions: [],
-  liveSamples: [],
-  liveGpsSamples: [],
-  markers: [],
-  summary: null,
-  loading: false,
-  loadingSamples: false,
-  loadingSession: false,
-  sessionTruncated: false,
-  error: undefined,
-  hasMore: true,
+export const useHistoryStore = create<HistoryStore>((set, get) => ({
+  ...INITIAL_HISTORY_STATE,
+  ...createHistorySelectionSlice(set, get),
 
   async loadInitial() {
     set({ loading: true, error: undefined })
@@ -163,6 +46,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
         samples: [],
         gpsSamples: [],
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],
@@ -249,108 +133,6 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
     }
   },
 
-  async selectBlock(block) {
-    if (!block) {
-      set({
-        selectedBlock: null,
-        samples: [],
-        gpsSamples: [],
-        markers: [],
-        loadingSamples: false,
-      })
-      return
-    }
-    set({
-      selectedBlock: block,
-      samples: [],
-      gpsSamples: [],
-      markers: [],
-      loadingSamples: true,
-      error: undefined,
-    })
-    try {
-      const range = await getHistoryRange({
-        fromMs: block.startAtMs,
-        toMs: block.endAtMs,
-        ...(block.deviceId ? { deviceId: block.deviceId } : {}),
-        limit: 500,
-      })
-      set({
-        samples: range.boardSamples,
-        gpsSamples: range.gpsSamples,
-        markers: range.markers,
-      })
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) })
-    } finally {
-      set({ loadingSamples: false })
-    }
-  },
-
-  async selectSession(session) {
-    const version = ++sessionLoadVersion
-    if (!session) {
-      set({
-        selectedSession: null,
-        sessionSamples: [],
-        sessionGpsSamples: [],
-        sessionMarkers: [],
-        sessionExclusions: [],
-        loadingSession: false,
-        sessionTruncated: false,
-      })
-      return
-    }
-    const previewSamples = buildPreviewSamples(get().blocks, session)
-    set({
-      selectedSession: session,
-      sessionSamples: previewSamples.length > 0 ? previewSamples : get().sessionSamples,
-      sessionGpsSamples: [],
-      loadingSession: true,
-      sessionTruncated: false,
-      error: undefined,
-    })
-    const minimumLoading = wait(MIN_SESSION_LOADING_MS)
-    try {
-      const rangeOptions = getSessionRangeOptions(session)
-      if (session.centerLatitude == null || session.centerLongitude == null) {
-        const previewRange = await getHistoryRange({
-          ...rangeOptions,
-          limit: getSessionPreviewLimit(session),
-        })
-        if (version !== sessionLoadVersion) return
-        if (previewRange.gpsSamples.length > 0) {
-          set({ sessionGpsSamples: previewRange.gpsSamples })
-        }
-      }
-      const range = await getHistoryRange({
-        ...rangeOptions,
-        limit: getSessionSampleLimit(session),
-      })
-      await minimumLoading
-      if (version !== sessionLoadVersion) return
-      set({
-        sessionSamples: range.boardSamples,
-        sessionGpsSamples: range.gpsSamples,
-        sessionMarkers: range.markers,
-        sessionExclusions: range.exclusions,
-        sessionTruncated:
-          range.boardSamples.length < session.sampleCount ||
-          range.gpsSamples.length < session.gpsPointCount,
-      })
-    } catch (err) {
-      await minimumLoading
-      if (version === sessionLoadVersion) {
-        set({ error: err instanceof Error ? err.message : String(err) })
-      }
-    } finally {
-      await minimumLoading
-      if (version === sessionLoadVersion) {
-        set({ loadingSession: false })
-      }
-    }
-  },
-
   async refreshSummary() {
     try {
       const summary = await getTelemetrySummary()
@@ -406,6 +188,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
         samples: [],
         gpsSamples: [],
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],
@@ -439,6 +222,7 @@ export const useHistoryStore = create<HistoryState & HistoryActions>((set, get) 
         samples: [],
         gpsSamples: [],
         sessionSamples: [],
+        sessionChartSamples: [],
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],

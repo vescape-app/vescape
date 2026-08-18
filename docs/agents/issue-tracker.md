@@ -16,7 +16,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue in `KacperKozak/vescape`.
+Create a GitHub issue in `vescape-app/vescape`.
 
 ## PRD issues
 

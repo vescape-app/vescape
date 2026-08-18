@@ -1,6 +1,6 @@
 import Mapbox from '@rnmapbox/maps'
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, View } from 'react-native'
+import { View } from 'react-native'
 import {
   setWatchRouteSpanM,
   type LocationEvent,
@@ -37,10 +37,13 @@ import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMap
 import { MapLoadingPlaceholder, MapUnavailable } from '@/screens/main/map/MainMapOverlays'
 import { MainMapScene } from '@/screens/main/map/MainMapScene'
 import { useLiveMapModel } from '@/screens/main/map/useLiveMapModel'
+import { useMainScreenStore } from '@/screens/main/mainScreenStore'
+import { useChartZoomRoute } from '@/screens/main/map/useChartZoomRoute'
 import { useMainMapCameraEvents } from '@/screens/main/map/useMainMapCameraEvents'
 import { useMainMapFocusActions } from '@/screens/main/map/useMainMapFocusActions'
 import { useMapOverlaySelection } from '@/screens/main/map/useMapOverlaySelection'
 import { useMapPressHandlers } from '@/screens/main/map/useMapPressHandlers'
+import { useMapRevealAnimation } from '@/screens/main/map/useMapRevealAnimation'
 import { useMapViewport } from '@/screens/main/map/useMapViewport'
 import { useNavigationDiagnosticsSync } from '@/screens/main/map/useNavigationDiagnosticsSync'
 import { useNavigationPathFraming } from '@/screens/main/map/useNavigationPathFraming'
@@ -119,7 +122,7 @@ interface MainMapProps {
   onPhoneHeadingChange: (heading: number | null) => void
   onLongPressTarget: (target: { latitude: number; longitude: number }) => void
   onMapInteraction: () => void
-  onRawMapPress: (selection: MapSelection) => boolean | void
+  onRawMapPress: (selection: MapSelection) => boolean | undefined
   onMapPress: (selection: MapSelection) => void
   onEnterMapMode: () => void
   onOffscreenMapIndicatorsChange: (indicators: OffscreenMapIndicatorState[]) => void
@@ -165,8 +168,6 @@ export const MainMap = memo(
     const selectedMapPointId = mapPointProps.selectedId
     const hiddenMapPointCategories = mapPointProps.hiddenCategories
 
-    const mapRevealedRef = useRef(false)
-    const [mapOpacity] = useState(() => new Animated.Value(0))
     const [cameraReady, setCameraReady] = useState(false)
     const [loadedStyleSignature, setLoadedStyleSignature] = useState<string | null>(null)
     const {
@@ -224,6 +225,15 @@ export const MainMap = memo(
       activeNavigationTarget,
       directionPoint,
     })
+
+    const chartZoomRoute = useChartZoomRoute(history.gpsSamples)
+    // The panel covers the bottom of the map and grows as the rider opens metrics; the route is
+    // framed into what is left, so opening one reframes rather than hiding half the ride.
+    const historyPanelHeight = useMainScreenStore((s) => s.historyPanelHeight)
+    const cameraViewport = useMemo(
+      () => ({ ...mapLayout, bottomInset: historyActive ? historyPanelHeight : undefined }),
+      [historyActive, historyPanelHeight, mapLayout],
+    )
 
     const mapStyle = useResolvedMapStyle({
       mapStyleKey: styleProps.mapStyleKey,
@@ -292,7 +302,7 @@ export const MainMap = memo(
       cameraFix,
       persistedFallback,
       perspectiveEnabled,
-      mapViewport: mapLayout,
+      mapViewport: cameraViewport,
       mapOrientationMode,
       heading: {
         gpsMode: headingFollowMode,
@@ -307,6 +317,7 @@ export const MainMap = memo(
         preview: historyPreview,
         previewRoute: history.previewRoute,
         rideRoute,
+        focusRoute: chartZoomRoute,
       },
       follow: {
         updatesEnabled: !(phoneHeadingMode && mode === 'map'),
@@ -377,6 +388,13 @@ export const MainMap = memo(
       onMapInteraction,
     })
 
+    const { mapOpacity } = useMapRevealAnimation({
+      settingsLoaded,
+      cameraReady,
+      setCameraReady,
+      centerCoordinate: gpsCamera.centerCoordinate,
+    })
+
     useNavigationDiagnosticsSync({
       gpsFix,
       courseDeg: directionBearingDeg,
@@ -387,23 +405,6 @@ export const MainMap = memo(
       displayedCameraHeading,
       mapOrientationMode,
     })
-
-    useEffect(() => {
-      if (mapRevealedRef.current) return
-      mapOpacity.setValue(0)
-      setCameraReady(false)
-    }, [gpsCamera.centerCoordinate, mapOpacity])
-
-    useEffect(() => {
-      if (!settingsLoaded || !cameraReady) return
-      Animated.timing(mapOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        mapRevealedRef.current = true
-      })
-    }, [cameraReady, mapOpacity, settingsLoaded])
 
     const { handleMapLoaded, handleCameraChanged, handleMapIdle } = useMainMapCameraEvents({
       cameraRef,

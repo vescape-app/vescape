@@ -10,11 +10,23 @@ export function favoriteRangeForSession(
   return window ?? { startMs: session.startAtMs, endMs: session.endAtMs }
 }
 
-/** Seed trim handles visibly inside the ride so their draggable direction is obvious. */
+/**
+ * Seed trim handles visibly inside the ride so their draggable direction is obvious.
+ *
+ * When the chart is zoomed, seed inside the visible window instead of the whole ride: handles
+ * seeded off-screen read as a broken control, and a zoom is the rider pointing at the stretch
+ * they mean to keep.
+ */
 export function initialFavoriteTrimRangeForSession(
   session: Pick<HistorySession, 'movingStartAtMs' | 'movingEndAtMs' | 'startAtMs' | 'endAtMs'>,
+  visible?: { startMs: number; endMs: number } | null,
 ): { startMs: number; endMs: number } {
-  const range = favoriteRangeForSession(session)
+  const ride = favoriteRangeForSession(session)
+  const startMs = visible
+    ? Math.max(ride.startMs, Math.min(visible.startMs, ride.endMs))
+    : ride.startMs
+  const endMs = visible ? Math.min(ride.endMs, Math.max(visible.endMs, ride.startMs)) : ride.endMs
+  const range = endMs > startMs ? { startMs, endMs } : ride
   const inset = (range.endMs - range.startMs) * 0.15
   return { startMs: range.startMs + inset, endMs: range.endMs - inset }
 }

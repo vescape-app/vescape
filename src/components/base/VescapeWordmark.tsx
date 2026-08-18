@@ -5,7 +5,7 @@ import type { StyleProp, ImageStyle } from 'react-native'
 const WORDMARK = require('@/../assets/images/splashIcon.png')
 const ASPECT_RATIO = 1200 / 369
 
-type VescapeWordmarkProps = {
+interface VescapeWordmarkProps {
   width?: number
   style?: StyleProp<ImageStyle>
 }
