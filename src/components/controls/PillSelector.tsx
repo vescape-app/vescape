@@ -36,9 +36,9 @@ function getFitContentWidth(children: ReactNode, activeId: string, gap: number) 
   const items = Children.toArray(children).filter(Boolean)
   const contentWidth = items.reduce<number>((width, child) => {
     if (!isValidElement<PillSelectorItemProps>(child)) return width
-    const { id, activeLabelOnly, labelBehavior, activeWidth, inactiveWidth, icon } = child.props
+    const { id, labelBehavior, activeWidth, inactiveWidth, icon } = child.props
     if (!id) return width + 36
-    const behavior = activeLabelOnly ? 'active-only' : (labelBehavior ?? 'active-only')
+    const behavior = labelBehavior ?? 'active-only'
     if (behavior === 'active-only' && icon) {
       return (
         width +

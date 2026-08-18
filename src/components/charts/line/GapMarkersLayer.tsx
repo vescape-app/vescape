@@ -7,6 +7,7 @@ import type { ChartTimeline } from '@/components/charts/line/timeline'
 import type { ChartCamera } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 const LINE_COLOR = theme.palette.slate.textMuted
 /** The same dim as the ride's own start and end labels — the seam times belong to that row. */
@@ -98,7 +99,7 @@ function GapMarker(props: GapMarkerProps) {
   } = props
   const startLabel = formatClock(startMs, false)
   const endLabel = formatClock(endMs, false)
-  const startWidth = font.getTextWidth(startLabel)
+  const startWidth = textAdvanceWidth(font, startLabel)
 
   const transform = useDerivedValue(() => {
     const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)

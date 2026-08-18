@@ -15,6 +15,7 @@ import { toScrubTargets, type PreparedChart } from '@/components/charts/line/sta
 import type { ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 const GRID_COLOR = theme.palette.slate.surface
 const AXIS_TEXT_COLOR = theme.palette.slate.textDim
@@ -236,7 +237,8 @@ function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
     ]
     return values.map((value, index) => {
       const text = formatAxisNumber(value)
-      const x = side === 'left' ? plot.x - 4 - font.getTextWidth(text) : plot.x + plot.width + 4
+      const x =
+        side === 'left' ? plot.x - 4 - textAdvanceWidth(font, text) : plot.x + plot.width + 4
       return { text, x, y: baselines[index] }
     })
   }, [font, plot, range, side])

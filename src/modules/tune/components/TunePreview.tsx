@@ -55,6 +55,7 @@ import {
   terrainHeightRelativeToWheel,
   tunePreviewDeckLine,
 } from '@/modules/tune/lib/tunePreviewGeometry'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 interface TunePreviewProps {
   fields: Record<string, TuneProfileFieldValue>
@@ -237,7 +238,9 @@ export function TunePreview({
   const readoutBoldFont = useSkiaMonoFont('700', READOUT_FONT_SIZE)
   const speedFont = useSkiaMonoFont('700', SPEED_FONT_SIZE)
   const groundToBoardAngleX = useDerivedValue(() =>
-    readoutBoldFont ? centerX - readoutBoldFont.getTextWidth(groundToBoardAngleStr.value) / 2 : 0,
+    readoutBoldFont
+      ? centerX - textAdvanceWidth(readoutBoldFont, groundToBoardAngleStr.value) / 2
+      : 0,
   )
 
   return (

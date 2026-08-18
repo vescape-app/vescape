@@ -5,12 +5,12 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
   Easing,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   type SharedValue,
   withTiming,
 } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 
 import { IconButton } from '@/components/base/IconButton'
 import { MonoValue } from '@/components/base/MonoValue'
@@ -56,7 +56,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
-      runOnJS(commitManualFrame)(nextIndex)
+      scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onUpdate((event) => {
       'worklet'
@@ -65,7 +65,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
-      runOnJS(commitManualFrame)(nextIndex)
+      scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onFinalize(() => {
       'worklet'

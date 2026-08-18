@@ -36,6 +36,11 @@
 
     "typescript/array-type": ["warn", { "default": "array" }],
     "typescript/consistent-type-assertions": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/no-meaningless-void-operator": "off",
+    "typescript/unbound-method": "off",
     "typescript/no-empty-object-type": "error",
     "typescript/no-extra-non-null-assertion": "error",
     "typescript/no-require-imports": [

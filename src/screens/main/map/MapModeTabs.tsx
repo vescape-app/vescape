@@ -57,7 +57,6 @@ export function MapModeTabs({
           testID="map-mode-explore"
           label="Explore"
           icon={MapTrifoldIcon}
-          activeLabelOnly
           color={theme.palette.violet}
           activeWidth={116}
           onPress={() => {
@@ -69,7 +68,6 @@ export function MapModeTabs({
           testID="map-mode-weather"
           label="Weather"
           icon={WeatherModeIcon}
-          activeLabelOnly
           color={weatherSelection}
           activeWidth={142}
           inactiveWidth={58}
@@ -89,7 +87,6 @@ export function MapModeTabs({
           testID="map-mode-legal-limits"
           label="Legal limits"
           icon={SpeedometerIcon}
-          activeLabelOnly
           color={theme.palette.green}
           activeWidth={136}
           inactiveWidth={44}

@@ -68,7 +68,6 @@ export function TuneScreenHeader({
                 id={profile.id}
                 label={profile.name}
                 icon={tuneProfileIconComponent(profile.icon)}
-                activeLabelOnly
                 color={tuneProfileColorTheme(profile.color)}
                 onPress={() => onSelectProfile(profile.id)}
               >

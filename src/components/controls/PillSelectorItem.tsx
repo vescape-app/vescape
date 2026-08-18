@@ -35,8 +35,6 @@ export interface PillSelectorItemProps {
   label: string
   icon?: Icon
   labelBehavior?: PillSelectorLabelBehavior
-  /** @deprecated Use labelBehavior="active-only". */
-  activeLabelOnly?: boolean
   badge?: ReactNode
   hint?: ReactNode
   hintVisibility?: PillSelectorSlotVisibility
@@ -57,17 +55,15 @@ function slotVisible(visibility: PillSelectorSlotVisibility, active: boolean) {
 function resolveItemState({
   active,
   icon,
-  activeLabelOnly,
   labelBehavior,
   hintVisibility,
 }: {
   active: boolean
   icon?: Icon
-  activeLabelOnly?: boolean
   labelBehavior?: PillSelectorLabelBehavior
   hintVisibility: PillSelectorSlotVisibility
 }): PillSelectorResolvedState {
-  const resolvedLabelBehavior = activeLabelOnly ? 'active-only' : (labelBehavior ?? 'active-only')
+  const resolvedLabelBehavior = labelBehavior ?? 'active-only'
   const collapseLabel = resolvedLabelBehavior === 'active-only' && icon != null
   return {
     active,
@@ -135,7 +131,6 @@ export function PillSelectorItem({
   label,
   icon: IconComp,
   labelBehavior,
-  activeLabelOnly,
   badge,
   hint,
   hintVisibility = 'inactive',
@@ -153,7 +148,6 @@ export function PillSelectorItem({
   const resolved = resolveItemState({
     active,
     icon: IconComp,
-    activeLabelOnly,
     labelBehavior,
     hintVisibility,
   })

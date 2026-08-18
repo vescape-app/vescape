@@ -43,6 +43,7 @@ import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/lin
 import type { ChartBand, ChartSpec, ChartTimeRange } from '@/components/charts/line/types'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useSkiaFont, useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 export type { ChartSpec } from '@/components/charts/line/types'
 
@@ -197,8 +198,8 @@ export function ChartStack({
   const plotWidth = plotWidthFor(width)
 
   // Mono digits, so one measurement holds for every label the chart will ever show.
-  const glyphWidth = axisFont ? axisFont.getTextWidth('0') : 0
-  const scrubGlyphWidth = scrubFont ? scrubFont.getTextWidth('0') : 0
+  const glyphWidth = axisFont ? textAdvanceWidth(axisFont, '0') : 0
+  const scrubGlyphWidth = scrubFont ? textAdvanceWidth(scrubFont, '0') : 0
   // Every chart draws at the same origin in its own canvas, so the readout is laid out against
   // one plot box per chart height and never against a position in the stack.
   const scrubCharts = useMemo(

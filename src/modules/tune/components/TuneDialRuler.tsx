@@ -31,6 +31,7 @@ import {
   TOP_VALUE_BAND_HEIGHT,
 } from '@/modules/tune/components/tuneDialLayout'
 import type { computeTuneDialLayout } from '@/modules/tune/components/tuneDialPhysics'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 /** The scrolling ruler: tick marks, value labels, the previous-value mark and the edge glow. */
 export function TuneDialRuler({
@@ -87,7 +88,7 @@ export function TuneDialRuler({
         majorPath.moveTo(x, MAJOR_TICK_TOP)
         majorPath.lineTo(x, RULER_LABEL_BAND_TOP)
         const text = formatTuneValue(val)
-        const textX = labelFont ? x - labelFont.getTextWidth(text) / 2 : x
+        const textX = labelFont ? x - textAdvanceWidth(labelFont, text) / 2 : x
         labelList.push({ key: i, text, x: textX })
       } else if (isMinor) {
         minorPath.moveTo(x, TOP_VALUE_BAND_HEIGHT + 9)
@@ -117,7 +118,7 @@ export function TuneDialRuler({
 
   const prevLabelX =
     prevMarkOffset != null && previousValueLabel != null && prevLabelFont
-      ? prevMarkOffset - prevLabelFont.getTextWidth(previousValueLabel) / 2
+      ? prevMarkOffset - textAdvanceWidth(prevLabelFont, previousValueLabel) / 2
       : null
 
   return (

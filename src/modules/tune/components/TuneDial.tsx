@@ -21,6 +21,7 @@ import {
 } from '@/modules/tune/components/tuneDialLayout'
 import { TuneDialRuler } from '@/modules/tune/components/TuneDialRuler'
 import { useTuneDialGesture } from '@/modules/tune/components/useTuneDialGesture'
+import { textAdvanceWidth } from '../../../helpers/skiaText'
 
 interface TuneDialProps {
   value: number
@@ -78,7 +79,7 @@ export function TuneDial({
   const badgeFont = useSkiaFont('800', BADGE_FONT_SIZE)
   const badgeText = useDerivedValue(() => formatDisplayValue(displayValue.value, decimals))
   const badgeX = useDerivedValue(() =>
-    badgeFont ? BADGE_WIDTH - badgeFont.getTextWidth(badgeText.value) : 0,
+    badgeFont ? BADGE_WIDTH - textAdvanceWidth(badgeFont, badgeText.value) : 0,
   )
 
   const dial = (

@@ -27,7 +27,7 @@
     "wear:pair": "bun run scripts/wear.ts pair",
     "wear:replay": "bun run scripts/wear.ts replay",
     "relay:reverse": "bun run scripts/relay-reverse.ts",
-    "lint": "oxlint src",
+    "lint": "oxlint --type-aware src",
     "format": "oxfmt . '!.agents/skills/**'",
     "format:check": "oxfmt --check . '!.agents/skills/**'",
     "clear": "bun run scripts/clear.ts",
@@ -106,6 +106,7 @@
     "lefthook": "^2.1.10",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.78.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "sharp": "^0.35.3",
     "typescript": "^6"
   },
