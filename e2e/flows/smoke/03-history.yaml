@@ -32,7 +32,9 @@ appId: ${APP_ID}
 - tapOn:
     id: history-metric-tab-duty
 - extendedWaitUntil:
-    visible: 'Duty Cycle'
+    visible:
+      id: history-metric-tab-duty
+      selected: true
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempMotor
