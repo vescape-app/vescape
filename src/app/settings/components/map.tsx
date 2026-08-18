@@ -6,7 +6,7 @@ import { Text } from '@/components/base/Text'
 import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'

@@ -12,7 +12,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
