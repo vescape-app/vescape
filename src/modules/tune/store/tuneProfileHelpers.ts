@@ -1,12 +1,12 @@
 import {
   createProfile as nativeCreateProfile,
   renameProfile as nativeRenameProfile,
+  type RefloatConfigSnapshot,
   type TuneProfile,
   type TuneProfileFieldValue,
 } from 'vescape-core'
 
 import { errorMessage } from '@/helpers/error'
-import type { TuneBoardValues } from '@/modules/tune/lib/boardConfigPrefill'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 import {
   DEFAULT_TUNE_PROFILE_COLOR,
@@ -39,11 +39,11 @@ export function dirtyFields(
 }
 
 export function fieldsFromSnapshot(
-  boardValues: TuneBoardValues | null,
+  snapshot: RefloatConfigSnapshot | null,
 ): Record<string, TuneProfileFieldValue> {
-  if (!boardValues) return {}
+  if (!snapshot) return {}
   return Object.fromEntries(
-    boardValues.groups.flatMap((group) =>
+    snapshot.groups.flatMap((group) =>
       group.fields.map((field) => [field.id, field.value as TuneProfileFieldValue]),
     ),
   )

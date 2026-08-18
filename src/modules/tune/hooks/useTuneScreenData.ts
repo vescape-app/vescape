@@ -96,10 +96,10 @@ export function useTuneScreenData() {
   // Cached board values render while the session read is still on the wire; the fresh snapshot
   // replaces them the moment it lands (ADR 0035).
   const prefill = useMemo(
-    () => (boardSnapshot ? null : boardConfigPrefill(boardConfigValues, selectedBoardId)),
-    [boardConfigValues, boardSnapshot, selectedBoardId],
+    () => (currentBoardSnapshot ? null : boardConfigPrefill(boardConfigValues, selectedBoardId)),
+    [boardConfigValues, currentBoardSnapshot, selectedBoardId],
   )
-  const boardValues: TuneBoardValues | null = boardSnapshot ?? prefill
+  const boardValues: TuneBoardValues | null = currentBoardSnapshot ?? prefill
   const tuneCompatibility =
     currentBoardSnapshot?.refloatBaseVersion ?? selectedBoard?.link?.refloatBaseVersion ?? null
   const tuneCompatibilityIssue = useMemo(
@@ -187,9 +187,11 @@ export function useTuneScreenData() {
     retryBoardSnapshot,
   ])
 
+  // Only the fresh Tune Snapshot backs the board diff and "accept board value": a diff is a
+  // comparison against the board, and a provisional value is not board truth (ADR 0035).
   useEffect(() => {
-    setBoardSnapshot(boardValues)
-  }, [boardValues, setBoardSnapshot])
+    setBoardSnapshot(boardSnapshot)
+  }, [boardSnapshot, setBoardSnapshot])
 
   const profileFields = useMemo(
     () => (activeProfile ? { ...activeProfile.fields, ...draftFields } : null),

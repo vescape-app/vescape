@@ -169,3 +169,24 @@ test('a differing raw config hash replaces the displayed snapshot', async () => 
 
   expect(useTuneSnapshotStore.getState().snapshot).toEqual(fresh)
 })
+
+test('drops the snapshot when the Board Session ends', async () => {
+  const { useBoardConfigValuesStore } = await import('@/modules/board/store/boardConfigValuesStore')
+  const { startTuneSnapshotSessionSync, useTuneSnapshotStore } =
+    await import('@/modules/tune/store/tuneSnapshotStore')
+  const stop = startTuneSnapshotSessionSync()
+  useBoardConfigValuesStore.getState().replace({
+    boardId: 'board-1',
+    refloatBaseVersion: '1.3.0',
+    capturedAtMs: 1000,
+    freshness: 'fresh',
+    values: { kp: 12 },
+  })
+  await useTuneSnapshotStore.getState().read()
+
+  useBoardConfigValuesStore.getState().replace(null)
+
+  expect(useTuneSnapshotStore.getState().status).toBe('idle')
+  expect(useTuneSnapshotStore.getState().snapshot).toBeNull()
+  stop()
+})

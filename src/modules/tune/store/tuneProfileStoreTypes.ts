@@ -1,6 +1,9 @@
-import type { TuneHistoryEntry, TuneProfile, TuneProfileFieldValue } from 'vescape-core'
-
-import type { TuneBoardValues } from '@/modules/tune/lib/boardConfigPrefill'
+import type {
+  RefloatConfigSnapshot,
+  TuneHistoryEntry,
+  TuneProfile,
+  TuneProfileFieldValue,
+} from 'vescape-core'
 
 export interface TuneProfileBoardDiff {
   fieldId: string
@@ -49,7 +52,7 @@ export interface TuneProfileActions {
     newName: string,
   ) => Promise<TuneProfile | null>
   setDraftField: (fieldId: string, value: TuneProfileFieldValue) => void
-  setBoardSnapshot: (boardValues: TuneBoardValues | null) => void
+  setBoardSnapshot: (snapshot: RefloatConfigSnapshot | null) => void
   getDirtyFields: () => Record<string, TuneProfileFieldValue>
   revertField: (fieldId: string) => void
   acceptBoardField: (fieldId: string) => void

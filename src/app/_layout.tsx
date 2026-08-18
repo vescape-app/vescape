@@ -23,6 +23,7 @@ import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
+import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
@@ -85,6 +86,7 @@ function RootLayout() {
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopBoardConfigValuesSync = startBoardConfigValuesSync()
+    const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
@@ -94,6 +96,7 @@ function RootLayout() {
       stopAppDataSync()
       stopBoardWarningsSync()
       stopBoardConfigValuesSync()
+      stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()
       stopAppStatusSync()
       stopNavigationSync()
