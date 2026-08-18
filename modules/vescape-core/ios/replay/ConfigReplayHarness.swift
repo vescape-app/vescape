@@ -21,6 +21,7 @@ enum ConfigReplayHarness {
       appBoardId: "replay",
       transport: .direct,
       fwVersion: nil,
+      refloatVersion: "Refloat 3.0.7",
       refloatBaseVersion: nil,
       linkIntegrity: .trusted,
       boardConfigValues: nil,

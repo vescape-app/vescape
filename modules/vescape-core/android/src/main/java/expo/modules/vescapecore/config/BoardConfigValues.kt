@@ -72,6 +72,17 @@ internal data class BoardConfigValues(
    * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `toBridgeMap`
    * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
    */
+  /**
+   * Demote to provisional, dropping the write base. Called when the BLE link drops: the values stay
+   * worth showing, but the disconnected window is exactly where another central could have written
+   * the board, so they may no longer back a write (ADR 0035).
+   *
+   * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `demotedToProvisional`
+   */
+  fun demotedToProvisional(): BoardConfigValues =
+    if (freshness != BoardConfigFreshness.FRESH) this
+    else copy(freshness = BoardConfigFreshness.PROVISIONAL, writeBase = null)
+
   fun toBridgeMap(): Map<String, Any?> = mapOf(
     "boardId" to boardId,
     "refloatBaseVersion" to refloatBaseVersion,

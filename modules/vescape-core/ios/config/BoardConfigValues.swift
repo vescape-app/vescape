@@ -85,6 +85,22 @@ struct BoardConfigValues {
     return json
   }
 
+  /// Demote to `provisional`, dropping the write base. Called when the BLE link drops: the values
+  /// stay worth showing, but the disconnected window is exactly where another central could have
+  /// written the board, so they may no longer back a write (ADR 0035).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `demotedToProvisional`
+  func demotedToProvisional() -> BoardConfigValues {
+    guard freshness == .fresh else { return self }
+    return BoardConfigValues(
+      boardId: boardId,
+      refloatBaseVersion: refloatBaseVersion,
+      capturedAtMs: capturedAtMs,
+      freshness: .provisional,
+      values: values,
+      writeBase: nil
+    )
+  }
+
   /// Rebuild a cached object. Always `provisional` and always without a write base.
   static func provisional(
     boardId: String?,

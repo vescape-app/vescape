@@ -358,6 +358,7 @@ class ConfigRWFsmTest {
             appBoardId = "board-1",
             fwVersion = "fw-test",
             refloatBaseVersion = "3.0",
+            refloatVersion = null,
             writeBase = null,
         )
 

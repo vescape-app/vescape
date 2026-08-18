@@ -32,6 +32,11 @@ class ConfigRWFsmWriteBaseTest {
         val (state, effects) = ConfigRWFsm.apply(ConfigRWState.Idle, startWrite(writeBase()))
 
         assertTrue(state is ConfigRWState.WriteAwaitingSetAck)
+        assertEquals(
+            "Refloat version comes from the session, not a get-info round trip",
+            "Refloat 3.0.7",
+            (state as ConfigRWState.WriteAwaitingSetAck).ctx.refloatVersion,
+        )
         assertFalse(effects.sends(COMM_GET_CUSTOM_CONFIG_XML))
         assertFalse(effects.sends(COMM_GET_CUSTOM_CONFIG))
         assertTrue(effects.sends(COMM_SET_CUSTOM_CONFIG))
@@ -69,6 +74,24 @@ class ConfigRWFsmWriteBaseTest {
     }
 
     @Test
+    fun linkDropDemotesFreshValuesSoTheyCannotBackAWrite() {
+        val fresh = BoardConfigValues(
+            boardId = "board-1",
+            refloatBaseVersion = "3.0.7",
+            capturedAtMs = 1,
+            freshness = BoardConfigFreshness.FRESH,
+            values = mapOf("tuned" to 1.0),
+            writeBase = writeBase(),
+        )
+
+        val demoted = fresh.demotedToProvisional()
+
+        assertEquals(BoardConfigFreshness.PROVISIONAL, demoted.freshness)
+        assertEquals(null, demoted.writeBase)
+        assertEquals(fresh.values, demoted.values)
+    }
+
+    @Test
     fun provisionalValuesCarryNoWriteBase() {
         val provisional = BoardConfigValues.provisional(
             boardId = "board-1",
@@ -92,6 +115,7 @@ class ConfigRWFsmWriteBaseTest {
         appBoardId = "board-1",
         fwVersion = "FW 6.05",
         refloatBaseVersion = "3.0.7",
+        refloatVersion = "Refloat 3.0.7",
         writeBase = writeBase,
     )
 

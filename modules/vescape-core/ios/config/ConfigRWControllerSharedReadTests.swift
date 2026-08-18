@@ -41,6 +41,7 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
       appBoardId: "board-1",
       transport: .direct,
       fwVersion: "FW 6.05",
+      refloatVersion: "Refloat 3.0.7",
       refloatBaseVersion: "3.0.7",
       linkIntegrity: .trusted,
       boardConfigValues: nil,

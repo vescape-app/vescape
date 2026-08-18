@@ -22,6 +22,8 @@ internal sealed class ConfigRWEvent {
         val appBoardId: String?,
         val fwVersion: String?,
         val refloatBaseVersion: String?,
+        /** Refloat version the trusted Board Link observed; seeds the snapshot this write returns. */
+        val refloatVersion: String?,
         /**
          * The session's fresh write base, when it holds one. Present means the write patches these
          * retained bytes directly instead of reading the board first (ADR 0035).

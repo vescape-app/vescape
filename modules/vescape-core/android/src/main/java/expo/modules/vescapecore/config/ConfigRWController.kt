@@ -149,6 +149,7 @@ internal class ConfigRWController(
                         connectedBoardId,
                         connection.fwVersion,
                         connectedRefloatBaseVersion,
+                        connection.config?.refloatVersion,
                         connection.boardConfigValues?.writeBase,
                     ),
                 )
@@ -162,13 +163,18 @@ internal class ConfigRWController(
     private fun dispatch(event: ConfigRWEvent) {
         val (next, effects) = ConfigRWFsm.apply(state, event)
         state = next
-        effects.forEach(::interpret)
+        // A failed frame is terminal: `GattWriteFailed` already completed the operation, so the
+        // remaining effects — including a queued `COMM_SET_CUSTOM_CONFIG` — must not still go out.
+        for (effect in effects) if (!interpret(effect)) return
     }
 
-    private fun interpret(effect: ConfigRWEffect) {
+    private fun interpret(effect: ConfigRWEffect): Boolean {
         when (effect) {
         is ConfigRWEffect.SendFrame -> {
-            if (!port.sendPayload(effect.payload)) dispatch(ConfigRWEvent.GattWriteFailed("Board GATT is not writable"))
+            if (!port.sendPayload(effect.payload)) {
+                dispatch(ConfigRWEvent.GattWriteFailed("Board GATT is not writable"))
+                return false
+            }
         }
         is ConfigRWEffect.ScheduleTimeout -> {
             timeoutHandle?.cancel()
@@ -181,6 +187,7 @@ internal class ConfigRWController(
         is ConfigRWEffect.EmitWriteFailure -> failWrite(effect)
         is ConfigRWEffect.DumpDebugBytes -> port.dumpDebugBytes(effect.xmlBytes, effect.configBytes)
         }
+        return true
     }
 
     private fun resumePolling(resume: Boolean) {

@@ -67,6 +67,9 @@ internal object ConfigRWFsm {
             appBoardId = event.appBoardId,
             fwVersion = event.fwVersion,
             refloatBaseVersion = event.refloatBaseVersion,
+            // The trusted Board Link already observed this; the skip path never asks the board, and
+            // the read path's get-info response overwrites it with the same value.
+            refloatVersion = event.refloatVersion,
         )
         // A board takes one connection at a time, so while this session holds the link the config can
         // only have changed through our own writes — the session's fresh bytes are still the board's
@@ -80,9 +83,6 @@ internal object ConfigRWFsm {
                 rawConfig = writeBase.rawConfig,
                 packageSignature = writeBase.packageSignature,
                 failPhase = ConfigWritePhaseTag.SENDING_WRITE,
-                // The read path asks while collecting the schema; the skip path still needs the
-                // Refloat version for the snapshot this write returns (Tune Compatibility reads it).
-                requestInfo = true,
             )
         }
         val newState = ConfigRWState.WriteCollectingXml(
@@ -495,7 +495,6 @@ internal object ConfigRWFsm {
                 rawConfig = rawConfig,
                 packageSignature = configBytes.packageSignature,
                 failPhase = ConfigWritePhaseTag.READING_CONFIG,
-                requestInfo = false,
             )
         } catch (e: RefloatConfigSchemaException) {
             writeFailure(
@@ -517,7 +516,6 @@ internal object ConfigRWFsm {
         rawConfig: ByteArray,
         packageSignature: Long,
         failPhase: ConfigWritePhaseTag,
-        requestInfo: Boolean,
     ): Pair<ConfigRWState, List<ConfigRWEffect>> = try {
         val patched = RefloatConfigEncoder.encode(schema, rawConfig, ctx.profileFields)
         ConfigRWState.WriteAwaitingSetAck(
@@ -525,13 +523,12 @@ internal object ConfigRWFsm {
             schema = schema,
             originalConfig = rawConfig,
             patchedConfig = patched,
-        ) to listOfNotNull(
+        ) to listOf(
             ConfigRWEffect.CancelTimeout,
             ConfigRWEffect.ScheduleTimeout(
                 RefloatConfigErrorCode.CONFIG_WRITE_TIMEOUT,
                 CONFIG_WRITE_TIMEOUT_MS,
             ),
-            if (requestInfo) ConfigRWEffect.SendFrame(RefloatConfigProtocol.buildGetInfo(ctx.transport)) else null,
             ConfigRWEffect.SendFrame(
                 RefloatConfigProtocol.buildSetCustomConfig(
                     ctx.transport,

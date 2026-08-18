@@ -173,14 +173,14 @@ internal final class ConfigRWController {
       profileFields: fields,
       appBoardId: connectedBoardId,
       fwVersion: connection.fwVersion,
-      refloatVersion: nil
+      refloatVersion: connection.refloatVersion
     )
     // A board takes one connection at a time, so while this session holds the link the config can
     // only have changed through our own writes — the session's `fresh` bytes are still the board's
     // bytes and back the write directly. `provisional` values carry no write base by construction,
     // so a cache-restored session falls through to the read (ADR 0035).
     if let writeBase = connection.boardConfigValues?.writeBase {
-      sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, requestInfo: true, connection)
+      sendWrite(ctx, writeBase.schema, writeBase.rawConfig, writeBase.packageSignature, .sendingWrite, connection)
       return
     }
     state = .writeCollectingXml(ctx, [], nil)
@@ -369,7 +369,7 @@ internal final class ConfigRWController {
     let rawConfig = configBytes.config
     do {
       let schema = try RefloatConfigSchemaParser.parse(xmlBytes)
-      sendWrite(ctx, schema, rawConfig, configBytes.packageSignature, .readingConfig, requestInfo: false, connection)
+      sendWrite(ctx, schema, rawConfig, configBytes.packageSignature, .readingConfig, connection)
     } catch let error as RefloatConfigSchemaException {
       failWrite(code: .UNSUPPORTED_SCHEMA, message: error.message, phase: .readingConfig, rawConfig: rawConfig, resumePolling: ctx.wasPolling, connection: connection)
     } catch {
@@ -386,7 +386,6 @@ internal final class ConfigRWController {
     _ rawConfig: [UInt8],
     _ packageSignature: UInt32,
     _ failPhase: ConfigWritePhase,
-    requestInfo: Bool,
     _ connection: ConfigRWConnection
   ) {
     do {
@@ -394,11 +393,6 @@ internal final class ConfigRWController {
       state = .writeAwaitingSetAck(ctx, schema, rawConfig, patched)
       cancelTimeout()
       scheduleTimeout(.CONFIG_WRITE_TIMEOUT, CONFIG_WRITE_TIMEOUT_MS, connection)
-      // The read path already asked for it while collecting the schema; the skip path still needs
-      // the Refloat version for the snapshot this write returns (Tune Compatibility reads it).
-      if requestInfo {
-        guard send(connection, RefloatConfigProtocol.buildGetInfo(transport: ctx.transport)) else { return }
-      }
       _ = send(
         connection,
         RefloatConfigProtocol.buildSetCustomConfig(
@@ -643,6 +637,9 @@ internal struct ConfigRWConnection {
   let appBoardId: String?
   let transport: BoardTransport
   let fwVersion: String?
+  /// Refloat version the trusted Board Link observed. Seeds the write context so a push that skips
+  /// the pre-read still returns a snapshot Tune Compatibility can read.
+  let refloatVersion: String?
   let refloatBaseVersion: String?
   let linkIntegrity: LinkIntegrity
   /// The session's held Board Config Values. A `fresh` object carries the write base a tune push

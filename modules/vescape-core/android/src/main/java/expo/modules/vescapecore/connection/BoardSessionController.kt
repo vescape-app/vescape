@@ -494,6 +494,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
             transport.clear(markIntentional = false)
             bmsSeriesRing.clear()
             telemetryPipeline.clearLiveTelemetry()
+            // The Board Session survives the drop, but exclusive ownership of the config does not:
+            // while we were off the link another central could have written. The values stay
+            // displayable, they just stop backing a write until the post-trust read makes them fresh
+            // again (ADR 0035).
+            boardConfigValues = boardConfigValues?.demotedToProvisional()
+            // Re-arm the post-trust read so the relinked session gets fresh values back.
+            boardConfigReadScheduled = false
             boardError = reason
             transitionBoardPhase(
                 next = BoardPhase.Reconnecting,

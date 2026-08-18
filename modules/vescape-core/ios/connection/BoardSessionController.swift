@@ -1087,6 +1087,12 @@ internal final class BoardSessionController: VescGattListener {
     // Drop prior-connection BMS rows before reconnecting, mirroring Android's reconnect-path
     // `bmsSeriesRing.clear()` next to `telemetryPipeline.clearLiveTelemetry()`.
     bmsSeriesRing.clear()
+    // The Board Session survives the drop, but exclusive ownership of the config does not: while we
+    // were off the link another central could have written. The values stay displayable, they just
+    // stop backing a write until the post-trust read makes them fresh again (ADR 0035).
+    boardConfigValues = boardConfigValues?.demotedToProvisional()
+    // Re-arm the post-trust read so the relinked session gets fresh values back.
+    boardConfigReadScheduled = false
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
@@ -2003,6 +2009,7 @@ internal final class BoardSessionController: VescGattListener {
       appBoardId: config.appBoardId,
       transport: config.transport,
       fwVersion: nil,
+      refloatVersion: config.refloatVersion,
       refloatBaseVersion: config.refloatBaseVersion,
       linkIntegrity: linkIntegrity,
       boardConfigValues: boardConfigValues,
@@ -2024,6 +2031,7 @@ internal final class BoardSessionController: VescGattListener {
       appBoardId: config?.appBoardId,
       transport: config?.transport ?? .direct,
       fwVersion: nil,
+      refloatVersion: config?.refloatVersion,
       refloatBaseVersion: config?.refloatBaseVersion,
       linkIntegrity: linkIntegrity,
       boardConfigValues: nil,
