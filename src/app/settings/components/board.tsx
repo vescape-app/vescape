@@ -182,7 +182,7 @@ function DevBadgeShowcase() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <DevBadge />
         <Text style={{ color: theme.palette.slate.textPrimary, fontSize: 13 }}>
-          Dev build marker · tap to hide for one minute
+          Dev tools · tap to expand, long press to hide for one minute
         </Text>
       </View>
     </ShowcaseCard>
