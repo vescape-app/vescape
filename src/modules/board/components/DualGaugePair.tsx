@@ -7,6 +7,7 @@ import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { type SparklinePoint } from '@/components/charts/Sparkline'
 import { buildSparklinePaths, SparklineLayer } from '@/components/charts/SparklineLayer'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import { DASH } from '@/helpers/format'
 import { interaction, type AlphaLevel } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
@@ -143,7 +144,7 @@ function GaugeValueLayer({
 }: Omit<QuarterArcProps, 'side' | 'max'> & { box: GaugeReadoutBox }) {
   const valueText = useDerivedValue(() => {
     const current = value.value
-    return current != null ? Math.round(current).toString() : '—'
+    return current != null ? Math.round(current).toString() : DASH
   })
   const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
   return (

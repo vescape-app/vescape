@@ -8,20 +8,10 @@ const workflow = readFileSync(
 )
 
 describe('internal release workflow contract', () => {
-  test('publishes tag and release only after both internal uploads succeed', () => {
+  test('leaves GitHub releases to the CLI and keeps read-only contents', () => {
     expect(workflow).toMatch(/permissions:\n\s+contents: read/)
-    const job = workflow.slice(workflow.indexOf('  github_release:'))
-    expect(job).toContain('needs: [build, upload_phone, upload_wear]')
-    expect(job).toMatch(/permissions:\n\s+contents: write/)
-    expect(job).not.toContain('if: always()')
-    expect(job).toContain('git push origin "refs/tags/$TAG"')
-    expect(job).toContain('--verify-tag --latest --notes-file release-body.md')
-    expect(job).not.toContain('--prerelease')
-  })
-
-  test('publishes the body drafted before dispatch instead of running Codex in CI', () => {
-    expect(workflow).toContain('release_body:')
-    expect(workflow).toContain('RELEASE_BODY: ${{ inputs.release_body }}')
+    expect(workflow).not.toContain('github_release:')
+    expect(workflow).not.toContain('gh release create')
     expect(workflow).not.toContain('codex')
   })
 

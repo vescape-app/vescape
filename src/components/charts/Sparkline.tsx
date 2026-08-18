@@ -46,17 +46,19 @@ export function SparklineMaxBadge({
     for (const point of points) max = Math.max(max, point.value)
     return Number.isFinite(max) ? max : null
   }, [points])
-  const value = maxValue == null ? '-' : fmt(maxValue).replace(/(\d)\s+([a-zA-Z%°])/g, '$1$2')
+  // No samples yet -> no badge at all; a "max —" placeholder is noise. The row keeps its height
+  // so the strip does not reflow when the first sample lands.
+  const value = maxValue == null ? null : fmt(maxValue).replace(/(\d)\s+([a-zA-Z%°])/g, '$1$2')
   return (
     <View
       style={[styles.badgeRow, { justifyContent: position === 'left' ? 'flex-start' : 'flex-end' }]}
     >
-      <Text style={styles.maxBadge} numberOfLines={1}>
-        <Text style={styles.maxLabel}>max </Text>
-        <Text style={{ color: maxValue == null ? theme.palette.slate.textDim : color }}>
-          {value}
+      {value != null && (
+        <Text style={styles.maxBadge} numberOfLines={1}>
+          <Text style={styles.maxLabel}>max </Text>
+          <Text style={{ color }}>{value}</Text>
         </Text>
-      </Text>
+      )}
     </View>
   )
 }

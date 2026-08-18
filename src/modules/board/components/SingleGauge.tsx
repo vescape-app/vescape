@@ -26,6 +26,7 @@ import {
   LABEL_FONT_SIZE,
 } from '@/modules/board/components/gauge/gaugeShared'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import { DASH } from '@/helpers/format'
 
 interface SingleGaugeProps {
   value: SharedValue<number | null>
@@ -78,7 +79,7 @@ function HalfArc({
 
   const valueText = useDerivedValue(() => {
     const current = value.value
-    if (current == null) return '—'
+    if (current == null) return DASH
     return decimals === 0 ? Math.round(current).toString() : current.toFixed(decimals)
   })
 

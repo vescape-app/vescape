@@ -8,6 +8,7 @@ import {
   MapTrifoldIcon,
   SwatchesIcon,
   ToolboxIcon,
+  WrenchIcon,
   CloudMoonIcon,
   CubeIcon,
   GearSixIcon,
@@ -128,6 +129,18 @@ const groups = [
         route: '/settings/components/map',
         icon: MapTrifoldIcon,
         color: theme.palette.green.light,
+      },
+    ],
+  },
+  {
+    title: 'Dev',
+    sections: [
+      {
+        label: 'Dev',
+        hint: 'DevBadge and the showcase scaffolding these pages are built from',
+        route: '/settings/components/dev',
+        icon: WrenchIcon,
+        color: theme.palette.amber.color,
       },
     ],
   },

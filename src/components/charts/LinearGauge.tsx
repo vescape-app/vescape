@@ -20,6 +20,7 @@ import {
   GaugeBar,
   fractionOf,
 } from '@/components/charts/LinearGaugeBar'
+import { DASH } from '@/helpers/format'
 
 function useBarWidth() {
   const [width, setWidth] = useState(0)
@@ -78,7 +79,7 @@ export function LinearGauge({
   const height = compact ? BAR_H_COMPACT : BAR_H
   const fraction = value == null ? 0 : fractionOf(value, min, max)
   const valueText =
-    value == null ? '—' : decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals)
+    value == null ? DASH : decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals)
 
   // The value rides just left of the head, its top aligned with the head marker's top.
   // Below 20% there's no room on the left, so it flips to the right of the head.

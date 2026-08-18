@@ -82,13 +82,17 @@ function generateChartSeries({
 
 function SparklineShowcase() {
   const [color, setColor] = useState(telemetry.speed.color)
-  const points = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
+  const [noSamples, setNoSamples] = useState(false)
+  const generated = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
+  // Empty series is the disconnected case: the max badge hides itself, the row keeps its height.
+  const points = noSamples ? [] : generated
 
   return (
     <ShowcaseCard
       name="Sparkline"
       controls={
         <>
+          <ToggleRow label="no samples" value={noSamples} onToggle={setNoSamples} />
           <ChipRow
             label="color"
             options={[

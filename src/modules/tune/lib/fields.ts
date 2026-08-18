@@ -1,3 +1,4 @@
+import { DASH } from '@/helpers/format'
 interface AppTuneFieldDefinition {
   id: string
   label: string
@@ -172,7 +173,7 @@ export const APP_TUNE_FIELD_BY_ID = new Map(
 export function formatTuneValue(value: number | boolean | string): string {
   if (typeof value === 'boolean') return value ? 'On' : 'Off'
   if (typeof value === 'string') return value
-  if (!Number.isFinite(value)) return '-'
+  if (!Number.isFinite(value)) return DASH
   if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString()
   return Number.isInteger(value)
     ? value.toFixed(0)
