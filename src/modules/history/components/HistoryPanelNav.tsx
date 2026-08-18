@@ -1,4 +1,10 @@
-import { CaretDownIcon, CloudArrowUpIcon, ImagesSquareIcon, StarIcon } from 'phosphor-react-native'
+import {
+  CaretDownIcon,
+  ChartLineIcon,
+  CloudArrowUpIcon,
+  ImagesSquareIcon,
+  StarIcon,
+} from 'phosphor-react-native'
 import type { RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 
@@ -30,6 +36,8 @@ interface HistoryPanelNavProps {
   onOpenMediaDrawer: () => void
   onToggleFavorite: () => void
   onOpenShareInfo: () => void
+  /** Ride mode only: the full-screen charts page. A Favorite is about its route and media. */
+  onOpenCharts: () => void
 }
 
 export function HistoryPanelNav({
@@ -53,6 +61,7 @@ export function HistoryPanelNav({
   onOpenMediaDrawer,
   onToggleFavorite,
   onOpenShareInfo,
+  onOpenCharts,
 }: HistoryPanelNavProps) {
   const primaryLabel = title ?? formatRideTime(titleStartMs, titleEndMs)
   const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, boardName)
@@ -76,7 +85,15 @@ export function HistoryPanelNav({
               </View>
             ) : null}
           </>
-        ) : null}
+        ) : (
+          <IconButton
+            icon={ChartLineIcon}
+            onPress={onOpenCharts}
+            size="lg"
+            testID="history-open-charts"
+            accessibilityLabel="Full screen charts"
+          />
+        )}
       </View>
       <PrevNextSelector
         label={primaryLabel}

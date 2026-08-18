@@ -179,6 +179,8 @@ async function regenerateMetric(
         thresholdMax: spec.thresholdMax,
         enabled: true,
         soundType: spec.soundType,
+        repeatEverySeconds: spec.repeatEverySeconds,
+        beepCount: spec.beepCount,
         createdAt,
         source: ALERT_PRESET_SOURCE,
       })

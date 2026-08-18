@@ -1,5 +1,5 @@
 import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useEffect, useRef, useState, type ElementRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 
 import {
   applyOffscreenIndicatorDrafts,
@@ -29,7 +29,7 @@ export function useOffscreenMapIndicators({
   trackedPoints,
   enabled,
 }: {
-  mapViewRef: RefObject<ElementRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   currentCameraRef: RefObject<CameraSnapshot | null>
   mapLayout: MapLayout
   trackedPoints: TrackedMapPoint[]

@@ -20,7 +20,7 @@ import {
   warnMissingFixture,
   type CaptureDriver,
 } from './captureDriver.ts'
-import { select, type SelectOption } from './select.ts'
+import { pickDevice } from './devices.ts'
 
 const OUT_DIR = 'screenshots/ios'
 
@@ -68,18 +68,27 @@ async function bootSimulator(sim: Simulator): Promise<Simulator> {
   process.exit(1)
 }
 
+/** Cache key for the last capture simulator picked; see lib/lastDevice. */
+const LAST_SIMULATOR_KEY = 'capture-ios'
+
 async function chooseSimulator(simulators: Simulator[]): Promise<Simulator> {
   const booted = simulators.filter((sim) => sim.state === 'Booted')
-  const preferred = simulators.find((sim) => sim.name === PREFERRED_DEVICE)
   if (booted.length === 1) return booted[0]
+  const preferred = simulators.find((sim) => sim.name === PREFERRED_DEVICE)
   if (booted.length === 0 && preferred) return preferred
 
-  const options: SelectOption<Simulator>[] = simulators.map((sim) => ({
-    label: sim.name,
-    value: sim,
-    hint: sim.state === 'Booted' ? 'booted' : sim.name === PREFERRED_DEVICE ? 'store size' : 'boot',
-  }))
-  return select('iOS capture simulator', options)
+  return pickDevice({
+    title: 'iOS capture simulator',
+    items: simulators,
+    id: (sim) => sim.udid,
+    label: (sim) => sim.name,
+    aliases: (sim) => [sim.name],
+    hint: (sim) =>
+      sim.state === 'Booted' ? 'booted' : sim.name === PREFERRED_DEVICE ? 'store size' : 'boot',
+    requested: null,
+    cacheKey: LAST_SIMULATOR_KEY,
+    emptyMessage: 'No available iOS simulator. Install one from Xcode.',
+  })
 }
 
 async function resolveSimulator(requested: string | null): Promise<Simulator> {

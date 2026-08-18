@@ -1,4 +1,5 @@
 import type { ProfileStatsMonth } from 'vescape-core'
+import { DASH } from '@/helpers/format'
 
 export type ProfileMonth = ProfileStatsMonth
 
@@ -37,7 +38,7 @@ export function selectInitialMonth(months: ProfileMonth[], now = new Date()): Pr
 }
 
 export function formatDistance(valueM: number | null): string {
-  if (valueM == null) return '-'
+  if (valueM == null) return DASH
   if (valueM < 1000) return `${Math.round(valueM)} m`
   return `${(valueM / 1000).toFixed(1)} km`
 }
@@ -55,7 +56,7 @@ export function formatSpeed(valueKmh: number): string {
 }
 
 export function formatEnergy(valueWh: number | null): string {
-  if (valueWh == null) return '-'
+  if (valueWh == null) return DASH
   if (valueWh < 1000) return `${Math.round(valueWh)} Wh`
   return `${(valueWh / 1000).toFixed(1)} kWh`
 }

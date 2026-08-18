@@ -18,9 +18,8 @@ interface SparklineProps {
   points: SparklinePoint[]
   color: string
   height?: number
-  fmtMax?: (value: number) => string
   showMaxBadge?: boolean
-  maxPosition?: 'left' | 'right'
+  fmtMax?: (value: number) => string
   range?: SparklineRange
   minSpan?: number
   windowMs?: number
@@ -47,17 +46,19 @@ export function SparklineMaxBadge({
     for (const point of points) max = Math.max(max, point.value)
     return Number.isFinite(max) ? max : null
   }, [points])
-  const value = maxValue == null ? '-' : fmt(maxValue).replace(/(\d)\s+([a-zA-Z%°])/g, '$1$2')
+  // No samples yet -> no badge at all; a "max —" placeholder is noise. The row keeps its height
+  // so the strip does not reflow when the first sample lands.
+  const value = maxValue == null ? null : fmt(maxValue).replace(/(\d)\s+([a-zA-Z%°])/g, '$1$2')
   return (
     <View
       style={[styles.badgeRow, { justifyContent: position === 'left' ? 'flex-start' : 'flex-end' }]}
     >
-      <Text style={styles.maxBadge} numberOfLines={1}>
-        <Text style={styles.maxLabel}>max </Text>
-        <Text style={{ color: maxValue == null ? theme.palette.slate.textDim : color }}>
-          {value}
+      {value != null && (
+        <Text style={styles.maxBadge} numberOfLines={1}>
+          <Text style={styles.maxLabel}>max </Text>
+          <Text style={{ color }}>{value}</Text>
         </Text>
-      </Text>
+      )}
     </View>
   )
 }
@@ -69,7 +70,6 @@ export function Sparkline({
   height = DEFAULT_HEIGHT,
   fmtMax,
   showMaxBadge = true,
-  maxPosition = 'right',
   range,
   minSpan = 0,
   windowMs,
@@ -86,7 +86,7 @@ export function Sparkline({
   return (
     <View style={styles.wrap}>
       {fmtMax && showMaxBadge ? (
-        <SparklineMaxBadge points={points} color={color} fmt={fmtMax} position={maxPosition} />
+        <SparklineMaxBadge points={points} color={color} fmt={fmtMax} position="right" />
       ) : null}
       <View style={{ height }} onLayout={onLayout}>
         {width > 0 ? (

@@ -1,8 +1,12 @@
 import { useMemo } from 'react'
 
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
-import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
-import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
+import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
+import {
+  toChartBands,
+  toChartSeries,
+  toLiveChart,
+} from '@/modules/board/components/metricDetailData'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   useLiveMetric,
@@ -13,13 +17,26 @@ import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 const cfg = telemetry.duty
-const RANGE = { y: cfg.chartRange }
+const CHART_HEIGHT = 120
 
 export default function DutyScreen() {
   const duty = useLiveMetric(liveSelectors.duty)
   const windowMs = useLiveWindowMs()
-  const points = useMemo(() => toTelemetryChartPoints(duty), [duty])
   const excludedRanges = useLiveExcludedRanges('max_duty')
+
+  const charts = useMemo(
+    () => [
+      toLiveChart({
+        key: 'duty',
+        metric: cfg,
+        data: toChartSeries(duty, windowMs),
+        range: cfg.chartRange,
+        height: CHART_HEIGHT,
+        bands: toChartBands(excludedRanges),
+      }),
+    ],
+    [duty, excludedRanges, windowMs],
+  )
 
   return (
     <ControlDetailLayout
@@ -28,13 +45,7 @@ export default function DutyScreen() {
       unit={cfg.unit}
       liveValue={liveTelemetryRuntime.values.dutyPercent}
     >
-      <MetricDetailChart
-        metric={cfg}
-        points={points}
-        range={RANGE}
-        windowMs={windowMs}
-        excludedRanges={excludedRanges}
-      />
+      <LiveChartStack charts={charts} />
     </ControlDetailLayout>
   )
 }

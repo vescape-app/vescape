@@ -4,22 +4,29 @@ import android.content.Context
 import java.time.Instant
 import java.time.ZoneId
 
-private const val PROFILE_SESSION_GAP_MS = 10 * 60_000L
+/**
+ * Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
+ * @parity /src/modules/history/lib/sessions.ts `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
+ */
+internal const val DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
 private val PROFILE_BREAK_BOUNDARIES = setOf("disconnected", "app_stop", "error")
 
 data class ProfileStatsMonth(val year: Int, val month: Int)
 
 // @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift
-class ProfileStatsRepository private constructor(context: Context) {
+class ProfileStatsRepository private constructor(private val context: Context) {
   private val dao = TelemetryDatabase.get(context).telemetryDao()
 
   suspend fun getTotalProfileStats(): Map<String, Any?> {
+    val gapMs = rideSplitGapMs()
     val buckets = dao.getAllHistoryBucketsAsc()
-    val markers = markersForBuckets(buckets)
+    val markers = markersForBuckets(buckets, gapMs)
     return computeProfileStatsForBuckets(
       buckets = buckets,
       markers = markers,
       month = null,
+      gapMs = gapMs,
     )
   }
 
@@ -30,28 +37,38 @@ class ProfileStatsRepository private constructor(context: Context) {
       ?: throw IllegalArgumentException("month is required")
     require(month in 1..12) { "month must be 1-12" }
 
+    val gapMs = rideSplitGapMs()
     val buckets = dao.getAllHistoryBucketsAsc()
-    val markers = markersForBuckets(buckets)
+    val markers = markersForBuckets(buckets, gapMs)
     return computeProfileStatsForBuckets(
       buckets = buckets,
       markers = markers,
       month = ProfileStatsMonth(year = year, month = month),
+      gapMs = gapMs,
     )
   }
 
   suspend fun getProfileStatMonths(): List<Map<String, Any?>> {
+    val gapMs = rideSplitGapMs()
     val buckets = dao.getAllHistoryBucketsAsc()
-    val markers = markersForBuckets(buckets)
-    return computeProfileStatMonthsForBuckets(buckets, markers).map { month ->
+    val markers = markersForBuckets(buckets, gapMs)
+    return computeProfileStatMonthsForBuckets(buckets, markers, gapMs = gapMs).map { month ->
       mapOf("year" to month.year, "month" to month.month)
     }
   }
 
+  /** Rider-set ride split gap, so profile stats count the same rides the history list shows. */
+  private suspend fun rideSplitGapMs(): Long {
+    val minutes = AppDataRepository.get(context).getSettings()["rideSplitGapMinutes"] as? Number
+    return (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L
+  }
+
   private suspend fun markersForBuckets(
     buckets: List<TelemetryMinuteBucketEntity>,
+    gapMs: Long,
   ): List<TelemetryMarkerEntity> {
     if (buckets.isEmpty()) return emptyList()
-    val fromMs = buckets.minOf { it.firstSampleAtMs } - PROFILE_SESSION_GAP_MS
+    val fromMs = buckets.minOf { it.firstSampleAtMs } - gapMs
     val toMs = buckets.maxOf { it.lastSampleAtMs } + TELEMETRY_BUCKET_SIZE_MS
     return dao.getMarkers(fromMs = fromMs, toMs = toMs, boardId = null)
   }
@@ -94,8 +111,9 @@ internal fun computeProfileStatsForBuckets(
   markers: List<TelemetryMarkerEntity>,
   month: ProfileStatsMonth?,
   zoneId: ZoneId = ZoneId.systemDefault(),
+  gapMs: Long = DEFAULT_RIDE_SPLIT_GAP_MINUTES * 60_000L,
 ): Map<String, Any?> {
-  val sessions = groupProfileSessions(buckets, markers).filter { it.avgSpeedSampleCount > 0 }
+  val sessions = groupProfileSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
   val included = if (month == null) {
     sessions
   } else {
@@ -144,8 +162,9 @@ internal fun computeProfileStatMonthsForBuckets(
   buckets: List<TelemetryMinuteBucketEntity>,
   markers: List<TelemetryMarkerEntity>,
   zoneId: ZoneId = ZoneId.systemDefault(),
+  gapMs: Long = DEFAULT_RIDE_SPLIT_GAP_MINUTES * 60_000L,
 ): List<ProfileStatsMonth> {
-  return groupProfileSessions(buckets, markers)
+  return groupProfileSessions(buckets, markers, gapMs)
     .filter { it.avgSpeedSampleCount > 0 }
     .map { profileMonth(it.startAtMs, zoneId) }
     .distinct()
@@ -155,6 +174,7 @@ internal fun computeProfileStatMonthsForBuckets(
 private fun groupProfileSessions(
   buckets: List<TelemetryMinuteBucketEntity>,
   markers: List<TelemetryMarkerEntity>,
+  gapMs: Long,
 ): List<ProfileSessionAggregate> {
   if (buckets.isEmpty()) return emptyList()
   val sorted = buckets.sortedBy { it.firstSampleAtMs }
@@ -166,7 +186,7 @@ private fun groupProfileSessions(
     if (bucket.sampleCount <= 0) continue
     val boundaryBefore = markerBoundaryForBucket(bucket, markers)
     val breakByBoard = current == null || current.boardId != bucket.boardId
-    val breakByGap = previous != null && bucket.firstSampleAtMs - previous.lastSampleAtMs > PROFILE_SESSION_GAP_MS
+    val breakByGap = previous != null && bucket.firstSampleAtMs - previous.lastSampleAtMs > gapMs
     val breakByBoundary = boundaryBefore != null && PROFILE_BREAK_BOUNDARIES.contains(boundaryBefore)
 
     if (breakByBoard || breakByGap || breakByBoundary) {

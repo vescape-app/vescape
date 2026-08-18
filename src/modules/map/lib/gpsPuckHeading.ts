@@ -1,16 +1,16 @@
-import type { MapNavigationMode } from '@/modules/map/constants/mapStyles'
+import type { MapOrientationMode } from '@/modules/map/constants/mapStyles'
 
 export function getGpsPuckBearing({
-  navigationMode,
+  orientationMode,
   approximateFix,
   phoneHeadingDeg,
   gpsBearingDeg,
 }: {
-  navigationMode: MapNavigationMode
+  orientationMode: MapOrientationMode
   approximateFix: boolean
   phoneHeadingDeg: number | null
   gpsBearingDeg: number | null
 }): number | null {
   if (approximateFix) return null
-  return navigationMode === 'gpsHeading' ? gpsBearingDeg : phoneHeadingDeg
+  return orientationMode === 'gpsHeading' ? gpsBearingDeg : phoneHeadingDeg
 }

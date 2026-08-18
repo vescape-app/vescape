@@ -22,13 +22,18 @@ class WatchFrameTest {
         val flags = buf.get().toInt()
         fun lane(): Double? = buf.float.let { if (it.isNaN()) null else it.toDouble() }
         return WatchFrame(
-            buf.float.toDouble(),
+            lane(),
             lane(),
             lane(),
             lane(),
             lane(),
             stale = flags and WATCH_FRAME_FLAG_STALE != 0,
-            waiting = flags and WATCH_FRAME_FLAG_WAITING != 0,
+            navBearing = lane(),
+            navDistanceM = lane(),
+            riderEastM = lane(),
+            riderNorthM = lane(),
+            courseDeg = lane(),
+            routeSpanM = lane(),
         )
     }
 
@@ -48,8 +53,56 @@ class WatchFrameTest {
             ),
             stale = false,
         )
-        assertEquals(12.5, frame.speed, 0.0)
+        assertEquals(12.5, frame.speed!!, 0.0)
         assertEquals(40.0, frame.duty!!, 1e-3)
+    }
+
+    @Test
+    fun `nav lanes round-trip, and stay null when there is no destination`() {
+        val navigating = roundTrip(
+            WatchFrame(
+                speed = 10.0,
+                duty = 30.0,
+                battery = 80.0,
+                motorTemp = 40.0,
+                ctrlTemp = 35.0,
+                stale = false,
+                navBearing = 128.0,
+                navDistanceM = 1350.0,
+            ),
+        )!!
+        assertEquals(128.0, navigating.navBearing!!, 1e-3)
+        assertEquals(1350.0, navigating.navDistanceM!!, 1e-3)
+
+        val idle = roundTrip(
+            WatchFrame(
+                speed = 10.0,
+                duty = 30.0,
+                battery = 80.0,
+                motorTemp = 40.0,
+                ctrlTemp = 35.0,
+                stale = false,
+            ),
+        )!!
+        assertNull(idle.navBearing)
+        assertNull(idle.navDistanceM)
+    }
+
+    @Test
+    fun `route span round-trips as the appended compatibility lane`() {
+        val frame = roundTrip(
+            WatchFrame(
+                speed = null,
+                duty = null,
+                battery = null,
+                motorTemp = null,
+                ctrlTemp = null,
+                stale = false,
+                routeSpanM = 725.0,
+            ),
+        )!!
+
+        assertEquals(725.0, frame.routeSpanM!!, 1e-3)
     }
 
     @Test
@@ -79,7 +132,7 @@ class WatchFrameTest {
             stale = false,
         )
         val decoded = roundTrip(frame)!!
-        assertEquals(frame.speed, decoded.speed, 1e-3)
+        assertEquals(frame.speed!!, decoded.speed!!, 1e-3)
         assertEquals(frame.duty!!, decoded.duty!!, 1e-3)
         assertEquals(frame.battery!!, decoded.battery!!, 1e-3)
         assertEquals(frame.motorTemp!!, decoded.motorTemp!!, 1e-3)
@@ -98,7 +151,7 @@ class WatchFrameTest {
             stale = true,
         )
         val decoded = roundTrip(frame)!!
-        assertEquals(0.0, decoded.speed, 0.0)
+        assertEquals(0.0, decoded.speed!!, 0.0)
         assertNull(decoded.duty)
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)
@@ -107,22 +160,33 @@ class WatchFrameTest {
     }
 
     @Test
-    fun `waiting frame round-trips with empty lanes and degrades to stale for old decoders`() {
-        val decoded = roundTrip(WatchFrameBuilder.waitingFrame())!!
-        assertTrue(decoded.waiting)
-        // Stale is also set so a wrist decoder without the waiting bit dims instead of showing live.
-        assertTrue(decoded.stale)
-        assertEquals(0.0, decoded.speed, 0.0)
+    fun `a board-less frame round-trips with empty board lanes`() {
+        val decoded = roundTrip(
+            WatchFrameBuilder.build(
+                WatchSnapshot(
+                    speed = null,
+                    dutyCycle = null,
+                    dutyExcluded = true,
+                    batterySoc = null,
+                    motorTemp = null,
+                    ctrlTemp = null,
+                    navBearing = 42.0,
+                ),
+                stale = false,
+            ),
+        )!!
+        assertNull(decoded.speed)
         assertNull(decoded.duty)
         assertNull(decoded.battery)
         assertNull(decoded.motorTemp)
         assertNull(decoded.ctrlTemp)
+        assertEquals(42.0, decoded.navBearing!!, 1e-3)
     }
 
     @Test
-    fun `live frame does not carry the waiting bit`() {
-        val decoded = roundTrip(WatchFrame(1.0, 2.0, 3.0, 4.0, 5.0, stale = false))!!
-        assertEquals(false, decoded.waiting)
+    fun `the phone never sets the legacy waiting bit`() {
+        val bytes = WatchFrameBuilder.encode(WatchFrame(1.0, 2.0, 3.0, 4.0, 5.0, stale = true))
+        assertEquals(WATCH_FRAME_FLAG_STALE, bytes[1].toInt())
     }
 
     @Test

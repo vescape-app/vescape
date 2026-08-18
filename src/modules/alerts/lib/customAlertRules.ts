@@ -41,6 +41,8 @@ export function materializePresetRules(
     thresholdMax: spec.thresholdMax,
     enabled: true,
     soundType: spec.soundType,
+    repeatEverySeconds: spec.repeatEverySeconds,
+    beepCount: spec.beepCount,
     createdAt,
   }))
 }

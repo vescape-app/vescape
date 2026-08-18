@@ -72,6 +72,15 @@ object WatchDiagnostics {
         event(if (active) "receiver on" else "receiver off")
     }
 
+    /** Emulator replay is a dev path, so its state is worth naming: the gauges are not showing a real ride. */
+    fun recordReplay(fixture: String, sampleCount: Int) {
+        event("replay $fixture ($sampleCount samples)")
+    }
+
+    fun recordReplayError(fixture: String, error: Exception) {
+        event("replay $fixture failed: ${error.message}", warn = true)
+    }
+
     private fun event(text: String, warn: Boolean = false) {
         if (warn) Log.w(TAG, text) else Log.d(TAG, text)
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())

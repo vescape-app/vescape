@@ -4,6 +4,7 @@
     "modules": ["expo.modules.vescapecore.VescapeCoreModule"]
   },
   "ios": {
-    "modules": ["VescapeCoreModule"]
+    "modules": ["VescapeCoreModule"],
+    "appDelegateSubscribers": ["VescapeLaunchSubscriber"]
   }
 }

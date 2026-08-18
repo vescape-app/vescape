@@ -4,6 +4,7 @@ import type {
   AppSettings,
   Board,
   BoardInput,
+  CompanionPresenceBoard,
   BoardProbeProgressEvent,
   BoardProbeResult,
   DeviceFoundEvent,
@@ -46,6 +47,7 @@ const telemetryHistoryListeners = new Set<(event: TelemetryHistoryEvent) => void
 const boardProbeProgressListeners = new Set<(event: BoardProbeProgressEvent) => void>()
 
 const e2eBoards: Board[] = []
+const e2eCompanionBoardIds = new Set<string>()
 
 const e2eSettings: AppSettings = {
   liveHistoryLimit: 1000,
@@ -59,13 +61,14 @@ const e2eSettings: AppSettings = {
   movingSpeedThresholdKmh: 5,
   freeSpinMaxSpeedDeltaKmh: 3,
   freeSpinStationaryBoardCapKmh: 1,
+  rideSplitGapMinutes: 30,
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
   satelliteImageryOpacity: 0.2,
   satelliteMapImageryOpacity: 1,
   satelliteImagerySaturation: -0.35,
   hideTelemetryMapDetails: true,
-  mapNavigationMode: 'gpsHeading',
+  mapOrientationMode: 'gpsHeading',
   historyMetricGradientsEnabled: true,
   historyMetricHotRanges: {},
   socEstimateWindowSeconds: 20,
@@ -80,8 +83,9 @@ const e2eSettings: AppSettings = {
   syncWifiOnly: false,
   syncBackupChoiceMade: false,
   telemetryPollRateHz: 20,
-  wearMirrorIntervalMs: 500,
+  wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
+  wearNavArrowEnabled: false,
   riderId: null,
   riderName: null,
   riderColor: null,
@@ -708,6 +712,25 @@ export const e2eFake = {
 
   updateSetting(key: string, value: unknown): void {
     ;(e2eSettings as unknown as Record<string, unknown>)[key] = value
+  },
+
+  getCompanionPresenceBoards(): CompanionPresenceBoard[] {
+    if (!e2eSettings.companionPresenceEnabled) return []
+    return e2eBoards.flatMap((board) =>
+      e2eCompanionBoardIds.has(board.id) && board.link
+        ? [{ boardId: board.id, name: board.name, bleId: board.link.bleId }]
+        : [],
+    )
+  },
+
+  addCompanionPresenceBoard(boardId: string): void {
+    e2eCompanionBoardIds.add(boardId)
+    e2eSettings.companionPresenceEnabled = true
+  },
+
+  /** Native keeps the master switch on at zero boards (the "nothing armed" state) — mirror that. */
+  removeCompanionPresenceBoard(boardId: string): void {
+    e2eCompanionBoardIds.delete(boardId)
   },
 
   setLegalMode(boardId: string, enabled: boolean): void {

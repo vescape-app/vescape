@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
 import { Box, render, Text, useApp, useInput } from 'ink'
 
+import { Hint, Menu } from '../release/ui'
+
 interface SelectOption<T extends string> {
   value: T
   label: string
-  shortcut: string
 }
 
 function SelectPrompt<T extends string>({
@@ -18,30 +19,24 @@ function SelectPrompt<T extends string>({
 }) {
   const { exit } = useApp()
   const [index, setIndex] = useState(0)
-  useInput((input, key) => {
-    const shortcut = options.findIndex((option) => option.shortcut === input.toLowerCase())
-    if (key.upArrow || input.toLowerCase() === 'k')
-      setIndex((value) => (value - 1 + options.length) % options.length)
-    else if (key.downArrow || input.toLowerCase() === 'j')
-      setIndex((value) => (value + 1) % options.length)
-    else if (key.return || shortcut >= 0) {
-      finish(options[shortcut >= 0 ? shortcut : index].value)
+  useInput((_input, key) => {
+    if (key.upArrow) setIndex((value) => (value - 1 + options.length) % options.length)
+    else if (key.downArrow) setIndex((value) => (value + 1) % options.length)
+    else if (key.return) {
+      finish(options[index].value)
+      exit()
+    } else if (key.escape) {
       exit()
     }
   })
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
-      {options.map((option, optionIndex) => {
-        const selected = optionIndex === index
-        return (
-          <Text key={option.value} color={selected ? 'cyan' : undefined} bold={selected}>
-            {selected ? '◆ ' : '  '}
-            {option.label} <Text dimColor>({option.shortcut.toUpperCase()})</Text>
-          </Text>
-        )
-      })}
-      <Text dimColor>↑/↓ or j/k · Enter selects · shortcuts work directly</Text>
+      <Menu
+        items={options.map((option) => ({ key: option.value, label: option.label }))}
+        index={index}
+      />
+      <Hint>↑/↓ · Enter selects · Esc cancels</Hint>
     </Box>
   )
 }
@@ -55,6 +50,7 @@ export async function selectPrompt<T extends string>(
     <SelectPrompt title={title} options={options} finish={(value) => (selected = value)} />,
   )
   await instance.waitUntilExit()
+  instance.unmount()
   if (selected === undefined) throw new Error('Selection cancelled')
   return selected
 }
@@ -90,5 +86,6 @@ export async function textPrompt(title: string): Promise<string | null> {
   let result: string | null | undefined
   const instance = render(<TextPrompt title={title} finish={(value) => (result = value)} />)
   await instance.waitUntilExit()
+  instance.unmount()
   return result ?? null
 }

@@ -7,7 +7,10 @@ import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 import {
   getMapPointKindColor,
   getMapPointKindTextColor,
@@ -57,6 +60,7 @@ export function buildMapPointTrackedPoint(point: MapPoint, id: string): TrackedM
 function directionTrackedPoint(
   coordinate: [number, number],
   riderColor: string | null,
+  icon = getMapPointKindIcon('direction'),
 ): TrackedMapPoint {
   return {
     id: 'direction',
@@ -64,7 +68,7 @@ function directionTrackedPoint(
     coordinate,
     color: riderColor ?? DESTINATION_POINT_COLOR,
     textColor: riderColor ?? DESTINATION_POINT_TEXT_COLOR,
-    icon: getMapPointKindIcon('direction'),
+    icon,
   }
 }
 
@@ -92,6 +96,9 @@ export function buildActiveNavigationPoint({
   return directionTrackedPoint(
     [activeNavigationTarget.longitude, activeNavigationTarget.latitude],
     riderColor,
+    activeNavigationTarget.type === 'place'
+      ? getPlaceCategoryIcon(activeNavigationTarget.category)
+      : undefined,
   )
 }
 

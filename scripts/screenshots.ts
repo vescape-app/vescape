@@ -164,12 +164,11 @@ async function createDriver(platform: CapturePlatform, args: Args): Promise<Capt
     : createAndroidDriver(args.device, args.replay)
 }
 
-async function capturePlatform(platform: CapturePlatform, args: Args): Promise<void> {
-  const driver = await createDriver(platform, args)
+async function capturePlatform(driver: CaptureDriver, args: Args): Promise<void> {
   const outDir = join(ROOT, driver.outDir)
   mkdirSync(outDir, { recursive: true })
 
-  console.log(`\n[${platform}] ${driver.deviceLabel}`)
+  console.log(`\n[${driver.platform}] ${driver.deviceLabel}`)
 
   // Build by default: an installed package only proves *something* is installed, not that it is a
   // screenshot build, and reusing the wrong one produces a run that goes nowhere.
@@ -222,9 +221,13 @@ async function capturePlatform(platform: CapturePlatform, args: Args): Promise<v
 
 async function main(args: Args): Promise<void> {
   const platforms = await resolvePlatforms(args)
+  // Every device question is answered before the first build: on a two-platform run the Android
+  // picker would otherwise appear ten minutes in, behind a finished iOS capture.
+  const drivers: CaptureDriver[] = []
+  for (const platform of platforms) drivers.push(await createDriver(platform, args))
   // Sequentially: both runs drive Maestro and a 1x replay, and the sparkline wait is wall clock, so
   // there is nothing to gain from interleaving them and a lot of device contention to lose.
-  for (const platform of platforms) await capturePlatform(platform, args)
+  for (const driver of drivers) await capturePlatform(driver, args)
 }
 
 let args: Args

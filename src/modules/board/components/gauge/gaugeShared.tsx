@@ -10,10 +10,10 @@ import {
 } from '@shopify/react-native-skia'
 
 import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   clamp01,
   normalizeFraction,
@@ -23,6 +23,7 @@ import {
   STROKE,
   type Arc,
 } from '@/modules/board/components/gauge/arcGeometry'
+import { textAdvanceWidth } from '../../../../helpers/skiaText'
 
 export const BG_ARC_COLOR = theme.palette.slate.border
 const GAUGE_HOT_COLOR = theme.status.error.color
@@ -97,7 +98,7 @@ function AlertLabel({
   font: SkFont
 }) {
   const p = polar(arc, arc.r - LABEL_INSET, fraction)
-  const width = font.getTextWidth(text)
+  const width = textAdvanceWidth(font, text)
   return (
     <SkiaText
       x={p.x - width / 2}
@@ -122,18 +123,19 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
   const thresholdFraction = normalizeFraction(alert.threshold, min, max)
   const maxFraction =
     alert.thresholdMax == null ? null : normalizeFraction(alert.thresholdMax, min, max)
-  const rangePath = useMemo(() => {
-    if (maxFraction == null) return null
-    const d = rangeWedgePath(arc, thresholdFraction, maxFraction)
+  // The band runs to the end of the scale, not to `thresholdMax`: a range rule sustains its tone
+  // above the max and a repeating rule never stops, so the arc past it is anything but quiet.
+  const bandPath = useMemo(() => {
+    const band = alertBandFractions(alert, (value) => normalizeFraction(value, min, max))
+    if (!band) return null
+    const d = rangeWedgePath(arc, band.from, band.to)
     return d ? Skia.Path.MakeFromSVGString(d) : null
-  }, [arc, thresholdFraction, maxFraction])
-
-  const range = maxFraction != null && rangePath ? { path: rangePath, fraction: maxFraction } : null
+  }, [arc, alert, min, max])
 
   return (
     <>
-      {range ? (
-        <Path path={range.path}>
+      {bandPath ? (
+        <Path path={bandPath}>
           <RadialGradient
             c={vec(arc.cx, arc.cy)}
             r={arc.r}
@@ -143,12 +145,12 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
         </Path>
       ) : null}
       <AlertTick arc={arc} fraction={thresholdFraction} />
-      {range ? <AlertTick arc={arc} fraction={range.fraction} /> : null}
+      {maxFraction != null ? <AlertTick arc={arc} fraction={maxFraction} /> : null}
       {labelFont && alert.label ? (
         <AlertLabel arc={arc} fraction={thresholdFraction} text={alert.label} font={labelFont} />
       ) : null}
-      {labelFont && alert.labelMax && range ? (
-        <AlertLabel arc={arc} fraction={range.fraction} text={alert.labelMax} font={labelFont} />
+      {labelFont && alert.labelMax && maxFraction != null ? (
+        <AlertLabel arc={arc} fraction={maxFraction} text={alert.labelMax} font={labelFont} />
       ) : null}
     </>
   )
@@ -198,7 +200,7 @@ export function GaugeReadout({
     if (!unitFont) return null
     const { ascent, descent } = unitFont.getMetrics()
     return {
-      x: box.x + (box.width - unitFont.getTextWidth(unit)) / 2,
+      x: box.x + (box.width - textAdvanceWidth(unitFont, unit)) / 2,
       y: top + valueLineHeight + UNIT_GAP + unitLineHeight / 2 - (ascent + descent) / 2,
     }
   }, [unitFont, unit, box.x, box.width, top, valueLineHeight, unitLineHeight])

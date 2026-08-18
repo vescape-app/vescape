@@ -1,5 +1,10 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
-import type { AlertRule, BatteryConfig, Board } from 'vescape-core'
+import {
+  ALERT_BEEP_COUNT_DEFAULT,
+  type AlertRule,
+  type BatteryConfig,
+  type Board,
+} from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
 
@@ -128,6 +133,8 @@ test('manual rules and other metrics survive a preset regeneration', async () =>
     enabled: true,
     soundType: 'preset:beep',
     createdAt: 1,
+    repeatEverySeconds: null,
+    beepCount: ALERT_BEEP_COUNT_DEFAULT,
     updatedAt: 1,
     source: 'manual',
   }
@@ -140,6 +147,8 @@ test('manual rules and other metrics survive a preset regeneration', async () =>
     enabled: true,
     soundType: 'preset:tick',
     createdAt: 1,
+    repeatEverySeconds: null,
+    beepCount: ALERT_BEEP_COUNT_DEFAULT,
     updatedAt: 1,
     source: 'preset',
   }
@@ -189,6 +198,8 @@ test('editing an inactive board regenerates only that board rules', async () => 
     enabled: true,
     soundType: 'preset:tick',
     createdAt: 1,
+    repeatEverySeconds: null,
+    beepCount: ALERT_BEEP_COUNT_DEFAULT,
     updatedAt: 1,
     source: 'preset',
   }
@@ -248,7 +259,13 @@ test('discarding custom rules clears them and returns the metric to a preset', a
 
   await useAlertPresetStore.getState().setLevel('duty', 'safe')
   await useAlertPresetStore.getState().customize('duty')
-  useAlertsStore.getState().add('duty', 70, null, 'preset:beep')
+  useAlertsStore.getState().add('duty', {
+    threshold: 70,
+    thresholdMax: null,
+    soundType: 'preset:beep',
+    repeatEverySeconds: null,
+    beepCount: ALERT_BEEP_COUNT_DEFAULT,
+  })
   expect(useAlertsStore.getState().rules.filter((rule) => rule.controlId === 'duty').length).toBe(2)
 
   await useAlertPresetStore.getState().discardCustom('duty')

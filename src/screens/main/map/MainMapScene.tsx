@@ -1,5 +1,5 @@
 import Mapbox, { Camera } from '@rnmapbox/maps'
-import type { ComponentProps, ElementRef, RefObject } from 'react'
+import type { ComponentProps, ComponentRef, RefObject } from 'react'
 import { Animated, StyleSheet } from 'react-native'
 
 import { PhoneHeadingMapLayer } from '@/modules/map/components/PhoneHeadingMapLayer'
@@ -20,7 +20,7 @@ interface MainMapSceneProps {
   mapOpacity: Animated.Value
   onLayout: ComponentProps<typeof Animated.View>['onLayout']
   onTouchStart: ComponentProps<typeof Animated.View>['onTouchStart']
-  mapViewRef: RefObject<ElementRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   cameraRef: RefObject<Camera | null>
   mapStyle: ReturnType<typeof useResolvedMapStyle>
   rotationLocked: boolean
@@ -126,8 +126,10 @@ export function MainMapScene({
         rotateEnabled={!rotationLocked}
         compassEnabled={false}
         scaleBarEnabled={false}
-        logoEnabled={false}
-        attributionEnabled={false}
+        logoEnabled={mapStyle.mapDetailsVisible}
+        logoPosition={{ bottom: 8, left: 8 }}
+        attributionEnabled={mapStyle.mapDetailsVisible}
+        attributionPosition={{ bottom: 8, left: 92 }}
         onDidFinishLoadingMap={onDidFinishLoadingMap}
         onPress={onPress}
         onLongPress={onLongPress}

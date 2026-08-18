@@ -71,7 +71,7 @@ export function useBoardLink(bleId: string | null): UseBoardLink {
         setSelected(pickDefaultCandidate(result.candidates))
         setPhase('picking')
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (run !== runRef.current) return
         activeProbeIdRef.current = null
         console.log('[board-link] probe failed', err)

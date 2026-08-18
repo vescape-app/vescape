@@ -26,6 +26,10 @@ internal class LiveSeriesEmitter(
     private var liveSeriesHandle: Cancellable? = null
     private var liveSeriesPrimed = false
 
+    /** Metric keys the mounted `/control` detail charts are focused on (JS intent); empty = none. */
+    @Volatile
+    private var focusedMetrics: Set<String> = emptySet()
+
     fun enqueueHistorySample(sample: Map<String, Any?>) = synchronized(historyLock) {
         historySamples.addLast(sample)
     }
@@ -42,6 +46,12 @@ internal class LiveSeriesEmitter(
         if (liveSeriesHandle == null || liveSeriesPrimed) return
         liveSeriesPrimed = true
         emitLiveSeries()
+    }
+
+    /** Set which metrics the high-res focused stream covers (empty to stop it); emits immediately. */
+    fun setFocusedMetrics(metrics: Set<String>) {
+        focusedMetrics = metrics
+        if (metrics.isNotEmpty()) emitFocusedSeries()
     }
 
     fun stop() {
@@ -90,6 +100,7 @@ internal class LiveSeriesEmitter(
         val token = session() ?: return
         liveSeriesHandle = scheduler.postDelayedForSession(token, scaled(liveSeriesIntervalMs), isCurrentSession) {
             emitLiveSeries()
+            emitFocusedSeries()
             scheduleLiveSeries()
         }
     }
@@ -97,5 +108,27 @@ internal class LiveSeriesEmitter(
     private fun emitLiveSeries() {
         val metrics = telemetryPipeline.liveSeries(LIVE_SERIES_METRICS, liveSeriesBuckets)
         if (metrics.isNotEmpty()) emitEvent("onLiveSeries", mapOf("metrics" to metrics, "generation" to generation()))
+    }
+
+    private fun emitFocusedSeries() {
+        val metrics = focusedMetrics
+        if (metrics.isEmpty()) return
+        // One exclusion scan for the whole tick — the spans are identical across metrics.
+        val spans = telemetryPipeline.focusedExclusionSpans()
+        for (metric in metrics) {
+            val focused = telemetryPipeline.focusedSeries(metric, spans) ?: continue
+            emitEvent(
+                "onFocusedSeries",
+                mapOf(
+                    "metric" to metric,
+                    "series" to focused.series,
+                    "exclusions" to focused.exclusions,
+                    "windowMs" to focused.windowMs,
+                    "spanMs" to focused.spanMs,
+                    "sampleRateHz" to focused.sampleRateHz,
+                    "generation" to generation(),
+                ),
+            )
+        }
     }
 }

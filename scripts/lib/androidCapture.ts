@@ -19,7 +19,7 @@ import {
   type CaptureDriver,
   type FixtureRunMode,
 } from './captureDriver.ts'
-import { select, type SelectOption } from './select.ts'
+import { listAdbDevices, pickDevice } from './devices.ts'
 
 const OUT_DIR = 'screenshots/android'
 
@@ -50,6 +50,8 @@ function emulatorBin(): string {
 interface Device {
   serial: string
   name: string
+  /** What `expo run:android --device` matches; see AdbDevice.expoName. */
+  expoName: string
 }
 
 async function attachedSerials(): Promise<string[]> {
@@ -61,27 +63,11 @@ async function attachedSerials(): Promise<string[]> {
     .map((line) => line.split('\t')[0].trim())
 }
 
-/** The AVD behind a running emulator serial, which is also the name Expo knows it by. */
-async function runningAvdName(serial: string): Promise<string | null> {
-  if (!serial.startsWith('emulator-')) return null
-  const out = await capture(['adb', '-s', serial, 'emu', 'avd', 'name'])
-  return out.split('\n')[0].trim() || null
-}
-
-async function attachedDevices(): Promise<Device[]> {
-  const out = await capture(['adb', 'devices', '-l'])
-  const lines = out
-    .split('\n')
-    .slice(1)
-    .filter((line) => line.includes(' device ') || line.includes('\tdevice'))
-
-  return Promise.all(
-    lines.map(async (line) => {
-      const serial = line.split(/\s+/)[0].trim()
-      const name = (await runningAvdName(serial)) ?? /model:(\S+)/.exec(line)?.[1] ?? serial
-      return { serial, name }
-    }),
-  )
+/** Phones only: the store set and the smoke flows are phone UI, and a watch cannot run either. */
+function attachedPhones(): Device[] {
+  return listAdbDevices()
+    .filter((device) => !device.isWatch)
+    .map(({ serial, name, expoName }) => ({ serial, name, expoName }))
 }
 
 async function listAvds(): Promise<string[]> {
@@ -118,7 +104,7 @@ async function bootAvd(name: string): Promise<Device> {
       const booted = (
         await capture(['adb', '-s', serial, 'shell', 'getprop', 'sys.boot_completed'])
       ).trim()
-      if (booted === '1') return { serial, name }
+      if (booted === '1') return { serial, name, expoName: name }
     }
     await Bun.sleep(2000)
   }
@@ -133,46 +119,39 @@ function shortSerial(serial: string): string {
 
 type DeviceChoice = { kind: 'attached'; device: Device } | { kind: 'avd'; name: string }
 
-async function chooseDevice(attached: Device[]): Promise<DeviceChoice> {
-  const options: SelectOption<DeviceChoice>[] = attached.map((device) => ({
-    label: device.name,
-    value: { kind: 'attached', device },
-    hint: shortSerial(device.serial),
-  }))
+/** Cache key for the last capture device picked; see lib/lastDevice. */
+const LAST_DEVICE_KEY = 'capture-android'
+
+async function chooseDevice(attached: Device[], requested: string | null): Promise<DeviceChoice> {
+  const options: DeviceChoice[] = attached.map((device) => ({ kind: 'attached', device }))
 
   // An AVD that is already up is listed once, as the running device — offering to "boot" it again
   // would be the same device under a second name.
   const running = new Set(attached.map((device) => device.name))
   for (const name of await listAvds()) {
     if (running.has(name)) continue
-    options.push({
-      label: `boot ${name}`,
-      value: { kind: 'avd', name },
-      hint: avdResolution(name) ?? 'AVD',
-    })
+    options.push({ kind: 'avd', name })
   }
 
-  if (options.length === 0) {
-    console.error('No device attached and no AVD available.')
-    process.exit(1)
-  }
-  if (options.length === 1) return options[0].value
-  return select('Android capture device', options)
+  return pickDevice({
+    title: 'Android capture device',
+    items: options,
+    id: (choice) => (choice.kind === 'avd' ? choice.name : choice.device.name),
+    label: (choice) => (choice.kind === 'avd' ? `boot ${choice.name}` : choice.device.name),
+    aliases: (choice) =>
+      choice.kind === 'avd' ? [] : [choice.device.serial, choice.device.expoName],
+    hint: (choice) =>
+      choice.kind === 'avd'
+        ? (avdResolution(choice.name) ?? 'AVD')
+        : shortSerial(choice.device.serial),
+    requested,
+    cacheKey: LAST_DEVICE_KEY,
+    emptyMessage: 'No phone attached and no AVD available.',
+  })
 }
 
 async function resolveDevice(requested: string | null, mode: FixtureRunMode): Promise<Device> {
-  const attached = await attachedDevices()
-
-  if (requested) {
-    const match = attached.find((d) => d.serial === requested || d.name === requested)
-    if (!match) {
-      console.error(`No attached device matches "${requested}".`)
-      process.exit(1)
-    }
-    return match
-  }
-
-  const choice = await chooseDevice(attached)
+  const choice = await chooseDevice(attachedPhones(), requested)
   const device = choice.kind === 'avd' ? await bootAvd(choice.name) : choice.device
   // Only the store set has to come off one screen size; a smoke run asserts on text, not pixels.
   if (mode === 'screenshots') await warnOnResolution(device.serial)
@@ -223,7 +202,7 @@ export async function createAndroidDriver(
           'release',
           '--no-bundler',
           '--device',
-          device.name,
+          device.expoName,
         ],
         fixtureBuildEnv(mode, replay),
       )

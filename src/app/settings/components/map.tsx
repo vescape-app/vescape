@@ -1,15 +1,16 @@
 import Mapbox, { Camera, MapView } from '@rnmapbox/maps'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useRef, useState, type ElementRef } from 'react'
+import { useCallback, useRef, useState, type ComponentRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import type { MapPoint } from 'vescape-core'
+import type { MapPoint, NavigationProfile } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { useTriggerRef } from '@/components/overlays/measureTrigger'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
+import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
@@ -36,6 +37,7 @@ import {
   FIXTURE_RIDERS,
 } from '@/screens/showcase/mapShowcaseFixtures'
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
+import { DASH } from '@/helpers/format'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
@@ -59,7 +61,8 @@ export default function MapComponentsShowcase() {
   const [activeHistoryMapMetric, setActiveHistoryMapMetric] = useState<HistoryMetricKey>('speed')
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   const [sheetVisible, setSheetVisible] = useState(false)
-  const cameraRef = useRef<ElementRef<typeof Camera>>(null)
+  const [navigationProfile, setNavigationProfile] = useState<NavigationProfile>('walking')
+  const cameraRef = useRef<ComponentRef<typeof Camera>>(null)
   const moreTriggerRef = useTriggerRef()
 
   const handleMapLoaded = useCallback(() => {
@@ -179,6 +182,22 @@ export default function MapComponentsShowcase() {
             setStyleExpanded(false)
           }}
         />
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile: ${profile}`)
+          }}
+        />
+        {/* Open variant: what the navigation sheet shows while a path is on screen. */}
+        <NavigationProfileSelector
+          activeProfile={navigationProfile}
+          open
+          onSelect={(profile) => {
+            setNavigationProfile(profile)
+            setLastEvent(`Navigation Profile (open): ${profile}`)
+          }}
+        />
         <View ref={moreTriggerRef} collapsable={false}>
           <IconButton
             icon={SlidersHorizontalIcon}
@@ -208,7 +227,7 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
-        <ValueRow label="Last interaction" value={lastEvent ?? '—'} />
+        <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,
           One Dark).

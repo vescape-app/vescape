@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
 
+import { handleBleAppStateChange } from '@/modules/board/lib/bleAppLifecycle'
 import { useBleStore } from '@/modules/board/store/bleStore'
 
 export function useBleAppLifecycle(): void {
@@ -10,15 +11,11 @@ export function useBleAppLifecycle(): void {
   useEffect(() => {
     syncNativeState()
     const onChange = (nextState: AppStateStatus) => {
-      if (nextState !== 'active') {
-        const scanStatus = useBleStore.getState().scanStatus
-        if (scanStatus === 'scanning') {
-          stopScan()
-        }
-        return
-      }
-
-      syncNativeState()
+      handleBleAppStateChange(nextState, {
+        scanStatus: useBleStore.getState().scanStatus,
+        stopScan,
+        syncNativeState,
+      })
     }
 
     const subscription = AppState.addEventListener('change', onChange)

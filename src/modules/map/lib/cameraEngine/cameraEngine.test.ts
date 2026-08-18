@@ -105,6 +105,18 @@ const camera = (center: [number, number], zoom = 14, heading = 0, pitch = 0): En
 })
 
 describe('cameraEngine', () => {
+  test('can resume after a development effect cleanup', () => {
+    const { engine, run, hasPending } = createTestEngine()
+    engine.reset(camera([21, 52]))
+    engine.destroy()
+    engine.resume()
+    engine.setTarget({ center: [21.001, 52] })
+
+    expect(hasPending()).toBe(true)
+    run(600)
+    expect(engine.getCamera().centerCoordinate[0]).toBe(21.001)
+  })
+
   test('animates to target and idles exactly on it', () => {
     const { engine, frames, run, hasPending } = createTestEngine()
     engine.reset(camera([21, 52]))

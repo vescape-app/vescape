@@ -1,4 +1,4 @@
-import { type AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
+import type { AlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
 
 /** Screen-facing metric names for alert setup (JS-only presentation). */
 export const ALERT_PRESET_METRIC_LABELS: Record<AlertPresetMetric, string> = {

@@ -1,6 +1,11 @@
 import type { TelemetryMinuteBucket } from 'vescape-core'
 
-const DEFAULT_GAP_MS = 10 * 60_000
+/**
+ * Minutes without a recorded sample that end a ride, when the rider has set no `rideSplitGapMinutes`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
+ */
+export const DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
 const SESSION_BREAK_BOUNDARIES = new Set(['disconnected', 'app_stop', 'error'])
 
 /** Display breathing room kept on each side of the Moving Window so the stop/start transition stays visible. */
@@ -82,7 +87,7 @@ export function groupHistorySessions(
   options?: { gapMs?: number },
 ): HistorySession[] {
   if (!blocks.length) return []
-  const gapMs = options?.gapMs ?? DEFAULT_GAP_MS
+  const gapMs = options?.gapMs ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES * 60_000
   const oldestFirst = [...blocks].reverse()
   const sessions: MutableSessionAggregate[] = []
   let current: MutableSessionAggregate | null = null

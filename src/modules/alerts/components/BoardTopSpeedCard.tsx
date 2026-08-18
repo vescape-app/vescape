@@ -5,8 +5,8 @@ import { SettingsRow } from '@/components/settings/SettingsRow'
 import { Stepper } from '@/components/forms/Stepper'
 import { theme } from '@/constants/theme'
 
-export const BOARD_TOP_SPEED_MIN = 5
-export const BOARD_TOP_SPEED_MAX = 150
+const BOARD_TOP_SPEED_MIN = 5
+const BOARD_TOP_SPEED_MAX = 150
 
 /**
  * Board Top Speed stepper card (controlled). Scales the speed gauge full-scale and the speed alert

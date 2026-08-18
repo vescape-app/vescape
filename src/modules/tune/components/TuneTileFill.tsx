@@ -7,9 +7,9 @@ import { theme } from '@/constants/theme'
 interface TuneTileFillProps {
   fraction: number | null
   color?: string
-  fillHeightRatio?: number
 }
 
+const FILL_HEIGHT_RATIO = 0.42
 const LINE_THICKNESS = 2
 const MARKER_WIDTH = 3
 const MARKER_Y_OFFSET = 1
@@ -19,11 +19,7 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-export function TuneTileFill({
-  fraction,
-  color = theme.palette.sky.color,
-  fillHeightRatio = 0.42,
-}: TuneTileFillProps) {
+export function TuneTileFill({ fraction, color = theme.palette.sky.color }: TuneTileFillProps) {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout
@@ -31,7 +27,7 @@ export function TuneTileFill({
   }, [])
 
   const normalized = fraction == null ? 0 : clamp01(fraction)
-  const fillHeight = size.height * clamp01(fillHeightRatio)
+  const fillHeight = size.height * FILL_HEIGHT_RATIO
   const fillY = size.height - fillHeight
   const trackX = TRACK_INSET
   const trackWidth = Math.max(0, size.width - TRACK_INSET * 2)

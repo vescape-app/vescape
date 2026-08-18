@@ -5,7 +5,7 @@ import { CaretRightIcon, ClockCounterClockwiseIcon, StarIcon } from 'phosphor-re
 import { Canvas, Circle, Path, Skia } from '@shopify/react-native-skia'
 import type { Favorite } from 'vescape-core'
 
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { interaction, theme } from '@/constants/theme'
 import { HistoryRideLabel } from '@/modules/history/components/HistoryRideLabel'
 import { favoriteSessionId } from '@/modules/history/lib/favorites'

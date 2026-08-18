@@ -1,6 +1,6 @@
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   CloudCheckIcon,
   DownloadSimpleIcon,
@@ -12,12 +12,15 @@ import {
 import { Text } from '@/components/base/Text'
 import { IconHero } from '@/components/settings/IconHero'
 import { DeviceRow } from '@/components/base/DeviceRow'
-import { InfoBadge } from '@/components/base/InfoBadge'
 import { StepTimeline, type StepState, type TimelineStep } from '@/components/base/StepTimeline'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
+import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
+import type { SparklinePoint } from '@/components/charts/Sparkline'
+import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
 function DeviceRowShowcase() {
@@ -36,17 +39,6 @@ function DeviceRowShowcase() {
         rssi={Number(rssi)}
         onPress={() => {}}
       />
-    </ShowcaseCard>
-  )
-}
-
-function InfoBadgeShowcase() {
-  return (
-    <ShowcaseCard name="InfoBadge">
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <InfoBadge label="Motor temp" onPress={() => {}} />
-        <InfoBadge label="Overcurrent" danger onPress={() => {}} />
-      </View>
     </ShowcaseCard>
   )
 }
@@ -175,19 +167,65 @@ function ReplayBadgeShowcase() {
   )
 }
 
+const DEMO_SERIES: SparklinePoint[] = Array.from({ length: 40 }, (_, i) => ({
+  ts: Date.now() - (40 - i) * 1000,
+  value: 34 + Math.sin(i / 4) * 8,
+}))
+
+function TelemetryCellShowcase() {
+  const [live, setLive] = useState(false)
+  const motorTemp = useSharedValue<number | null>(null)
+  const motorCurrent = useSharedValue<number | null>(null)
+  const battCurrent = useSharedValue<number | null>(null)
+
+  useEffect(() => {
+    motorTemp.value = live ? 42.3 : null
+    motorCurrent.value = live ? 21.4 : null
+    battCurrent.value = live ? 12.8 : null
+  }, [live, motorTemp, motorCurrent, battCurrent])
+
+  return (
+    <ShowcaseCard
+      name="TelemetryCell"
+      controls={<ToggleRow label="board connected" value={live} onToggle={setLive} />}
+    >
+      <View style={styles.telemetryRow}>
+        <TelemetryCell
+          label="Motor"
+          metric={telemetry.motorTemp}
+          value={motorTemp}
+          series={live ? DEMO_SERIES : []}
+        />
+        <TelemetryCell
+          label="Motor"
+          metric={telemetry.motorCurrent}
+          value={motorCurrent}
+          series={live ? DEMO_SERIES : []}
+        />
+        <TelemetryCell
+          label="Batt"
+          metric={telemetry.battCurrent}
+          value={battCurrent}
+          series={live ? DEMO_SERIES : []}
+        />
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 export default function BoardComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, InfoBadge, StepTimeline, BoardWarningRow, ReplayBadge — board- and connection-flavored components."
+          description="DeviceRow, StepTimeline, BoardWarningRow, ReplayBadge, TelemetryCell — board- and connection-flavored components."
         />
         <DeviceRowShowcase />
-        <InfoBadgeShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
         <ReplayBadgeShowcase />
+        <TelemetryCellShowcase />
       </ScrollView>
     </SafeAreaView>
   )
@@ -196,6 +234,7 @@ export default function BoardComponentsPage() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.palette.slate.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
+  telemetryRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
   timelineContentDemo: {
     backgroundColor: theme.palette.slate.surface,
     borderRadius: 10,

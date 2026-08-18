@@ -45,7 +45,7 @@ function alpha(color: string, level: AlphaLevel): string {
   throw new Error(`Unsupported color format for alpha(): ${color}`)
 }
 
-type Hue = {
+interface Hue {
   color: string
   /** Alternate shade within the same hue — aliases `light`. */
   alt: string
@@ -132,6 +132,8 @@ export const telemetry = {
   pitch: palette.purple.light,
   roll: palette.fuchsia.color,
   balancePitch: palette.fuchsia.light,
+  altitude: palette.amber.color,
+  gpsAccuracy: palette.green.light,
 } as const
 
 export const map = {

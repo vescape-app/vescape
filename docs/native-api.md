@@ -96,7 +96,7 @@ Field omitted (null) when change < threshold from previous:
 | ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `getTelemetryHistory(opts?)`                          | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
 | `getTelemetrySamples({fromMs,toMs,deviceId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, gpsSamples, markers}`                                      | Combined query: decoded samples + GPS points + session markers                                    |
+| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
 | `getTelemetrySummary()`                               | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
 | `getDatabaseSizeBytes()`                              | number                                                                     | File size of vescape.db                                                                           |
 
@@ -269,6 +269,28 @@ Presets: beep, urgent, notify (single); tick, tick_hard, gamma (geiger)
 Valid keys: `liveHistoryLimit`, `autoConnect`, `autoRecording`, `selectedBoardId`, `lastGpsLatitude`, `lastGpsLongitude`, `movingSpeedThresholdKmh` (aliases: `avgSpeedCutoffKmh`, `movingAvgSpeedThresholdKmh`), `riderTopSpeedKmh` (Rider Top Speed, km/h; speed gauge full-scale, clamped 5–150, default 50)
 
 Writing default-equivalent value deletes the override row. Unknown keys and type mismatches are silently ignored.
+
+## Auto start (companion presence)
+
+Android only — every fn rejects `UNSUPPORTED_PLATFORM` on iOS, except `getCompanionPresenceBoards()`
+which resolves `[]`. All are async.
+
+| fn                                      | returns                                                              |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `setCompanionPresenceEnabled(enabled)`  | void. Master switch; on also forces `autoConnect`                    |
+| `getCompanionPresenceBoards()`          | `CompanionPresenceBoard[]` — linked boards the OS is associated with |
+| `addCompanionPresenceBoard(boardId)`    | void. Opens the system chooser, then observes the board              |
+| `removeCompanionPresenceBoard(boardId)` | void. Stops observing and drops the association                      |
+
+Associations, not the settings flag, are the source of truth for which boards are armed. Disabling
+the master switch stops observing but keeps associations, so re-enabling needs no second chooser.
+Enabling and removing both prune associations no linked board claims.
+
+```ts
+CompanionPresenceBoard = { boardId, name, bleId }
+```
+
+Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` maps them to copy.
 
 ## Diagnostics
 

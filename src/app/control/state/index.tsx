@@ -4,6 +4,7 @@ import { Text } from '@/components/base/Text'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 export default function StateScreen() {
   const hasLiveTelemetry = useBleStore((s) => s.liveStatus.boardLastPacketAt != null)
@@ -12,7 +13,7 @@ export default function StateScreen() {
     <ControlDetailLayout title="State" controlId="state">
       <View style={styles.card}>
         <Text style={styles.label}>BOARD STATE</Text>
-        <Text style={styles.stateName}>{hasLiveTelemetry ? 'LIVE' : '—'}</Text>
+        <Text style={styles.stateName}>{hasLiveTelemetry ? 'LIVE' : DASH}</Text>
       </View>
     </ControlDetailLayout>
   )

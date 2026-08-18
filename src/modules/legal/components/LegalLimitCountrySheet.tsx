@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { View } from 'react-native'
 
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { LEGAL_ROAD_STATUS_COLORS, type LegalLimitCountry } from '@/modules/legal/lib/legalLimits'
 
 import { LegalLimitCountryDetails } from '@/modules/legal/components/LegalLimitCountryDetails'

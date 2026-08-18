@@ -49,7 +49,8 @@ export interface ConfirmField {
 
 /**
  * Single confirm presentation for every mutating flow: title, the exact facts the workflow will
- * act on, then a two-item menu defaulting to Cancel.
+ * act on, then a two-item menu. Confirm comes first so Enter continues; callers that guard a
+ * public-facing mutation start the selection on Cancel instead.
  */
 export function Confirm({
   title,
@@ -78,8 +79,8 @@ export function Confirm({
       <Box flexDirection="column" marginTop={1}>
         <Menu
           items={[
-            { key: 'cancel', label: 'Cancel' },
             { key: 'confirm', label: confirmLabel },
+            { key: 'cancel', label: 'Cancel' },
           ]}
           index={index}
         />

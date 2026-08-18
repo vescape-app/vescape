@@ -41,7 +41,7 @@ test('rideDurationMs falls back to wall-clock when no moving window exists', () 
   expect(rideDurationMs(session)).toBe(60_000)
 })
 
-test('combines same-device adjacent blocks under 10 min gap', () => {
+test('combines same-device adjacent blocks under the split gap', () => {
   const sessions = groupHistorySessions([
     block({ id: 'new', startAtMs: 300_000, endAtMs: 360_000 }),
     block({ id: 'old', startAtMs: 120_000, endAtMs: 180_000 }),
@@ -50,12 +50,28 @@ test('combines same-device adjacent blocks under 10 min gap', () => {
   expect(sessions[0].blockIds).toEqual(['old', 'new'])
 })
 
-test('splits same-device blocks over 10 min gap', () => {
+test('splits same-device blocks over the default 30 min split gap', () => {
   const sessions = groupHistorySessions([
-    block({ id: 'new', startAtMs: 900_000, endAtMs: 960_000 }),
+    block({ id: 'new', startAtMs: 2_000_000, endAtMs: 2_060_000 }),
     block({ id: 'old', startAtMs: 120_000, endAtMs: 180_000 }),
   ])
   expect(sessions).toHaveLength(2)
+})
+
+test('a stop under the default split gap stays one ride (the coffee-break case)', () => {
+  const sessions = groupHistorySessions([
+    block({ id: 'after', startAtMs: 900_000, endAtMs: 960_000 }),
+    block({ id: 'before', startAtMs: 120_000, endAtMs: 180_000 }),
+  ])
+  expect(sessions).toHaveLength(1)
+})
+
+test('rider-set gap overrides the default', () => {
+  const blocks = [
+    block({ id: 'after', startAtMs: 900_000, endAtMs: 960_000 }),
+    block({ id: 'before', startAtMs: 120_000, endAtMs: 180_000 }),
+  ]
+  expect(groupHistorySessions(blocks, { gapMs: 5 * 60_000 })).toHaveLength(2)
 })
 
 test('splits different devices even when adjacent', () => {
@@ -216,9 +232,9 @@ test('keeps legacy sessions whose moving count was never computed', () => {
 
 test('returns newest-first sessions', () => {
   const sessions = groupHistorySessions([
-    block({ id: 'new', startAtMs: 900_000, endAtMs: 960_000 }),
+    block({ id: 'new', startAtMs: 2_000_000, endAtMs: 2_060_000 }),
     block({ id: 'old', startAtMs: 120_000, endAtMs: 180_000 }),
   ])
-  expect(sessions[0].startAtMs).toBe(900_000)
+  expect(sessions[0].startAtMs).toBe(2_000_000)
   expect(sessions[1].startAtMs).toBe(120_000)
 })

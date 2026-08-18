@@ -1,22 +1,21 @@
 import * as Haptics from 'expo-haptics'
 import { ClockCounterClockwiseIcon, SirenIcon, SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import Animated, {
-  cancelAnimation,
   useAnimatedStyle,
-  useSharedValue,
+  useDerivedValue,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
-import { type MainMapHandle } from '@/screens/main/map/MainMap'
+import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapRevealGesture } from '@/screens/main/map/MapRevealGesture'
 import {
   OffscreenMapIndicator,
@@ -30,6 +29,7 @@ import {
 import { LiveHud } from '@/screens/main/overlays/LiveHud'
 import { TopBar } from '@/screens/main/overlays/TopBar'
 import { TuneDrawer } from '@/screens/main/overlays/TuneDrawer'
+import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 const RECORD_BUTTON_HEIGHT = 48
 const HISTORY_BUTTON_SIZE = 54
@@ -56,6 +56,8 @@ interface TelemetryOverlayProps {
   onEnterLegalLimits: () => void
   onEnterHistory: () => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
+  activeNavigationTarget: MapSelection | null
+  onCancelNavigation: () => void
 }
 
 /**
@@ -82,13 +84,19 @@ export function TelemetryOverlay({
   onEnterLegalLimits,
   onEnterHistory,
   onOffscreenIndicatorPress,
+  activeNavigationTarget,
+  onCancelNavigation,
 }: TelemetryOverlayProps) {
   const insets = useSafeAreaInsets()
   const [revealGestureActive, setRevealGestureActive] = useState(false)
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
   const revealCommittedRef = useRef(false)
   const tuneButtonRef = useRef<View>(null)
-  const telemetryReturnOpacity = useSharedValue(mode === 'telemetry' ? 1 : 0)
+  // Derived, not effect-driven: the fade follows `mode` from the first evaluation on, so a Fast
+  // Refresh that re-renders without re-running effects can never leave the face stuck invisible.
+  const telemetryReturnOpacity = useDerivedValue(() =>
+    withTiming(mode === 'telemetry' ? 1 : 0, TELEMETRY_FADE_TIMING),
+  )
 
   const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
   const buttonBottom = aboveStripBottom - (HISTORY_BUTTON_SIZE - RECORD_BUTTON_HEIGHT) / 2
@@ -150,19 +158,9 @@ export function TelemetryOverlay({
     [mapRef, mode],
   )
 
-  // Returning to telemetry fades the face back in; leaving it hides the face outright. The reveal
-  // values themselves are reset by their owner, because a component may not write shared values it
-  // was handed.
-  useLayoutEffect(() => {
-    cancelAnimation(telemetryReturnOpacity)
-    if (mode === 'telemetry') {
-      revealCommittedRef.current = false
-      telemetryReturnOpacity.value = 0
-      telemetryReturnOpacity.value = withTiming(1, TELEMETRY_FADE_TIMING)
-    } else {
-      telemetryReturnOpacity.value = 0
-    }
-  }, [mode, telemetryReturnOpacity])
+  useEffect(() => {
+    if (mode === 'telemetry') revealCommittedRef.current = false
+  }, [mode])
 
   return (
     <>
@@ -195,6 +193,9 @@ export function TelemetryOverlay({
           onAddBoard={onAddBoard}
           onDisconnect={onStopScan}
           onWeatherPress={onEnterWeather}
+          activeNavigationTarget={activeNavigationTarget}
+          onNavigationPress={onEnterMapFocus}
+          onCancelNavigation={onCancelNavigation}
         />
         <FloatingBar
           bleStatus={bleStatus}

@@ -33,6 +33,9 @@ private const val DEFAULT_SAMPLE_LIMIT = 2_000
 // bridge cost so a long/garbage session can't OOM the app. At 2 Hz persistence
 // this covers ~2 h 46 min of riding before a read truncates. See recordTelemetry.
 private const val MAX_SAMPLE_LIMIT = 20_000
+/** Bottom history chart overview; full samples remain available for map and chart screen. */
+// @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `HISTORY_CHART_OVERVIEW_SAMPLES`
+private const val HISTORY_CHART_OVERVIEW_SAMPLES = 600
 // Write gate: minimum spacing between persisted detail frames (2 Hz), shrinking DB
 // growth ~8x. Minute buckets are aggregated from the full-rate stream separately
 // (see pendingBucketStates), so avg/energy/peaks stay exact; live display and the
@@ -400,7 +403,12 @@ class TelemetryRepository private constructor(context: Context) {
     val buffer = ByteBuffer
       .allocateDirect(samples.size * SAMPLE_COLUMN_COUNT * 8)
       .order(ByteOrder.LITTLE_ENDIAN)
-    for (sample in samples) {
+    val overviewIndices = evenlySpacedIndices(samples.size, HISTORY_CHART_OVERVIEW_SAMPLES)
+    val overviewBuffer = ByteBuffer
+      .allocateDirect(overviewIndices.size * SAMPLE_COLUMN_COUNT * 8)
+      .order(ByteOrder.LITTLE_ENDIAN)
+    var overviewCursor = 0
+    for ((sampleIndex, sample) in samples.withIndex()) {
       val s = sample.state
       val estimate = deriveBatteryPercent(s, configs)?.let {
         windows.getOrPut(s.boardId) { SocMedianWindow(windowMs) }.median(it, s.capturedAtMs)
@@ -436,13 +444,32 @@ class TelemetryRepository private constructor(context: Context) {
         .putDouble(s.faultCode.toDouble())
         .putDouble(s.location?.latitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
         .putDouble(s.location?.longitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
+      if (overviewCursor < overviewIndices.size && overviewIndices[overviewCursor] == sampleIndex) {
+        val rowStart = sampleIndex * SAMPLE_COLUMN_COUNT * 8
+        val row = buffer.duplicate().apply {
+          position(rowStart)
+          limit(rowStart + SAMPLE_COLUMN_COUNT * 8)
+        }.slice()
+        overviewBuffer.put(row)
+        overviewCursor += 1
+      }
     }
     return mapOf(
       "boardColumns" to NativeArrayBuffer.wrap(buffer),
       "boardCount" to samples.size,
       "boardIds" to boardIds,
       "boardNames" to names,
+      "chartColumns" to NativeArrayBuffer.wrap(overviewBuffer),
+      "chartCount" to overviewIndices.size,
     )
+  }
+
+  private fun evenlySpacedIndices(count: Int, limit: Int): IntArray {
+    if (count <= limit) return IntArray(count) { it }
+    val denominator = limit - 1L
+    return IntArray(limit) { index ->
+      ((index * (count - 1L) + denominator / 2L) / denominator).toInt()
+    }
   }
 
   /**

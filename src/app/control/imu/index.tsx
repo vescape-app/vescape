@@ -7,11 +7,10 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated'
 
-import { computeAutoRange } from '@/components/charts/chartMath'
+import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
-import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
-import { RemoteTiltControl } from '@/modules/board/components/RemoteTiltControl'
-import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
+import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
+import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { TickText } from '@/components/base/TickText'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
@@ -153,24 +152,23 @@ export default function ImuScreen() {
   const windowMs = useLiveWindowMs()
   const hot = liveTelemetryRuntime.values
 
-  const pitchPoints = useMemo(() => toTelemetryChartPoints(pitch), [pitch])
-
-  const rollPoints = useMemo(() => toTelemetryChartPoints(roll), [roll])
-
-  const balancePoints = useMemo(() => toTelemetryChartPoints(balancePitch), [balancePitch])
-
-  const pitchRange = useMemo(
-    () => computeAutoRange(pitchPoints, { baseline: pitchCfg.chartRange }),
-    [pitchPoints],
-  )
-  const rollRange = useMemo(
-    () => computeAutoRange(rollPoints, { baseline: rollCfg.chartRange }),
-    [rollPoints],
-  )
-  const balanceRange = useMemo(
-    () => computeAutoRange(balancePoints, { baseline: balanceCfg.chartRange }),
-    [balancePoints],
-  )
+  // Pitch, roll and balance in one stack: they are read against each other, and one gesture over
+  // the column puts the same moment under the finger on all three.
+  const charts = useMemo(() => {
+    const series = [
+      { key: 'pitch', metric: pitchCfg, data: toChartSeries(pitch, windowMs) },
+      { key: 'roll', metric: rollCfg, data: toChartSeries(roll, windowMs) },
+      { key: 'balancePitch', metric: balanceCfg, data: toChartSeries(balancePitch, windowMs) },
+    ]
+    return series.map(({ key, metric, data }) =>
+      toLiveChart({
+        key,
+        metric,
+        data,
+        range: computeAutoRangeFromValues(data.vs, { baseline: metric.chartRange }),
+      }),
+    )
+  }, [balancePitch, pitch, roll, windowMs])
 
   return (
     <ControlDetailLayout title="IMU">
@@ -206,34 +204,7 @@ export default function ImuScreen() {
         <HotAttitudeBars pitch={hot.pitch} roll={hot.roll} balancePitch={hot.balancePitch} />
       </View>
 
-      <RemoteTiltControl />
-
-      <MetricDetailChart
-        metric={pitchCfg}
-        label={pitchCfg.label}
-        points={pitchPoints}
-        range={pitchRange}
-        height={80}
-        windowMs={windowMs}
-      />
-
-      <MetricDetailChart
-        metric={rollCfg}
-        label={rollCfg.label}
-        points={rollPoints}
-        range={rollRange}
-        height={80}
-        windowMs={windowMs}
-      />
-
-      <MetricDetailChart
-        metric={balanceCfg}
-        label={balanceCfg.label}
-        points={balancePoints}
-        range={balanceRange}
-        height={80}
-        windowMs={windowMs}
-      />
+      <LiveChartStack charts={charts} />
     </ControlDetailLayout>
   )
 }
