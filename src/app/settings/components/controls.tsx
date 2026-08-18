@@ -2,15 +2,15 @@ import { ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { SwatchesIcon } from 'phosphor-react-native'
 
-import { AlertPresetControlShowcase } from '@/screens/showcases/controls/AlertPresetControlShowcase'
+import { AlertPresetControlShowcase } from '@/screens/showcase/controls/AlertPresetControlShowcase'
 import {
   CircleButtonShowcase,
   FloatingActionPillShowcase,
   FloatingBarShowcase,
   PrevNextSelectorShowcase,
-} from '@/screens/showcases/controls/ButtonShowcases'
-import { MapOptionSelectorShowcase } from '@/screens/showcases/controls/MapOptionSelectorShowcase'
-import { ZonePillsShowcase } from '@/screens/showcases/controls/ZonePillsShowcase'
+} from '@/screens/showcase/controls/ButtonShowcases'
+import { MapOptionSelectorShowcase } from '@/screens/showcase/controls/MapOptionSelectorShowcase'
+import { ZonePillsShowcase } from '@/screens/showcase/controls/ZonePillsShowcase'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 
