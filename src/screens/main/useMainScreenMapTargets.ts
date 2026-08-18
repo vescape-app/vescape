@@ -242,13 +242,7 @@ export function useMainScreenMapTargets(
     handleMapFocus()
     void navigateToTarget(target)
     mapRef.current?.focusCoordinate([longitude, latitude])
-  }, [
-    consumeSharedLocation,
-    handleMapFocus,
-    mapRef,
-    navigateToTarget,
-    pendingSharedLocation,
-  ])
+  }, [consumeSharedLocation, handleMapFocus, mapRef, navigateToTarget, pendingSharedLocation])
 
   useEffect(() => {
     if (!selectedNavigationTarget?.loadingDetails) return
