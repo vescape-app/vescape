@@ -27,7 +27,6 @@ interface PillSelectorResolvedState {
   active: boolean
   showLabel: boolean
   collapseLabel: boolean
-  showBadge: boolean
   showHint: boolean
 }
 
@@ -39,7 +38,6 @@ export interface PillSelectorItemProps {
   /** @deprecated Use labelBehavior="active-only". */
   activeLabelOnly?: boolean
   badge?: ReactNode
-  badgeVisibility?: PillSelectorSlotVisibility
   hint?: ReactNode
   hintVisibility?: PillSelectorSlotVisibility
   hintGap?: number
@@ -61,14 +59,12 @@ function resolveItemState({
   icon,
   activeLabelOnly,
   labelBehavior,
-  badgeVisibility,
   hintVisibility,
 }: {
   active: boolean
   icon?: Icon
   activeLabelOnly?: boolean
   labelBehavior?: PillSelectorLabelBehavior
-  badgeVisibility: PillSelectorSlotVisibility
   hintVisibility: PillSelectorSlotVisibility
 }): PillSelectorResolvedState {
   const resolvedLabelBehavior = activeLabelOnly ? 'active-only' : (labelBehavior ?? 'active-only')
@@ -77,7 +73,6 @@ function resolveItemState({
     active,
     collapseLabel,
     showLabel: !collapseLabel || active,
-    showBadge: slotVisible(badgeVisibility, active),
     showHint: slotVisible(hintVisibility, active),
   }
 }
@@ -100,7 +95,6 @@ function PillSelectorItemContent({
   collapseLabel,
   showLabel,
   showHint,
-  showBadge,
   accentColor,
   inactiveAccent,
   hint,
@@ -131,7 +125,7 @@ function PillSelectorItemContent({
         </Text>
       ) : null}
       {hint && showHint ? <View style={[styles.hint, { marginLeft: hintGap }]}>{hint}</View> : null}
-      {badge && showBadge ? badge : null}
+      {badge}
     </>
   )
 }
@@ -143,7 +137,6 @@ export function PillSelectorItem({
   labelBehavior,
   activeLabelOnly,
   badge,
-  badgeVisibility = 'always',
   hint,
   hintVisibility = 'inactive',
   hintGap = 2,
@@ -162,7 +155,6 @@ export function PillSelectorItem({
     icon: IconComp,
     activeLabelOnly,
     labelBehavior,
-    badgeVisibility,
     hintVisibility,
   })
   const accentBg = color?.bg ?? theme.palette.green.bg

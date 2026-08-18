@@ -29,7 +29,6 @@ import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
 import { Placeholder } from '@/components/base/Placeholder'
-import { ScreenTitle } from '@/components/base/ScreenTitle'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme, type MonoWeight } from '@/constants/theme'
@@ -310,14 +309,6 @@ function BannerShowcase() {
   )
 }
 
-function ScreenTitleShowcase() {
-  return (
-    <ShowcaseCard name="ScreenTitle">
-      <ScreenTitle title="Dashboard" />
-    </ShowcaseCard>
-  )
-}
-
 function TickTextShowcase() {
   const [weight, setWeight] = useState<MonoWeight>('700')
   const [align, setAlign] = useState<MonoValueAlign>('right')
@@ -380,13 +371,12 @@ export default function BaseComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CubeIcon}
-          description="Button, IconButton, Banner, Placeholder, ScreenTitle, TickText."
+          description="Button, IconButton, Banner, Placeholder, TickText."
         />
         <IconButtonShowcase />
         <ButtonShowcase />
         <PlaceholderShowcase />
         <BannerShowcase />
-        <ScreenTitleShowcase />
         <TickTextShowcase />
       </ScrollView>
     </SafeAreaView>

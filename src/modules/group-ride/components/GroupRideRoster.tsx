@@ -88,7 +88,7 @@ export function riderStats(p: RosterRider['presence']): RiderStats {
 
 /** One fixed column of the stat grid: its icon is always shown; a missing value reads as a dash.
  *  When `level` is warning/critical the icon and value adopt the matching alert color. */
-export function StatCell({
+function StatCell({
   icon: StatIcon,
   value,
   level = 'normal',
@@ -111,7 +111,7 @@ export function StatCell({
   )
 }
 
-export function RiderCell({
+function RiderCell({
   rider,
   accent,
   connected,

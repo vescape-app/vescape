@@ -41,7 +41,7 @@ export function RepeatField({
   )
 }
 
-export function ChoiceButton({
+function ChoiceButton({
   label,
   active,
   onPress,

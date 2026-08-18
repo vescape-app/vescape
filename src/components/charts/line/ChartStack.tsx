@@ -69,11 +69,11 @@ export interface ChartStackProps {
    * Identity of the data on screen — a ride id, a focused metric. Zoom survives data updates
    * and resets only when this changes.
    */
+  /** Live stacks re-attach to the head when panned back to it; history stacks stay put. */
+  follow?: boolean
   dataKey?: string
   /** `clock` labels the real time of day; `relative` counts back from the live head. */
   timeMode?: 'clock' | 'relative'
-  /** Live stacks re-attach to the head when panned back to it; history stacks stay put. */
-  follow?: boolean
   /**
    * Moment under the scrubbing finger, or `null`. Pass one in to drive a map or another stack
    * from the same drag; a stack given none keeps its own.
@@ -128,9 +128,9 @@ export interface ChartStackProps {
  */
 export function ChartStack({
   charts,
+  follow = false,
   dataKey = '',
   timeMode = 'clock',
-  follow = false,
   scrubTimeMs,
   zoomWindowMs,
   initialZoomMs,

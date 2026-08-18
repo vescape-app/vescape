@@ -63,11 +63,9 @@ interface TunePreviewProps {
   hillsEnabled?: boolean
   hillHeightMeters?: number
   hillSpacingMeters?: number
-  advancedPhysics?: TunePreviewAdvancedPhysics
   active?: boolean
   onDisable?: () => void
   onHelp: () => void
-  hillLoadAmps?: SharedValue<number>
   speedKmh?: SharedValue<number>
   groundToBoardAngleDegrees?: SharedValue<number>
 }
@@ -89,11 +87,9 @@ export function TunePreview({
   hillsEnabled = false,
   hillHeightMeters = 2.5,
   hillSpacingMeters = 30,
-  advancedPhysics = DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
   active = true,
   onDisable,
   onHelp,
-  hillLoadAmps,
   speedKmh,
   groundToBoardAngleDegrees,
 }: TunePreviewProps) {
@@ -113,7 +109,7 @@ export function TunePreview({
     hillsEnabled,
     hillHeightMeters,
     hillSpacingMeters,
-    advancedPhysics,
+    advancedPhysics: DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
   })
   const boardAngleStr = useSharedValue('0.0°')
   const targetAngleStr = useSharedValue('0.0°')
@@ -127,9 +123,9 @@ export function TunePreview({
       hillsEnabled,
       hillHeightMeters,
       hillSpacingMeters,
-      advancedPhysics,
+      advancedPhysics: DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
     }
-  }, [scenario, parameters, hillsEnabled, hillHeightMeters, hillSpacingMeters, advancedPhysics])
+  }, [scenario, parameters, hillsEnabled, hillHeightMeters, hillSpacingMeters])
 
   // Physics and readouts run entirely on the UI runtime; the JS thread only syncs scenario props.
   const frameCallback = useFrameCallback((frame) => {
@@ -165,7 +161,6 @@ export function TunePreview({
     groundToBoardAngleStr.value = formatSignedDegrees(groundToBoardAngle)
     speedStr.value = next.syntheticSpeedKmh.toFixed(1)
     currentStr.value = `${current > 0 ? '+' : ''}${current.toFixed(0)} A`
-    if (hillLoadAmps) hillLoadAmps.value = next.terrainLoadCurrentAmps
   }, false)
 
   const running = active && parameters != null

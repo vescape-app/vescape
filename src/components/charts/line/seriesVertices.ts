@@ -112,7 +112,7 @@ export function buildSampleDots(pyramid: LodPyramid): number[] {
  * Vertices per tile. A frame composes only the tiles it can see, so this trades a little more
  * per-tile bookkeeping for a per-frame cost that no longer grows as the rider zooms in.
  */
-export const TILE_VERTICES = 256
+const TILE_VERTICES = 256
 
 export interface VertexChunk {
   /** Vertex indices, `[from, to)`. */

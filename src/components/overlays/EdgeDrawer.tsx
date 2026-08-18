@@ -32,7 +32,6 @@ interface EdgeDrawerProps {
   initialFocusRef?: React.RefObject<View | null>
   /** Called after scrolling settles near the end of the drawer content. */
   onReachContentEnd?: () => void
-  contentEndThreshold?: number
   backdropTestID?: string
   children: React.ReactNode
 }
@@ -53,7 +52,6 @@ export function EdgeDrawer({
   autoScrollOnContentExpand = false,
   initialFocusRef,
   onReachContentEnd,
-  contentEndThreshold = 80,
   backdropTestID,
   children,
 }: EdgeDrawerProps) {
@@ -80,7 +78,6 @@ export function EdgeDrawer({
     triggerRef,
     initialFocusRef,
     autoScrollOnContentExpand,
-    contentEndThreshold,
     onClose,
     onReachContentEnd,
   })

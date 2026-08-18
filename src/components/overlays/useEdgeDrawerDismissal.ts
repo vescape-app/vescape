@@ -10,12 +10,12 @@ import {
 import { Gesture } from 'react-native-gesture-handler'
 import {
   Easing as ReanimatedEasing,
-  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
@@ -35,6 +35,8 @@ const DRAWER_OPEN_DURATION = 200
 /** Dismissal is a fast fade back toward the drawer's own edge, not a scroll home. */
 const DRAWER_CLOSE_DURATION = 170
 const DRAWER_BOTTOM_CONTENT_PADDING = 32
+/** How near the end of the drawer content a settled scroll counts as reaching it. */
+const CONTENT_END_THRESHOLD = 80
 
 export interface EdgeDrawerDismissalOptions {
   visible: boolean
@@ -42,7 +44,6 @@ export interface EdgeDrawerDismissalOptions {
   triggerRef: React.RefObject<View | null>
   initialFocusRef?: React.RefObject<View | null>
   autoScrollOnContentExpand: boolean
-  contentEndThreshold: number
   onClose: () => void
   onReachContentEnd?: () => void
 }
@@ -60,7 +61,6 @@ export function useEdgeDrawerDismissal({
   triggerRef,
   initialFocusRef,
   autoScrollOnContentExpand,
-  contentEndThreshold,
   onClose,
   onReachContentEnd,
 }: EdgeDrawerDismissalOptions) {
@@ -163,7 +163,7 @@ export function useEdgeDrawerDismissal({
       0,
       { duration: DRAWER_CLOSE_DURATION, easing: ReanimatedEasing.in(ReanimatedEasing.quad) },
       (finished) => {
-        if (finished) runOnJS(finishClose)()
+        if (finished) scheduleOnRN(finishClose)
       },
     )
   }, [closing, finishClose, mounted, presence])
@@ -184,7 +184,7 @@ export function useEdgeDrawerDismissal({
       })
       if (edgeDrawerHasCommitted(fraction)) {
         dismissTriggered.value = true
-        runOnJS(close)()
+        scheduleOnRN(close)
       }
     },
   })
@@ -330,14 +330,13 @@ export function useEdgeDrawerDismissal({
 
       const distanceFromEnd =
         event.nativeEvent.contentSize.height - (offset + event.nativeEvent.layoutMeasurement.height)
-      if (distanceFromEnd <= contentEndThreshold) onReachContentEnd?.()
+      if (distanceFromEnd <= CONTENT_END_THRESHOLD) onReachContentEnd?.()
       if (action === 'close') close()
       if (action === 'restore') restoreFullyVisible()
     },
     [
       close,
       closing,
-      contentEndThreshold,
       dismissRange,
       finishClose,
       height,

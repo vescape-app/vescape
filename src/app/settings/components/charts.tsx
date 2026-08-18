@@ -81,8 +81,6 @@ function generateChartSeries({
 }
 
 function SparklineShowcase() {
-  const [showMax, setShowMax] = useState(true)
-  const [maxPosition, setMaxPosition] = useState<'left' | 'right'>('right')
   const [color, setColor] = useState(telemetry.speed.color)
   const points = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
 
@@ -91,13 +89,6 @@ function SparklineShowcase() {
       name="Sparkline"
       controls={
         <>
-          <ToggleRow label="showMaxBadge" value={showMax} onToggle={setShowMax} />
-          <ChipRow
-            label="maxPosition"
-            options={['left', 'right']}
-            selected={maxPosition}
-            onSelect={(v) => setMaxPosition(v as 'left' | 'right')}
-          />
           <ChipRow
             label="color"
             options={[
@@ -112,14 +103,7 @@ function SparklineShowcase() {
         </>
       }
     >
-      <Sparkline
-        points={points}
-        color={color}
-        height={32}
-        fmtMax={(v) => `${v.toFixed(1)} V`}
-        showMaxBadge={showMax}
-        maxPosition={maxPosition}
-      />
+      <Sparkline points={points} color={color} height={32} fmtMax={(v) => `${v.toFixed(1)} V`} />
     </ShowcaseCard>
   )
 }
