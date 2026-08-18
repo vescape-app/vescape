@@ -1,0 +1,9 @@
+# Board config is exclusively owned while connected, read once per session
+
+Refloat config values live on the board, but the app only ever reads them through the Tune screen: an on-demand `getRefloatConfigSnapshot()` that needs a trusted Board Link, is discarded on disconnect, and is re-read defensively before every write. Meanwhile a second, narrower decode (six named ids) runs after link trust purely to feed config-scoped Board Warnings, and the values are thrown away. Live UI that wants a real config number — the footpad dots, which compare ADC volts against a hardcoded 0.8 V instead of `fault_adc1` / `fault_adc2` — has nowhere to get it.
+
+A board accepts one BLE central at a time. While a Board Session holds the link, config cannot change except through our own writes: any other tool has to disconnect us first, and a reconnect re-reads. That makes a single read authoritative for the whole session, and makes the read-before-write ceremony on the tune path dead weight paid in seconds of rider-visible latency.
+
+Decided: one **Board Config Values** object per Board Session — the full decoded field map, read once after link trust, refreshed only by our own config writes (which already return fresh bytes). It is native-owned truth, cached per Board and Refloat base version, dropped when link integrity goes `mismatched` (offsets are meaningless against different firmware) and kept while `outdated`. `ConfigSafetyDetector` reads named ids off that one object rather than off a second parallel decode. JS reads it through a dedicated accessor and change event, not through Live State — it changes once per session and is too wide to ride along with a state event that recomposes on every phase, GPS, and scan change.
+
+A rider who writes config over CAN from a second controller mid-session can desync this. Not defended against: that rider knows the drill, and covering it would cost every other rider a re-read.

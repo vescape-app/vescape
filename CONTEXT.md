@@ -148,6 +148,10 @@ _Avoid_: Tilt setting, view camera hack, mode special case
 The rider's chosen map camera orientation: north up, GPS heading, compass, or free rotate. It says which way the map faces, not where the rider is going.
 _Avoid_: Navigation mode, map navigation, heading mode
 
+**Board Config Values**:
+The full decoded Refloat configuration of the connected **Board**, read once per **Board Session** and held as native-owned truth for every consumer that needs a real config number — config-scoped **Board Warnings**, live footpad engagement, and **Tune Snapshot** prefill. Not limited to safety parameters.
+_Avoid_: Config safety values, settings dump, tune cache
+
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.
 _Avoid_: Tune cache, settings dump
@@ -343,6 +347,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Link Integrity Check** verifies saved capability facts but does not discover new hardware capabilities; new capabilities require a full re-link.
 - Native owns **Link Integrity Check** truth; app UI only displays the resulting state.
 - A **Tune Snapshot** requires a trusted **Board Link** because tune field identity depends on the connected controller.
+- **Board Config Values** are read once after link trust and stay authoritative for the whole **Board Session**: a **Board** accepts one connection at a time, so config changes only through the app's own writes while connected.
+- **Board Config Values** are cached per **Board** and **Tune Compatibility**, kept while a **Board Link** is outdated, and dropped when link integrity is mismatched.
 - A **Board Firmware Identity** may be rediscovered during a **Board Session**; any mismatch creates a **Stale Board Link**.
 - A **Stale Board Link** does not end a working **Board Session**, but only telemetry remains trusted until a fresh **Board Probe** replaces the link.
 - A **Stale Board Link** is latched for the current **Board Session** and is not persisted across app restarts.

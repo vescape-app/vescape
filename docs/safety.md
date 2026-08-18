@@ -37,6 +37,10 @@ unknown/unparseable, or pack mode has no series count, the LV/HV rules are skipp
 | Footpad switch fault  | `fault_adc1` / `fault_adc2` | `2.0 V` | Sensor zone reads below this → "foot off". `0` disables the switch. |
 | Half-state fault ERPM | `fault_adc_half_erpm`       | `~200`  | Speed above which a single footpad off counts as a fault.           |
 
+App note: the footpad UI resolves engagement from `fault_adc1` / `fault_adc2` through **Board Config
+Values**. `fault_adc_half_erpm` is decoded and available there but deliberately not surfaced yet — one
+footpad off below that speed is tolerated by the board, and the app does not distinguish that case.
+
 `fault_delay_*` params add debounce — keep them small. `fault_moving_fault_disabled` and
 `fault_darkride_enabled` weaken fault protection and need correct speed calibration; default off.
 
