@@ -3,14 +3,14 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
 
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { type SparklinePoint } from '@/components/charts/Sparkline'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { SparklinePoint } from '@/components/charts/Sparkline'
 import { buildSparklinePaths, SparklineLayer } from '@/components/charts/SparklineLayer'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
 import { DASH } from '@/helpers/format'
 import { interaction, type AlphaLevel } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
-import { type MetricHotRange } from '@/modules/history/lib/metricColorScale'
+import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
   clamp01,

@@ -4,7 +4,7 @@ import { Text } from '@/components/base/Text'
 import { useRouter } from 'expo-router'
 import { ArrowCounterClockwiseIcon } from 'phosphor-react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { type TuneHistoryEntry, type TuneProfileFieldValue } from 'vescape-core'
+import type { TuneHistoryEntry, TuneProfileFieldValue } from 'vescape-core'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { Button } from '@/components/base/Button'

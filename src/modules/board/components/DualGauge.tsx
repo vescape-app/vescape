@@ -1,8 +1,8 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
-import { type SharedValue } from 'react-native-reanimated'
+import type { SharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SparklineMaxBadge, type SparklinePoint } from '@/components/charts/Sparkline'
 import { theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'

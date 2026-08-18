@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
-import { type Icon } from 'phosphor-react-native'
+import type { Icon } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
 
 interface MapPinProps {

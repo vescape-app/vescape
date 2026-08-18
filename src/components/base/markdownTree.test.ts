@@ -91,10 +91,11 @@ describe('nesting', () => {
 
     const nested = first[1] as Extract<MarkdownBlock, { type: 'list' }>
     expect(nested.ordered).toBe(false)
-    expect(nested.items.map((item) => inlineText((item[0] as any).children))).toEqual([
-      'alpha',
-      'beta',
-    ])
+    expect(
+      nested.items.map((item) =>
+        inlineText((item[0] as Extract<MarkdownBlock, { type: 'paragraph' }>).children),
+      ),
+    ).toEqual(['alpha', 'beta'])
   })
 
   test('keeps the ordered list start marker', () => {
@@ -230,7 +231,11 @@ describe('graceful degradation', () => {
       inline('sibling'),
       token('paragraph_close', -1),
     ])
-    expect(blocks.map((block) => inlineText((block as any).children))).toEqual(['kept', 'sibling'])
+    expect(
+      blocks.map((block) =>
+        inlineText((block as Extract<MarkdownBlock, { type: 'paragraph' }>).children),
+      ),
+    ).toEqual(['kept', 'sibling'])
   })
 
   test('ignores an unknown leaf token', () => {
@@ -250,7 +255,11 @@ describe('graceful degradation', () => {
       inline('kept'),
       token('paragraph_close', -1),
     ])
-    expect(blocks.map((block) => inlineText((block as any).children))).toEqual(['kept'])
+    expect(
+      blocks.map((block) =>
+        inlineText((block as Extract<MarkdownBlock, { type: 'paragraph' }>).children),
+      ),
+    ).toEqual(['kept'])
   })
 
   test('unwraps an unknown inline container and keeps its text', () => {

@@ -8,7 +8,7 @@ import type { MainMapHandle } from '@/screens/main/map/MainMap'
 export interface MapModeOverlayProps {
   visible: boolean
   mapRef: RefObject<MainMapHandle | null>
-  mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | void>
+  mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | undefined>
   /** Top of the map's control row, shared with the mode tabs. */
   top: number
   /** Where the add and filter menus sit above the telemetry strip. */

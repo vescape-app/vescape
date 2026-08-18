@@ -8,7 +8,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { theme } from '@/constants/theme'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { type MapSearchResult } from '@/modules/map/lib/search'
+import type { MapSearchResult } from '@/modules/map/lib/search'
 import { MapPointAddMenu } from '@/modules/map-points/components/MapPointAddMenu'
 import { MapPointFilterMenu } from '@/modules/map-points/components/MapPointFilterMenu'
 import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
@@ -237,7 +237,7 @@ export function FullMapControls({
           open={addMenuOpen}
           navigationAction={navigationActionColors(riderColor)}
           onToggle={toggleAddMenu}
-          onSelectCategory={handleSelectMapPoint}
+          onSelectCategory={(category) => void handleSelectMapPoint(category)}
           onSelectNavigationPoint={() => void handleSelectNavigationPoint()}
         />
       ) : null}

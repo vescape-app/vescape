@@ -1,6 +1,7 @@
 import { PauseIcon, PlayIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LayoutChangeEvent, StyleSheet, View } from 'react-native'
+import type { LayoutChangeEvent } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   cancelAnimation,
@@ -132,9 +133,9 @@ export function WeatherRadarTimeline() {
   useEffect(() => {
     if (!playing || frames.length <= 1) return undefined
     const interval = setInterval(() => {
-      const frameCount = frameCountRef.current
-      if (frameCount <= 1) return
-      const nextIndex = (frameIndexRef.current + 1) % frameCount
+      const liveFrameCount = frameCountRef.current
+      if (liveFrameCount <= 1) return
+      const nextIndex = (frameIndexRef.current + 1) % liveFrameCount
       frameIndexRef.current = nextIndex
       useRainViewerRadarStore.getState().setFrameIndex(nextIndex, 'auto')
     }, FRAME_INTERVAL_MS)

@@ -35,7 +35,7 @@ export function HapticsProbe() {
                 <Pressable
                   key={haptic.type}
                   style={styles.hapticButton}
-                  onPress={() => Haptics.performAndroidHapticsAsync(haptic.type)}
+                  onPress={() => void Haptics.performAndroidHapticsAsync(haptic.type)}
                 >
                   <Text style={styles.hapticButtonText}>{haptic.label}</Text>
                 </Pressable>

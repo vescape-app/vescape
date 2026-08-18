@@ -1,6 +1,7 @@
 import type { BatteryConfig } from 'vescape-core'
 
-import { BATTERY_CELL_PRESETS, deriveBatteryConfig } from '@/modules/battery/lib'
+import type { deriveBatteryConfig } from '@/modules/battery/lib'
+import { BATTERY_CELL_PRESETS } from '@/modules/battery/lib'
 import { fmtVoltageRange } from '@/helpers/format'
 
 export type BatteryMode = BatteryConfig['mode']

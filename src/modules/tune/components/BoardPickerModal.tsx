@@ -1,7 +1,7 @@
 import { Modal, Pressable, View, StyleSheet } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { XIcon } from 'phosphor-react-native'
-import { type Board } from '@/modules/board/store/boardStore'
+import type { Board } from '@/modules/board/store/boardStore'
 import { theme } from '@/constants/theme'
 
 interface BoardPickerModalProps {

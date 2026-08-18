@@ -21,7 +21,7 @@ import {
   type FloatingStatusPillModel,
 } from '@/components/controls/FloatingBar'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
-import type {} from '@/modules/alerts/lib/alertPresets'
+
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'

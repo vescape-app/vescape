@@ -47,9 +47,9 @@ export function resolveRampGradient(
       positions.push(boundary, boundary)
     }
   } else {
-    for (let i = 0; i < sorted.length; i += 1) {
-      colors.push(sorted[i].color)
-      positions.push(at(sorted[i].value))
+    for (const stop of sorted) {
+      colors.push(stop.color)
+      positions.push(at(stop.value))
     }
   }
 

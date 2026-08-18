@@ -6,7 +6,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
-import { type MapSearchResult } from '@/modules/map/lib/search'
+import type { MapSearchResult } from '@/modules/map/lib/search'
 import { getPlaceCategoryIcon } from '@/modules/map-points/constants/mapPointIcons'
 import { MapVignette } from '@/screens/main/map/MapVignette'
 
