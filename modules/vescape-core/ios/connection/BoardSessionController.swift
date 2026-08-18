@@ -732,6 +732,10 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     stopPolling()
     stopReconnect()
+    // A live→live connect does not pass through `stopSession`, so end any config op the previous
+    // session left in flight here: its callbacks and payload routing belong to a session that is
+    // about to be replaced, and a new reader must start its own read rather than join a dead one.
+    configController.onSessionTerminated("Board session replaced", connection: fallbackConfigRWConnection())
     reassembler.reset()
 
     sessionSequence += 1
@@ -1322,6 +1326,9 @@ internal final class BoardSessionController: VescGattListener {
   /// session's config truth, get cached for the next connect, and feed warning evaluation.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onBoardConfigValues`
   private func onBoardConfigValues(_ values: BoardConfigValues) {
+    // The link can go `mismatched` (or the Board change) while a read is on the wire; those bytes
+    // describe a board this session no longer owns, so they must not repopulate what was cleared.
+    guard values.boardId == config?.appBoardId, linkIntegrity == .trusted else { return }
     boardConfigValues = values
     BoardConfigStore.shared.save(values)
     evaluateConfigSafety(values)

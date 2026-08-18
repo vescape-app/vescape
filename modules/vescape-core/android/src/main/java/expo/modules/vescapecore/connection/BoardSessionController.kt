@@ -1498,6 +1498,10 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onBoardConfigValues`
      */
     private fun onBoardConfigValues(values: BoardConfigValues) {
+        // The link can go `Mismatched` (or the Board change) while a read is on the wire; those bytes
+        // describe a board this session no longer owns, so they must not repopulate what was cleared.
+        if (values.boardId != boardConfig?.appBoardId) return
+        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
         boardConfigValues = values
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch { repo.saveBoardConfigValues(values) }
@@ -1513,13 +1517,20 @@ private var wearAutoLaunchOnConnect = true
         val boardId = config.appBoardId ?: return
         val refloatBaseVersion = config.refloatBaseVersion ?: return
         val repo = AppDataRepository.get(service.applicationContext)
+        val session = boardSession
         CoreForegroundService.appDataScope.launch {
             val restored = repo.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@launch
             scheduler.post {
-                // The session's own read wins: never downgrade fresh values to a cached provisional.
-                if (boardConfig?.appBoardId == boardId && boardConfigValues == null) {
-                    boardConfigValues = restored
-                }
+                // The load is async, so re-check everything that could have moved since: the session
+                // must still be the one that asked, on the same Board and Refloat base version, with a
+                // link that has not gone `Mismatched` (which clears the cache). And the session's own
+                // read wins — never downgrade fresh values to a cached provisional.
+                if (session == null || !isCurrentBoardSession(session)) return@post
+                if (boardConfig?.appBoardId != boardId) return@post
+                if (boardConfig?.refloatBaseVersion != refloatBaseVersion) return@post
+                if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
+                if (boardConfigValues != null) return@post
+                boardConfigValues = restored
             }
         }
     }
