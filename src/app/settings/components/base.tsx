@@ -168,9 +168,8 @@ function ButtonShowcase() {
       }
     >
       <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button
-            style={{ flex: 1 }}
             label="Primary"
             variant="primary"
             onPress={() => {}}
@@ -178,7 +177,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Secondary"
             variant="secondary"
             onPress={() => {}}
@@ -186,7 +184,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Tune"
             variant="tune"
             icon={FadersIcon}
@@ -195,7 +192,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Enabled"
             variant="success"
             icon={CheckIcon}
@@ -204,7 +200,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Delete"
             variant="destructive"
             onPress={() => {}}
@@ -321,12 +316,18 @@ function ScreenTitleShowcase() {
 function TickTextShowcase() {
   const [weight, setWeight] = useState<MonoWeight>('700')
   const [align, setAlign] = useState<MonoValueAlign>('right')
+  const [empty, setEmpty] = useState(false)
   const value = useSharedValue<number | null>(0)
 
   useEffect(() => {
+    if (empty) {
+      cancelAnimation(value)
+      value.value = null
+      return
+    }
     value.value = withRepeat(withTiming(42.7, { duration: 3000, easing: Easing.linear }), -1, true)
     return () => cancelAnimation(value)
-  }, [value])
+  }, [empty, value])
 
   return (
     <ShowcaseCard
@@ -345,6 +346,7 @@ function TickTextShowcase() {
             selected={align}
             onSelect={(v) => setAlign(v as MonoValueAlign)}
           />
+          <ToggleRow label="no value (unit placeholder)" value={empty} onToggle={setEmpty} />
         </>
       }
     >

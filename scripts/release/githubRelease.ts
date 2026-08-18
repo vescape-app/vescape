@@ -12,7 +12,7 @@ export interface ReleaseCommandResult {
   stderr: string
 }
 
-export interface GithubPrereleaseDependencies {
+export interface GithubReleaseDependencies {
   run?: (command: 'git' | 'gh', args: string[]) => Promise<ReleaseCommandResult>
   generateBody?: typeof generateGithubReleaseBody
   root?: string
@@ -36,17 +36,64 @@ function requireCommand(result: ReleaseCommandResult, label: string): string {
   return result.stdout
 }
 
-export async function publishGithubPrerelease(
+/**
+ * Codex authors the release body locally before dispatch, so CI can publish the release itself
+ * without a Codex install: the commit range is already fixed by the source commit being built.
+ */
+export async function composeGithubReleaseBody(
+  sourceSha: string,
+  marketingVersion: string,
+  dependencies: GithubReleaseDependencies = {},
+): Promise<string> {
+  const run = dependencies.run ?? runReleaseCommand
+  const generateBody = dependencies.generateBody ?? generateGithubReleaseBody
+  const root =
+    dependencies.root ??
+    requireCommand(await run('git', ['rev-parse', '--show-toplevel']), 'Cannot resolve repository')
+  const previous = await run('git', [
+    'describe',
+    '--tags',
+    '--match',
+    'v*',
+    '--abbrev=0',
+    `${sourceSha}^`,
+  ])
+  const previousTag = previous.exitCode === 0 && previous.stdout ? previous.stdout : null
+  const range = previousTag ? `${previousTag}..${sourceSha}` : sourceSha
+  const commitLog = requireCommand(
+    await run('git', ['log', '--no-merges', '--max-count=200', '--format=- %s (%h)', range]),
+    'Cannot build GitHub release commit log',
+  )
+  if (!commitLog) throw new Error(`No commits found for GitHub release v${marketingVersion}`)
+
+  const directory = await mkdtemp(join(tmpdir(), 'vescape-github-release-'))
+  try {
+    return await generateBody({
+      root,
+      outputFile: join(directory, 'notes.md'),
+      version: marketingVersion,
+      previousTag,
+      commitLog,
+    })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Fallback for a release whose workflow published no release — an older run, or a CI publish that
+ * failed. The internal workflow owns the normal path.
+ */
+export async function publishGithubRelease(
   repo: string,
   manifest: ReleaseManifest,
-  dependencies: GithubPrereleaseDependencies = {},
+  dependencies: GithubReleaseDependencies = {},
 ): Promise<'created' | 'existing'> {
   if (releaseOutcome(manifest).kind !== 'success') {
-    throw new Error('Cannot publish a GitHub prerelease for an unsuccessful internal release')
+    throw new Error('Cannot publish a GitHub release for an unsuccessful internal release')
   }
 
   const run = dependencies.run ?? runReleaseCommand
-  const generateBody = dependencies.generateBody ?? generateGithubReleaseBody
   const tag = `v${manifest.marketingVersion}`
   const sourceSha = manifest.sourceSha.toLowerCase()
 
@@ -99,35 +146,14 @@ export async function publishGithubPrerelease(
   ])
   if (existingRelease.exitCode === 0) return 'existing'
 
-  const root =
-    dependencies.root ??
-    requireCommand(await run('git', ['rev-parse', '--show-toplevel']), 'Cannot resolve repository')
-  const previous = await run('git', [
-    'describe',
-    '--tags',
-    '--match',
-    'v*',
-    '--abbrev=0',
-    `${sourceSha}^`,
-  ])
-  const previousTag = previous.exitCode === 0 && previous.stdout ? previous.stdout : null
-  const range = previousTag ? `${previousTag}..${sourceSha}` : sourceSha
-  const commitLog = requireCommand(
-    await run('git', ['log', '--no-merges', '--max-count=200', '--format=- %s (%h)', range]),
-    'Cannot build GitHub release commit log',
-  )
-  if (!commitLog) throw new Error(`No commits found for GitHub release ${tag}`)
+  const body = await composeGithubReleaseBody(sourceSha, manifest.marketingVersion, {
+    ...dependencies,
+    run,
+  })
 
   const directory = await mkdtemp(join(tmpdir(), 'vescape-github-release-'))
   try {
     const notesFile = join(directory, 'notes.md')
-    const body = await generateBody({
-      root,
-      outputFile: notesFile,
-      version: manifest.marketingVersion,
-      previousTag,
-      commitLog,
-    })
     await writeFile(notesFile, body)
     requireCommand(
       await run('gh', [
@@ -137,11 +163,11 @@ export async function publishGithubPrerelease(
         '--repo',
         repo,
         '--verify-tag',
-        '--prerelease',
+        '--latest',
         '--notes-file',
         notesFile,
       ]),
-      `Cannot create GitHub prerelease ${tag}`,
+      `Cannot create GitHub release ${tag}`,
     )
     return 'created'
   } finally {

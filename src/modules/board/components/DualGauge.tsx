@@ -32,6 +32,7 @@ import {
   type GaugeReadoutBox,
 } from '@/modules/board/components/gauge/gaugeShared'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
+import { DASH } from '@/helpers/format'
 
 interface DualGaugeProps {
   speedValue: SharedValue<number | null>
@@ -167,7 +168,7 @@ function GaugeValueLayer({
 }: Omit<QuarterArcProps, 'side' | 'max'> & { box: GaugeReadoutBox }) {
   const valueText = useDerivedValue(() => {
     const current = value.value
-    return current != null ? Math.round(current).toString() : '—'
+    return current != null ? Math.round(current).toString() : DASH
   })
   const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
   return (

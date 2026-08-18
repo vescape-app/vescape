@@ -136,8 +136,8 @@ function releaseNotesDependencies(): ReleaseNotesDependencies {
     read: (path) => readFile(path, 'utf8'),
     select: async () =>
       selectPrompt('Prepare release notes', [
-        { value: 'draft', label: 'Draft with Codex', shortcut: 'd' },
-        { value: 'skip', label: 'Skip for now', shortcut: 's' },
+        { value: 'draft', label: 'Draft with Codex' },
+        { value: 'skip', label: 'Skip for now' },
       ] as const),
     author: async (version) => {
       const author = await command(

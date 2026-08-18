@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { publishGithubPrerelease } from './githubPrerelease'
+import { publishGithubRelease } from './githubRelease'
 
 const successfulManifest = {
   schemaVersion: 1 as const,
@@ -19,12 +19,12 @@ const successfulManifest = {
 const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '' })
 const missing = () => ({ exitCode: 1, stdout: '', stderr: 'not found' })
 
-describe('GitHub prerelease publishing', () => {
-  test('creates immutable tag and codex-authored prerelease after successful internal upload', async () => {
+describe('GitHub release publishing', () => {
+  test('creates immutable tag and codex-authored release after successful internal upload', async () => {
     const calls: string[] = []
     let generatedFrom: unknown
     let uploadedBody = ''
-    const result = await publishGithubPrerelease('vescape-app/vescape', successfulManifest, {
+    const result = await publishGithubRelease('vescape-app/vescape', successfulManifest, {
       root: '/repo',
       generateBody: async (options) => {
         generatedFrom = options
@@ -56,14 +56,14 @@ describe('GitHub prerelease publishing', () => {
     expect(calls).toContain(`git tag v0.84.0 ${successfulManifest.sourceSha}`)
     expect(calls).toContain('git push origin refs/tags/v0.84.0')
     expect(calls.some((call) => call.includes('gh release create v0.84.0'))).toBe(true)
-    expect(calls.some((call) => call.includes('--verify-tag --prerelease --notes-file'))).toBe(true)
+    expect(calls.some((call) => call.includes('--verify-tag --latest --notes-file'))).toBe(true)
     expect(uploadedBody).toBe('- Faster startup\n')
   })
 
   test('reuses matching remote tag and existing release without regenerating notes', async () => {
     const calls: string[] = []
     let generated = false
-    const result = await publishGithubPrerelease('vescape-app/vescape', successfulManifest, {
+    const result = await publishGithubRelease('vescape-app/vescape', successfulManifest, {
       generateBody: async () => {
         generated = true
         return 'unused'
@@ -87,7 +87,7 @@ describe('GitHub prerelease publishing', () => {
   test('caps the commit log from repository start when no previous tag exists', async () => {
     let generatedFrom: { previousTag: string | null; commitLog: string } | undefined
     let loggedRange = ''
-    await publishGithubPrerelease('vescape-app/vescape', successfulManifest, {
+    await publishGithubRelease('vescape-app/vescape', successfulManifest, {
       root: '/repo',
       generateBody: async (options) => {
         generatedFrom = options
@@ -117,7 +117,7 @@ describe('GitHub prerelease publishing', () => {
   test('refuses failed uploads and mismatched immutable tags', async () => {
     let commands = 0
     await expect(
-      publishGithubPrerelease(
+      publishGithubRelease(
         'vescape-app/vescape',
         { ...successfulManifest, uploads: { phone: 'failed', wear: 'succeeded' } },
         {
@@ -131,7 +131,7 @@ describe('GitHub prerelease publishing', () => {
     expect(commands).toBe(0)
 
     await expect(
-      publishGithubPrerelease('vescape-app/vescape', successfulManifest, {
+      publishGithubRelease('vescape-app/vescape', successfulManifest, {
         run: async (command, args) => {
           if (command === 'git' && args[0] === 'ls-remote') {
             return ok(`${'b'.repeat(40)}\trefs/tags/v0.84.0`)

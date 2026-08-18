@@ -23,7 +23,7 @@ export const initSentry = () => {
     enabled: Boolean(dsn),
     environment: __DEV__ ? 'development' : 'production',
     sendDefaultPii: false,
-    // Errors only — no performance tracing in the PoC.
+    // Errors only — no performance tracing.
     tracesSampleRate: 0,
     // Re-initializing the native SDK drops options it does not know about, so the iOS-only
     // MetricKit flag set in the AppDelegate has to be repeated here or the integration is

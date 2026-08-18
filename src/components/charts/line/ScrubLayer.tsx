@@ -9,6 +9,7 @@ import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline
 import type { ChartCamera, ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 const CURSOR_COLOR = theme.palette.slate.border
 const BANNER_BG = theme.alpha(theme.palette.slate.surfaceDeep, 0.85)
@@ -138,7 +139,7 @@ export function useScrubReadout({
         const { paths } = target
         const sample = sampleAtSec(paths.raw, (chartMs - paths.domainStartMs) / 1000)
         if (!sample.found) {
-          rows.push('—')
+          rows.push(DASH)
           longest = Math.max(longest, 1)
           dots.push(OFFSCREEN, OFFSCREEN)
           continue

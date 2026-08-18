@@ -28,12 +28,17 @@ export interface ChartCamera {
   spanMs: number
   endMs: number | null
   /**
-   * Dataset the camera was aimed at. Comparing it against the dataset being drawn is what
-   * resets zoom when the rider opens a different ride — a comparison rather than an effect, so
-   * a new dataset can never be drawn through the previous dataset's viewport, not even for a
-   * frame.
+   * Dataset the camera was aimed at, or `null` for a camera no rider has touched. Comparing it
+   * against the dataset being drawn is what resets zoom when the rider opens a different ride —
+   * a comparison rather than an effect, so a new dataset can never be drawn through the previous
+   * dataset's viewport, not even for a frame.
+   *
+   * `null` rather than a placeholder string on purpose: an untouched camera has to differ from
+   * every possible `dataKey`, including the empty one a stack that passes none is given. A
+   * sentinel string could be — and was — collided with, and a stack drawn through an untouched
+   * camera it believed was its own showed a 20ms viewport: one sample, now to now.
    */
-  key: string
+  key: string | null
 }
 
 export interface ChartColorStop {
@@ -109,6 +114,11 @@ export interface ChartSpec {
   right?: ChartAxisSpec
   /** Time ranges called out under the line — see {@link ChartBand}. */
   bands?: ChartBand[]
+  /**
+   * Values to mark with a faint horizontal reference line — where an alert starts, where a
+   * range ceiling sits. Read against the left axis, in the metric's own units.
+   */
+  thresholds?: number[]
 }
 
 export interface ChartPlotBox {
