@@ -130,4 +130,38 @@ class BoardConfigValuesTest {
     assertTrue(restored.bool("fault_moving_fault_disabled")!!)
     assertNull(restored.number("fault_moving_fault_disabled"))
   }
+
+  /**
+   * The bridge map is the whole JS contract: decoded fields and freshness, never the write base.
+   * @parity /modules/vescape-core/ios/config/BoardConfigValuesTests.swift `testBridgeMapCarriesValuesAndFreshnessButNoWriteBase`
+   */
+  @Test
+  fun bridgeMapCarriesValuesAndFreshnessButNoWriteBase() {
+    val values = BoardConfigValues(
+      boardId = "board-1",
+      refloatBaseVersion = "3.0",
+      capturedAtMs = 7,
+      freshness = BoardConfigFreshness.FRESH,
+      values = mapOf("fault_adc1" to 0.8, "fault_moving_fault_disabled" to true),
+      writeBase = BoardConfigWriteBase(
+        schema = schema(field("kp", RefloatConfigValueType.FLOAT32, offset = 0)),
+        rawConfig = byteArrayOf(1, 2, 3, 4),
+        packageSignature = 0xdeadbeefL,
+      ),
+    )
+
+    val map = values.toBridgeMap()
+
+    assertEquals("board-1", map["boardId"])
+    assertEquals("3.0", map["refloatBaseVersion"])
+    assertEquals(7L, map["capturedAtMs"])
+    assertEquals("fresh", map["freshness"])
+    @Suppress("UNCHECKED_CAST")
+    val decoded = map["values"] as Map<String, Any>
+    assertEquals(0.8, decoded["fault_adc1"] as Double, 1e-9)
+    assertEquals(true, decoded["fault_moving_fault_disabled"])
+    // Raw bytes and package signature stay native — JS never gets a write base.
+    assertNull(map["writeBase"])
+    assertNull(map["rawConfig"])
+  }
 }

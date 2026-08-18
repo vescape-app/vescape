@@ -11,9 +11,37 @@ import { routes } from '@/navigation/routes'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import {
+  FOOTPAD_FALLBACK_THRESHOLD_V,
+  useFootpadThreshold,
+} from '@/modules/board/store/boardConfigValuesStore'
 
-const FOOTPAD_ACTIVE_V = 0.8
 export const STRIP_CONTENT_HEIGHT = 160
+
+/**
+ * One footpad dot's colours, resolved against that zone's own engagement threshold — the two zones
+ * can be configured differently, so neither dot may borrow the other's number.
+ *
+ * The threshold is a plain number captured into the worklet closure. The style runs on the UI thread
+ * on every telemetry frame (~31Hz); reading a store from inside it would put a subscription in the
+ * hot path (see `docs/agents/react.md`).
+ */
+function useFootpadDotStyle(value: SharedValue<number | null>, threshold: number | null) {
+  // No config yet (first connection, read not landed, no cache) falls back silently — the gap is
+  // seconds and a loading state on a 9px dot would be worse than a slightly wrong one.
+  const engageAt = threshold ?? FOOTPAD_FALLBACK_THRESHOLD_V
+  // `fault_adc = 0` disables that zone's switch outright: it can never engage, so the dot stays dark
+  // for the whole session. The `footpad-disabled` Board Warning already carries the explanation.
+  const disabled = engageAt === 0
+  return useAnimatedStyle(() => {
+    const adc = value.value
+    const active = !disabled && adc != null && adc >= engageAt
+    return {
+      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
+      backgroundColor: active ? theme.palette.green.text : 'transparent',
+    }
+  })
+}
 
 interface BottomTelemetryStripProps {
   revealProgress?: SharedValue<number>
@@ -35,23 +63,10 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     return { transform: [{ rotate: `${imuConnected ? p : 0}deg` }] }
   })
 
-  const footpad1Style = useAnimatedStyle(() => {
-    const a = tick.adc1.value
-    const active = a != null && a > FOOTPAD_ACTIVE_V
-    return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
-      backgroundColor: active ? theme.palette.green.text : 'transparent',
-    }
-  })
-
-  const footpad2Style = useAnimatedStyle(() => {
-    const a = tick.adc2.value
-    const active = a != null && a > FOOTPAD_ACTIVE_V
-    return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
-      backgroundColor: active ? theme.palette.green.text : 'transparent',
-    }
-  })
+  const footpad1Threshold = useFootpadThreshold(0)
+  const footpad2Threshold = useFootpadThreshold(1)
+  const footpad1Style = useFootpadDotStyle(tick.adc1, footpad1Threshold)
+  const footpad2Style = useFootpadDotStyle(tick.adc2, footpad2Threshold)
 
   return (
     <Animated.View

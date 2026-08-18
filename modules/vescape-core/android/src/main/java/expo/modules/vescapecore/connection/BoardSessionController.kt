@@ -1662,10 +1662,24 @@ private var wearAutoLaunchOnConnect = true
 
     /**
      * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `PROVISIONAL`
-     * while it is the cache restored on connect. Native-owned truth; no bridge surface yet (#394).
+     * while it is the cache restored on connect. Native-owned truth; JS mirrors it through
+     * `getBoardConfigValues` + `onBoardConfigValues`.
+     *
+     * Every assignment emits — arrival, refresh after a write, and the clears (session end, board
+     * switch, `Mismatched`) — so the bridge event needs no separate call sites to stay honest.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValues`
      */
     private var boardConfigValues: BoardConfigValues? = null
+        set(value) {
+            field = value
+            emitEvent("onBoardConfigValues", mapOf("values" to value?.toBridgeMap()))
+        }
+
+    /**
+     * The held Board Config Values in bridge shape, or null when none are held.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValuesMap`
+     */
+    internal fun boardConfigValuesMap(): Map<String, Any?>? = boardConfigValues?.toBridgeMap()
 
     private fun updateLinkIntegrity(next: LinkIntegrity) {
         if (next == lastEmittedLinkIntegrity) return
@@ -2066,6 +2080,8 @@ private var wearAutoLaunchOnConnect = true
         connectionCoordinator.clearPending()
         fwVersionString = null
         telemetry = null
+        // Board Config Values are per Board Session; the cache row survives, the held object does not.
+        boardConfigValues = null
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread

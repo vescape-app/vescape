@@ -60,6 +60,21 @@ struct BoardConfigValues {
     values[id] as? Bool
   }
 
+  /// The JS-facing shape: decoded fields plus freshness, and nothing else. The write base never
+  /// crosses the bridge — JS has no use for raw bytes and must never be able to assemble a write
+  /// from them (ADR 0035).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `toBridgeMap`
+  /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+  func toBridgeMap() -> [String: Any?] {
+    [
+      "boardId": boardId,
+      "refloatBaseVersion": refloatBaseVersion,
+      "capturedAtMs": capturedAtMs,
+      "freshness": freshness.rawValue,
+      "values": values,
+    ]
+  }
+
   /// Decoded values as the JSON stored in the per-Board cache row. Bools serialize as `true` /
   /// `false` so the restored map keeps the same types.
   func valuesJson() -> String {

@@ -1410,6 +1410,49 @@ export interface BoardWarningsEvent {
 }
 
 /**
+ * Whether a Board Config Values object was read from the board in the current Board Session
+ * (`fresh`) or restored from the per-Board cache on connect (`provisional`). Both render the same;
+ * the distinction only gates config writes (ADR 0035).
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigFreshness`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigFreshness`
+ */
+export type BoardConfigFreshness = 'fresh' | 'provisional'
+
+/**
+ * This Board Session's Refloat configuration as JS sees it: the decoded field map plus how fresh it
+ * is. The raw config bytes, package signature and parsed schema stay native — they are a write base,
+ * and JS never writes config from a decoded map (ADR 0035).
+ *
+ * A field the schema does not carry, or that failed to decode, is simply **absent** from `values`,
+ * so a reader never has to tell "missing" from "unparseable".
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+ */
+export interface BoardConfigValues {
+  boardId: string | null
+  /** Refloat base version the values were decoded against — the cache scope (ADR 0022). */
+  refloatBaseVersion: string | null
+  capturedAtMs: number
+  freshness: BoardConfigFreshness
+  /** Decoded fields keyed by schema field id, each in its real type. */
+  values: Record<string, number | boolean>
+}
+
+/**
+ * Board Config Values changed. Nullable so clearing is expressible: fires when the post-trust read
+ * lands, after a config write, when the cache is restored as provisional, and with `values: null` on
+ * disconnect, board switch and `mismatched` link integrity.
+ *
+ * Deliberately not part of Live State — it changes once per session and is far too wide for an event
+ * that recomposes on every phase, GPS and scan change.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigValues`
+ */
+export interface BoardConfigValuesEvent {
+  values: BoardConfigValues | null
+}
+
+/**
  * Release Policy outcome for the installed marketing version, resolved **by the server**. Native
  * never evaluates SemVer ranges and JS never sees one — both only carry the resolved slug.
  * @parity /modules/vescape-core/ios/appstatus/AppStatus.swift `AppVersionStatus`
@@ -1737,6 +1780,8 @@ type VescapeCoreEvents = {
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
   onBoardWarnings: (event: BoardWarningsEvent) => void
+  /** Board Config Values arrived, changed, or were cleared (`values: null`). */
+  onBoardConfigValues: (event: BoardConfigValuesEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
@@ -1858,6 +1903,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     payloadJson: string,
   ): Promise<void>
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
+  getBoardConfigValues(): Promise<BoardConfigValues | null>
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
@@ -2473,6 +2519,14 @@ export async function clearAllBoardWarnings(boardId: string): Promise<void> {
   return native.clearAllBoardWarnings(boardId)
 }
 
+/**
+ * This Board Session's Board Config Values, or `null` when none are held (no session, read not
+ * landed, no cache, or cleared). Pull on mount; `onBoardConfigValues` carries every change after.
+ */
+export async function getBoardConfigValues(): Promise<BoardConfigValues | null> {
+  return native.getBoardConfigValues()
+}
+
 /** Dev-only: inject a fake Board Warning to exercise the fire → persist → emit pipe without a detector. */
 export async function devInjectBoardWarning(
   boardId: string,
@@ -2891,6 +2945,12 @@ export function addBoardWarningsListener(
   cb: (event: BoardWarningsEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardWarnings', cb)
+}
+
+export function addBoardConfigValuesListener(
+  cb: (event: BoardConfigValuesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onBoardConfigValues', cb)
 }
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {

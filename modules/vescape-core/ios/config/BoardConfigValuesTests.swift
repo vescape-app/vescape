@@ -108,4 +108,34 @@ final class BoardConfigValuesTests: XCTestCase {
     XCTAssertEqual(restored.bool("fault_moving_fault_disabled"), true)
     XCTAssertNil(restored.number("fault_moving_fault_disabled"))
   }
+
+  /// The bridge map is the whole JS contract: decoded fields and freshness, never the write base.
+  /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/BoardConfigValuesTest.kt `bridgeMapCarriesValuesAndFreshnessButNoWriteBase`
+  func testBridgeMapCarriesValuesAndFreshnessButNoWriteBase() {
+    let values = BoardConfigValues(
+      boardId: "board-1",
+      refloatBaseVersion: "3.0",
+      capturedAtMs: 7,
+      freshness: .fresh,
+      values: ["fault_adc1": 0.8, "fault_moving_fault_disabled": true],
+      writeBase: BoardConfigWriteBase(
+        schema: schema([field("kp", .float32, offset: 0)]),
+        rawConfig: [1, 2, 3, 4],
+        packageSignature: 0xdead_beef
+      )
+    )
+
+    let map = values.toBridgeMap()
+
+    XCTAssertEqual(map["boardId"] as? String, "board-1")
+    XCTAssertEqual(map["refloatBaseVersion"] as? String, "3.0")
+    XCTAssertEqual(map["capturedAtMs"] as? Int64, 7)
+    XCTAssertEqual(map["freshness"] as? String, "fresh")
+    let decoded = map["values"] as? [String: Any]
+    XCTAssertEqual(decoded?["fault_adc1"] as? Double, 0.8)
+    XCTAssertEqual(decoded?["fault_moving_fault_disabled"] as? Bool, true)
+    // Raw bytes and package signature stay native — JS never gets a write base.
+    XCTAssertNil(map["writeBase"] ?? nil)
+    XCTAssertNil(map["rawConfig"] ?? nil)
+  }
 }

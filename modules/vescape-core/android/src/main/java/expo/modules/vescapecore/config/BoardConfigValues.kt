@@ -65,6 +65,22 @@ internal data class BoardConfigValues(
   fun bool(id: String): Boolean? = values[id] as? Boolean
 
   /**
+   * The JS-facing shape: decoded fields plus freshness, and nothing else. The write base never
+   * crosses the bridge — JS has no use for raw bytes and must never be able to assemble a write from
+   * them (ADR 0035).
+   *
+   * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `toBridgeMap`
+   * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+   */
+  fun toBridgeMap(): Map<String, Any?> = mapOf(
+    "boardId" to boardId,
+    "refloatBaseVersion" to refloatBaseVersion,
+    "capturedAtMs" to capturedAtMs,
+    "freshness" to freshness.wire,
+    "values" to values,
+  )
+
+  /**
    * Decoded values as the JSON stored in the per-Board cache row. Bools serialize as `true` / `false`
    * so the restored map keeps the same types.
    */

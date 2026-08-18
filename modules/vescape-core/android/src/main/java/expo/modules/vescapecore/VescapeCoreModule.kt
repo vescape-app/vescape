@@ -168,6 +168,7 @@ class VescapeCoreModule : Module() {
       "onGroupRideError",
       "onAppDataChanged",
       "onBoardWarnings",
+      "onBoardConfigValues",
       "onAppStatus",
       "onNavigation",
       "onRouteProgress",
@@ -273,6 +274,12 @@ class VescapeCoreModule : Module() {
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
     }
     OnStopObserving("onBoardWarnings") { stopObserving("onBoardWarnings") }
+    OnStartObserving("onBoardConfigValues") {
+      startObserving("onBoardConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
+    }
+    OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
@@ -592,6 +599,15 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("getBoardWarnings") Coroutine { ->
       BoardWarningRegistry.get(context).allWarnings().map { it.toMap() }
+    }
+    /**
+     * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
+     * native (ADR 0035).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getBoardConfigValues") {
+      CoreForegroundService.getBoardConfigValues()
     }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       BoardWarningRegistry.get(context).clearWarning(boardId, kind)

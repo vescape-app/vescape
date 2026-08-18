@@ -1464,9 +1464,21 @@ internal final class BoardSessionController: VescGattListener {
   private var lastEmittedLinkIntegrity: LinkIntegrity = .unknown
   private var boardConfigReadScheduled = false
   /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `provisional`
-  /// while it is the cache restored on connect. Native-owned truth; no bridge surface yet (#394).
+  /// while it is the cache restored on connect. Native-owned truth; JS mirrors it through
+  /// `getBoardConfigValues` + `onBoardConfigValues`.
+  ///
+  /// Every assignment emits — arrival, refresh after a write, and the clears (session end, board
+  /// switch, `mismatched`) — so the bridge event needs no separate call sites to stay honest.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardConfigValues`
-  private var boardConfigValues: BoardConfigValues?
+  private var boardConfigValues: BoardConfigValues? {
+    didSet { emit?("onBoardConfigValues", ["values": boardConfigValues?.toBridgeMap()]) }
+  }
+
+  /// The held Board Config Values in bridge shape, or nil when none are held.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardConfigValuesMap`
+  func boardConfigValuesMap() -> [String: Any?]? {
+    boardConfigValues?.toBridgeMap()
+  }
   /// Live-parsed firmware string ("FW 6.05 · …"), used to resolve per-cell vs pack pushback units.
   /// Mirrors Android `fwVersionString`.
   private var vescLiveFirmware: String?

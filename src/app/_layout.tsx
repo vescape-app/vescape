@@ -22,6 +22,7 @@ import { stackScreens } from '@/navigation/routes'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
+import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
@@ -83,6 +84,7 @@ function RootLayout() {
     useGroupRideStore.getState().startObserving()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
+    const stopBoardConfigValuesSync = startBoardConfigValuesSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
@@ -91,6 +93,7 @@ function RootLayout() {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
       stopBoardWarningsSync()
+      stopBoardConfigValuesSync()
       stopAlertsBoardSync()
       stopAppStatusSync()
       stopNavigationSync()
