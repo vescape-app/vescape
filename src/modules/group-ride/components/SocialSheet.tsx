@@ -128,10 +128,11 @@ function GroupRideWidget() {
         footer={
           <Button
             label="Create"
+            variant="groupRide"
             icon={PlusIcon}
             onPress={() => {}}
             disabled
-            style={[styles.fill, styles.actionBtn]}
+            style={styles.fill}
             accessibilityLabel="Create group ride"
           />
         }
@@ -153,18 +154,20 @@ function GroupRideWidget() {
   ) : showNearby ? (
     <Button
       label="Join"
+      variant="groupRide"
       onPress={() => joinRide(nearby[0].ride.id)}
       disabled={!connected}
-      style={[styles.fill, styles.actionBtn]}
+      style={styles.fill}
       accessibilityLabel="Join nearest group ride"
     />
   ) : (
     <Button
       label="Create"
+      variant="groupRide"
       icon={PlusIcon}
       onPress={() => createRide('')}
       disabled={!hasLocation || !connected}
-      style={[styles.fill, styles.actionBtn]}
+      style={styles.fill}
       accessibilityLabel="Create group ride"
     />
   )
@@ -226,9 +229,6 @@ function LiveBadge({ connected }: { connected: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  actionBtn: {
-    backgroundColor: theme.palette.groupRide.border,
-  },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

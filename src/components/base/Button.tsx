@@ -16,7 +16,7 @@ interface ButtonProps {
   onPress: () => Promise<void> | void
   testID?: string
   accessibilityLabel?: string
-  variant?: 'primary' | 'accent' | 'tune' | 'secondary' | 'success' | 'destructive'
+  variant?: 'primary' | 'accent' | 'tune' | 'secondary' | 'success' | 'destructive' | 'groupRide'
   size?: 'sm' | 'md' | 'lg'
   icon?: Icon
   iconPosition?: 'left' | 'right'
@@ -151,6 +151,17 @@ const accentColors = {
       borderColor: theme.palette.red.color,
     }),
     text: { color: theme.palette.red.light },
+  },
+  groupRide: {
+    border: theme.palette.groupRide.color,
+    icon: theme.palette.groupRide.light,
+    indicator: theme.palette.groupRide.light,
+    button: (background: string) => ({
+      backgroundColor: background,
+      borderWidth: 1,
+      borderColor: theme.palette.groupRide.color,
+    }),
+    text: { color: theme.palette.groupRide.light },
   },
 } as const
 

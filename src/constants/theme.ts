@@ -378,6 +378,8 @@ export const control = {
  * palette color.
  */
 export const coloredAction = {
+  /** Dark theme: accent alone at this opacity on the surface beneath (dev's tinted pill). */
+  darkTint: 0.12,
   /** Accent strength over the navy control base in light mode. */
   tint: 0.3,
 } as const

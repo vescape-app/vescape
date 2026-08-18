@@ -228,6 +228,15 @@ function ButtonShowcase() {
             loading={loading}
             disabled={disabled}
           />
+          <Button
+            style={{ flex: 1 }}
+            label="Ride"
+            variant="groupRide"
+            size="sm"
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
         </View>
       </View>
     </ShowcaseCard>

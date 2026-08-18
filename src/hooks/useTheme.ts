@@ -59,14 +59,24 @@ export function useResolvedColor(color: string): string {
 
 /**
  * Background of a colored-action button (trash, Ride it, accent/tune/success/destructive, tonal
- * circles, map-sheet delete/save/vote). On dark the accent carries alone on a transparent base; on
- * light the accent tints the navy control surface — the navy + accent at `coloredAction.tint`
- * "two-layer" look, collapsed into one computed color (same pixels, no palette addition).
- * Pass the accent as a resolved hex or adaptive token.
+ * circles, map-sheet delete/save/vote, group-ride CTA). On dark the accent tints the surface beneath
+ * at `coloredAction.darkTint` (dev's tinted pill); on light the accent washes over the navy control
+ * surface — navy + accent at `coloredAction.tint`, the "two-layer" look. Both collapse into one
+ * computed color (same pixels, no palette addition). Pass the accent as a resolved hex or adaptive
+ * token.
  */
 export function useColoredAction(accent: string): string {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  if (resolvedTheme === 'dark') return 'transparent'
   const accentColor = resolveAdaptiveColor(accent, resolvedTheme) as string
+  if (resolvedTheme === 'dark') return `rgba(${hexToRgb(accentColor)},${coloredAction.darkTint})`
   return blend(controlColors.light.background, accentColor, coloredAction.tint)
+}
+
+function hexToRgb(hex: string): string {
+  const value = hex.replace('#', '')
+  const [r, g, b] =
+    value.length === 3
+      ? value.split('').map((c) => Number.parseInt(c + c, 16))
+      : [0, 2, 4].map((i) => Number.parseInt(value.slice(i, i + 2), 16))
+  return `${r},${g},${b}`
 }
