@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { withSpring, withTiming, type SharedValue } from 'react-native-reanimated'
@@ -17,6 +17,12 @@ interface MapRevealGestureProps {
   /** A pinch started after the drag had already committed — undo the reveal. */
   onRevealCancel: () => void
   onFinish: (revealed: boolean) => void
+  /** Off outside telemetry: the whole area then lets touches through to the map. */
+  enabled: boolean
+}
+
+interface MapRevealGestureViewProps extends MapRevealGestureProps {
+  children: ReactNode
 }
 
 const REVEAL_DISTANCE_DP = 120
@@ -40,6 +46,7 @@ function createMapRevealGesture({
   onReveal,
   onRevealCancel,
   onFinish,
+  enabled,
 }: MapRevealGestureProps) {
   let completed = false
   let pinching = false
@@ -80,6 +87,7 @@ function createMapRevealGesture({
   }
 
   const pan = Gesture.Pan()
+    .enabled(enabled)
     .runOnJS(true)
     .maxPointers(1)
     .minDistance(4)
@@ -139,6 +147,7 @@ function createMapRevealGesture({
     })
 
   const pinch = Gesture.Pinch()
+    .enabled(enabled)
     .runOnJS(true)
     .onBegin(() => {
       pinching = true
@@ -189,7 +198,9 @@ export function MapRevealGesture({
   onReveal,
   onRevealCancel,
   onFinish,
-}: MapRevealGestureProps) {
+  enabled,
+  children,
+}: MapRevealGestureViewProps) {
   'use no memo'
   // The detector only exists while a drag is possible and none is running yet, so any value left
   // here by an earlier tree (a Fast Refresh mid-reveal) is stale and would fade the face out.
@@ -220,8 +231,10 @@ export function MapRevealGesture({
         onReveal: handleReveal,
         onRevealCancel: handleRevealCancel,
         onFinish: handleFinish,
+        enabled,
       }),
     [
+      enabled,
       dragOpacity,
       handleFinish,
       handlePan,
@@ -235,9 +248,15 @@ export function MapRevealGesture({
     ],
   )
 
+  // The detector wraps the telemetry face rather than sitting under it. Gesture handler only
+  // delivers a touch to the handlers on its target view and that view's ancestors, so a finger
+  // landing on a gauge is invisible to a sibling detector — the pinch it belongs to never begins
+  // and the other finger reads as a lone drag into map mode.
   return (
     <GestureDetector gesture={gesture}>
-      <View style={styles.hitArea} />
+      <View pointerEvents={enabled ? 'auto' : 'none'} style={styles.hitArea}>
+        {children}
+      </View>
     </GestureDetector>
   )
 }
@@ -245,7 +264,7 @@ export function MapRevealGesture({
 const styles = StyleSheet.create({
   hitArea: {
     ...StyleSheet.absoluteFill,
-    zIndex: 5,
+    zIndex: 6,
     backgroundColor: theme.alpha(theme.palette.mono.black, 0),
   },
 })

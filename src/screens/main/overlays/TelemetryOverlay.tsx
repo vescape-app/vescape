@@ -174,82 +174,81 @@ export function TelemetryOverlay({
 
   return (
     <>
-      {mode === 'telemetry' || revealGestureActive ? (
-        <MapRevealGesture
-          progress={revealProgress}
-          dragOpacity={dragOpacity}
-          onPanStart={handleRevealPanStart}
-          onPan={handleRevealPan}
-          onZoomStart={handleRevealZoomStart}
-          onZoom={handleRevealZoom}
-          onZoomEnd={handleRevealZoomEnd}
-          onReveal={handleReveal}
-          onRevealCancel={handleRevealCancel}
-          onFinish={handleRevealFinish}
-        />
-      ) : null}
-
-      <Animated.View
-        pointerEvents={interactive ? 'box-none' : 'none'}
-        style={[styles.telemetryInterface, interfaceFadeStyle]}
+      <MapRevealGesture
+        enabled={mode === 'telemetry' || revealGestureActive}
+        progress={revealProgress}
+        dragOpacity={dragOpacity}
+        onPanStart={handleRevealPanStart}
+        onPan={handleRevealPan}
+        onZoomStart={handleRevealZoomStart}
+        onZoom={handleRevealZoom}
+        onZoomEnd={handleRevealZoomEnd}
+        onReveal={handleReveal}
+        onRevealCancel={handleRevealCancel}
+        onFinish={handleRevealFinish}
       >
-        <LiveHud revealProgress={revealProgress} />
-        <BottomTelemetryStrip revealProgress={revealProgress} />
-        <TopBar
-          boards={boards}
-          activeBoardId={activeBoardId}
-          activeBoard={activeBoard}
-          bleStatus={bleStatus}
-          onSelectBoard={onSelectBoard}
-          onAddBoard={onAddBoard}
-          onDisconnect={onStopScan}
-          onWeatherPress={onEnterWeather}
-          activeNavigationTarget={activeNavigationTarget}
-          onNavigationPress={onEnterMapFocus}
-          onCancelNavigation={onCancelNavigation}
-        />
-        <FloatingBar
-          bleStatus={bleStatus}
-          activeBoard={activeBoard}
-          onStopScan={onStopScan}
-          onRetryConnect={onRetryConnect}
-          bottomOffset={aboveStripBottom}
-        />
-        <IconButton
-          icon={ClockCounterClockwiseIcon}
-          size="lg"
-          onPress={onEnterHistory}
-          testID="history-button"
-          style={[styles.historyButton, { bottom: buttonBottom }]}
-        />
-        <View
-          ref={tuneButtonRef}
-          collapsable={false}
-          style={[styles.tuneButton, { bottom: buttonBottom }]}
+        <Animated.View
+          pointerEvents={interactive ? 'box-none' : 'none'}
+          style={[styles.telemetryInterface, interfaceFadeStyle]}
         >
+          <LiveHud revealProgress={revealProgress} />
+          <BottomTelemetryStrip revealProgress={revealProgress} />
+          <TopBar
+            boards={boards}
+            activeBoardId={activeBoardId}
+            activeBoard={activeBoard}
+            bleStatus={bleStatus}
+            onSelectBoard={onSelectBoard}
+            onAddBoard={onAddBoard}
+            onDisconnect={onStopScan}
+            onWeatherPress={onEnterWeather}
+            activeNavigationTarget={activeNavigationTarget}
+            onNavigationPress={onEnterMapFocus}
+            onCancelNavigation={onCancelNavigation}
+          />
+          <FloatingBar
+            bleStatus={bleStatus}
+            activeBoard={activeBoard}
+            onStopScan={onStopScan}
+            onRetryConnect={onRetryConnect}
+            bottomOffset={aboveStripBottom}
+          />
           <IconButton
-            icon={legalModeActive ? SirenIcon : SlidersHorizontalIcon}
+            icon={ClockCounterClockwiseIcon}
             size="lg"
-            accent={legalModeActive ? theme.status.error.color : undefined}
-            onPress={() => setTuneDrawerOpen(true)}
+            onPress={onEnterHistory}
+            testID="history-button"
+            style={[styles.historyButton, { bottom: buttonBottom }]}
           />
-        </View>
-        <EdgeDrawer
-          visible={tuneDrawerOpen}
-          triggerRef={tuneButtonRef}
-          title="Board Settings"
-          icon={SlidersHorizontalIcon}
-          onClose={() => setTuneDrawerOpen(false)}
-        >
-          <TuneDrawer
-            onNavigate={() => setTuneDrawerOpen(false)}
-            onOpenLegalLimits={() => {
-              setTuneDrawerOpen(false)
-              onEnterLegalLimits()
-            }}
-          />
-        </EdgeDrawer>
-      </Animated.View>
+          <View
+            ref={tuneButtonRef}
+            collapsable={false}
+            style={[styles.tuneButton, { bottom: buttonBottom }]}
+          >
+            <IconButton
+              icon={legalModeActive ? SirenIcon : SlidersHorizontalIcon}
+              size="lg"
+              accent={legalModeActive ? theme.status.error.color : undefined}
+              onPress={() => setTuneDrawerOpen(true)}
+            />
+          </View>
+          <EdgeDrawer
+            visible={tuneDrawerOpen}
+            triggerRef={tuneButtonRef}
+            title="Board Settings"
+            icon={SlidersHorizontalIcon}
+            onClose={() => setTuneDrawerOpen(false)}
+          >
+            <TuneDrawer
+              onNavigate={() => setTuneDrawerOpen(false)}
+              onOpenLegalLimits={() => {
+                setTuneDrawerOpen(false)
+                onEnterLegalLimits()
+              }}
+            />
+          </EdgeDrawer>
+        </Animated.View>
+      </MapRevealGesture>
 
       <View pointerEvents={interactive ? 'box-none' : 'none'} style={styles.offscreenIndicators}>
         {mode === 'telemetry'
