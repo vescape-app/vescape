@@ -1,54 +1,19 @@
-import { memo } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { Text } from '@/components/base/Text'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
-import { Sparkline } from '@/components/charts/Sparkline'
-import { TickText } from '@/components/base/TickText'
 import { BatteryIndicator } from '@/modules/board/components/BatteryIndicator'
+import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
 import { interaction, theme } from '@/constants/theme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { routes } from '@/navigation/routes'
-import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
-import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 const FOOTPAD_ACTIVE_V = 0.8
-const VALUE_FONT_SIZE = 13
 export const STRIP_CONTENT_HEIGHT = 160
-
-interface MetricSparklineProps {
-  metricKey: string
-  color: string
-  fmtMax: (value: number) => string
-}
-
-// Isolated so the cold-path series publish (~1Hz) re-renders only the sparkline, not the whole
-// strip. The strip itself no longer subscribes to metricVersion, so its TickText numbers, IMU
-// tilt and footpad dots keep updating purely off SharedValues with no React render.
-const MetricSparkline = memo(function MetricSparkline({
-  metricKey,
-  color,
-  fmtMax,
-}: MetricSparklineProps) {
-  const series = useLiveSeries(metricKey)
-  const windowMs = useLiveWindowMs()
-  return (
-    <Sparkline
-      points={series}
-      color={color}
-      height={18}
-      fmtMax={fmtMax}
-      showMaxBadge
-      minSpan={20}
-      windowMs={windowMs}
-    />
-  )
-})
 
 interface BottomTelemetryStripProps {
   revealProgress?: SharedValue<number>
@@ -95,94 +60,38 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     >
       <Animated.View style={revealStyle}>
         <View style={styles.strip}>
-          <Pressable
-            style={({ pressed }) => [styles.metricCell, pressed && styles.cellPressed]}
-            android_ripple={interaction.ripple}
+          <TelemetryCell
+            label="Motor"
+            metric={telemetry.motorTemp}
+            value={tick.motorTemp}
+            metricKey="motorTemp"
             onPress={() => router.push(routes.controlMotorTemp)}
             testID="telemetry-motor-temp-cell"
-          >
-            <Text style={styles.subLabel}>Motor</Text>
-            <TickText
-              value={tick.motorTemp}
-              decimals={telemetry.motorTemp.decimals}
-              unit={telemetry.motorTemp.unit}
-              size={VALUE_FONT_SIZE}
-              weight="800"
-              align="left"
-              style={styles.value}
-            />
-            <MetricSparkline
-              metricKey="motorTemp"
-              color={telemetry.motorTemp.color}
-              fmtMax={telemetry.motorTemp.formatWithUnit}
-            />
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.metricCell, pressed && styles.cellPressed]}
-            android_ripple={interaction.ripple}
+          />
+          <TelemetryCell
+            label="Ctrl"
+            metric={telemetry.controllerTemp}
+            value={tick.controllerTemp}
+            metricKey="controllerTemp"
             onPress={() => router.push(routes.controlControllerTemp)}
             testID="telemetry-controller-temp-cell"
-          >
-            <Text style={styles.subLabel}>Ctrl</Text>
-            <TickText
-              value={tick.controllerTemp}
-              decimals={telemetry.controllerTemp.decimals}
-              unit={telemetry.controllerTemp.unit}
-              size={VALUE_FONT_SIZE}
-              weight="800"
-              align="left"
-              style={styles.value}
-            />
-            <MetricSparkline
-              metricKey="controllerTemp"
-              color={telemetry.controllerTemp.color}
-              fmtMax={telemetry.controllerTemp.formatWithUnit}
-            />
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.metricCell, pressed && styles.cellPressed]}
-            android_ripple={interaction.ripple}
+          />
+          <TelemetryCell
+            label="Motor"
+            metric={telemetry.motorCurrent}
+            value={tick.motorCurrent}
+            metricKey="motorCurrent"
             onPress={() => router.push(routes.controlMotorCurrent)}
             testID="telemetry-motor-current-cell"
-          >
-            <Text style={styles.subLabel}>Motor</Text>
-            <TickText
-              value={tick.motorCurrent}
-              decimals={telemetry.motorCurrent.decimals}
-              unit={telemetry.motorCurrent.unit}
-              size={VALUE_FONT_SIZE}
-              weight="800"
-              align="left"
-              style={styles.value}
-            />
-            <MetricSparkline
-              metricKey="motorCurrent"
-              color={telemetry.motorCurrent.color}
-              fmtMax={telemetry.motorCurrent.formatWithUnit}
-            />
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.metricCell, pressed && styles.cellPressed]}
-            android_ripple={interaction.ripple}
+          />
+          <TelemetryCell
+            label="Batt"
+            metric={telemetry.battCurrent}
+            value={tick.batteryCurrent}
+            metricKey="batteryCurrent"
             onPress={() => router.push(routes.controlBatteryCurrent)}
             testID="telemetry-battery-current-cell"
-          >
-            <Text style={styles.subLabel}>Batt</Text>
-            <TickText
-              value={tick.batteryCurrent}
-              decimals={telemetry.battCurrent.decimals}
-              unit={telemetry.battCurrent.unit}
-              size={VALUE_FONT_SIZE}
-              weight="800"
-              align="left"
-              style={styles.value}
-            />
-            <MetricSparkline
-              metricKey="batteryCurrent"
-              color={telemetry.battCurrent.color}
-              fmtMax={telemetry.battCurrent.formatWithUnit}
-            />
-          </Pressable>
+          />
         </View>
 
         <View style={styles.bottomRow}>
@@ -244,20 +153,6 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
     paddingHorizontal: 20,
     gap: 8,
-  },
-  metricCell: {
-    flex: 1,
-    minWidth: 0,
-    gap: 1,
-  },
-  subLabel: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 8,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-  },
-  value: {
-    alignSelf: 'stretch',
   },
   bottomRow: {
     flexDirection: 'row',
