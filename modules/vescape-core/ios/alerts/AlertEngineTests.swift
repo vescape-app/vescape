@@ -13,6 +13,8 @@ final class AlertEngineTests: XCTestCase {
     soundType: String = "default",
     repeatEverySeconds: Int64? = nil,
     beepCount: Int = alertBeepCountDefault
+    , thresholdKind: String = "fixed", configFieldId: String? = nil,
+    thresholdOffset: Double? = nil, thresholdMaxOffset: Double? = nil
   ) -> AlertRule {
     AlertRule(
       boardId: "board-1",
@@ -20,6 +22,8 @@ final class AlertEngineTests: XCTestCase {
       controlId: controlId,
       threshold: threshold,
       thresholdMax: thresholdMax,
+      thresholdKind: thresholdKind, configFieldId: configFieldId,
+      thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset,
       enabled: true,
       soundType: soundType,
       createdAt: 0,
@@ -27,6 +31,16 @@ final class AlertEngineTests: XCTestCase {
       beepCount: beepCount,
       source: nil
     )
+  }
+
+  func testConfigRelativeDutyResolvesFractionAndFollowsUpdates() {
+    let relative = rule(thresholdKind: "config-relative", configFieldId: "tiltback_duty", thresholdOffset: -10, thresholdMaxOffset: 0)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.8])
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.75)).first?.threshold, 70)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.9])
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.75)).isEmpty)
+    engine.updateBoardConfigValues(["tiltback_duty": 1.0])
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.99)).isEmpty)
   }
 
   private func telemetry(

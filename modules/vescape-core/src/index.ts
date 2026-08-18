@@ -203,6 +203,8 @@ export interface Board {
    * persists this bag. Absent ⇒ all metrics Off (no preset rules until the rider touches setup).
    */
   alertPreset?: Record<string, unknown> | null
+  /** Duty presets follow VESC tiltback_duty when true. Per-Board, default false. */
+  matchDutyBoardConfig?: boolean
   /**
    * One-time gate for the guided Alert Preset step in the add-board wizard, per Board. False until
    * the rider completes that step for this Board. The durable setup home is the Alerts settings
@@ -282,6 +284,15 @@ export interface AlertRule {
   controlId: string
   threshold: number
   thresholdMax: number | null
+  /** Durable threshold source. Missing on legacy rows means fixed. */
+  thresholdRule?:
+    | { kind: 'fixed' }
+    | {
+        kind: 'config-relative'
+        fieldId: string
+        thresholdOffset: number
+        thresholdMaxOffset: number | null
+      }
   enabled: boolean
   soundType: AlertSoundType
   createdAt: number

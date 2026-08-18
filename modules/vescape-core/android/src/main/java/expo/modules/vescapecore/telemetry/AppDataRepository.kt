@@ -821,6 +821,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
     "alertPreset" to values["alertPreset"],
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
+    "matchDutyBoardConfig" to (values["matchDutyBoardConfig"] ?: false),
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
   )
@@ -895,6 +896,10 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "controlId" to controlId,
   "threshold" to threshold,
   "thresholdMax" to thresholdMax,
+  "thresholdRule" to if (thresholdKind == "config-relative") mapOf(
+    "kind" to thresholdKind, "fieldId" to configFieldId,
+    "thresholdOffset" to thresholdOffset, "thresholdMaxOffset" to thresholdMaxOffset,
+  ) else mapOf("kind" to "fixed"),
   "enabled" to enabled,
   "soundType" to soundType,
   "createdAt" to createdAt,
@@ -1079,6 +1084,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
   putOrDelete("alertPreset", normalizeAlertPreset(get("alertPreset")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
+  putOrDelete("matchDutyBoardConfig", get("matchDutyBoardConfig") as? Boolean)
   // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
@@ -1111,6 +1117,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
     "alertPreset" -> normalizeAlertPreset(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
+    "matchDutyBoardConfig" -> (raw as? Boolean)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
@@ -1210,6 +1217,10 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   controlId = getString("controlId"),
   threshold = getDouble("threshold"),
   thresholdMax = getDoubleOrNull("thresholdMax"),
+  thresholdKind = ((get("thresholdRule") as? Map<*, *>)?.get("kind") as? String) ?: "fixed",
+  configFieldId = (get("thresholdRule") as? Map<*, *>)?.get("fieldId") as? String,
+  thresholdOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdOffset") as? Number)?.toDouble(),
+  thresholdMaxOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdMaxOffset") as? Number)?.toDouble(),
   enabled = getBoolean("enabled"),
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),

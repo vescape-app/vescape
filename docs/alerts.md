@@ -40,6 +40,10 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 | `created_at`           | INTEGER          | ms epoch                                                       |
 | `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot   |
 | `beep_count`           | INTEGER          | sound plays per announcement, 1–5 (preset sounds only)         |
+| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                   |
+| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                      |
+| `threshold_offset`     | REAL nullable    | start offset in alert units                                    |
+| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                            |
 
 ## Control IDs & implicit direction
 
@@ -132,15 +136,19 @@ Runtime behavior:
 
 ## Alert Presets
 
-Presets are a JS-only layer that generates ordinary Alert Rules — native knows nothing about them. A
-rider picks one **level** per **metric**; `generateAlertPresetRules` (`src/modules/alerts/lib/alertPresets.ts`)
+Presets generate Alert Rules in JS. Fixed rules carry concrete thresholds; opt-in Duty presets carry
+a durable `tiltback_duty` relationship. Native resolves that fraction to percent from Last Known
+Board Config Values and follows fresh reads/writes without rewriting the rule. Missing, invalid, or
+disabled (`1.0`) duty pushback leaves the relationship inactive.
+
+A rider picks one **level** per **metric**; `generateAlertPresetRules` (`src/modules/alerts/lib/alertPresets.ts`)
 deterministically expands `(metric, level, options)` into concrete rule specs the Alert Preset store
 persists through the same CRUD as manual rules.
 
 ### Levels
 
-Four levels, safest first: **Off**, **Safe**, **Normal**, **Pro**. `off` (and any guard failure)
-generates no rules. Safer levels add more warning points and start earlier; Pro warns late and only at
+Four levels, safest first: **Off**, **Safe**, **Normal**, **Minimal**. `off` (and any guard failure)
+generates no rules. Safer levels add more warning points and start earlier; Minimal warns late and only at
 the extreme.
 
 ### Metrics & families

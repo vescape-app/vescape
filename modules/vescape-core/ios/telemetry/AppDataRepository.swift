@@ -114,6 +114,7 @@ final class AppDataRepository {
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
       ("alertPreset", Self.normalizeAlertPreset(board["alertPreset"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
+      ("matchDutyBoardConfig", board["matchDutyBoardConfig"] as? Bool),
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
@@ -199,6 +200,7 @@ final class AppDataRepository {
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPreset": values["alertPreset"],
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
+      "matchDutyBoardConfig": values["matchDutyBoardConfig"] ?? false,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
     ]
@@ -226,6 +228,8 @@ final class AppDataRepository {
     case "alertPreset":
       return normalizeAlertPreset(raw)
     case "alertPresetsOnboarded":
+      return raw as? Bool
+    case "matchDutyBoardConfig":
       return raw as? Bool
     case "legalMode":
       return normalizeLegalMode(raw)
@@ -280,6 +284,10 @@ final class AppDataRepository {
           "controlId": row["control_id"] as String,
           "threshold": row["threshold"] as Double,
           "thresholdMax": row["threshold_max"] as Double?,
+          "thresholdRule": (row["threshold_kind"] as String? == "config-relative") ? [
+            "kind": "config-relative", "fieldId": row["config_field_id"] as String?,
+            "thresholdOffset": row["threshold_offset"] as Double?, "thresholdMaxOffset": row["threshold_max_offset"] as Double?
+          ] : ["kind": "fixed"],
           "enabled": (row["enabled"] as Int64) != 0,
           "soundType": row["sound_type"] as String,
           "createdAt": row["created_at"] as Int64,
@@ -308,6 +316,10 @@ final class AppDataRepository {
           controlId: row["control_id"] as String,
           threshold: row["threshold"] as Double,
           thresholdMax: row["threshold_max"] as Double?,
+          thresholdKind: row["threshold_kind"] as String? ?? "fixed",
+          configFieldId: row["config_field_id"] as String?,
+          thresholdOffset: row["threshold_offset"] as Double?,
+          thresholdMaxOffset: row["threshold_max_offset"] as Double?,
           enabled: (row["enabled"] as Int64) != 0,
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
@@ -333,13 +345,18 @@ final class AppDataRepository {
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
     let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
+    let thresholdRule = rule["thresholdRule"] as? [String: Any]
+    let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
+    let configFieldId = thresholdRule?["fieldId"] as? String
+    let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
+    let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
     write { db in
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, threshold_kind, config_field_id, threshold_offset, threshold_max_offset)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source]
+        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source, thresholdKind, configFieldId, thresholdOffset, thresholdMaxOffset]
       )
     }
   }

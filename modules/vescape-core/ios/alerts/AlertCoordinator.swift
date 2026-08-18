@@ -12,6 +12,7 @@ internal final class AlertCoordinator {
   private let vibrateSingles: Bool
   private var rules: [AlertRule] = []
   private var activeGeigerRuleIds: Set<String> = []
+  func updateBoardConfigValues(_ values: [String: Any]) { engine.updateBoardConfigValues(values) }
 
   init(player: AlertAudioPlayer, vibrateSingles: Bool = true) {
     self.player = player

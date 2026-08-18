@@ -762,6 +762,7 @@ internal final class BoardSessionController: VescGattListener {
     // Something to show before the fresh read lands: the cache for this Board + Refloat base
     // version, restored as `lastKnown` (never a write base — see #396).
     boardConfigValues = restoredBoardConfigValues(config)
+    alertCoordinator.updateBoardConfigValues(boardConfigValues?.values ?? [:])
     if let session {
       lastEmittedLinkIntegrity = session.startLinkIntegrityCheck(expected: config.linkIdentity())
     }
@@ -1336,6 +1337,7 @@ internal final class BoardSessionController: VescGattListener {
     // describe a board this session no longer owns, so they must not repopulate what was cleared.
     guard values.boardId == config?.appBoardId, linkIntegrity == .trusted else { return }
     boardConfigValues = values
+    alertCoordinator.updateBoardConfigValues(values.values)
     if origin == .freshRead { BoardConfigStore.shared.saveFresh(values) }
     else { BoardConfigStore.shared.save(values) }
     evaluateConfigSafety(values)
@@ -1350,6 +1352,7 @@ internal final class BoardSessionController: VescGattListener {
   /// Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
   private func clearBoardConfigValues() {
     boardConfigValues = nil
+    alertCoordinator.updateBoardConfigValues([:])
     guard let boardId = config?.appBoardId else { return }
     BoardConfigStore.shared.clear(boardId: boardId)
   }

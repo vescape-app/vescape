@@ -278,6 +278,10 @@ data class AlertRuleEntity(
   val threshold: Double,
   @ColumnInfo(name = "threshold_max")
   val thresholdMax: Double?,
+  @ColumnInfo(name = "threshold_kind") val thresholdKind: String = "fixed",
+  @ColumnInfo(name = "config_field_id") val configFieldId: String? = null,
+  @ColumnInfo(name = "threshold_offset") val thresholdOffset: Double? = null,
+  @ColumnInfo(name = "threshold_max_offset") val thresholdMaxOffset: Double? = null,
   val enabled: Boolean,
   @ColumnInfo(name = "sound_type")
   val soundType: String,

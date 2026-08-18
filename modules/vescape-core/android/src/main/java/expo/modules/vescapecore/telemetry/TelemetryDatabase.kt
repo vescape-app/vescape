@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 34
+internal const val TELEMETRY_DATABASE_VERSION = 35
 
 @Database(
   entities = [
@@ -607,6 +607,14 @@ abstract class TelemetryDatabase : RoomDatabase() {
         db.execSQL("CREATE TABLE IF NOT EXISTS board_config_change_notices (board_id TEXT NOT NULL PRIMARY KEY, detected_at INTEGER NOT NULL, diffs_json TEXT NOT NULL)")
       }
     }
+    internal val MIGRATION_34_35 = object : Migration(34, 35) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'")
+        db.execSQL("ALTER TABLE alerts ADD COLUMN config_field_id TEXT")
+        db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_offset REAL")
+        db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_max_offset REAL")
+      }
+    }
 
     internal val MIGRATION_31_32 = object : Migration(31, 32) {
       override fun migrate(db: SupportSQLiteDatabase) {
@@ -680,6 +688,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_31_32,
             MIGRATION_32_33,
             MIGRATION_33_34,
+            MIGRATION_34_35,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

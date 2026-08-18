@@ -40,6 +40,7 @@ interface AlertPresetActions {
   regenerateSpeed(boardId?: string): Promise<void>
   /** Regenerate every metric's preset rules for a Board (used after add-board setup). */
   regenerateAll(boardId?: string): Promise<void>
+  setMatchDutyBoardConfig(enabled: boolean, boardId?: string): Promise<void>
 }
 
 // Serialize rule churn so an interleaved Board Top Speed change, level change or customize can't
@@ -107,6 +108,12 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
   async regenerateAll(boardId) {
     for (const metric of ALERT_PRESET_METRICS) await get().regenerate(metric, boardId)
   },
+  async setMatchDutyBoardConfig(enabled, boardId) {
+    const board = targetBoard(boardId)
+    if (!board) return
+    await useBoardStore.getState().updateBoard({ ...board, matchDutyBoardConfig: enabled })
+    await get().regenerate('duty', board.id)
+  },
 }))
 
 function targetBoard(boardId?: string): Board | undefined {
@@ -162,6 +169,7 @@ async function regenerateMetric(
     const specs = generateAlertPresetRules(metric, boardAlertPresetSelection(board)[metric], {
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      matchDutyBoardConfig: board.matchDutyBoardConfig === true,
     })
 
     // Delete-then-upsert scoped to this metric's preset rules, so other metrics' preset rules and
@@ -177,6 +185,7 @@ async function regenerateMetric(
         controlId: spec.controlId,
         threshold: spec.threshold,
         thresholdMax: spec.thresholdMax,
+        thresholdRule: spec.thresholdRule,
         enabled: true,
         soundType: spec.soundType,
         repeatEverySeconds: spec.repeatEverySeconds,

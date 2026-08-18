@@ -1045,6 +1045,7 @@ private var wearAutoLaunchOnConnect = true
         // No re-clear here: `stopCurrentBoardSession` above already nulled the held values, and the
         // setter emits on every assignment — a second null would send a duplicate bridge event on
         // every connection. Mirrors iOS, which assigns the restored value once.
+        alertCoordinator.updateBoardConfigValues(emptyMap())
         restoreBoardConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
         // Tag telemetry frames with the CAN id resolved from the stored transport.
@@ -1514,6 +1515,7 @@ private var wearAutoLaunchOnConnect = true
         if (values.boardId != boardConfig?.appBoardId) return
         if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
         boardConfigValues = values
+        alertCoordinator.updateBoardConfigValues(values.values)
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch {
             if (origin == BoardConfigOperationOrigin.FRESH_READ) {
@@ -1546,6 +1548,7 @@ private var wearAutoLaunchOnConnect = true
                 if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
                 if (boardConfigValues != null) return@post
                 boardConfigValues = restored
+                alertCoordinator.updateBoardConfigValues(restored.values)
             }
         }
     }
@@ -1556,6 +1559,7 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun clearBoardConfigValues() {
         boardConfigValues = null
+        alertCoordinator.updateBoardConfigValues(emptyMap())
         val boardId = boardConfig?.appBoardId ?: return
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch { repo.clearBoardConfigValues(boardId) }
