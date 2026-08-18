@@ -1033,7 +1033,9 @@ private var wearAutoLaunchOnConnect = true
         batteryConfigMismatchDetector.reset()
         warningFailuresReported.clear()
         boardConfigReadScheduled = false
-        boardConfigValues = null
+        // No re-clear here: `stopCurrentBoardSession` above already nulled the held values, and the
+        // setter emits on every assignment — a second null would send a duplicate bridge event on
+        // every connection. Mirrors iOS, which assigns the restored value once.
         restoreBoardConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
         // Tag telemetry frames with the CAN id resolved from the stored transport.
