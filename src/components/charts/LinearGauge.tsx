@@ -22,6 +22,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { interaction, theme } from '@/constants/theme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
+import { DASH } from '@/helpers/format'
 
 const TRACK_COLOR = theme.palette.slate.border
 const LINE_THICK = 2
@@ -328,7 +329,7 @@ export function LinearGauge({
   const height = compact ? BAR_H_COMPACT : BAR_H
   const fraction = value == null ? 0 : fractionOf(value, min, max)
   const valueText =
-    value == null ? '—' : decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals)
+    value == null ? DASH : decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals)
 
   // The value rides just left of the head, its top aligned with the head marker's top.
   // Below 20% there's no room on the left, so it flips to the right of the head.

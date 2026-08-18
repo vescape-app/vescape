@@ -37,6 +37,7 @@ import {
   FIXTURE_RIDERS,
 } from '@/screens/showcase/mapShowcaseFixtures'
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
+import { DASH } from '@/helpers/format'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
@@ -226,7 +227,7 @@ export default function MapComponentsShowcase() {
             if (match) setActiveHistoryMapMetric(match.key)
           }}
         />
-        <ValueRow label="Last interaction" value={lastEvent ?? '—'} />
+        <ValueRow label="Last interaction" value={lastEvent ?? DASH} />
         <Text style={styles.hint}>
           Tap a pin to expand its label + delete button. Buildings 3D follows the style (Outdoors,
           One Dark).
