@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
-export type ProgressBarProps = {
+export interface ProgressBarProps {
   /** Units finished so far. */
   current: number
   /** Units the run started with. A total of zero draws an empty track and no readout. */
