@@ -204,14 +204,28 @@ describe('edgeDrawerContentResizeOffset', () => {
     ).toBe(700)
   })
 
-  test('never lands below the fully opaque resting offset', () => {
+  test('an opaque drawer stays at or above the fully opaque resting offset', () => {
     const range = 900
+    const previousRange = 800
     const offset = edgeDrawerContentResizeOffset({
-      offset: 100,
-      previousRange: 800,
+      offset: edgeDrawerRestoreOffset(previousRange, height, false),
+      previousRange,
       range,
       height,
     })
-    expect(offset).toBe(edgeDrawerRestoreOffset(range, height, false))
+    expect(offset).toBeGreaterThanOrEqual(edgeDrawerRestoreOffset(range, height, false))
+    expect(edgeDrawerVisibleFraction({ offset, range, height, opensFromTop: false })).toBe(1)
+  })
+
+  test('a drawer mid dismissal drag is not snapped back up under the finger', () => {
+    const offset = edgeDrawerContentResizeOffset({
+      offset: 100,
+      previousRange: 800,
+      range: 900,
+      height,
+    })
+    // Growth absorbed so the drag does not jump, but no pull back to the opaque mark.
+    expect(offset).toBe(200)
+    expect(offset).toBeLessThan(edgeDrawerRestoreOffset(900, height, false))
   })
 })

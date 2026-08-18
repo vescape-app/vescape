@@ -509,7 +509,8 @@ export function EdgeDrawer({
       // Content grows over many frames, so this follows every one of them from the live offset —
       // a per-frame "was the drawer fully open?" test loses the race after the first frame and
       // leaves the drawer stranded half faded.
-      if (!opensFromTop && range !== previousRange && !initialFocusRef) {
+      const pinsToOwnEdge = !opensFromTop && range !== previousRange && !initialFocusRef
+      if (pinsToOwnEdge) {
         const pinnedOffset = edgeDrawerContentResizeOffset({
           offset: scrollOffset.value,
           range,
@@ -519,6 +520,7 @@ export function EdgeDrawer({
         scrollOffsetRef.current = pinnedOffset
         scrollOffset.value = pinnedOffset
         scrollRef.current?.scrollTo({ y: pinnedOffset, animated: false })
+        return
       }
 
       if (autoScrollOnContentExpand && contentHeight > previousContentHeight) {
