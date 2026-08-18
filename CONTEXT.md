@@ -149,8 +149,20 @@ The rider's chosen map camera orientation: north up, GPS heading, compass, or fr
 _Avoid_: Navigation mode, map navigation, heading mode
 
 **Board Config Values**:
-The connected **Board**'s Refloat configuration as native-owned truth, read once per **Board Session** and held as both the raw config bytes (with package signature and parsed schema, the only valid write base) and the field map decoded across the whole schema. Serves every consumer that needs a real config number — config-scoped **Board Warnings**, live footpad engagement, and **Tune Snapshot** prefill. Not limited to safety parameters.
-_Avoid_: Config safety values, settings dump, tune cache
+The active **Board**'s Refloat configuration as native-owned truth, carrying the field map decoded across the whole schema and, when read in the current **Board Session**, the raw config bytes that alone may base a write.
+_Avoid_: Config safety values, settings dump, tune cache, cached config
+
+**Last Known Board Config Values**:
+The durable latest successfully read **Board Config Values** for one **Board** and **Tune Compatibility**, immediately usable by read-side consumers but never as a config write base.
+_Avoid_: Board config cache, provisional cache, cached config
+
+**VESC-Relative Alert Rule**:
+An **Alert Rule** whose threshold remains a field-and-offset relationship to **Board Config Values** instead of copying the field's current number.
+_Avoid_: Copied VESC threshold, synced alert value
+
+**Board Config Change Notice**:
+A one-time acknowledgement of field-level differences found when fresh **Board Config Values** disagree with the **Last Known Board Config Values** for the same **Board** and **Tune Compatibility**.
+_Avoid_: Board Warning, config warning, config change history
 
 **Tune Snapshot**:
 A read-only view of the board's current Refloat tuning configuration decoded from the board's schema and binary config.
@@ -337,7 +349,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board** has at most one **Board Link**; absence means the Board is offline-only or not yet linked.
 - A **Board Link** has exactly one **Board Transport**.
 - A **Board Link** has one **Board Link Version**.
-- A **Board Link** is only saved after a successful **Board Probe**.
+- A **Board Link** is only saved after a successful **Board Probe** has read and persisted **Last Known Board Config Values**; a config read or decode failure fails the probe.
 - An outdated **Board Link Version** keeps telemetry available but requires re-link before firmware-dependent commands.
 - A **Board Link** may include a **Board Firmware Identity** for the selected **Board Transport**.
 - A missing **Board Firmware Identity** does not invalidate a **Board Link**, but it is unusual and should be visible during linking.
@@ -347,10 +359,15 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Link Integrity Check** verifies saved capability facts but does not discover new hardware capabilities; new capabilities require a full re-link.
 - Native owns **Link Integrity Check** truth; app UI only displays the resulting state.
 - A **Tune Snapshot** requires a trusted **Board Link** because tune field identity depends on the connected controller.
-- **Board Config Values** are read once after link trust and stay authoritative for the whole **Board Session**: a **Board** accepts one connection at a time, so config changes only through the app's own writes while connected.
-- **Board Config Values** carry the raw config bytes and package signature alongside the decoded field map; only the raw bytes can base a config write.
-- **Board Config Values** restored from cache are provisional and may be displayed but never written from; only values read in the current **Board Session** are fresh.
-- **Board Config Values** are cached per **Board** and **Tune Compatibility**, kept while a **Board Link** is outdated, and cleared everywhere when link integrity is mismatched.
+- A valid **Board Link** guarantees **Last Known Board Config Values** for its **Board** and **Tune Compatibility**; an incompatible link version requires re-link so this invariant has no optional legacy case.
+- A **Board Session** starts with **Last Known Board Config Values**, then reads fresh **Board Config Values** once after link trust and refreshes them after the app's own writes.
+- Fresh **Board Config Values** stay authoritative while the **Board Session** continuously owns the link: a **Board** accepts one BLE connection at a time, so config changes only through the app's own writes while connected.
+- Only fresh **Board Config Values** carry the raw config bytes and package signature that may base a config write; **Last Known Board Config Values** are read-side truth only.
+- **Last Known Board Config Values** are scoped per **Board** and **Tune Compatibility**, kept while a **Board Link** is outdated, and cleared everywhere when link integrity is mismatched.
+- A **VESC-Relative Alert Rule** resolves from **Last Known Board Config Values** immediately when a **Board Session** starts and follows fresh values automatically when they arrive; it never materializes the referenced config number into the rule.
+- The first **VESC-Relative Alert Rule** is opt-in Duty feedback based on `tiltback_duty`; matching is off by default, and the selected Safe, Normal, or Minimal level determines its lead below the VESC threshold.
+- A fresh read differing from **Last Known Board Config Values** creates or replaces that Board's pending **Board Config Change Notice** unless Vescape made the change itself; every changed field is included and no history is retained.
+- Only the active **Board** presents its pending **Board Config Change Notice**; dismissing its modal by any route removes the notice.
 - A **Board Firmware Identity** may be rediscovered during a **Board Session**; any mismatch creates a **Stale Board Link**.
 - A **Stale Board Link** does not end a working **Board Session**, but only telemetry remains trusted until a fresh **Board Probe** replaces the link.
 - A **Stale Board Link** is latched for the current **Board Session** and is not persisted across app restarts.
