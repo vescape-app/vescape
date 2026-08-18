@@ -1,11 +1,10 @@
 import * as Haptics from 'expo-haptics'
 import { ClockCounterClockwiseIcon, SirenIcon, SlidersHorizontalIcon } from 'phosphor-react-native'
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Platform, StyleSheet, View } from 'react-native'
 import Animated, {
-  cancelAnimation,
   useAnimatedStyle,
-  useSharedValue,
+  useDerivedValue,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
@@ -93,7 +92,11 @@ export function TelemetryOverlay({
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
   const revealCommittedRef = useRef(false)
   const tuneButtonRef = useRef<View>(null)
-  const telemetryReturnOpacity = useSharedValue(mode === 'telemetry' ? 1 : 0)
+  // Derived, not effect-driven: the fade follows `mode` from the first evaluation on, so a Fast
+  // Refresh that re-renders without re-running effects can never leave the face stuck invisible.
+  const telemetryReturnOpacity = useDerivedValue(() =>
+    withTiming(mode === 'telemetry' ? 1 : 0, TELEMETRY_FADE_TIMING),
+  )
 
   const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
   const buttonBottom = aboveStripBottom - (HISTORY_BUTTON_SIZE - RECORD_BUTTON_HEIGHT) / 2
@@ -155,19 +158,9 @@ export function TelemetryOverlay({
     [mapRef, mode],
   )
 
-  // Returning to telemetry fades the face back in; leaving it hides the face outright. The reveal
-  // values themselves are reset by their owner, because a component may not write shared values it
-  // was handed.
-  useLayoutEffect(() => {
-    cancelAnimation(telemetryReturnOpacity)
-    if (mode === 'telemetry') {
-      revealCommittedRef.current = false
-      telemetryReturnOpacity.value = 0
-      telemetryReturnOpacity.value = withTiming(1, TELEMETRY_FADE_TIMING)
-    } else {
-      telemetryReturnOpacity.value = 0
-    }
-  }, [mode, telemetryReturnOpacity])
+  useEffect(() => {
+    if (mode === 'telemetry') revealCommittedRef.current = false
+  }, [mode])
 
   return (
     <>
