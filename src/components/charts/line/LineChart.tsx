@@ -17,10 +17,8 @@ import type { ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
 import { resolveAdaptiveColor } from '@/constants/theme'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
-
-const THRESHOLD_COLOR = theme.alpha(theme.palette.yellow.color, 0.12)
 
 export interface LineChartProps {
   chart: PreparedChart
@@ -43,7 +41,10 @@ export interface LineChartProps {
  */
 export function LineChart({ chart, width, index }: LineChartProps) {
   const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
   const appearance = useThemeStore((state) => state.resolvedTheme)
+  // Resolved at render: the palette hue is a native adaptive color, which Skia cannot consume.
+  const thresholdColor = theme.alpha(accents.yellow.color, 0.12)
   const {
     camera,
     dataKey,
@@ -127,7 +128,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
             key={value}
             p1={vec(0, projectY(value, chart.left.range, plot.height))}
             p2={vec(plot.width, projectY(value, chart.left.range, plot.height))}
-            color={THRESHOLD_COLOR}
+            color={thresholdColor}
             strokeWidth={1}
           />
         ))}
