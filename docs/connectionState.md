@@ -51,6 +51,35 @@ type LiveState = {
     error: string | null
   }
 
+  /** Board Presence Scan (ADR 0035). Native-owned; JS renders it and never starts or times it. */
+  presence: {
+    phase: 'idle' | 'waiting_for_bluetooth' | 'scanning' | 'done'
+    purpose: 'presence' | 'add_board' | 'board_probe' | 'connect_intent' | 'reconnect' | null
+    owner:
+      | 'board_session'
+      | 'connect_intent'
+      | 'auto_start'
+      | 'auto_connect'
+      | 'alternative_hint'
+      | 'add_board_scan'
+      | 'board_probe'
+      | 'none'
+    startedAt: number | null
+    /** Absolute deadline, set once the radio is usable. `null` while waiting for Bluetooth. */
+    deadlineAt: number | null
+    observations: {
+      boardId: string
+      bleId: string
+      name: string | null
+      rssi: number | null
+      observedAt: number
+      selected: boolean
+    }[]
+    /** Shared connection-trace decision + terminal reason. */
+    decision: string | null
+    reason: string | null
+  }
+
   recording: {
     enabled: boolean
     activeBoardId: string | null
@@ -103,12 +132,31 @@ The scan watches saved BLE ids for all linked Boards:
 - Bluetooth initialization does not consume the five-second window. The clock starts once
   the scanner becomes ready.
 
-Android creates the existing core service for the scan. It stays non-foreground while the
-app is visible. If the app backgrounds during the scan, the same service promotes to a
-foreground service and shows a progress notification with a **Stop search** action. A match
-promotes the service into Board Session work. Timeout or Stop search removes the service and
-notification. iOS uses its native coordinator and a short background task for the same
+Android starts the existing core service **in the foreground immediately**, with a temporary
+progress notification carrying a **Stop search** action. There is no regular-service-to-foreground
+promotion path. A match promotes the service into Board Session work. Timeout or Stop search removes
+the service and notification. iOS uses its native coordinator and the session central for the same
 handoff; it starts no Live Activity before a Board Session exists.
+
+Native lifecycle drives the scan on both platforms — `VescapeLifecycleProvider` (Android
+`ActivityLifecycleCallbacks`, 0→1 started activities) and `VescapeLaunchSubscriber`
+(`applicationDidBecomeActive`). JS `AppState` and Expo module creation are deliberately not
+involved.
+
+### Policy and ownership
+
+The rules are pure and unit-tested on both platforms:
+
+| Concern                             | Type                                          |
+| ----------------------------------- | --------------------------------------------- |
+| Scan eligibility, promotion, window | `PresenceScanPolicy`                          |
+| Who owns connection work            | `ConnectionOwner` / `ConnectionOwnership`     |
+| Who owns the radio, stale callbacks | `ScanPurpose` / `ScannerCoordinator`          |
+| Explicit Connect lifetime           | `ConnectIntent` / `ConnectIntentPolicy`       |
+| Scan run loop                       | `BoardPresenceScan` over a `PresenceScanPort` |
+
+Every scan takes an operation token from `ScannerCoordinator`; a BLE callback that cannot prove it
+owns the current token is dropped, because scan callbacks outlive their operation.
 
 An explicit Connect creates a Connect Intent immediately. It starts the Android foreground
 service or iOS Live Activity and keeps searching through backgrounding and signal loss until

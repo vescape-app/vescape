@@ -519,6 +519,76 @@ export interface RemoteTiltState {
   decay?: RemoteTiltDecay
 }
 
+/**
+ * Why the BLE scanner is running.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ScannerCoordinator.kt `ScanPurpose`
+ * @parity /modules/vescape-core/ios/connection/ScannerCoordinator.swift `ScanPurpose`
+ */
+export type ScanPurpose = 'presence' | 'add_board' | 'board_probe' | 'connect_intent' | 'reconnect'
+
+/**
+ * Who owns connection work, in ADR 0035 precedence order.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ConnectionOwner.kt
+ * @parity /modules/vescape-core/ios/connection/ConnectionOwner.swift
+ */
+export type ConnectionOwner =
+  | 'board_session'
+  | 'connect_intent'
+  | 'auto_start'
+  | 'auto_connect'
+  | 'alternative_hint'
+  | 'add_board_scan'
+  | 'board_probe'
+  | 'none'
+
+/**
+ * Board Presence Scan phase. `waiting_for_bluetooth` means the scan started but the five-second
+ * window has not — the deadline runs from a usable radio, not from foreground entry.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPresenceScan.kt `PresenceScanPhase`
+ * @parity /modules/vescape-core/ios/connection/BoardPresenceScan.swift `PresenceScanPhase`
+ */
+export type PresenceScanPhase = 'idle' | 'waiting_for_bluetooth' | 'scanning' | 'done'
+
+/**
+ * A linked Board seen advertising during a Presence Scan. A non-selected Board is reported, never
+ * connected.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/PresenceScanPolicy.kt `PresenceObservation`
+ * @parity /modules/vescape-core/ios/connection/PresenceScanPolicy.swift `PresenceObservation`
+ */
+export interface PresenceObservation {
+  boardId: string
+  bleId: string
+  name: string | null
+  rssi: number | null
+  observedAt: number
+  selected: boolean
+}
+
+/**
+ * Native-owned Board Presence Scan surface. JS renders it and never starts or times the scan.
+ *
+ * `decision` and `reason` use the shared connection-trace vocabulary
+ * (`src/modules/diagnostics/connectionTrace.ts`).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPresenceScan.kt `PresenceScanState`
+ * @parity /modules/vescape-core/ios/connection/BoardPresenceScan.swift `PresenceScanState`
+ */
+export interface PresenceScanState {
+  phase: PresenceScanPhase
+  purpose: ScanPurpose | null
+  owner: ConnectionOwner
+  startedAt: number | null
+  /** Absolute deadline, set once the radio is usable. `null` while waiting for Bluetooth. */
+  deadlineAt: number | null
+  observations: PresenceObservation[]
+  decision: string | null
+  reason: string | null
+}
+
 export interface LiveStateEvent {
   board: {
     phase: BoardPhase
@@ -548,6 +618,7 @@ export interface LiveStateEvent {
     devices: DeviceFoundEvent[]
     error: string | null
   }
+  presence: PresenceScanState
   recording: {
     enabled: boolean
     paused: boolean

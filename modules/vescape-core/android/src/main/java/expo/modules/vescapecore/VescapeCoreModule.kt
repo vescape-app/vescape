@@ -7,6 +7,10 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
+import expo.modules.vescapecore.connection.ScanAcquisition
+import expo.modules.vescapecore.connection.ScanOperation
+import expo.modules.vescapecore.connection.ScanPurpose
+import expo.modules.vescapecore.connection.ScannerCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
@@ -101,6 +105,9 @@ class VescapeCoreModule : Module() {
   private var scanner: android.bluetooth.le.BluetoothLeScanner? = null
   private var scanCallback: ScanCallback? = null
   private var scanRetryCount = 0
+
+  /** Exclusive scanner ownership held while the Add Board scan runs (ADR 0035). */
+  private var addBoardScan: ScanOperation? = null
   private var scanRetryRunnable: Runnable? = null
   private var scanStatus: String = "idle"
   private var requestedDebugRecordingEnabled = false
@@ -965,11 +972,16 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.stopGpsMonitoring(context.applicationContext)
   }
 
+  /**
+   * Rider-driven Add Board discovery. Takes exclusive scanner ownership (ADR 0035) so the
+   * foreground Presence Scan yields to it and can never preempt it.
+   */
   private fun startScan(resetRetries: Boolean = true) {
     if (resetRetries) {
       scanRetryCount = 0
     }
     stopScanInternal()
+    addBoardScan = (ScannerCoordinator.shared.acquire(ScanPurpose.AddBoard) as? ScanAcquisition.Granted)?.operation
 
     val s = btAdapter.bluetoothLeScanner ?: run {
       scanStatus = "error"
@@ -1049,6 +1061,8 @@ key == "wearAutoLaunchOnConnect" ||
     scanner = null
     scanCallback = null
     scanStatus = "idle"
+    ScannerCoordinator.shared.release(addBoardScan)
+    addBoardScan = null
   }
 
   private fun startLocationUpdates() {
@@ -1123,6 +1137,10 @@ key == "wearAutoLaunchOnConnect" ||
 
     cancelActiveProbe(null, "replaced")
     BoardProbeAutoStartGate.enter()
+    // A Board Probe owns the scanner exclusively (ADR 0035): a Presence Scan asking mid-probe is
+    // refused with `scanner_busy` rather than preempting it.
+    val probeScan = (ScannerCoordinator.shared.acquire(ScanPurpose.BoardProbe) as? ScanAcquisition.Granted)
+      ?.operation
 
     try {
       // A Board Probe owns the single BLE connection: tear down any live Board
@@ -1166,6 +1184,7 @@ key == "wearAutoLaunchOnConnect" ||
       }
       return probeResultToBridge(result.await())
     } finally {
+      ScannerCoordinator.shared.release(probeScan)
       BoardProbeAutoStartGate.leave()
     }
   }

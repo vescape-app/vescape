@@ -269,9 +269,137 @@ internal final class BoardSessionController: VescGattListener {
     self.appData = appData
   }
 
+  // MARK: - Board Presence Scan (ADR 0035)
+
+  /// Adapter over the shared session central. Owned here because the central is shared with the
+  /// Board Session, so readiness and advertisements arrive through this class's listener callbacks.
+  private lazy var presenceScanPort = BlePresenceScanPort(
+    central: { [weak self] in self?.gatt.centralState ?? .unknown },
+    start: { [weak self] in self?.gatt.startScan() },
+    stop: { [weak self] in
+      // A live Add Board scan keeps the radio; only the presence flag is dropped.
+      self?.gatt.stopScan()
+    }
+  )
+
+  private lazy var presenceScan = BoardPresenceScan(
+    port: presenceScanPort,
+    scanner: .shared,
+    ownership: .shared,
+    onStateChanged: { [weak self] _ in self?.onStateChanged?() },
+    onPromote: { [weak self] target in self?.promoteToSession(target) }
+  )
+
+  /// Explicit rider Connect Intent (ADR 0035). Outranks Auto Start and Auto Connect, and persists
+  /// indefinitely while Auto Close is disabled. #409 creates one at the end of linking.
+  var connectIntent: ConnectIntent?
+
+  var presenceScanState: PresenceScanState { presenceScan.state }
+
+  /// Exclusive scanner ownership held while the Add Board scan runs (ADR 0035).
+  private var addBoardScan: ScanOperation?
+
+  /// Board Presence Scan on foreground entry (ADR 0035). Replaces the old module-create direct
+  /// connect: native looks for the selected Board for five seconds after the radio is usable and
+  /// promotes it into a Board Session only when policy allows. Every refusal carries a named reason
+  /// through the shared connection trace.
+  ///
+  /// Driven by `VescapeLaunchSubscriber` (native app lifecycle), never by JS `AppState` and never by
+  /// module creation.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startPresenceScan`
+  @discardableResult
+  func startPresenceScan() -> PresenceScanDecision {
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.foregroundEntry,
+      owner: ConnectionTraceOwner.none
+    )
+    let settings = appData.getSettings()
+    let selectedBoardId = settings["selectedBoardId"] as? String
+    let targets = presenceTargets(selectedBoardId: selectedBoardId)
+    let environment = PresenceScanEnvironment(
+      linkedBoardCount: targets.count,
+      selectedBoardId: selectedBoardId,
+      selectedBoardBleId: targets.first(where: { $0.selected })?.bleId,
+      bluetoothEnabled: presenceScanPort.bluetoothEnabled(),
+      scanPermissionGranted: presenceScanPort.scanPermissionGranted(),
+      scannerAvailable: presenceScanPort.scannerAvailable(),
+      sessionActive: connectedBoardId != nil || session != nil,
+      connectIntentActive: connectIntent != nil,
+      activeScanPurpose: ScannerCoordinator.shared.activePurpose
+    )
+    let autoConnect = settings["autoConnect"] as? Bool ?? true
+    return presenceScan.start(
+      environment: environment,
+      targets: targets,
+      workflow: workflow,
+      promotionInput: { [weak self] in
+        PresencePromotionInput(
+          selectedObserved: true,
+          autoConnectEnabled: autoConnect,
+          pausedUntilMs: self?.pausedUntilMs(boardId: selectedBoardId),
+          nowMs: ConnectionTrace.now(),
+          sessionActive: self?.session != nil,
+          currentOwner: ConnectionOwnership.shared.current
+        )
+      }
+    )
+  }
+
+  /// Automatic Connection Pause deadline for `boardId`, or `nil` when it is not paused.
+  ///
+  /// #406 replaces the manual-stop tombstone with a board-scoped, time-bounded pause map. Until then
+  /// the tombstone answers the same question with no deadline, which reads as "paused forever".
+  private func pausedUntilMs(boardId: String?) -> Int64? {
+    guard let boardId, ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return nil }
+    return Int64.max
+  }
+
+  /// **Stop search**, or an exclusive scanner owner taking over.
+  func stopPresenceScan(reason: String = ConnectionTraceReason.stopSearch) {
+    presenceScan.cancel(reason: reason)
+  }
+
+  /// Linked Boards the scan watches. A Board without a Board Link has no BLE id to watch for.
+  private func presenceTargets(selectedBoardId: String?) -> [PresenceTarget] {
+    appData.getBoards().compactMap { board in
+      guard let boardId = board["id"] as? String else { return nil }
+      let link = board["link"] as? [String: Any?]
+      guard let bleId = (link?["bleId"] as? String), !bleId.isEmpty else { return nil }
+      return PresenceTarget(
+        boardId: boardId,
+        bleId: bleId,
+        name: board["name"] as? String,
+        selected: boardId == selectedBoardId
+      )
+    }
+  }
+
+  /// Promote an observed selected Board into a Board Session (Auto Connect path).
+  private func promoteToSession(_ target: PresenceTarget) {
+    guard session == nil else { return }
+    guard
+      let config = BoardConnectConfig.resolve(
+        boardId: target.boardId,
+        appData: appData,
+        recordingEnabled: false
+      )
+    else {
+      ConnectionOwnership.shared.release(.boardSession)
+      return
+    }
+    connect(config: config, onSuccess: {}, onError: { _, _ in })
+  }
+
   // MARK: - Scan API
 
+  /// Rider-driven Add Board discovery. Takes exclusive scanner ownership (ADR 0035) so the
+  /// foreground Presence Scan yields to it and can never preempt it.
   func scan() {
+    presenceScan.cancel(reason: ConnectionTraceReason.scannerBusy)
+    if case let .granted(operation) = ScannerCoordinator.shared.acquire(.addBoard) {
+      addBoardScan = operation
+    }
     scanError = nil
     scanPhase = "scanning"
     gatt.startScan()
@@ -280,6 +408,8 @@ internal final class BoardSessionController: VescGattListener {
 
   func stopScan() {
     gatt.stopScan()
+    ScannerCoordinator.shared.release(addBoardScan)
+    addBoardScan = nil
     scanPhase = "idle"
     onStateChanged?()
   }
@@ -1121,6 +1251,7 @@ internal final class BoardSessionController: VescGattListener {
   // MARK: - VescGattListener
 
   func onDeviceDiscovered(id: String, name: String, rssi: Int, serviceUUIDs: [String]) {
+    presenceScanPort.deliverObserved(id: id, rssi: rssi)
     emit?("onDevice", [
       "id": id,
       "name": name,
@@ -1138,7 +1269,13 @@ internal final class BoardSessionController: VescGattListener {
     resumeSession(marker: marker, restoredPeripheralIds: peripheralIds)
   }
 
+  /// The central reached `.poweredOn`: the Presence Scan window starts here.
+  func onScanReady() {
+    presenceScanPort.deliverReady()
+  }
+
   func onScanFailure(_ message: String) {
+    presenceScanPort.deliverFailure(message)
     scanPhase = "error"
     scanError = message
     emit?("onError", ["message": message])

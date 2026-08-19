@@ -6,27 +6,13 @@ import org.junit.Test
 
 class CoreForegroundServiceLauncherTest {
     @Test
-    fun `auto-connect disabled skips service start`() {
+    fun `presence scan without scan permission skips service start`() {
         assertEquals(
-            ForegroundServiceLaunchSkipReason.AutoConnectDisabled,
+            ForegroundServiceLaunchSkipReason.ScanPermissionMissing,
             foregroundServiceLaunchSkipReason(
                 ForegroundServiceLaunchPreflight(
-                    action = ForegroundServiceStartAction.AutoConnectSelectedBoard,
-                    autoConnectEnabled = false,
-                    selectedBoardId = "board-1",
-                ),
-            ),
-        )
-    }
-
-    @Test
-    fun `auto-connect without selected board skips service start`() {
-        assertEquals(
-            ForegroundServiceLaunchSkipReason.SelectedBoardMissing,
-            foregroundServiceLaunchSkipReason(
-                ForegroundServiceLaunchPreflight(
-                    action = ForegroundServiceStartAction.AutoConnectSelectedBoard,
-                    selectedBoardId = null,
+                    action = ForegroundServiceStartAction.PresenceScan,
+                    bluetoothScanGranted = false,
                 ),
             ),
         )
@@ -71,14 +57,16 @@ class CoreForegroundServiceLauncherTest {
         )
     }
 
+    /**
+     * Presence Scan eligibility (no Boards, no Board Link, Bluetooth off, Auto Connect off) belongs
+     * to `PresenceScanPolicy`, so the launcher only preflights the permissions Android needs to
+     * start the service at all.
+     */
     @Test
-    fun `auto-connect with selected board and bluetooth permission can start`() {
+    fun `presence scan with permissions can start`() {
         assertNull(
             foregroundServiceLaunchSkipReason(
-                ForegroundServiceLaunchPreflight(
-                    action = ForegroundServiceStartAction.AutoConnectSelectedBoard,
-                    selectedBoardId = "board-1",
-                ),
+                ForegroundServiceLaunchPreflight(action = ForegroundServiceStartAction.PresenceScan),
             ),
         )
     }

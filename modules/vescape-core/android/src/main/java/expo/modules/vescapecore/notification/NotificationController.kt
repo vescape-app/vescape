@@ -23,6 +23,7 @@ internal class NotificationController(
     private val stopAction: String,
     private val connectAction: String,
     private val disconnectAction: String,
+    private val stopSearchAction: String,
 ) {
     fun createChannel() {
         val channel = NotificationChannel(
@@ -52,6 +53,41 @@ internal class NotificationController(
                 build(text, deviceName, shortCriticalText, batteryPercent, sessionActive, canConnect),
             )
     }
+
+    /**
+     * Temporary Board Presence Scan progress notification (ADR 0035). The service starts in the
+     * foreground with this one immediately — there is no regular-service-to-foreground promotion —
+     * and it is replaced by the Board Session notification on a match, or removed on timeout /
+     * **Stop search**.
+     */
+    fun buildSearching(deviceName: String?): Notification =
+        NotificationCompat.Builder(service, channelId)
+            .setContentTitle(deviceName ?: "VESC")
+            .setContentText("Looking for your board\u2026")
+            .setSmallIcon(R.drawable.ic_vesc_notification)
+            .setContentIntent(buildOpenAppIntent())
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setShortCriticalText("\u22ef")
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setProgress(0, 0, true)
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Stop search",
+                buildServiceActionIntent(REQUEST_STOP_SEARCH, stopSearchAction),
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Exit",
+                buildServiceActionIntent(REQUEST_EXIT, stopAction),
+            )
+            .build()
+            .apply {
+                flags = flags or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR
+            }
 
     fun cancel() {
         service.getSystemService(NotificationManager::class.java).cancel(notificationId)
@@ -117,6 +153,7 @@ internal class NotificationController(
         private const val REQUEST_EXIT = 1
         private const val REQUEST_DISCONNECT = 2
         private const val REQUEST_CONNECT = 3
+        private const val REQUEST_STOP_SEARCH = 4
 
         fun closeAppTask(context: Context) {
             try {

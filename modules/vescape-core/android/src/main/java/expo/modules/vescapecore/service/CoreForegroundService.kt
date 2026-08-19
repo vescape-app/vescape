@@ -3,6 +3,7 @@ package expo.modules.vescapecore.service
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardSessionController
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.connection.PresenceScanState
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.config.PendingConfigWrite
@@ -14,6 +15,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import expo.modules.vescapecore.diagnostics.ConnectionTrace
+import expo.modules.vescapecore.diagnostics.ConnectionTraceDecision
+import expo.modules.vescapecore.diagnostics.ConnectionTraceEvent
+import expo.modules.vescapecore.diagnostics.ConnectionTraceField
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOwner
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
@@ -42,7 +49,8 @@ internal const val ACTION_START_GPS_MONITORING = "expo.modules.vescapecore.ACTIO
 private const val ACTION_STOP_GPS_MONITORING = "expo.modules.vescapecore.ACTION_STOP_GPS_MONITORING"
 internal const val ACTION_START_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_START_GROUP_RIDE_OBSERVE"
 private const val ACTION_STOP_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_STOP_GROUP_RIDE_OBSERVE"
-internal const val ACTION_AUTO_CONNECT_SELECTED_BOARD = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_SELECTED_BOARD"
+internal const val ACTION_START_PRESENCE_SCAN = "expo.modules.vescapecore.ACTION_START_PRESENCE_SCAN"
+internal const val ACTION_STOP_PRESENCE_SCAN = "expo.modules.vescapecore.ACTION_STOP_PRESENCE_SCAN"
 internal const val ACTION_COMPANION_DEVICE_APPEARED = "expo.modules.vescapecore.ACTION_COMPANION_DEVICE_APPEARED"
 internal const val EXTRA_COMPANION_ADDRESS = "expo.modules.vescapecore.EXTRA_COMPANION_ADDRESS"
 internal const val TELEMETRY_STALE_MS = 4_000L
@@ -179,28 +187,33 @@ class CoreForegroundService : Service() {
             )
         }
 
-        fun autoConnectSelectedBoard(context: Context) {
-            if (BoardProbeAutoStartGate.isActive()) {
-                android.util.Log.i(VESC_SESSION_TAG, "Auto-connect skipped: Board Probe active")
+        /**
+         * Native foreground-entry entry point for the Board Presence Scan (ADR 0035). Called from
+         * [expo.modules.vescapecore.service.VescapeLifecycleObserver], never from JS `AppState` and
+         * never from module creation.
+         *
+         * The service starts *in the foreground* with the temporary progress notification — there is
+         * no regular-service-to-foreground promotion path. Eligibility is decided inside native
+         * policy so every refusal gets a named reason, not a silent return.
+         */
+        fun startPresenceScan(context: Context) {
+            val result = CoreForegroundServiceLauncher.startPresenceScan(context)
+            if (!result.started) {
+                result.logIfSkipped("Presence Scan service start skipped")
+                ConnectionTrace.start(
+                    context = context.applicationContext,
+                    origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+                    owner = ConnectionTraceOwner.NONE,
+                ).also { workflow ->
+                    workflow.event(
+                        ConnectionTraceEvent.PRESENCE_SCAN_SKIPPED,
+                        mapOf(ConnectionTraceField.REASON to result.traceReason()),
+                    )
+                    workflow.finish(ConnectionTraceDecision.SKIPPED, result.traceReason())
+                }
                 return
             }
-            appDataScope.launch {
-                val settings = AppDataRepository.get(context.applicationContext).getTypedSettings()
-                if (ManualDisconnectAutoStartGate.isSuppressed(context.applicationContext, settings.selectedBoardId)) {
-                    android.util.Log.i(VESC_SESSION_TAG, "Auto-connect service start skipped: manual disconnect")
-                    return@launch
-                }
-                val result = CoreForegroundServiceLauncher.autoConnectSelectedBoard(
-                    context = context,
-                    autoConnectEnabled = settings.autoConnect,
-                    selectedBoardId = settings.selectedBoardId,
-                )
-                if (!result.started) {
-                    result.logIfSkipped("Auto-connect service start skipped")
-                    return@launch
-                }
-                instance?.controller?.autoConnectSelectedBoard()
-            }
+            instance?.controller?.startPresenceScan()
         }
 
         fun getRefloatConfigSnapshot(
@@ -464,6 +477,7 @@ class CoreForegroundService : Service() {
                     "devices" to emptyList<Map<String, Any?>>(),
                     "error" to null,
                 ),
+                "presence" to PresenceScanState().toMap(),
                 "recording" to mapOf(
                     "enabled" to false,
                     "activeBoardId" to null,
@@ -496,10 +510,8 @@ class CoreForegroundService : Service() {
             ACTION_STOP_GPS_MONITORING -> controller.stopGpsMonitoring()
             ACTION_START_GROUP_RIDE_OBSERVE -> controller.consumePendingGroupRideObserve()
             ACTION_STOP_GROUP_RIDE_OBSERVE -> controller.stopGroupRideObserve()
-            ACTION_AUTO_CONNECT_SELECTED_BOARD -> {
-                controller.promoteConnectedDeviceForeground()
-                controller.autoConnectSelectedBoard()
-            }
+            ACTION_START_PRESENCE_SCAN -> controller.startPresenceScan()
+            ACTION_STOP_PRESENCE_SCAN -> controller.stopPresenceScan()
             ACTION_COMPANION_DEVICE_APPEARED -> {
                 controller.promoteConnectedDeviceForeground()
                 intent.getStringExtra(EXTRA_COMPANION_ADDRESS)?.let(controller::connectCompanionDevice)

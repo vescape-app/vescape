@@ -12,6 +12,7 @@ import type {
   LiveSeriesEvent,
   LiveStateEvent,
   MetricExclusion,
+  PresenceScanState,
   PrivacyZone,
   TelemetryEvent,
   TelemetryHistoryEvent,
@@ -138,6 +139,17 @@ function makeTelemetry(): TelemetryEvent {
   }
 }
 
+const IDLE_PRESENCE_SCAN: PresenceScanState = {
+  phase: 'idle',
+  purpose: null,
+  owner: 'none',
+  startedAt: null,
+  deadlineAt: null,
+  observations: [],
+  decision: null,
+  reason: null,
+}
+
 function getLiveState(): LiveStateEvent {
   const connected = connectedBoardId != null
   const connecting = connectingBoardId != null
@@ -169,6 +181,9 @@ function getLiveState(): LiveStateEvent {
       devices: scanActive ? [E2E_BOARD_SCAN_RESULT] : [],
       error: null,
     },
+    // No radio in an emulator, so the fake never runs a Board Presence Scan: it reports the idle
+    // surface and E2E connects through explicit intents instead.
+    presence: IDLE_PRESENCE_SCAN,
     recording: {
       enabled: false,
       paused: false,
@@ -649,6 +664,7 @@ export const e2eFake = {
         devices: scanActive ? [E2E_BOARD_SCAN_RESULT] : [],
         error: null,
       },
+      presence: baseState.presence ?? IDLE_PRESENCE_SCAN,
     }
   },
 

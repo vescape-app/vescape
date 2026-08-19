@@ -6,6 +6,7 @@ import expo.modules.vescapecore.service.foregroundServiceType
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_EXIT_FROM_NOTIFICATION
+import expo.modules.vescapecore.service.ACTION_STOP_PRESENCE_SCAN
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.withLegalModeOverlay
@@ -27,6 +28,12 @@ import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
 import expo.modules.vescapecore.service.CoreForegroundService
+import expo.modules.vescapecore.diagnostics.ConnectionTrace
+import expo.modules.vescapecore.diagnostics.ConnectionTraceEvent
+import expo.modules.vescapecore.diagnostics.ConnectionTraceField
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOwner
+import expo.modules.vescapecore.diagnostics.ConnectionTraceReason
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.location.GpsMonitor
 import expo.modules.vescapecore.location.isPreciseGpsFix
@@ -222,6 +229,44 @@ internal class BoardSessionController(private val service: CoreForegroundService
         generation = { BoardMoveGeneration.forBaseVersion(boardConfig?.refloatBaseVersion) },
         send = { payload, urgent -> transport.sendRemoteInput(payload, urgent) },
     )
+    /** Process-wide scanner arbiter + presence-scan machinery (ADR 0035). */
+    private val presenceScanPort: PresenceScanPort by lazy { BlePresenceScanPort(service.applicationContext) }
+    private val presenceScan by lazy {
+        BoardPresenceScan(
+            port = presenceScanPort,
+            scanner = ScannerCoordinator.shared,
+            ownership = ConnectionOwnership.shared,
+            scheduler = scheduler,
+            nowMs = ::nowMs,
+            onStateChanged = { state ->
+                scheduler.post {
+                    emitState()
+                    // Timeout, Stop search, or a refused promotion: the temporary progress
+                    // notification and its service have nothing left to do.
+                    // A match hands the service straight to Board Session work, whose config is
+                    // still being built — only a non-matching end tears the service down.
+                    if (
+                        state.phase == PresenceScanPhase.Done &&
+                        state.reason != ConnectionTraceReason.MATCHED &&
+                        boardConfig == null
+                    ) {
+                        notificationController.cancel()
+                        stopIfIdle()
+                        if (!isStoppingService) refreshNotification(force = true)
+                    }
+                }
+            },
+            onPromote = ::promoteToSession,
+        )
+    }
+
+    /**
+     * Explicit rider Connect Intent (ADR 0035). Outranks Auto Start and Auto Connect, and persists
+     * indefinitely while Auto Close is disabled. #409 creates one at the end of linking.
+     */
+    @Volatile
+    internal var connectIntent: ConnectIntent? = null
+
     private val notificationController by lazy {
         NotificationController(
             service = service,
@@ -231,6 +276,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             stopAction = ACTION_EXIT_FROM_NOTIFICATION,
             connectAction = ACTION_CONNECT_FROM_NOTIFICATION,
             disconnectAction = ACTION_DISCONNECT_FROM_NOTIFICATION,
+            stopSearchAction = ACTION_STOP_PRESENCE_SCAN,
         )
     }
     private val presenter by lazy {
@@ -731,25 +777,139 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `autoConnectSelectedBoard` */
-    fun autoConnectSelectedBoard() {
-        if (BoardProbeAutoStartGate.isActive()) {
-            Log.i(VESC_SESSION_TAG, "Auto-connect skipped: Board Probe active")
-            scheduler.post { stopIfIdle() }
-            return
-        }
+    /**
+     * Board Presence Scan on foreground entry (ADR 0035). Replaces the old process-launch direct
+     * connect: native looks for the selected Board for five seconds after the radio is usable and
+     * promotes it into a Board Session only when policy allows. Every refusal carries a named
+     * reason through the shared connection trace.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startPresenceScan`
+     */
+    fun startPresenceScan() {
+        // Foreground *immediately*, with the temporary progress notification. There is deliberately
+        // no regular-service-to-foreground promotion path for this scan.
+        isStoppingService = false
+        startPresenceScanForeground()
+        val workflow = ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+            owner = ConnectionTraceOwner.NONE,
+        )
+        workflow.event(
+            ConnectionTraceEvent.SERVICE_STARTED,
+            mapOf(ConnectionTraceField.SERVICE_STATE to "foreground"),
+        )
         CoreForegroundService.appDataScope.launch {
-            val settings = AppDataRepository.get(service.applicationContext).getTypedSettings()
-            if (!settings.autoConnect || settings.selectedBoardId == null) {
+            val appCtx = service.applicationContext
+            val repo = AppDataRepository.get(appCtx)
+            val settings = repo.getTypedSettings()
+            val boards = try {
+                repo.getBoards()
+            } catch (e: Exception) {
+                Log.w(VESC_SESSION_TAG, "Presence Scan board load failed: ${e.message}")
+                emptyList()
+            }
+            val targets = presenceTargets(boards, settings.selectedBoardId)
+            val environment = PresenceScanEnvironment(
+                linkedBoardCount = targets.size,
+                selectedBoardId = settings.selectedBoardId,
+                selectedBoardBleId = targets.firstOrNull { it.selected }?.bleId,
+                bluetoothEnabled = presenceScanPort.bluetoothEnabled(),
+                scanPermissionGranted = presenceScanPort.scanPermissionGranted(),
+                scannerAvailable = presenceScanPort.scannerAvailable(),
+                sessionActive = boardConfig != null,
+                connectIntentActive = connectIntent != null,
+                activeScanPurpose = ScannerCoordinator.shared.activePurpose,
+            )
+            scheduler.post {
+                val decision = presenceScan.start(
+                    environment = environment,
+                    targets = targets,
+                    workflow = workflow,
+                    promotionInput = {
+                        PresencePromotionInput(
+                            selectedObserved = true,
+                            autoConnectEnabled = settings.autoConnect,
+                            // #406 replaces the manual-stop gate with a board-scoped Automatic
+                            // Connection Pause map; until then the gate answers the same question.
+                            pausedUntilMs = if (
+                                ManualDisconnectAutoStartGate.isSuppressed(appCtx, settings.selectedBoardId)
+                            ) {
+                                Long.MAX_VALUE
+                            } else {
+                                null
+                            },
+                            nowMs = nowMs(),
+                            sessionActive = boardConfig != null,
+                            currentOwner = ConnectionOwnership.shared.current,
+                        )
+                    },
+                )
+                emitState()
+                if (!decision.proceed) stopIfIdle()
+            }
+        }
+    }
+
+    /** **Stop search** from the progress notification, or an exclusive scanner owner taking over. */
+    fun stopPresenceScan(reason: String = ConnectionTraceReason.STOP_SEARCH) {
+        presenceScan.cancel(reason)
+        emitState()
+        stopIfIdle()
+    }
+
+    /** Linked Boards the scan watches. A Board without a Board Link has no BLE id to watch for. */
+    private fun presenceTargets(
+        boards: List<Map<String, Any?>>,
+        selectedBoardId: String?,
+    ): List<PresenceTarget> = boards.mapNotNull { board ->
+        val boardId = board["id"] as? String ?: return@mapNotNull null
+        @Suppress("UNCHECKED_CAST")
+        val link = board["link"] as? Map<String, Any?>
+        val bleId = (link?.get("bleId") as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        PresenceTarget(
+            boardId = boardId,
+            bleId = bleId,
+            name = board["name"] as? String,
+            selected = boardId == selectedBoardId,
+        )
+    }
+
+    private fun startPresenceScanForeground() {
+        val notification = notificationController.buildSearching(selectedBoardName)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            service.startForeground(
+                NOTIFICATION_ID,
+                notification,
+                foregroundServiceTypeForConnectedDevicePromotion(
+                    boardActive = boardConfig != null,
+                    gpsActive = gpsMonitor.active,
+                ),
+            )
+        } else {
+            service.startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    /** Promote an observed selected Board into a Board Session (Auto Connect path). */
+    private fun promoteToSession(target: PresenceTarget) {
+        CoreForegroundService.appDataScope.launch {
+            val appCtx = service.applicationContext
+            val config = try {
+                buildSessionConfig(appCtx, target.boardId, recordingEnabled = false)
+            } catch (e: Exception) {
+                Log.w(VESC_SESSION_TAG, "Presence Scan promotion failed: ${e.message}")
+                ConnectionOwnership.shared.release(ConnectionOwner.BoardSession)
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
-            if (ManualDisconnectAutoStartGate.isSuppressed(service.applicationContext, settings.selectedBoardId)) {
-                Log.i(VESC_SESSION_TAG, "Auto-connect suppressed after manual disconnect")
-                scheduler.post { stopIfIdle() }
-                return@launch
+            scheduler.post {
+                if (boardConfig == null) {
+                    beginSession(PendingStart(config, onSuccess = {}, onError = { _, _ -> }))
+                } else {
+                    stopIfIdle()
+                }
             }
-            scheduler.post { connectSelectedBoard(recordingEnabled = false) }
         }
     }
 
@@ -857,6 +1017,7 @@ private var wearAutoLaunchOnConnect = true
     val isStopping: Boolean get() = isStoppingService
 
     fun stopIfIdle() {
+        if (presenceScan.isRunning) return
         if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active) {
             isStoppingService = true
             notificationController.cancel()
@@ -2491,6 +2652,7 @@ private var wearAutoLaunchOnConnect = true
                 remoteTiltPhase = remoteTiltController.phase,
                 remoteTiltDecay = remoteTiltController.decayProgress,
                 linkIntegrity = boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
+                presenceScan = presenceScan.state,
                 settings = settings,
             )
         )

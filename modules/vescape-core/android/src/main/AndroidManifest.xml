@@ -44,8 +44,8 @@
       </intent-filter>
     </service>
     <provider
-      android:name=".service.AutoConnectProvider"
-      android:authorities="${applicationId}.auto-connect"
+      android:name=".service.VescapeLifecycleProvider"
+      android:authorities="${applicationId}.vescape-lifecycle"
       android:exported="false"
       android:initOrder="100"/>
   </application>

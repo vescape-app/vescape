@@ -36,6 +36,16 @@ function telemetry(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
 
 function liveState(samples: TelemetryEvent[]): LiveStateEvent {
   return {
+    presence: {
+      phase: 'idle',
+      purpose: null,
+      owner: 'none',
+      startedAt: null,
+      deadlineAt: null,
+      observations: [],
+      decision: null,
+      reason: null,
+    },
     board: {
       phase: 'connected',
       selectedBoardId: 'board-1',
