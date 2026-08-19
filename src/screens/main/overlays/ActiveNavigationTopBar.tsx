@@ -11,6 +11,7 @@ import Animated, {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface ActiveNavigationTopBarProps {
   boardPill: ReactNode
@@ -97,6 +98,7 @@ export function ActiveNavigationTopBar({
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
+  const neutral = useResolvedNeutralColors()
   const [navigationPrimary, setNavigationPrimary] = useState(true)
   const navigationPrimaryRef = useRef(true)
   const gestureTriggeredRef = useRef(false)
@@ -168,20 +170,26 @@ export function ActiveNavigationTopBar({
                 {
                   width: targetPillWidth,
                   borderColor: targetBorder,
-                  backgroundColor: theme.control.background,
+                  backgroundColor: neutral.surfaceDeep,
                 },
               ]}
             >
               <View
                 style={[
                   styles.targetIcon,
-                  { borderColor: targetBorder, backgroundColor: theme.control.backgroundPressed },
+                  {
+                    borderColor: targetBorder,
+                    backgroundColor: neutral.surface,
+                  },
                 ]}
               >
                 <TargetIcon icon={targetIcon} color={riderColor} />
               </View>
               <View style={styles.targetCopy}>
-                <Text numberOfLines={1} style={[styles.targetTitle, { color: theme.control.text }]}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.targetTitle, { color: theme.neutral.textPrimary }]}
+                >
                   {targetTitle}
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
@@ -242,7 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.control.border,
-    backgroundColor: theme.control.background,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   boardPillDotOnly: {
     width: 28,
@@ -263,7 +271,7 @@ const styles = StyleSheet.create({
   },
   boardName: {
     maxWidth: 52,
-    color: theme.control.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '800',
   },
