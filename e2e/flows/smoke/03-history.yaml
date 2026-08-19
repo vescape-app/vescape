@@ -28,16 +28,27 @@ appId: ${APP_ID}
 - assertVisible: Ctrl Max
 - assertVisible: Motor Max
 
-# Optional charts: each tab re-derives a trace from the same samples.
+# Optional charts: each tab re-derives a trace from the same samples. The chart's own title is
+# drawn into the Skia canvas and never reaches the view hierarchy, so the row wrapper is the only
+# thing a flow can assert — and it only mounts for a metric whose trace derived.
 - tapOn:
     id: history-metric-tab-duty
 - extendedWaitUntil:
-    visible: 'Duty Cycle'
+    visible:
+      id: chart-row-duty
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempMotor
+- extendedWaitUntil:
+    visible:
+      id: chart-row-tempMotor
+    timeout: 10000
 - tapOn:
     id: history-metric-tab-tempController
+- extendedWaitUntil:
+    visible:
+      id: chart-row-tempController
+    timeout: 10000
 
 # The ride list is the only way to reach an older ride, and it reads a different query than the
 # detail screen does.
