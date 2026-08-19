@@ -11,6 +11,8 @@ import {
   type RouteProgress,
 } from 'vescape-core'
 
+import type { SharedLocation } from '@/modules/map/lib/sharedLocation'
+
 /**
  * Personal navigation target. Not a Map Point: it is never shared, has no author and no reactions.
  * Native persists it so Group Ride presence can read it while JS is gone.
@@ -42,6 +44,12 @@ interface MapState {
   routeProgress: RouteProgress | null
   /** Last direction point write failure, in rider-facing words. Cleared by the next success. */
   error: string | null
+  /**
+   * A location another app just shared with Vescape, waiting for the map to pick it up. It is not
+   * a Direction Point yet: the map turns it into one so an incoming share and a rider's own tap
+   * end in exactly the same place, sheet and camera included.
+   */
+  pendingSharedLocation: SharedLocation | null
 }
 
 interface MapActions {
@@ -52,9 +60,14 @@ interface MapActions {
   replaceRouteProgress(progress: RouteProgress | null): void
   recomputeNavigation(): Promise<void>
   setNavigationProfile(profile: NavigationProfile): Promise<void>
+  /** An incoming shared location that carried no readable coordinate. Changes nothing else. */
+  failSharedLocation(): void
+  receiveSharedLocation(location: SharedLocation): void
+  consumeSharedLocation(): void
 }
 
 const DIRECTION_POINT_WRITE_FAILED = 'Could not save the direction point.'
+const SHARED_LOCATION_UNREADABLE = 'No location could be read from what was shared.'
 
 export const useMapStore = create<MapState & MapActions>((set, get) => {
   /**
@@ -73,6 +86,7 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
 
   return {
     directionPoint: null,
+    pendingSharedLocation: null,
     navigation: null,
     navigationComputing: false,
     routeProgress: null,
@@ -122,6 +136,22 @@ export const useMapStore = create<MapState & MapActions>((set, get) => {
      */
     async setNavigationProfile(profile) {
       await persistNavigationProfile(profile)
+    },
+
+    /**
+     * Says so and stops. The current Direction Point is another app's payload's business only when
+     * that payload actually named a place, so an unreadable one leaves the rider's target alone.
+     */
+    failSharedLocation() {
+      set({ error: SHARED_LOCATION_UNREADABLE })
+    },
+
+    receiveSharedLocation(location) {
+      set({ pendingSharedLocation: location, error: null })
+    },
+
+    consumeSharedLocation() {
+      set({ pendingSharedLocation: null })
     },
   }
 })

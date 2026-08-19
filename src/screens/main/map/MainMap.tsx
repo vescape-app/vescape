@@ -68,6 +68,7 @@ export interface MainMapHandle {
   setPadding: (bottom: number) => void
   zoomBy: (delta: number) => void
   focusCoordinate: (coordinate: [number, number]) => void
+  focusCoordinateImmediately: (coordinate: [number, number]) => void
   centerCoordinatePreservingCamera: (coordinate: [number, number]) => void
   focusWeather: () => void
   focusLegalLimits: () => void

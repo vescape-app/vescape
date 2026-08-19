@@ -78,6 +78,9 @@ export function useMainMapImperativeHandle(
       focusCoordinate(coordinate: [number, number]) {
         imperativeHandleLatestRef.current.intentCommands.focusCoordinate(coordinate)
       },
+      focusCoordinateImmediately(coordinate: [number, number]) {
+        imperativeHandleLatestRef.current.intentCommands.focusCoordinate(coordinate, true)
+      },
       centerCoordinatePreservingCamera(coordinate: [number, number]) {
         imperativeHandleLatestRef.current.intentCommands.centerCoordinatePreservingCamera(
           coordinate,

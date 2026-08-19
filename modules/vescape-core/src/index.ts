@@ -54,6 +54,16 @@ export interface LocationEvent {
 }
 
 /**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/sharing/SharedLocationLinkResolver.kt `ResolvedSharedLocation`
+ * @parity /modules/vescape-core/ios/sharing/SharedLocationLinkResolver.swift `ResolvedSharedLocation`
+ */
+export interface ResolvedSharedLocation {
+  latitude: number
+  longitude: number
+  name: string | null
+}
+
+/**
  * @parity /modules/vescape-core/ios/connection/BoardPhase.swift `BoardPhase`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPhase.kt `BoardPhase`
  * @platform-diff `stale` and `disconnecting` are Android-only. iOS routes stale telemetry through
@@ -1765,6 +1775,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
+  resolveSharedLocationLink(link: string): Promise<ResolvedSharedLocation | null>
   startGroupRideObserve(serverUrl: string): void
   stopGroupRideObserve(): void
   createGroupRide(
@@ -1948,6 +1959,16 @@ const FAKE_SCAN = E2E_ENABLED || process.env.EXPO_PUBLIC_SMOKE === '1'
 
 // ---------------------------------------------------------------------------
 // API
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `resolveSharedLocationLink`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `resolveSharedLocationLink`
+ */
+export async function resolveSharedLocationLink(
+  link: string,
+): Promise<ResolvedSharedLocation | null> {
+  return native.resolveSharedLocationLink(link)
+}
 // ---------------------------------------------------------------------------
 
 /** Start BLE scan — emits onDevice events for every advertisement received. */

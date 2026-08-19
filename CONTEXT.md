@@ -112,6 +112,10 @@ _Avoid_: Marker, GPS point, telemetry marker, direction point
 One rider's private navigation target on the map, stored on the phone only. It is not a Map Point: it is never shared as a place, has no category, author or reactions, and Group Ride presence reads it natively.
 _Avoid_: Direction map point, navigation Map Point, destination marker
 
+**Shared Location**:
+A coordinate exchanged with another app through the platform share sheet, in either direction. An incoming one is read for its coordinate — a name is carried only for presentation — and becomes that rider's **Direction Point**, never a **Map Point**. An outgoing one is a coordinate any map app can open, and carries nothing about the rider, their Board, or their ride.
+_Avoid_: Shared point, shared map point, share link, imported location
+
 **Navigation**:
 The rideable path from the rider to their **Direction Point**, following real ways rather than a straight line. Navigation exists exactly while a Direction Point is set and is native-owned so it survives backgrounding. Once computed it is fixed for the ride, so the rider is free to wander without it changing under them. It describes where the rider could go and is never **Ride History**, which records where they did go.
 _Avoid_: Route, ride route, navigation mode, guidance, directions
@@ -359,6 +363,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Map Point** is placed by a signed-in **Vescape Account** on the live map and does not belong to **Ride Recording** or **Ride History**; the server owns it, and the app reads the ones near the camera without keeping a durable copy.
 - A **Map Point Reaction** belongs to one **Vescape Account** and one **Map Point**; the server derives the score from its reaction rows.
 - A **Direction Point** is one rider's private navigation target, is never a **Map Point**, and stays on the phone so **Group Ride** presence can share it.
+- A **Shared Location** arriving from another app becomes a **Direction Point** and nothing else: sharing a place into Vescape never publishes it as a **Map Point**.
 - A **Navigation** belongs to exactly one **Direction Point**: setting a Direction Point creates it and clearing one ends it, so a rider never has more than one Navigation.
 - A **Navigation** is produced under one **Navigation Profile** and keeps it: choosing a different profile does not redraw the existing path, it produces a new Navigation in its place.
 - A **Navigation** outlives the app process and any single **Ride Recording**: a rider who restarts, crashes, or starts riding another day finds the same Direction Point and the same path waiting.

@@ -10,6 +10,8 @@ import { getRouteFitCamera, type RouteCameraViewport } from '@/modules/map/lib/r
 import { clamp, MIN_ZOOM, type CameraSnapshot } from '@/modules/map/lib/cameraMotion'
 import type { CameraControlRefs } from '@/screens/main/map/cameraControlTypes'
 
+const PLACE_FOCUS_MIN_ZOOM = 15
+
 interface UseCameraIntentCommandsParams {
   cameraRefs: CameraControlRefs
   gpsCamera: Pick<CameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
@@ -40,11 +42,17 @@ export function useCameraIntentCommands({
 }: UseCameraIntentCommandsParams) {
   const { currentCameraRef, engine, followZoomLevelRef } = cameraRefs
   const applyCamera = useCallback(
-    (camera: Partial<CameraSnapshot> | undefined, overrides?: { zoomLevel?: number }) => {
+    (
+      camera: Partial<CameraSnapshot> | undefined,
+      overrides?: { zoomLevel?: number; immediate?: boolean },
+    ) => {
       if (!camera) return
-      engine.setTarget(
-        toEngineTarget({ ...camera, zoomLevel: overrides?.zoomLevel ?? camera.zoomLevel }),
-      )
+      const target = toEngineTarget({
+        ...camera,
+        zoomLevel: overrides?.zoomLevel ?? camera.zoomLevel,
+      })
+      if (overrides?.immediate) engine.snap(target)
+      else engine.setTarget(target)
     },
     [engine],
   )
@@ -108,17 +116,22 @@ export function useCameraIntentCommands({
   )
 
   const focusCoordinate = useCallback(
-    (coordinate: [number, number]) => {
+    (coordinate: [number, number], immediate = false) => {
+      setFollowGps(false)
       const effect = dispatchCameraIntent({
         type: 'FocusCoordinate',
         coordinate,
         currentCamera: currentCameraRef.current,
-        fallbackZoomLevel: gpsCamera.zoomLevel,
+        fallbackZoomLevel: Math.max(gpsCamera.zoomLevel, PLACE_FOCUS_MIN_ZOOM),
         orientationMode: mapOrientationMode,
         perspectiveEnabled,
       })
       applyCamera(effect?.camera, {
-        zoomLevel: effect?.camera.zoomLevel ?? currentCameraRef.current?.zoomLevel,
+        zoomLevel: Math.max(
+          effect?.camera.zoomLevel ?? currentCameraRef.current?.zoomLevel ?? PLACE_FOCUS_MIN_ZOOM,
+          PLACE_FOCUS_MIN_ZOOM,
+        ),
+        immediate,
       })
     },
     [
@@ -128,6 +141,7 @@ export function useCameraIntentCommands({
       gpsCamera.zoomLevel,
       mapOrientationMode,
       perspectiveEnabled,
+      setFollowGps,
     ],
   )
 

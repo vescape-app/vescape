@@ -41,6 +41,7 @@ public class VescapeCoreModule: Module {
   /// polling, recording and firing alerts throughout; only the JS-facing emit sleeps.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `frontendActive`
   private var frontendActive = true
+  private let sharedLocationLinkResolver = SharedLocationLinkResolver()
   /// Events with at least one live JS listener, tracked via `OnStartObserving`/`OnStopObserving`.
   private var observedEvents = Set<String>()
 
@@ -216,6 +217,12 @@ public class VescapeCoreModule: Module {
     Function("stopLocationUpdates") {
       self.coordinator.stopLocationUpdates()
       TelemetryRepository.shared.flushBlocking()
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `resolveSharedLocationLink`
+    // @parity /modules/vescape-core/src/index.ts `resolveSharedLocationLink`
+    AsyncFunction("resolveSharedLocationLink") { (link: String) async throws -> [String: Any?]? in
+      try await self.sharedLocationLinkResolver.resolve(link)?.bridgeValue
     }
 
     // MARK: App lifecycle

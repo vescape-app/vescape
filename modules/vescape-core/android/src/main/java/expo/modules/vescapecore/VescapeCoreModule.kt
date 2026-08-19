@@ -55,6 +55,7 @@ import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import expo.modules.vescapecore.location.LegalPolicyResolver
 import expo.modules.vescapecore.location.LegalPolicyCatalog
+import expo.modules.vescapecore.sharing.SharedLocationLinkResolver
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +122,7 @@ class VescapeCoreModule : Module() {
   }
   private val legalPolicyResolver by lazy { LegalPolicyResolver(context.applicationContext) }
   private val legalPolicyCatalog by lazy { LegalPolicyCatalog(context.applicationContext) }
+  private val sharedLocationLinkResolver by lazy { SharedLocationLinkResolver() }
 
   private val context: Context get() = appContext.reactContext
     ?: throw IllegalStateException("No React context")
@@ -350,6 +352,19 @@ class VescapeCoreModule : Module() {
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }
+
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `resolveSharedLocationLink`
+    // @parity /modules/vescape-core/src/index.ts `resolveSharedLocationLink`
+    AsyncFunction("resolveSharedLocationLink") Coroutine { link: String ->
+      try {
+        val resolved = sharedLocationLinkResolver.resolve(link)
+        Log.i(TAG, "Shared location resolution success=${resolved != null}")
+        resolved?.toBridgeMap()
+      } catch (error: Exception) {
+        Log.w(TAG, "Shared location resolution failed: ${error.javaClass.simpleName}")
+        throw error
+      }
+    }
     Function("startGroupRideObserve") { serverUrl: String ->
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
     }

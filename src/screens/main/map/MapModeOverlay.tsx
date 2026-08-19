@@ -1,14 +1,11 @@
-import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 
-import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
-import { routes } from '@/navigation/routes'
 import { FullMapControls } from '@/screens/main/map/FullMapControls'
 import { navigationActionColors } from '@/screens/main/map/navigationActionColors'
 import type { MapModeOverlayProps } from '@/screens/main/map/mapModeOverlayTypes'
@@ -40,11 +37,9 @@ export function MapModeOverlay({
   setMapPointReaction,
   onRemoveMapPoint,
 }: MapModeOverlayProps) {
-  const router = useRouter()
   // The server authorizes Map Point writes on the Device Token, so that is what gates the UI.
   const canContribute = useMapContributionReady()
   const riderColor = useRiderStore((s) => s.riderColor)
-  const [signInPromptVisible, setSignInPromptVisible] = useState(false)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
@@ -82,9 +77,7 @@ export function MapModeOverlay({
   )
 
   const requireMapAccount = useCallback(() => {
-    if (canContribute) return true
-    setSignInPromptVisible(true)
-    return false
+    return canContribute
   }, [canContribute])
 
   useEffect(() => {
@@ -105,7 +98,6 @@ export function MapModeOverlay({
     if (!visible || !longPressMapTarget) return
     const frame = requestAnimationFrame(() => {
       if (!canContribute) {
-        setSignInPromptVisible(true)
         onLongPressMapTargetHandled()
         return
       }
@@ -205,19 +197,6 @@ export function MapModeOverlay({
           />
         ) : null}
       </View>
-
-      <ConfirmModal
-        visible={signInPromptVisible}
-        title="Sign in to contribute"
-        message="A Vescape account is required to add, edit, delete, or react to map features. Map features are shared with other riders."
-        confirmLabel="Sign in"
-        cancelLabel="Not now"
-        onConfirm={() => {
-          setSignInPromptVisible(false)
-          router.push(routes.signIn)
-        }}
-        onCancel={() => setSignInPromptVisible(false)}
-      />
     </>
   )
 }
