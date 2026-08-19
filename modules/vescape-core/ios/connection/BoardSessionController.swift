@@ -667,19 +667,37 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/AutoConnectProvider.kt
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
   func autoConnectSelectedBoard() {
-    let boardId = AutoConnectGate.boardToAutoConnect(
-      settings: appData.getSettings(),
+    let settings = appData.getSettings()
+    let decision = AutoConnectGate.decide(
+      settings: settings,
       suppressedBoardId: ManualBoardStop.suppressedBoardId(),
       hasLiveSession: session != nil,
       resumePending: pendingResume != nil
     )
-    guard let boardId else { return }
+    NSLog(
+      "[VescAutoConnect] launch decision=%@ settingsKeys=%d autoConnect=%@ selectedBoardId=%@ tombstone=%@",
+      String(describing: decision),
+      settings.count,
+      String(describing: settings["autoConnect"] as? Bool),
+      String(describing: settings["selectedBoardId"] as? String),
+      String(describing: ManualBoardStop.suppressedBoardId())
+    )
+    guard case let .connect(boardId) = decision else { return }
     DispatchQueue.main.async {
       // Re-check on the main queue: restoration can adopt the session between the launch hook and
       // this hop, and that session must not be replaced by a fresh connect.
-      guard self.session == nil, self.pendingResume == nil else { return }
-      guard let config = BoardConnectConfig.resolve(boardId: boardId, appData: self.appData) else { return }
-      self.connect(config: config, onSuccess: {}, onError: { _, _ in })
+      guard self.session == nil, self.pendingResume == nil else {
+        NSLog("[VescAutoConnect] aborted on main queue: session adopted between launch and connect")
+        return
+      }
+      guard let config = BoardConnectConfig.resolve(boardId: boardId, appData: self.appData) else {
+        NSLog("[VescAutoConnect] no connect config for board %@ (unlinked?)", boardId)
+        return
+      }
+      NSLog("[VescAutoConnect] connecting board=%@ bleId=%@", boardId, config.bleId)
+      self.connect(config: config, onSuccess: {}, onError: { code, message in
+        NSLog("[VescAutoConnect] connect failed %@: %@", code, message)
+      })
     }
   }
 

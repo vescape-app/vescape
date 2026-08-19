@@ -83,25 +83,26 @@ final class ManualBoardStopTests: XCTestCase {
       }
     )
     XCTAssertTrue(command.perform())
-    XCTAssertNil(
-      AutoConnectGate.boardToAutoConnect(
-        settings: ["autoConnect": true, "selectedBoardId": "board-1"],
-        suppressedBoardId: ManualBoardStop.suppressedBoardId(defaults: defaults),
-        hasLiveSession: false,
-        resumePending: false
-      )
-    )
-
-    ManualBoardStop.clearAutoStartSuppression(defaults: defaults)
-
     XCTAssertEqual(
-      AutoConnectGate.boardToAutoConnect(
+      AutoConnectGate.decide(
         settings: ["autoConnect": true, "selectedBoardId": "board-1"],
         suppressedBoardId: ManualBoardStop.suppressedBoardId(defaults: defaults),
         hasLiveSession: false,
         resumePending: false
       ),
-      "board-1"
+      .skip(reason: "manual_stop_tombstone")
+    )
+
+    ManualBoardStop.clearAutoStartSuppression(defaults: defaults)
+
+    XCTAssertEqual(
+      AutoConnectGate.decide(
+        settings: ["autoConnect": true, "selectedBoardId": "board-1"],
+        suppressedBoardId: ManualBoardStop.suppressedBoardId(defaults: defaults),
+        hasLiveSession: false,
+        resumePending: false
+      ),
+      .connect(boardId: "board-1")
     )
   }
 

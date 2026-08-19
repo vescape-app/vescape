@@ -7,8 +7,8 @@ final class AutoConnectGateTests: XCTestCase {
     suppressedBoardId: String? = nil,
     hasLiveSession: Bool = false,
     resumePending: Bool = false
-  ) -> String? {
-    AutoConnectGate.boardToAutoConnect(
+  ) -> AutoConnectDecision {
+    AutoConnectGate.decide(
       settings: settings,
       suppressedBoardId: suppressedBoardId,
       hasLiveSession: hasLiveSession,
@@ -17,37 +17,40 @@ final class AutoConnectGateTests: XCTestCase {
   }
 
   func testConnectsSelectedBoardOnAPlainLaunch() {
-    XCTAssertEqual(decide(), "board-1")
+    XCTAssertEqual(decide(), .connect(boardId: "board-1"))
   }
 
   func testDefaultsToOnWhenTheSettingWasNeverWritten() {
-    XCTAssertEqual(decide(settings: ["selectedBoardId": "board-1"]), "board-1")
+    XCTAssertEqual(decide(settings: ["selectedBoardId": "board-1"]), .connect(boardId: "board-1"))
   }
 
   func testNoOpsWhenAutoConnectIsOff() {
-    XCTAssertNil(decide(settings: ["autoConnect": false, "selectedBoardId": "board-1"]))
+    XCTAssertEqual(decide(settings: ["autoConnect": false, "selectedBoardId": "board-1"]), .skip(reason: "auto_connect_off"))
   }
 
   func testNoOpsWithoutASelectedBoard() {
-    XCTAssertNil(decide(settings: ["autoConnect": true]))
-    XCTAssertNil(decide(settings: ["autoConnect": true, "selectedBoardId": ""]))
+    XCTAssertEqual(decide(settings: ["autoConnect": true]), .skip(reason: "no_selected_board"))
+    XCTAssertEqual(
+      decide(settings: ["autoConnect": true, "selectedBoardId": ""]),
+      .skip(reason: "no_selected_board")
+    )
   }
 
   func testNoOpsWhenTheSelectedBoardIsTombstonedByAManualStop() {
-    XCTAssertNil(decide(suppressedBoardId: "board-1"))
+    XCTAssertEqual(decide(suppressedBoardId: "board-1"), .skip(reason: "manual_stop_tombstone"))
   }
 
   func testATombstoneOnAnotherBoardDoesNotGateTheSelectedOne() {
-    XCTAssertEqual(decide(suppressedBoardId: "board-2"), "board-1")
+    XCTAssertEqual(decide(suppressedBoardId: "board-2"), .connect(boardId: "board-1"))
   }
 
   /// Restoration adoption decides first (ADR 0034): a launch that is resuming a live session must
   /// not start a second one alongside it.
   func testStandsDownWhileStateRestorationIsPending() {
-    XCTAssertNil(decide(resumePending: true))
+    XCTAssertEqual(decide(resumePending: true), .skip(reason: "state_restoration_pending"))
   }
 
   func testStandsDownWhenASessionIsAlreadyLive() {
-    XCTAssertNil(decide(hasLiveSession: true))
+    XCTAssertEqual(decide(hasLiveSession: true), .skip(reason: "session_already_live"))
   }
 }

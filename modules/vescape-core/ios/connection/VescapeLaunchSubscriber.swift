@@ -26,6 +26,7 @@ public final class VescapeLaunchSubscriber: ExpoAppDelegateSubscriber {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+    NSLog("[VescAutoConnect] didFinishLaunchingWithOptions")
     BoardSessionController.shared.prepareForLaunch()
     BoardSessionController.shared.autoConnectSelectedBoard()
     return false
