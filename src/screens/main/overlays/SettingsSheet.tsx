@@ -8,7 +8,7 @@ import {
   CheckCircleIcon,
   DatabaseIcon,
   GaugeIcon,
-  MapPinIcon,
+  HouseIcon,
   WatchIcon,
   WrenchIcon,
   type Icon,
@@ -65,7 +65,7 @@ const SHORTCUTS: Shortcut[] = [
     androidOnly: true,
   },
   {
-    icon: MapPinIcon,
+    icon: HouseIcon,
     accent: theme.settingsIcon.privacyZones,
     label: 'Privacy zones',
     hint: 'Skip recording near saved places',

@@ -13,7 +13,7 @@ import {
   TagIcon,
   AndroidLogoIcon,
   AppleLogoIcon,
-  MapPinIcon,
+  HouseIcon,
   ClockCounterClockwiseIcon,
   ChartLineUpIcon,
   GaugeIcon,
@@ -152,7 +152,7 @@ export default function SettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
-            icon={MapPinIcon}
+            icon={HouseIcon}
             iconColor={theme.settingsIcon.privacyZones}
             label="Privacy zones"
             hint="Skip recording near saved places"

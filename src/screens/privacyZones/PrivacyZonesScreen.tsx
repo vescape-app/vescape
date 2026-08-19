@@ -17,6 +17,7 @@ import {
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { usePrivacyZoneEditor } from '@/screens/privacyZones/usePrivacyZoneEditor'
 import { ZoneNameModal } from '@/screens/privacyZones/ZoneNameModal'
@@ -30,6 +31,8 @@ export function PrivacyZonesScreen() {
   const insets = useSafeAreaInsets()
   const navigation = useNavigation()
   const editor = usePrivacyZoneEditor()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const isDark = resolvedTheme === 'dark'
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerTransparent: true })
@@ -55,7 +58,8 @@ export function PrivacyZonesScreen() {
     <View style={styles.container}>
       <MapView
         style={StyleSheet.absoluteFill}
-        styleJSON={ONE_DARK_MAP_STYLE}
+        styleURL={isDark ? undefined : Mapbox.StyleURL.Outdoors}
+        styleJSON={isDark ? ONE_DARK_MAP_STYLE : undefined}
         onCameraChanged={editor.handleCameraChanged}
         onDidFinishLoadingMap={() => editor.setMapReady(true)}
         scaleBarEnabled={false}
