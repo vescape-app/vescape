@@ -9,10 +9,12 @@ Issues and PRDs for this repo live as GitHub issues. This is a private repo, so 
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Create a label**: `gh label create "area:<slug>" --description "<short area description>"`
+- **Create a label**: choose its color from the Area label colors policy below, then run `gh label create "area:<slug>" --description "<short area description>" --color "<hex>"`
 - **Close**: `gh issue close <number> --comment "..."`
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+
+Do not recreate unused GitHub default labels: `documentation`, `duplicate`, `good first issue`, `help wanted`, `invalid`, or `question`. Use the documented `area:*`, `complexity:*`, and triage vocabulary instead. Keep purpose-built operational labels only when a repository workflow consumes them.
 
 ## When a skill says "publish to the issue tracker"
 
@@ -92,6 +94,18 @@ Use one or more app-area labels for filtering:
 When a PRD or issue-planning skill creates or starts using a new app-area label, update this table in the same turn. Add the label, title prefix, and a short "Use for" description so future PRDs and implementation issues can reuse the prefix consistently.
 
 If a user writes a typo for a known area, normalize it in metadata. For example, use `area:sanitizers` and `[Sanitizers]` for `sanatizers`.
+
+### Area label colors
+
+Area-label color communicates implementation hazard, not product identity:
+
+| Color  | Hex      | Labels                                             |
+| ------ | -------- | -------------------------------------------------- |
+| Red    | `B60205` | `area:native`, `area:auth`, `area:db`, `area:core` |
+| Purple | `5319E7` | `area:server`, `area:sync`                         |
+| Gray   | `6E7781` | Every other `area:*` label                         |
+
+When creating a new `area:*` label, use gray unless it belongs to an explicitly approved hazard or server grouping. Do not introduce a new area color ad hoc. If a label changes category, update both GitHub and this policy in the same turn.
 
 ## Complexity labels
 

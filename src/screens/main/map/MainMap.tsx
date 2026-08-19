@@ -507,7 +507,6 @@ export const MainMap = memo(
           gpsHeadingMode={gpsHeadingMode}
           phoneHeadingMode={phoneHeadingMode}
           followGps={followGps}
-          approximateGpsPuckActive={approximateGpsPuckActive}
           accuracyFix={accuracyFix}
           onPhoneFollowHeading={handlePhoneFollowHeading}
           phoneHeadingAdapter={phoneHeadingAdapter}

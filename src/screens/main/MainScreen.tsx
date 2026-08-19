@@ -257,6 +257,7 @@ export function MainScreen({
           setMapSelector: controller.setMapSelector,
           enterMapFocus: controller.handleMapFocus,
           exitMapFocus: controller.exitMapFocus,
+          cancelMapFocus: controller.cancelMapFocus,
           enterWeather: controller.enterWeatherMode,
           exitWeather: controller.exitWeatherMode,
           enterLegalLimits: controller.enterLegalLimitsMode,

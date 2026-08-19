@@ -26,7 +26,6 @@ interface PhoneHeadingMapLayerProps {
   /** Compass source. The caller picks it so a replay can supply the recorded stream instead. */
   adapter: PhoneHeadingAdapter
   followCamera: boolean
-  approximateFix: boolean
   coordinate: { longitude: number; latitude: number } | null
   /** Called with each compass heading while the camera follows the phone. */
   onFollowHeading: (headingDeg: number) => void
@@ -45,13 +44,12 @@ interface PhoneHeadingMapLayerProps {
 function phoneHeadingShape(
   coordinate: PhoneHeadingMapLayerProps['coordinate'],
   headingDeg: number | null,
-  approximateFix: boolean,
   followCamera: boolean,
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features:
-      coordinate && headingDeg != null && !approximateFix
+      coordinate && headingDeg != null
         ? [
             {
               type: 'Feature',
@@ -70,7 +68,6 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   active,
   adapter,
   followCamera,
-  approximateFix,
   coordinate,
   onFollowHeading,
   onHeadingChange,
@@ -79,20 +76,16 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   const sourceRef = useRef<ShapeSource>(null)
   const headingDegRef = useRef<number | null>(null)
   const coordinateRef = useRef(coordinate)
-  const approximateFixRef = useRef(approximateFix)
   const followCameraRef = useRef(followCamera)
 
   useEffect(() => {
     coordinateRef.current = coordinate
-    approximateFixRef.current = approximateFix
     followCameraRef.current = followCamera
     sourceRef.current?.setNativeProps({
       id: 'center-phone-heading-source',
-      shape: JSON.stringify(
-        phoneHeadingShape(coordinate, headingDegRef.current, approximateFix, followCamera),
-      ),
+      shape: JSON.stringify(phoneHeadingShape(coordinate, headingDegRef.current, followCamera)),
     })
-  }, [approximateFix, coordinate, followCamera])
+  }, [coordinate, followCamera])
 
   useEffect(() => {
     if (!active) {
@@ -101,7 +94,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       onStatusChange('idle')
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
-        shape: JSON.stringify(phoneHeadingShape(null, null, false, false)),
+        shape: JSON.stringify(phoneHeadingShape(null, null, false)),
       })
       return
     }
@@ -128,12 +121,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
         shape: JSON.stringify(
-          phoneHeadingShape(
-            coordinateRef.current,
-            headingDeg,
-            approximateFixRef.current,
-            followCameraRef.current,
-          ),
+          phoneHeadingShape(coordinateRef.current, headingDeg, followCameraRef.current),
         ),
       })
 
@@ -160,7 +148,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       <ShapeSource
         ref={sourceRef}
         id="center-phone-heading-source"
-        shape={phoneHeadingShape(coordinate, headingDegRef.current, approximateFix, followCamera)}
+        shape={phoneHeadingShape(coordinate, headingDegRef.current, followCamera)}
       >
         <SymbolLayer
           id="center-phone-heading-outline"
