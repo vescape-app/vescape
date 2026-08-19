@@ -13,7 +13,7 @@ import {
 } from '@/modules/tune/components/TuneProfileMetadataModal'
 import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { SwitchWidget } from '@/components/widgets/SwitchWidget'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
@@ -270,11 +270,11 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   remoteTiltBox: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     padding: 14,
   },
   quickDisabledNote: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   legalGroup: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     width: '100%',
     overflow: 'hidden',
   },
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   legalRowDivider: {
     width: 1,
     alignSelf: 'stretch',
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   legalMapCell: {
     width: 82,

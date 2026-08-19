@@ -11,7 +11,7 @@ import {
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import {
   getLegalLimitCountryDetail,
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   badge: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flex: 1,
     minHeight: 70,
     padding: 10,
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   alertRow: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailRow: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     gap: 10,
     padding: 11,
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   sourceCard: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     padding: 11,
     gap: 4,
   },
