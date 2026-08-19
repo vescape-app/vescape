@@ -68,6 +68,8 @@ First push: `git push -u origin <branch>`. Later: `git push`. No rebase. No forc
 
 ## Step 5 — PR
 
+Before writing a new PR body or applying PR labels, read `../references/pr-description.md` and follow its shared description and label contracts.
+
 Detect existing:
 
 ```bash
@@ -80,11 +82,21 @@ Always ready (not draft). Base = `dev`.
 
 ```bash
 gh pr create --base dev --title "<title>" --body "$(cat <<'EOF'
-## Summary
-<2-4 lines describing what changed and why>
+<1-3 short sentences describing the outcome and why it matters.>
+
+> [!NOTE]
+> **Risk:** <Low | Medium | High> — <short reason>
+> **Complexity:** <Low | Medium | High> — <short reason>
+> **DB:** <category> — <short impact>
+
+## Description
+
+<Problem solved, behavior delivered, and important constraints.>
 EOF
 )"
 ```
+
+Describe the feature/problem outcome. Do not produce a changed-file inventory or per-commit changelog. Ordinary PRs omit `## Tasks` unless a checklist materially helps navigation.
 
 Title: use user-provided title, else derive scope in this order:
 
@@ -98,6 +110,8 @@ Keep under 70 chars.
 ### PR exists -> update
 
 Push new commits. Report the URL. **Leave the body alone** — auto-maintained PR descriptions are noise.
+
+Refresh applicable `area:*` labels and ensure exactly one `complexity:*` label per the shared contract. Never copy issue triage/workflow labels.
 
 Edit the body only when the user asks, or when the work made an existing claim false (body says "~30s", code landed 60s). Then fix that line only:
 
