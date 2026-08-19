@@ -126,13 +126,19 @@ export function RideStatsSection() {
   )
 
   return (
-    <View style={styles.section}>
+    <View testID="profile-stats-section" style={styles.section}>
       <Text style={styles.sectionTitle}>All time</Text>
       <StatsGrid items={totalItems} />
 
       <View style={styles.monthHeader}>
         <Text style={styles.sectionTitle}>Monthly</Text>
-        {monthLoading ? <ActivityIndicator size="small" color={theme.palette.sky.color} /> : null}
+        {monthLoading ? (
+          <ActivityIndicator
+            testID="profile-month-loading"
+            size="small"
+            color={theme.palette.sky.color}
+          />
+        ) : null}
       </View>
       <PrevNextSelector
         label={formatMonthLabel(selectedMonth)}
@@ -148,6 +154,7 @@ export function RideStatsSection() {
             value={selectedMonthValue}
             onChange={handleMonthSelect}
             placeholder="Select month"
+            testID="profile-month-select"
             style={styles.monthSelect}
           />
         }

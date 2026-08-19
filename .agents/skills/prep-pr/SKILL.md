@@ -15,6 +15,7 @@ Prepare a feature PR as the stable landing place for a PRD or issue group. This 
 - New initial feature PRs start as draft PRs. Use `gh pr create --draft` unless the user explicitly asks for a ready PR.
 - If a PR already exists for the current branch, update that PR instead of creating a duplicate — but only after the Branch safety check confirms the current branch belongs to this feature. Never overwrite an unrelated PR's title/body.
 - Keep the PR useful for navigation: link the PRD, all implementation issues, and any tracking parent issue.
+- Label the PR with the union of linked issues' `area:*` labels and the highest linked `complexity:*` level. Never copy triage/workflow labels.
 - Do not close or modify the PRD/issues unless the user explicitly asks.
 - Use `gh` for GitHub operations. This repo is private; do not fetch GitHub issue/PR pages over unauthenticated HTTP.
 - Follow repo branch rules from `AGENTS.md`: do not add generated prefixes to branch names.
@@ -54,8 +55,10 @@ Stop and confirm with the user when the current branch looks unrelated, i.e. any
 
 In that case do **not** refresh the existing PR. Ask the user, and prefer branching a fresh feature branch off base (e.g. `dev`):
 
+Branch off the fetched remote base, never off a local `dev` that may be behind:
+
 ```bash
-git checkout <base> && git checkout -b <feature-name>
+git fetch origin <base> && git checkout -b <feature-name> origin/<base>
 ```
 
 Only proceed on the current branch once it passes this check or the user explicitly approves it.
@@ -98,34 +101,41 @@ If an existing PR title is too focused on current setup/docs, update it to the f
 
 ## PR body
 
+Before writing or refreshing a PR body or applying PR labels, read `../references/pr-description.md` and follow its shared description and label contracts. Prepared feature PRs describe intended finished behavior, not only work already landed.
+
 Use this shape by default:
 
 ```md
-This PR implements <feature outcome>.
+<One to three short sentences describing the feature outcome and why it matters.>
 
-What this lands:
+> [!NOTE]
+> **Risk:** <Low | Medium | High> — <short reason>
+> **Complexity:** <Low | Medium | High> — <short reason>
+> **DB:** <category> — <short impact>
 
-- <final user-visible or system behavior>
-- <important technical contract>
-- <important UI/state behavior>
-
-Navigation:
+## Tasks
 
 - PRD: #<id>
-- #<issue>, <what this task contributes beyond its title>
-- #<issue>, <what this task contributes beyond its title>
+- #<issue>
+- #<issue>
+
+## Description
+
+<Problem solved, final behavior, and important design or user-facing constraints.>
 ```
 
-Keep the body short. It should help future agents navigate, not duplicate the PRD.
+Omit `## Tasks` only when no PRD, implementation issue, or tracking parent exists. Keep the body short. It should help future agents understand and navigate the feature, not duplicate the PRD or inventory changed files.
 
 ## Issue links
 
 When implementation issues exist, include them in dependency order if known. GitHub already renders issue titles for bare refs, so do not repeat the issue title after the ref. Add a short task description only when it helps explain the role of the task in the feature branch.
 
 ```md
-- #193, durable Board Link v3 storage and old-link normalization
-- #194, probe-time controller identity for each selectable transport
+- #193
+- #194
 ```
+
+Add a short explanation after an issue ref only when its role cannot be understood from the issue title.
 
 If the PR is a feature parent where all tasks will merge into it, say that explicitly:
 
@@ -142,6 +152,7 @@ If a PR already exists:
 3. Replace stale current-diff wording with future-facing feature wording.
 4. Keep PRD/issues navigation.
 5. Update title/body with `gh pr edit`.
+6. Add missing applicable `area:*` labels, remove stale `complexity:*` labels, then apply exactly one complexity label. Preserve unrelated human-added labels; never copy issue triage/workflow labels.
 
 ## Final response
 

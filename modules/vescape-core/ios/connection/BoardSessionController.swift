@@ -1365,8 +1365,8 @@ internal final class BoardSessionController: VescGattListener {
   private func evaluateConfigSafety(_ values: BoardConfigValues) {
     guard boardWarningsEnabled, let boardId = config?.appBoardId else { return }
     let seriesCount = config?.batteryConfig?["seriesCount"] as? Int
-    let perCell = ConfigSafetyDetector.usesPerCellVoltage(vescLiveFirmware)
-    let report = ConfigSafetyDetector.evaluate(values, seriesCount: seriesCount, perCell: perCell)
+    let perCellSupported = ConfigSafetyDetector.supportsPerCellVoltage(vescLiveFirmware)
+    let report = ConfigSafetyDetector.evaluate(values, seriesCount: seriesCount, perCell: perCellSupported)
     for finding in report.findings {
       BoardWarningRegistry.shared.reportFinding(
         boardId: boardId,
