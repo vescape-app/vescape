@@ -45,9 +45,16 @@ Understand what changed. Use this to infer commit message and PR title/body if n
 - Already on feature branch (not `main`/`dev`) -> reuse.
 - On `main` or `dev` -> create new branch. Derive name from title or changes: `<area-slug>-<short-desc>` (kebab, 2-4 words).
 
+Branch off `origin/dev`, never off local `dev`. A local `dev` that is a few commits behind produces
+a PR whose diff conflicts with work that already merged, and the conflict only shows up after the
+PR is open.
+
 ```bash
-git checkout -b <branch-name>
+git fetch origin dev
+git checkout -b <branch-name> origin/dev
 ```
+
+Uncommitted work carries over the `checkout` untouched, so run this before Step 3 either way.
 
 If user passed `--branch`, use that exact name.
 
