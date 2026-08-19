@@ -52,6 +52,12 @@ object ConnectionTraceEvent {
     const val SERVICE_DEMOTED_BACKGROUND = "connection_service_demoted_background"
     const val SERVICE_STOPPED = "connection_service_stopped"
 
+    const val FOREGROUND_WORK_ACQUIRED = "foreground_work_acquired"
+    const val FOREGROUND_WORK_RELEASED = "foreground_work_released"
+    const val BACKGROUND_TASK_STARTED = "background_task_started"
+    const val BACKGROUND_TASK_ENDED = "background_task_ended"
+    const val BACKGROUND_TASK_EXPIRED = "background_task_expired"
+
     const val BOARD_SELECTED = "board_selected"
     const val BOARD_LINK_PERSISTED = "board_link_persisted"
     const val BOARD_LINK_FAILED = "board_link_failed"
@@ -123,6 +129,7 @@ object ConnectionTraceField {
     const val PERMISSION_GRANTED = "permission_granted"
     const val APP_FOREGROUND = "app_foreground"
     const val SERVICE_STATE = "service_state"
+    const val FOREGROUND_WORK = "foreground_work"
 
     const val RIDE_ID = "ride_id"
     const val PLATFORM_ERROR_CODE = "platform_error_code"

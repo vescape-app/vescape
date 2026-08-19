@@ -7,6 +7,8 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * Native lifecycle entry point for the Board Presence Scan (ADR 0035).
@@ -46,20 +48,40 @@ class VescapeLifecycleProvider : ContentProvider() {
     ): Int = 0
 }
 
-/** Counts started activities so a rotation or an activity swap is not mistaken for re-entry. */
+/**
+ * Which activities are currently started, tracked by identity rather than by a counter (#405).
+ *
+ * A plain counter cannot tell a real stop from a stale or duplicated `onActivityStopped` for an
+ * activity that was already accounted for — and an unbalanced counter turns the *next* callback
+ * into a spurious foreground entry that would cancel or restart live Presence Scan work. Weak keys
+ * so a leaked reference here can never keep a destroyed activity alive.
+ */
+internal class ForegroundEntryTracker {
+    private val started: MutableSet<Any> = Collections.newSetFromMap(WeakHashMap())
+
+    /** True when this start took the app from background to foreground. */
+    fun started(activity: Any): Boolean = started.add(activity) && started.size == 1
+
+    fun stopped(activity: Any) {
+        started.remove(activity)
+    }
+
+    val startedCount: Int get() = started.size
+}
+
+/** Starts one Presence Scan per real foreground entry — a rotation or activity swap is not one. */
 internal class VescapeForegroundObserver(
     private val application: Application,
     private val onForegroundEntry: (Application) -> Unit = { CoreForegroundService.startPresenceScan(it) },
 ) : Application.ActivityLifecycleCallbacks {
-    private var startedActivities = 0
+    private val tracker = ForegroundEntryTracker()
 
     override fun onActivityStarted(activity: Activity) {
-        startedActivities += 1
-        if (startedActivities == 1) onForegroundEntry(application)
+        if (tracker.started(activity)) onForegroundEntry(application)
     }
 
     override fun onActivityStopped(activity: Activity) {
-        startedActivities = (startedActivities - 1).coerceAtLeast(0)
+        tracker.stopped(activity)
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit

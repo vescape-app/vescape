@@ -144,6 +144,20 @@ The scan watches saved BLE ids for all linked Boards:
 - Bluetooth initialization does not consume the five-second window. The clock starts once
   the scanner becomes ready.
 
+The scan survives an immediate screen lock:
+
+- Android starts the existing core foreground service in foreground mode immediately, with
+  a determinate five-second progress notification and a **Stop search** action. There is no
+  regular-service-to-foreground promotion path, and a match hands that same service to Board
+  Session work without a second start.
+- iOS covers the foreground-to-lock handoff with a short native background task. No Live
+  Activity exists before a Board Session does.
+- **Stop search** and the timeout cancel only the current scan. Neither creates an Automatic
+  Connection Pause, and neither disables Auto Start.
+- Foreground-service work is owned explicitly (`presence_scan`, `board_session`, `gps`,
+  `group_ride`). The service and its notification end only when no owner remains, so
+  releasing the scan never tears down GPS, a Group Ride, or a Board Session.
+
 Android starts the existing core service **in the foreground immediately**, with a temporary
 progress notification carrying a **Stop search** action. There is no regular-service-to-foreground
 promotion path. A match promotes the service into Board Session work. Timeout or Stop search removes
@@ -280,6 +294,7 @@ Every event automatically carries `workflow_id`, `workflow_origin`, `workflow_ow
 | Intent and promotion | `connect_intent_created`, `connect_intent_cleared`, `auto_connect_promoted`, `auto_connect_skipped`, `auto_start_armed`, `auto_start_triggered`, `auto_start_skipped`, `alternative_hint_offered`, `alternative_hint_accepted`, `alternative_hint_dismissed` |
 | Pause                | `connection_pause_started`, `connection_pause_cleared`, `connection_pause_expired`, `connection_pause_blocked`                                                                                                                                               |
 | Service              | `connection_service_started`, `connection_service_promoted_foreground`, `connection_service_demoted_background`, `connection_service_stopped`                                                                                                                |
+| Foreground work      | `foreground_work_acquired`, `foreground_work_released`, `background_task_started`, `background_task_ended`, `background_task_expired`                                                                                                                        |
 | Board and link       | `board_selected`, `board_link_persisted`, `board_link_failed`                                                                                                                                                                                                |
 | Ride summary         | `ride_summary_prepared`, `ride_summary_notified`, `ride_summary_skipped`                                                                                                                                                                                     |
 

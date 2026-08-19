@@ -2,7 +2,10 @@ package expo.modules.vescapecore.connection
 
 import expo.modules.vescapecore.protocol.toCapture
 
-import expo.modules.vescapecore.service.foregroundServiceType
+import expo.modules.vescapecore.service.ForegroundPresentation
+import expo.modules.vescapecore.service.ForegroundWork
+import expo.modules.vescapecore.service.ForegroundWorkChange
+import expo.modules.vescapecore.service.ForegroundWorkOwnership
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_EXIT_FROM_NOTIFICATION
@@ -88,7 +91,7 @@ import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.buildLiveState
 import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
-import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
+import expo.modules.vescapecore.service.foregroundServiceTypeWithConnectedDevice
 import expo.modules.vescapecore.protocol.parseBmsValues
 import expo.modules.vescapecore.protocol.parseFwVersion
 import expo.modules.vescapecore.protocol.parseRefloatGetAllData
@@ -240,19 +243,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             onStateChanged = { state ->
                 scheduler.post {
                     emitState()
-                    // Timeout, Stop search, or a refused promotion: the temporary progress
-                    // notification and its service have nothing left to do.
-                    // A match hands the service straight to Board Session work, whose config is
-                    // still being built — only a non-matching end tears the service down.
-                    if (
-                        state.phase == PresenceScanPhase.Done &&
-                        state.reason != ConnectionTraceReason.MATCHED &&
-                        boardConfig == null
-                    ) {
-                        notificationController.cancel()
-                        stopIfIdle()
-                        if (!isStoppingService) refreshNotification(force = true)
-                    }
+                    onPresenceScanStateChanged(state)
                 }
             },
             onPromote = ::promoteToSession,
@@ -769,11 +760,85 @@ private var wearAutoLaunchOnConnect = true
     fun promoteConnectedDeviceForeground() {
         isStoppingService = false
         startForeground(
-            foregroundServiceTypeForConnectedDevicePromotion(
-                boardActive = boardConfig != null,
-                gpsActive = gpsMonitor.active,
-            ),
+            foregroundServiceTypeWithConnectedDevice(reconcileForegroundWork().owners),
         )
+    }
+
+    /**
+     * Explicit foreground-work owner tracking (#405). Presence Scan, Board Session, GPS, and Group
+     * Ride all share this one service; releasing one owner must never tear down presentation the
+     * others still need.
+     */
+    private val foregroundWork = ForegroundWorkOwnership()
+
+    /**
+     * Reconcile the owner set from each subsystem's own truth. Single writer on purpose: no site can
+     * forget a release and strand the service, and no stale callback can drop an owner it does not
+     * speak for.
+     */
+    private fun reconcileForegroundWork(): ForegroundWorkChange {
+        val change = foregroundWork.reconcile(
+            ForegroundWork.PresenceScan to presenceScan.isRunning,
+            ForegroundWork.BoardSession to (boardConfig != null),
+            ForegroundWork.Gps to gpsMonitor.active,
+            ForegroundWork.GroupRide to groupRideObserver.active,
+        )
+        traceForegroundWork(ConnectionTraceEvent.FOREGROUND_WORK_ACQUIRED, change.acquired, change)
+        traceForegroundWork(ConnectionTraceEvent.FOREGROUND_WORK_RELEASED, change.released, change)
+        return change
+    }
+
+    private fun traceForegroundWork(
+        event: String,
+        works: Set<ForegroundWork>,
+        change: ForegroundWorkChange,
+    ) {
+        if (works.isEmpty()) return
+        ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+            owner = ConnectionTraceOwner.NONE,
+        ).also { workflow ->
+            workflow.event(
+                event,
+                mapOf(
+                    ConnectionTraceField.FOREGROUND_WORK to works.joinToString(",") { it.wireValue },
+                    ConnectionTraceField.SERVICE_STATE to change.presentation.traceValue,
+                ),
+            )
+            workflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+        }
+    }
+
+    /**
+     * The Presence Scan ended. Release *only* that owner: a timeout or **Stop search** while GPS,
+     * a Group Ride, or a Board Session still runs keeps both the service and its notification.
+     *
+     * A match is the one end that does not reconcile here — the Board Session's config is still
+     * being built off-thread, so the service is deliberately handed over without ever dropping to
+     * zero owners and without a second service start.
+     */
+    private fun onPresenceScanStateChanged(state: PresenceScanState) {
+        if (isStoppingService) return
+        if (state.phase != PresenceScanPhase.Done) {
+            // Repaint the determinate countdown only while a scan really holds the scanner. A
+            // refused start publishes Idle and is torn down synchronously — posting its progress
+            // notification afterwards would resurrect a surface the service no longer owns.
+            if (boardConfig == null && presenceScan.isRunning) {
+                notificationController.showSearching(selectedBoardName, state.deadlineAtMs, nowMs())
+            }
+            return
+        }
+        if (state.reason == ConnectionTraceReason.MATCHED || boardConfig != null) return
+        val remaining = reconcileForegroundWork()
+        if (remaining.presentation == ForegroundPresentation.Stopped) {
+            notificationController.cancel()
+            stopIfIdle()
+            return
+        }
+        // Another owner still needs the service: repaint from its state instead of cancelling.
+        reassertForeground()
+        if (!isStoppingService) refreshNotification(force = true)
     }
 
     /**
@@ -841,7 +906,8 @@ private var wearAutoLaunchOnConnect = true
                     },
                 )
                 emitState()
-                if (!decision.proceed) stopIfIdle()
+                // Register (or drop) the Presence Scan owner as soon as the scan's fate is known.
+                if (decision.proceed) reconcileForegroundWork() else stopIfIdle()
             }
         }
     }
@@ -871,15 +937,14 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun startPresenceScanForeground() {
-        val notification = notificationController.buildSearching(selectedBoardName)
+        // Indeterminate until the radio is usable: the five-second window starts at scanner
+        // readiness, not here, so there is no honest deadline to render yet.
+        val notification = notificationController.buildSearching(selectedBoardName, deadlineAtMs = null, nowMs = nowMs())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             service.startForeground(
                 NOTIFICATION_ID,
                 notification,
-                foregroundServiceTypeForConnectedDevicePromotion(
-                    boardActive = boardConfig != null,
-                    gpsActive = gpsMonitor.active,
-                ),
+                foregroundServiceTypeWithConnectedDevice(reconcileForegroundWork().owners),
             )
         } else {
             service.startForeground(NOTIFICATION_ID, notification)
@@ -1029,13 +1094,15 @@ private var wearAutoLaunchOnConnect = true
 
     val isStopping: Boolean get() = isStoppingService
 
+    /**
+     * Stop the service only when *no* foreground-work owner remains. Every teardown path funnels
+     * here so a released Presence Scan can never take GPS, a Group Ride, or a Board Session with it.
+     */
     fun stopIfIdle() {
-        if (presenceScan.isRunning) return
-        if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active) {
-            isStoppingService = true
-            notificationController.cancel()
-            service.stopSelf()
-        }
+        if (reconcileForegroundWork().hasWork) return
+        isStoppingService = true
+        notificationController.cancel()
+        service.stopSelf()
     }
 
     fun consumePendingStart() {
@@ -1096,10 +1163,7 @@ private var wearAutoLaunchOnConnect = true
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
         groupRideObserver.stop()
-        if (boardConfig == null && !gpsMonitor.active) {
-            isStoppingService = true
-            service.stopSelf()
-        }
+        stopIfIdle()
     }
 
     fun createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) {
@@ -1198,12 +1262,7 @@ private var wearAutoLaunchOnConnect = true
         stopLocationUpdates()
         gpsError = null
         emitState()
-        if (boardConfig == null && !groupRideObserver.active) {
-            isStoppingService = true
-            service.stopSelf()
-        } else {
-            reassertForeground()
-        }
+        if (reconcileForegroundWork().hasWork) reassertForeground() else stopIfIdle()
     }
 
     private fun beginSession(start: PendingStart) {
@@ -1285,12 +1344,7 @@ private var wearAutoLaunchOnConnect = true
      * CONNECTED_DEVICE before Bluetooth permissions exist. LOCATION still rides alongside
      * CONNECTED_DEVICE whenever GPS is active so background ride recording keeps location access.
      */
-    private fun foregroundServiceType(): Int {
-        return foregroundServiceType(
-            boardActive = boardConfig != null,
-            gpsActive = gpsMonitor.active,
-        )
-    }
+    private fun foregroundServiceType(): Int = reconcileForegroundWork().serviceType
 
     private fun reassertForeground() {
         val type = foregroundServiceType()

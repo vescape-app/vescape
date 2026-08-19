@@ -48,6 +48,12 @@ internal enum ConnectionTraceEvent {
   static let serviceDemotedBackground = "connection_service_demoted_background"
   static let serviceStopped = "connection_service_stopped"
 
+  static let foregroundWorkAcquired = "foreground_work_acquired"
+  static let foregroundWorkReleased = "foreground_work_released"
+  static let backgroundTaskStarted = "background_task_started"
+  static let backgroundTaskEnded = "background_task_ended"
+  static let backgroundTaskExpired = "background_task_expired"
+
   static let boardSelected = "board_selected"
   static let boardLinkPersisted = "board_link_persisted"
   static let boardLinkFailed = "board_link_failed"
@@ -119,6 +125,7 @@ internal enum ConnectionTraceField {
   static let permissionGranted = "permission_granted"
   static let appForeground = "app_foreground"
   static let serviceState = "service_state"
+  static let foregroundWork = "foreground_work"
 
   static let rideId = "ride_id"
   static let platformErrorCode = "platform_error_code"

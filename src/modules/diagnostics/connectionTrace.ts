@@ -46,6 +46,12 @@ export const CONNECTION_TRACE_EVENT = {
   serviceDemotedBackground: 'connection_service_demoted_background',
   serviceStopped: 'connection_service_stopped',
 
+  foregroundWorkAcquired: 'foreground_work_acquired',
+  foregroundWorkReleased: 'foreground_work_released',
+  backgroundTaskStarted: 'background_task_started',
+  backgroundTaskEnded: 'background_task_ended',
+  backgroundTaskExpired: 'background_task_expired',
+
   boardSelected: 'board_selected',
   boardLinkPersisted: 'board_link_persisted',
   boardLinkFailed: 'board_link_failed',
@@ -114,6 +120,7 @@ export const CONNECTION_TRACE_FIELD = {
   permissionGranted: 'permission_granted',
   appForeground: 'app_foreground',
   serviceState: 'service_state',
+  foregroundWork: 'foreground_work',
 
   rideId: 'ride_id',
   platformErrorCode: 'platform_error_code',
@@ -193,6 +200,10 @@ export const CONNECTION_TRACE_INFO_EVENTS: readonly string[] = [
   CONNECTION_TRACE_EVENT.servicePromotedForeground,
   CONNECTION_TRACE_EVENT.serviceDemotedBackground,
   CONNECTION_TRACE_EVENT.serviceStopped,
+  CONNECTION_TRACE_EVENT.foregroundWorkAcquired,
+  CONNECTION_TRACE_EVENT.foregroundWorkReleased,
+  CONNECTION_TRACE_EVENT.backgroundTaskStarted,
+  CONNECTION_TRACE_EVENT.backgroundTaskEnded,
   CONNECTION_TRACE_EVENT.alternativeHintOffered,
   CONNECTION_TRACE_EVENT.alternativeHintAccepted,
   CONNECTION_TRACE_EVENT.rideSummaryPrepared,
@@ -211,4 +222,5 @@ export const CONNECTION_TRACE_WARNING_EVENTS: readonly string[] = [
   CONNECTION_TRACE_EVENT.pauseExpired,
   CONNECTION_TRACE_EVENT.pauseBlocked,
   CONNECTION_TRACE_EVENT.rideSummarySkipped,
+  CONNECTION_TRACE_EVENT.backgroundTaskExpired,
 ]

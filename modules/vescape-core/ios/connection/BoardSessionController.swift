@@ -286,9 +286,37 @@ internal final class BoardSessionController: VescGattListener {
     port: presenceScanPort,
     scanner: .shared,
     ownership: .shared,
-    onStateChanged: { [weak self] _ in self?.onStateChanged?() },
+    onStateChanged: { [weak self] state in
+      self?.onStateChanged?()
+      // Terminal phase: hand the borrowed background time straight back. Holding it any longer
+      // would be a keep-alive, which this is explicitly not (ADR 0034).
+      if state.phase == .done { self?.presenceScanBackgroundTask.end() }
+    },
     onPromote: { [weak self] target in self?.promoteToSession(target) }
   )
+
+  /// Short background task covering the foreground→lock handoff for the Presence Scan (#405).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/ForegroundWork.kt
+  private lazy var presenceScanBackgroundTask = PresenceScanBackgroundTask(
+    onEvent: { [weak self] event in self?.traceBackgroundTask(event) }
+  )
+
+  /// One correlated workflow per background-task transition, so #414's audit sees the decision.
+  private func traceBackgroundTask(_ event: String) {
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.foregroundEntry,
+      owner: ConnectionTraceOwner.autoConnect
+    )
+    workflow.event(event, fields: [ConnectionTraceField.serviceState: "background_task"])
+    workflow.finish(
+      decision: event == ConnectionTraceEvent.backgroundTaskExpired
+        ? ConnectionTraceDecision.timeout
+        : ConnectionTraceDecision.completed,
+      reason: event == ConnectionTraceEvent.backgroundTaskExpired
+        ? ConnectionTraceReason.deadlineExpired
+        : ConnectionTraceReason.matched
+    )
+  }
 
   /// Explicit rider Connect Intent (ADR 0035). Outranks Auto Start and Auto Connect, and persists
   /// indefinitely while Auto Close is disabled. #409 creates one at the end of linking.
@@ -329,7 +357,10 @@ internal final class BoardSessionController: VescGattListener {
       activeScanPurpose: ScannerCoordinator.shared.activePurpose
     )
     let autoConnect = settings["autoConnect"] as? Bool ?? true
-    return presenceScan.start(
+    // Buy the handoff window *before* the scan starts: the rider who opens the app and immediately
+    // locks the screen must not lose the scan to suspension. Ended at the scan's terminal phase.
+    presenceScanBackgroundTask.start()
+    let decision = presenceScan.start(
       environment: environment,
       targets: targets,
       workflow: workflow,
@@ -344,6 +375,9 @@ internal final class BoardSessionController: VescGattListener {
         )
       }
     )
+    // A refused scan owns no work at all, so it may not sit on borrowed background time either.
+    if !decision.proceed { presenceScanBackgroundTask.end() }
+    return decision
   }
 
   /// Automatic Connection Pause deadline for `boardId`, or `nil` when it is not paused (ADR 0035).
