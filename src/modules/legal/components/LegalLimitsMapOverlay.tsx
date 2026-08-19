@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { LegalLimitCountrySheet } from '@/modules/legal/components/LegalLimitCountrySheet'
 import {
   LEGAL_LIMIT_COUNTRIES,
@@ -30,6 +31,7 @@ interface LegalLimitsMapOverlayProps {
 /** Legal limits mode: the road status legend, the country list and the per-country sheet. */
 export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOverlayProps) {
   const insets = useSafeAreaInsets()
+  const neutral = useResolvedNeutralColors()
   const [listOpen, setListOpen] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<LegalLimitCountry | null>(null)
 
@@ -60,7 +62,11 @@ export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOv
         testID="legal-limits-exit"
         accessibilityLabel="Exit legal limits"
         onPress={onExit}
-        style={[styles.mapTopBackButton, { top }]}
+        iconColor={neutral.textPrimary}
+        style={[
+          styles.mapTopBackButton,
+          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
+        ]}
       />
       <Pressable
         accessibilityRole="button"
@@ -149,8 +155,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.control.border,
-    backgroundColor: theme.alpha(theme.control.background, 0.85),
   },
   legalLegend: {
     position: 'absolute',

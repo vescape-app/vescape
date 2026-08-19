@@ -4,7 +4,7 @@ import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
@@ -22,6 +22,7 @@ interface WeatherMapOverlayProps {
 /** Everything the map shows in weather mode: forecast pill, radar timeline and the hourly strip. */
 export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
+  const neutral = useResolvedNeutralColors()
   const radarLoading = useRainViewerRadarStore((s) => s.loading)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
 
@@ -36,7 +37,11 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
         testID="weather-exit"
         accessibilityLabel="Back from weather"
         onPress={onExit}
-        style={[styles.mapTopBackButton, { top }]}
+        iconColor={neutral.textPrimary}
+        style={[
+          styles.mapTopBackButton,
+          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
+        ]}
       />
       <IconButton
         icon={ArrowsClockwiseIcon}
@@ -45,7 +50,11 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
           refreshRadar(true)
         }}
         loading={radarLoading}
-        style={[styles.weatherRefreshButton, { top }]}
+        iconColor={neutral.textPrimary}
+        style={[
+          styles.weatherRefreshButton,
+          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
+        ]}
       />
       <View pointerEvents="none" style={[styles.weatherExpandedPill, { top: pillTop }]}>
         <WeatherPill expanded onPress={() => undefined} />
@@ -80,8 +89,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.control.border,
-    backgroundColor: theme.alpha(theme.control.background, 0.85),
   },
   weatherRefreshButton: {
     position: 'absolute',
