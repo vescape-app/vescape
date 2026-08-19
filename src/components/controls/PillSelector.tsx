@@ -120,9 +120,10 @@ export function PillSelector({
 interface PillSelectorAddProps {
   testID?: string
   onPress: () => void
+  style?: StyleProp<ViewStyle>
 }
 
-export function PillSelectorAdd({ testID, onPress }: PillSelectorAddProps) {
+export function PillSelectorAdd({ testID, onPress, style }: PillSelectorAddProps) {
   const { addRef, contained, variant } = usePillSelectorCtx()
   const control = useResolvedControlColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
@@ -140,6 +141,7 @@ export function PillSelectorAdd({ testID, onPress }: PillSelectorAddProps) {
           borderWidth: 1,
           borderStyle: 'dashed',
         },
+        style,
       ]}
       onPress={onPress}
     >

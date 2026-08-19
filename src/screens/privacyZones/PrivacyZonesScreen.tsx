@@ -133,7 +133,11 @@ export function PrivacyZonesScreen() {
               </PillSelectorItem>
             )
           })}
-          <PillSelectorAdd testID="privacy-zone-add-button" onPress={editor.handleAddPress} />
+          <PillSelectorAdd
+            testID="privacy-zone-add-button"
+            onPress={editor.handleAddPress}
+            style={styles.addZoneButton}
+          />
         </PillSelector>
       </View>
 
@@ -238,6 +242,9 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  addZoneButton: {
+    backgroundColor: theme.control.background,
   },
   circleWrapper: {
     ...StyleSheet.absoluteFill,
