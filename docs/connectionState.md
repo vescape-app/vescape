@@ -88,11 +88,48 @@ Commands call native only:
 
 ## Auto-connect
 
-JS controls permissions. After permissions are granted, JS may send connect intent
-if settings allow auto-connect and native board phase is `idle` or `error`.
+Auto Connect begins with a native five-second Board Presence Scan on every foreground
+entry. JS never triggers or owns this scan. JS renders the native deadline, observations,
+pause state, and decisions.
 
-Native owns the actual connection after that. The foreground service keeps BLE work
-alive while JS is backgrounded or frozen.
+The scan watches saved BLE ids for all linked Boards:
+
+- The selected Board may promote into a Board Session when the global `autoConnect`
+  setting is on and no Automatic Connection Pause applies.
+- A non-selected Board never connects automatically. Native may report it for a
+  short-lived switch-and-connect hint.
+- No Boards, no Board Link, disabled Bluetooth, and missing permission produce named skip
+  reasons rather than silent returns.
+- Bluetooth initialization does not consume the five-second window. The clock starts once
+  the scanner becomes ready.
+
+Android creates the existing core service for the scan. It stays non-foreground while the
+app is visible. If the app backgrounds during the scan, the same service promotes to a
+foreground service and shows a progress notification with a **Stop search** action. A match
+promotes the service into Board Session work. Timeout or Stop search removes the service and
+notification. iOS uses its native coordinator and a short background task for the same
+handoff; it starts no Live Activity before a Board Session exists.
+
+An explicit Connect creates a Connect Intent immediately. It starts the Android foreground
+service or iOS Live Activity and keeps searching through backgrounding and signal loss until
+Disconnect, End ride, Exit, task removal, platform force-quit, or configured Auto Close.
+
+Native resolves competing work in this order:
+
+1. Active or reconnecting Board Session
+2. Explicit Connect Intent
+3. Android Auto Start
+4. Auto Connect promotion
+5. Alternative-Board hint
+
+Android Auto Start remains per Board. It may wake the app, switch selection, and connect its
+armed Board when no Board Session or Connect Intent owns the connection. Add Board scans and
+Board Probes own the scanner while active, so the foreground Presence Scan yields to them.
+
+Manual Disconnect, End ride, Exit, and Android task removal create a board-scoped,
+time-bounded Automatic Connection Pause shared by Auto Connect and Auto Start. Explicit
+Connect clears it. Mechanical teardown, probe cancellation, Stop search, and scan timeout do
+not create a pause. Presence still reports a paused Board as nearby.
 
 ### Fast Connect Stability
 

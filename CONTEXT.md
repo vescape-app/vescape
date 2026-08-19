@@ -40,6 +40,22 @@ _Avoid_: Refloat version, firmware string, fw version, tune version
 A pre-save check that a scanned BLE peripheral can produce telemetry over at least one Board Transport and produce a Board Link. The rider-facing UI calls running a Board Probe "linking" (and re-running it "re-linking") — the screen, buttons, and progress timeline say "link", while the domain and code keep "Board Probe" for the act and "Board Link" for the saved result.
 _Avoid_: Validation, test connection, scan
 
+**Board Presence Scan**:
+A bounded BLE search that determines selected Board availability and may report other linked Boards as alternatives without connecting them.
+_Avoid_: Auto-connect, Board Probe, linking
+
+**Connect Intent**:
+An explicit rider request to find and maintain a Board Session until the rider stops it, including while the Board is unavailable.
+_Avoid_: Auto-connect, connection attempt, scan
+
+**Automatic Connection Pause**:
+A rider-started, time-bounded suppression of automatic Board Session creation for one selected Board that never blocks an explicit Connect Intent.
+_Avoid_: Manual-stop tombstone, auto-start cooldown, disconnect flag
+
+**Auto Start**:
+A per-Board rider permission for the app to wake, select that Board, and establish a Board Session when Android reports it nearby.
+_Avoid_: Auto Connect, app launch, Board Presence Scan
+
 **Live State**:
 The current app-visible snapshot of board connection, GPS, scan, recording, and recent telemetry state.
 _Avoid_: UI state, cached status
@@ -448,6 +464,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - "device" may mean the phone BLE peripheral, the saved app board, or the motor controller; resolved term: use **Board** for the saved rideable device.
 - "scan" may mean BLE discovery or telemetry validation; resolved term: use **Board Probe** for the pre-save telemetry check after selecting a BLE peripheral. UI copy says "linking" for this; code/domain keep "Board Probe".
 - "paired" may mean a selected BLE peripheral or a Board that is ready to connect; resolved term: use **Board Link** for the saved, probed reachability details.
+- "connect" may mean checking whether a Board is nearby or persistently trying to establish a Board Session; resolved terms: **Board Presence Scan** for the bounded check and **Connect Intent** for the rider-owned persistent request.
+- "manual stop" previously meant both rider intent and mechanical teardown; resolved: only an explicit rider Disconnect or Exit creates an **Automatic Connection Pause**.
 - `bleId` without a **Board Transport** is an invalid partial **Board Link**; resolved: save the whole **Board Link** or none of it.
 - "firmware mismatch" may sound like a failed connection; resolved term: use **Stale Board Link** when telemetry still works but saved probe facts need re-linking.
 - "board hardware or firmware changed" is rider-facing copy for a **Stale Board Link**.
