@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
@@ -37,6 +37,17 @@ export function MapControls({
   const navigationExpanded = showNavigationSelector && mapSelector === 'navigation'
   const styleExpanded = mapSelector === 'style'
   const selectorOpen = navigationExpanded || styleExpanded
+
+  // Picking a basemap collapses the style selector shortly after: the rider saw the change land on
+  // the map, so the expanded list no longer earns its space.
+  const lastStyleKeyRef = useRef(mapStyleKey)
+  useEffect(() => {
+    const styleChanged = lastStyleKeyRef.current !== mapStyleKey
+    lastStyleKeyRef.current = mapStyleKey
+    if (!styleChanged || !styleExpanded) return
+    const timer = setTimeout(() => setMapSelector(null), 1500)
+    return () => clearTimeout(timer)
+  }, [mapStyleKey, setMapSelector, styleExpanded])
 
   return (
     <View pointerEvents="box-none" style={styles.mapControlsLayer}>
