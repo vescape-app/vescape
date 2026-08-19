@@ -322,7 +322,20 @@ internal final class BoardSessionController: VescGattListener {
   /// indefinitely while Auto Close is disabled. #409 creates one at the end of linking.
   var connectIntent: ConnectIntent?
 
-  var presenceScanState: PresenceScanState { presenceScan.state }
+  /// An intent past its Auto Close deadline no longer owns anything, so it must not keep the
+  /// Presence Scan skipping. Expiry is a clock comparison on read, never a timer.
+  var hasActiveConnectIntent: Bool {
+    guard let connectIntent else { return false }
+    return !ConnectIntentPolicy.isExpired(connectIntent, nowMs: ConnectionTrace.now())
+  }
+
+  /// Observations age out thirty seconds after their last advertisement (#408). Pruning on read keeps
+  /// that a clock comparison — nothing has to be scheduled to forget.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `presenceScan`
+  var presenceScanState: PresenceScanState {
+    AlternativeHints.prune(presenceScan.state, nowMs: ConnectionTrace.now())
+  }
 
   /// Exclusive scanner ownership held while the Add Board scan runs (ADR 0035).
   private var addBoardScan: ScanOperation?
@@ -353,7 +366,7 @@ internal final class BoardSessionController: VescGattListener {
       scanPermissionGranted: presenceScanPort.scanPermissionGranted(),
       scannerAvailable: presenceScanPort.scannerAvailable(),
       sessionActive: connectedBoardId != nil || session != nil,
-      connectIntentActive: connectIntent != nil,
+      connectIntentActive: hasActiveConnectIntent,
       activeScanPurpose: ScannerCoordinator.shared.activePurpose
     )
     let autoConnect = settings["autoConnect"] as? Bool ?? true
@@ -404,6 +417,8 @@ internal final class BoardSessionController: VescGattListener {
     let resolved = (boardId?.isEmpty == false ? boardId : nil)
       ?? ((settings["selectedBoardId"] ?? nil) as? String)
     guard let resolved, !resolved.isEmpty else { return nil }
+    // A rider stop ends the explicit Connect too; nothing may keep searching past it.
+    clearConnectIntent(ConnectIntentEnd.from(pauseSource: source))
     let minutes =
       AppDataRepository.automaticConnectionPauseMinutes(settings["automaticConnectionPauseMinutes"] ?? nil) ?? 60
     let workflow = ConnectionTrace.start(
@@ -424,18 +439,71 @@ internal final class BoardSessionController: VescGattListener {
     return pause
   }
 
-  /// Explicit Connect semantics: clear this Board's pause before the session work starts.
+  /// **The** application-level explicit-Connect entry point (ADR 0035). Every rider-initiated
+  /// Connect goes through here — the Connect pill, Connect now, and Switch & Connect — so explicit
+  /// semantics exist in one place: clear that Board's Automatic Connection Pause, take durable
+  /// Connect Intent ownership, and record the selection. Starting the actual session stays with the
+  /// caller, which owns the platform's session plumbing.
   ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `clearConnectionPause`
-  func clearConnectionPause(boardId: String?, origin: String = ConnectionTraceOrigin.explicitConnect) {
-    guard let boardId, !boardId.isEmpty else { return }
+  /// `origin` distinguishes the callers in the trace; `alternativeHintSwitch` additionally records
+  /// that a hint was accepted. #409 reuses this for connect-after-linking.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+  func beginExplicitConnect(boardId: String, origin: String = ConnectionTraceOrigin.explicitConnect) {
+    guard !boardId.isEmpty else { return }
     let workflow = ConnectionTrace.start(
       origin: origin,
       owner: ConnectionTraceOwner.connectIntent,
       fields: [ConnectionTraceField.boardId: boardId]
     )
+    if origin == ConnectionTraceOrigin.alternativeHintSwitch {
+      workflow.event(
+        ConnectionTraceEvent.alternativeHintAccepted,
+        fields: [ConnectionTraceField.boardId: boardId]
+      )
+    }
     ConnectionPauseStore.shared.clear(boardId: boardId, workflow: workflow)
+    createConnectIntent(boardId: boardId, workflow: workflow)
+    workflow.event(ConnectionTraceEvent.boardSelected, fields: [ConnectionTraceField.boardId: boardId])
     workflow.finish(decision: ConnectionTraceDecision.completed, reason: ConnectionTraceReason.matched)
+  }
+
+  /// A rider Connect owns the connection until it succeeds, the rider ends it, or Auto Close expires.
+  private func createConnectIntent(boardId: String, workflow: ConnectionWorkflow) {
+    let settings = appData.getSettings()
+    let enabled = ((settings["autoCloseEnabled"] ?? nil) as? Bool) == true
+    let minutes = ((settings["autoCloseDelayMinutes"] ?? nil) as? NSNumber)?.int64Value ?? 15
+    let intent = ConnectIntent(
+      boardId: boardId,
+      createdAtMs: ConnectionTrace.now(),
+      autoCloseMs: enabled ? minutes * 60_000 : nil
+    )
+    connectIntent = intent
+    workflow.event(
+      ConnectionTraceEvent.connectIntentCreated,
+      fields: [
+        ConnectionTraceField.boardId: boardId,
+        ConnectionTraceField.deadlineAt: intent.autoCloseAtMs,
+      ]
+    )
+  }
+
+  /// End the explicit Connect Intent. Reaching `connected`, a rider stop, and Auto Close all land here.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `clearConnectIntent`
+  func clearConnectIntent(_ end: ConnectIntentEnd) {
+    guard let intent = connectIntent else { return }
+    connectIntent = nil
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.explicitConnect,
+      owner: ConnectionTraceOwner.connectIntent,
+      fields: [ConnectionTraceField.boardId: intent.boardId]
+    )
+    workflow.event(
+      ConnectionTraceEvent.connectIntentCleared,
+      fields: [ConnectionTraceField.boardId: intent.boardId, ConnectionTraceField.reason: end.reason]
+    )
+    workflow.finish(decision: ConnectionTraceDecision.completed, reason: end.reason)
   }
 
   /// **Stop search**, or an exclusive scanner owner taking over.
@@ -1677,6 +1745,8 @@ internal final class BoardSessionController: VescGattListener {
       syncResumeMarkerRecording()
     }
     if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
+    // The explicit Connect got what it asked for; the Board Session owns the connection from here.
+    clearConnectIntent(.connected)
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
     setPhase(.connected)
   }

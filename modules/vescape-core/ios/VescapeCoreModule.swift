@@ -482,19 +482,23 @@ public class VescapeCoreModule: Module {
       promise.resolve(nil)
     }
 
+    Function("dismissAlternativeHint") { (boardId: String) in
+      AlternativeHintTrace.dismissed(boardId: boardId)
+    }
+
+    AsyncFunction("switchToAlternativeBoard") { (boardId: String, promise: Promise) in
+      self.explicitConnect(
+        boardId: boardId,
+        origin: ConnectionTraceOrigin.alternativeHintSwitch,
+        promise: promise
+      )
+    }
+
     AsyncFunction("selectBoard") { (boardId: String, promise: Promise) in
-      // Explicit Connect: clear this Board's Automatic Connection Pause before the session starts.
-      self.coordinator.clearConnectionPause(boardId: boardId)
-      self.selectedBoardId = boardId
-      self.appData.updateSetting("selectedBoardId", rawValue: boardId)
-      guard let config = self.connectConfig(boardId: boardId) else {
-        promise.reject("NO_LINK", "Board has no Board Link: \(boardId)")
-        return
-      }
-      self.coordinator.connect(
-        config: config,
-        onSuccess: { promise.resolve(nil) },
-        onError: { code, message in promise.reject(code, message) }
+      self.explicitConnect(
+        boardId: boardId,
+        origin: ConnectionTraceOrigin.explicitConnect,
+        promise: promise
       )
     }
 
@@ -1170,6 +1174,25 @@ public class VescapeCoreModule: Module {
 
   /// Resolve the selected board's connect config. The resolution itself lives on
   /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
+  /// The one explicit-Connect path behind every rider Connect (ADR 0035): pause clear, durable
+  /// Connect Intent, recorded selection, then the session. `origin` only names who asked.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `selectBoard`
+  private func explicitConnect(boardId: String, origin: String, promise: Promise) {
+    coordinator.beginExplicitConnect(boardId: boardId, origin: origin)
+    selectedBoardId = boardId
+    appData.updateSetting("selectedBoardId", rawValue: boardId)
+    guard let config = connectConfig(boardId: boardId) else {
+      promise.reject("NO_LINK", "Board has no Board Link: \(boardId)")
+      return
+    }
+    coordinator.connect(
+      config: config,
+      onSuccess: { promise.resolve(nil) },
+      onError: { code, message in promise.reject(code, message) }
+    )
+  }
+
   private func connectConfig(boardId: String) -> BoardConnectConfig? {
     BoardConnectConfig.resolve(
       boardId: boardId,

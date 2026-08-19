@@ -29,6 +29,17 @@ internal enum ConnectIntentEnd {
   case sessionTeardown
   case autoClose
 
+  /// The rider actions that arm an Automatic Connection Pause end the Connect Intent too — the same
+  /// four sources, mapped once so the two lifetimes cannot drift apart.
+  static func from(pauseSource: String) -> ConnectIntentEnd {
+    switch pauseSource {
+    case ConnectionTraceReason.endRide: return .endRide
+    case ConnectionTraceReason.appExit: return .exit
+    case ConnectionTraceReason.taskRemoved: return .forceQuit
+    default: return .disconnect
+    }
+  }
+
   var reason: String {
     switch self {
     case .disconnect: return ConnectionTraceReason.manualDisconnect

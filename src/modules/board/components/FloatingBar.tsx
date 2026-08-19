@@ -11,6 +11,7 @@ import {
   type FloatingStatusPillModel,
 } from '@/components/controls/FloatingBar'
 import { routes } from '@/navigation/routes'
+import { AlternativeHintPill } from '@/modules/board/components/AlternativeHintPill'
 import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
@@ -248,6 +249,10 @@ export function FloatingBar({
 
   return (
     <FloatingBarFrame bottomOffset={bottomOffset}>
+      {/* A nearby linked Board the rider may switch to. Product surface, not rider tooling, so it is
+          not behind the dev-controls gate — and it renders above the status pill because it is an
+          offer to answer rather than a state to read. */}
+      <AlternativeHintPill />
       {/* Connection state — "No board added", "Connecting…", link warnings — is rider tooling that
           only appears when something is wrong or in flight. None of it belongs in a store frame. */}
       {uiPill && showDevControls ? <FloatingStatusPill pill={uiPill} /> : null}

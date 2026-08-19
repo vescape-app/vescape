@@ -258,6 +258,13 @@ internal class BoardSessionController(private val service: CoreForegroundService
     @Volatile
     internal var connectIntent: ConnectIntent? = null
 
+    /**
+     * An intent past its Auto Close deadline no longer owns anything, so it must not keep the
+     * Presence Scan skipping. Expiry is a clock comparison on read, never a timer.
+     */
+    internal val hasActiveConnectIntent: Boolean
+        get() = connectIntent?.let { !ConnectIntentPolicy.isExpired(it, System.currentTimeMillis()) } == true
+
     private val notificationController by lazy {
         NotificationController(
             service = service,
@@ -883,7 +890,7 @@ private var wearAutoLaunchOnConnect = true
                 scanPermissionGranted = presenceScanPort.scanPermissionGranted(),
                 scannerAvailable = presenceScanPort.scannerAvailable(),
                 sessionActive = boardConfig != null,
-                connectIntentActive = connectIntent != null,
+                connectIntentActive = hasActiveConnectIntent,
                 activeScanPurpose = ScannerCoordinator.shared.activePurpose,
             )
             scheduler.post {
@@ -1013,7 +1020,7 @@ private var wearAutoLaunchOnConnect = true
                 selectedBoardId = settings.selectedBoardId,
                 autoStartEnabled = settings.companionPresenceEnabled,
                 sessionActive = boardConfig != null,
-                connectIntentActive = connectIntent != null,
+                connectIntentActive = hasActiveConnectIntent,
                 currentOwner = ConnectionOwnership.shared.current,
                 activeScanPurpose = ScannerCoordinator.shared.activePurpose,
                 boardProbeActive = BoardProbeAutoStartGate.isActive(),
@@ -1142,8 +1149,8 @@ private var wearAutoLaunchOnConnect = true
         CoreForegroundService.appDataScope.launch {
             val appCtx = service.applicationContext
             val boardId = AppDataRepository.get(appCtx).getTypedSettings().selectedBoardId ?: return@launch
-            // **Connect now** is an explicit Connect: it clears this Board's Automatic Connection Pause.
-            clearConnectionPause(appCtx, boardId)
+            // **Connect now** is an explicit Connect, with the full explicit semantics.
+            beginExplicitConnect(appCtx, boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = recordingEnabled)
             } catch (e: Exception) {
@@ -1202,6 +1209,10 @@ private var wearAutoLaunchOnConnect = true
     }
 
     fun consumePendingStart() {
+        // An explicit Connect raised before this controller existed still owns the connection.
+        CoreForegroundService.claimPendingExplicitConnect()?.let {
+            beginExplicitConnect(service.applicationContext, it.boardId, it.origin)
+        }
         val start = CoreForegroundService.claimPendingStart() ?: return
         beginSession(start)
     }
@@ -1317,6 +1328,8 @@ private var wearAutoLaunchOnConnect = true
             // Exit and task removal can arrive with no live session; the rider still means "this
             // Board", which is the selected one.
             val pausedBoardId = boardId?.takeIf { it.isNotBlank() } ?: settings.selectedBoardId ?: return@launch
+            // A rider stop ends the explicit Connect too; nothing may keep searching past it.
+            scheduler.post { clearConnectIntent(ConnectIntentEnd.fromPauseSource(source)) }
             val minutes = settings.automaticConnectionPauseMinutes
             val workflow = ConnectionTrace.start(
                 appCtx,
@@ -1333,17 +1346,93 @@ private var wearAutoLaunchOnConnect = true
         }
     }
 
-    /** Explicit Connect semantics: clear this Board's pause before the session work starts. */
-    private fun clearConnectionPause(appCtx: Context, boardId: String) {
+    /**
+     * **The** application-level explicit-Connect entry point (ADR 0035). Every rider-initiated
+     * Connect goes through here — the Connect pill, **Connect now**, and Switch & Connect — so
+     * explicit semantics exist in one place: clear that Board's Automatic Connection Pause, take
+     * durable Connect Intent ownership, and record the selection. Starting the actual session stays
+     * with the caller, which owns the platform's session plumbing.
+     *
+     * `origin` distinguishes the callers in the trace; [ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH]
+     * additionally records that a hint was accepted. #409 reuses this for connect-after-linking.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+     */
+    fun beginExplicitConnect(
+        appCtx: Context,
+        boardId: String,
+        origin: String = ConnectionTraceOrigin.EXPLICIT_CONNECT,
+    ) {
+        if (boardId.isBlank()) return
+        val workflow = ConnectionTrace.start(
+            appCtx,
+            origin,
+            ConnectionTraceOwner.CONNECT_INTENT,
+            mapOf(ConnectionTraceField.BOARD_ID to boardId),
+        )
+        if (origin == ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH) {
+            workflow.event(
+                ConnectionTraceEvent.ALTERNATIVE_HINT_ACCEPTED,
+                mapOf(ConnectionTraceField.BOARD_ID to boardId),
+            )
+        }
+        ConnectionPauseStore.clear(appCtx, boardId, workflow)
+        createConnectIntent(appCtx, boardId, workflow)
+        workflow.event(ConnectionTraceEvent.BOARD_SELECTED, mapOf(ConnectionTraceField.BOARD_ID to boardId))
+        workflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+    }
+
+    /**
+     * A rider Connect owns the connection until it succeeds, the rider ends it, or Auto Close
+     * expires. The Auto Close window lives in settings, so the intent is built off the main thread
+     * and adopted on it.
+     */
+    private fun createConnectIntent(appCtx: Context, boardId: String, workflow: ConnectionWorkflow) {
+        val createdAtMs = System.currentTimeMillis()
+        CoreForegroundService.appDataScope.launch {
+            val settings = AppDataRepository.get(appCtx).getTypedSettings()
+            val intent = ConnectIntent(
+                boardId = boardId,
+                createdAtMs = createdAtMs,
+                autoCloseMs = if (settings.autoCloseEnabled) settings.autoCloseDelayMinutes * 60_000L else null,
+            )
+            scheduler.post { connectIntent = intent }
+            workflow.event(
+                ConnectionTraceEvent.CONNECT_INTENT_CREATED,
+                mapOf(
+                    ConnectionTraceField.BOARD_ID to boardId,
+                    ConnectionTraceField.DEADLINE_AT to intent.autoCloseAtMs,
+                ),
+            )
+        }
+    }
+
+    /**
+     * End the explicit Connect Intent. Reaching `Connected`, a rider stop, and Auto Close all land
+     * here.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `clearConnectIntent`
+     */
+    fun clearConnectIntent(end: ConnectIntentEnd) {
+        val intent = connectIntent ?: return
+        connectIntent = null
+        val appCtx = service.applicationContext
         val workflow = ConnectionTrace.start(
             appCtx,
             ConnectionTraceOrigin.EXPLICIT_CONNECT,
             ConnectionTraceOwner.CONNECT_INTENT,
-            mapOf(ConnectionTraceField.BOARD_ID to boardId),
+            mapOf(ConnectionTraceField.BOARD_ID to intent.boardId),
         )
-        ConnectionPauseStore.clear(appCtx, boardId, workflow)
-        workflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+        workflow.event(
+            ConnectionTraceEvent.CONNECT_INTENT_CLEARED,
+            mapOf(
+                ConnectionTraceField.BOARD_ID to intent.boardId,
+                ConnectionTraceField.REASON to end.reason,
+            ),
+        )
+        workflow.finish(ConnectionTraceDecision.COMPLETED, end.reason)
     }
+
 
     private fun startGpsMonitoring() {
         isStoppingService = false
@@ -2190,6 +2279,8 @@ private var wearAutoLaunchOnConnect = true
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
         if (connectionSoundsEnabled) alertFeedback.playConnect()
         maybeLaunchWatchMirror()
+        // The explicit Connect got what it asked for; the Board Session owns the connection now.
+        clearConnectIntent(ConnectIntentEnd.Connected)
         transitionBoardPhase(BoardPhase.Connected)
     }
 
@@ -2869,7 +2960,9 @@ private var wearAutoLaunchOnConnect = true
                 remoteTiltPhase = remoteTiltController.phase,
                 remoteTiltDecay = remoteTiltController.decayProgress,
                 linkIntegrity = boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
-                presenceScan = presenceScan.state,
+                // Observations age out thirty seconds after their last advertisement (#408). Pruning
+                // on read keeps that a clock comparison — nothing has to be scheduled to forget.
+                presenceScan = AlternativeHints.prune(presenceScan.state, System.currentTimeMillis()),
                 connectionPause = ConnectionPauseStore.active(
                     service.applicationContext,
                     settings.selectedBoardId,

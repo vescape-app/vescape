@@ -96,6 +96,9 @@ internal data class PendingStart(
 
 internal data class PendingStop(val onSuccess: () -> Unit)
 
+/** An explicit Connect raised before the session controller existed. */
+internal data class PendingExplicitConnect(val boardId: String, val origin: String)
+
 /**
  * Thin Android [Service] shell. Owns lifecycle (foreground notification, START/STOP intents) and the
  * static JS bridge, delegating all durable session state and orchestration to [BoardSessionController].
@@ -111,6 +114,7 @@ class CoreForegroundService : Service() {
         internal var pendingConfigRead: PendingConfigRead? = null
         internal var pendingConfigWrite: PendingConfigWrite? = null
         internal var pendingGpsStart = false
+        internal var pendingExplicitConnect: PendingExplicitConnect? = null
         internal var pendingGroupRideUrl: String? = null
         internal val appDataScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val alertRulesGeneration = AtomicLong(0)
@@ -139,6 +143,25 @@ class CoreForegroundService : Service() {
 
         internal fun claimPendingGpsStart(): Boolean = synchronized(pendingLock) {
             pendingGpsStart.also { pendingGpsStart = false }
+        }
+
+        internal fun claimPendingExplicitConnect(): PendingExplicitConnect? = synchronized(pendingLock) {
+            pendingExplicitConnect.also { pendingExplicitConnect = null }
+        }
+
+        /**
+         * Explicit Connect, from wherever the rider started it (ADR 0035, #408). The Connect Intent
+         * lives on the session controller, so a Connect raised before the service exists is parked
+         * here and claimed the moment the controller comes up.
+         */
+        fun beginExplicitConnect(context: Context, boardId: String, origin: String) {
+            val appCtx = context.applicationContext
+            val controller = instance?.controller
+            if (controller != null) {
+                controller.beginExplicitConnect(appCtx, boardId, origin)
+                return
+            }
+            synchronized(pendingLock) { pendingExplicitConnect = PendingExplicitConnect(boardId, origin) }
         }
 
         internal fun claimPendingGroupRideUrl(): String? = synchronized(pendingLock) {

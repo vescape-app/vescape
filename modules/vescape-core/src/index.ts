@@ -1886,7 +1886,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateAlertTest(value: number): void
   stopAlertTest(): void
   selectBoard(boardId: string): Promise<void>
+  switchToAlternativeBoard(boardId: string): Promise<void>
   stopBoard(): Promise<void>
+  dismissAlternativeHint(boardId: string): void
   probeBoardLink(bleId: string, probeId: string): Promise<BoardProbeResult>
   cancelBoardProbe(probeId: string): void
   setDebugRecordingEnabled(enabled: boolean): void
@@ -2265,7 +2267,14 @@ export function stopAlertTest(): void {
   }
 }
 
-/** Select saved board by app board id. Native reads BLE id/name from its DB and owns connect. */
+/**
+ * Explicit Connect (ADR 0035). Native reads BLE id/name from its DB and owns the connect: it clears
+ * this Board's Automatic Connection Pause, creates a durable Connect Intent, and records the
+ * selection.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+ */
 export async function selectBoard(boardId: string): Promise<void> {
   if (E2E_ENABLED) {
     e2eFake.selectBoard(boardId)
@@ -2273,6 +2282,35 @@ export async function selectBoard(boardId: string): Promise<void> {
   }
 
   return native.selectBoard(boardId)
+}
+
+/**
+ * Switch & Connect on an advisory switch hint (ADR 0035, #408). Identical explicit-Connect semantics
+ * to {@link selectBoard} — native runs the same path — and differs only in the connection-trace
+ * origin it records, which native owns so the trace vocabulary stays native-side.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+ */
+export async function switchToAlternativeBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) {
+    e2eFake.selectBoard(boardId)
+    return
+  }
+
+  return native.switchToAlternativeBoard(boardId)
+}
+
+/**
+ * Acknowledge one advisory switch hint. Purely a trace: native arms no Automatic Connection Pause,
+ * changes no selection, and takes no ownership — the queue itself is JS-local (ADR 0035, #408).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/AlternativeHints.kt `AlternativeHintTrace`
+ * @parity /modules/vescape-core/ios/connection/AlternativeHints.swift `AlternativeHintTrace`
+ */
+export function dismissAlternativeHint(boardId: string): void {
+  if (E2E_ENABLED) return
+  native.dismissAlternativeHint(boardId)
 }
 
 /** Stop native board session. GPS monitoring may continue independently. */

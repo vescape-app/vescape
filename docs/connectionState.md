@@ -137,8 +137,8 @@ The scan watches saved BLE ids for all linked Boards:
 
 - The selected Board may promote into a Board Session when the global `autoConnect`
   setting is on and no Automatic Connection Pause applies.
-- A non-selected Board never connects automatically. Native may report it for a
-  short-lived switch-and-connect hint.
+- A non-selected Board never connects automatically. Native reports it, from its
+  advertisement alone, as a short-lived switch-and-connect hint.
 - No Boards, no Board Link, disabled Bluetooth, and missing permission produce named skip
   reasons rather than silent returns.
 - Bluetooth initialization does not consume the five-second window. The clock starts once
@@ -181,6 +181,7 @@ The rules are pure and unit-tested on both platforms:
 | Explicit Connect lifetime           | `ConnectIntent` / `ConnectIntentPolicy`          |
 | Automatic Connection Pause          | `ConnectionPausePolicy` / `ConnectionPauseStore` |
 | Scan run loop                       | `BoardPresenceScan` over a `PresenceScanPort`    |
+| Alternative-Board hints             | `AlternativeHints`                               |
 
 Every scan takes an operation token from `ScannerCoordinator`; a BLE callback that cannot prove it
 owns the current token is dropped, because scan callbacks outlive their operation.
@@ -216,6 +217,41 @@ evaluates the _detected_ Board and Switch & Connect clears the _target_ Board.
   other source, so a mechanical path cannot start suppressing Auto Connect by accident.
 - Clears: explicit Connect, **Connect now**, Switch & Connect.
 - Does nothing: opening Vescape, foregrounding, plain Board selection.
+
+### Alternative-Board hints
+
+A Presence Scan observation of a linked **non-selected** Board becomes an advisory switch hint. It is
+built from advertisements only — a non-selected observation never opens GATT and never changes
+selection.
+
+- Observations are deduplicated by saved **Board id**. A repeated advertisement refreshes the
+  existing observation's timestamp and RSSI in place, so discovery order survives and no Board is
+  ever queued twice.
+- An observation expires `ALTERNATIVE_HINT_TTL_MS` (thirty seconds) after its **last**
+  advertisement. Like the pause, expiry is a clock comparison on read: native prunes every snapshot,
+  JS re-checks on a one-second tick.
+- JS shows **one** hint at a time, in discovery order, in the FloatingBar.
+- **Later** is a local acknowledgement. It reveals the next queued Board, arms no Automatic
+  Connection Pause, and changes no selection or ownership. Native records it only as
+  `alternative_hint_dismissed`.
+- **Switch** goes through the same explicit-Connect path as the Connect pill
+  (`BoardSessionController.beginExplicitConnect`): it clears the **target** Board's pause, creates a
+  durable Connect Intent, and records the selection. It differs only in trace origin
+  (`alternative_hint_switch`, which also emits `alternative_hint_accepted`).
+- Selected-Board discovery keeps running while hints are visible; `alternative_hint` is the lowest
+  connection owner, so a connected Board Session clears the whole queue.
+
+### Explicit Connect
+
+`beginExplicitConnect(boardId, origin)` on both `BoardSessionController`s is the single
+application-level explicit-Connect path: pause clear, Connect Intent creation, and the recorded
+`board_selected`. Starting the session stays with the caller, which owns the platform's session
+plumbing. Every rider Connect routes through it — the Connect pill (`selectBoard`), **Connect now**,
+and Switch & Connect (`switchToAlternativeBoard`) — and `origin` only names who asked.
+
+The Connect Intent it creates ends when the session reaches `connected`, when a rider stop arms an
+Automatic Connection Pause, or when its Auto Close deadline passes (a clock comparison on read, so
+an expired intent stops blocking the Presence Scan without a timer).
 
 Duration comes from `automaticConnectionPauseMinutes` (0 = never pause). It migrated from the
 pre-#406 Android-only `companionPresenceCooldownMinutes`: a stored value is read through the old

@@ -7,6 +7,7 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
+import expo.modules.vescapecore.connection.AlternativeHintTrace
 import expo.modules.vescapecore.connection.ScanAcquisition
 import expo.modules.vescapecore.connection.ScanOperation
 import expo.modules.vescapecore.connection.ScanPurpose
@@ -16,13 +17,7 @@ import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
 import expo.modules.vescapecore.service.CompanionPresence
 import expo.modules.vescapecore.service.CoreForegroundService
-import expo.modules.vescapecore.connection.ConnectionPauseStore
-import expo.modules.vescapecore.diagnostics.ConnectionTrace
-import expo.modules.vescapecore.diagnostics.ConnectionTraceDecision
-import expo.modules.vescapecore.diagnostics.ConnectionTraceField
 import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
-import expo.modules.vescapecore.diagnostics.ConnectionTraceOwner
-import expo.modules.vescapecore.diagnostics.ConnectionTraceReason
 import expo.modules.vescapecore.recording.DebugRecordingStore
 import expo.modules.vescapecore.replay.ReplayRecordings
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -564,7 +559,13 @@ class VescapeCoreModule : Module() {
     }
 
     AsyncFunction("selectBoard") Coroutine { boardId: String ->
-      selectBoard(boardId)
+      selectBoard(boardId, ConnectionTraceOrigin.EXPLICIT_CONNECT)
+    }
+    AsyncFunction("switchToAlternativeBoard") Coroutine { boardId: String ->
+      selectBoard(boardId, ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH)
+    }
+    Function("dismissAlternativeHint") { boardId: String ->
+      AlternativeHintTrace.dismissed(context.applicationContext, boardId)
     }
     AsyncFunction("setCompanionPresenceEnabled") { enabled: Boolean, promise: Promise ->
       companionPresence.setEnabled(enabled, promise)
@@ -1080,17 +1081,10 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
-  private suspend fun selectBoard(boardId: String) {
+  private suspend fun selectBoard(boardId: String, origin: String) {
     val appCtx = context.applicationContext
-    // Explicit Connect: clear this Board's Automatic Connection Pause before the session starts.
-    val pauseWorkflow = ConnectionTrace.start(
-      appCtx,
-      ConnectionTraceOrigin.EXPLICIT_CONNECT,
-      ConnectionTraceOwner.CONNECT_INTENT,
-      mapOf(ConnectionTraceField.BOARD_ID to boardId),
-    )
-    ConnectionPauseStore.clear(appCtx, boardId, pauseWorkflow)
-    pauseWorkflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+    // The one explicit-Connect path: pause clear, durable Connect Intent, recorded selection.
+    CoreForegroundService.beginExplicitConnect(appCtx, boardId, origin)
     AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)

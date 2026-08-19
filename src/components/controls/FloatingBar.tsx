@@ -31,7 +31,32 @@ export interface FloatingStatusPillSpinner {
   cancelTestID?: string
 }
 
-export type FloatingStatusPillModel = FloatingStatusPillAction | FloatingStatusPillSpinner
+/**
+ * A pill that offers something the rider may take or wave away — two buttons, one accented. Unlike
+ * the action pill, the pill body itself is not pressable: an offer must be answered explicitly.
+ */
+export interface FloatingStatusPillOffer {
+  kind: 'offer'
+  text: string
+  /** Accent (right-hand) button — the thing being offered. */
+  acceptText: string
+  /** Quiet (left-hand) button — waving the offer away. */
+  dismissText: string
+  bg: string
+  border: string
+  textColor: string
+  acceptBg: string
+  onAccept: () => void
+  onDismiss: () => void
+  testID?: string
+  acceptTestID?: string
+  dismissTestID?: string
+}
+
+export type FloatingStatusPillModel =
+  | FloatingStatusPillAction
+  | FloatingStatusPillSpinner
+  | FloatingStatusPillOffer
 
 interface FloatingActionPillProps {
   icon: Icon
@@ -66,6 +91,35 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
           testID={pill.cancelTestID}
         >
           <Text style={styles.pillButtonText}>Cancel</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  if (pill.kind === 'offer') {
+    return (
+      <View
+        style={[styles.pill, { backgroundColor: pill.bg, borderColor: pill.border }]}
+        testID={pill.testID}
+      >
+        <Text style={[styles.pillText, { color: pill.textColor }]} numberOfLines={1}>
+          {pill.text}
+        </Text>
+        <Pressable
+          style={styles.pillButton}
+          android_ripple={interaction.ripple}
+          onPress={pill.onDismiss}
+          testID={pill.dismissTestID}
+        >
+          <Text style={styles.pillQuietButtonText}>{pill.dismissText}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.pillButton, { backgroundColor: pill.acceptBg }]}
+          android_ripple={interaction.ripple}
+          onPress={pill.onAccept}
+          testID={pill.acceptTestID}
+        >
+          <Text style={styles.pillButtonText}>{pill.acceptText}</Text>
         </Pressable>
       </View>
     )
@@ -172,6 +226,11 @@ const styles = StyleSheet.create({
     color: theme.palette.slate.textPrimary,
     fontSize: 12,
     fontWeight: '800',
+  },
+  pillQuietButtonText: {
+    color: theme.palette.slate.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   actionPill: {
     flexDirection: 'row',

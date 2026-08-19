@@ -237,7 +237,6 @@ internal final class BoardPresenceScan {
   private func onObserved(_ bleId: String, _ rssi: Int?) {
     guard let target = targets.first(where: { $0.bleId.caseInsensitiveCompare(bleId) == .orderedSame })
     else { return }
-    guard !state.observations.contains(where: { $0.boardId == target.boardId }) else { return }
     let observation = PresenceObservation(
       boardId: target.boardId,
       bleId: target.bleId,
@@ -246,8 +245,14 @@ internal final class BoardPresenceScan {
       observedAtMs: nowMs(),
       selected: target.selected
     )
-    state.observations.append(observation)
-    publish(state)
+    // Deduplicate by saved Board id. A repeated advertisement refreshes the existing observation in
+    // place — that is what makes expiry "thirty seconds after the *last* advertisement" — and never
+    // queues a second hint for the same Board.
+    let upsert = AlternativeHints.upsert(state.observations, observation)
+    var next = state
+    next.observations = upsert.observations
+    publish(next)
+    guard upsert.isNew else { return }
     workflow?.event(
       ConnectionTraceEvent.presenceScanObserved,
       fields: [
@@ -259,7 +264,19 @@ internal final class BoardPresenceScan {
     )
     // A non-selected Board is reported, never connected. The scan keeps running so its own Board can
     // still turn up before the deadline.
-    if target.selected { resolveMatch(target) }
+    if target.selected {
+      resolveMatch(target)
+    } else {
+      workflow?.event(
+        ConnectionTraceEvent.alternativeHintOffered,
+        fields: [
+          ConnectionTraceField.boardId: observation.boardId,
+          ConnectionTraceField.bleId: observation.bleId,
+          ConnectionTraceField.boardNickname: observation.name,
+          ConnectionTraceField.rssi: observation.rssi,
+        ]
+      )
+    }
   }
 
   private func resolveMatch(_ target: PresenceTarget) {

@@ -195,7 +195,6 @@ internal class BoardPresenceScan(
 
     private fun onObserved(bleId: String, rssi: Int?) {
         val target = targets.firstOrNull { it.bleId.equals(bleId, ignoreCase = true) } ?: return
-        if (state.observations.any { it.boardId == target.boardId }) return
         val observation = PresenceObservation(
             boardId = target.boardId,
             bleId = target.bleId,
@@ -204,7 +203,12 @@ internal class BoardPresenceScan(
             observedAtMs = nowMs(),
             selected = target.selected,
         )
-        publish(state.copy(observations = state.observations + observation))
+        // Deduplicate by saved Board id. A repeated advertisement refreshes the existing observation
+        // in place — that is what makes expiry "thirty seconds after the *last* advertisement" — and
+        // never queues a second hint for the same Board.
+        val upsert = AlternativeHints.upsert(state.observations, observation)
+        publish(state.copy(observations = upsert.observations))
+        if (!upsert.isNew) return
         workflow?.event(
             ConnectionTraceEvent.PRESENCE_SCAN_OBSERVED,
             mapOf(
@@ -216,7 +220,19 @@ internal class BoardPresenceScan(
         )
         // A non-selected Board is reported, never connected. The scan keeps running so its own
         // Board can still turn up before the deadline.
-        if (target.selected) resolveMatch(target)
+        if (target.selected) {
+            resolveMatch(target)
+        } else {
+            workflow?.event(
+                ConnectionTraceEvent.ALTERNATIVE_HINT_OFFERED,
+                mapOf(
+                    ConnectionTraceField.BOARD_ID to observation.boardId,
+                    ConnectionTraceField.BLE_ID to observation.bleId,
+                    ConnectionTraceField.BOARD_NICKNAME to observation.name,
+                    ConnectionTraceField.RSSI to observation.rssi,
+                ),
+            )
+        }
     }
 
     private fun resolveMatch(target: PresenceTarget) {

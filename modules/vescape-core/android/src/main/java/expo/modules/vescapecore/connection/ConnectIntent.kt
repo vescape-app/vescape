@@ -29,6 +29,20 @@ enum class ConnectIntentEnd(val reason: String) {
     Connected(ConnectionTraceReason.MATCHED),
     SessionTeardown(ConnectionTraceReason.MECHANICAL_TEARDOWN),
     AutoClose(ConnectionTraceReason.AUTO_CLOSE),
+    ;
+
+    companion object {
+        /**
+         * The rider actions that arm an Automatic Connection Pause end the Connect Intent too — the
+         * same four sources, mapped once so the two lifetimes cannot drift apart.
+         */
+        fun fromPauseSource(source: String): ConnectIntentEnd = when (source) {
+            ConnectionTraceReason.END_RIDE -> EndRide
+            ConnectionTraceReason.APP_EXIT -> Exit
+            ConnectionTraceReason.TASK_REMOVED -> ForceQuit
+            else -> Disconnect
+        }
+    }
 }
 
 /**
