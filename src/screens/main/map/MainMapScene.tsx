@@ -1,7 +1,8 @@
 import Mapbox, { Camera } from '@rnmapbox/maps'
 import type { ComponentProps, ComponentRef, RefObject } from 'react'
-import { Animated, StyleSheet } from 'react-native'
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
+import { theme } from '@/constants/theme'
 import { PhoneHeadingMapLayer } from '@/modules/map/components/PhoneHeadingMapLayer'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import type { MainViewState } from '@/screens/main/mainViewState'
@@ -25,6 +26,11 @@ interface MainMapSceneProps {
   mapStyle: ReturnType<typeof useResolvedMapStyle>
   rotationLocked: boolean
   onDidFinishLoadingMap: MapViewProps['onDidFinishLoadingMap']
+  onMapLoadingError: MapViewProps['onMapLoadingError']
+  mapLoading: boolean
+  mapLoadFailed: boolean
+  onRetryStyleLoad: () => void
+  styleRetryNonce: number
   onPress: MapViewProps['onPress']
   onLongPress: MapViewProps['onLongPress']
   onMapIdle: MapViewProps['onMapIdle']
@@ -72,6 +78,11 @@ export function MainMapScene({
   mapStyle,
   rotationLocked,
   onDidFinishLoadingMap,
+  onMapLoadingError,
+  mapLoading,
+  mapLoadFailed,
+  onRetryStyleLoad,
+  styleRetryNonce,
   onPress,
   onLongPress,
   onMapIdle,
@@ -116,6 +127,7 @@ export function MainMapScene({
       onTouchStart={onTouchStart}
     >
       <Mapbox.MapView
+        key={styleRetryNonce}
         ref={mapViewRef}
         style={styles.map}
         styleURL={mapStyle.styleURL}
@@ -129,6 +141,7 @@ export function MainMapScene({
         attributionEnabled={mapStyle.mapDetailsVisible}
         attributionPosition={{ bottom: 8, left: 92 }}
         onDidFinishLoadingMap={onDidFinishLoadingMap}
+        onMapLoadingError={onMapLoadingError}
         onPress={onPress}
         onLongPress={onLongPress}
         onMapIdle={onMapIdle}
@@ -199,6 +212,25 @@ export function MainMapScene({
         />
       </Mapbox.MapView>
       <MainMapOverlays {...overlays} />
+      {mapLoading && !mapLoadFailed && (
+        <View style={styles.styleLoading} pointerEvents="none">
+          <ActivityIndicator size="small" color={theme.neutral.textMuted} />
+        </View>
+      )}
+      {mapLoadFailed && (
+        <View style={styles.styleLoadFailed}>
+          <Text style={styles.styleLoadFailedTitle}>Map style failed to load</Text>
+          <Pressable
+            onPress={onRetryStyleLoad}
+            style={({ pressed }) => [
+              styles.styleLoadFailedButton,
+              pressed && styles.styleLoadFailedButtonPressed,
+            ]}
+          >
+            <Text style={styles.styleLoadFailedButtonText}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
     </Animated.View>
   )
 }
@@ -209,5 +241,46 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFill,
+  },
+  styleLoading: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0.3),
+  },
+  styleLoadFailed: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0.6),
+    paddingHorizontal: 28,
+  },
+  styleLoadFailedTitle: {
+    color: theme.palette.mono.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  styleLoadFailedButton: {
+    marginTop: 16,
+    backgroundColor: theme.neutral.surfaceDeep,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  styleLoadFailedButtonPressed: {
+    opacity: 0.7,
+  },
+  styleLoadFailedButtonText: {
+    color: theme.neutral.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
   },
 })
