@@ -15,12 +15,17 @@ import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
 import expo.modules.vescapecore.service.CompanionPresence
-import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.service.CoreForegroundService
+import expo.modules.vescapecore.connection.ConnectionPauseStore
+import expo.modules.vescapecore.diagnostics.ConnectionTrace
+import expo.modules.vescapecore.diagnostics.ConnectionTraceDecision
+import expo.modules.vescapecore.diagnostics.ConnectionTraceField
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOwner
+import expo.modules.vescapecore.diagnostics.ConnectionTraceReason
 import expo.modules.vescapecore.recording.DebugRecordingStore
 import expo.modules.vescapecore.replay.ReplayRecordings
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
-import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.buildSessionConfig
@@ -322,8 +327,8 @@ class VescapeCoreModule : Module() {
 
     OnActivityEntersForeground {
       frontendActive = true
-      // User opened the app again — re-arm companion auto start immediately.
-      CompanionRestartGate.clear(context.applicationContext)
+      // Opening or foregrounding Vescape deliberately does NOT clear an Automatic Connection
+      // Pause (ADR 0035, #406) — only an explicit Connect does.
       AppStatusCoordinator.get(context).refresh()
     }
     OnActivityEntersBackground {
@@ -475,7 +480,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.currentRemoteTiltState()
     }
     Function("setSelectedBoard") { boardId: String? ->
-      ManualDisconnectAutoStartGate.clear(context.applicationContext)
+      // Plain Board selection is not a Connect: it leaves the Automatic Connection Pause alone.
       runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
       companionPresence.refreshForSelectedBoard()
     }
@@ -1077,7 +1082,15 @@ key == "wearAutoLaunchOnConnect" ||
 
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
-    ManualDisconnectAutoStartGate.clear(appCtx)
+    // Explicit Connect: clear this Board's Automatic Connection Pause before the session starts.
+    val pauseWorkflow = ConnectionTrace.start(
+      appCtx,
+      ConnectionTraceOrigin.EXPLICIT_CONNECT,
+      ConnectionTraceOwner.CONNECT_INTENT,
+      mapOf(ConnectionTraceField.BOARD_ID to boardId),
+    )
+    ConnectionPauseStore.clear(appCtx, boardId, pauseWorkflow)
+    pauseWorkflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
     AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)

@@ -589,6 +589,22 @@ export interface PresenceScanState {
   reason: string | null
 }
 
+/**
+ * Board-scoped Automatic Connection Pause (ADR 0035). Disconnect, End ride, Exit, and Android task
+ * removal arm one; explicit Connect, Connect now, and Switch & Connect clear it. Presence still
+ * reports a paused Board — only automatic promotion is blocked.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ConnectionPause.kt `ConnectionPause`
+ * @parity /modules/vescape-core/ios/connection/ConnectionPause.swift `ConnectionPause`
+ */
+export interface ConnectionPauseState {
+  boardId: string
+  /** Absolute deadline in epoch ms. Expiry is native-owned; JS only renders the remainder. */
+  until: number
+  /** Rider action that armed it, from the shared connection-trace reason vocabulary. */
+  source: string
+}
+
 export interface LiveStateEvent {
   board: {
     phase: BoardPhase
@@ -619,6 +635,8 @@ export interface LiveStateEvent {
     error: string | null
   }
   presence: PresenceScanState
+  /** Automatic Connection Pause for the selected Board, or `null` when it is not paused. */
+  pause: ConnectionPauseState | null
   recording: {
     enabled: boolean
     paused: boolean
@@ -1141,7 +1159,12 @@ export interface AppSettings {
    * Android-only: minutes to pause companion auto start after the user exits the app
    * manually, so the board reappearing doesn't immediately relaunch it. 0 = off.
    */
-  companionPresenceCooldownMinutes: number
+  /**
+   * Automatic Connection Pause duration in minutes; 0 disables pausing. Stored values up to 1440
+   * stay valid (migrated from the pre-#406 `companionPresenceCooldownMinutes`), while the rider
+   * stepper offers up to 480 for new choices.
+   */
+  automaticConnectionPauseMinutes: number
   /**
    * Android-only: close the whole app (task + service) after `autoCloseDelayMinutes` without a
    * board connection. Does not pause companion auto start — the board reappearing relaunches.

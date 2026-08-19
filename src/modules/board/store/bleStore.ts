@@ -26,6 +26,7 @@ import {
   type ScanStatus,
   type LocationEvent,
   type LiveStateEvent,
+  type ConnectionPauseState,
   type PresenceScanState,
   type LinkIntegrity,
   type BmsEvent,
@@ -66,6 +67,12 @@ interface BleState {
    * @parity /modules/vescape-core/ios/connection/BoardPresenceScan.swift `PresenceScanState`
    */
   presence: PresenceScanState
+  /**
+   * Board-scoped Automatic Connection Pause for the selected Board (ADR 0035), or `null`.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ConnectionPause.kt `ConnectionPause`
+   * @parity /modules/vescape-core/ios/connection/ConnectionPause.swift `ConnectionPause`
+   */
+  connectionPause: ConnectionPauseState | null
   connectionSeq: number
   nativeStateReady: boolean
   devices: ScannedDevice[]
@@ -258,6 +265,7 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
     gpsStatus: state.gps.phase,
     scanStatus: state.scan.phase,
     presence: state.presence ?? IDLE_PRESENCE_SCAN,
+    connectionPause: state.pause ?? null,
     connectionSeq: state.board.connectionSeq,
     nativeStateReady: true,
     selectedBoardId: state.board.selectedBoardId,
@@ -495,6 +503,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   gpsStatus: 'idle',
   scanStatus: 'idle',
   presence: IDLE_PRESENCE_SCAN,
+  connectionPause: null,
   connectionSeq: 0,
   nativeStateReady: false,
   devices: [],

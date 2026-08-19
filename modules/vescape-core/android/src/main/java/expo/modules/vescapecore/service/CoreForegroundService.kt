@@ -3,6 +3,7 @@ package expo.modules.vescapecore.service
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardSessionController
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.connection.ConnectionPauseStore
 import expo.modules.vescapecore.connection.PresenceScanState
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
@@ -21,6 +22,7 @@ import expo.modules.vescapecore.diagnostics.ConnectionTraceEvent
 import expo.modules.vescapecore.diagnostics.ConnectionTraceField
 import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
 import expo.modules.vescapecore.diagnostics.ConnectionTraceOwner
+import expo.modules.vescapecore.diagnostics.ConnectionTraceReason
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
@@ -441,14 +443,14 @@ class CoreForegroundService : Service() {
 
         fun currentLiveState(context: Context): Map<String, Any?> =
             instance?.controller?.liveStateMap(includeRecent = true)
-                ?: idleState(AppDataRepository.get(context.applicationContext))
+                ?: idleState(context.applicationContext, AppDataRepository.get(context.applicationContext))
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
         /** Live rider position for Navigation; null while the service is not up. */
         fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
-        private fun idleState(repository: AppDataRepository): Map<String, Any?> {
+        private fun idleState(context: Context, repository: AppDataRepository): Map<String, Any?> {
             val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }
             return mapOf(
                 "board" to mapOf(
@@ -478,6 +480,8 @@ class CoreForegroundService : Service() {
                     "error" to null,
                 ),
                 "presence" to PresenceScanState().toMap(),
+                // Automatic Connection Pause survives the service being gone — that is the point.
+                "pause" to ConnectionPauseStore.active(context, settings.selectedBoardId)?.toMap(),
                 "recording" to mapOf(
                     "enabled" to false,
                     "activeBoardId" to null,
@@ -523,7 +527,9 @@ class CoreForegroundService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        controller.exitFromNotification()
+        // Swiping the app away is rider intent, not a crash: pause automatic connection under its
+        // own source so the Event Log distinguishes it from a deliberate Exit (ADR 0035, #406).
+        controller.exitFromNotification(ConnectionTraceReason.TASK_REMOVED)
         super.onTaskRemoved(rootIntent)
     }
 

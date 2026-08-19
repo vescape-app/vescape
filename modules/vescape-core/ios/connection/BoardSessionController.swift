@@ -346,13 +346,62 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
-  /// Automatic Connection Pause deadline for `boardId`, or `nil` when it is not paused.
-  ///
-  /// #406 replaces the manual-stop tombstone with a board-scoped, time-bounded pause map. Until then
-  /// the tombstone answers the same question with no deadline, which reads as "paused forever".
+  /// Automatic Connection Pause deadline for `boardId`, or `nil` when it is not paused (ADR 0035).
   private func pausedUntilMs(boardId: String?) -> Int64? {
-    guard let boardId, ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return nil }
-    return Int64.max
+    ConnectionPauseStore.shared.pausedUntilMs(boardId: boardId)
+  }
+
+  /// The Automatic Connection Pause the rider sees, for the selected Board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `liveStateMap`
+  func connectionPauseState(boardId: String?) -> [String: Any?]? {
+    ConnectionPauseStore.shared.active(boardId: boardId)?.map
+  }
+
+  /// Arm the board-scoped Automatic Connection Pause for a rider action (ADR 0035, #406).
+  ///
+  /// Only the rider intents reach here — Disconnect and End ride. `ConnectionPausePolicy` refuses
+  /// anything else, so a mechanical teardown that ever grew a call to this cannot silently start
+  /// suppressing Auto Connect.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `armConnectionPause`
+  @discardableResult
+  func armConnectionPause(boardId: String?, source: String, origin: String) -> ConnectionPause? {
+    let settings = appData.getSettings()
+    let resolved = (boardId?.isEmpty == false ? boardId : nil)
+      ?? ((settings["selectedBoardId"] ?? nil) as? String)
+    guard let resolved, !resolved.isEmpty else { return nil }
+    let minutes =
+      AppDataRepository.automaticConnectionPauseMinutes(settings["automaticConnectionPauseMinutes"] ?? nil) ?? 60
+    let workflow = ConnectionTrace.start(
+      origin: origin,
+      owner: ConnectionTraceOwner.none,
+      fields: [ConnectionTraceField.boardId: resolved]
+    )
+    let pause = ConnectionPauseStore.shared.arm(
+      boardId: resolved,
+      source: source,
+      minutes: minutes,
+      workflow: workflow
+    )
+    workflow.finish(
+      decision: pause != nil ? ConnectionTraceDecision.completed : ConnectionTraceDecision.skipped,
+      reason: source
+    )
+    return pause
+  }
+
+  /// Explicit Connect semantics: clear this Board's pause before the session work starts.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `clearConnectionPause`
+  func clearConnectionPause(boardId: String?, origin: String = ConnectionTraceOrigin.explicitConnect) {
+    guard let boardId, !boardId.isEmpty else { return }
+    let workflow = ConnectionTrace.start(
+      origin: origin,
+      owner: ConnectionTraceOwner.connectIntent,
+      fields: [ConnectionTraceField.boardId: boardId]
+    )
+    ConnectionPauseStore.shared.clear(boardId: boardId, workflow: workflow)
+    workflow.finish(decision: ConnectionTraceDecision.completed, reason: ConnectionTraceReason.matched)
   }
 
   /// **Stop search**, or an exclusive scanner owner taking over.
@@ -2209,13 +2258,18 @@ internal final class BoardSessionController: VescGattListener {
 /// a live JS runtime or a `VescapeCoreModule` instance.
 @MainActor
 enum BoardSessionCommands {
+  /// `source`/`origin` name the rider action: the Live Activity and App Intent Stop are End ride,
+  /// while the JS Disconnect button is a Manual Disconnect. Both arm an Automatic Connection Pause.
   @discardableResult
-  static func stopRide() -> Bool {
+  static func stopRide(
+    source: String = ConnectionTraceReason.endRide,
+    origin: String = ConnectionTraceOrigin.endRide
+  ) -> Bool {
     let controller = BoardSessionController.shared
     let accepted = ManualBoardStop(
-      defaults: .standard,
       activeBoardId: { controller.connectedBoardId },
-      stop: { controller.stopBoard() }
+      stop: { controller.stopBoard() },
+      armPause: { controller.armConnectionPause(boardId: $0, source: source, origin: origin) != nil }
     ).perform()
     // A stop no session accepted means the surface is a ghost from a killed process (ADR 0034).
     // The session stays a no-op, but the Live Activity must still die — otherwise Stop on a ghost

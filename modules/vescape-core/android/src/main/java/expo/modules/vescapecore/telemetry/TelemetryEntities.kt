@@ -388,7 +388,7 @@ data class AppSettings(
   val wearNavArrowEnabled: Boolean = false,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
-  val companionPresenceCooldownMinutes: Int = 60,
+  val automaticConnectionPauseMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,
   val autoCloseDelayMinutes: Int = 15,
   val riderId: String? = null,

@@ -225,6 +225,12 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exitApp`
     // @platform-diff iOS cannot terminate its own process; graceful shutdown instead of kill.
     Function("exitApp") {
+      // Exit is rider intent even where iOS cannot honour it literally: pause automatic connection.
+      self.coordinator.armConnectionPause(
+        boardId: self.coordinator.connectedBoardId,
+        source: ConnectionTraceReason.appExit,
+        origin: ConnectionTraceOrigin.appExit
+      )
       self.coordinator.stopBoard()
       self.coordinator.stopLocationUpdates()
       self.coordinator.stopScan()
@@ -399,7 +405,7 @@ public class VescapeCoreModule: Module {
     }
 
     Function("setSelectedBoard") { (boardId: String?) in
-      self.clearManualDisconnectAutoStartGate()
+      // Plain Board selection is not a Connect: it leaves the Automatic Connection Pause alone.
       self.selectedBoardId = boardId
       self.appData.updateSetting("selectedBoardId", rawValue: boardId)
     }
@@ -477,7 +483,8 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("selectBoard") { (boardId: String, promise: Promise) in
-      self.clearManualDisconnectAutoStartGate()
+      // Explicit Connect: clear this Board's Automatic Connection Pause before the session starts.
+      self.coordinator.clearConnectionPause(boardId: boardId)
       self.selectedBoardId = boardId
       self.appData.updateSetting("selectedBoardId", rawValue: boardId)
       guard let config = self.connectConfig(boardId: boardId) else {
@@ -493,7 +500,10 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("stopBoard") { (promise: Promise) in
       DispatchQueue.main.async {
-        BoardSessionCommands.stopRide()
+        BoardSessionCommands.stopRide(
+          source: ConnectionTraceReason.manualDisconnect,
+          origin: ConnectionTraceOrigin.manualDisconnect
+        )
         promise.resolve(nil)
       }
     }
@@ -1168,10 +1178,6 @@ public class VescapeCoreModule: Module {
     )
   }
 
-  private func clearManualDisconnectAutoStartGate() {
-    ManualBoardStop.clearAutoStartSuppression()
-  }
-
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
   private func liveState() -> [String: Any?] {
     let settings = appData.getSettings()
@@ -1206,6 +1212,11 @@ public class VescapeCoreModule: Module {
       // Board Presence Scan surface (ADR 0035): purpose, deadline, observations, decision.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
       "presence": coordinator.presenceScanState.map,
+      // Automatic Connection Pause for the selected Board (ADR 0035), or nil when not paused.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
+      "pause": coordinator.connectionPauseState(
+        boardId: selectedBoardId ?? ((settings["selectedBoardId"] ?? nil) as? String)
+      ),
       "recording": [
         "enabled": coordinator.telemetryRecordingEnabled(),
         "paused": coordinator.recordingPaused(),

@@ -80,6 +80,18 @@ type LiveState = {
     reason: string | null
   }
 
+  /**
+   * Automatic Connection Pause for the selected Board, or `null` when it is not paused.
+   * Native owns the deadline; JS renders the remainder and offers **Connect now**.
+   */
+  pause: {
+    boardId: string
+    /** Absolute deadline, epoch ms. */
+    until: number
+    /** Rider action that armed it: `manual_disconnect`, `end_ride`, `app_exit`, `task_removed`. */
+    source: string
+  } | null
+
   recording: {
     enabled: boolean
     activeBoardId: string | null
@@ -147,13 +159,14 @@ involved.
 
 The rules are pure and unit-tested on both platforms:
 
-| Concern                             | Type                                          |
-| ----------------------------------- | --------------------------------------------- |
-| Scan eligibility, promotion, window | `PresenceScanPolicy`                          |
-| Who owns connection work            | `ConnectionOwner` / `ConnectionOwnership`     |
-| Who owns the radio, stale callbacks | `ScanPurpose` / `ScannerCoordinator`          |
-| Explicit Connect lifetime           | `ConnectIntent` / `ConnectIntentPolicy`       |
-| Scan run loop                       | `BoardPresenceScan` over a `PresenceScanPort` |
+| Concern                             | Type                                             |
+| ----------------------------------- | ------------------------------------------------ |
+| Scan eligibility, promotion, window | `PresenceScanPolicy`                             |
+| Who owns connection work            | `ConnectionOwner` / `ConnectionOwnership`        |
+| Who owns the radio, stale callbacks | `ScanPurpose` / `ScannerCoordinator`             |
+| Explicit Connect lifetime           | `ConnectIntent` / `ConnectIntentPolicy`          |
+| Automatic Connection Pause          | `ConnectionPausePolicy` / `ConnectionPauseStore` |
+| Scan run loop                       | `BoardPresenceScan` over a `PresenceScanPort`    |
 
 Every scan takes an operation token from `ScannerCoordinator`; a BLE callback that cannot prove it
 owns the current token is dropped, because scan callbacks outlive their operation.
@@ -178,6 +191,23 @@ Manual Disconnect, End ride, Exit, and Android task removal create a board-scope
 time-bounded Automatic Connection Pause shared by Auto Connect and Auto Start. Explicit
 Connect clears it. Mechanical teardown, probe cancellation, Stop search, and scan timeout do
 not create a pause. Presence still reports a paused Board as nearby.
+
+The pause is one persisted map, `Board id -> { absolute deadline, source reason }`
+(`ConnectionPauseStore`, SharedPreferences file / `UserDefaults` key
+`vesc_automatic_connection_pause`). Expiry is a clock comparison on read, so no cleanup job
+exists. Every entry point takes a Board id explicitly, never "the selected Board": Auto Start
+evaluates the _detected_ Board and Switch & Connect clears the _target_ Board.
+
+- Arms: Disconnect, End ride, Exit, Android task removal. `ConnectionPausePolicy` refuses any
+  other source, so a mechanical path cannot start suppressing Auto Connect by accident.
+- Clears: explicit Connect, **Connect now**, Switch & Connect.
+- Does nothing: opening Vescape, foregrounding, plain Board selection.
+
+Duration comes from `automaticConnectionPauseMinutes` (0 = never pause). It migrated from the
+pre-#406 Android-only `companionPresenceCooldownMinutes`: a stored value is read through the old
+key when the new one is absent, and a write under the old key lands on the new one. Stored values
+up to 1440 stay valid; the rider stepper offers up to 480 for new choices, so a legacy value is
+never silently clamped.
 
 ### Fast Connect Stability
 

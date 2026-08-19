@@ -23,12 +23,12 @@ import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
-import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.ConnectionTrace
+import expo.modules.vescapecore.diagnostics.ConnectionTraceDecision
 import expo.modules.vescapecore.diagnostics.ConnectionTraceEvent
 import expo.modules.vescapecore.diagnostics.ConnectionTraceField
 import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
@@ -42,7 +42,6 @@ import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.location.LocationTracker
-import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.service.PendingStart
@@ -830,15 +829,11 @@ private var wearAutoLaunchOnConnect = true
                         PresencePromotionInput(
                             selectedObserved = true,
                             autoConnectEnabled = settings.autoConnect,
-                            // #406 replaces the manual-stop gate with a board-scoped Automatic
-                            // Connection Pause map; until then the gate answers the same question.
-                            pausedUntilMs = if (
-                                ManualDisconnectAutoStartGate.isSuppressed(appCtx, settings.selectedBoardId)
-                            ) {
-                                Long.MAX_VALUE
-                            } else {
-                                null
-                            },
+                            pausedUntilMs = ConnectionPauseStore.pausedUntilMs(
+                                appCtx,
+                                settings.selectedBoardId,
+                                workflow,
+                            ),
                             nowMs = nowMs(),
                             sessionActive = boardConfig != null,
                             currentOwner = ConnectionOwnership.shared.current,
@@ -923,21 +918,34 @@ private var wearAutoLaunchOnConnect = true
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
-            if (CompanionRestartGate.isSuppressed(appCtx)) {
-                Log.i(VESC_SESSION_TAG, "Companion auto start suppressed after manual exit")
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
             val boardId = companionBoardId(AppDataRepository.get(appCtx), address)
             if (boardId == null) {
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
-            if (ManualDisconnectAutoStartGate.isSuppressed(appCtx, boardId)) {
-                Log.i(VESC_SESSION_TAG, "Companion auto start suppressed after manual disconnect")
+            // The Automatic Connection Pause is evaluated for the *detected* Board, not the
+            // previously selected one: presence can belong to any linked Board (#407).
+            val workflow = ConnectionTrace.start(
+                appCtx,
+                ConnectionTraceOrigin.AUTO_START_WAKE,
+                ConnectionTraceOwner.AUTO_START,
+                mapOf(ConnectionTraceField.BOARD_ID to boardId),
+            )
+            val pausedUntil = ConnectionPauseStore.pausedUntilMs(appCtx, boardId, workflow)
+            if (pausedUntil != null) {
+                workflow.event(
+                    ConnectionTraceEvent.PAUSE_BLOCKED,
+                    mapOf(
+                        ConnectionTraceField.BOARD_ID to boardId,
+                        ConnectionTraceField.PAUSED_UNTIL to pausedUntil,
+                    ),
+                )
+                workflow.finish(ConnectionTraceDecision.SKIPPED, ConnectionTraceReason.CONNECTION_PAUSED)
+                Log.i(VESC_SESSION_TAG, "Companion auto start paused until $pausedUntil")
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
+            workflow.finish(ConnectionTraceDecision.GRANTED, ConnectionTraceReason.MATCHED)
             // Presence can belong to any configured Board, not necessarily the last one the Rider
             // used. Make the triggering Board selected before building/emitting the new session.
             AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
@@ -973,7 +981,8 @@ private var wearAutoLaunchOnConnect = true
         CoreForegroundService.appDataScope.launch {
             val appCtx = service.applicationContext
             val boardId = AppDataRepository.get(appCtx).getTypedSettings().selectedBoardId ?: return@launch
-            ManualDisconnectAutoStartGate.clear(appCtx)
+            // **Connect now** is an explicit Connect: it clears this Board's Automatic Connection Pause.
+            clearConnectionPause(appCtx, boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = recordingEnabled)
             } catch (e: Exception) {
@@ -991,7 +1000,11 @@ private var wearAutoLaunchOnConnect = true
     fun disconnectFromNotification() {
         if (boardConfig == null) return
         setStatus(BoardPhase.Disconnecting)
-        ManualDisconnectAutoStartGate.suppress(service.applicationContext, boardConfig?.appBoardId)
+        armConnectionPause(
+            boardConfig?.appBoardId,
+            ConnectionTraceReason.MANUAL_DISCONNECT,
+            ConnectionTraceOrigin.MANUAL_DISCONNECT,
+        )
         // Always refresh: the notification stays visible after disconnect (idle + Connect), so it must
         // reflect the idle phase even while GPS keeps the service foregrounded.
         stopCurrentBoardSession(emitDisconnected = true)
@@ -1034,7 +1047,11 @@ private var wearAutoLaunchOnConnect = true
         val stop = CoreForegroundService.claimPendingStop() ?: return
         if (boardConfig != null) {
             setStatus(BoardPhase.Disconnecting)
-            ManualDisconnectAutoStartGate.suppress(service.applicationContext, boardConfig?.appBoardId)
+            armConnectionPause(
+                boardConfig?.appBoardId,
+                ConnectionTraceReason.MANUAL_DISCONNECT,
+                ConnectionTraceOrigin.MANUAL_DISCONNECT,
+            )
             // Always refresh, exactly like the notification Disconnect action: the notification
             // outlives the Board Session (idle + Connect), so a JS disconnect must repaint it too.
             stopCurrentBoardSession(emitDisconnected = true)
@@ -1102,8 +1119,21 @@ private var wearAutoLaunchOnConnect = true
         groupRideObserver.updateIdentity(riderId, riderName, riderColor)
     }
 
-    fun exitFromNotification() {
-        armCompanionRestartGate()
+    /**
+     * **Exit** from the notification, and Android task removal (`onTaskRemoved`). Both are rider
+     * intent to stop riding, so both arm an Automatic Connection Pause — under distinct sources, so
+     * the Event Log tells a swipe-away apart from a deliberate Exit.
+     */
+    fun exitFromNotification(source: String = ConnectionTraceReason.APP_EXIT) {
+        armConnectionPause(
+            boardConfig?.appBoardId,
+            source,
+            if (source == ConnectionTraceReason.TASK_REMOVED) {
+                ConnectionTraceOrigin.TASK_REMOVED
+            } else {
+                ConnectionTraceOrigin.APP_EXIT
+            },
+        )
         isStoppingService = true
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
         notificationController.cancel()
@@ -1113,16 +1143,46 @@ private var wearAutoLaunchOnConnect = true
         service.stopSelf()
     }
 
-    // Manual exit means the user is done riding: pause companion auto start for the configured
-    // cooldown so the board reappearing doesn't immediately relaunch the app.
-    private fun armCompanionRestartGate() {
+    /**
+     * Arm the board-scoped Automatic Connection Pause for a rider action (ADR 0035, #406).
+     *
+     * Only the four rider intents reach here — Disconnect, End ride, Exit, task removal.
+     * [ConnectionPausePolicy] refuses anything else, so a mechanical teardown that ever grew a call
+     * to this cannot silently start suppressing Auto Connect.
+     */
+    private fun armConnectionPause(boardId: String?, source: String, origin: String) {
         val appCtx = service.applicationContext
         CoreForegroundService.appDataScope.launch {
             val settings = AppDataRepository.get(appCtx).getTypedSettings()
-            if (settings.companionPresenceEnabled) {
-                CompanionRestartGate.suppressFor(appCtx, settings.companionPresenceCooldownMinutes)
-            }
+            // Exit and task removal can arrive with no live session; the rider still means "this
+            // Board", which is the selected one.
+            val pausedBoardId = boardId?.takeIf { it.isNotBlank() } ?: settings.selectedBoardId ?: return@launch
+            val minutes = settings.automaticConnectionPauseMinutes
+            val workflow = ConnectionTrace.start(
+                appCtx,
+                origin,
+                ConnectionTraceOwner.NONE,
+                mapOf(ConnectionTraceField.BOARD_ID to pausedBoardId),
+            )
+            val pause = ConnectionPauseStore.arm(appCtx, pausedBoardId, source, minutes, workflow)
+            workflow.finish(
+                if (pause != null) ConnectionTraceDecision.COMPLETED else ConnectionTraceDecision.SKIPPED,
+                source,
+            )
+            scheduler.post { emitState() }
         }
+    }
+
+    /** Explicit Connect semantics: clear this Board's pause before the session work starts. */
+    private fun clearConnectionPause(appCtx: Context, boardId: String) {
+        val workflow = ConnectionTrace.start(
+            appCtx,
+            ConnectionTraceOrigin.EXPLICIT_CONNECT,
+            ConnectionTraceOwner.CONNECT_INTENT,
+            mapOf(ConnectionTraceField.BOARD_ID to boardId),
+        )
+        ConnectionPauseStore.clear(appCtx, boardId, workflow)
+        workflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
     }
 
     private fun startGpsMonitoring() {
@@ -2653,6 +2713,10 @@ private var wearAutoLaunchOnConnect = true
                 remoteTiltDecay = remoteTiltController.decayProgress,
                 linkIntegrity = boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
                 presenceScan = presenceScan.state,
+                connectionPause = ConnectionPauseStore.active(
+                    service.applicationContext,
+                    settings.selectedBoardId,
+                ),
                 settings = settings,
             )
         )

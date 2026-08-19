@@ -36,6 +36,7 @@ function telemetry(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
 
 function liveState(samples: TelemetryEvent[]): LiveStateEvent {
   return {
+    pause: null,
     presence: {
       phase: 'idle',
       purpose: null,

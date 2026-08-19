@@ -76,7 +76,7 @@ const e2eSettings: AppSettings = {
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
-  companionPresenceCooldownMinutes: 60,
+  automaticConnectionPauseMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
   telemetryPollRateHz: 20,
@@ -184,6 +184,7 @@ function getLiveState(): LiveStateEvent {
     // No radio in an emulator, so the fake never runs a Board Presence Scan: it reports the idle
     // surface and E2E connects through explicit intents instead.
     presence: IDLE_PRESENCE_SCAN,
+    pause: null,
     recording: {
       enabled: false,
       paused: false,
@@ -665,6 +666,7 @@ export const e2eFake = {
         error: null,
       },
       presence: baseState.presence ?? IDLE_PRESENCE_SCAN,
+      pause: baseState.pause ?? null,
     }
   },
 

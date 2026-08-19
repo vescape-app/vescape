@@ -2,9 +2,31 @@ package expo.modules.vescapecore.telemetry
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import expo.modules.vescapecore.connection.ConnectionPausePolicy
 import org.junit.Test
 
 class AppSettingsMapPreferencesTest {
+  /**
+   * #406 migration: the Automatic Connection Pause duration used to be the Android-only companion
+   * cooldown. A stored rider choice carries over verbatim — including values above the 8h the new
+   * stepper offers, which must not be silently clamped.
+   */
+  @Test
+  fun automaticConnectionPauseMinutesPreservesLegacyRiderChoices() {
+    assertEquals(LEGACY_CONNECTION_PAUSE_MINUTES_KEY, "companionPresenceCooldownMinutes")
+    assertEquals(720, validAutomaticConnectionPauseMinutes(720))
+    assertEquals(1440, validAutomaticConnectionPauseMinutes(1440))
+    assertEquals(0, validAutomaticConnectionPauseMinutes(0))
+    // Out of range values land in the storable range, never on the recommendation.
+    assertEquals(0, validAutomaticConnectionPauseMinutes(-5))
+    assertEquals(
+      ConnectionPausePolicy.MAX_PAUSE_MINUTES,
+      validAutomaticConnectionPauseMinutes(9000),
+    )
+    assertNull(validAutomaticConnectionPauseMinutes("60"))
+    assertEquals(60, AppSettings().automaticConnectionPauseMinutes)
+  }
+
   @Test
   fun liveHistoryLimitValidationAcceptsAndClampsNumericMinutes() {
     assertEquals(5, validLiveHistoryLimitMinutes(5))
