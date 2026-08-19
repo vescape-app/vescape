@@ -29,5 +29,10 @@ appId: ${APP_ID}
     visible:
       id: legal-limits-exit
     timeout: 30000
+- assertVisible: 'Show legal limits list'
+- tapOn: 'Show legal limits list'
+- extendedWaitUntil:
+    visible: 'Austria legal limits'
+    timeout: 15000
 
 - runFlow: ../fixture/_home.yaml
