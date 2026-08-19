@@ -106,10 +106,11 @@ board is unlinked, or the board is gated by a manual-stop tombstone. Starting a 
 Session clears that tombstone on both platforms, so a manual stop followed by a real
 reconnect auto-connects on the next launch.
 
-JS controls permissions. After permissions are granted, JS may send connect intent
-if settings allow auto-connect and native board phase is `idle` or `error`.
+JS never triggers auto-connect. Its only part is writing the `autoConnect` setting and
+prompting for BLE permissions; the launch path reads the persisted setting and connects
+on its own, with or without a JS runtime.
 
-Native owns the actual connection after that. The foreground service keeps BLE work
+Native owns the connection throughout. On Android the foreground service keeps BLE work
 alive while JS is backgrounded or frozen.
 
 ### Fast Connect Stability
