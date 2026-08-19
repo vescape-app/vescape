@@ -11,6 +11,13 @@ import type { Icon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
+  useResolvedColor,
+  useResolvedControlColors,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
+import {
+  TRANSPARENT,
   TUNE_ANIMATION,
   TUNE_DEFAULT_ACTIVE_WIDTH,
   TUNE_OPTION_WIDTH,
@@ -142,7 +149,11 @@ export function PillSelectorItem({
   onPress,
   children,
 }: PillSelectorItemProps) {
-  const { activeId, contained, openMenu, closeMenu } = usePillSelectorCtx()
+  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const { activeId, contained, variant, openMenu, closeMenu } = usePillSelectorCtx()
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const pillRef = useRef<View>(null)
   const active = id === activeId
   const resolved = resolveItemState({
@@ -151,10 +162,9 @@ export function PillSelectorItem({
     labelBehavior,
     hintVisibility,
   })
-  const accentBg = color?.bg ?? theme.palette.green.bg
-  const accentBorder = color?.border ?? theme.palette.green.border
-  const accentColor = color?.color ?? theme.palette.green.color
-  const inactiveAccent = theme.alpha(accentColor, 0.6)
+  const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
+  const accentColor = useResolvedColor(color?.color ?? theme.palette.green.color)
+  const inactiveAccent = useLightTabs ? control.textMuted : theme.alpha(accentColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
   const labelProgress = useSharedValue(resolved.showLabel ? 1 : 0)
 
@@ -175,20 +185,28 @@ export function PillSelectorItem({
         activeProgress.value,
         [0, 1],
         [
-          contained ? theme.alpha(theme.palette.mono.black, 0) : theme.palette.slate.surface,
-          accentBg,
+          useLightTabs ? TRANSPARENT : contained ? TRANSPARENT : control.background,
+          useLightTabs ? neutral.surface : control.backgroundPressed,
         ],
       ),
       borderColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [
-          contained ? theme.alpha(theme.palette.mono.black, 0) : theme.palette.slate.border,
-          accentBorder,
-        ],
+        [useLightTabs ? TRANSPARENT : contained ? TRANSPARENT : control.border, accentBorder],
       ),
     }),
-    [accentBg, accentBorder, activeWidth, resolved.collapseLabel, contained, inactiveWidth],
+    [
+      accentBorder,
+      activeWidth,
+      resolved.collapseLabel,
+      contained,
+      inactiveWidth,
+      control.background,
+      control.backgroundPressed,
+      control.border,
+      neutral.surface,
+      useLightTabs,
+    ],
   )
   const labelStyle = useAnimatedStyle(
     () => ({
@@ -218,6 +236,7 @@ export function PillSelectorItem({
         resolved.collapseLabel && styles.iconPill,
         resolved.collapseLabel && { maxWidth: activeWidth },
         contained && styles.containedPill,
+        useLightTabs && styles.lightTabPill,
         frameStyle,
       ]}
     >

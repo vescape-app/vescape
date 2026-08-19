@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: theme.palette.purple.color,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   cluster: {
     alignItems: 'center',
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   count: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 11,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
@@ -83,6 +83,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
   },
 })

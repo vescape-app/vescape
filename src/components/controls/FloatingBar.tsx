@@ -100,7 +100,7 @@ export function FloatingActionPill({
   const iconColor = paused
     ? theme.status.warning.color
     : active
-      ? theme.palette.slate.textPrimary
+      ? theme.control.text
       : theme.status.error.color
   return (
     <Pressable
@@ -149,12 +149,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     gap: 10,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    shadowColor: theme.palette.mono.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: theme.control.background,
+    borderColor: theme.control.border,
   },
   pillText: {
     fontSize: 12,
@@ -169,7 +165,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pillButtonText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -204,7 +200,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   actionPillTextActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
   },
   disabled: {
     opacity: 0.45,

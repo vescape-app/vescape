@@ -18,6 +18,7 @@ const FULL_IMAGERY_OPACITY = 1
 export function getSatelliteImageryPaint(
   imageryOpacity = DEFAULT_SATELLITE_IMAGERY_OPACITY,
   imagerySaturation = DEFAULT_SATELLITE_IMAGERY_SATURATION,
+  imageryContrast?: number,
 ) {
   const clampedImageryOpacity = Math.max(0.1, Math.min(1, imageryOpacity))
   const clampedImagerySaturation = Math.max(-1, Math.min(1, imagerySaturation))
@@ -25,7 +26,7 @@ export function getSatelliteImageryPaint(
   return {
     rasterOpacity: clampedImageryOpacity,
     rasterSaturation: toneSatelliteImage ? clampedImagerySaturation : 0,
-    rasterContrast: toneSatelliteImage ? -0.25 : 0,
+    rasterContrast: Math.max(-1, Math.min(1, imageryContrast ?? (toneSatelliteImage ? -0.25 : 0))),
   }
 }
 
@@ -37,8 +38,10 @@ export function getSatelliteDarkMapStyle(
   showStreetLines = false,
   imagerySaturation = DEFAULT_SATELLITE_IMAGERY_SATURATION,
   streetLineOpacity = 0.8,
+  imageryContrast?: number,
+  backgroundColor: string = theme.palette.slate.surfaceDeep,
 ) {
-  const satelliteImageryPaint = getSatelliteImageryPaint(imageryOpacity, imagerySaturation)
+  const paint = getSatelliteImageryPaint(imageryOpacity, imagerySaturation, imageryContrast)
 
   return JSON.stringify({
     version: 8,
@@ -60,16 +63,16 @@ export function getSatelliteDarkMapStyle(
       {
         id: 'background',
         type: 'background',
-        paint: { 'background-color': theme.palette.slate.surfaceDeep },
+        paint: { 'background-color': backgroundColor },
       },
       {
         id: 'satellite',
         type: 'raster',
         source: 'satellite',
         paint: {
-          'raster-opacity': satelliteImageryPaint.rasterOpacity,
-          'raster-saturation': satelliteImageryPaint.rasterSaturation,
-          'raster-contrast': satelliteImageryPaint.rasterContrast,
+          'raster-opacity': paint.rasterOpacity,
+          'raster-saturation': paint.rasterSaturation,
+          'raster-contrast': paint.rasterContrast,
         },
       },
       ...satelliteStreetLineLayers(showStreetLines, streetLineOpacity),

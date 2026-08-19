@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated'
 
 import { useEdgeDrawerScrollToOpenEdge } from '@/components/overlays/EdgeDrawer'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 const COLLAPSE_DURATION = 220
@@ -32,7 +32,7 @@ export function CollapsibleWidget({
   icon: IconComponent,
   title,
   description,
-  accent = theme.palette.slate.textSecondary,
+  accent = theme.control.textMuted,
   collapsible = true,
   defaultExpanded = false,
   expandedHeight = 420,
@@ -101,9 +101,9 @@ export function CollapsibleWidget({
         </View>
         {collapsible ? (
           expanded ? (
-            <CaretUpIcon size={16} color={theme.palette.slate.textMuted} weight="bold" />
+            <CaretUpIcon size={16} color={theme.neutral.textMuted} weight="bold" />
           ) : (
-            <CaretDownIcon size={16} color={theme.palette.slate.textMuted} weight="bold" />
+            <CaretDownIcon size={16} color={theme.neutral.textMuted} weight="bold" />
           )
         ) : null}
       </Pressable>
@@ -118,7 +118,7 @@ export function CollapsibleWidget({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     padding: 14,
   },
   header: {
@@ -146,12 +146,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '800',
   },
   description: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     lineHeight: 16,
   },

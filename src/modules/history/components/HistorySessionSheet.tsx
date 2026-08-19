@@ -16,6 +16,7 @@ import {
 } from '@/modules/history/lib/rideFormat'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
 import type { HistorySession, TelemetryMinuteBucket } from '@/modules/history/store/historyStore'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 interface HistorySessionSheetProps {
   visible: boolean
@@ -107,7 +108,7 @@ export function HistorySessionSheet({
                     details={favorite ? details : undefined}
                   />
                 </View>
-                <CaretRightIcon size={16} color={theme.palette.slate.textDim} weight="bold" />
+                <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
               </Pressable>
             )
           })
@@ -153,10 +154,11 @@ function getSessionRoutePreviewPoints(
 }
 
 function RoutePreview({ points, selected }: { points: RoutePoint[]; selected: boolean }) {
+  const accents = useResolvedAccentColors()
   const path = useMemo(() => buildPreviewPath(points), [points])
   const start = points.length > 0 ? formatPreviewPoint(points, 0) : null
   const end = points.length > 1 ? formatPreviewPoint(points, points.length - 1) : null
-  const strokeColor = selected ? theme.palette.sky.color : theme.palette.purple.color
+  const strokeColor = selected ? accents.sky.color : accents.purple.color
 
   return (
     <View style={styles.routePreview}>
@@ -170,8 +172,8 @@ function RoutePreview({ points, selected }: { points: RoutePoint[]; selected: bo
             strokeCap="round"
             strokeJoin="round"
           />
-          {start && <Circle cx={start.x} cy={start.y} r={3} color={theme.palette.green.color} />}
-          {end && <Circle cx={end.x} cy={end.y} r={3} color={theme.status.error.color} />}
+          {start && <Circle cx={start.x} cy={start.y} r={3} color={accents.green.color} />}
+          {end && <Circle cx={end.x} cy={end.y} r={3} color={accents.red.color} />}
         </Canvas>
       ) : (
         <View style={styles.routeEmpty}>
@@ -217,15 +219,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     textAlign: 'center',
     paddingVertical: 20,
   },
   row: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     paddingVertical: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',
@@ -262,7 +264,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 2,
     borderRadius: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   loadingRow: {
     minHeight: 34,
@@ -270,14 +272,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   loadingPressed: {
     backgroundColor: interaction.pressedBg,
   },
   loadingText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },

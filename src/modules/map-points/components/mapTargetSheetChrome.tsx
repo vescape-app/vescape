@@ -5,6 +5,7 @@ import type { MapPoint } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import {
@@ -36,7 +37,7 @@ export function MapTargetSheetFrame({
   bottom,
   header,
   fallbackColor = theme.map.target,
-  fallbackTextColor = theme.palette.slate.textPrimary,
+  fallbackTextColor = theme.neutral.textPrimary,
   onDismiss,
   onFocusTarget,
   children,
@@ -50,6 +51,7 @@ export function MapTargetSheetFrame({
   onFocusTarget?: () => void
   children: ReactNode
 }) {
+  const neutral = useResolvedNeutralColors()
   const isMapPoint = target.type === 'mapPoint'
   const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
   const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
@@ -61,13 +63,29 @@ export function MapTargetSheetFrame({
   const icon = createElement(IconComponent, { size: 18, color: textColor, weight: 'duotone' })
   const headerContent = (
     <>
-      <View style={[mapSheetStyles.mapTargetIcon, { borderColor: color }]}>{icon}</View>
+      <View
+        style={[
+          mapSheetStyles.mapTargetIcon,
+          { backgroundColor: neutral.surfaceDeep, borderColor: color },
+        ]}
+      >
+        {icon}
+      </View>
       <View style={mapSheetStyles.mapTargetTitleBlock}>{header}</View>
     </>
   )
 
   return (
-    <View style={[styles.sheet, { bottom }]}>
+    <View
+      style={[
+        styles.sheet,
+        {
+          bottom,
+          backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+          borderColor: theme.alpha(neutral.textSecondary, 0.3),
+        },
+      ]}
+    >
       <View style={styles.header}>
         {onFocusTarget ? (
           <Pressable
@@ -88,7 +106,7 @@ export function MapTargetSheetFrame({
             onPress={onDismiss}
             style={({ pressed }) => [styles.close, pressed && mapSheetStyles.mapTargetClosePressed]}
           >
-            <XIcon size={20} color={theme.palette.slate.textSecondary} weight="bold" />
+            <XIcon size={20} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
         ) : null}
       </View>
@@ -143,7 +161,7 @@ export function MapTargetEditHeader({
       value={name}
       onChangeText={onChangeName}
       placeholder={getMapPointKindLabel(point.category)}
-      placeholderTextColor={theme.palette.slate.textMuted}
+      placeholderTextColor={theme.neutral.textMuted}
       style={[styles.input, styles.nameInput]}
       accessibilityLabel="Map feature name"
     />
@@ -214,7 +232,7 @@ export function MapTargetPrimaryAction({
         pressed && mapSheetStyles.mapTargetNavigatePressed,
       ]}
     >
-      <action.Icon size={compact ? 18 : 18} color={action.textColor} weight="bold" />
+      <action.Icon size={compact ? 18 : 18} color={action.color} weight="bold" />
       {iconOnly ? null : (
         <Text
           style={[
@@ -299,9 +317,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.75),
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.75),
     paddingHorizontal: 12,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -309,7 +327,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   metaText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -329,7 +347,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   voteCount: {
     flexDirection: 'row',

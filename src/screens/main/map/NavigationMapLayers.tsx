@@ -1,10 +1,11 @@
 import { LineLayer, MarkerView, ShapeSource } from '@rnmapbox/maps'
 import { WarningIcon } from 'phosphor-react-native'
 import { useMemo } from 'react'
-import { StyleSheet, View } from 'react-native'
 import Animated, { withTiming } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { MapTargetReticle } from '@/modules/map/components/MapTargetReticle'
 import { MapPin } from '@/modules/map/components/MapPin'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import {
@@ -56,11 +57,8 @@ function PendingNavigationTargetPin({
 }) {
   return (
     <MarkerView coordinate={coordinate} allowOverlap>
-      <Animated.View
-        entering={pendingNavigationTargetEntering}
-        style={[styles.pendingNavigationTarget, { borderColor: color }]}
-      >
-        <View style={[styles.pendingNavigationTargetCore, { backgroundColor: color }]} />
+      <Animated.View entering={pendingNavigationTargetEntering}>
+        <MapTargetReticle color={color} />
       </Animated.View>
     </MarkerView>
   )
@@ -91,6 +89,7 @@ export function NavigationMapLayers({
   directionTextColor: string
   onFocusDirectionPoint: MainMapLayersProps['onFocusDirectionPoint']
 }) {
+  const neutral = useResolvedNeutralColors()
   // Native computes and owns the Navigation; this only draws the coordinates it was handed. They
   // already arrive as GeoJSON `[longitude, latitude]`, so nothing is reordered here.
   const navigation = useMapStore((state) => state.navigation)
@@ -124,7 +123,7 @@ export function NavigationMapLayers({
             <LineLayer
               id="center-navigation-casing"
               style={{
-                lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+                lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
                 lineWidth: NAVIGATION_CASING_WIDTH,
                 lineCap: 'round',
                 lineJoin: 'round',
@@ -168,21 +167,3 @@ export function NavigationMapLayers({
     </>
   )
 }
-
-const styles = StyleSheet.create({
-  pendingNavigationTarget: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.4),
-  },
-  pendingNavigationTargetCore: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-})

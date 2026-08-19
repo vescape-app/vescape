@@ -59,6 +59,7 @@ export function TuneScreenHeader({
             activeId={activeProfile?.id ?? ''}
             contained
             fitContent
+            variant="lightTabs"
             style={styles.headerPills}
             contentContainerStyle={styles.headerPillsContent}
           >

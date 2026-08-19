@@ -20,6 +20,7 @@ import {
   WatchIcon,
   WarningIcon,
   MapTrifoldIcon,
+  PaletteIcon,
 } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
@@ -116,6 +117,13 @@ export default function SettingsScreen() {
             onPress={() => router.push(routes.settingsDiagnostics)}
           />
           <SettingsRow
+            icon={PaletteIcon}
+            iconColor={theme.palette.purple.color}
+            label="Appearance"
+            hint="System, light, dark, or sunrise and sunset"
+            onPress={() => router.push(routes.settingsVisuals)}
+          />
+          <SettingsRow
             icon={MapTrifoldIcon}
             iconColor={theme.settingsIcon.map}
             label="Map"
@@ -192,7 +200,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,
@@ -208,7 +216,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   headerValue: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },

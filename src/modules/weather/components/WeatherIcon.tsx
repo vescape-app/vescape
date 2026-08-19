@@ -37,7 +37,7 @@ interface WeatherIconProps {
 export function WeatherIcon({
   icon,
   size = 20,
-  color = theme.palette.slate.textSecondary,
+  color = theme.neutral.textSecondary,
   weight = 'duotone',
 }: WeatherIconProps) {
   const IconComponent = ICON_MAP[icon] ?? CloudIcon

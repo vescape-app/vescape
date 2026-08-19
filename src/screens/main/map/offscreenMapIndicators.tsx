@@ -6,14 +6,14 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import { accentColors, theme } from '@/constants/theme'
 import { isPointOutsideVisibleMapArea } from '@/helpers/mapGeometry'
 
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
 
 export const GPS_POINT_COLOR = theme.map.user
 export const DESTINATION_POINT_COLOR = theme.map.target
-export const DESTINATION_POINT_TEXT_COLOR = theme.palette.green.text
+export const DESTINATION_POINT_TEXT_COLOR = accentColors.dark.green.text
 
 const OFFSCREEN_GPS_INDICATOR_SIZE = 64
 const OFFSCREEN_GPS_EDGE_SIDE_INSET = 58
@@ -290,12 +290,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: GPS_POINT_COLOR,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    shadowColor: theme.palette.slate.surfaceDeep,
-    shadowOpacity: 0.32,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   offscreenMapArrowOrbit: {
     position: 'absolute',

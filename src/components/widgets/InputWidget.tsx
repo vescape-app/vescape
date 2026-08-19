@@ -5,7 +5,7 @@ import { CheckIcon, PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Input } from '@/components/forms/Input'
 import { TextPromptModal } from '@/components/modals/TextPromptModal'
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface InputWidgetProps {
@@ -68,7 +68,7 @@ function RowInput({
                 onBlur={commitOnBlur ? commit : undefined}
                 onSubmitEditing={commit}
                 placeholder={placeholder}
-                placeholderTextColor={theme.palette.slate.textMuted}
+                placeholderTextColor={theme.control.textMuted}
                 returnKeyType="done"
                 maxLength={maxLength}
                 autoFocus
@@ -91,7 +91,7 @@ function RowInput({
           {editing ? (
             <CheckIcon size={18} color={theme.palette.green.color} weight="bold" />
           ) : (
-            <PencilSimpleIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+            <PencilSimpleIcon size={18} color={theme.control.textMuted} weight="bold" />
           )}
         </Pressable>
       </View>
@@ -146,7 +146,7 @@ function SquareInput({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
   },
   widgetRow: {
     padding: 16,
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   text: {
     minWidth: 0,
@@ -181,14 +181,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   value: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '700',
     flex: 1,

@@ -19,6 +19,7 @@ import { summarizeBms, summarizeBmsWindow } from '@/modules/battery/lib'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   getHistoryMetricHotRange,
@@ -81,7 +82,13 @@ function generateChartSeries({
 }
 
 function SparklineShowcase() {
-  const [color, setColor] = useState(telemetry.speed.color)
+  const colors = {
+    speed: telemetry.speed.color,
+    duty: telemetry.duty.color,
+    controller: telemetry.controllerTemp.color,
+    yellow: theme.palette.yellow.color,
+  } as const
+  const [colorKey, setColorKey] = useState<keyof typeof colors>('speed')
   const [noSamples, setNoSamples] = useState(false)
   const generated = useMemo(() => generateSparklineData(120, 42, 2, 11), [])
   // Empty series is the disconnected case: the max badge hides itself, the row keeps its height.
@@ -95,19 +102,19 @@ function SparklineShowcase() {
           <ToggleRow label="no samples" value={noSamples} onToggle={setNoSamples} />
           <ChipRow
             label="color"
-            options={[
-              telemetry.speed.color,
-              telemetry.duty.color,
-              telemetry.controllerTemp.color,
-              theme.palette.yellow.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
+            options={Object.keys(colors)}
+            selected={colorKey}
+            onSelect={(value) => setColorKey(value as keyof typeof colors)}
           />
         </>
       }
     >
-      <Sparkline points={points} color={color} height={32} fmtMax={(v) => `${v.toFixed(1)} V`} />
+      <Sparkline
+        points={points}
+        color={colors[colorKey]}
+        height={32}
+        fmtMax={(v) => `${v.toFixed(1)} V`}
+      />
     </ShowcaseCard>
   )
 }
@@ -221,6 +228,7 @@ function AnimatedDualGaugeShowcase() {
 }
 
 function LinearGaugeShowcase() {
+  const neutral = useResolvedNeutralColors()
   const [empty, setEmpty] = useState(false)
   const [charging, setCharging] = useState(false)
   const [percent, setPercent] = useState('82')
@@ -255,7 +263,7 @@ function LinearGaugeShowcase() {
       <LinearGauge
         value={empty ? null : value}
         max={100}
-        color={stale ? theme.palette.slate.textSecondary : telemetry.battVoltage.color}
+        color={stale ? neutral.textSecondary : telemetry.battVoltage.color}
         unit="%"
         aux={empty ? undefined : mode === 'stale old' ? `${voltageText} · 2h ago` : voltageText}
         charging={charging}
@@ -410,7 +418,7 @@ export default function ChartsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   chartExample: { marginBottom: 10 },
 })

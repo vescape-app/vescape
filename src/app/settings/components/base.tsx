@@ -228,6 +228,15 @@ function ButtonShowcase() {
             loading={loading}
             disabled={disabled}
           />
+          <Button
+            style={{ flex: 1 }}
+            label="Ride"
+            variant="groupRide"
+            size="sm"
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
         </View>
       </View>
     </ShowcaseCard>
@@ -237,7 +246,12 @@ function ButtonShowcase() {
 function PlaceholderShowcase() {
   const [showTitle, setShowTitle] = useState(true)
   const [showAction, setShowAction] = useState(true)
-  const [color, setColor] = useState<string>(theme.palette.slate.textMuted)
+  const [colorKey, setColorKey] = useState<'muted' | 'sky' | 'error'>('muted')
+  const color = {
+    muted: theme.palette.slate.textMuted,
+    sky: theme.palette.sky.color,
+    error: theme.status.error.color,
+  }[colorKey]
 
   return (
     <ShowcaseCard
@@ -248,13 +262,9 @@ function PlaceholderShowcase() {
           <ToggleRow label="showAction" value={showAction} onToggle={setShowAction} />
           <ChipRow
             label="iconColor"
-            options={[
-              theme.palette.slate.textMuted,
-              theme.palette.sky.color,
-              theme.status.error.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
+            options={['muted', 'sky', 'error']}
+            selected={colorKey}
+            onSelect={(value) => setColorKey(value as typeof colorKey)}
           />
         </>
       }
@@ -386,12 +396,12 @@ export default function BaseComponentsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   tickBox: {
     gap: 6,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 6,
     padding: 8,
   },

@@ -39,7 +39,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     const a = tick.adc1.value
     const active = a != null && a > FOOTPAD_ACTIVE_V
     return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
+      borderColor: active ? theme.palette.green.text : theme.palette.slate.border,
       backgroundColor: active ? theme.palette.green.text : 'transparent',
     }
   })
@@ -48,7 +48,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     const a = tick.adc2.value
     const active = a != null && a > FOOTPAD_ACTIVE_V
     return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
+      borderColor: active ? theme.palette.green.text : theme.palette.slate.border,
       backgroundColor: active ? theme.palette.green.text : 'transparent',
     }
   })
@@ -104,9 +104,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               style={[
                 styles.imuMarker,
                 {
-                  borderColor: imuConnected
-                    ? theme.palette.purple.color
-                    : theme.palette.slate.textMuted,
+                  borderColor: imuConnected ? theme.palette.purple.color : theme.neutral.textMuted,
                 },
               ]}
             />
@@ -116,7 +114,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
                 {
                   backgroundColor: imuConnected
                     ? theme.palette.purple.color
-                    : theme.palette.slate.textMuted,
+                    : theme.neutral.textMuted,
                 },
                 imuLineStyle,
               ]}
@@ -179,7 +177,7 @@ const styles = StyleSheet.create({
     height: 9,
     borderRadius: 5,
     borderWidth: 1,
-    borderColor: theme.palette.slate.textDim,
+    borderColor: theme.palette.slate.border,
     backgroundColor: 'transparent',
   },
   cellPressed: {

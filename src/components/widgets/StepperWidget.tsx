@@ -20,7 +20,7 @@ interface StepperWidgetProps {
 export function StepperWidget({
   icon: IconComponent,
   label,
-  accent = theme.palette.slate.textSecondary,
+  accent = theme.control.textMuted,
   size = 'full',
   disabled,
   onPrevious,
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '700',
   },

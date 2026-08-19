@@ -6,6 +6,7 @@ import type { MapPoint } from 'vescape-core'
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
+import type { ResolvedAccentColors } from '@/constants/theme'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
 import {
   getMapPointKindIcon,
@@ -31,9 +32,10 @@ const RiderDotIcon: Icon = ({ color }) =>
 export function buildGpsTrackedPoint(
   coordinate: { longitude: number; latitude: number } | null,
   riderColor: string | null,
+  accents?: ResolvedAccentColors,
 ): TrackedMapPoint[] {
   if (!coordinate) return []
-  const color = riderColor ?? GPS_POINT_COLOR
+  const color = riderColor ?? accents?.purple.color ?? GPS_POINT_COLOR
   return [
     {
       id: 'gps',
@@ -46,13 +48,17 @@ export function buildGpsTrackedPoint(
   ]
 }
 
-export function buildMapPointTrackedPoint(point: MapPoint, id: string): TrackedMapPoint {
+export function buildMapPointTrackedPoint(
+  point: MapPoint,
+  id: string,
+  accents?: ResolvedAccentColors,
+): TrackedMapPoint {
   return {
     id,
     type: 'mapPoint',
     coordinate: [point.longitude, point.latitude],
-    color: getMapPointKindColor(point.category),
-    textColor: getMapPointKindTextColor(point.category),
+    color: getMapPointKindColor(point.category, accents),
+    textColor: getMapPointKindTextColor(point.category, accents),
     icon: getMapPointKindIcon(point.category),
   }
 }
@@ -60,14 +66,15 @@ export function buildMapPointTrackedPoint(point: MapPoint, id: string): TrackedM
 function directionTrackedPoint(
   coordinate: [number, number],
   riderColor: string | null,
+  accents?: ResolvedAccentColors,
   icon = getMapPointKindIcon('direction'),
 ): TrackedMapPoint {
   return {
     id: 'direction',
     type: 'direction',
     coordinate,
-    color: riderColor ?? DESTINATION_POINT_COLOR,
-    textColor: riderColor ?? DESTINATION_POINT_TEXT_COLOR,
+    color: riderColor ?? accents?.green.color ?? DESTINATION_POINT_COLOR,
+    textColor: riderColor ?? accents?.green.text ?? DESTINATION_POINT_TEXT_COLOR,
     icon,
   }
 }
@@ -77,25 +84,32 @@ export function buildActiveNavigationPoint({
   directionPoint,
   mapPoints,
   riderColor,
+  accents,
 }: {
   activeNavigationTarget: MapSelection | null
   directionPoint: DirectionPoint | null
   mapPoints: MapPoint[]
   riderColor: string | null
+  accents?: ResolvedAccentColors
 }): TrackedMapPoint | null {
   if (!activeNavigationTarget) {
     if (!directionPoint) return null
-    return directionTrackedPoint([directionPoint.longitude, directionPoint.latitude], riderColor)
+    return directionTrackedPoint(
+      [directionPoint.longitude, directionPoint.latitude],
+      riderColor,
+      accents,
+    )
   }
   if (activeNavigationTarget.type === 'mapPoint') {
     const point =
       mapPoints.find((candidate) => candidate.id === activeNavigationTarget.id) ??
       activeNavigationTarget.point
-    return buildMapPointTrackedPoint(point, `navigation-map-point-${point.id}`)
+    return buildMapPointTrackedPoint(point, `navigation-map-point-${point.id}`, accents)
   }
   return directionTrackedPoint(
     [activeNavigationTarget.longitude, activeNavigationTarget.latitude],
     riderColor,
+    accents,
     activeNavigationTarget.type === 'place'
       ? getPlaceCategoryIcon(activeNavigationTarget.category)
       : undefined,
@@ -103,11 +117,14 @@ export function buildActiveNavigationPoint({
 }
 
 /** Peers themselves, index-aligned with the roster so pin and edge indicator share one tint. */
-export function buildRiderPoints(riders: RosterRider[]): TrackedMapPoint[] {
+export function buildRiderPoints(
+  riders: RosterRider[],
+  accents?: ResolvedAccentColors,
+): TrackedMapPoint[] {
   return riders.flatMap((rider, index) => {
     const presence = rider.presence
     if (!presence) return []
-    const color = rosterRiderColor(rider, index)
+    const color = rosterRiderColor(rider, index, accents)
     return [
       {
         id: `rider-${rider.id}`,
@@ -122,11 +139,14 @@ export function buildRiderPoints(riders: RosterRider[]): TrackedMapPoint[] {
 }
 
 /** Peers' shared targets, same index-aligned tint as their rider pin. */
-export function buildRiderTargetPoints(riders: RosterRider[]): TrackedMapPoint[] {
+export function buildRiderTargetPoints(
+  riders: RosterRider[],
+  accents?: ResolvedAccentColors,
+): TrackedMapPoint[] {
   return riders.flatMap((rider, index) => {
     const target = rider.presence?.target
     if (!target) return []
-    const color = rosterRiderColor(rider, index)
+    const color = rosterRiderColor(rider, index, accents)
     return [
       {
         id: `rider-target-${rider.id}`,

@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   ringSelected: {
-    borderColor: theme.palette.slate.textPrimary,
+    borderColor: theme.neutral.textPrimary,
   },
   swatch: {
     alignItems: 'center',

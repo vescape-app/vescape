@@ -5,6 +5,7 @@ import type { MapPoint, MapPointPatch } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useColoredAction } from '@/hooks/useTheme'
 import { useKeyboardLift } from '@/hooks/useKeyboardLift'
 import { MapPointMediaActions } from '@/modules/map-points/components/MapPointMediaAddButton'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
@@ -43,6 +44,9 @@ export function MapTargetEditBody({
   const [description, setDescription] = useState(point.description ?? '')
   const keyboardLift = useKeyboardLift(true)
   const sheetBottom = Math.max(bottom, keyboardLift + 12)
+  // Colored actions wear the two-layer colored surface.
+  const deleteSurface = useColoredAction(theme.palette.red.color)
+  const saveSurface = useColoredAction(theme.palette.cyan.color)
   const handleSave = useCallback(async () => {
     if (onSaveMapPoint) await onSaveMapPoint(point.id, { name, description })
     onSave?.()
@@ -61,7 +65,7 @@ export function MapTargetEditBody({
           value={description}
           onChangeText={setDescription}
           placeholder="Description"
-          placeholderTextColor={theme.palette.slate.textMuted}
+          placeholderTextColor={theme.neutral.textMuted}
           multiline
           style={[mapTargetSheetChromeStyles.input, styles.descriptionInput]}
           accessibilityLabel="Map feature description"
@@ -86,11 +90,11 @@ export function MapTargetEditBody({
             onPress={onDelete}
             style={({ pressed }) => [
               styles.deleteIconButton,
-              styles.deleteButton,
+              { backgroundColor: deleteSurface, borderColor: theme.palette.red.color },
               pressed && mapSheetStyles.mapTargetNavigatePressed,
             ]}
           >
-            <TrashIcon size={18} color={theme.status.error.text} weight="bold" />
+            <TrashIcon size={18} color={theme.palette.red.light} weight="bold" />
           </Pressable>
         ) : null}
         <Pressable
@@ -99,11 +103,13 @@ export function MapTargetEditBody({
           onPress={() => void handleSave()}
           style={({ pressed }) => [
             mapTargetSheetChromeStyles.actionButton,
-            styles.saveButton,
+            { backgroundColor: saveSurface, borderColor: theme.palette.cyan.color },
             pressed && mapSheetStyles.mapTargetNavigatePressed,
           ]}
         >
-          <Text style={[mapSheetStyles.mapTargetNavigateText, styles.saveText]}>Save</Text>
+          <Text style={[mapSheetStyles.mapTargetNavigateText, { color: theme.palette.cyan.light }]}>
+            Save
+          </Text>
         </Pressable>
       </MapTargetActionRow>
     </MapTargetSheetFrame>
@@ -111,10 +117,6 @@ export function MapTargetEditBody({
 }
 
 const styles = StyleSheet.create({
-  deleteButton: {
-    backgroundColor: theme.status.error.bg,
-    borderColor: theme.status.error.border,
-  },
   deleteIconButton: {
     width: 46,
     height: 46,
@@ -130,12 +132,5 @@ const styles = StyleSheet.create({
   },
   draftFields: {
     gap: 8,
-  },
-  saveButton: {
-    backgroundColor: theme.palette.cyan.border,
-    borderColor: theme.palette.cyan.border,
-  },
-  saveText: {
-    color: theme.palette.slate.textPrimary,
   },
 })

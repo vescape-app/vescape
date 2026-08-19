@@ -127,7 +127,7 @@ export function FadeCardModal({
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
-            <XIcon size={15} color={theme.palette.slate.textSecondary} weight="bold" />
+            <XIcon size={15} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
         ) : null}
       </View>
@@ -176,10 +176,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     maxHeight: '78%',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     padding: 18,
     gap: 14,
   },
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '800',
   },
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   body: {
     paddingRight: 2,

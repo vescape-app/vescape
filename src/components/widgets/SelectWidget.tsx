@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretDownIcon, type Icon } from 'phosphor-react-native'
 
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface SelectWidgetProps {
@@ -29,7 +29,7 @@ export function SelectWidget({
   label,
   value,
   description,
-  accent = theme.palette.slate.textSecondary,
+  accent = theme.control.textMuted,
   selectAccent,
   selectBackground,
   selectBorder,
@@ -39,13 +39,13 @@ export function SelectWidget({
   onPress,
   onSelectPress,
 }: SelectWidgetProps) {
-  const selectTextColor = selectAccent ?? theme.palette.slate.textSecondary
-  const selectControlColor = selectAccent ?? theme.palette.slate.textMuted
+  const selectTextColor = selectAccent ?? theme.control.text
+  const selectControlColor = selectAccent ?? theme.control.textMuted
   const valuePillStyle =
     selectBackground || selectBorder
       ? {
-          backgroundColor: selectBackground ?? theme.palette.slate.surfaceDeep,
-          borderColor: selectBorder ?? selectAccent ?? theme.palette.slate.border,
+          backgroundColor: selectBackground ?? theme.control.backgroundPressed,
+          borderColor: selectBorder ?? selectAccent ?? theme.control.divider,
         }
       : null
 
@@ -102,14 +102,14 @@ export function SelectWidget({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   disabled: {
     opacity: 0.5,
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -142,12 +142,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.control.divider,
+    backgroundColor: theme.control.backgroundPressed,
   },
   value: {
     flexShrink: 1,
-    color: theme.palette.slate.textSecondary,
+    color: theme.control.text,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '180deg' }],
   },
   description: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     lineHeight: 16,
   },

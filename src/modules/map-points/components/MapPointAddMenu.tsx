@@ -6,6 +6,11 @@ import type { MapPointCategory } from 'vescape-core'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import {
+  useColoredAction,
+  useResolvedAccentColors,
+  useResolvedNeutralColors,
+} from '@/hooks/useTheme'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
 import {
@@ -43,21 +48,49 @@ export function MapPointAddMenu({
   onSelectCategory: (category: MapPointCategory) => void
   onSelectNavigationPoint: () => void
 }) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  // The Navigate button is a colored action: it wears the two-layer colored surface.
+  const navigateSurface = useColoredAction(navigationAction.color)
+
   if (!open) {
     return (
       <View style={[styles.mapAddAction, { bottom }]}>
         <Animated.View>
-          <IconButton icon={PlusIcon} size="lg" onPress={onToggle} />
+          <IconButton
+            icon={PlusIcon}
+            size="lg"
+            iconColor={neutral.textPrimary}
+            onPress={onToggle}
+            style={{
+              backgroundColor: neutral.surfaceDeep,
+              borderColor: neutral.border,
+            }}
+          />
         </Animated.View>
       </View>
     )
   }
 
   return (
-    <View style={[styles.mapAddSheet, { bottom: sheetBottom }]}>
+    <View
+      style={[
+        styles.mapAddSheet,
+        {
+          bottom: sheetBottom,
+          backgroundColor: neutral.surface,
+          borderColor: neutral.border,
+        },
+      ]}
+    >
       <View style={styles.mapAddSheetHeader}>
-        <View style={[mapSheetStyles.mapTargetIcon, { borderColor: theme.palette.cyan.color }]}>
-          <PlusIcon size={18} color={theme.palette.cyan.text} weight="bold" />
+        <View
+          style={[
+            mapSheetStyles.mapTargetIcon,
+            { backgroundColor: neutral.surfaceDeep, borderColor: accents.cyan.color },
+          ]}
+        >
+          <PlusIcon size={18} color={accents.cyan.text} weight="bold" />
         </View>
         <View style={mapSheetStyles.mapTargetTitleBlock}>
           <Text style={mapSheetStyles.mapTargetTitle} numberOfLines={1}>
@@ -76,15 +109,15 @@ export function MapPointAddMenu({
             pressed && mapSheetStyles.mapTargetClosePressed,
           ]}
         >
-          <XIcon size={20} color={theme.palette.slate.textSecondary} weight="bold" />
+          <XIcon size={20} color={theme.neutral.textSecondary} weight="bold" />
         </Pressable>
       </View>
       <View style={styles.mapAddButtonGrid}>
         <View style={styles.mapAddCompactRow}>
           {compactMapPointOptions.map((option) => {
             const IconComponent = getMapPointKindIcon(option.kind)
-            const color = getMapPointKindColor(option.kind)
-            const textColor = getMapPointKindTextColor(option.kind)
+            const color = getMapPointKindColor(option.kind, accents)
+            const textColor = getMapPointKindTextColor(option.kind, accents)
             return (
               <Pressable
                 key={option.kind}
@@ -113,8 +146,8 @@ export function MapPointAddMenu({
         <View style={styles.mapAddSecondaryRow}>
           {secondaryMapPointOptions.map((option) => {
             const IconComponent = getMapPointKindIcon(option.kind)
-            const color = getMapPointKindColor(option.kind)
-            const textColor = getMapPointKindTextColor(option.kind)
+            const color = getMapPointKindColor(option.kind, accents)
+            const textColor = getMapPointKindTextColor(option.kind, accents)
             return (
               <Pressable
                 key={option.kind}
@@ -148,16 +181,14 @@ export function MapPointAddMenu({
             style={({ pressed }) => [
               styles.mapTargetNavigate,
               {
-                backgroundColor: theme.alpha(navigationAction.color, 0.12),
+                backgroundColor: navigateSurface,
                 borderColor: navigationAction.color,
               },
               pressed && mapSheetStyles.mapTargetNavigatePressed,
             ]}
           >
-            <NavigationArrowIcon size={18} color={navigationAction.textColor} weight="bold" />
-            <Text
-              style={[mapSheetStyles.mapTargetNavigateText, { color: navigationAction.textColor }]}
-            >
+            <NavigationArrowIcon size={18} color={navigationAction.color} weight="bold" />
+            <Text style={[mapSheetStyles.mapTargetNavigateText, { color: navigationAction.color }]}>
               Navigate
             </Text>
           </Pressable>
@@ -216,7 +247,7 @@ const styles = StyleSheet.create({
   },
   mapAddFeatureLabel: {
     maxWidth: '100%',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
     textAlign: 'center',
@@ -236,7 +267,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   mapAddSheetHeader: {
     minHeight: 46,
@@ -254,8 +285,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: theme.palette.green.bg,
     borderWidth: 1,
-    borderColor: theme.palette.green.border,
   },
 })

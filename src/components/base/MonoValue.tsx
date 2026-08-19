@@ -11,6 +11,7 @@ import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 import { theme, type MonoWeight } from '@/constants/theme'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { textAdvanceWidth } from '../../helpers/skiaText'
+import { useResolvedColor } from '@/hooks/useTheme'
 
 export type MonoValueAlign = 'left' | 'center' | 'right'
 
@@ -61,6 +62,7 @@ export function MonoText({
   height,
 }: MonoTextProps) {
   const font = useSkiaMonoFont(weight, size)
+  const rendererColor = useResolvedColor(color as string)
 
   // Vertically center the glyph box: ascent is negative, descent positive.
   const baseline = useMemo(() => {
@@ -77,7 +79,7 @@ export function MonoText({
   })
 
   if (!font) return null
-  return <SkiaText x={textX} y={baseline} text={text} font={font} color={color} />
+  return <SkiaText x={textX} y={baseline} text={text} font={font} color={rendererColor} />
 }
 
 export interface MonoValueProps extends Omit<MonoTextProps, 'x' | 'y' | 'width' | 'height'> {

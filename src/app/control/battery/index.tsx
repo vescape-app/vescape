@@ -11,6 +11,7 @@ import { IconButton } from '@/components/base/IconButton'
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
 import { deriveBatteryConfig } from '@/modules/battery/lib'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
@@ -24,10 +25,9 @@ const battCurrentCfg = telemetry.battCurrent
 const battPercentCfg = { ...battVoltageCfg, unit: '%', decimals: 0 }
 
 const PERCENT_RANGE = { min: 0, max: 100 }
-/** Battery % is the main line; voltage rides under it as a dim, de-emphasized gray. */
-const VOLTAGE_LINE_COLOR = theme.palette.slate.textMuted
 
 export default function BatteryScreen() {
+  const neutral = useResolvedNeutralColors()
   useRenderRateWarning('BatteryScreen')
   const navigation = useNavigation()
   const router = useRouter()
@@ -105,7 +105,7 @@ export default function BatteryScreen() {
           key: 'batteryVoltage',
           data: voltageSeries,
           range: voltageRange,
-          color: VOLTAGE_LINE_COLOR,
+          color: theme.alpha(neutral.textDim, 0.6),
           label: battVoltageCfg.label,
           unit: battVoltageCfg.unit,
           decimals: battVoltageCfg.decimals,
@@ -120,7 +120,7 @@ export default function BatteryScreen() {
         }),
       }),
     ],
-    [currentSeries, percentSeries, voltageRange, voltageSeries],
+    [currentSeries, neutral.textDim, percentSeries, voltageRange, voltageSeries],
   )
 
   // Gauge reads the latest of the calm ~1Hz decimated series — the same SoC source/cadence the

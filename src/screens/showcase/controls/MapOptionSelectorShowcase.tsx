@@ -20,7 +20,7 @@ export function MapOptionSelectorShowcase() {
         icon: (
           <ArrowUpIcon
             size={20}
-            color={active === 'north' ? theme.palette.green.text : theme.palette.slate.textDim}
+            color={active === 'north' ? theme.palette.green.text : theme.neutral.textDim}
             weight="bold"
           />
         ),
@@ -31,7 +31,7 @@ export function MapOptionSelectorShowcase() {
         icon: (
           <NavigationArrowIcon
             size={20}
-            color={active === 'gps' ? theme.palette.green.text : theme.palette.slate.textDim}
+            color={active === 'gps' ? theme.palette.green.text : theme.neutral.textDim}
             weight="fill"
           />
         ),
@@ -42,7 +42,7 @@ export function MapOptionSelectorShowcase() {
         icon: (
           <ArrowsClockwiseIcon
             size={20}
-            color={active === 'free' ? theme.palette.green.text : theme.palette.slate.textDim}
+            color={active === 'free' ? theme.palette.green.text : theme.neutral.textDim}
             weight="bold"
           />
         ),

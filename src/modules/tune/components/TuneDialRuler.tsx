@@ -14,19 +14,19 @@ import { useMemo } from 'react'
 import { StyleSheet } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
-import { theme } from '@/constants/theme'
+import {
+  useResolvedAccentColors,
+  useResolvedColor,
+  useResolvedNeutralColors,
+} from '@/hooks/useTheme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import { formatTuneValue } from '@/modules/tune/lib/fields'
 import {
   CURRENT_VALUE_TOP,
   GLOW_WIDTH,
   LABEL_BASELINE_Y,
-  LABEL_COLOR,
   LABEL_FONT_SIZE,
-  MAJOR_TICK_COLOR,
   MAJOR_TICK_TOP,
-  MINOR_TICK_COLOR,
-  PREV_MARK_COLOR,
   RULER_LABEL_BAND_TOP,
   TOP_VALUE_BAND_HEIGHT,
 } from '@/modules/tune/components/tuneDialLayout'
@@ -57,6 +57,9 @@ export function TuneDialRuler({
   valueToOffset: (value: number) => number
   layout: ReturnType<typeof computeTuneDialLayout>
 }) {
+  const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const resolvedColor = useResolvedColor(color)
   const {
     totalSteps,
     stepPx,
@@ -124,8 +127,8 @@ export function TuneDialRuler({
   return (
     <Canvas style={styles.canvas}>
       <Group transform={stripTransform}>
-        <Path path={minorTicksPath} style="stroke" color={MINOR_TICK_COLOR} strokeWidth={1} />
-        <Path path={majorTicksPath} style="stroke" color={MAJOR_TICK_COLOR} strokeWidth={1} />
+        <Path path={minorTicksPath} style="stroke" color={neutral.border} strokeWidth={1} />
+        <Path path={majorTicksPath} style="stroke" color={neutral.textMuted} strokeWidth={1} />
         {labelFont &&
           labels.map((label) => (
             <SkiaText
@@ -134,7 +137,7 @@ export function TuneDialRuler({
               y={LABEL_BASELINE_Y}
               text={label.text}
               font={labelFont}
-              color={LABEL_COLOR}
+              color={neutral.textMuted}
             />
           ))}
         {prevMarkOffset != null && (
@@ -144,12 +147,12 @@ export function TuneDialRuler({
               y={TOP_VALUE_BAND_HEIGHT}
               width={3}
               height={RULER_LABEL_BAND_TOP - TOP_VALUE_BAND_HEIGHT}
-              color={theme.palette.slate.surface}
+              color={neutral.surface}
             />
             <Line
               p1={vec(prevMarkOffset, TOP_VALUE_BAND_HEIGHT)}
               p2={vec(prevMarkOffset, RULER_LABEL_BAND_TOP)}
-              color={PREV_MARK_COLOR}
+              color={accents.yellow.color}
               strokeWidth={1}
             >
               <DashPathEffect intervals={[3, 3]} />
@@ -160,7 +163,7 @@ export function TuneDialRuler({
                 y={LABEL_BASELINE_Y}
                 text={previousValueLabel}
                 font={prevLabelFont}
-                color={PREV_MARK_COLOR}
+                color={accents.yellow.color}
               />
             )}
           </>
@@ -178,8 +181,8 @@ export function TuneDialRuler({
             end={vec(indicatorGlow === 'left' ? centerX : centerX + GLOW_WIDTH, 0)}
             colors={
               indicatorGlow === 'left'
-                ? [`${color}00`, `${color}12`, `${color}1A`]
-                : [`${color}1A`, `${color}12`, `${color}00`]
+                ? [`${resolvedColor}00`, `${resolvedColor}12`, `${resolvedColor}1A`]
+                : [`${resolvedColor}1A`, `${resolvedColor}12`, `${resolvedColor}00`]
             }
           />
         </Rect>

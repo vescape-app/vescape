@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -276,13 +276,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   cellValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     marginTop: 4,
   },
   cellLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   retryText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 4,

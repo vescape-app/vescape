@@ -11,7 +11,7 @@ import { useMemo } from 'react'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { theme } from '@/constants/theme'
+import { accentColors, theme } from '@/constants/theme'
 
 const TRACK_COLOR = theme.palette.slate.border
 export const LINE_THICK = 2
@@ -23,10 +23,11 @@ const MARKER_W = LINE_THICK * 1.5
 export const MARKER_RATIO = 0.5
 // Band tint fades in over the first stretch past the threshold so the edge reads as a soft entry
 // rather than a wall, then holds flat: nothing about the rule escalates further along the scale.
+const ALERT_COLOR = accentColors.dark.orange.color
 const ALERT_BAND_COLORS = [
-  theme.alpha(theme.palette.yellow.color, 0),
-  theme.alpha(theme.palette.yellow.color, 0.12),
-  theme.alpha(theme.palette.yellow.color, 0.12),
+  theme.alpha(ALERT_COLOR, 0),
+  theme.alpha(ALERT_COLOR, 0.12),
+  theme.alpha(ALERT_COLOR, 0.12),
 ]
 const ALERT_BAND_STOPS = [0, 0.3, 1]
 export const VALUE_GAP = 6
@@ -244,7 +245,7 @@ export function GaugeBar({
             y={lineY - TICK_LEN}
             width={TICK_W}
             height={TICK_LEN}
-            color={theme.palette.yellow.color}
+            color={ALERT_COLOR}
           />
         ))
       })}

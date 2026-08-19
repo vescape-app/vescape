@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { makeTrailLineString } from '@/helpers/mapGeometry'
 import { rosterRiderColor } from '@/modules/group-ride/lib/riderColor'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
@@ -20,7 +21,9 @@ export function RiderTrail({
   index: number
   highContrastRoutes: boolean
 }) {
-  const color = rosterRiderColor(rider, index)
+  const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const color = rosterRiderColor(rider, index, accents)
   const shape = useMemo(
     () =>
       rider.trail && rider.trail.length >= 2
@@ -35,7 +38,7 @@ export function RiderTrail({
       <LineLayer
         id={`center-rider-trail-casing-${rider.id}`}
         style={{
-          lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+          lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
           lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
           lineCap: 'round',
           lineJoin: 'round',
@@ -64,7 +67,8 @@ export function RiderTrail({
 }
 
 export function RiderPresencePin({ rider, index }: { rider: RosterRider; index: number }) {
-  const color = rosterRiderColor(rider, index)
+  const accents = useResolvedAccentColors()
+  const color = rosterRiderColor(rider, index, accents)
   const heading = rider.presence?.heading ?? null
   if (!rider.presence) return null
 
@@ -121,12 +125,12 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
-    color: theme.palette.slate.textPrimary,
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
+    color: theme.neutral.textPrimary,
     fontSize: 11,
     fontWeight: '800',
   },
   riderLabelStale: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
 })

@@ -176,5 +176,5 @@ export function AppBlockScreenShowcase() {
 }
 
 const styles = StyleSheet.create({
-  previewHint: { color: theme.palette.slate.textDim, fontSize: 12, fontStyle: 'italic' },
+  previewHint: { color: theme.neutral.textDim, fontSize: 12, fontStyle: 'italic' },
 })

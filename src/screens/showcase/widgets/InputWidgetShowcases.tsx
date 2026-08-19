@@ -208,10 +208,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   optionRowActive: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   optionText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },

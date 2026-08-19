@@ -362,10 +362,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pickerCard: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
   },
   pickerRow: {
     flexDirection: 'row',
@@ -376,14 +376,14 @@ const styles = StyleSheet.create({
   },
   pickerRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.border,
+    borderTopColor: theme.neutral.border,
   },
   radio: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -395,12 +395,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   pickerLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
   identityText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   failureNote: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },

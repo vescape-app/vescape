@@ -103,6 +103,18 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (styleKey === 'outdoors' || isSatellite) {
     return (
       <>
+        {isSatellite ? (
+          <RasterLayer
+            id="satellite"
+            existing
+            style={{
+              ...satelliteImageryPaint,
+              rasterOpacityTransition: LAYER_TRANSITION,
+              rasterSaturationTransition: LAYER_TRANSITION,
+              rasterContrastTransition: LAYER_TRANSITION,
+            }}
+          />
+        ) : null}
         <SymbolLayer id="poi-label" existing style={{ visibility }} />
         <SymbolLayer id="transit-label" existing style={{ visibility }} />
       </>

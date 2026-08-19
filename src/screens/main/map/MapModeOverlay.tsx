@@ -8,6 +8,7 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { routes } from '@/navigation/routes'
 import { FullMapControls } from '@/screens/main/map/FullMapControls'
 import { navigationActionColors } from '@/screens/main/map/navigationActionColors'
@@ -72,7 +73,12 @@ export function MapModeOverlay({
       : null)
   const targetSheetVisible =
     selectedNavigationTarget != null || (navigationTarget != null && !addMenuOpen)
-  const navigationAction = navigationActionColors(riderColor)
+  const accents = useResolvedAccentColors()
+  const navigationAction = navigationActionColors(
+    riderColor,
+    accents.green.light,
+    accents.green.light,
+  )
 
   const focusTargetOnMap = useCallback(
     (target: MapSelection) => {

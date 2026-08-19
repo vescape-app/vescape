@@ -25,14 +25,14 @@ export function SettingsCard({ children, separatorInset = 58 }: SettingsCardProp
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   separator: {
     height: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
 })

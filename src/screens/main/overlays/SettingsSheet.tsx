@@ -19,7 +19,7 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { LinkWidget } from '@/components/widgets/LinkWidget'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { DASH, fmtCompactCount, fmtTimeAgo, formatBytes } from '@/helpers/format'
 import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/backupSlot'
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   strip: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'stretch',
     paddingVertical: 14,
@@ -293,15 +293,15 @@ const styles = StyleSheet.create({
   },
   stripDivider: {
     width: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   stripValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   stripLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

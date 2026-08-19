@@ -36,6 +36,14 @@ describe('satellite dark map style', () => {
     })
   })
 
+  test('uses the explicit theme contrast without restoring full-contrast imagery', () => {
+    expect(getSatelliteImageryPaint(0.9, -0.1, -0.1)).toEqual({
+      rasterOpacity: 0.9,
+      rasterSaturation: -0.1,
+      rasterContrast: -0.1,
+    })
+  })
+
   test('stores satellite overlay paint in the style JSON', () => {
     const style = JSON.parse(
       getSatelliteDarkMapStyle(0.2, false, false, false, true, -0.35, 2),
@@ -56,5 +64,15 @@ describe('satellite dark map style', () => {
     })
     expect(style.layers.some((layer) => layer.id === 'poi-label')).toBe(false)
     expect(style.layers.some((layer) => layer.id === 'transit-label')).toBe(false)
+  })
+
+  test('accepts a theme-matched background behind satellite tiles', () => {
+    const style = JSON.parse(
+      getSatelliteDarkMapStyle(1, true, true, false, true, 0, 0.75, 0, '#e8eef5'),
+    ) as { layers: { id: string; paint: Record<string, unknown> }[] }
+
+    expect(style.layers.find((layer) => layer.id === 'background')?.paint).toEqual({
+      'background-color': '#e8eef5',
+    })
   })
 })

@@ -9,6 +9,15 @@ final class AppDataRepositorySettingsTests: XCTestCase {
     XCTAssertEqual(AppDataRepository.defaultSettings["dismissedCommunityMessageIds"] as? [String], [])
   }
 
+  func testThemeModeAcceptsSupportedModesOnly() {
+    XCTAssertEqual(AppDataRepository.themeMode("system"), "system")
+    XCTAssertEqual(AppDataRepository.themeMode("light"), "light")
+    XCTAssertEqual(AppDataRepository.themeMode("dark"), "dark")
+    XCTAssertEqual(AppDataRepository.themeMode("sun"), "sun")
+    XCTAssertNil(AppDataRepository.themeMode("automatic"))
+    XCTAssertNil(AppDataRepository.themeMode(false))
+  }
+
   func testDismissedCommunityMessageIdsKeepsNonEmptyStringsAndDedupes() {
     XCTAssertEqual(AppDataRepository.dismissedCommunityMessageIds(["a", "b", "a"]), ["a", "b"])
     XCTAssertEqual(AppDataRepository.dismissedCommunityMessageIds(["a", "", 3, NSNull()]), ["a"])

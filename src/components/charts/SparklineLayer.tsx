@@ -1,6 +1,7 @@
 import { Circle, Path, Skia } from '@shopify/react-native-skia'
 
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SparklinePoint {
   ts: number
@@ -26,9 +27,6 @@ export interface SparklinePaths {
   baselinePath: ReturnType<typeof Skia.Path.Make> | null
   maxPos: { x: number; y: number } | null
 }
-
-const BASELINE_COLOR = theme.palette.slate.border
-const MAX_DOT_STROKE = theme.palette.slate.surfaceDeep
 
 const SPARKLINE_INSET = 1.5
 
@@ -131,12 +129,14 @@ interface SparklineLayerProps {
 
 /** Draw-only layer. Parent owns Canvas, so many lines share one GPU surface. */
 export function SparklineLayer({ paths, color, showMax = false }: SparklineLayerProps) {
+  const neutral = useResolvedNeutralColors()
+  const resolvedColor = useResolvedColor(color)
   return (
     <>
       {paths.baselinePath ? (
         <Path
           path={paths.baselinePath}
-          color={BASELINE_COLOR}
+          color={theme.palette.slate.border}
           style="stroke"
           strokeWidth={1}
           strokeCap="round"
@@ -145,7 +145,7 @@ export function SparklineLayer({ paths, color, showMax = false }: SparklineLayer
       {paths.linePath ? (
         <Path
           path={paths.linePath}
-          color={color}
+          color={resolvedColor}
           style="stroke"
           strokeWidth={1.5}
           strokeCap="round"
@@ -154,12 +154,12 @@ export function SparklineLayer({ paths, color, showMax = false }: SparklineLayer
       ) : null}
       {showMax && paths.maxPos ? (
         <>
-          <Circle cx={paths.maxPos.x} cy={paths.maxPos.y} r={2.5} color={color} />
+          <Circle cx={paths.maxPos.x} cy={paths.maxPos.y} r={2.5} color={resolvedColor} />
           <Circle
             cx={paths.maxPos.x}
             cy={paths.maxPos.y}
             r={2.5}
-            color={MAX_DOT_STROKE}
+            color={neutral.surfaceDeep}
             style="stroke"
             strokeWidth={1}
           />

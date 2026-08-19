@@ -226,7 +226,7 @@ export function PrivacyZonesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   pillsFloating: {
     position: 'absolute',
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   zoneLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
     textShadowColor: theme.alpha(theme.palette.mono.black, 0.85),
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.6),
   },
   bottomBar: {
     position: 'absolute',

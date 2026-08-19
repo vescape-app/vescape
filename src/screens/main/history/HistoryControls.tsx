@@ -108,6 +108,7 @@ export function HistoryControls({
             activeId={tab}
             contained
             fitContent
+            variant="lightTabs"
             style={styles.tabs}
             contentContainerStyle={styles.tabsContent}
           >

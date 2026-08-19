@@ -169,12 +169,13 @@ export function CanvasWidgetShowcase() {
         icon={BroadcastIcon}
         title="Group Ride"
         accent={theme.palette.groupRide.color}
+        surface="secondary"
         active={active}
         height={200}
         action={
           active ? null : (
             <Pressable onPress={() => setActive(true)} hitSlop={10} accessibilityLabel="Dismiss">
-              <XIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+              <XIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
             </Pressable>
           )
         }
@@ -238,10 +239,10 @@ export function CanvasWidgetShowcase() {
 const styles = StyleSheet.create({
   collapsiblePreview: { minHeight: 120 },
   fill: { flex: 1 },
-  meta: { color: theme.palette.slate.textSecondary, fontSize: 13 },
-  name: { color: theme.palette.slate.textPrimary, fontSize: 17, fontWeight: '700' },
+  meta: { color: theme.neutral.textSecondary, fontSize: 13 },
+  name: { color: theme.neutral.textPrimary, fontSize: 17, fontWeight: '700' },
   squareValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 26,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],

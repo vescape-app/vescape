@@ -38,7 +38,7 @@ export function ZoneNameModal({
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder}
-            placeholderTextColor={theme.palette.slate.textDim}
+            placeholderTextColor={theme.neutral.textDim}
             autoFocus
             maxLength={32}
             onSubmitEditing={onConfirm}
@@ -76,15 +76,15 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     padding: 20,
     gap: 16,
   },
   modalTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },

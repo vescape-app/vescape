@@ -10,6 +10,7 @@ import type { Icon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 import type { tuneProfileColorTheme } from '@/modules/tune/components/TuneProfileMetadataModal'
 
 const PROFILE_OPTION_WIDTH = 46
@@ -32,7 +33,11 @@ export function TuneProfilePill({
   color,
   onPress,
 }: TuneProfilePillProps) {
-  const fadedColor = theme.alpha(color.color, 0.6)
+  const neutral = useResolvedNeutralColors()
+  const resolvedBackground = useResolvedColor(color.bg)
+  const resolvedBorder = useResolvedColor(color.border)
+  const resolvedColor = useResolvedColor(color.color)
+  const fadedColor = theme.alpha(resolvedColor, 0.6)
   const activeProgress = useSharedValue(active ? 1 : 0)
 
   useEffect(() => {
@@ -46,15 +51,11 @@ export function TuneProfilePill({
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [theme.palette.slate.surfaceDeep, color.bg],
+        [neutral.surfaceDeep, resolvedBackground],
       ),
-      borderColor: interpolateColor(
-        activeProgress.value,
-        [0, 1],
-        [theme.palette.slate.border, color.border],
-      ),
+      borderColor: interpolateColor(activeProgress.value, [0, 1], [neutral.border, resolvedBorder]),
     }),
-    [color.bg, color.border],
+    [neutral.border, neutral.surfaceDeep, resolvedBackground, resolvedBorder],
   )
   const labelStyle = useAnimatedStyle(
     () => ({
@@ -74,11 +75,11 @@ export function TuneProfilePill({
         accessibilityState={{ selected: active }}
         onPress={onPress}
       >
-        <IconComponent size={18} color={active ? color.color : fadedColor} weight="duotone" />
+        <IconComponent size={18} color={active ? resolvedColor : fadedColor} weight="duotone" />
         <AnimatedText
           style={[
             styles.profilePillText,
-            { color: active ? color.color : theme.palette.slate.textMuted },
+            { color: active ? resolvedColor : neutral.textMuted },
             labelStyle,
           ]}
           numberOfLines={1}

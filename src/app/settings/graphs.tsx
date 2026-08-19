@@ -71,13 +71,13 @@ export default function GraphsSettingsScreen() {
                 value={historyMetricGradientsEnabled}
                 onValueChange={(v) => void set('historyMetricGradientsEnabled', v)}
                 trackColor={{
-                  false: theme.palette.slate.border,
+                  false: theme.neutral.border,
                   true: theme.status.warning.border,
                 }}
                 thumbColor={
                   historyMetricGradientsEnabled
                     ? theme.status.warning.color
-                    : theme.palette.slate.textMuted
+                    : theme.neutral.textMuted
                 }
               />
             }
@@ -136,14 +136,14 @@ export default function GraphsSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,
     gap: 8,
   },
   sectionHint: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 12,
     marginTop: -4,
     marginBottom: 4,
@@ -162,12 +162,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   hotRangeName: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '600',
   },
   hotRangeHint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
   hotRangeControl: {
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   hotRangeLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',

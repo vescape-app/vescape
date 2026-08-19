@@ -5,6 +5,7 @@ import { previewAlertSound } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 const TTS_EXAMPLES = [
   'Battery {voltage} volts, {percent}%',
@@ -14,6 +15,7 @@ const TTS_EXAMPLES = [
 
 /** Speaks an alert message template, so placeholder substitution can be heard. */
 export function TtsProbe() {
+  const accents = useResolvedAccentColors()
   const [ttsTemplate, setTtsTemplate] = useState('Battery {voltage} volts, {percent}%')
 
   const handleSpeakTts = useCallback(() => {
@@ -46,13 +48,16 @@ export function TtsProbe() {
           value={ttsTemplate}
           onChangeText={setTtsTemplate}
           placeholder="Enter template…"
-          placeholderTextColor={theme.palette.slate.textDim}
+          placeholderTextColor={theme.neutral.textDim}
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Pressable style={styles.playButton} onPress={handleSpeakTts}>
-          <SpeakerHighIcon size={20} color={theme.palette.sky.bg} weight="fill" />
-          <Text style={styles.playButtonText}>Speak</Text>
+        <Pressable
+          style={[styles.playButton, { backgroundColor: accents.sky.solid }]}
+          onPress={handleSpeakTts}
+        >
+          <SpeakerHighIcon size={20} color={accents.sky.onSolid} weight="fill" />
+          <Text style={[styles.playButtonText, { color: accents.sky.onSolid }]}>Speak</Text>
         </Pressable>
       </View>
     </>
@@ -61,7 +66,7 @@ export function TtsProbe() {
 
 const styles = StyleSheet.create({
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -71,15 +76,15 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
     padding: 14,
   },
   ttsHint: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     marginBottom: 10,
     lineHeight: 16,
@@ -91,9 +96,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   ttsChip: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -103,21 +108,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.sky.bg,
   },
   ttsChipText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },
   ttsChipTextActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   ttsInput: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     marginBottom: 12,
     fontFamily: 'monospace',

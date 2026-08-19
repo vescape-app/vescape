@@ -554,6 +554,9 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
+    } else if key == "themeMode" {
+      guard let mode = Self.themeMode(rawValue) else { return }
+      value = mode
     } else if key == "boardWarningsEnabled" {
       // Strict Bool (Android rejects non-Boolean too): the board-warnings kill switch must never
       // persist a malformed value that reads back truthy.
@@ -629,6 +632,7 @@ final class AppDataRepository {
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
+    "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
     "satelliteMapImageryOpacity": 1.0,
@@ -652,6 +656,7 @@ final class AppDataRepository {
     var normalized = settings
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
+    normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =
@@ -725,6 +730,11 @@ final class AppDataRepository {
   static func satelliteImagerySaturation(_ value: Any?) -> Double? {
     guard let saturation = doubleValue(value), saturation.isFinite else { return nil }
     return min(1, max(-1, saturation))
+  }
+
+  static func themeMode(_ value: Any?) -> String? {
+    guard let mode = value as? String else { return nil }
+    return ["system", "light", "dark", "sun"].contains(mode) ? mode : nil
   }
 
   static func liveHistoryLimitMinutes(_ value: Any?) -> Int? {

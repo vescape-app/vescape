@@ -8,26 +8,59 @@ Visual design principles for the Vescape app. Follow these when building or modi
 
 > **No large solid bright fills — anywhere in the app.**
 > Bright accent colours (`theme.*.color`) are for **thin borders, icons, and text**, not for filling large areas. Avoid `weight="fill"` glyphs, bright filled discs/badges/blocks, and bright-coloured backgrounds behind content. State and emphasis come from thin borders + coloured icons/text on the dark surface.
-> Permitted fills: dark surfaces (`theme.neutral.surface`/`surfaceDeep`), dark tinted pill backgrounds (`theme.*.bg`), and the primary `Button`. Small bright accents (a thin underline, a dot, a 1–2px border) are fine; large bright planes are not.
+> Permitted fills: neutral surfaces (`theme.neutral.surface`/`surfaceDeep`), tinted pill backgrounds (`theme.*.bg`), and the primary `Button`. Small bright accents (a thin underline, a dot, a 1–2px border) are fine; large bright planes are not.
 
 ## Theme
 
-Dark-first. All screens use dark backgrounds with light text.
+The app has adaptive light and dark appearances. The durable `themeMode` setting supports:
 
-| Role           | Token                               |
-| -------------- | ----------------------------------- |
-| Background     | `theme.palette.slate.bg`            |
-| Card / surface | `theme.palette.slate.surface`       |
-| Deep surface   | `theme.palette.slate.surfaceDeep`   |
-| Border         | `theme.palette.slate.border`        |
-| Primary text   | `theme.palette.slate.textPrimary`   |
-| Secondary text | `theme.palette.slate.textSecondary` |
-| Muted text     | `theme.palette.slate.textMuted`     |
-| Dim text       | `theme.palette.slate.textDim`       |
+- `system` (default) — follows the phone appearance.
+- `light` — always light.
+- `dark` — always dark.
+- `sun` — light between local sunrise and sunset, dark otherwise, using the current or last known GPS location. It falls back to the system appearance when no location is available.
+
+Selecting the explicit One Dark or Outdoors basemap applies a dark or light appearance override for the current app session. This does not overwrite `themeMode`; Satellite and Mapy.cz clear the session override. When there is no session override, the configured appearance keeps explicit basemaps paired in the other direction: light uses Outdoors and dark uses One Dark. Satellite and Mapy.cz remain unchanged. This also resolves a persisted mismatch on the next app start.
+
+Neutral UI colors come from `theme.neutral`, while accent UI colors come from `theme.palette.<hue>`. Both are backed by iOS dynamic colors and Android day/night resources, so values captured by `StyleSheet.create` still update when the active appearance changes. `theme.palette.slate` remains a raw dark swatch for fixed dark map styles; do not use it for app surfaces or text.
+
+The light appearance uses a pure-white canvas. Read-only content sits directly on that canvas and is separated with spacing, typography, or thin neutral rules rather than raised cards. Interactive controls use the dark navy `theme.control` family in both appearances — the same `#0f172a` base in light and dark — making affordances obvious without shadows and keeping the accent-colored actions legible. Dark-contrasted chrome must use the adaptive `theme.control.*` family (or `theme.neutral.*` for content surfaces) — never the fixed `theme.palette.slate.*` raw swatches, which stay near-black in both appearances and are reserved for on-map/chart graphics.
+
+Segmented controls that use the `lightTabs` variant flip their contrast in light mode: the track stays navy and the active segment becomes a white pill with an accent border and accent text/icon; inactive segments are transparent with muted control text. Colored actions — `Button` accent/tune/success/destructive/groupRide, `IconButton` destructive/accent, tonal `CircleButton`s, the map-sheet primary `Ride it` / `Navigate` and `Cancel`, and map-sheet delete/save/vote buttons — carry their identity in the accent: on dark the accent tints the surface beneath (`coloredAction.darkTint`, dev's tinted pill); on light the accent washes over the navy control surface (`coloredAction.tint`) so a colored action keeps the weight of a filled control without a new palette color. They always use colored text and border, never white-on-navy or a bright translucent fill alone.
+
+Telemetry colors are appearance-specific. The light variants are darker than their dark-appearance counterparts so gauges, charts, routes, and small labels retain contrast against white. Use `theme.telemetry` for React Native styles and `useResolvedTelemetryColors()` for renderers.
+
+Non-React-Native renderers and worklets use the plain-string palettes from `useResolvedNeutralColors()` and `useResolvedAccentColors()`; native adaptive color objects must not cross into Mapbox, Skia, Reanimated worklets, or string-valued state.
+
+Android native `Switch` color props also receive resolved string colors. Its native color converter does not reliably resolve the adaptive resource-path value used by the rest of the React Native style system.
+
+Satellite keeps its own selected basemap across appearance changes. In light appearance, satellite tiles blend over the light neutral map background and low-opacity telemetry imagery is lifted enough to stay legible; dark appearance keeps the subdued nighttime treatment.
+
+| Role           | Token                         |
+| -------------- | ----------------------------- |
+| Background     | `theme.neutral.bg`            |
+| Card / surface | `theme.neutral.surface`       |
+| Deep surface   | `theme.neutral.surfaceDeep`   |
+| Border         | `theme.neutral.border`        |
+| Primary text   | `theme.neutral.textPrimary`   |
+| Secondary text | `theme.neutral.textSecondary` |
+| Muted text     | `theme.neutral.textMuted`     |
+| Dim text       | `theme.neutral.textDim`       |
+
+Interactive surfaces use a separate semantic family:
+
+| Role                | Token                              |
+| ------------------- | ---------------------------------- |
+| Control background  | `theme.control.background`         |
+| Pressed background  | `theme.control.backgroundPressed`  |
+| Disabled background | `theme.control.backgroundDisabled` |
+| Control border      | `theme.control.border`             |
+| Control divider     | `theme.control.divider`            |
+| Control text/icon   | `theme.control.text` / `.icon`     |
+| Muted control text  | `theme.control.textMuted`          |
 
 ## Layout Principles
 
-- **No decorative boxes.** Cards wrap only interactive groups (rows with inputs, switches, buttons). Do not wrap static info or labels in bordered containers.
+- **No decorative boxes or elevation.** Cards wrap only interactive groups (rows with inputs, switches, buttons). Do not wrap static info or labels in bordered containers, and do not use shadows to make hierarchy.
 - **Flat rows.** Settings-style rows are icon + label + control, no background box around the icon.
 - **Breathing room.** Use padding and gap, not borders, to separate content sections.
 - **Section titles** are uppercase, small (`12–13px`), muted (`theme.neutral.textMuted`), with letter-spacing.
@@ -41,6 +74,8 @@ Use `src/constants/theme.ts` for all accent colors. Never hardcode a hex value, 
 The theme is organized into domains:
 
 ### `palette`
+
+Each accent hue has two appearance-specific palettes. Use `color` for icons and thin emphasis, `text` for foreground text, `bg`/`border` for tinted controls, and the `solid`/`onSolid` pair for filled actions such as primary buttons. Never place a guessed black or white label over an accent fill.
 
 Named hue swatches. Every hue exposes `.color`, `.alt` (alias of `.light`), `.light`, `.text`, `.bg`, and `.border`.
 
@@ -63,22 +98,22 @@ Named hue swatches. Every hue exposes `.color`, `.alt` (alias of `.light`), `.li
 
 ### `telemetry`
 
-Single-color tokens for every metric. Use these for charts, sparklines, gauges, and live readouts so the same metric always has the same color.
+Appearance-specific tokens for every metric. Use these for charts, sparklines, gauges, and live readouts so the same metric keeps its identity while meeting the contrast needs of dark and white canvases.
 
-| Token            | Source hue              |
-| ---------------- | ----------------------- |
-| `speed`          | `palette.sky.light`     |
-| `duty`           | `palette.teal.color`    |
-| `motorCurrent`   | `palette.blue.color`    |
-| `battCurrent`    | `palette.blue.alt`      |
-| `motorTemp`      | `palette.red.color`     |
-| `controllerTemp` | `palette.orange.color`  |
-| `battVoltage`    | `palette.green.light`   |
-| `footpad1`       | `palette.slate.light`   |
-| `footpad2`       | `palette.slate.color`   |
-| `pitch`          | `palette.purple.color`  |
-| `roll`           | `palette.fuchsia.light` |
-| `balancePitch`   | `palette.pink.color`    |
+| Token            | Source hue             |
+| ---------------- | ---------------------- |
+| `speed`          | Speed / distance blue  |
+| `duty`           | Duty-cycle teal        |
+| `motorCurrent`   | Motor-current blue     |
+| `battCurrent`    | Battery-current blue   |
+| `motorTemp`      | Motor-temperature red  |
+| `controllerTemp` | Controller-temp orange |
+| `battVoltage`    | Battery green          |
+| `footpad1`       | Footpad neutral 1      |
+| `footpad2`       | Footpad neutral 2      |
+| `pitch`          | Pitch purple           |
+| `roll`           | Roll fuchsia           |
+| `balancePitch`   | Balance-pitch pink     |
 
 ### `map`
 
@@ -109,7 +144,7 @@ Every translucent value (overlays, backdrops, zone tints, glow gradients, vignet
 type AlphaLevel = 0 | 0.12 | 0.3 | 0.4 | 0.6 | 0.7 | 0.8 | 0.85 | 1
 ```
 
-Neutral row icons use `theme.palette.slate.textSecondary`.
+Neutral row icons use `theme.neutral.textSecondary`.
 
 ## Icons
 
@@ -134,6 +169,8 @@ A specific application of the no-bright-fills rule. Status and selection states 
 Use cards (`backgroundColor: theme.neutral.surface`, `borderRadius: 12`, `borderColor: theme.neutral.border`) only for grouping interactive elements (switches, steppers, pressable rows). A card groups related controls — not labels or read-only info.
 
 Inside cards, separate rows with a thin `theme.neutral.border` line indented past the icon (`marginLeft: 58`).
+
+**Corner sheets (EdgeDrawer) in light theme use a translucent white body** — free-floating fields on that surface read as unfinished. Group a sheet's interactive content in the same card boxes used on the settings screens (`SettingsCard`), with the sheet's mode switch (e.g. tab pills) and primary action sitting outside the card.
 
 ## Info Headers
 

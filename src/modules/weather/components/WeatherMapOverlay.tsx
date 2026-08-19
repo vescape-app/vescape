@@ -4,7 +4,6 @@ import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { theme } from '@/constants/theme'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
@@ -80,8 +79,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   weatherRefreshButton: {
     position: 'absolute',

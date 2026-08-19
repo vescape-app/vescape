@@ -17,7 +17,7 @@ export function Placeholder({
   icon: IconComponent,
   title,
   description,
-  iconColor = theme.palette.slate.textMuted,
+  iconColor = theme.neutral.textMuted,
   action,
   style,
 }: PlaceholderProps) {
@@ -46,13 +46,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
   },
   description: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     lineHeight: 18,
     textAlign: 'center',

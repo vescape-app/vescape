@@ -6,9 +6,11 @@ import type { Icon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { Dropdown, useTriggerRef } from '@/components/forms/Dropdown'
 import { theme } from '@/constants/theme'
+import { useResolvedControlColors, useThemeStore } from '@/hooks/useTheme'
 import type { PillSelectorItemProps } from '@/components/controls/PillSelectorItem'
 import {
   PillSelectorContext,
+  TRANSPARENT,
   TUNE_DEFAULT_ACTIVE_WIDTH,
   TUNE_OPTION_WIDTH,
   styles,
@@ -28,6 +30,7 @@ interface PillSelectorProps {
   centered?: boolean
   contained?: boolean
   fitContent?: boolean
+  variant?: 'control' | 'lightTabs'
   style?: StyleProp<ViewStyle>
   contentContainerStyle?: StyleProp<ViewStyle>
 }
@@ -58,6 +61,7 @@ export function PillSelector({
   centered = false,
   contained = false,
   fitContent = false,
+  variant = 'control',
   style,
   contentContainerStyle,
 }: PillSelectorProps) {
@@ -79,7 +83,9 @@ export function PillSelector({
     : null
 
   return (
-    <PillSelectorContext.Provider value={{ activeId, openMenu, closeMenu, addRef, contained }}>
+    <PillSelectorContext.Provider
+      value={{ activeId, openMenu, closeMenu, addRef, contained, variant }}
+    >
       <View
         style={[styles.container, contained && styles.containedContainer, fitContentStyle, style]}
       >
@@ -117,15 +123,27 @@ interface PillSelectorAddProps {
 }
 
 export function PillSelectorAdd({ testID, onPress }: PillSelectorAddProps) {
-  const { addRef, contained } = usePillSelectorCtx()
+  const { addRef, contained, variant } = usePillSelectorCtx()
+  const control = useResolvedControlColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   return (
     <Pressable
       ref={addRef}
       testID={testID}
-      style={[styles.addPill, contained && styles.containedAddPill]}
+      style={[
+        styles.addPill,
+        contained && styles.containedAddPill,
+        useLightTabs && {
+          backgroundColor: TRANSPARENT,
+          borderColor: control.divider,
+          borderWidth: 1,
+          borderStyle: 'dashed',
+        },
+      ]}
       onPress={onPress}
     >
-      <PlusIcon size={14} color={theme.palette.slate.color} weight="bold" />
+      <PlusIcon size={16} color={control.icon} weight="bold" />
     </Pressable>
   )
 }
@@ -159,7 +177,7 @@ export function PillSelectorMenuItem({
     >
       <IconComp
         size={15}
-        color={danger ? theme.status.error.text : theme.palette.slate.textSecondary}
+        color={danger ? theme.status.error.text : theme.control.textMuted}
         weight="bold"
       />
       <Text style={[styles.menuItemText, danger && styles.menuItemTextDanger]}>{label}</Text>

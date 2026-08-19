@@ -93,8 +93,8 @@ export function EditBoardSettings({
               {link ? (
                 <>
                   <Button
-                    style={styles.upgradeButton}
                     label="Re-link"
+                    variant="tune"
                     size="sm"
                     loading={linkSaving}
                     onPress={onRelink}
@@ -163,9 +163,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  upgradeButton: {
-    backgroundColor: theme.status.upgrade.color,
   },
   removeSection: {
     marginTop: 24,

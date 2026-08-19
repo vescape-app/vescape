@@ -1024,6 +1024,8 @@ export interface AppSettings {
    * list and in profile stats. Read-time grouping, so changing it re-groups existing rides too.
    */
   rideSplitGapMinutes: number
+  /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
+  themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
   satelliteOverlayEnabled: boolean

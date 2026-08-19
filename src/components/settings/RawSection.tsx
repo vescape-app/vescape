@@ -12,8 +12,8 @@ const TOKEN_COLORS: Record<JsonTokenType, string> = {
   number: theme.palette.amber.light,
   boolean: theme.palette.purple.thunder,
   null: theme.palette.red.light,
-  punctuation: theme.palette.slate.textMuted,
-  plain: theme.palette.slate.textSecondary,
+  punctuation: theme.neutral.textMuted,
+  plain: theme.neutral.textSecondary,
 }
 
 interface RawSectionProps {
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -101,8 +101,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surface,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surface,
   },
   exportText: {
     color: theme.palette.sky.light,
@@ -110,10 +110,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   kvRow: {
@@ -123,14 +123,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.palette.slate.border,
+    borderBottomColor: theme.neutral.border,
   },
   kvColumn: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.palette.slate.border,
+    borderBottomColor: theme.neutral.border,
   },
   jsonBlock: {
     fontSize: 12,
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   },
   kvKey: {
     flex: 1,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontFamily: 'monospace',
   },
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   emptyText: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 13,
     padding: 14,
   },

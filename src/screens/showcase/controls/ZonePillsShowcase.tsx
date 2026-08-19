@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   selectorCaption: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',

@@ -84,7 +84,7 @@ function RemoteTiltBody({
 
 const styles = StyleSheet.create({
   remoteTiltDisabled: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 12,
   },
 })

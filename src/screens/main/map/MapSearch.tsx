@@ -55,7 +55,7 @@ function MapSearchSheet({
       <MapVignette mode="map" idPrefix="search-map-vignette" topOnly />
       <View style={[styles.sheet, { top }]}>
         <View style={styles.bar}>
-          <MagnifyingGlassIcon size={22} color={theme.palette.slate.textSecondary} weight="bold" />
+          <MagnifyingGlassIcon size={22} color={theme.neutral.textSecondary} weight="bold" />
           <TextInput
             autoFocus
             selectTextOnFocus
@@ -63,7 +63,7 @@ function MapSearchSheet({
             onChangeText={handleSearchQueryChange}
             onSubmitEditing={() => void handleSubmit()}
             placeholder="Address or place"
-            placeholderTextColor={theme.palette.slate.textMuted}
+            placeholderTextColor={theme.neutral.textMuted}
             returnKeyType="search"
             style={styles.input}
           />
@@ -73,7 +73,7 @@ function MapSearchSheet({
             onPress={onClose}
             style={({ pressed }) => [styles.close, pressed && styles.pressed]}
           >
-            <XIcon size={22} color={theme.palette.slate.textSecondary} weight="bold" />
+            <XIcon size={22} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
         </View>
         {showResultPanel ? (
@@ -163,8 +163,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     zIndex: 44,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   sheet: {
     position: 'absolute',
@@ -178,7 +176,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -188,7 +186,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
     paddingVertical: 10,
@@ -207,7 +205,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   statusRow: {
     minHeight: 48,
@@ -217,7 +215,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   statusText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -243,19 +241,19 @@ const styles = StyleSheet.create({
     borderColor: theme.palette.green.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   resultText: {
     flex: 1,
     minWidth: 0,
   },
   resultTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '800',
   },
   resultSubtitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
