@@ -6,7 +6,7 @@ import type { MapPointCategory } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedControlColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { MapSearchResult } from '@/modules/map/lib/search'
@@ -56,7 +56,7 @@ export function FullMapControls({
   onRequireMapAccount,
 }: FullMapControlsProps) {
   const accents = useResolvedAccentColors()
-  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
   const riderColor = useRiderStore((s) => s.riderColor)
   // Category visibility and Map Point creation are store truth, not screen wiring.
   const hiddenMapPointCategories = useMapPointStore((s) => s.hiddenMapPointCategories)
@@ -214,9 +214,10 @@ export function FullMapControls({
         size="sm"
         testID="map-exit"
         onPress={handleExitMapFocus}
+        iconColor={neutral.textPrimary}
         style={[
           styles.backButton,
-          { top, backgroundColor: control.background, borderColor: control.border },
+          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
         ]}
       />
       <MapSearch

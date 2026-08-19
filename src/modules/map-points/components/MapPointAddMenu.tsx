@@ -57,7 +57,16 @@ export function MapPointAddMenu({
     return (
       <View style={[styles.mapAddAction, { bottom }]}>
         <Animated.View>
-          <IconButton icon={PlusIcon} size="lg" onPress={onToggle} />
+          <IconButton
+            icon={PlusIcon}
+            size="lg"
+            iconColor={neutral.textPrimary}
+            onPress={onToggle}
+            style={{
+              backgroundColor: neutral.surfaceDeep,
+              borderColor: neutral.border,
+            }}
+          />
         </Animated.View>
       </View>
     )

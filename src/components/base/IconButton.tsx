@@ -73,6 +73,8 @@ interface IconButtonProps {
   destructive?: boolean
   /** Override the icon + border colour to signal an active state. */
   accent?: string
+  /** Override the icon colour only, leaving the border as the plain control border. */
+  iconColor?: string
   /** Show a small pulsing badge dot in this colour (e.g. nearby Group Rides). */
   dot?: string
   loading?: boolean
@@ -90,6 +92,7 @@ export function IconButton({
   disabled = false,
   destructive = false,
   accent,
+  iconColor,
   dot,
   loading = false,
   style,
@@ -105,7 +108,9 @@ export function IconButton({
   // `destructive` puts the icon on a navy control surface, so it uses the bright red tint
   // (readable on navy in both appearances) instead of `status.error.text`, which is a dark
   // red meant for light surfaces.
-  const iconColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.icon)
+  const resolvedIconColor = destructive
+    ? theme.palette.red.light
+    : (activeAccent ?? iconColor ?? theme.control.icon)
   const borderColor = destructive ? theme.palette.red.light : (activeAccent ?? theme.control.border)
   // Colored actions (destructive, accent, takeover) wear the two-layer colored surface; a plain
   // button keeps the navy control surface. Hook runs unconditionally; result ignored when plain.
@@ -152,12 +157,12 @@ export function IconButton({
       disabled={isDisabled}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={iconColor} />
+        <ActivityIndicator size="small" color={resolvedIconColor} />
       ) : (
-        <Icon size={iconSize} color={iconColor} weight="bold" />
+        <Icon size={iconSize} color={resolvedIconColor} weight="bold" />
       )}
       {progress != null && !loading ? (
-        <ProgressRing dim={dim} color={iconColor} progress={progress} />
+        <ProgressRing dim={dim} color={resolvedIconColor} progress={progress} />
       ) : null}
       {dot && !loading ? (
         <Animated.View

@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.4),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.4),
   },
   pulse: {
     position: 'absolute',
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     borderWidth: 2,
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.3),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.3),
   },
   dot: {
     width: 8,
