@@ -11,13 +11,13 @@ import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSoundType }
 
 import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
-import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { SoundPicker } from '@/components/forms/SoundPicker'
 import { Stepper } from '@/components/forms/Stepper'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { AlertMessageField } from '@/modules/alerts/components/AlertMessageField'
+import { AlertTypeTabs } from '@/modules/alerts/components/AlertTypeTabs'
 import { RepeatField } from '@/modules/alerts/components/AlertFormFields'
 import {
   getAlertDialConfig,
@@ -141,41 +141,7 @@ export function AlertFormSheet({
       icon={tab === 'geiger' ? RadioactiveIcon : tab === 'message' ? ChatTextIcon : WaveformIcon}
       onClose={onClose}
     >
-      <View style={styles.tabsContainer}>
-        <PillSelector
-          activeId={tab}
-          contained
-          centered
-          variant="lightTabs"
-          style={styles.tabsTrack}
-          contentContainerStyle={styles.tabsContent}
-        >
-          <PillSelectorItem
-            id="single"
-            label="Alert"
-            icon={WaveformIcon}
-            labelBehavior="always"
-            color={theme.palette.green}
-            onPress={() => handleTabSwitch('single')}
-          />
-          <PillSelectorItem
-            id="geiger"
-            label="Geiger"
-            icon={RadioactiveIcon}
-            labelBehavior="always"
-            color={theme.palette.orange}
-            onPress={() => handleTabSwitch('geiger')}
-          />
-          <PillSelectorItem
-            id="message"
-            label="Message"
-            icon={ChatTextIcon}
-            labelBehavior="always"
-            color={theme.palette.cyan}
-            onPress={() => handleTabSwitch('message')}
-          />
-        </PillSelector>
-      </View>
+      <AlertTypeTabs tab={tab} onSelect={handleTabSwitch} />
 
       <SettingsCard separatorInset={0}>
         <View style={styles.cardField}>
@@ -224,6 +190,7 @@ export function AlertFormSheet({
               min={ALERT_BEEP_COUNT_RANGE.min}
               max={ALERT_BEEP_COUNT_RANGE.max}
               onChange={setBeepCount}
+              style={styles.beepStepper}
             />
           </View>
         )}
@@ -263,18 +230,6 @@ export function AlertFormSheet({
 }
 
 const styles = StyleSheet.create({
-  // Centers the whole track (not just the pills inside it): a fixed compact width sizes the
-  // contained track to its three always-labelled pills and the wrapper centers it.
-  tabsContainer: {
-    alignItems: 'center',
-  },
-  tabsTrack: {
-    width: 312,
-  },
-  tabsContent: {
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
   cardField: {
     gap: 6,
     paddingHorizontal: 14,
@@ -285,6 +240,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+  beepStepper: {
+    alignSelf: 'center',
   },
   saveButton: {
     marginTop: 4,

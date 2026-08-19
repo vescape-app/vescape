@@ -1,5 +1,5 @@
 import { MinusIcon, PlusIcon } from 'phosphor-react-native'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { inputBase } from '@/components/forms/Input'
@@ -12,6 +12,7 @@ interface StepperProps {
   step?: number | ((value: number, direction: 1 | -1) => number)
   onChange: (nextValue: number) => void
   fullWidth?: boolean
+  style?: StyleProp<ViewStyle>
   testIDPrefix?: string
 }
 
@@ -23,6 +24,7 @@ export function Stepper({
   step = 1,
   onChange,
   fullWidth = false,
+  style,
   testIDPrefix,
 }: StepperProps) {
   const stepFor = (direction: 1 | -1) =>
@@ -33,7 +35,7 @@ export function Stepper({
   const canIncrement = max == null || value < max
 
   return (
-    <View style={styles.stepper}>
+    <View style={[styles.stepper, style]}>
       <Pressable
         style={[styles.stepperBtn, !canDecrement && styles.stepperBtnDisabled]}
         onPress={() => onChange(decrementValue)}
