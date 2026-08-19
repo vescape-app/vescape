@@ -38,14 +38,14 @@ class ConfigSafetyDetectorTest {
   }
 
   @Test
-  fun usesPerCellVoltageResolvesFromFirmware() {
-    assertEquals(true, ConfigSafetyDetector.usesPerCellVoltage("FW 6.05 · hw · cfg"))
-    assertEquals(true, ConfigSafetyDetector.usesPerCellVoltage("FW 6.10"))
-    assertEquals(true, ConfigSafetyDetector.usesPerCellVoltage("FW 7.00"))
-    assertEquals(false, ConfigSafetyDetector.usesPerCellVoltage("FW 6.02"))
-    assertEquals(false, ConfigSafetyDetector.usesPerCellVoltage("FW 5.03"))
-    assertNull(ConfigSafetyDetector.usesPerCellVoltage(null))
-    assertNull(ConfigSafetyDetector.usesPerCellVoltage("unknown"))
+  fun supportsPerCellVoltageResolvesFromFirmware() {
+    assertEquals(true, ConfigSafetyDetector.supportsPerCellVoltage("FW 6.05 · hw · cfg"))
+    assertEquals(true, ConfigSafetyDetector.supportsPerCellVoltage("FW 6.10"))
+    assertEquals(true, ConfigSafetyDetector.supportsPerCellVoltage("FW 7.00"))
+    assertEquals(false, ConfigSafetyDetector.supportsPerCellVoltage("FW 6.02"))
+    assertEquals(false, ConfigSafetyDetector.supportsPerCellVoltage("FW 5.03"))
+    assertNull(ConfigSafetyDetector.supportsPerCellVoltage(null))
+    assertNull(ConfigSafetyDetector.supportsPerCellVoltage("unknown"))
   }
 
   @Test
@@ -127,6 +127,27 @@ class ConfigSafetyDetectorTest {
     val hv = hvHigh.finding(BoardWarningKind.HV_PUSHBACK_HIGH)!!
     assertEquals(BoardWarningSeverity.WARN, hv.severity)
     hv.assertPayload("tiltback_hv", 4.5, 4.3)
+  }
+
+  @Test
+  fun perCellCapableFirmwareStillAcceptsPackVoltageThresholds() {
+    // Refloat 1.2+ keeps legacy pack totals valid. It treats only values below 10 V as per-cell.
+    val clean = ConfigSafetyDetector.evaluate(
+      safe.copy(tiltbackLv = 57.0, tiltbackHv = 81.7),
+      seriesCount = 19,
+      perCell = true,
+    )
+    assertNull(clean.finding(BoardWarningKind.LV_PUSHBACK_LOW))
+    assertNull(clean.finding(BoardWarningKind.HV_PUSHBACK_HIGH))
+    assertTrue(clean.cleanKinds.contains(BoardWarningKind.LV_PUSHBACK_LOW))
+    assertTrue(clean.cleanKinds.contains(BoardWarningKind.HV_PUSHBACK_HIGH))
+
+    val high = ConfigSafetyDetector.evaluate(
+      safe.copy(tiltbackLv = 57.0, tiltbackHv = 82.0),
+      seriesCount = 19,
+      perCell = true,
+    )
+    high.finding(BoardWarningKind.HV_PUSHBACK_HIGH)!!.assertPayload("tiltback_hv", 82.0, 81.7)
   }
 
   @Test

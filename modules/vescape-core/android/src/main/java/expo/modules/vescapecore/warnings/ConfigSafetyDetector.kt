@@ -37,10 +37,10 @@ data class ConfigSafetyReport(
  * background config read, series-count lookup, and registry reporting stay in the session controller.
  *
  * Thresholds are native constants. The pushback voltage rules (LV/HV) read `tiltback_lv`
- * / `tiltback_hv` in whichever units the firmware uses: Refloat on VESC 6.05+ stores a **per-cell**
- * value (compared directly against the per-cell bound), older firmware stores a **pack** value
- * (compared against `bound × series`, so it needs the series count). [usesPerCellVoltage] resolves the
- * mode from the firmware string; when it cannot ([perCell] null) — or when pack mode lacks a series
+ * / `tiltback_hv` in whichever units the config value uses. Refloat on VESC 6.05+ supports both
+ * **per-cell** values below 10 V and legacy **pack** totals; older firmware supports only pack totals.
+ * [supportsPerCellVoltage] resolves firmware capability, then each value resolves its own units. When
+ * capability is unknown ([perCell] null) — or when pack mode lacks a series
  * count — those two rules are skipped. A rule whose config field is missing from the schema is likewise
  * skipped. Every payload carries the offending parameter, its current value, and the safe bound so the
  * UI can explain the finding.
@@ -57,18 +57,18 @@ object ConfigSafetyDetector {
   /** Maximum safe duty-cycle pushback threshold (fraction). VESC max duty is 0.95. */
   const val DUTY_MAX = 0.85
 
-  /** First VESC firmware (major, minor) that stores `tiltback_lv`/`tiltback_hv` as per-cell values. */
+  /** First VESC firmware (major, minor) that supports per-cell `tiltback_lv`/`tiltback_hv` values. */
   private const val PER_CELL_FW_MAJOR = 6
   private const val PER_CELL_FW_MINOR = 5
 
   private val fwVersionPattern = Regex("""(\d+)\.(\d+)""")
 
   /**
-   * Whether the firmware stores the pushback voltages per-cell (VESC 6.05+) rather than as a pack
-   * total. Returns null when the firmware string is absent or unparseable, so the caller skips the
+   * Whether the firmware supports per-cell pushback voltages (VESC 6.05+). Pack totals remain valid.
+   * Returns null when the firmware string is absent or unparseable, so the caller skips the
    * voltage rules rather than guessing the units.
    */
-  fun usesPerCellVoltage(fwVersion: String?): Boolean? {
+  fun supportsPerCellVoltage(fwVersion: String?): Boolean? {
     val match = fwVersion?.let { fwVersionPattern.find(it) } ?: return null
     val major = match.groupValues[1].toIntOrNull() ?: return null
     val minor = match.groupValues[2].toIntOrNull() ?: return null
@@ -92,7 +92,7 @@ object ConfigSafetyDetector {
 
     // lv-pushback-low (critical): LV pushback below the safe minimum, in the firmware's voltage units.
     val lv = values.tiltbackLv
-    val lvBound = voltageBound(CELL_LV_MIN_V, perCell, seriesCount)
+    val lvBound = voltageBound(lv, CELL_LV_MIN_V, perCell, seriesCount)
     if (lv != null && lvBound != null) {
       if (lv < lvBound) {
         findings += finding(BoardWarningKind.LV_PUSHBACK_LOW, BoardWarningSeverity.CRITICAL, "tiltback_lv", lv, lvBound)
@@ -103,7 +103,7 @@ object ConfigSafetyDetector {
 
     // hv-pushback-high (warn): HV pushback above the safe maximum, in the firmware's voltage units.
     val hv = values.tiltbackHv
-    val hvBound = voltageBound(CELL_HV_MAX_V, perCell, seriesCount)
+    val hvBound = voltageBound(hv, CELL_HV_MAX_V, perCell, seriesCount)
     if (hv != null && hvBound != null) {
       if (hv > hvBound) {
         findings += finding(BoardWarningKind.HV_PUSHBACK_HIGH, BoardWarningSeverity.WARN, "tiltback_hv", hv, hvBound)
@@ -136,12 +136,12 @@ object ConfigSafetyDetector {
   }
 
   /**
-   * The safe voltage bound in the firmware's units: the per-cell constant directly (per-cell firmware),
-   * or `× series` (pack firmware). Null when the mode is unknown, or pack mode has no series count — the
-   * caller then skips the rule.
+   * The safe voltage bound in the config value's units. Per-cell-capable firmware follows Refloat's
+   * rule: values below 10 V are per-cell, larger values are pack totals. Null when firmware capability
+   * is unknown, or a pack total has no series count.
    */
-  private fun voltageBound(perCellBound: Double, perCell: Boolean?, seriesCount: Int?): Double? = when (perCell) {
-    true -> perCellBound
+  private fun voltageBound(value: Double?, perCellBound: Double, perCellSupported: Boolean?, seriesCount: Int?): Double? = when (perCellSupported) {
+    true -> if (value != null && value < 10.0) perCellBound else seriesCount?.let { perCellBound * it }
     false -> seriesCount?.let { perCellBound * it }
     null -> null
   }

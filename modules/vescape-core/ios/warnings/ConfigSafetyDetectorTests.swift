@@ -45,14 +45,14 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     XCTAssertEqual(obj["bound"] as? Double, bound, file: file, line: line)
   }
 
-  func testUsesPerCellVoltageResolvesFromFirmware() {
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 6.05 · hw · cfg"), true)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 6.10"), true)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 7.00"), true)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 6.02"), false)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 5.03"), false)
-    XCTAssertNil(ConfigSafetyDetector.usesPerCellVoltage(nil))
-    XCTAssertNil(ConfigSafetyDetector.usesPerCellVoltage("unknown"))
+  func testSupportsPerCellVoltageResolvesFromFirmware() {
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 6.05 · hw · cfg"), true)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 6.10"), true)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 7.00"), true)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 6.02"), false)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 5.03"), false)
+    XCTAssertNil(ConfigSafetyDetector.supportsPerCellVoltage(nil))
+    XCTAssertNil(ConfigSafetyDetector.supportsPerCellVoltage("unknown"))
   }
 
   func testAllSafeReportsEveryKindClean() {
@@ -126,6 +126,26 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     let hv = finding(hvHigh, .hvPushbackHigh)
     XCTAssertEqual(hv?.severity, .warn)
     assertPayload(hv, param: "tiltback_hv", value: 4.5, bound: 4.3)
+  }
+
+  func testPerCellCapableFirmwareStillAcceptsPackVoltageThresholds() {
+    // Refloat 1.2+ keeps legacy pack totals valid. It treats only values below 10 V as per-cell.
+    let clean = ConfigSafetyDetector.evaluate(
+      values(tiltbackLv: 57.0, tiltbackHv: 81.7),
+      seriesCount: 19,
+      perCell: true
+    )
+    XCTAssertNil(finding(clean, .lvPushbackLow))
+    XCTAssertNil(finding(clean, .hvPushbackHigh))
+    XCTAssertTrue(clean.cleanKinds.contains(.lvPushbackLow))
+    XCTAssertTrue(clean.cleanKinds.contains(.hvPushbackHigh))
+
+    let high = ConfigSafetyDetector.evaluate(
+      values(tiltbackLv: 57.0, tiltbackHv: 82.0),
+      seriesCount: 19,
+      perCell: true
+    )
+    assertPayload(finding(high, .hvPushbackHigh), param: "tiltback_hv", value: 82.0, bound: 81.7)
   }
 
   func testPerCellRulesSkippedWithoutSeriesCountInPackMode() {

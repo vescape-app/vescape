@@ -1500,8 +1500,8 @@ private var wearAutoLaunchOnConnect = true
         if (!boardWarningsEnabled) return@guardWarningEval
         val boardId = boardConfig?.appBoardId ?: return@guardWarningEval
         val seriesCount = (batteryConfigCache?.get("seriesCount") as? Number)?.toInt()
-        val perCell = ConfigSafetyDetector.usesPerCellVoltage(fwVersionString)
-        val report = ConfigSafetyDetector.evaluate(values, seriesCount, perCell)
+        val perCellSupported = ConfigSafetyDetector.supportsPerCellVoltage(fwVersionString)
+        val report = ConfigSafetyDetector.evaluate(values, seriesCount, perCellSupported)
         val registry = BoardWarningRegistry.get(service.applicationContext)
         launchWarningWrite {
             for (finding in report.findings) {
