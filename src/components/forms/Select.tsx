@@ -21,6 +21,7 @@ interface SelectProps<T extends string = string> {
   onChange: (value: T) => void
   placeholder?: string
   style?: View['props']['style']
+  testID?: string
 }
 
 export function Select<T extends string = string>({
@@ -29,6 +30,7 @@ export function Select<T extends string = string>({
   onChange,
   placeholder = 'Select…',
   style,
+  testID,
 }: SelectProps<T>) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)
@@ -45,7 +47,12 @@ export function Select<T extends string = string>({
 
   return (
     <>
-      <Pressable ref={triggerRef} style={[styles.trigger, style]} onPress={() => setOpen(true)}>
+      <Pressable
+        ref={triggerRef}
+        testID={testID}
+        style={[styles.trigger, style]}
+        onPress={() => setOpen(true)}
+      >
         <Text style={[styles.triggerText, !selectedOption && styles.placeholderText]}>
           {selectedOption?.label ?? placeholder}
         </Text>
@@ -64,6 +71,7 @@ export function Select<T extends string = string>({
             return (
               <Pressable
                 key={option.value}
+                testID={testID ? `${testID}-option-${option.value}` : undefined}
                 style={({ pressed }) => [
                   styles.option,
                   index < options.length - 1 && styles.optionBorder,

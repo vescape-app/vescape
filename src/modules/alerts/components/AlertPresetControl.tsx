@@ -242,7 +242,7 @@ export function AlertPresetControl({
         {isCustom ? (
           <CustomLabel />
         ) : (
-          <LevelSlider value={level} onChange={onLevelChange} disabled={disabled} />
+          <LevelSlider metric={metric} value={level} onChange={onLevelChange} disabled={disabled} />
         )}
         {editAction && !disabled ? (
           <IconButton
@@ -299,12 +299,13 @@ const ALL_LEVELS: AlertPresetLevel[] = ['off', ...ALERT_PRESET_ACTIVE_LEVELS]
 const SLIDER_ANIMATION = { duration: 180 } as const
 
 interface LevelSliderProps {
+  metric: AlertPresetMetric
   value: AlertPresetLevel
   onChange: (level: AlertPresetLevel) => void
   disabled?: boolean
 }
 
-function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
+function LevelSlider({ metric, value, onChange, disabled }: LevelSliderProps) {
   const activeIndex = Math.max(0, ALL_LEVELS.indexOf(value))
   const tone = LEVEL_OPTIONS[activeIndex]!.tone
   const progress = useSharedValue(activeIndex)
@@ -337,10 +338,11 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
         return (
           <Pressable
             key={option.id}
+            testID={`alert-level-${metric}-${option.id}`}
             style={styles.sliderSegment}
             accessibilityRole="button"
             accessibilityState={{ selected: active, disabled }}
-            accessibilityLabel={option.label}
+            accessibilityLabel={active ? `${option.label}, selected` : option.label}
             disabled={disabled}
             onPress={() => onChange(option.id)}
           >
