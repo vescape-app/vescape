@@ -26,6 +26,7 @@ export function useMainScreenMapTargets(
   )
   const [longPressMapTarget, setLongPressMapTarget] = useState<MapSelection | null>(null)
   const [activeNavigationTarget, setActiveNavigationTarget] = useState<MapSelection | null>(null)
+  const [pendingSharedMapFocus, setPendingSharedMapFocus] = useState<[number, number] | null>(null)
   const dismissMapSelector = controller.dismissMapSelector
   const mapInteractionHandlerRef = useRef<(selection?: MapSelection) => boolean | undefined>(
     () => {},
@@ -216,14 +217,17 @@ export function useMainScreenMapTargets(
   )
 
   // A location shared from another app arrives as a plain coordinate, and from here on it is
-  // treated exactly like a target the rider picked themselves: same Direction Point, same sheet,
-  // same camera. Nothing about it is shared onward — it never becomes a Map Point.
+  // treated exactly like a target the rider clicked themselves: selected pin, same sheet, same
+  // camera. It becomes a Direction Point only if the rider chooses navigation from that sheet.
   const pendingSharedLocation = useMapStore((s) => s.pendingSharedLocation)
   const consumeSharedLocation = useMapStore((s) => s.consumeSharedLocation)
   const handleMapFocus = controller.handleMapFocus
   useEffect(() => {
     if (!pendingSharedLocation) return
     consumeSharedLocation()
+    // Entering map mode must not replay an unfinished long-press from the screen the rider left.
+    // That path is for contributing a Map Point and would incorrectly open the account gate.
+    setLongPressMapTarget(null)
     const { latitude, longitude, name } = pendingSharedLocation
     const id = `shared-${longitude.toFixed(6)}-${latitude.toFixed(6)}`
     // A named payload is a place, and stays one: a coordinate target is renamed "Direction point"
@@ -240,9 +244,21 @@ export function useMainScreenMapTargets(
           loadingDetails: true,
         }
     handleMapFocus()
-    void navigateToTarget(target)
-    mapRef.current?.focusCoordinate([longitude, latitude])
-  }, [consumeSharedLocation, handleMapFocus, mapRef, navigateToTarget, pendingSharedLocation])
+    handleSelectNavigationTarget(target)
+    setPendingSharedMapFocus([longitude, latitude])
+  }, [
+    consumeSharedLocation,
+    handleMapFocus,
+    handleSelectNavigationTarget,
+    mapRef,
+    pendingSharedLocation,
+  ])
+
+  useEffect(() => {
+    if (controller.mode !== 'map' || !pendingSharedMapFocus) return
+    mapRef.current?.focusCoordinateImmediately(pendingSharedMapFocus)
+    setPendingSharedMapFocus(null)
+  }, [controller.mode, mapRef, pendingSharedMapFocus])
 
   useEffect(() => {
     if (!selectedNavigationTarget?.loadingDetails) return

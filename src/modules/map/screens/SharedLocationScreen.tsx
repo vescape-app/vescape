@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 
 import { resolveSharedLocation } from '@/modules/map/lib/sharedLocationResolve'
 import { useMapStore } from '@/modules/map/store/mapStore'
@@ -18,25 +18,19 @@ import { useMapStore } from '@/modules/map/store/mapStore'
 export default function SharedLocationScreen() {
   const { text } = useLocalSearchParams<{ text?: string }>()
 
-  useEffect(() => {
-    const abortController = new AbortController()
+  useLayoutEffect(() => {
     const { receiveSharedLocation, failSharedLocation } = useMapStore.getState()
-
-    void resolveSharedLocation(text ?? '', { signal: abortController.signal })
-      .then((location) => {
-        if (abortController.signal.aborted) return
-        // An unreadable payload is still an answer, and it is the map that has to say so — the
-        // banner there is where the rider is already looking.
-        if (location) receiveSharedLocation(location)
-        else failSharedLocation()
-      })
-      .finally(() => {
-        if (abortController.signal.aborted) return
-        // Replace, not push: a share is an entry point, not a step the rider can go back to.
-        router.replace('/')
-      })
-
-    return () => abortController.abort()
+    // Start resolution before replacing the route: Expo Router may synchronously unmount this
+    // screen during `replace`, but the request must continue while the real map becomes visible.
+    const resolution = resolveSharedLocation(text ?? '').then((location) => {
+      // An unreadable payload is still an answer, and it is the map that has to say so — the
+      // banner there is where the rider is already looking.
+      if (location) receiveSharedLocation(location)
+      else failSharedLocation()
+    })
+    void resolution
+    // Leave the plumbing route before React Native paints it.
+    router.replace('/')
   }, [text])
 
   return null

@@ -21,8 +21,9 @@ import android.os.Bundle
 class ShareTargetActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    val payload = readPayload(intent)
     startActivity(
-      Intent(Intent.ACTION_VIEW, sharedLocationLink(readPayload(intent)))
+      Intent(Intent.ACTION_VIEW, sharedLocationLink(payload))
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
     )
     finish()

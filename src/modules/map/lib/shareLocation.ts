@@ -1,7 +1,11 @@
-import { Share } from 'react-native'
+import { Linking, Platform, Share } from 'react-native'
 
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { sharedLocationMessage, type SharedLocation } from '@/modules/map/lib/sharedLocation'
+import {
+  androidMapLocationUrl,
+  sharedLocationMessage,
+  type SharedLocation,
+} from '@/modules/map/lib/sharedLocation'
 
 /**
  * The shareable form of whatever the rider has selected. A dropped pin has no name worth sending —
@@ -23,6 +27,10 @@ export function sharedLocationFromSelection(selection: MapSelection): SharedLoca
  */
 export async function shareLocation(location: SharedLocation): Promise<void> {
   try {
+    if (Platform.OS === 'android') {
+      await Linking.openURL(androidMapLocationUrl(location))
+      return
+    }
     await Share.share({ message: sharedLocationMessage(location) })
   } catch {
     // Nothing was sent; the map is unchanged.

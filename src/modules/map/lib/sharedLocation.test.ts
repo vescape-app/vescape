@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  androidMapLocationUrl,
   parseSharedLocation,
   sharedLocationMessage,
   sharedLocationUrl,
 } from '@/modules/map/lib/sharedLocation'
-import { shortLocationLink } from '@/modules/map/lib/sharedLocationResolve'
+import { resolveSharedLocation, shortLocationLink } from '@/modules/map/lib/sharedLocationResolve'
 
 describe('parseSharedLocation', () => {
   it('reads a geo URI', () => {
@@ -93,6 +94,20 @@ describe('sharedLocationMessage', () => {
   })
 })
 
+describe('androidMapLocationUrl', () => {
+  it('creates a geo intent URL handled by installed map apps', () => {
+    expect(
+      androidMapLocationUrl({ latitude: 52.2297, longitude: 21.0122, name: 'Palm Tree' }),
+    ).toBe('geo:52.2297,21.0122?q=52.2297%2C21.0122(Palm%20Tree)')
+  })
+
+  it('uses coordinates as the query when the location has no name', () => {
+    expect(androidMapLocationUrl({ latitude: -33.8688, longitude: 151.2093, name: null })).toBe(
+      'geo:-33.8688,151.2093?q=-33.8688%2C151.2093',
+    )
+  })
+})
+
 describe('shortLocationLink', () => {
   it('finds a link worth following', () => {
     expect(shortLocationLink('look https://maps.app.goo.gl/abc123 here')).toBe(
@@ -103,5 +118,32 @@ describe('shortLocationLink', () => {
   it('ignores links that are not location short links', () => {
     expect(shortLocationLink('https://vescape.app/blog')).toBeNull()
     expect(shortLocationLink('no link at all')).toBeNull()
+  })
+
+  it('delegates opaque Google links to the native resolver', async () => {
+    const links: string[] = []
+    const location = await resolveSharedLocation('https://maps.app.goo.gl/BA5CZoXopVV5MjEm8', {
+      resolveLink: async (link) => {
+        links.push(link)
+        return { latitude: 51.1246336, longitude: 16.941056, name: 'Górka Szczepińska' }
+      },
+    })
+
+    expect(links).toEqual(['https://maps.app.goo.gl/BA5CZoXopVV5MjEm8'])
+    expect(location).toEqual({
+      latitude: 51.1246336,
+      longitude: 16.941056,
+      name: 'Górka Szczepińska',
+    })
+  })
+
+  it('turns native resolver failures into an unreadable share', async () => {
+    expect(
+      await resolveSharedLocation('https://maps.app.goo.gl/broken', {
+        resolveLink: async () => {
+          throw new Error('offline')
+        },
+      }),
+    ).toBeNull()
   })
 })

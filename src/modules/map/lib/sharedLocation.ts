@@ -125,6 +125,14 @@ export function sharedLocationMessage(location: SharedLocation): string {
   return name ? `${name}\n${coordinates}\n${url}` : `${coordinates}\n${url}`
 }
 
+/** Android map-app intent: unlike ACTION_SEND, installed map apps register for `geo:` URLs. */
+export function androidMapLocationUrl(location: SharedLocation): string {
+  const coordinates = `${location.latitude},${location.longitude}`
+  const label = location.name?.trim()
+  const query = label ? `${coordinates}(${label})` : coordinates
+  return `geo:${coordinates}?q=${encodeURIComponent(query)}`
+}
+
 function formatCoordinate(value: number): string {
   return Number(value.toFixed(SHARE_PRECISION)).toString()
 }
