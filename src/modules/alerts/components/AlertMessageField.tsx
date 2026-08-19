@@ -1,7 +1,9 @@
-import { TouchableOpacity, StyleSheet, View } from 'react-native'
+import { StyleSheet, TouchableOpacity, View } from 'react-native'
+import { SpeakerHighIcon } from 'phosphor-react-native'
 import { previewAlertSound } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
+import { IconButton } from '@/components/base/IconButton'
 import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
@@ -31,7 +33,19 @@ export function AlertMessageField({
 }) {
   return (
     <View style={styles.messageField}>
-      <Text style={styles.fieldLabel}>TEMPLATE</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.fieldLabel}>TEMPLATE</Text>
+        <IconButton
+          icon={SpeakerHighIcon}
+          size="sm"
+          accessibilityLabel="Preview the spoken message"
+          onPress={() =>
+            previewAlertSound(
+              `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
+            )
+          }
+        />
+      </View>
       <Input
         value={messageTemplate}
         onChangeText={onChangeTemplate}
@@ -51,16 +65,6 @@ export function AlertMessageField({
           </TouchableOpacity>
         ))}
       </View>
-      <TouchableOpacity
-        style={styles.previewButton}
-        onPress={() =>
-          previewAlertSound(
-            `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
-          )
-        }
-      >
-        <Text style={styles.previewButtonText}>Preview</Text>
-      </TouchableOpacity>
     </View>
   )
 }
@@ -68,6 +72,11 @@ export function AlertMessageField({
 const styles = StyleSheet.create({
   messageField: {
     gap: 8,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   fieldLabel: {
     color: theme.neutral.textMuted,
@@ -85,25 +94,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   placeholderChip: {
-    backgroundColor: theme.neutral.surface,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.neutral.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   placeholderChipText: {
     color: theme.neutral.textSecondary,
     fontSize: 12,
-    fontWeight: '600',
-  },
-  previewButton: {
-    backgroundColor: theme.neutral.surface,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  previewButtonText: {
-    color: theme.neutral.textPrimary,
-    fontSize: 13,
     fontWeight: '600',
   },
 })

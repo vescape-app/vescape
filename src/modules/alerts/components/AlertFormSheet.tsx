@@ -1,13 +1,15 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
+import { ChatTextIcon, RadioactiveIcon, SpeakerHighIcon, WaveformIcon } from 'phosphor-react-native'
 import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSoundType } from 'vescape-core'
 
+import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
+import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { SoundPicker } from '@/components/forms/SoundPicker'
 import { Stepper } from '@/components/forms/Stepper'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors } from '@/hooks/useTheme'
-import { AlertFormTabs } from '@/modules/alerts/components/AlertFormTabs'
 import { AlertMessageField } from '@/modules/alerts/components/AlertMessageField'
 import { RepeatField } from '@/modules/alerts/components/AlertFormFields'
 import {
@@ -23,8 +25,9 @@ import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
 import type { TelemetryAlertTab as AlertTab } from '@/modules/board/constants/telemetryThresholds'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
 
-interface AlertFormModalProps {
+interface AlertFormSheetProps {
   visible: boolean
+  triggerRef: React.RefObject<View | null>
   controlId: string
   unit: string
   editRule: DraftAlertRule | null
@@ -34,16 +37,16 @@ interface AlertFormModalProps {
 }
 
 /** Writes one alert rule: its threshold, how it sounds, and how often it repeats. */
-export function AlertFormModal({
+export function AlertFormSheet({
   visible,
+  triggerRef,
   controlId,
   unit,
   editRule,
   batteryConfig,
   onClose,
   onSave,
-}: AlertFormModalProps) {
-  const accents = useResolvedAccentColors()
+}: AlertFormSheetProps) {
   const isEditing = editRule != null
   const dialConfig = useMemo(
     () => getAlertDialConfig(controlId, batteryConfig),
@@ -124,132 +127,127 @@ export function AlertFormModal({
   ])
 
   return (
-    <Modal
+    <EdgeDrawer
       visible={visible}
-      transparent
-      animationType="fade"
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      onRequestClose={onClose}
+      triggerRef={triggerRef}
+      title={isEditing ? 'Edit Alert' : 'Add Alert'}
+      icon={tab === 'geiger' ? RadioactiveIcon : tab === 'message' ? ChatTextIcon : WaveformIcon}
+      onClose={onClose}
     >
-      <View style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.modal}>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.modalContent}
-          >
-            <Text style={styles.modalTitle}>{isEditing ? 'Edit Alert' : 'Add Alert'}</Text>
+      <PillSelector
+        activeId={tab}
+        contained
+        centered
+        variant="lightTabs"
+        contentContainerStyle={styles.tabsContent}
+      >
+        <PillSelectorItem
+          id="single"
+          label="Alert"
+          icon={WaveformIcon}
+          labelBehavior="always"
+          color={theme.palette.green}
+          onPress={() => handleTabSwitch('single')}
+        />
+        <PillSelectorItem
+          id="geiger"
+          label="Geiger"
+          icon={RadioactiveIcon}
+          labelBehavior="always"
+          color={theme.palette.orange}
+          onPress={() => handleTabSwitch('geiger')}
+        />
+        <PillSelectorItem
+          id="message"
+          label="Message"
+          icon={ChatTextIcon}
+          labelBehavior="always"
+          color={theme.palette.cyan}
+          onPress={() => handleTabSwitch('message')}
+        />
+      </PillSelector>
 
-            <AlertFormTabs tab={tab} onSelect={handleTabSwitch} />
-
-            <View style={styles.dialField}>
-              <Text style={styles.fieldLabel}>THRESHOLD</Text>
-              <TuneDial
-                value={threshold}
-                previousValue={editRule?.threshold ?? undefined}
-                min={dialConfig.min}
-                max={dialConfig.max}
-                step={dialConfig.step}
-                unit={dialConfig.unit}
-                indicatorGlow={tab === 'geiger' ? 'right' : undefined}
-                valueChangeMode="commit"
-                onValueChange={setThreshold}
-              />
-            </View>
-
-            {tab === 'geiger' && (
-              <View style={styles.dialField}>
-                <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
-                <TuneDial
-                  value={thresholdMax}
-                  previousValue={editRule?.thresholdMax ?? undefined}
-                  min={dialConfig.min}
-                  max={dialConfig.max}
-                  step={dialConfig.step}
-                  unit={dialConfig.unit}
-                  indicatorGlow="left"
-                  valueChangeMode="commit"
-                  onValueChange={setThresholdMax}
-                />
-              </View>
-            )}
-
-            {tab !== 'geiger' && (
-              <RepeatField value={repeatEverySeconds} onChange={setRepeatEverySeconds} />
-            )}
-
-            {tab === 'single' && (
-              <View style={styles.dialField}>
-                <Text style={styles.fieldLabel}>BEEPS</Text>
-                <Stepper
-                  value={beepCount}
-                  min={ALERT_BEEP_COUNT_RANGE.min}
-                  max={ALERT_BEEP_COUNT_RANGE.max}
-                  onChange={setBeepCount}
-                  fullWidth
-                />
-              </View>
-            )}
-
-            {tab === 'message' ? (
-              <AlertMessageField
-                controlId={controlId}
-                unit={unit}
-                threshold={threshold}
-                dialConfig={dialConfig}
-                batteryConfig={batteryConfig}
-                messageTemplate={messageTemplate}
-                onChangeTemplate={setMessageTemplate}
-              />
-            ) : (
-              <SoundPicker
-                presets={tab === 'single' ? singlePresets : geigerPresets}
-                selected={soundType}
-                onSelect={setSoundType}
-              />
-            )}
-
-            <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: accents.sky.solid }]}
-              onPress={handleSave}
-            >
-              <Text style={[styles.saveButtonText, { color: accents.sky.onSolid }]}>
-                {isEditing ? 'Save' : 'Add'}
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
+      <View style={styles.dialField}>
+        <Text style={styles.fieldLabel}>THRESHOLD</Text>
+        <TuneDial
+          value={threshold}
+          previousValue={editRule?.threshold ?? undefined}
+          min={dialConfig.min}
+          max={dialConfig.max}
+          step={dialConfig.step}
+          unit={dialConfig.unit}
+          indicatorGlow={tab === 'geiger' ? 'right' : undefined}
+          valueChangeMode="commit"
+          onValueChange={setThreshold}
+        />
       </View>
-    </Modal>
+
+      {tab === 'geiger' && (
+        <View style={styles.dialField}>
+          <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
+          <TuneDial
+            value={thresholdMax}
+            previousValue={editRule?.thresholdMax ?? undefined}
+            min={dialConfig.min}
+            max={dialConfig.max}
+            step={dialConfig.step}
+            unit={dialConfig.unit}
+            indicatorGlow="left"
+            valueChangeMode="commit"
+            onValueChange={setThresholdMax}
+          />
+        </View>
+      )}
+
+      {tab !== 'geiger' && (
+        <RepeatField value={repeatEverySeconds} onChange={setRepeatEverySeconds} />
+      )}
+
+      {tab === 'single' && (
+        <View style={styles.dialField}>
+          <Text style={styles.fieldLabel}>BEEPS</Text>
+          <Stepper
+            value={beepCount}
+            min={ALERT_BEEP_COUNT_RANGE.min}
+            max={ALERT_BEEP_COUNT_RANGE.max}
+            onChange={setBeepCount}
+            fullWidth
+          />
+        </View>
+      )}
+
+      {tab === 'message' ? (
+        <AlertMessageField
+          controlId={controlId}
+          unit={unit}
+          threshold={threshold}
+          dialConfig={dialConfig}
+          batteryConfig={batteryConfig}
+          messageTemplate={messageTemplate}
+          onChangeTemplate={setMessageTemplate}
+        />
+      ) : (
+        <SoundPicker
+          presets={tab === 'single' ? singlePresets : geigerPresets}
+          selected={soundType}
+          onSelect={setSoundType}
+        />
+      )}
+
+      <Button
+        label={isEditing ? 'Save' : 'Add alert'}
+        icon={SpeakerHighIcon}
+        variant="accent"
+        onPress={handleSave}
+        style={styles.saveButton}
+      />
+    </EdgeDrawer>
   )
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: theme.alpha(theme.palette.mono.black, 0.6),
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modal: {
-    backgroundColor: theme.neutral.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    width: '100%',
-    maxWidth: 340,
-    maxHeight: '90%',
-  },
-  modalContent: {
-    padding: 20,
-    gap: 14,
-  },
-  modalTitle: {
-    color: theme.neutral.textPrimary,
-    fontSize: 16,
-    fontWeight: '800',
+  tabsContent: {
+    paddingHorizontal: 4,
   },
   dialField: {
     gap: 6,
@@ -261,13 +259,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   saveButton: {
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
     marginTop: 4,
-  },
-  saveButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
   },
 })

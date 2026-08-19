@@ -1,6 +1,7 @@
-import { TouchableOpacity, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
+import { PillChoiceRow } from '@/components/forms/PillChoiceRow'
 import { theme } from '@/constants/theme'
 
 /**
@@ -21,17 +22,15 @@ export function RepeatField({
   return (
     <View style={styles.dialField}>
       <Text style={styles.fieldLabel}>REPEAT</Text>
-      <View style={styles.choiceRow}>
-        <ChoiceButton label="Off" active={value == null} onPress={() => onChange(null)} />
-        {REPEAT_INTERVAL_CHOICES.map((seconds) => (
-          <ChoiceButton
-            key={seconds}
-            label={`${seconds}s`}
-            active={value === seconds}
-            onPress={() => onChange(seconds)}
-          />
-        ))}
-      </View>
+      <PillChoiceRow
+        options={[
+          { value: null, label: 'Off' },
+          ...REPEAT_INTERVAL_CHOICES.map((seconds) => ({ value: seconds, label: `${seconds}s` })),
+        ]}
+        value={value}
+        onChange={onChange}
+        accent={theme.palette.green}
+      />
       <Text style={styles.fieldHint}>
         {value == null
           ? 'Announces once, then again only after it drops back down'
@@ -41,57 +40,19 @@ export function RepeatField({
   )
 }
 
-function ChoiceButton({
-  label,
-  active,
-  onPress,
-}: {
-  label: string
-  active: boolean
-  onPress: () => void
-}) {
-  return (
-    <TouchableOpacity style={[styles.choice, active && styles.choiceActive]} onPress={onPress}>
-      <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{label}</Text>
-    </TouchableOpacity>
-  )
-}
-
 const styles = StyleSheet.create({
   dialField: {
     gap: 6,
   },
   fieldLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
-  choiceRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
   fieldHint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '500',
-  },
-  choice: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-  },
-  choiceActive: {
-    backgroundColor: theme.palette.sky.bg,
-  },
-  choiceText: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  choiceTextActive: {
-    color: theme.palette.slate.textPrimary,
   },
 })

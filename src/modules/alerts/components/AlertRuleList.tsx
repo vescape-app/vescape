@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import {
   ChatTextIcon,
@@ -15,7 +15,7 @@ import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
-import { AlertFormModal } from '@/modules/alerts/components/AlertFormModal'
+import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
@@ -38,6 +38,7 @@ export function AlertRuleList({
   const [formVisible, setFormVisible] = useState(false)
   const [editRule, setEditRule] = useState<DraftAlertRule | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DraftAlertRule | null>(null)
+  const addButtonRef = useRef<View>(null)
 
   const closeForm = () => {
     setFormVisible(false)
@@ -73,7 +74,7 @@ export function AlertRuleList({
         </Text>
       ) : null}
 
-      <View style={styles.addButtonRow}>
+      <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
           label="Add alert"
           icon={PlusIcon}
@@ -86,8 +87,9 @@ export function AlertRuleList({
         />
       </View>
 
-      <AlertFormModal
+      <AlertFormSheet
         visible={formVisible}
+        triggerRef={addButtonRef}
         controlId={controller.controlId}
         unit={unit}
         editRule={editRule}
