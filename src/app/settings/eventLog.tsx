@@ -3,19 +3,26 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  Share,
   StyleSheet,
   View,
   type ListRenderItemInfo,
 } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { useNavigation } from 'expo-router'
-import { ListIcon, TrashIcon } from 'phosphor-react-native'
+import { ExportIcon, ListIcon, TrashIcon } from 'phosphor-react-native'
 import { clearDiagnosticEvents, getDiagnosticEvents, type LocalDiagnosticEvent } from 'vescape-core'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { IconButton } from '@/components/base/IconButton'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
+import {
+  CONNECTION_TRACE_BAD_EVENTS,
+  CONNECTION_TRACE_GOOD_EVENTS,
+  CONNECTION_TRACE_INFO_EVENTS,
+  CONNECTION_TRACE_WARNING_EVENTS,
+} from '@/modules/diagnostics/connectionTrace'
 
 const PAGE_SIZE = 50
 
@@ -36,6 +43,7 @@ const GOOD_EVENTS = new Set([
   'watch_mirror_present',
   'watch_mirror_launched',
   'watch_frame_send_recovered',
+  ...CONNECTION_TRACE_GOOD_EVENTS,
 ])
 
 const INFO_EVENTS = new Set([
@@ -44,6 +52,7 @@ const INFO_EVENTS = new Set([
   'board_probe_started',
   'board_probe_transport_finished',
   'board_probe_transport_probe_started',
+  ...CONNECTION_TRACE_INFO_EVENTS,
 ])
 
 const WARNING_EVENTS = new Set([
@@ -52,6 +61,7 @@ const WARNING_EVENTS = new Set([
   'board_probe_disconnected_mid_detection',
   'watch_mirror_absent',
   'watch_mirror_launch_skipped',
+  ...CONNECTION_TRACE_WARNING_EVENTS,
 ])
 
 const BAD_EVENTS = new Set([
@@ -72,6 +82,7 @@ const BAD_EVENTS = new Set([
   'watch_frame_no_nodes',
   'watch_nodes_lookup_failed',
   'watch_mirror_launch_failed',
+  ...CONNECTION_TRACE_BAD_EVENTS,
 ])
 
 function getEventColor(eventName: string): string {
@@ -146,21 +157,32 @@ export default function DiagnosticEventsScreen() {
   const [loading, setLoading] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [clearConfirmVisible, setClearConfirmVisible] = useState(false)
+  const [exportConfirmVisible, setExportConfirmVisible] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const loadingRef = useRef(false)
+  const eventsRef = useRef<LocalDiagnosticEvent[]>([])
+  eventsRef.current = events
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <IconButton
-          icon={TrashIcon}
-          destructive
-          disabled={events.length === 0}
-          loading={clearing}
-          onPress={() => setClearConfirmVisible(true)}
-          style={styles.headerAction}
-        />
+        <View style={styles.headerActions}>
+          <IconButton
+            icon={ExportIcon}
+            disabled={events.length === 0}
+            onPress={() => setExportConfirmVisible(true)}
+            style={styles.headerAction}
+          />
+          <IconButton
+            icon={TrashIcon}
+            destructive
+            disabled={events.length === 0}
+            loading={clearing}
+            onPress={() => setClearConfirmVisible(true)}
+            style={styles.headerAction}
+          />
+        </View>
       ),
     })
   }, [clearing, events.length, navigation])
@@ -203,6 +225,14 @@ export default function DiagnosticEventsScreen() {
     setExpandedId((prev) => (prev === id ? null : id))
   }, [])
 
+  const exportEvents = useCallback(() => {
+    setExportConfirmVisible(false)
+    void Share.share(
+      { message: JSON.stringify(eventsRef.current, null, 2) },
+      { subject: 'vescape-event-log.json' },
+    )
+  }, [])
+
   const clearEvents = useCallback(async () => {
     setClearConfirmVisible(false)
     setClearing(true)
@@ -231,7 +261,10 @@ export default function DiagnosticEventsScreen() {
         style={styles.list}
         contentContainerStyle={styles.content}
         ListHeaderComponent={
-          <IconHero icon={ListIcon} description="Browse locally persisted diagnostic events." />
+          <IconHero
+            icon={ListIcon}
+            description="Browse locally persisted diagnostic events. Events and their export contain full Board ids and BLE ids. They never contain account credentials, PINs, or telemetry payloads."
+          />
         }
         data={events}
         keyExtractor={keyExtractor}
@@ -257,6 +290,14 @@ export default function DiagnosticEventsScreen() {
         }
       />
       <ConfirmModal
+        visible={exportConfirmVisible}
+        title="Export event log"
+        message="The exported JSON includes full Board ids and BLE ids so connection problems can be traced. It excludes account credentials, PINs, and telemetry payloads."
+        confirmLabel="Export"
+        onConfirm={exportEvents}
+        onCancel={() => setExportConfirmVisible(false)}
+      />
+      <ConfirmModal
         visible={clearConfirmVisible}
         title="Clear event log"
         message="Delete all local diagnostic events?"
@@ -270,6 +311,11 @@ export default function DiagnosticEventsScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   headerAction: {
     marginRight: 4,
   },

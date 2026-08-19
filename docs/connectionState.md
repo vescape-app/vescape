@@ -166,3 +166,84 @@ the JSONL files. Debug replay playback is intentionally removed from the app.
 On app foreground/resume, JS calls `syncNativeState()` and shows a restoring state
 until the first native snapshot arrives. The restored state comes from native
 service truth, not from cached JS status.
+
+## Connection trace contract
+
+Native emits connection automation diagnostics through one shared contract so every slice traces
+the same way. Source of truth:
+
+- `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/diagnostics/ConnectionTrace.kt`
+- `modules/vescape-core/ios/diagnostics/ConnectionTrace.swift`
+- `src/modules/diagnostics/connectionTrace.ts` (JS mirror, render/export only)
+
+The three files are linked by `@parity` and enforced value-identical by
+`src/modules/diagnostics/connectionTrace.test.ts`.
+
+### Workflows and correlation
+
+`ConnectionTrace.start(origin, owner)` mints a workflow, emits `connection_workflow_started`, and
+returns a handle. Every layer — lifecycle, scanner, connection, service, recording — emits its
+child events through that same handle, so `workflow_id` survives handoff. A layer that only
+receives the id (Android service restart, iOS background task, notification action) rebuilds the
+handle with `ConnectionTrace.resume(workflowId, origin, startedAtMs, owner)`. `handoff(owner)`
+records the new owner without changing the correlation. `finish(decision, reason)` emits
+`connection_workflow_finished`.
+
+Every event automatically carries `workflow_id`, `workflow_origin`, `workflow_owner`,
+`workflow_started_at`, and `elapsed_ms`.
+
+### Events
+
+| Family               | Names                                                                                                                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Workflow             | `connection_workflow_started`, `connection_workflow_finished`                                                                                                                                                                                                |
+| Presence Scan        | `presence_scan_started`, `presence_scan_ready`, `presence_scan_observed`, `presence_scan_matched`, `presence_scan_timeout`, `presence_scan_cancelled`, `presence_scan_skipped`, `presence_scan_failed`                                                       |
+| Ownership            | `connection_owner_granted`, `connection_owner_denied`, `connection_owner_released`                                                                                                                                                                           |
+| Intent and promotion | `connect_intent_created`, `connect_intent_cleared`, `auto_connect_promoted`, `auto_connect_skipped`, `auto_start_armed`, `auto_start_triggered`, `auto_start_skipped`, `alternative_hint_offered`, `alternative_hint_accepted`, `alternative_hint_dismissed` |
+| Pause                | `connection_pause_started`, `connection_pause_cleared`, `connection_pause_expired`, `connection_pause_blocked`                                                                                                                                               |
+| Service              | `connection_service_started`, `connection_service_promoted_foreground`, `connection_service_demoted_background`, `connection_service_stopped`                                                                                                                |
+| Board and link       | `board_selected`, `board_link_persisted`, `board_link_failed`                                                                                                                                                                                                |
+| Ride summary         | `ride_summary_prepared`, `ride_summary_notified`, `ride_summary_skipped`                                                                                                                                                                                     |
+
+### Owners
+
+Precedence order: `board_session`, `connect_intent`, `auto_start`, `auto_connect`,
+`alternative_hint`. Exclusive scanner owners: `add_board_scan`, `board_probe`. No owner: `none`.
+
+### Workflow origins
+
+`foreground_entry`, `explicit_connect`, `auto_start_wake`, `alternative_hint_switch`,
+`add_board_scan`, `board_probe`, `reconnect`, `manual_disconnect`, `end_ride`, `app_exit`,
+`task_removed`, `ride_finalized`.
+
+### Fields
+
+`workflow_id`, `workflow_origin`, `workflow_owner`, `workflow_started_at`, `elapsed_ms`,
+`board_id`, `ble_id`, `board_nickname`, `decision`, `reason`, `owner_previous`, `owner_requested`,
+`deadline_ms`, `deadline_at`, `attempt`, `scan_purpose`, `observation_count`, `rssi`,
+`pause_source`, `paused_until`, `auto_connect_enabled`, `auto_start_enabled`, `bluetooth_enabled`,
+`permission_granted`, `app_foreground`, `service_state`, `ride_id`, `platform_error_code`,
+`platform_error_domain`.
+
+Later slices reuse these names. Add a field to all three files at once, never ad hoc in one layer.
+
+### Decisions
+
+`granted`, `denied`, `deferred`, `skipped`, `completed`, `timeout`, `cancelled`, `failed`.
+
+### Terminal reasons
+
+`matched`, `no_linked_boards`, `no_board_link`, `no_selected_board`, `board_not_present`,
+`bluetooth_disabled`, `permission_missing`, `scanner_unavailable`, `scanner_busy`,
+`auto_connect_disabled`, `auto_start_disabled`, `connection_paused`, `higher_priority_owner`,
+`session_already_active`, `connect_intent_active`, `user_cancelled`, `stop_search`,
+`deadline_expired`, `manual_disconnect`, `end_ride`, `app_exit`, `task_removed`, `auto_close`,
+`mechanical_teardown`, `probe_cancelled`, `platform_error`.
+
+### Privacy
+
+Full Board ids and BLE ids are deliberately present in Local Diagnostic Events, platform logs, and
+the Event Log export; the export confirmation discloses that. Authentication data, PINs, tokens,
+and telemetry payloads are excluded by contract — `ConnectionTrace` drops any field whose key
+contains `auth`, `credential`, `jwt`, `password`, `payload`, `pin`, `secret`, `session_token`,
+`telemetry`, or `token`.
