@@ -285,6 +285,12 @@ export async function createAndroidDriver(
       await adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
       await adb('shell', 'wm', 'dismiss-keyguard')
 
+      // A system ANR dialog owns the top window, and Maestro only ever sees the top window — so a
+      // launcher that stalls on a slow CI emulator makes every element in our app read as absent.
+      // Suppressing the dialogs costs nothing: an app that really hangs still fails its assertion,
+      // and the debug screenshot still shows what was underneath.
+      await adb('shell', 'settings', 'put', 'global', 'hide_error_dialogs', '1')
+
       const window = await adb('shell', 'dumpsys', 'window')
       if (!/mDreamingLockscreen=true/.test(window)) return
 
