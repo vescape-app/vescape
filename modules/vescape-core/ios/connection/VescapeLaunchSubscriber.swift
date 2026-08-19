@@ -12,6 +12,13 @@ import ExpoModulesCore
 /// The controller no-ops unless a Board Session was live when the process last ran, so a normal cold
 /// start still spins up no BLE.
 ///
+/// Launch auto-connect (#401) hangs off the same hook, deliberately after the restoration prepare:
+/// restoration adoption decides first, and auto-connect only starts a session when no live one is
+/// being resumed. This is the iOS peer of Android's `AutoConnectProvider`, which fires from a
+/// `ContentProvider` at process start — both triggers are process launch, not JS module creation.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/AutoConnectProvider.kt
+///
 /// @platform-diff Android's peer is `CoreForegroundService`: the process is kept alive by the
 /// service, so it is never relaunched and needs no restoration hook.
 public final class VescapeLaunchSubscriber: ExpoAppDelegateSubscriber {
@@ -20,6 +27,7 @@ public final class VescapeLaunchSubscriber: ExpoAppDelegateSubscriber {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     BoardSessionController.shared.prepareForLaunch()
+    BoardSessionController.shared.autoConnectSelectedBoard()
     return false
   }
 }

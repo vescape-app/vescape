@@ -69,6 +69,42 @@ final class ManualBoardStopTests: XCTestCase {
     )
   }
 
+  /// The clear a Board Session start performs (`BoardSessionController.beginSession`, mirroring
+  /// Android's `connectSelectedBoard`): after a manual stop followed by a real reconnect, the next
+  /// launch auto-connects again instead of staying gated forever.
+  func testSessionStartClearLetsTheNextLaunchAutoConnect() {
+    var activeBoardId: String? = "board-1"
+    let command = ManualBoardStop(
+      defaults: defaults,
+      activeBoardId: { activeBoardId },
+      stop: {
+        activeBoardId = nil
+        return true
+      }
+    )
+    XCTAssertTrue(command.perform())
+    XCTAssertNil(
+      AutoConnectGate.boardToAutoConnect(
+        settings: ["autoConnect": true, "selectedBoardId": "board-1"],
+        suppressedBoardId: ManualBoardStop.suppressedBoardId(defaults: defaults),
+        hasLiveSession: false,
+        resumePending: false
+      )
+    )
+
+    ManualBoardStop.clearAutoStartSuppression(defaults: defaults)
+
+    XCTAssertEqual(
+      AutoConnectGate.boardToAutoConnect(
+        settings: ["autoConnect": true, "selectedBoardId": "board-1"],
+        suppressedBoardId: ManualBoardStop.suppressedBoardId(defaults: defaults),
+        hasLiveSession: false,
+        resumePending: false
+      ),
+      "board-1"
+    )
+  }
+
   func testClearAllowsAutoStartAgain() {
     defaults.set("board-1", forKey: ManualBoardStop.suppressedBoardKey)
 
