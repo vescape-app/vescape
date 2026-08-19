@@ -45,7 +45,7 @@ export function MapControls({
     const styleChanged = lastStyleKeyRef.current !== mapStyleKey
     lastStyleKeyRef.current = mapStyleKey
     if (!styleChanged || !styleExpanded) return
-    const timer = setTimeout(() => setMapSelector(null), 1500)
+    const timer = setTimeout(() => setMapSelector(null), 750)
     return () => clearTimeout(timer)
   }, [mapStyleKey, setMapSelector, styleExpanded])
 
