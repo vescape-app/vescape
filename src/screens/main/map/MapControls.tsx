@@ -38,8 +38,8 @@ export function MapControls({
   const styleExpanded = mapSelector === 'style'
   const selectorOpen = navigationExpanded || styleExpanded
 
-  // Picking a basemap collapses the style selector shortly after: the rider saw the change land on
-  // the map, so the expanded list no longer earns its space.
+  // Picking a basemap or a camera mode collapses the selector shortly after: the rider saw the
+  // change land on the map, so the expanded list no longer earns its space.
   const lastStyleKeyRef = useRef(mapStyleKey)
   useEffect(() => {
     const styleChanged = lastStyleKeyRef.current !== mapStyleKey
@@ -48,6 +48,15 @@ export function MapControls({
     const timer = setTimeout(() => setMapSelector(null), 750)
     return () => clearTimeout(timer)
   }, [mapStyleKey, setMapSelector, styleExpanded])
+
+  const lastOrientationModeRef = useRef(mapOrientationMode)
+  useEffect(() => {
+    const orientationChanged = lastOrientationModeRef.current !== mapOrientationMode
+    lastOrientationModeRef.current = mapOrientationMode
+    if (!orientationChanged || !navigationExpanded) return
+    const timer = setTimeout(() => setMapSelector(null), 750)
+    return () => clearTimeout(timer)
+  }, [mapOrientationMode, navigationExpanded, setMapSelector])
 
   return (
     <View pointerEvents="box-none" style={styles.mapControlsLayer}>
