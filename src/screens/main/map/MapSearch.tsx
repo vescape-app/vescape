@@ -5,7 +5,6 @@ import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
 import type { MapSearchResult } from '@/modules/map/lib/search'
 import { getPlaceCategoryIcon } from '@/modules/map-points/constants/mapPointIcons'
@@ -139,19 +138,13 @@ export function MapSearch({
   onClose: () => void
   onSelectResult: (result: MapSearchResult) => void
 }) {
-  const neutral = useResolvedNeutralColors()
-  const accents = useResolvedAccentColors()
   if (!open) {
     return (
       <IconButton
         icon={MagnifyingGlassIcon}
         size="sm"
         onPress={onOpen}
-        iconColor={accents.sky.color}
-        style={[
-          styles.button,
-          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
-        ]}
+        style={[styles.button, { top }]}
       />
     )
   }

@@ -4,7 +4,6 @@ import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
@@ -22,8 +21,6 @@ interface WeatherMapOverlayProps {
 /** Everything the map shows in weather mode: forecast pill, radar timeline and the hourly strip. */
 export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
-  const neutral = useResolvedNeutralColors()
-  const accents = useResolvedAccentColors()
   const radarLoading = useRainViewerRadarStore((s) => s.loading)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
 
@@ -38,11 +35,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
         testID="weather-exit"
         accessibilityLabel="Back from weather"
         onPress={onExit}
-        iconColor={accents.sky.color}
-        style={[
-          styles.mapTopBackButton,
-          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
-        ]}
+        style={[styles.mapTopBackButton, { top }]}
       />
       <IconButton
         icon={ArrowsClockwiseIcon}
@@ -51,11 +44,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
           refreshRadar(true)
         }}
         loading={radarLoading}
-        iconColor={accents.sky.color}
-        style={[
-          styles.weatherRefreshButton,
-          { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
-        ]}
+        style={[styles.weatherRefreshButton, { top }]}
       />
       <View pointerEvents="none" style={[styles.weatherExpandedPill, { top: pillTop }]}>
         <WeatherPill expanded onPress={() => undefined} />
