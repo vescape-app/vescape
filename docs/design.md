@@ -170,6 +170,8 @@ Use cards (`backgroundColor: theme.neutral.surface`, `borderRadius: 12`, `border
 
 Inside cards, separate rows with a thin `theme.neutral.border` line indented past the icon (`marginLeft: 58`).
 
+**Corner sheets (EdgeDrawer) in light theme use a translucent white body** — free-floating fields on that surface read as unfinished. Group a sheet's interactive content in the same card boxes used on the settings screens (`SettingsCard`), with the sheet's mode switch (e.g. tab pills) and primary action sitting outside the card.
+
 ## Info Headers
 
 For screen headers showing metadata (version, OS, DB size), use centered text without card wrappers:

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { LegalLimitCountrySheet } from '@/modules/legal/components/LegalLimitCountrySheet'
 import {
   LEGAL_LIMIT_COUNTRIES,
@@ -32,6 +32,7 @@ interface LegalLimitsMapOverlayProps {
 export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOverlayProps) {
   const insets = useSafeAreaInsets()
   const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
   const [listOpen, setListOpen] = useState(false)
   const [selectedCountry, setSelectedCountry] = useState<LegalLimitCountry | null>(null)
 
@@ -62,7 +63,7 @@ export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOv
         testID="legal-limits-exit"
         accessibilityLabel="Exit legal limits"
         onPress={onExit}
-        iconColor={neutral.textPrimary}
+        iconColor={accents.sky.color}
         style={[
           styles.mapTopBackButton,
           { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },

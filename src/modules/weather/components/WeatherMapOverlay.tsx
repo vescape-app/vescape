@@ -4,7 +4,7 @@ import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
@@ -23,6 +23,7 @@ interface WeatherMapOverlayProps {
 export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
   const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
   const radarLoading = useRainViewerRadarStore((s) => s.loading)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
 
@@ -37,7 +38,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
         testID="weather-exit"
         accessibilityLabel="Back from weather"
         onPress={onExit}
-        iconColor={neutral.textPrimary}
+        iconColor={accents.sky.color}
         style={[
           styles.mapTopBackButton,
           { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },
@@ -50,7 +51,7 @@ export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapO
           refreshRadar(true)
         }}
         loading={radarLoading}
-        iconColor={neutral.textPrimary}
+        iconColor={accents.sky.color}
         style={[
           styles.weatherRefreshButton,
           { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },

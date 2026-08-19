@@ -214,7 +214,7 @@ export function FullMapControls({
         size="sm"
         testID="map-exit"
         onPress={handleExitMapFocus}
-        iconColor={neutral.textPrimary}
+        iconColor={accents.sky.color}
         style={[
           styles.backButton,
           { top, backgroundColor: neutral.surfaceDeep, borderColor: neutral.border },

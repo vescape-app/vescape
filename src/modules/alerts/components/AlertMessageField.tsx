@@ -33,19 +33,7 @@ export function AlertMessageField({
 }) {
   return (
     <View style={styles.messageField}>
-      <View style={styles.headerRow}>
-        <Text style={styles.fieldLabel}>TEMPLATE</Text>
-        <IconButton
-          icon={SpeakerHighIcon}
-          size="sm"
-          accessibilityLabel="Preview the spoken message"
-          onPress={() =>
-            previewAlertSound(
-              `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
-            )
-          }
-        />
-      </View>
+      <Text style={styles.fieldLabel}>TEMPLATE</Text>
       <Input
         value={messageTemplate}
         onChangeText={onChangeTemplate}
@@ -64,6 +52,17 @@ export function AlertMessageField({
             <Text style={styles.placeholderChipText}>{ph}</Text>
           </TouchableOpacity>
         ))}
+        <IconButton
+          icon={SpeakerHighIcon}
+          size="sm"
+          accessibilityLabel="Preview the spoken message"
+          onPress={() =>
+            previewAlertSound(
+              `tts:${renderPreviewTemplate(messageTemplate, threshold, unit, dialConfig, controlId, batteryConfig)}`,
+            )
+          }
+          style={styles.previewButton}
+        />
       </View>
     </View>
   )
@@ -72,11 +71,6 @@ export function AlertMessageField({
 const styles = StyleSheet.create({
   messageField: {
     gap: 8,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   fieldLabel: {
     color: theme.neutral.textMuted,
@@ -91,7 +85,11 @@ const styles = StyleSheet.create({
   placeholderRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 6,
+  },
+  previewButton: {
+    marginLeft: 'auto',
   },
   placeholderChip: {
     backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),

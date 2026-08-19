@@ -1,6 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { ChatTextIcon, RadioactiveIcon, SpeakerHighIcon, WaveformIcon } from 'phosphor-react-native'
+import {
+  ChatTextIcon,
+  CheckIcon,
+  PlusIcon,
+  RadioactiveIcon,
+  WaveformIcon,
+} from 'phosphor-react-native'
 import { ALERT_BEEP_COUNT_DEFAULT, ALERT_BEEP_COUNT_RANGE, type AlertSoundType } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
@@ -8,6 +14,7 @@ import { Text } from '@/components/base/Text'
 import { PillSelector, PillSelectorItem } from '@/components/controls/PillSelector'
 import { SoundPicker } from '@/components/forms/SoundPicker'
 import { Stepper } from '@/components/forms/Stepper'
+import { SettingsCard } from '@/components/settings/SettingsCard'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { AlertMessageField } from '@/modules/alerts/components/AlertMessageField'
@@ -134,109 +141,119 @@ export function AlertFormSheet({
       icon={tab === 'geiger' ? RadioactiveIcon : tab === 'message' ? ChatTextIcon : WaveformIcon}
       onClose={onClose}
     >
-      <PillSelector
-        activeId={tab}
-        contained
-        centered
-        variant="lightTabs"
-        contentContainerStyle={styles.tabsContent}
-      >
-        <PillSelectorItem
-          id="single"
-          label="Alert"
-          icon={WaveformIcon}
-          labelBehavior="always"
-          color={theme.palette.green}
-          onPress={() => handleTabSwitch('single')}
-        />
-        <PillSelectorItem
-          id="geiger"
-          label="Geiger"
-          icon={RadioactiveIcon}
-          labelBehavior="always"
-          color={theme.palette.orange}
-          onPress={() => handleTabSwitch('geiger')}
-        />
-        <PillSelectorItem
-          id="message"
-          label="Message"
-          icon={ChatTextIcon}
-          labelBehavior="always"
-          color={theme.palette.cyan}
-          onPress={() => handleTabSwitch('message')}
-        />
-      </PillSelector>
-
-      <View style={styles.dialField}>
-        <Text style={styles.fieldLabel}>THRESHOLD</Text>
-        <TuneDial
-          value={threshold}
-          previousValue={editRule?.threshold ?? undefined}
-          min={dialConfig.min}
-          max={dialConfig.max}
-          step={dialConfig.step}
-          unit={dialConfig.unit}
-          indicatorGlow={tab === 'geiger' ? 'right' : undefined}
-          valueChangeMode="commit"
-          onValueChange={setThreshold}
-        />
+      <View style={styles.tabsContainer}>
+        <PillSelector
+          activeId={tab}
+          contained
+          centered
+          variant="lightTabs"
+          style={styles.tabsTrack}
+          contentContainerStyle={styles.tabsContent}
+        >
+          <PillSelectorItem
+            id="single"
+            label="Alert"
+            icon={WaveformIcon}
+            labelBehavior="always"
+            color={theme.palette.green}
+            onPress={() => handleTabSwitch('single')}
+          />
+          <PillSelectorItem
+            id="geiger"
+            label="Geiger"
+            icon={RadioactiveIcon}
+            labelBehavior="always"
+            color={theme.palette.orange}
+            onPress={() => handleTabSwitch('geiger')}
+          />
+          <PillSelectorItem
+            id="message"
+            label="Message"
+            icon={ChatTextIcon}
+            labelBehavior="always"
+            color={theme.palette.cyan}
+            onPress={() => handleTabSwitch('message')}
+          />
+        </PillSelector>
       </View>
 
-      {tab === 'geiger' && (
-        <View style={styles.dialField}>
-          <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
+      <SettingsCard separatorInset={0}>
+        <View style={styles.cardField}>
+          <Text style={styles.fieldLabel}>THRESHOLD</Text>
           <TuneDial
-            value={thresholdMax}
-            previousValue={editRule?.thresholdMax ?? undefined}
+            value={threshold}
+            previousValue={editRule?.threshold ?? undefined}
             min={dialConfig.min}
             max={dialConfig.max}
             step={dialConfig.step}
             unit={dialConfig.unit}
-            indicatorGlow="left"
+            indicatorGlow={tab === 'geiger' ? 'right' : undefined}
             valueChangeMode="commit"
-            onValueChange={setThresholdMax}
+            onValueChange={setThreshold}
           />
         </View>
-      )}
 
-      {tab !== 'geiger' && (
-        <RepeatField value={repeatEverySeconds} onChange={setRepeatEverySeconds} />
-      )}
+        {tab === 'geiger' && (
+          <View style={styles.cardField}>
+            <Text style={styles.fieldLabel}>THRESHOLD MAX</Text>
+            <TuneDial
+              value={thresholdMax}
+              previousValue={editRule?.thresholdMax ?? undefined}
+              min={dialConfig.min}
+              max={dialConfig.max}
+              step={dialConfig.step}
+              unit={dialConfig.unit}
+              indicatorGlow="left"
+              valueChangeMode="commit"
+              onValueChange={setThresholdMax}
+            />
+          </View>
+        )}
 
-      {tab === 'single' && (
-        <View style={styles.dialField}>
-          <Text style={styles.fieldLabel}>BEEPS</Text>
-          <Stepper
-            value={beepCount}
-            min={ALERT_BEEP_COUNT_RANGE.min}
-            max={ALERT_BEEP_COUNT_RANGE.max}
-            onChange={setBeepCount}
-            fullWidth
-          />
-        </View>
-      )}
+        {tab !== 'geiger' && (
+          <View style={styles.cardField}>
+            <RepeatField value={repeatEverySeconds} onChange={setRepeatEverySeconds} />
+          </View>
+        )}
 
-      {tab === 'message' ? (
-        <AlertMessageField
-          controlId={controlId}
-          unit={unit}
-          threshold={threshold}
-          dialConfig={dialConfig}
-          batteryConfig={batteryConfig}
-          messageTemplate={messageTemplate}
-          onChangeTemplate={setMessageTemplate}
-        />
-      ) : (
-        <SoundPicker
-          presets={tab === 'single' ? singlePresets : geigerPresets}
-          selected={soundType}
-          onSelect={setSoundType}
-        />
-      )}
+        {tab === 'single' && (
+          <View style={styles.cardField}>
+            <Text style={styles.fieldLabel}>BEEPS</Text>
+            <Stepper
+              value={beepCount}
+              min={ALERT_BEEP_COUNT_RANGE.min}
+              max={ALERT_BEEP_COUNT_RANGE.max}
+              onChange={setBeepCount}
+            />
+          </View>
+        )}
+
+        {tab === 'message' ? (
+          <View style={styles.cardField}>
+            <AlertMessageField
+              controlId={controlId}
+              unit={unit}
+              threshold={threshold}
+              dialConfig={dialConfig}
+              batteryConfig={batteryConfig}
+              messageTemplate={messageTemplate}
+              onChangeTemplate={setMessageTemplate}
+            />
+          </View>
+        ) : (
+          <View style={styles.cardField}>
+            <SoundPicker
+              presets={tab === 'single' ? singlePresets : geigerPresets}
+              selected={soundType}
+              onSelect={setSoundType}
+            />
+          </View>
+        )}
+      </SettingsCard>
 
       <Button
         label={isEditing ? 'Save' : 'Add alert'}
-        icon={SpeakerHighIcon}
+        icon={isEditing ? CheckIcon : PlusIcon}
         variant="accent"
         onPress={handleSave}
         style={styles.saveButton}
@@ -246,11 +263,22 @@ export function AlertFormSheet({
 }
 
 const styles = StyleSheet.create({
+  // Centers the whole track (not just the pills inside it): a fixed compact width sizes the
+  // contained track to its three always-labelled pills and the wrapper centers it.
+  tabsContainer: {
+    alignItems: 'center',
+  },
+  tabsTrack: {
+    width: 312,
+  },
   tabsContent: {
+    justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  dialField: {
+  cardField: {
     gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   fieldLabel: {
     color: theme.neutral.textMuted,
