@@ -462,6 +462,10 @@ internal final class BoardSessionController: VescGattListener {
         fields: [ConnectionTraceField.boardId: boardId]
       )
     }
+    // A rider Connect preempts automatic work: stop the Presence Scan before it can promote the
+    // Board it was watching — during Switch & Connect that is the *old* selected Board. A scan
+    // started after this point sees the Connect Intent and skips itself (`PresenceScanPolicy`).
+    presenceScan.cancel(reason: ConnectionTraceReason.connectIntentActive)
     ConnectionPauseStore.shared.clear(boardId: boardId, workflow: workflow)
     createConnectIntent(boardId: boardId, workflow: workflow)
     workflow.event(ConnectionTraceEvent.boardSelected, fields: [ConnectionTraceField.boardId: boardId])
@@ -1091,6 +1095,10 @@ internal final class BoardSessionController: VescGattListener {
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
+    // A live Board Session is the top of the precedence chain (ADR 0035). Claim it here, once, so
+    // every arbiter resolves against explicit ownership rather than sniffing Board phases; the
+    // terminal teardowns (`endSession`, `fail`) release it again.
+    ConnectionOwnership.shared.request(.boardSession)
     socWindow.reset()
     bmsSeriesRing.clear()
     // Finalize the previous session's cell-spread evaluation before the detector resets, so
@@ -1222,6 +1230,9 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     session = nil
     config = nil
+    // Release the connection owner with the session, or the first Presence Scan after a ride would
+    // be denied forever by an owner that no longer exists.
+    ConnectionOwnership.shared.release(.boardSession)
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -1388,6 +1399,9 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     session = nil
     config = nil
+    // Same as `endSession`: a failed attempt must hand the connection back, or every later
+    // Presence Scan is denied by a Board Session that no longer exists.
+    ConnectionOwnership.shared.release(.boardSession)
     recordingCoordinator.failSession()
     gpsMonitor.stop()
     stopPolling()

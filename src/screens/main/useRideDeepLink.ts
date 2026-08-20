@@ -25,21 +25,27 @@ export function useRideDeepLink({
     let cancelled = false
 
     void (async () => {
-      await enterHistoryMode()
-      let session = findSessionById(useHistoryStore.getState().sessions, pendingRideId)
-      let pagesLoaded = 0
-      while (
-        !session &&
-        useHistoryStore.getState().hasMore &&
-        pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
-      ) {
-        await useHistoryStore.getState().loadMore()
-        pagesLoaded += 1
-        session = findSessionById(useHistoryStore.getState().sessions, pendingRideId)
+      try {
+        await enterHistoryMode()
+        let session = findSessionById(useHistoryStore.getState().sessions, pendingRideId)
+        let pagesLoaded = 0
+        while (
+          !session &&
+          useHistoryStore.getState().hasMore &&
+          pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
+        ) {
+          await useHistoryStore.getState().loadMore()
+          pagesLoaded += 1
+          session = findSessionById(useHistoryStore.getState().sessions, pendingRideId)
+        }
+        if (!cancelled && session) selectRide(session)
+      } catch {
+        // A failed load surfaces through History's own error state; the deep link just lands there.
+      } finally {
+        // Consumed either way: the id must not outlive its request, or a later navigation stays
+        // blocked on a request that has no retry trigger.
+        if (!cancelled) useRideDeepLinkStore.getState().clearPendingRide()
       }
-      if (cancelled) return
-      if (session) selectRide(session)
-      useRideDeepLinkStore.getState().clearPendingRide()
     })()
 
     return () => {

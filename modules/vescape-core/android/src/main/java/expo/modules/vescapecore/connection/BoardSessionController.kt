@@ -123,6 +123,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
@@ -257,6 +258,12 @@ internal class BoardSessionController(private val service: CoreForegroundService
      */
     @Volatile
     internal var connectIntent: ConnectIntent? = null
+
+    /**
+     * Bumped whenever an intent is requested or ended, so an intent whose asynchronous creation
+     * outlived its request never lands. See [createConnectIntent].
+     */
+    private val connectIntentGeneration = AtomicLong(0)
 
     /**
      * An intent past its Auto Close deadline no longer owns anything, so it must not keep the
@@ -1476,6 +1483,10 @@ private var wearAutoLaunchOnConnect = true
                 mapOf(ConnectionTraceField.BOARD_ID to boardId),
             )
         }
+        // A rider Connect preempts automatic work: stop the Presence Scan before it can promote the
+        // Board it was watching — during Switch & Connect that is the *old* selected Board. A scan
+        // started after this point sees the Connect Intent and skips itself (`PresenceScanPolicy`).
+        scheduler.post { presenceScan.cancel(ConnectionTraceReason.CONNECT_INTENT_ACTIVE) }
         ConnectionPauseStore.clear(appCtx, boardId, workflow)
         createConnectIntent(appCtx, boardId, workflow)
         workflow.event(ConnectionTraceEvent.BOARD_SELECTED, mapOf(ConnectionTraceField.BOARD_ID to boardId))
@@ -1486,9 +1497,14 @@ private var wearAutoLaunchOnConnect = true
      * A rider Connect owns the connection until it succeeds, the rider ends it, or Auto Close
      * expires. The Auto Close window lives in settings, so the intent is built off the main thread
      * and adopted on it.
+     *
+     * The request claims a generation before the settings read; anything that ends the intent in the
+     * meantime — a connection fast enough to reach `Connected` first, or a later Connect — bumps it,
+     * so the late assignment is dropped instead of installing an intent nothing can ever clear.
      */
     private fun createConnectIntent(appCtx: Context, boardId: String, workflow: ConnectionWorkflow) {
         val createdAtMs = System.currentTimeMillis()
+        val generation = connectIntentGeneration.incrementAndGet()
         CoreForegroundService.appDataScope.launch {
             val settings = AppDataRepository.get(appCtx).getTypedSettings()
             val intent = ConnectIntent(
@@ -1496,14 +1512,17 @@ private var wearAutoLaunchOnConnect = true
                 createdAtMs = createdAtMs,
                 autoCloseMs = if (settings.autoCloseEnabled) settings.autoCloseDelayMinutes * 60_000L else null,
             )
-            scheduler.post { connectIntent = intent }
-            workflow.event(
-                ConnectionTraceEvent.CONNECT_INTENT_CREATED,
-                mapOf(
-                    ConnectionTraceField.BOARD_ID to boardId,
-                    ConnectionTraceField.DEADLINE_AT to intent.autoCloseAtMs,
-                ),
-            )
+            scheduler.post {
+                if (connectIntentGeneration.get() != generation) return@post
+                connectIntent = intent
+                workflow.event(
+                    ConnectionTraceEvent.CONNECT_INTENT_CREATED,
+                    mapOf(
+                        ConnectionTraceField.BOARD_ID to boardId,
+                        ConnectionTraceField.DEADLINE_AT to intent.autoCloseAtMs,
+                    ),
+                )
+            }
         }
     }
 
@@ -1514,6 +1533,9 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `clearConnectIntent`
      */
     fun clearConnectIntent(end: ConnectIntentEnd) {
+        // Bump first, and even with no intent in hand: a creation still in flight belongs to the
+        // request this call is ending, and must not land after it.
+        connectIntentGeneration.incrementAndGet()
         val intent = connectIntent ?: return
         connectIntent = null
         val appCtx = service.applicationContext
