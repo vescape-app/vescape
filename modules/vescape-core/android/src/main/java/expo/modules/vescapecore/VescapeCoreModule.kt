@@ -350,6 +350,7 @@ class VescapeCoreModule : Module() {
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startGroupRideObserve`
     Function("startGroupRideObserve") { serverUrl: String ->
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
     }

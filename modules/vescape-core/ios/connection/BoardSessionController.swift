@@ -176,6 +176,25 @@ internal final class BoardSessionController: VescGattListener {
     onLocation: { [weak self] location in self?.onLocationUpdated(location) },
     onAuthorizationResolved: { [weak self] in self?.onStateChanged?() }
   )
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groupRideObserver`
+  private lazy var groupRideObserver = GroupRideObserver(
+    emit: { [weak self] event, payload in self?.emit?(event, payload) },
+    online: AppStatusCoordinator.shared
+  )
+
+  /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
+  /// when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
+  /// suppression (ADR-0009 / ADR-0020).
+  private var groupRidePrivacyZones: [PrivacyZoneEntity] = []
+
+  /// The Rider's shared map target (their direction Map Point), cached for presence egress.
+  /// Refreshed when observing starts and on direction-point CRUD.
+  private var groupRideTarget: TargetPoint?
+
+  /// Latest decoded telemetry frame, kept for Group Ride presence egress (speed/temps/SoC).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `telemetry`
+  private var latestTelemetry: RefloatTelemetry?
+
   private lazy var alertAudioPlayer = AlertAudioPlayer()
   private lazy var alertCoordinator = AlertCoordinator(player: alertAudioPlayer)
   private let legalPolicyCatalog = LegalPolicyCatalog()
@@ -489,6 +508,103 @@ internal final class BoardSessionController: VescGattListener {
     syncResumeMarkerRecording()
     onStateChanged?()
     return ok
+  }
+
+  // MARK: - Group Ride
+
+  /// Open the observe socket and refresh the presence egress caches it reads on every fix.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `consumePendingGroupRideObserve`
+  func startGroupRideObserve(_ url: String) {
+    loadPrivacyZones()
+    loadGroupRideTarget()
+    groupRideObserver.start(url)
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopGroupRideObserve`
+  func stopGroupRideObserve() {
+    groupRideObserver.stop()
+  }
+
+  func createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) {
+    groupRideObserver.create(riderId: riderId, riderName: riderName, riderColor: riderColor, name: name, lat: lat, lng: lng)
+  }
+
+  func joinGroupRide(riderId: String, riderName: String, riderColor: String?, rideId: String) {
+    startLocationUpdates()
+    groupRideObserver.join(
+      riderId: riderId,
+      riderName: riderName,
+      riderColor: riderColor,
+      rideId: rideId,
+      presence: latestRiderPresence()
+    )
+  }
+
+  func leaveGroupRide() {
+    groupRideObserver.leave()
+  }
+
+  func updateGroupRideIdentity(riderId: String, riderName: String, riderColor: String?) {
+    groupRideObserver.updateIdentity(riderId: riderId, riderName: riderName, riderColor: riderColor)
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
+  private func latestRiderPresence() -> RiderPresence? {
+    guard let location = latestPreciseLocation ?? latestLocation else { return nil }
+    // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
+    // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
+    if isInsidePrivacyZone(location) { return nil }
+    let telemetry = latestTelemetry
+    let telemetryFresh = telemetry != nil && !isTelemetryStale()
+    return RiderPresence(
+      lat: location.latitude,
+      lng: location.longitude,
+      heading: location.bearingDeg,
+      speed: telemetryFresh ? telemetry.map { abs($0.speed) / 3.6 } : nil,
+      soc: telemetryFresh ? latestBatterySoc.map { min(max($0 / 100.0, 0), 1) } : nil,
+      motorTemp: telemetryFresh ? telemetry?.tempMotor : nil,
+      ctrlTemp: telemetryFresh ? telemetry?.tempMosfet : nil,
+      phoneBattery: readPhoneBattery(),
+      boardName: config.map { $0.name.isEmpty ? boardName : $0.name } ?? nil,
+      target: groupRideTarget
+    )
+  }
+
+  /// Device battery as a 0–1 fraction, or nil when the platform can't report it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `readPhoneBattery`
+  private func readPhoneBattery() -> Double? {
+    UIDevice.current.isBatteryMonitoringEnabled = true
+    let level = UIDevice.current.batteryLevel
+    return level < 0 ? nil : Double(level)
+  }
+
+  private func isInsidePrivacyZone(_ location: TelemetryLocationCapture) -> Bool {
+    guard !groupRidePrivacyZones.isEmpty else { return false }
+    return isInsideAnyPrivacyZone(
+      latitudeE7: Int((location.latitude * 10_000_000.0).rounded()),
+      longitudeE7: Int((location.longitude * 10_000_000.0).rounded()),
+      zones: groupRidePrivacyZones
+    )
+  }
+
+  /// Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadPrivacyZones`
+  func loadPrivacyZones() {
+    groupRidePrivacyZones = appData.getEnabledPrivacyZoneEntities()
+  }
+
+  /// Refresh the shared Group Ride target from native storage (observe start + direction-point
+  /// CRUD), then push presence immediately so peers see the change without waiting for the next
+  /// GPS tick.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadGroupRideTarget`
+  func loadGroupRideTarget() {
+    groupRideTarget = appData.getDirectionPoint().map { TargetPoint(lat: $0.latitude, lng: $0.longitude) }
+    latestRiderPresence().map(groupRideObserver.pushPresence)
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `isTelemetryStale`
+  private func isTelemetryStale(now: Int64 = SystemSessionClock.shared.nowMs()) -> Bool {
+    now - (lastTelemetryAt ?? 0) >= Int64(telemetryStaleSeconds * 1000)
   }
 
   // MARK: - Alerts
@@ -843,6 +959,7 @@ internal final class BoardSessionController: VescGattListener {
     // Final write so the persisted last battery is fresh, not up to 30s stale (runs before config clears).
     persistLastBattery(percent: latestBatterySoc, voltage: latestBatteryVoltage, now: nowMs(), force: true)
     latestBatterySoc = nil
+    latestTelemetry = nil
     latestBatteryVoltage = nil
     socWindow.reset()
     bmsSeriesRing.clear()
@@ -1474,6 +1591,7 @@ internal final class BoardSessionController: VescGattListener {
     tick["batteryPercent"] = batteryEstimate
     latestBatterySoc = batteryEstimate
     latestBatteryVoltage = telemetry.batteryVoltage
+    latestTelemetry = telemetry
     persistLastBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
     tick["generation"] = connectionSeq
     tick["remoteTilt"] = nil
@@ -1791,6 +1909,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
+    latestRiderPresence().map(groupRideObserver.pushPresence)
     emit?("onLocation", location.map)
   }
 

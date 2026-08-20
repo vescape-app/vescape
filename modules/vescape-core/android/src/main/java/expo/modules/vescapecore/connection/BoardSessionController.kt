@@ -386,6 +386,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             onLocation = ::onLocationUpdated,
         )
     }
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideObserver` */
     private val groupRideObserver by lazy {
         GroupRideObserver(
             handler = mainHandler,
@@ -904,6 +905,7 @@ private var wearAutoLaunchOnConnect = true
         startGpsMonitoring()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startGroupRideObserve` */
     fun consumePendingGroupRideObserve() {
         val url = CoreForegroundService.claimPendingGroupRideUrl() ?: return
         isStoppingService = false
@@ -915,6 +917,7 @@ private var wearAutoLaunchOnConnect = true
         reassertForeground()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopGroupRideObserve` */
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
         groupRideObserver.stop()
@@ -1735,6 +1738,7 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `isTelemetryStale` */
     private fun isTelemetryStale(now: Long = nowMs()): Boolean =
         now - telemetryPipeline.lastTelemetryAt >= TELEMETRY_STALE_MS
 
@@ -2401,6 +2405,7 @@ private var wearAutoLaunchOnConnect = true
         watchWeatherPusher.push(weather.toWatchWeather())
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
         val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
         // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
@@ -2422,7 +2427,10 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** Device battery as a 0–1 fraction, or null when the platform can't report it. */
+    /**
+     * Device battery as a 0–1 fraction, or null when the platform can't report it.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readPhoneBattery`
+     */
     private fun readPhoneBattery(): Double? {
         val manager = service.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -2437,7 +2445,10 @@ private var wearAutoLaunchOnConnect = true
         return isInsideAnyPrivacyZone(latitudeE7, longitudeE7, zones)
     }
 
-    /** Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD). */
+    /**
+     * Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadPrivacyZones`
+     */
     suspend fun loadPrivacyZones(context: Context) {
         groupRidePrivacyZones = try {
             AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
@@ -2451,6 +2462,8 @@ private var wearAutoLaunchOnConnect = true
      * Refresh the shared Group Ride target from native storage (observe start + direction-point
      * CRUD), then push presence immediately so peers see the change without waiting for the
      * next GPS tick.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadGroupRideTarget`
      */
     suspend fun loadGroupRideTarget(context: Context) {
         groupRideTarget = try {
