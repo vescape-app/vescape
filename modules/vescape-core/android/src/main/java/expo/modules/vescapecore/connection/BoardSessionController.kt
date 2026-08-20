@@ -731,7 +731,13 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `autoConnectSelectedBoard` */
+    /**
+     * Auto-connect the selected Board at process start. Reached from `AutoConnectProvider`, i.e.
+     * before any JS exists — the trigger is the process, never the JS module lifecycle. iOS mirrors
+     * this from its app-delegate launch hook.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `autoConnectSelectedBoard`
+     */
     fun autoConnectSelectedBoard() {
         if (BoardProbeAutoStartGate.isActive()) {
             Log.i(VESC_SESSION_TAG, "Auto-connect skipped: Board Probe active")
@@ -808,6 +814,12 @@ private var wearAutoLaunchOnConnect = true
         return companionBoardIdForAddress(repo.getBoards(), address)
     }
 
+    /**
+     * Native connect path (notification Connect, auto-connect). Clears the manual-disconnect gate:
+     * a started Board Session spends the stop that set it.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
+     */
     private fun connectSelectedBoard(recordingEnabled: Boolean) {
         if (boardConfig != null) return
         CoreForegroundService.appDataScope.launch {
