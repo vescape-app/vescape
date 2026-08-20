@@ -1886,6 +1886,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateAlertTest(value: number): void
   stopAlertTest(): void
   selectBoard(boardId: string): Promise<void>
+  connectLinkedBoard(boardId: string): Promise<void>
   switchToAlternativeBoard(boardId: string): Promise<void>
   stopBoard(): Promise<void>
   dismissAlternativeHint(boardId: string): void
@@ -2282,6 +2283,26 @@ export async function selectBoard(boardId: string): Promise<void> {
   }
 
   return native.selectBoard(boardId)
+}
+
+/**
+ * Connect the Board a rider just linked or re-linked (ADR 0035, #409). Identical explicit-Connect
+ * semantics to {@link selectBoard} — native runs the same path — and differs only in the
+ * connection-trace origin it records, which native owns so the trace vocabulary stays native-side.
+ *
+ * Call it only once the Board and its Board Link are durably persisted: native reads the Board Link
+ * back from its own database, so a connect issued before persistence finishes finds no link.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+ */
+export async function connectLinkedBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) {
+    e2eFake.selectBoard(boardId)
+    return
+  }
+
+  return native.connectLinkedBoard(boardId)
 }
 
 /**

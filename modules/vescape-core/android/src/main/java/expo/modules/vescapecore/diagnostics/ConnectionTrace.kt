@@ -85,6 +85,7 @@ object ConnectionTraceOrigin {
     const val EXPLICIT_CONNECT = "explicit_connect"
     const val AUTO_START_WAKE = "auto_start_wake"
     const val ALTERNATIVE_HINT_SWITCH = "alternative_hint_switch"
+    const val BOARD_LINKED = "board_linked"
     const val ADD_BOARD_SCAN = "add_board_scan"
     const val BOARD_PROBE = "board_probe"
     const val RECONNECT = "reconnect"

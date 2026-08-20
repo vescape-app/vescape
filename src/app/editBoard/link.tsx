@@ -5,8 +5,10 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useShallow } from 'zustand/react/shallow'
 
 import { LinkIcon } from 'phosphor-react-native'
+import { connectLinkedBoard } from 'vescape-core'
 
 import { BoardLinkTimeline } from '@/modules/board/components/BoardLinkTimeline'
+import { completeBoardLink } from '@/modules/board/lib/boardLinkCompletion'
 import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { useBoardLink } from '@/modules/board/hooks/useBoardLink'
@@ -26,10 +28,11 @@ export default function BoardLinkScreen() {
     bleId?: string
     bleName?: string
   }>()
-  const { board, updateBoard } = useBoardStore(
+  const { board, updateBoard, setActiveBoard } = useBoardStore(
     useShallow((s) => ({
       board: s.boards.find((b) => b.id === boardId),
       updateBoard: s.updateBoard,
+      setActiveBoard: s.setActiveBoard,
     })),
   )
 
@@ -52,14 +55,23 @@ export default function BoardLinkScreen() {
     })
   }, [])
 
+  // Re-linking ends in a live connection through the same completion operation as creating a Board:
+  // the new Board Link is persisted first, then the Board is selected and explicitly connected
+  // (#409). A failed save keeps the existing link and leaves this screen open.
   const handleSave = async () => {
-    if (!board || !link.selectedLink) return
+    const selectedLink = link.selectedLink
+    if (!board || !selectedLink) return
     setSaving(true)
     try {
-      await updateBoard({ ...board, link: link.selectedLink })
-      router.back()
-    } catch (err) {
-      console.log('[board-link] save failed', err)
+      await completeBoardLink(
+        {
+          persist: () => updateBoard({ ...board, link: selectedLink }),
+          select: () => setActiveBoard(board.id),
+          connect: () => connectLinkedBoard(board.id),
+          dismiss: () => router.back(),
+        },
+        { hasLink: true },
+      )
     } finally {
       setSaving(false)
     }

@@ -502,6 +502,14 @@ public class VescapeCoreModule: Module {
       )
     }
 
+    AsyncFunction("connectLinkedBoard") { (boardId: String, promise: Promise) in
+      self.explicitConnect(
+        boardId: boardId,
+        origin: ConnectionTraceOrigin.boardLinked,
+        promise: promise
+      )
+    }
+
     AsyncFunction("stopBoard") { (promise: Promise) in
       DispatchQueue.main.async {
         BoardSessionCommands.stopRide(
@@ -815,7 +823,23 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
+      let boardId = board["id"] as? String ?? ""
+      let nextBleId = BoardLinkTrace.bleId(ofLink: board["link"])
+      // Only a write that changes the Board Link is worth reading the stored one back for.
+      let previousBleId = nextBleId == nil
+        ? nil
+        : BoardLinkTrace.bleId(ofLink: self.appData.getBoard(boardId)?["link"] ?? nil)
       self.appData.upsertBoard(board)
+      if let nextBleId {
+        // GRDB write failures are swallowed inside the repository, so the link is read back: the
+        // connect that follows a link save reads the same row, and a silent miss must be traced.
+        let storedBleId = BoardLinkTrace.bleId(ofLink: self.appData.getBoard(boardId)?["link"] ?? nil)
+        if storedBleId != nextBleId {
+          BoardLinkTrace.failed(boardId: boardId, message: "Board Link was not stored")
+        } else if BoardLinkTrace.isLinkPersist(previousBleId: previousBleId, nextBleId: nextBleId) {
+          BoardLinkTrace.persisted(boardId: boardId, bleId: nextBleId)
+        }
+      }
       self.coordinator.reloadBoardDataForActiveBoard()
       promise.resolve(nil)
     }

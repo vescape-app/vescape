@@ -33,7 +33,7 @@ interface BoardActions {
     topSpeedKmh?: number
     alertPreset?: Record<string, unknown> | null
     alertPresetsOnboarded?: boolean
-  }) => Board
+  }) => Promise<Board>
   updateBoard: (board: Board) => Promise<void>
   /** Dismiss (acknowledge) or restore a Board Warning kind; persisted on the board record. */
   setWarningDismissed: (boardId: string, kind: string, dismissed: boolean) => Promise<void>
@@ -76,7 +76,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     }
   },
 
-  addBoard({
+  async addBoard({
     name,
     description,
     link,
@@ -101,7 +101,9 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       boards: [...state.boards, board],
       activeBoardId: state.activeBoardId ?? board.id,
     }))
-    void upsertBoard(board)
+    // Native persistence is awaited: linking ends in a connect, and native reads the Board Link
+    // back from its own database, so the write has to land before anything connects (#409).
+    await upsertBoard(board)
     return board
   },
 

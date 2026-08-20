@@ -58,8 +58,9 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             label="Save"
             icon={CheckCircleIcon}
             iconPosition="right"
-            onPress={wizard.save}
+            onPress={() => void wizard.save()}
             disabled={!wizard.canSave}
+            loading={wizard.saving}
             testID="add-board-save"
           />
         </View>

@@ -8,6 +8,7 @@ import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.connection.AlternativeHintTrace
+import expo.modules.vescapecore.connection.BoardLinkTrace
 import expo.modules.vescapecore.connection.ScanAcquisition
 import expo.modules.vescapecore.connection.ScanOperation
 import expo.modules.vescapecore.connection.ScanPurpose
@@ -564,6 +565,9 @@ class VescapeCoreModule : Module() {
     AsyncFunction("switchToAlternativeBoard") Coroutine { boardId: String ->
       selectBoard(boardId, ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH)
     }
+    AsyncFunction("connectLinkedBoard") Coroutine { boardId: String ->
+      selectBoard(boardId, ConnectionTraceOrigin.BOARD_LINKED)
+    }
     Function("dismissAlternativeHint") { boardId: String ->
       AlternativeHintTrace.dismissed(context.applicationContext, boardId)
     }
@@ -767,7 +771,22 @@ class VescapeCoreModule : Module() {
       runBlocking { AppDataRepository.get(context.applicationContext).getBoards() }
     }
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).upsertBoard(board)
+      val appCtx = context.applicationContext
+      val repository = AppDataRepository.get(appCtx)
+      val boardId = board["id"] as? String ?: ""
+      val nextBleId = BoardLinkTrace.bleIdOfLink(board["link"])
+      // Only a write that changes the Board Link is worth reading the stored one back for.
+      val previousBleId =
+        if (nextBleId == null) null else BoardLinkTrace.bleIdOfLink(repository.getBoard(boardId)?.get("link"))
+      try {
+        repository.upsertBoard(board)
+      } catch (error: Throwable) {
+        if (nextBleId != null) BoardLinkTrace.failed(appCtx, boardId, error.message)
+        throw error
+      }
+      if (BoardLinkTrace.isLinkPersist(previousBleId, nextBleId)) {
+        BoardLinkTrace.persisted(appCtx, boardId, nextBleId!!)
+      }
       CoreForegroundService.reloadBoardData()
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->

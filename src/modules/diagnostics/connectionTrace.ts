@@ -77,6 +77,7 @@ export const CONNECTION_TRACE_ORIGIN = {
   explicitConnect: 'explicit_connect',
   autoStartWake: 'auto_start_wake',
   alternativeHintSwitch: 'alternative_hint_switch',
+  boardLinked: 'board_linked',
   addBoardScan: 'add_board_scan',
   boardProbe: 'board_probe',
   reconnect: 'reconnect',

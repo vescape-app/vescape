@@ -81,6 +81,7 @@ internal enum ConnectionTraceOrigin {
   static let explicitConnect = "explicit_connect"
   static let autoStartWake = "auto_start_wake"
   static let alternativeHintSwitch = "alternative_hint_switch"
+  static let boardLinked = "board_linked"
   static let addBoardScan = "add_board_scan"
   static let boardProbe = "board_probe"
   static let reconnect = "reconnect"
