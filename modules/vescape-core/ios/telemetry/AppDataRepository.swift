@@ -524,6 +524,12 @@ final class AppDataRepository {
         merged["movingSpeedThresholdKmh"] = legacy
       }
     }
+    // #406 migration: the Automatic Connection Pause duration used to be the Android-only companion
+    // cooldown. Carry a rider's stored choice over verbatim — no reset, no re-clamp.
+    if rows["automaticConnectionPauseMinutes"] == nil,
+      let legacy = rows[Self.legacyConnectionPauseMinutesKey] {
+      merged["automaticConnectionPauseMinutes"] = legacy
+    }
     return Self.normalizeSettings(merged)
   }
 
@@ -554,7 +560,7 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
-    } else if key == "boardWarningsEnabled" {
+    } else if key == "boardWarningsEnabled" || key == "rideSummaryNotificationsEnabled" {
       // Strict Bool (Android rejects non-Boolean too): the board-warnings kill switch must never
       // persist a malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
@@ -562,6 +568,9 @@ final class AppDataRepository {
     } else if key == "boardMoveStrengthPercent" {
       guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
       value = percent
+    } else if key == "automaticConnectionPauseMinutes" || key == Self.legacyConnectionPauseMinutesKey {
+      guard let minutes = Self.automaticConnectionPauseMinutes(rawValue) else { return }
+      value = minutes
     } else if key == "rideSplitGapMinutes" {
       guard let minutes = Self.rideSplitGapMinutes(rawValue) else { return }
       value = minutes
@@ -572,10 +581,15 @@ final class AppDataRepository {
       value = rawValue
     }
     guard let json = Self.encodeJson(value) else { return }
+    // A write under a superseded key lands on the current one, so the migration happens once and
+    // never rediverges.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizedKey`
+    let storageKey =
+      key == Self.legacyConnectionPauseMinutesKey ? "automaticConnectionPauseMinutes" : key
     write { db in
       try db.execute(
         sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: [key, json, updatedAt]
+        arguments: [storageKey, json, updatedAt]
       )
     }
     notifyDataChanged(.settings)
@@ -611,7 +625,8 @@ final class AppDataRepository {
     "autoRecording": true,
     "companionPresenceEnabled": false,
     "boardWarningsEnabled": true,
-    "companionPresenceCooldownMinutes": 60,
+    "rideSummaryNotificationsEnabled": true,
+    "automaticConnectionPauseMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
     // the keys exist here only so getSettings() returns the full settings shape.
     "autoCloseEnabled": false,
@@ -648,8 +663,24 @@ final class AppDataRepository {
     "dismissedCommunityMessageIds": [String](),
   ]
 
+  /// Pre-#406 key for the same duration, when the pause was Android companion-restart only.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `LEGACY_CONNECTION_PAUSE_MINUTES_KEY`
+  static let legacyConnectionPauseMinutesKey = "companionPresenceCooldownMinutes"
+
+  /// Automatic Connection Pause duration in minutes; 0 = never pause, capped at 24h. The ceiling is
+  /// deliberately wider than the 8h the rider-facing stepper offers, so a migrated legacy value
+  /// survives untouched.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `validAutomaticConnectionPauseMinutes`
+  static func automaticConnectionPauseMinutes(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, !(value is Bool) else { return nil }
+    return min(ConnectionPausePolicy.maxPauseMinutes, max(0, number.intValue))
+  }
+
   static func normalizeSettings(_ settings: [String: Any]) -> [String: Any] {
     var normalized = settings
+    normalized["automaticConnectionPauseMinutes"] =
+      automaticConnectionPauseMinutes(settings["automaticConnectionPauseMinutes"])
+      ?? defaultSettings["automaticConnectionPauseMinutes"]
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
     normalized["satelliteImageryOpacity"] =

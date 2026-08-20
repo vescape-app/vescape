@@ -26,6 +26,8 @@ import {
   type ScanStatus,
   type LocationEvent,
   type LiveStateEvent,
+  type ConnectionPauseState,
+  type PresenceScanState,
   type LinkIntegrity,
   type BmsEvent,
   type BmsSeriesFrame,
@@ -37,6 +39,7 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useLiveSeriesStore } from '@/modules/board/store/liveSeriesStore'
 import { useFocusedSeriesStore } from '@/modules/board/store/focusedSeriesStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import { IDLE_PRESENCE_SCAN } from '@/modules/board/lib/presenceScan'
 import type { LiveStatusSummary } from '@/modules/board/lib/liveMetricHistory'
 
 interface EventSubscription {
@@ -58,6 +61,18 @@ interface BleState {
   status: BleStatus
   gpsStatus: GpsPhase
   scanStatus: ScanStatus
+  /**
+   * Native-owned Board Presence Scan (ADR 0035). Rendered only — JS never starts or times it.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPresenceScan.kt `PresenceScanState`
+   * @parity /modules/vescape-core/ios/connection/BoardPresenceScan.swift `PresenceScanState`
+   */
+  presence: PresenceScanState
+  /**
+   * Board-scoped Automatic Connection Pause for the selected Board (ADR 0035), or `null`.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ConnectionPause.kt `ConnectionPause`
+   * @parity /modules/vescape-core/ios/connection/ConnectionPause.swift `ConnectionPause`
+   */
+  connectionPause: ConnectionPauseState | null
   connectionSeq: number
   nativeStateReady: boolean
   devices: ScannedDevice[]
@@ -249,6 +264,8 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
     status: state.board.phase,
     gpsStatus: state.gps.phase,
     scanStatus: state.scan.phase,
+    presence: state.presence ?? IDLE_PRESENCE_SCAN,
+    connectionPause: state.pause ?? null,
     connectionSeq: state.board.connectionSeq,
     nativeStateReady: true,
     selectedBoardId: state.board.selectedBoardId,
@@ -485,6 +502,8 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   status: 'idle',
   gpsStatus: 'idle',
   scanStatus: 'idle',
+  presence: IDLE_PRESENCE_SCAN,
+  connectionPause: null,
   connectionSeq: 0,
   nativeStateReady: false,
   devices: [],

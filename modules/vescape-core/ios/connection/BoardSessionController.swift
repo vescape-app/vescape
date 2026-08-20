@@ -269,9 +269,318 @@ internal final class BoardSessionController: VescGattListener {
     self.appData = appData
   }
 
+  // MARK: - Board Presence Scan (ADR 0035)
+
+  /// Adapter over the shared session central. Owned here because the central is shared with the
+  /// Board Session, so readiness and advertisements arrive through this class's listener callbacks.
+  private lazy var presenceScanPort = BlePresenceScanPort(
+    central: { [weak self] in self?.gatt.centralState ?? .unknown },
+    start: { [weak self] in self?.gatt.startScan() },
+    stop: { [weak self] in
+      // A live Add Board scan keeps the radio; only the presence flag is dropped.
+      self?.gatt.stopScan()
+    }
+  )
+
+  private lazy var presenceScan = BoardPresenceScan(
+    port: presenceScanPort,
+    scanner: .shared,
+    ownership: .shared,
+    onStateChanged: { [weak self] state in
+      self?.onStateChanged?()
+      // Terminal phase: hand the borrowed background time straight back. Holding it any longer
+      // would be a keep-alive, which this is explicitly not (ADR 0034).
+      if state.phase == .done { self?.presenceScanBackgroundTask.end() }
+    },
+    onPromote: { [weak self] target, workflow in self?.promoteToSession(target, workflow) }
+  )
+
+  /// Short background task covering the foreground→lock handoff for the Presence Scan (#405).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/ForegroundWork.kt
+  private lazy var presenceScanBackgroundTask = PresenceScanBackgroundTask(
+    onEvent: { [weak self] event in self?.traceBackgroundTask(event) }
+  )
+
+  /// One correlated workflow per background-task transition, so #414's audit sees the decision.
+  private func traceBackgroundTask(_ event: String) {
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.foregroundEntry,
+      owner: ConnectionTraceOwner.autoConnect
+    )
+    workflow.event(event, fields: [ConnectionTraceField.serviceState: "background_task"])
+    workflow.finish(
+      decision: event == ConnectionTraceEvent.backgroundTaskExpired
+        ? ConnectionTraceDecision.timeout
+        : ConnectionTraceDecision.completed,
+      reason: event == ConnectionTraceEvent.backgroundTaskExpired
+        ? ConnectionTraceReason.deadlineExpired
+        : ConnectionTraceReason.matched
+    )
+  }
+
+  /// Explicit rider Connect Intent (ADR 0035). Outranks Auto Start and Auto Connect, and persists
+  /// indefinitely while Auto Close is disabled. #409 creates one at the end of linking.
+  var connectIntent: ConnectIntent?
+
+  /// An intent past its Auto Close deadline no longer owns anything, so it must not keep the
+  /// Presence Scan skipping. Expiry is a clock comparison on read, never a timer.
+  var hasActiveConnectIntent: Bool {
+    guard let connectIntent else { return false }
+    return !ConnectIntentPolicy.isExpired(connectIntent, nowMs: ConnectionTrace.now())
+  }
+
+  /// Observations age out thirty seconds after their last advertisement (#408). Pruning on read keeps
+  /// that a clock comparison — nothing has to be scheduled to forget.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `presenceScan`
+  var presenceScanState: PresenceScanState {
+    AlternativeHints.prune(presenceScan.state, nowMs: ConnectionTrace.now())
+  }
+
+  /// Exclusive scanner ownership held while the Add Board scan runs (ADR 0035).
+  private var addBoardScan: ScanOperation?
+
+  /// Board Presence Scan on foreground entry (ADR 0035). Replaces the old module-create direct
+  /// connect: native looks for the selected Board for five seconds after the radio is usable and
+  /// promotes it into a Board Session only when policy allows. Every refusal carries a named reason
+  /// through the shared connection trace.
+  ///
+  /// Driven by `VescapeLaunchSubscriber` (native app lifecycle), never by JS `AppState` and never by
+  /// module creation.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startPresenceScan`
+  @discardableResult
+  func startPresenceScan() -> PresenceScanDecision {
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.foregroundEntry,
+      owner: ConnectionTraceOwner.none
+    )
+    let settings = appData.getSettings()
+    let selectedBoardId = settings["selectedBoardId"] as? String
+    let targets = presenceTargets(selectedBoardId: selectedBoardId)
+    let environment = PresenceScanEnvironment(
+      linkedBoardCount: targets.count,
+      selectedBoardId: selectedBoardId,
+      selectedBoardBleId: targets.first(where: { $0.selected })?.bleId,
+      bluetoothEnabled: presenceScanPort.bluetoothEnabled(),
+      scanPermissionGranted: presenceScanPort.scanPermissionGranted(),
+      scannerAvailable: presenceScanPort.scannerAvailable(),
+      sessionActive: connectedBoardId != nil || session != nil,
+      connectIntentActive: hasActiveConnectIntent,
+      activeScanPurpose: ScannerCoordinator.shared.activePurpose
+    )
+    let autoConnect = settings["autoConnect"] as? Bool ?? true
+    // Buy the handoff window *before* the scan starts: the rider who opens the app and immediately
+    // locks the screen must not lose the scan to suspension. Ended at the scan's terminal phase.
+    presenceScanBackgroundTask.start()
+    let decision = presenceScan.start(
+      environment: environment,
+      targets: targets,
+      workflow: workflow,
+      promotionInput: { [weak self] in
+        PresencePromotionInput(
+          selectedObserved: true,
+          autoConnectEnabled: autoConnect,
+          pausedUntilMs: self?.pausedUntilMs(boardId: selectedBoardId),
+          nowMs: ConnectionTrace.now(),
+          sessionActive: self?.session != nil,
+          currentOwner: ConnectionOwnership.shared.current
+        )
+      }
+    )
+    // A refused scan owns no work at all, so it may not sit on borrowed background time either.
+    if !decision.proceed { presenceScanBackgroundTask.end() }
+    return decision
+  }
+
+  /// Automatic Connection Pause deadline for `boardId`, or `nil` when it is not paused (ADR 0035).
+  private func pausedUntilMs(boardId: String?) -> Int64? {
+    ConnectionPauseStore.shared.pausedUntilMs(boardId: boardId)
+  }
+
+  /// The Automatic Connection Pause the rider sees, for the selected Board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `liveStateMap`
+  func connectionPauseState(boardId: String?) -> [String: Any?]? {
+    ConnectionPauseStore.shared.active(boardId: boardId)?.map
+  }
+
+  /// Arm the board-scoped Automatic Connection Pause for a rider action (ADR 0035, #406).
+  ///
+  /// Only the rider intents reach here — Disconnect and End ride. `ConnectionPausePolicy` refuses
+  /// anything else, so a mechanical teardown that ever grew a call to this cannot silently start
+  /// suppressing Auto Connect.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `armConnectionPause`
+  @discardableResult
+  func armConnectionPause(boardId: String?, source: String, origin: String) -> ConnectionPause? {
+    let settings = appData.getSettings()
+    let resolved = (boardId?.isEmpty == false ? boardId : nil)
+      ?? ((settings["selectedBoardId"] ?? nil) as? String)
+    guard let resolved, !resolved.isEmpty else { return nil }
+    // A rider stop ends the explicit Connect too; nothing may keep searching past it.
+    clearConnectIntent(ConnectIntentEnd.from(pauseSource: source))
+    let minutes =
+      AppDataRepository.automaticConnectionPauseMinutes(settings["automaticConnectionPauseMinutes"] ?? nil) ?? 60
+    let workflow = ConnectionTrace.start(
+      origin: origin,
+      owner: ConnectionTraceOwner.none,
+      fields: [ConnectionTraceField.boardId: resolved]
+    )
+    let pause = ConnectionPauseStore.shared.arm(
+      boardId: resolved,
+      source: source,
+      minutes: minutes,
+      workflow: workflow
+    )
+    workflow.finish(
+      decision: pause != nil ? ConnectionTraceDecision.completed : ConnectionTraceDecision.skipped,
+      reason: source
+    )
+    return pause
+  }
+
+  /// **The** application-level explicit-Connect entry point (ADR 0035). Every rider-initiated
+  /// Connect goes through here — the Connect pill, Connect now, and Switch & Connect — so explicit
+  /// semantics exist in one place: clear that Board's Automatic Connection Pause, take durable
+  /// Connect Intent ownership, and record the selection. Starting the actual session stays with the
+  /// caller, which owns the platform's session plumbing.
+  ///
+  /// `origin` distinguishes the callers in the trace; `alternativeHintSwitch` additionally records
+  /// that a hint was accepted. #409 reuses this for connect-after-linking.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+  func beginExplicitConnect(boardId: String, origin: String = ConnectionTraceOrigin.explicitConnect) {
+    guard !boardId.isEmpty else { return }
+    let workflow = ConnectionTrace.start(
+      origin: origin,
+      owner: ConnectionTraceOwner.connectIntent,
+      fields: [ConnectionTraceField.boardId: boardId]
+    )
+    if origin == ConnectionTraceOrigin.alternativeHintSwitch {
+      workflow.event(
+        ConnectionTraceEvent.alternativeHintAccepted,
+        fields: [ConnectionTraceField.boardId: boardId]
+      )
+    }
+    // A rider Connect preempts automatic work: stop the Presence Scan before it can promote the
+    // Board it was watching — during Switch & Connect that is the *old* selected Board. A scan
+    // started after this point sees the Connect Intent and skips itself (`PresenceScanPolicy`).
+    presenceScan.cancel(reason: ConnectionTraceReason.connectIntentActive)
+    ConnectionPauseStore.shared.clear(boardId: boardId, workflow: workflow)
+    createConnectIntent(boardId: boardId, workflow: workflow)
+    workflow.event(ConnectionTraceEvent.boardSelected, fields: [ConnectionTraceField.boardId: boardId])
+    workflow.finish(decision: ConnectionTraceDecision.completed, reason: ConnectionTraceReason.matched)
+  }
+
+  /// A rider Connect owns the connection until it succeeds, the rider ends it, or Auto Close expires.
+  private func createConnectIntent(boardId: String, workflow: ConnectionWorkflow) {
+    let settings = appData.getSettings()
+    let enabled = ((settings["autoCloseEnabled"] ?? nil) as? Bool) == true
+    let minutes = ((settings["autoCloseDelayMinutes"] ?? nil) as? NSNumber)?.int64Value ?? 15
+    let intent = ConnectIntent(
+      boardId: boardId,
+      createdAtMs: ConnectionTrace.now(),
+      autoCloseMs: enabled ? minutes * 60_000 : nil
+    )
+    connectIntent = intent
+    workflow.event(
+      ConnectionTraceEvent.connectIntentCreated,
+      fields: [
+        ConnectionTraceField.boardId: boardId,
+        ConnectionTraceField.deadlineAt: intent.autoCloseAtMs,
+      ]
+    )
+  }
+
+  /// End the explicit Connect Intent. Reaching `connected`, a rider stop, and Auto Close all land here.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `clearConnectIntent`
+  func clearConnectIntent(_ end: ConnectIntentEnd) {
+    guard let intent = connectIntent else { return }
+    connectIntent = nil
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.explicitConnect,
+      owner: ConnectionTraceOwner.connectIntent,
+      fields: [ConnectionTraceField.boardId: intent.boardId]
+    )
+    workflow.event(
+      ConnectionTraceEvent.connectIntentCleared,
+      fields: [ConnectionTraceField.boardId: intent.boardId, ConnectionTraceField.reason: end.reason]
+    )
+    workflow.finish(decision: ConnectionTraceDecision.completed, reason: end.reason)
+  }
+
+  /// **Stop search**, or an exclusive scanner owner taking over.
+  func stopPresenceScan(reason: String = ConnectionTraceReason.stopSearch) {
+    presenceScan.cancel(reason: reason)
+  }
+
+  /// Linked Boards the scan watches. A Board without a Board Link has no BLE id to watch for.
+  private func presenceTargets(selectedBoardId: String?) -> [PresenceTarget] {
+    appData.getBoards().compactMap { board in
+      guard let boardId = board["id"] as? String else { return nil }
+      let link = board["link"] as? [String: Any?]
+      guard let bleId = (link?["bleId"] as? String), !bleId.isEmpty else { return nil }
+      return PresenceTarget(
+        boardId: boardId,
+        bleId: bleId,
+        name: board["name"] as? String,
+        selected: boardId == selectedBoardId
+      )
+    }
+  }
+
+  /// Promote an observed selected Board into a Board Session (Auto Connect path).
+  /// The Presence Scan hands its still-open workflow over, so every terminal branch of the
+  /// promotion — session started, refused because one already exists, or an unresolvable Board Link
+  /// — closes the *same* correlation instead of ending the trace at `auto_connect_promoted` (#414).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `promoteToSession`
+  private func promoteToSession(_ target: PresenceTarget, _ workflow: ConnectionWorkflow?) {
+    guard session == nil else {
+      workflow?.finish(
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.sessionAlreadyActive
+      )
+      return
+    }
+    guard
+      let config = BoardConnectConfig.resolve(
+        boardId: target.boardId,
+        appData: appData,
+        recordingEnabled: false
+      )
+    else {
+      ConnectionOwnership.shared.release(.boardSession)
+      workflow?.event(
+        ConnectionTraceEvent.ownerReleased,
+        fields: [
+          ConnectionTraceField.boardId: target.boardId,
+          ConnectionTraceField.ownerPrevious: ConnectionOwner.boardSession.wireValue,
+        ]
+      )
+      workflow?.finish(
+        decision: ConnectionTraceDecision.failed,
+        reason: ConnectionTraceReason.noBoardLink
+      )
+      return
+    }
+    workflow?.finish(
+      decision: ConnectionTraceDecision.completed,
+      reason: ConnectionTraceReason.matched
+    )
+    connect(config: config, onSuccess: {}, onError: { _, _ in })
+  }
+
   // MARK: - Scan API
 
+  /// Rider-driven Add Board discovery. Takes exclusive scanner ownership (ADR 0035) so the
+  /// foreground Presence Scan yields to it and can never preempt it.
   func scan() {
+    presenceScan.cancel(reason: ConnectionTraceReason.scannerBusy)
+    if case let .granted(operation) = ScannerCoordinator.shared.acquire(.addBoard) {
+      addBoardScan = operation
+    }
     scanError = nil
     scanPhase = "scanning"
     gatt.startScan()
@@ -280,6 +589,8 @@ internal final class BoardSessionController: VescGattListener {
 
   func stopScan() {
     gatt.stopScan()
+    ScannerCoordinator.shared.release(addBoardScan)
+    addBoardScan = nil
     scanPhase = "idle"
     onStateChanged?()
   }
@@ -617,6 +928,20 @@ internal final class BoardSessionController: VescGattListener {
   /// reap does not kill the surface the resume is about to reuse.
   private var pendingResume: SessionResumeMarker?
   private var pendingResumeExpiry: DispatchWorkItem?
+  /// Correlated workflow for the CoreBluetooth-restoration resume (#414). The restoration crosses a
+  /// process death, so no earlier correlation survives to inherit — this is a fresh `reconnect`
+  /// workflow whose terminal branch is adoption, an unresolvable Board Link, or the expiry window.
+  ///
+  /// @platform-diff Android has no CoreBluetooth state restoration: its foreground service outlives
+  /// the JS runtime, so a Board Session is never rebuilt from a preserved central.
+  private var restoreWorkflow: ConnectionWorkflow?
+
+  /// Terminal branch of the restoration workflow. Every exit from the resume path lands here.
+  private func finishRestoreWorkflow(decision: String, reason: String) {
+    guard let workflow = restoreWorkflow else { return }
+    restoreWorkflow = nil
+    workflow.finish(decision: decision, reason: reason)
+  }
   /// How long a launch waits for `willRestoreState` before deciding no restoration is coming.
   /// CoreBluetooth delivers it inside the launch sequence, so this only guards the case where it
   /// never arrives at all (marker outlived the connection).
@@ -630,6 +955,14 @@ internal final class BoardSessionController: VescGattListener {
     guard session == nil, pendingResume == nil else { return }
     guard let marker = SessionResumeStore.shared.pending else { return }
     pendingResume = marker
+    restoreWorkflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.reconnect,
+      owner: ConnectionTraceOwner.boardSession,
+      fields: [
+        ConnectionTraceField.boardId: marker.appBoardId,
+        ConnectionTraceField.deadlineMs: Int64(pendingResumeWindowSeconds * 1000),
+      ]
+    )
     let expiry = DispatchWorkItem { [weak self] in self?.expirePendingResume() }
     pendingResumeExpiry = expiry
     DispatchQueue.main.asyncAfter(deadline: .now() + pendingResumeWindowSeconds, execute: expiry)
@@ -644,9 +977,17 @@ internal final class BoardSessionController: VescGattListener {
     pendingResumeExpiry = nil
     guard pendingResume != nil, session == nil else {
       pendingResume = nil
+      finishRestoreWorkflow(
+        decision: ConnectionTraceDecision.completed,
+        reason: ConnectionTraceReason.matched
+      )
       return
     }
     pendingResume = nil
+    finishRestoreWorkflow(
+      decision: ConnectionTraceDecision.timeout,
+      reason: ConnectionTraceReason.deadlineExpired
+    )
     reapOrphanLiveActivities()
   }
 
@@ -662,14 +1003,32 @@ internal final class BoardSessionController: VescGattListener {
   /// the link comes from (a restored peripheral instead of a fresh connect) and that the recording
   /// keeps appending to the open recording.
   private func resumeSession(marker: SessionResumeMarker, restoredPeripheralIds: [String]) {
-    guard session == nil else { return }
+    guard session == nil else {
+      finishRestoreWorkflow(
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.sessionAlreadyActive
+      )
+      return
+    }
     guard let config = BoardConnectConfig.resolve(boardId: marker.appBoardId, appData: appData) else {
       // Board unlinked or deleted while the app was dead — nothing to resume.
       SessionResumeStore.shared.clear()
       clearPendingResume()
       reapOrphanLiveActivities()
+      finishRestoreWorkflow(
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.noBoardLink
+      )
       return
     }
+    restoreWorkflow?.event(
+      ConnectionTraceEvent.presenceScanMatched,
+      fields: [
+        ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+        ConnectionTraceField.boardId: marker.appBoardId,
+        ConnectionTraceField.bleId: config.bleId,
+      ]
+    )
     gatt.recorder = { [weak self] in self?.recordingCoordinator.currentRecorder() }
     batteryEstimator.ensureLoaded()
     liveSeries.emit = { [weak self] name, body in self?.emit?(name, body) }
@@ -706,6 +1065,12 @@ internal final class BoardSessionController: VescGattListener {
     }
     armConnectTimeout()
     clearPendingResume()
+    finishRestoreWorkflow(
+      decision: ConnectionTraceDecision.completed,
+      reason: restoredId != nil
+        ? ConnectionTraceReason.matched
+        : ConnectionTraceReason.boardNotPresent
+    )
   }
 
   /// Refresh the durable resume marker's recording flag; recording is toggled mid-session by
@@ -730,6 +1095,10 @@ internal final class BoardSessionController: VescGattListener {
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
+    // A live Board Session is the top of the precedence chain (ADR 0035). Claim it here, once, so
+    // every arbiter resolves against explicit ownership rather than sniffing Board phases; the
+    // terminal teardowns (`endSession`, `fail`) release it again.
+    ConnectionOwnership.shared.request(.boardSession)
     socWindow.reset()
     bmsSeriesRing.clear()
     // Finalize the previous session's cell-spread evaluation before the detector resets, so
@@ -861,6 +1230,9 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     session = nil
     config = nil
+    // Release the connection owner with the session, or the first Presence Scan after a ride would
+    // be denied forever by an owner that no longer exists.
+    ConnectionOwnership.shared.release(.boardSession)
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -998,6 +1370,13 @@ internal final class BoardSessionController: VescGattListener {
   private func setPhase(_ phase: BoardPhase) {
     guard self.phase != phase else { return }
     self.phase = phase
+    // Reaching `connected` is the reconnect workflow's success terminal: telemetry flows again.
+    if phase == .connected {
+      finishReconnectWorkflow(
+        decision: ConnectionTraceDecision.completed,
+        reason: ConnectionTraceReason.matched
+      )
+    }
     recordingCoordinator.recordState(phase.rawValue)
     onStateChanged?()
     refreshLiveActivity()
@@ -1020,6 +1399,9 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     session = nil
     config = nil
+    // Same as `endSession`: a failed attempt must hand the connection back, or every later
+    // Presence Scan is denied by a Board Session that no longer exists.
+    ConnectionOwnership.shared.release(.boardSession)
     recordingCoordinator.failSession()
     gpsMonitor.stop()
     stopPolling()
@@ -1037,6 +1419,36 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   // MARK: - Reconnect (#58)
+
+  /// One correlated `reconnect` workflow per link loss (#414). The reconnect loop spans rescan
+  /// cycles and phase churn, so all of them report under the same `workflow_id`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `reconnectWorkflow`
+  private var reconnectWorkflow: ConnectionWorkflow?
+
+  /// Open (or reuse) the reconnect workflow. Reused across rescans: one link loss, one workflow.
+  @discardableResult
+  private func beginReconnectWorkflow() -> ConnectionWorkflow {
+    if let reconnectWorkflow { return reconnectWorkflow }
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.reconnect,
+      owner: ConnectionTraceOwner.boardSession,
+      fields: [
+        ConnectionTraceField.boardId: config?.appBoardId,
+        ConnectionTraceField.bleId: config?.bleId,
+      ]
+    )
+    reconnectWorkflow = workflow
+    return workflow
+  }
+
+  /// Terminal branch of the reconnect workflow. Recovery and teardown both land here.
+  private func finishReconnectWorkflow(decision: String, reason: String) {
+    guard let workflow = reconnectWorkflow else { return }
+    reconnectWorkflow = nil
+    workflow.finish(decision: decision, reason: reason)
+  }
+
 
   /// Recover a dropped mid-ride link. Bumps the Board Session identity so any poll/safety timers
   /// still armed under the dead link are discarded (stale-callback guard), hands the persistent
@@ -1075,6 +1487,7 @@ internal final class BoardSessionController: VescGattListener {
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
+    beginReconnectWorkflow()
     reconnecting = true
     boardError = nil
     lastTelemetryAt = nil
@@ -1089,10 +1502,31 @@ internal final class BoardSessionController: VescGattListener {
   private func scheduleRescanCycle(session: BoardSession) {
     guard reconnecting, session === self.session, session.isActive else { return }
     setPhase(.rescanning)
+    let windowMs = rescanWindowMs
+    // The reconnect rescan is a Presence Scan with `scan_purpose = reconnect`, reported in the
+    // shared connection-trace vocabulary rather than a second reconnect-only event family (#414).
+    reconnectWorkflow?.event(
+      ConnectionTraceEvent.presenceScanStarted,
+      fields: [
+        ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+        ConnectionTraceField.boardId: config?.appBoardId,
+        ConnectionTraceField.bleId: config?.bleId,
+        ConnectionTraceField.deadlineMs: windowMs,
+      ]
+    )
     transport.startReconnectScan()
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(rescanWindowMs) / 1000.0) { [weak self] in
+    DispatchQueue.main.asyncAfter(deadline: .now() + Double(windowMs) / 1000.0) { [weak self] in
       guard let self, self.reconnecting, session === self.session, session.isActive else { return }
       self.transport.stopReconnectScan()
+      // The window closed with the link still down: a named timeout, not a silent re-arm.
+      self.reconnectWorkflow?.event(
+        ConnectionTraceEvent.presenceScanTimeout,
+        fields: [
+          ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+          ConnectionTraceField.reason: ConnectionTraceReason.deadlineExpired,
+          ConnectionTraceField.deadlineMs: windowMs,
+        ]
+      )
       if self.phase == .rescanning { self.setPhase(.reconnecting) }
       DispatchQueue.main.asyncAfter(deadline: .now() + Double(self.rescanIdleMs) / 1000.0) { [weak self] in
         self?.scheduleRescanCycle(session: session)
@@ -1101,6 +1535,10 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func stopReconnect() {
+    finishReconnectWorkflow(
+      decision: ConnectionTraceDecision.cancelled,
+      reason: ConnectionTraceReason.mechanicalTeardown
+    )
     guard reconnecting else { return }
     reconnecting = false
     transport.stopReconnectScan()
@@ -1121,6 +1559,7 @@ internal final class BoardSessionController: VescGattListener {
   // MARK: - VescGattListener
 
   func onDeviceDiscovered(id: String, name: String, rssi: Int, serviceUUIDs: [String]) {
+    presenceScanPort.deliverObserved(id: id, rssi: rssi)
     emit?("onDevice", [
       "id": id,
       "name": name,
@@ -1138,7 +1577,13 @@ internal final class BoardSessionController: VescGattListener {
     resumeSession(marker: marker, restoredPeripheralIds: peripheralIds)
   }
 
+  /// The central reached `.poweredOn`: the Presence Scan window starts here.
+  func onScanReady() {
+    presenceScanPort.deliverReady()
+  }
+
   func onScanFailure(_ message: String) {
+    presenceScanPort.deliverFailure(message)
     scanPhase = "error"
     scanError = message
     emit?("onError", ["message": message])
@@ -1152,6 +1597,14 @@ internal final class BoardSessionController: VescGattListener {
     if reconnecting {
       reconnecting = false
       transport.stopReconnectScan()
+      reconnectWorkflow?.event(
+        ConnectionTraceEvent.presenceScanMatched,
+        fields: [
+          ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+          ConnectionTraceField.boardId: config?.appBoardId,
+          ConnectionTraceField.bleId: config?.bleId,
+        ]
+      )
     }
     recordConnectionDiagnostic("gatt_connected", operation: "connect", message: "GATT connected")
     setPhase(.discovering)
@@ -1457,6 +1910,8 @@ internal final class BoardSessionController: VescGattListener {
       syncResumeMarkerRecording()
     }
     if connectionSoundsEnabled { alertAudioPlayer.playConnect() }
+    // The explicit Connect got what it asked for; the Board Session owns the connection from here.
+    clearConnectIntent(.connected)
     // The Live Activity flips to "connected" via setPhase → refreshLiveActivity below.
     setPhase(.connected)
   }
@@ -2072,13 +2527,18 @@ internal final class BoardSessionController: VescGattListener {
 /// a live JS runtime or a `VescapeCoreModule` instance.
 @MainActor
 enum BoardSessionCommands {
+  /// `source`/`origin` name the rider action: the Live Activity and App Intent Stop are End ride,
+  /// while the JS Disconnect button is a Manual Disconnect. Both arm an Automatic Connection Pause.
   @discardableResult
-  static func stopRide() -> Bool {
+  static func stopRide(
+    source: String = ConnectionTraceReason.endRide,
+    origin: String = ConnectionTraceOrigin.endRide
+  ) -> Bool {
     let controller = BoardSessionController.shared
     let accepted = ManualBoardStop(
-      defaults: .standard,
       activeBoardId: { controller.connectedBoardId },
-      stop: { controller.stopBoard() }
+      stop: { controller.stopBoard() },
+      armPause: { controller.armConnectionPause(boardId: $0, source: source, origin: origin) != nil }
     ).perform()
     // A stop no session accepted means the surface is a ghost from a killed process (ADR 0034).
     // The session stays a no-op, but the Live Activity must still die — otherwise Stop on a ghost

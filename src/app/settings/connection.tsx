@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   BluetoothConnectedIcon,
   ClockCountdownIcon,
+  FlagCheckeredIcon,
   PowerIcon,
   RecordIcon,
   SpeakerHighIcon,
@@ -18,14 +19,26 @@ import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import {
+  connectionPauseReason,
+  connectionPauseRemaining,
+  isConnectionPauseActive,
+} from '@/modules/board/lib/connectionPause'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { AutoStartCard } from '@/modules/settings/components/AutoStartCard'
+import { ConnectionPausedCard } from '@/modules/settings/components/ConnectionPausedCard'
 import { companionErrorMessage } from '@/modules/settings/lib/companionErrors'
 import {
   ensureBackgroundLocation,
   hasBackgroundLocation,
 } from '@/modules/settings/hooks/usePermissions'
+
+/** Cap offered for *new* pause durations. Migrated legacy values above it stay valid. */
+const PAUSE_MAX_MINUTES = 480
+
+const pauseStep = (value: number, direction: 1 | -1) =>
+  direction === 1 ? (value < 10 ? 5 : 15) : value <= 10 ? 5 : 15
 
 /** Backing out of the system device chooser is normal — only real failures get an alert. */
 const alertCompanionError = (error: unknown, fallback: string) => {
@@ -37,9 +50,10 @@ export default function ConnectionSettingsScreen() {
   const {
     autoConnect,
     autoRecording,
+    rideSummaryNotificationsEnabled,
     companionPresenceEnabled,
     companionPresenceBoards,
-    companionPresenceCooldownMinutes,
+    automaticConnectionPauseMinutes,
     connectionSoundsEnabled,
     autoCloseEnabled,
     autoCloseDelayMinutes,
@@ -51,9 +65,10 @@ export default function ConnectionSettingsScreen() {
     useShallow((s) => ({
       autoConnect: s.autoConnect,
       autoRecording: s.autoRecording,
+      rideSummaryNotificationsEnabled: s.rideSummaryNotificationsEnabled,
       companionPresenceEnabled: s.companionPresenceEnabled,
       companionPresenceBoards: s.companionPresenceBoards,
-      companionPresenceCooldownMinutes: s.companionPresenceCooldownMinutes,
+      automaticConnectionPauseMinutes: s.automaticConnectionPauseMinutes,
       connectionSoundsEnabled: s.connectionSoundsEnabled,
       autoCloseEnabled: s.autoCloseEnabled,
       autoCloseDelayMinutes: s.autoCloseDelayMinutes,
@@ -69,6 +84,25 @@ export default function ConnectionSettingsScreen() {
     .map((board) => ({ id: board.id, name: board.name, bleId: board.link!.bleId }))
 
   const connectedBoardId = useBleStore((s) => (s.status === 'idle' ? null : s.selectedBoardId))
+  const connectionPause = useBleStore((s) => s.connectionPause)
+  const connect = useBleStore((s) => s.connect)
+  const [connectingPaused, setConnectingPaused] = useState(false)
+  // Native owns expiry; this screen only renders whatever the last snapshot said.
+  const activePause = isConnectionPauseActive(connectionPause, Date.now()) ? connectionPause : null
+  const pausedBoardName =
+    boards.find((board) => board.id === activePause?.boardId)?.name ?? 'Your board'
+
+  /** **Connect now** is an explicit Connect: native clears the pause before the session starts. */
+  const onConnectNow = async (boardId: string) => {
+    setConnectingPaused(true)
+    try {
+      await connect(boardId)
+    } catch (error) {
+      console.warn('Connect now failed', error)
+    } finally {
+      setConnectingPaused(false)
+    }
+  }
 
   const [bgLocationPrompt, setBgLocationPrompt] = useState(false)
   const [disconnectPrompt, setDisconnectPrompt] = useState(false)
@@ -161,17 +195,21 @@ export default function ConnectionSettingsScreen() {
             enabled={companionPresenceEnabled}
             boards={linkedBoards}
             armedBoardIds={companionPresenceBoards.map((board) => board.boardId)}
-            cooldownMinutes={companionPresenceCooldownMinutes}
             busyBoardId={busyBoardId}
             masterBusy={masterBusy}
             onToggle={(enabled) => void onCompanionToggle(enabled)}
             onEnableBoard={(boardId) => void onAddCompanionBoard(boardId)}
             onDisableBoard={(boardId) => void onRemoveCompanionBoard(boardId)}
-            onCooldownChange={(minutes) => {
-              if (minutes !== companionPresenceCooldownMinutes) {
-                void set('companionPresenceCooldownMinutes', minutes)
-              }
-            }}
+          />
+        ) : null}
+
+        {activePause ? (
+          <ConnectionPausedCard
+            boardName={pausedBoardName}
+            remaining={connectionPauseRemaining(activePause.until, Date.now())}
+            reason={connectionPauseReason(activePause.source)}
+            busy={connectingPaused}
+            onConnectNow={() => void onConnectNow(activePause.boardId)}
           />
         ) : null}
 
@@ -208,6 +246,32 @@ export default function ConnectionSettingsScreen() {
             }
           />
           <SettingsRow
+            icon={ClockCountdownIcon}
+            iconColor={theme.palette.orange.color}
+            label="Pause after you stop"
+            hint="How long disconnecting, ending a ride, or closing the app keeps auto connect off"
+            right={
+              <Stepper
+                value={automaticConnectionPauseMinutes}
+                unit="min"
+                min={0}
+                max={PAUSE_MAX_MINUTES}
+                step={pauseStep}
+                onChange={(next) => {
+                  // A legacy value above the recommended cap stays valid until the rider steps it
+                  // down; only new selections are capped.
+                  const clamped = Math.max(
+                    0,
+                    Math.min(Math.max(PAUSE_MAX_MINUTES, automaticConnectionPauseMinutes), next),
+                  )
+                  if (clamped !== automaticConnectionPauseMinutes) {
+                    void set('automaticConnectionPauseMinutes', clamped)
+                  }
+                }}
+              />
+            }
+          />
+          <SettingsRow
             icon={RecordIcon}
             iconWeight="fill"
             iconColor={theme.status.error.color}
@@ -219,6 +283,23 @@ export default function ConnectionSettingsScreen() {
                 onValueChange={(v) => void set('autoRecording', v)}
                 trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
                 thumbColor={autoRecording ? theme.palette.sky.color : theme.palette.slate.textMuted}
+              />
+            }
+          />
+          <SettingsRow
+            icon={FlagCheckeredIcon}
+            label="Ride summaries"
+            hint="Silent notification with distance, time and battery after a ride"
+            right={
+              <Switch
+                value={rideSummaryNotificationsEnabled}
+                onValueChange={(v) => void set('rideSummaryNotificationsEnabled', v)}
+                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
+                thumbColor={
+                  rideSummaryNotificationsEnabled
+                    ? theme.palette.sky.color
+                    : theme.palette.slate.textMuted
+                }
               />
             }
           />

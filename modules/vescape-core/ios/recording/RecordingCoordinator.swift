@@ -79,6 +79,8 @@ internal final class RecordingCoordinator {
   }
 
   func finishBoardSession(status: String, markerType: String) {
+    let wasRecording = enabled
+    let boardId = activeConfig?.appBoardId
     finishDebugRecording(status: status)
     if let config = activeConfig, enabled {
       recordMarker(markerType, config: config)
@@ -87,14 +89,18 @@ internal final class RecordingCoordinator {
     activeConfig = nil
     enabled = false
     startedAtMs = nil
+    if wasRecording { sendRideSummary(boardId: boardId) }
   }
 
   func failSession() {
+    let wasRecording = enabled
+    let boardId = activeConfig?.appBoardId
     finishDebugRecording(status: "error")
     store.flushBlocking()
     activeConfig = nil
     enabled = false
     startedAtMs = nil
+    if wasRecording { sendRideSummary(boardId: boardId) }
   }
 
   func setTelemetryRecordingEnabled(_ requested: Bool) -> Bool {
@@ -108,12 +114,14 @@ internal final class RecordingCoordinator {
       enableTelemetryRecording(config: config)
       return true
     }
+    let wasRecording = enabled
     if enabled {
       recordMarker("app_stop", config: config, message: "Recording stopped")
     }
     store.flushBlocking()
     enabled = false
     startedAtMs = nil
+    if wasRecording { sendRideSummary(boardId: config.appBoardId) }
     return true
   }
 
@@ -142,6 +150,16 @@ internal final class RecordingCoordinator {
       altitudeM: location.altitudeM,
       timestamp: location.timestamp
     )
+  }
+
+  /// Ride Recording finalized (#410). Fire-and-forget: `RideSummaryController` owns eligibility,
+  /// the rider setting, notification permission, and the durable per-ride dedup claim, so calling
+  /// this more than once for the same ride is safe by construction.
+  private func sendRideSummary(boardId: String?) {
+    let now = nowMs()
+    DispatchQueue.global(qos: .utility).async {
+      RideSummaryController.onRecordingFinalized(boardId: boardId, nowMs: now)
+    }
   }
 
   private func finishDebugRecording(status: String) {

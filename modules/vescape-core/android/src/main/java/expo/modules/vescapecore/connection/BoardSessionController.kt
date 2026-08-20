@@ -2,10 +2,14 @@ package expo.modules.vescapecore.connection
 
 import expo.modules.vescapecore.protocol.toCapture
 
-import expo.modules.vescapecore.service.foregroundServiceType
+import expo.modules.vescapecore.service.ForegroundPresentation
+import expo.modules.vescapecore.service.ForegroundWork
+import expo.modules.vescapecore.service.ForegroundWorkChange
+import expo.modules.vescapecore.service.ForegroundWorkOwnership
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_EXIT_FROM_NOTIFICATION
+import expo.modules.vescapecore.service.ACTION_STOP_PRESENCE_SCAN
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.withLegalModeOverlay
@@ -22,11 +26,18 @@ import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
-import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
 import expo.modules.vescapecore.service.CoreForegroundService
+import expo.modules.vescapecore.diagnostics.ConnectionTrace
+import expo.modules.vescapecore.diagnostics.ConnectionTraceDecision
+import expo.modules.vescapecore.diagnostics.ConnectionTraceEvent
+import expo.modules.vescapecore.diagnostics.ConnectionTraceField
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOwner
+import expo.modules.vescapecore.diagnostics.ConnectionTraceReason
+import expo.modules.vescapecore.diagnostics.ConnectionWorkflow
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.location.GpsMonitor
 import expo.modules.vescapecore.location.isPreciseGpsFix
@@ -35,7 +46,6 @@ import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.location.LocationTracker
-import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.service.PendingStart
@@ -82,7 +92,7 @@ import expo.modules.vescapecore.watch.offsetMeters
 import expo.modules.vescapecore.watch.toWatchSettings
 import expo.modules.vescapecore.buildLiveState
 import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
-import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
+import expo.modules.vescapecore.service.foregroundServiceTypeWithConnectedDevice
 import expo.modules.vescapecore.protocol.parseBmsValues
 import expo.modules.vescapecore.protocol.parseFwVersion
 import expo.modules.vescapecore.protocol.parseRefloatGetAllData
@@ -113,6 +123,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.launch
@@ -222,6 +233,45 @@ internal class BoardSessionController(private val service: CoreForegroundService
         generation = { BoardMoveGeneration.forBaseVersion(boardConfig?.refloatBaseVersion) },
         send = { payload, urgent -> transport.sendRemoteInput(payload, urgent) },
     )
+    /** Process-wide scanner arbiter + presence-scan machinery (ADR 0035). */
+    private val presenceScanPort: PresenceScanPort by lazy { BlePresenceScanPort(service.applicationContext) }
+    private val presenceScan by lazy {
+        BoardPresenceScan(
+            port = presenceScanPort,
+            scanner = ScannerCoordinator.shared,
+            ownership = ConnectionOwnership.shared,
+            scheduler = scheduler,
+            nowMs = ::nowMs,
+            onStateChanged = { state ->
+                scheduler.post {
+                    emitState()
+                    onPresenceScanStateChanged(state)
+                }
+            },
+            onPromote = ::promoteToSession,
+        )
+    }
+
+    /**
+     * Explicit rider Connect Intent (ADR 0035). Outranks Auto Start and Auto Connect, and persists
+     * indefinitely while Auto Close is disabled. #409 creates one at the end of linking.
+     */
+    @Volatile
+    internal var connectIntent: ConnectIntent? = null
+
+    /**
+     * Bumped whenever an intent is requested or ended, so an intent whose asynchronous creation
+     * outlived its request never lands. See [createConnectIntent].
+     */
+    private val connectIntentGeneration = AtomicLong(0)
+
+    /**
+     * An intent past its Auto Close deadline no longer owns anything, so it must not keep the
+     * Presence Scan skipping. Expiry is a clock comparison on read, never a timer.
+     */
+    internal val hasActiveConnectIntent: Boolean
+        get() = connectIntent?.let { !ConnectIntentPolicy.isExpired(it, System.currentTimeMillis()) } == true
+
     private val notificationController by lazy {
         NotificationController(
             service = service,
@@ -231,6 +281,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             stopAction = ACTION_EXIT_FROM_NOTIFICATION,
             connectAction = ACTION_CONNECT_FROM_NOTIFICATION,
             disconnectAction = ACTION_DISCONNECT_FROM_NOTIFICATION,
+            stopSearchAction = ACTION_STOP_PRESENCE_SCAN,
         )
     }
     private val presenter by lazy {
@@ -441,6 +492,39 @@ internal class BoardSessionController(private val service: CoreForegroundService
         scheduler = scheduler,
     )
 
+    /**
+     * One correlated `reconnect` workflow per link loss (#414). The reconnect loop crosses attempts,
+     * rescans, and phases, so every one of them reports under the same `workflow_id` instead of the
+     * untraceable free-text diagnostics it used to emit alone.
+     */
+    private var reconnectWorkflow: ConnectionWorkflow? = null
+
+    /** Open (or reuse) the reconnect workflow. Reused across attempts: one link loss, one workflow. */
+    private fun beginReconnectWorkflow(reason: String, gattStatus: Int?, attempt: Int): ConnectionWorkflow {
+        reconnectWorkflow?.let { return it }
+        val workflow = ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.RECONNECT,
+            owner = ConnectionTraceOwner.BOARD_SESSION,
+            fields = mapOf(
+                ConnectionTraceField.BOARD_ID to boardConfig?.appBoardId,
+                ConnectionTraceField.BLE_ID to boardConfig?.deviceId,
+                ConnectionTraceField.ATTEMPT to attempt,
+                ConnectionTraceField.REASON to reason,
+                ConnectionTraceField.PLATFORM_ERROR_CODE to gattStatus,
+            ),
+        )
+        reconnectWorkflow = workflow
+        return workflow
+    }
+
+    /** Terminal branch of the reconnect workflow. Recovery, teardown, and give-up all land here. */
+    private fun finishReconnectWorkflow(decision: String, reason: String) {
+        val workflow = reconnectWorkflow ?: return
+        reconnectWorkflow = null
+        workflow.finish(decision, reason)
+    }
+
     private val reconnectListener = object : ReconnectListener {
         override fun isReconnectActive(session: BoardSession): Boolean {
             if (!session.isActive || session !== boardSession || isStoppingService) return false
@@ -462,11 +546,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 telemetryPipeline.lastTelemetryAt,
                 reason,
             )
+            val workflow = beginReconnectWorkflow(reason, gattStatus, nextAttempt)
             recordLocalDiagnostic(
                 "reconnect_scheduled",
                 cfg,
                 "connect",
                 mapOf(
+                    // Correlate the transport-level detail with the connection-trace workflow (#414).
+                    ConnectionTraceField.WORKFLOW_ID to workflow.workflowId,
                     "message" to reason,
                     "reason" to reason,
                     "gatt_status" to gattStatus,
@@ -500,62 +587,63 @@ internal class BoardSessionController(private val service: CoreForegroundService
             )
         }
 
+        // The reconnect rescan is a Presence Scan with `scan_purpose = reconnect`, so it reports in
+        // the shared connection-trace vocabulary rather than a second `reconnect_scan_*` family.
         override fun onScanStart(session: BoardSession) {
             transitionBoardPhase(BoardPhase.Rescanning)
-            recordLocalDiagnostic(
-                "reconnect_scan_started",
-                boardConfig,
-                "connect",
-                mapOf("message" to "Reconnect scan started"),
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_STARTED,
+                mapOf(
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.BOARD_ID to boardConfig?.appBoardId,
+                    ConnectionTraceField.BLE_ID to boardConfig?.deviceId,
+                    ConnectionTraceField.DEADLINE_MS to ReconnectPolicy.scanTimeoutMs(),
+                ),
             )
         }
 
         override fun onScanFound(session: BoardSession, match: ReconnectScanMatch) {
-            recordLocalDiagnostic(
-                "reconnect_scan_found",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_MATCHED,
                 mapOf(
-                    "message" to "Reconnect target found",
-                    "scan_result_address" to match.address,
-                    "rssi" to match.rssi,
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.BOARD_ID to boardConfig?.appBoardId,
+                    ConnectionTraceField.BLE_ID to match.address,
+                    ConnectionTraceField.RSSI to match.rssi,
                 ),
             )
         }
 
         override fun onScanTimeout(session: BoardSession) {
-            recordLocalDiagnostic(
-                "reconnect_scan_timeout",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_TIMEOUT,
                 mapOf(
-                    "message" to "Reconnect scan timed out",
-                    "timeout_ms" to ReconnectPolicy.scanTimeoutMs(),
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.REASON to ConnectionTraceReason.DEADLINE_EXPIRED,
+                    ConnectionTraceField.DEADLINE_MS to ReconnectPolicy.scanTimeoutMs(),
                 ),
             )
         }
 
         override fun onScanFailed(session: BoardSession, errorCode: Int) {
             Log.w(VESC_SESSION_TAG, "Reconnect scan failed errorCode=$errorCode")
-            recordLocalDiagnostic(
-                "reconnect_scan_failed",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_FAILED,
                 mapOf(
-                    "message" to "Reconnect scan failed",
-                    "error_code" to errorCode,
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.REASON to ConnectionTraceReason.PLATFORM_ERROR,
+                    ConnectionTraceField.PLATFORM_ERROR_CODE to errorCode,
                 ),
             )
         }
 
         override fun onScanStartFailed(session: BoardSession, error: String?) {
             Log.w(VESC_SESSION_TAG, "Reconnect scan start failed: $error")
-            recordLocalDiagnostic(
-                "reconnect_scan_start_failed",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_FAILED,
                 mapOf(
-                    "message" to "Reconnect scan start failed",
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.REASON to ConnectionTraceReason.SCANNER_UNAVAILABLE,
                     "error_message" to error,
                 ),
             )
@@ -576,6 +664,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 cfg,
                 "connect",
                 mapOf(
+                    ConnectionTraceField.WORKFLOW_ID to reconnectWorkflow?.workflowId,
                     "message" to "Reconnect direct connect started",
                     "reason" to reason,
                 ),
@@ -724,88 +813,442 @@ private var wearAutoLaunchOnConnect = true
     fun promoteConnectedDeviceForeground() {
         isStoppingService = false
         startForeground(
-            foregroundServiceTypeForConnectedDevicePromotion(
-                boardActive = boardConfig != null,
-                gpsActive = gpsMonitor.active,
-            ),
+            foregroundServiceTypeWithConnectedDevice(reconcileForegroundWork().owners),
         )
     }
 
-    /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `autoConnectSelectedBoard` */
-    fun autoConnectSelectedBoard() {
-        if (BoardProbeAutoStartGate.isActive()) {
-            Log.i(VESC_SESSION_TAG, "Auto-connect skipped: Board Probe active")
-            scheduler.post { stopIfIdle() }
-            return
+    /**
+     * Explicit foreground-work owner tracking (#405). Presence Scan, Board Session, GPS, and Group
+     * Ride all share this one service; releasing one owner must never tear down presentation the
+     * others still need.
+     */
+    private val foregroundWork = ForegroundWorkOwnership()
+
+    /**
+     * Reconcile the owner set from each subsystem's own truth. Single writer on purpose: no site can
+     * forget a release and strand the service, and no stale callback can drop an owner it does not
+     * speak for.
+     */
+    private fun reconcileForegroundWork(): ForegroundWorkChange {
+        val change = foregroundWork.reconcile(
+            ForegroundWork.PresenceScan to presenceScan.isRunning,
+            ForegroundWork.BoardSession to (boardConfig != null),
+            ForegroundWork.Gps to gpsMonitor.active,
+            ForegroundWork.GroupRide to groupRideObserver.active,
+        )
+        traceForegroundWork(ConnectionTraceEvent.FOREGROUND_WORK_ACQUIRED, change.acquired, change)
+        traceForegroundWork(ConnectionTraceEvent.FOREGROUND_WORK_RELEASED, change.released, change)
+        traceServicePresentation(change)
+        return change
+    }
+
+    /** Last presentation this service reported, so only real transitions are traced (#414). */
+    private var lastPresentation: ForegroundPresentation = ForegroundPresentation.Stopped
+
+    /**
+     * Service presentation transitions (#414). The shared service is the rider-visible surface of
+     * every connection workflow, so promotion into durable Board Session work, demotion back to the
+     * temporary search surface, and the final stop each carry a canonical reason.
+     */
+    private fun traceServicePresentation(change: ForegroundWorkChange) {
+        val previous = lastPresentation
+        val next = change.presentation
+        if (previous == next) return
+        lastPresentation = next
+        val event = when (next) {
+            ForegroundPresentation.Stopped -> ConnectionTraceEvent.SERVICE_STOPPED
+            ForegroundPresentation.Searching -> ConnectionTraceEvent.SERVICE_DEMOTED_BACKGROUND
+            ForegroundPresentation.Session -> ConnectionTraceEvent.SERVICE_PROMOTED_FOREGROUND
         }
-        CoreForegroundService.appDataScope.launch {
-            val settings = AppDataRepository.get(service.applicationContext).getTypedSettings()
-            if (!settings.autoConnect || settings.selectedBoardId == null) {
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
-            if (ManualDisconnectAutoStartGate.isSuppressed(service.applicationContext, settings.selectedBoardId)) {
-                Log.i(VESC_SESSION_TAG, "Auto-connect suppressed after manual disconnect")
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
-            scheduler.post { connectSelectedBoard(recordingEnabled = false) }
+        // A first Searching is the scan's own start, already traced as `connection_service_started`.
+        if (next == ForegroundPresentation.Searching && previous == ForegroundPresentation.Stopped) return
+        val reason = when (next) {
+            ForegroundPresentation.Stopped -> ConnectionTraceReason.MECHANICAL_TEARDOWN
+            else -> ConnectionTraceReason.MATCHED
+        }
+        ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+            owner = ConnectionTraceOwner.NONE,
+        ).also { workflow ->
+            workflow.event(
+                event,
+                mapOf(
+                    ConnectionTraceField.SERVICE_STATE to next.traceValue,
+                    ConnectionTraceField.FOREGROUND_WORK to
+                        change.owners.joinToString(",") { it.wireValue },
+                    ConnectionTraceField.REASON to reason,
+                ),
+            )
+            workflow.finish(ConnectionTraceDecision.COMPLETED, reason)
         }
     }
 
-    fun connectCompanionDevice(address: String) {
-        if (boardConfig != null) return
+    private fun traceForegroundWork(
+        event: String,
+        works: Set<ForegroundWork>,
+        change: ForegroundWorkChange,
+    ) {
+        if (works.isEmpty()) return
+        ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+            owner = ConnectionTraceOwner.NONE,
+        ).also { workflow ->
+            workflow.event(
+                event,
+                mapOf(
+                    ConnectionTraceField.FOREGROUND_WORK to works.joinToString(",") { it.wireValue },
+                    ConnectionTraceField.SERVICE_STATE to change.presentation.traceValue,
+                ),
+            )
+            workflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+        }
+    }
+
+    /**
+     * The Presence Scan ended. Release *only* that owner: a timeout or **Stop search** while GPS,
+     * a Group Ride, or a Board Session still runs keeps both the service and its notification.
+     *
+     * A match is the one end that does not reconcile here — the Board Session's config is still
+     * being built off-thread, so the service is deliberately handed over without ever dropping to
+     * zero owners and without a second service start.
+     */
+    private fun onPresenceScanStateChanged(state: PresenceScanState) {
+        if (isStoppingService) return
+        if (state.phase != PresenceScanPhase.Done) {
+            // Repaint the determinate countdown only while a scan really holds the scanner. A
+            // refused start publishes Idle and is torn down synchronously — posting its progress
+            // notification afterwards would resurrect a surface the service no longer owns.
+            if (boardConfig == null && presenceScan.isRunning) {
+                notificationController.showSearching(selectedBoardName, state.deadlineAtMs, nowMs())
+            }
+            return
+        }
+        if (state.reason == ConnectionTraceReason.MATCHED || boardConfig != null) return
+        val remaining = reconcileForegroundWork()
+        if (remaining.presentation == ForegroundPresentation.Stopped) {
+            notificationController.cancel()
+            stopIfIdle()
+            return
+        }
+        // Another owner still needs the service: repaint from its state instead of cancelling.
+        reassertForeground()
+        if (!isStoppingService) refreshNotification(force = true)
+    }
+
+    /**
+     * Board Presence Scan on foreground entry (ADR 0035). Replaces the old process-launch direct
+     * connect: native looks for the selected Board for five seconds after the radio is usable and
+     * promotes it into a Board Session only when policy allows. Every refusal carries a named
+     * reason through the shared connection trace.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startPresenceScan`
+     */
+    fun startPresenceScan() {
+        // Foreground *immediately*, with the temporary progress notification. There is deliberately
+        // no regular-service-to-foreground promotion path for this scan.
         isStoppingService = false
+        startPresenceScanForeground()
+        val workflow = ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+            owner = ConnectionTraceOwner.NONE,
+        )
+        workflow.event(
+            ConnectionTraceEvent.SERVICE_STARTED,
+            mapOf(ConnectionTraceField.SERVICE_STATE to "foreground"),
+        )
         CoreForegroundService.appDataScope.launch {
             val appCtx = service.applicationContext
-            if (BoardProbeAutoStartGate.isActive()) {
-                Log.i(VESC_SESSION_TAG, "Companion auto start skipped: Board Probe active")
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
-            if (CompanionRestartGate.isSuppressed(appCtx)) {
-                Log.i(VESC_SESSION_TAG, "Companion auto start suppressed after manual exit")
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
-            val boardId = companionBoardId(AppDataRepository.get(appCtx), address)
-            if (boardId == null) {
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
-            if (ManualDisconnectAutoStartGate.isSuppressed(appCtx, boardId)) {
-                Log.i(VESC_SESSION_TAG, "Companion auto start suppressed after manual disconnect")
-                scheduler.post { stopIfIdle() }
-                return@launch
-            }
-            // Presence can belong to any configured Board, not necessarily the last one the Rider
-            // used. Make the triggering Board selected before building/emitting the new session.
-            AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
-            val config = try {
-                buildSessionConfig(appCtx, boardId, recordingEnabled = false)
+            val repo = AppDataRepository.get(appCtx)
+            val settings = repo.getTypedSettings()
+            val boards = try {
+                repo.getBoards()
             } catch (e: Exception) {
-                Log.w(VESC_SESSION_TAG, "Companion connect config failed: ${e.message}")
+                Log.w(VESC_SESSION_TAG, "Presence Scan board load failed: ${e.message}")
+                emptyList()
+            }
+            val targets = presenceTargets(boards, settings.selectedBoardId)
+            val environment = PresenceScanEnvironment(
+                linkedBoardCount = targets.size,
+                selectedBoardId = settings.selectedBoardId,
+                selectedBoardBleId = targets.firstOrNull { it.selected }?.bleId,
+                bluetoothEnabled = presenceScanPort.bluetoothEnabled(),
+                scanPermissionGranted = presenceScanPort.scanPermissionGranted(),
+                scannerAvailable = presenceScanPort.scannerAvailable(),
+                sessionActive = boardConfig != null,
+                connectIntentActive = hasActiveConnectIntent,
+                activeScanPurpose = ScannerCoordinator.shared.activePurpose,
+            )
+            scheduler.post {
+                val decision = presenceScan.start(
+                    environment = environment,
+                    targets = targets,
+                    workflow = workflow,
+                    promotionInput = {
+                        PresencePromotionInput(
+                            selectedObserved = true,
+                            autoConnectEnabled = settings.autoConnect,
+                            pausedUntilMs = ConnectionPauseStore.pausedUntilMs(
+                                appCtx,
+                                settings.selectedBoardId,
+                                workflow,
+                            ),
+                            nowMs = nowMs(),
+                            sessionActive = boardConfig != null,
+                            currentOwner = ConnectionOwnership.shared.current,
+                        )
+                    },
+                )
+                emitState()
+                // Register (or drop) the Presence Scan owner as soon as the scan's fate is known.
+                if (decision.proceed) reconcileForegroundWork() else stopIfIdle()
+            }
+        }
+    }
+
+    /** **Stop search** from the progress notification, or an exclusive scanner owner taking over. */
+    fun stopPresenceScan(reason: String = ConnectionTraceReason.STOP_SEARCH) {
+        presenceScan.cancel(reason)
+        emitState()
+        stopIfIdle()
+    }
+
+    /** Linked Boards the scan watches. A Board without a Board Link has no BLE id to watch for. */
+    private fun presenceTargets(
+        boards: List<Map<String, Any?>>,
+        selectedBoardId: String?,
+    ): List<PresenceTarget> = boards.mapNotNull { board ->
+        val boardId = board["id"] as? String ?: return@mapNotNull null
+        @Suppress("UNCHECKED_CAST")
+        val link = board["link"] as? Map<String, Any?>
+        val bleId = (link?.get("bleId") as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        PresenceTarget(
+            boardId = boardId,
+            bleId = bleId,
+            name = board["name"] as? String,
+            selected = boardId == selectedBoardId,
+        )
+    }
+
+    private fun startPresenceScanForeground() {
+        // Indeterminate until the radio is usable: the five-second window starts at scanner
+        // readiness, not here, so there is no honest deadline to render yet.
+        val notification = notificationController.buildSearching(selectedBoardName, deadlineAtMs = null, nowMs = nowMs())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            service.startForeground(
+                NOTIFICATION_ID,
+                notification,
+                foregroundServiceTypeWithConnectedDevice(reconcileForegroundWork().owners),
+            )
+        } else {
+            service.startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    /**
+     * Promote an observed selected Board into a Board Session (Auto Connect path).
+     *
+     * The Presence Scan hands its still-open workflow over, so every terminal branch of the
+     * promotion — session started, refused because one already exists, or config build failure —
+     * closes the *same* correlation instead of ending the trace at `auto_connect_promoted` (#414).
+     */
+    private fun promoteToSession(target: PresenceTarget, workflow: ConnectionWorkflow?) {
+        CoreForegroundService.appDataScope.launch {
+            val appCtx = service.applicationContext
+            val config = try {
+                buildSessionConfig(appCtx, target.boardId, recordingEnabled = false)
+            } catch (e: Exception) {
+                Log.w(VESC_SESSION_TAG, "Presence Scan promotion failed: ${e.message}")
+                ConnectionOwnership.shared.release(ConnectionOwner.BoardSession)
+                workflow?.event(
+                    ConnectionTraceEvent.OWNER_RELEASED,
+                    mapOf(
+                        ConnectionTraceField.BOARD_ID to target.boardId,
+                        ConnectionTraceField.OWNER_PREVIOUS to ConnectionOwner.BoardSession.wireValue,
+                    ),
+                )
+                workflow?.finish(ConnectionTraceDecision.FAILED, ConnectionTraceReason.PLATFORM_ERROR)
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
             scheduler.post {
                 if (boardConfig == null) {
-                    beginSession(
-                        PendingStart(
-                            config,
-                            onSuccess = {},
-                            onError = { _, message -> Log.w(VESC_SESSION_TAG, "Companion connect failed: $message") },
-                        ),
+                    workflow?.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+                    beginSession(PendingStart(config, onSuccess = {}, onError = { _, _ -> }))
+                } else {
+                    workflow?.finish(
+                        ConnectionTraceDecision.SKIPPED,
+                        ConnectionTraceReason.SESSION_ALREADY_ACTIVE,
                     )
+                    stopIfIdle()
                 }
             }
         }
     }
 
-    private suspend fun companionBoardId(repo: AppDataRepository, address: String): String? {
-        val settings = repo.getTypedSettings()
-        if (!settings.companionPresenceEnabled) return null
-        return companionBoardIdForAddress(repo.getBoards(), address)
+    /**
+     * Android Auto Start: an armed Board's Companion Device presence reached us (ADR 0035, #407).
+     *
+     * This is the arbitration entry point. It never barges in: [AutoStartPolicy.evaluate] resolves
+     * the event against the explicit [ConnectionOwnership] precedence — a Board Session or an
+     * explicit Connect Intent rejects it, while a passive Presence Scan or an idle connection yields.
+     * When it yields, the aggressive Auto Start promise is kept in full: the scan is cancelled, the
+     * *detected* Board becomes the selected Board, and it gets a durable Board Session.
+     *
+     * Every accepted, preempted, ignored, and paused outcome is traced with owner and Board ids.
+     */
+    fun connectCompanionDevice(address: String) {
+        isStoppingService = false
+        CoreForegroundService.appDataScope.launch {
+            val appCtx = service.applicationContext
+            val repo = AppDataRepository.get(appCtx)
+            val settings = repo.getTypedSettings()
+            val boardId = companionBoardIdForAddress(repo.getBoards(), address)
+            val workflow = ConnectionTrace.start(
+                appCtx,
+                ConnectionTraceOrigin.AUTO_START_WAKE,
+                ConnectionTraceOwner.AUTO_START,
+                mapOf(
+                    ConnectionTraceField.BOARD_ID to boardId,
+                    ConnectionTraceField.BLE_ID to address,
+                    ConnectionTraceField.AUTO_START_ENABLED to settings.companionPresenceEnabled,
+                ),
+            )
+            workflow.event(
+                ConnectionTraceEvent.AUTO_START_ARMED,
+                mapOf(ConnectionTraceField.BOARD_ID to boardId, ConnectionTraceField.BLE_ID to address),
+            )
+            // The Automatic Connection Pause is read for the *detected* Board, not the previously
+            // selected one: presence can belong to any linked Board (#407).
+            val environment = AutoStartEnvironment(
+                detectedBoardId = boardId,
+                selectedBoardId = settings.selectedBoardId,
+                autoStartEnabled = settings.companionPresenceEnabled,
+                sessionActive = boardConfig != null,
+                connectIntentActive = hasActiveConnectIntent,
+                currentOwner = ConnectionOwnership.shared.current,
+                activeScanPurpose = ScannerCoordinator.shared.activePurpose,
+                boardProbeActive = BoardProbeAutoStartGate.isActive(),
+                pausedUntilMs = boardId?.let { ConnectionPauseStore.pausedUntilMs(appCtx, it, workflow) },
+                nowMs = nowMs(),
+            )
+            val decision = AutoStartPolicy.evaluate(environment)
+            if (!decision.proceed) {
+                refuseAutoStart(workflow, environment, decision)
+                scheduler.post { stopIfIdle() }
+                return@launch
+            }
+            // Take ownership before touching selection or the radio. A stale presence callback that
+            // lost the race to a newer, higher owner is denied here rather than allowed to overwrite it.
+            val ownership = ConnectionOwnership.shared.request(ConnectionOwner.AutoStart)
+            if (!ownership.granted) {
+                refuseAutoStart(
+                    workflow,
+                    environment,
+                    AutoStartDecision(
+                        proceed = false,
+                        decision = ConnectionTraceDecision.DENIED,
+                        reason = ownership.reason ?: ConnectionTraceReason.HIGHER_PRIORITY_OWNER,
+                    ),
+                    previousOwner = ownership.previousOwner,
+                )
+                scheduler.post { stopIfIdle() }
+                return@launch
+            }
+            // Guaranteed non-null by the policy: a blank detected Board is skipped above.
+            val targetBoardId = boardId ?: return@launch
+            workflow.event(
+                ConnectionTraceEvent.OWNER_GRANTED,
+                mapOf(
+                    ConnectionTraceField.BOARD_ID to targetBoardId,
+                    ConnectionTraceField.OWNER_REQUESTED to ConnectionOwner.AutoStart.wireValue,
+                    ConnectionTraceField.OWNER_PREVIOUS to ownership.previousOwner.wireValue,
+                ),
+            )
+            if (decision.cancelsPresenceScan) {
+                // Preempt the passive scan: it only ever watched the selected Board, and Auto Start
+                // outranks it. Cancelling here also frees the scanner before the session connects.
+                scheduler.post { presenceScan.cancel(ConnectionTraceReason.HIGHER_PRIORITY_OWNER) }
+                workflow.event(
+                    ConnectionTraceEvent.PRESENCE_SCAN_CANCELLED,
+                    mapOf(
+                        ConnectionTraceField.BOARD_ID to targetBoardId,
+                        ConnectionTraceField.REASON to ConnectionTraceReason.HIGHER_PRIORITY_OWNER,
+                        ConnectionTraceField.OWNER_PREVIOUS to ownership.previousOwner.wireValue,
+                    ),
+                )
+            }
+            // Presence can belong to any configured Board, not necessarily the last one the Rider
+            // used. Make the triggering Board selected before building/emitting the new session.
+            if (decision.switchesSelectedBoard) {
+                repo.setSelectedBoardId(targetBoardId)
+                workflow.event(
+                    ConnectionTraceEvent.BOARD_SELECTED,
+                    mapOf(ConnectionTraceField.BOARD_ID to targetBoardId, ConnectionTraceField.BLE_ID to address),
+                )
+            }
+            val config = try {
+                buildSessionConfig(appCtx, targetBoardId, recordingEnabled = false)
+            } catch (e: Exception) {
+                Log.w(VESC_SESSION_TAG, "Companion connect config failed: ${e.message}")
+                ConnectionOwnership.shared.release(ConnectionOwner.AutoStart)
+                workflow.finish(ConnectionTraceDecision.FAILED, ConnectionTraceReason.PLATFORM_ERROR)
+                scheduler.post { stopIfIdle() }
+                return@launch
+            }
+            workflow.event(
+                ConnectionTraceEvent.AUTO_START_TRIGGERED,
+                mapOf(ConnectionTraceField.BOARD_ID to targetBoardId, ConnectionTraceField.BLE_ID to address),
+            )
+            workflow.finish(ConnectionTraceDecision.GRANTED, ConnectionTraceReason.MATCHED)
+            scheduler.post {
+                if (boardConfig != null) {
+                    ConnectionOwnership.shared.release(ConnectionOwner.AutoStart)
+                    stopIfIdle()
+                    return@post
+                }
+                // [beginSession] hands ownership on to the Board Session; its teardown releases it.
+                workflow.handoff(ConnectionOwner.BoardSession.wireValue)
+                beginSession(
+                    PendingStart(
+                        config,
+                        onSuccess = {},
+                        onError = { _, message -> Log.w(VESC_SESSION_TAG, "Companion connect failed: $message") },
+                    ),
+                )
+            }
+        }
+    }
+
+    /** One trace shape for every rejected Auto Start event, whatever refused it. */
+    private fun refuseAutoStart(
+        workflow: ConnectionWorkflow,
+        environment: AutoStartEnvironment,
+        decision: AutoStartDecision,
+        previousOwner: ConnectionOwner = environment.currentOwner,
+    ) {
+        val fields = mapOf(
+            ConnectionTraceField.BOARD_ID to environment.detectedBoardId,
+            ConnectionTraceField.REASON to decision.reason,
+            ConnectionTraceField.OWNER_REQUESTED to ConnectionOwner.AutoStart.wireValue,
+            ConnectionTraceField.OWNER_PREVIOUS to previousOwner.wireValue,
+            ConnectionTraceField.PAUSED_UNTIL to environment.pausedUntilMs,
+        )
+        if (decision.reason == ConnectionTraceReason.CONNECTION_PAUSED) {
+            workflow.event(ConnectionTraceEvent.PAUSE_BLOCKED, fields)
+        }
+        if (decision.decision == ConnectionTraceDecision.DENIED) {
+            workflow.event(ConnectionTraceEvent.OWNER_DENIED, fields)
+        }
+        workflow.event(ConnectionTraceEvent.AUTO_START_SKIPPED, fields)
+        workflow.finish(decision.decision, decision.reason)
+        Log.i(
+            VESC_SESSION_TAG,
+            "Auto Start ${decision.decision} (${decision.reason}) board=${environment.detectedBoardId} " +
+                "owner=${previousOwner.wireValue}",
+        )
     }
 
     private fun connectSelectedBoard(recordingEnabled: Boolean) {
@@ -813,7 +1256,8 @@ private var wearAutoLaunchOnConnect = true
         CoreForegroundService.appDataScope.launch {
             val appCtx = service.applicationContext
             val boardId = AppDataRepository.get(appCtx).getTypedSettings().selectedBoardId ?: return@launch
-            ManualDisconnectAutoStartGate.clear(appCtx)
+            // **Connect now** is an explicit Connect, with the full explicit semantics.
+            beginExplicitConnect(appCtx, boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = recordingEnabled)
             } catch (e: Exception) {
@@ -831,7 +1275,11 @@ private var wearAutoLaunchOnConnect = true
     fun disconnectFromNotification() {
         if (boardConfig == null) return
         setStatus(BoardPhase.Disconnecting)
-        ManualDisconnectAutoStartGate.suppress(service.applicationContext, boardConfig?.appBoardId)
+        armConnectionPause(
+            boardConfig?.appBoardId,
+            ConnectionTraceReason.MANUAL_DISCONNECT,
+            ConnectionTraceOrigin.MANUAL_DISCONNECT,
+        )
         // Always refresh: the notification stays visible after disconnect (idle + Connect), so it must
         // reflect the idle phase even while GPS keeps the service foregrounded.
         stopCurrentBoardSession(emitDisconnected = true)
@@ -856,15 +1304,22 @@ private var wearAutoLaunchOnConnect = true
 
     val isStopping: Boolean get() = isStoppingService
 
+    /**
+     * Stop the service only when *no* foreground-work owner remains. Every teardown path funnels
+     * here so a released Presence Scan can never take GPS, a Group Ride, or a Board Session with it.
+     */
     fun stopIfIdle() {
-        if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active) {
-            isStoppingService = true
-            notificationController.cancel()
-            service.stopSelf()
-        }
+        if (reconcileForegroundWork().hasWork) return
+        isStoppingService = true
+        notificationController.cancel()
+        service.stopSelf()
     }
 
     fun consumePendingStart() {
+        // An explicit Connect raised before this controller existed still owns the connection.
+        CoreForegroundService.claimPendingExplicitConnect()?.let {
+            beginExplicitConnect(service.applicationContext, it.boardId, it.origin)
+        }
         val start = CoreForegroundService.claimPendingStart() ?: return
         beginSession(start)
     }
@@ -873,7 +1328,11 @@ private var wearAutoLaunchOnConnect = true
         val stop = CoreForegroundService.claimPendingStop() ?: return
         if (boardConfig != null) {
             setStatus(BoardPhase.Disconnecting)
-            ManualDisconnectAutoStartGate.suppress(service.applicationContext, boardConfig?.appBoardId)
+            armConnectionPause(
+                boardConfig?.appBoardId,
+                ConnectionTraceReason.MANUAL_DISCONNECT,
+                ConnectionTraceOrigin.MANUAL_DISCONNECT,
+            )
             // Always refresh, exactly like the notification Disconnect action: the notification
             // outlives the Board Session (idle + Connect), so a JS disconnect must repaint it too.
             stopCurrentBoardSession(emitDisconnected = true)
@@ -918,10 +1377,7 @@ private var wearAutoLaunchOnConnect = true
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
         groupRideObserver.stop()
-        if (boardConfig == null && !gpsMonitor.active) {
-            isStoppingService = true
-            service.stopSelf()
-        }
+        stopIfIdle()
     }
 
     fun createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) {
@@ -941,8 +1397,21 @@ private var wearAutoLaunchOnConnect = true
         groupRideObserver.updateIdentity(riderId, riderName, riderColor)
     }
 
-    fun exitFromNotification() {
-        armCompanionRestartGate()
+    /**
+     * **Exit** from the notification, and Android task removal (`onTaskRemoved`). Both are rider
+     * intent to stop riding, so both arm an Automatic Connection Pause — under distinct sources, so
+     * the Event Log tells a swipe-away apart from a deliberate Exit.
+     */
+    fun exitFromNotification(source: String = ConnectionTraceReason.APP_EXIT) {
+        armConnectionPause(
+            boardConfig?.appBoardId,
+            source,
+            if (source == ConnectionTraceReason.TASK_REMOVED) {
+                ConnectionTraceOrigin.TASK_REMOVED
+            } else {
+                ConnectionTraceOrigin.APP_EXIT
+            },
+        )
         isStoppingService = true
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
         notificationController.cancel()
@@ -952,17 +1421,140 @@ private var wearAutoLaunchOnConnect = true
         service.stopSelf()
     }
 
-    // Manual exit means the user is done riding: pause companion auto start for the configured
-    // cooldown so the board reappearing doesn't immediately relaunch the app.
-    private fun armCompanionRestartGate() {
+    /**
+     * Arm the board-scoped Automatic Connection Pause for a rider action (ADR 0035, #406).
+     *
+     * Only the four rider intents reach here — Disconnect, End ride, Exit, task removal.
+     * [ConnectionPausePolicy] refuses anything else, so a mechanical teardown that ever grew a call
+     * to this cannot silently start suppressing Auto Connect.
+     */
+    private fun armConnectionPause(boardId: String?, source: String, origin: String) {
         val appCtx = service.applicationContext
         CoreForegroundService.appDataScope.launch {
             val settings = AppDataRepository.get(appCtx).getTypedSettings()
-            if (settings.companionPresenceEnabled) {
-                CompanionRestartGate.suppressFor(appCtx, settings.companionPresenceCooldownMinutes)
+            // Exit and task removal can arrive with no live session; the rider still means "this
+            // Board", which is the selected one.
+            val pausedBoardId = boardId?.takeIf { it.isNotBlank() } ?: settings.selectedBoardId ?: return@launch
+            // A rider stop ends the explicit Connect too; nothing may keep searching past it.
+            scheduler.post { clearConnectIntent(ConnectIntentEnd.fromPauseSource(source)) }
+            val minutes = settings.automaticConnectionPauseMinutes
+            val workflow = ConnectionTrace.start(
+                appCtx,
+                origin,
+                ConnectionTraceOwner.NONE,
+                mapOf(ConnectionTraceField.BOARD_ID to pausedBoardId),
+            )
+            val pause = ConnectionPauseStore.arm(appCtx, pausedBoardId, source, minutes, workflow)
+            workflow.finish(
+                if (pause != null) ConnectionTraceDecision.COMPLETED else ConnectionTraceDecision.SKIPPED,
+                source,
+            )
+            scheduler.post { emitState() }
+        }
+    }
+
+    /**
+     * **The** application-level explicit-Connect entry point (ADR 0035). Every rider-initiated
+     * Connect goes through here — the Connect pill, **Connect now**, and Switch & Connect — so
+     * explicit semantics exist in one place: clear that Board's Automatic Connection Pause, take
+     * durable Connect Intent ownership, and record the selection. Starting the actual session stays
+     * with the caller, which owns the platform's session plumbing.
+     *
+     * `origin` distinguishes the callers in the trace; [ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH]
+     * additionally records that a hint was accepted. #409 reuses this for connect-after-linking.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+     */
+    fun beginExplicitConnect(
+        appCtx: Context,
+        boardId: String,
+        origin: String = ConnectionTraceOrigin.EXPLICIT_CONNECT,
+    ) {
+        if (boardId.isBlank()) return
+        val workflow = ConnectionTrace.start(
+            appCtx,
+            origin,
+            ConnectionTraceOwner.CONNECT_INTENT,
+            mapOf(ConnectionTraceField.BOARD_ID to boardId),
+        )
+        if (origin == ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH) {
+            workflow.event(
+                ConnectionTraceEvent.ALTERNATIVE_HINT_ACCEPTED,
+                mapOf(ConnectionTraceField.BOARD_ID to boardId),
+            )
+        }
+        // A rider Connect preempts automatic work: stop the Presence Scan before it can promote the
+        // Board it was watching — during Switch & Connect that is the *old* selected Board. A scan
+        // started after this point sees the Connect Intent and skips itself (`PresenceScanPolicy`).
+        scheduler.post { presenceScan.cancel(ConnectionTraceReason.CONNECT_INTENT_ACTIVE) }
+        ConnectionPauseStore.clear(appCtx, boardId, workflow)
+        createConnectIntent(appCtx, boardId, workflow)
+        workflow.event(ConnectionTraceEvent.BOARD_SELECTED, mapOf(ConnectionTraceField.BOARD_ID to boardId))
+        workflow.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+    }
+
+    /**
+     * A rider Connect owns the connection until it succeeds, the rider ends it, or Auto Close
+     * expires. The Auto Close window lives in settings, so the intent is built off the main thread
+     * and adopted on it.
+     *
+     * The request claims a generation before the settings read; anything that ends the intent in the
+     * meantime — a connection fast enough to reach `Connected` first, or a later Connect — bumps it,
+     * so the late assignment is dropped instead of installing an intent nothing can ever clear.
+     */
+    private fun createConnectIntent(appCtx: Context, boardId: String, workflow: ConnectionWorkflow) {
+        val createdAtMs = System.currentTimeMillis()
+        val generation = connectIntentGeneration.incrementAndGet()
+        CoreForegroundService.appDataScope.launch {
+            val settings = AppDataRepository.get(appCtx).getTypedSettings()
+            val intent = ConnectIntent(
+                boardId = boardId,
+                createdAtMs = createdAtMs,
+                autoCloseMs = if (settings.autoCloseEnabled) settings.autoCloseDelayMinutes * 60_000L else null,
+            )
+            scheduler.post {
+                if (connectIntentGeneration.get() != generation) return@post
+                connectIntent = intent
+                workflow.event(
+                    ConnectionTraceEvent.CONNECT_INTENT_CREATED,
+                    mapOf(
+                        ConnectionTraceField.BOARD_ID to boardId,
+                        ConnectionTraceField.DEADLINE_AT to intent.autoCloseAtMs,
+                    ),
+                )
             }
         }
     }
+
+    /**
+     * End the explicit Connect Intent. Reaching `Connected`, a rider stop, and Auto Close all land
+     * here.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `clearConnectIntent`
+     */
+    fun clearConnectIntent(end: ConnectIntentEnd) {
+        // Bump first, and even with no intent in hand: a creation still in flight belongs to the
+        // request this call is ending, and must not land after it.
+        connectIntentGeneration.incrementAndGet()
+        val intent = connectIntent ?: return
+        connectIntent = null
+        val appCtx = service.applicationContext
+        val workflow = ConnectionTrace.start(
+            appCtx,
+            ConnectionTraceOrigin.EXPLICIT_CONNECT,
+            ConnectionTraceOwner.CONNECT_INTENT,
+            mapOf(ConnectionTraceField.BOARD_ID to intent.boardId),
+        )
+        workflow.event(
+            ConnectionTraceEvent.CONNECT_INTENT_CLEARED,
+            mapOf(
+                ConnectionTraceField.BOARD_ID to intent.boardId,
+                ConnectionTraceField.REASON to end.reason,
+            ),
+        )
+        workflow.finish(ConnectionTraceDecision.COMPLETED, end.reason)
+    }
+
 
     private fun startGpsMonitoring() {
         isStoppingService = false
@@ -977,12 +1569,7 @@ private var wearAutoLaunchOnConnect = true
         stopLocationUpdates()
         gpsError = null
         emitState()
-        if (boardConfig == null && !groupRideObserver.active) {
-            isStoppingService = true
-            service.stopSelf()
-        } else {
-            reassertForeground()
-        }
+        if (reconcileForegroundWork().hasWork) reassertForeground() else stopIfIdle()
     }
 
     private fun beginSession(start: PendingStart) {
@@ -990,6 +1577,10 @@ private var wearAutoLaunchOnConnect = true
         withNotificationRepaintSuppressed { stopCurrentBoardSession(emitDisconnected = false) }
         refreshLiveHistoryLimit()
         boardConfig = start.boardConfig
+        // A live Board Session is the top of the precedence chain (ADR 0035). Claim it here, once,
+        // so Auto Start (#407) and every later arbiter resolve against explicit ownership rather
+        // than sniffing Board phases. [stopCurrentBoardSession] above already released the old one.
+        ConnectionOwnership.shared.request(ConnectionOwner.BoardSession)
         // Load rules only after boardConfig is assigned — the engine scopes to the connected Board's
         // rules (#254), so reading before assignment would install the wrong Board's (or no) rules.
         CoreForegroundService.reloadAlertRules(service.applicationContext)
@@ -1064,12 +1655,7 @@ private var wearAutoLaunchOnConnect = true
      * CONNECTED_DEVICE before Bluetooth permissions exist. LOCATION still rides alongside
      * CONNECTED_DEVICE whenever GPS is active so background ride recording keeps location access.
      */
-    private fun foregroundServiceType(): Int {
-        return foregroundServiceType(
-            boardActive = boardConfig != null,
-            gpsActive = gpsMonitor.active,
-        )
-    }
+    private fun foregroundServiceType(): Int = reconcileForegroundWork().serviceType
 
     private fun reassertForeground() {
         val type = foregroundServiceType()
@@ -1815,6 +2401,8 @@ private var wearAutoLaunchOnConnect = true
         boardConfig?.let { recordingCoordinator.markBoardReady(it) }
         if (connectionSoundsEnabled) alertFeedback.playConnect()
         maybeLaunchWatchMirror()
+        // The explicit Connect got what it asked for; the Board Session owns the connection now.
+        clearConnectIntent(ConnectIntentEnd.Connected)
         transitionBoardPhase(BoardPhase.Connected)
     }
 
@@ -1987,6 +2575,10 @@ private var wearAutoLaunchOnConnect = true
         configController.onSessionTerminated("Board session stopped during Refloat config op")
         val stoppedConfig = boardConfig
         reconnectScheduler.cancelAndReset()
+        finishReconnectWorkflow(
+            ConnectionTraceDecision.CANCELLED,
+            ConnectionTraceReason.MECHANICAL_TEARDOWN,
+        )
         cancelBoardReadyTimeout()
         stopPolling()
         transport.clear(markIntentional = true)
@@ -2024,6 +2616,9 @@ private var wearAutoLaunchOnConnect = true
         telemetryPipeline.endSession()
         sessionSequence += 1
         boardConfig = null
+        // Release the connection owner with the session, or the first Auto Start after a ride would
+        // be denied forever by an owner that no longer exists.
+        ConnectionOwnership.shared.release(ConnectionOwner.BoardSession)
         boardError = null
         // The replay released position; hand it back to the live monitor it displaced.
         if (gpsSuppressedByReplay) {
@@ -2089,6 +2684,11 @@ private var wearAutoLaunchOnConnect = true
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        // Reaching `connected` is the reconnect workflow's success terminal: telemetry is flowing
+        // again, so the link loss that opened it is over.
+        if (next == BoardPhase.Connected) {
+            finishReconnectWorkflow(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+        }
         recordName?.let { recordingCoordinator.recordState(it, recordProperties) }
         rescheduleAutoClose()
         // The notification mirrors the phase, not just telemetry frames: without this a phase change
@@ -2491,6 +3091,13 @@ private var wearAutoLaunchOnConnect = true
                 remoteTiltPhase = remoteTiltController.phase,
                 remoteTiltDecay = remoteTiltController.decayProgress,
                 linkIntegrity = boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
+                // Observations age out thirty seconds after their last advertisement (#408). Pruning
+                // on read keeps that a clock comparison — nothing has to be scheduled to forget.
+                presenceScan = AlternativeHints.prune(presenceScan.state, System.currentTimeMillis()),
+                connectionPause = ConnectionPauseStore.active(
+                    service.applicationContext,
+                    settings.selectedBoardId,
+                ),
                 settings = settings,
             )
         )

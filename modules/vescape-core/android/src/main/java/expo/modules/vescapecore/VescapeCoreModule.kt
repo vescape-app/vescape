@@ -7,16 +7,21 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
+import expo.modules.vescapecore.connection.AlternativeHintTrace
+import expo.modules.vescapecore.connection.BoardLinkTrace
+import expo.modules.vescapecore.connection.ScanAcquisition
+import expo.modules.vescapecore.connection.ScanOperation
+import expo.modules.vescapecore.connection.ScanPurpose
+import expo.modules.vescapecore.connection.ScannerCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
 import expo.modules.vescapecore.service.CompanionPresence
-import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.service.CoreForegroundService
+import expo.modules.vescapecore.diagnostics.ConnectionTraceOrigin
 import expo.modules.vescapecore.recording.DebugRecordingStore
 import expo.modules.vescapecore.replay.ReplayRecordings
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
-import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
 import expo.modules.vescapecore.connection.buildSessionConfig
@@ -101,6 +106,9 @@ class VescapeCoreModule : Module() {
   private var scanner: android.bluetooth.le.BluetoothLeScanner? = null
   private var scanCallback: ScanCallback? = null
   private var scanRetryCount = 0
+
+  /** Exclusive scanner ownership held while the Add Board scan runs (ADR 0035). */
+  private var addBoardScan: ScanOperation? = null
   private var scanRetryRunnable: Runnable? = null
   private var scanStatus: String = "idle"
   private var requestedDebugRecordingEnabled = false
@@ -315,8 +323,8 @@ class VescapeCoreModule : Module() {
 
     OnActivityEntersForeground {
       frontendActive = true
-      // User opened the app again — re-arm companion auto start immediately.
-      CompanionRestartGate.clear(context.applicationContext)
+      // Opening or foregrounding Vescape deliberately does NOT clear an Automatic Connection
+      // Pause (ADR 0035, #406) — only an explicit Connect does.
       AppStatusCoordinator.get(context).refresh()
     }
     OnActivityEntersBackground {
@@ -468,7 +476,7 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.currentRemoteTiltState()
     }
     Function("setSelectedBoard") { boardId: String? ->
-      ManualDisconnectAutoStartGate.clear(context.applicationContext)
+      // Plain Board selection is not a Connect: it leaves the Automatic Connection Pause alone.
       runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
       companionPresence.refreshForSelectedBoard()
     }
@@ -552,7 +560,16 @@ class VescapeCoreModule : Module() {
     }
 
     AsyncFunction("selectBoard") Coroutine { boardId: String ->
-      selectBoard(boardId)
+      selectBoard(boardId, ConnectionTraceOrigin.EXPLICIT_CONNECT)
+    }
+    AsyncFunction("switchToAlternativeBoard") Coroutine { boardId: String ->
+      selectBoard(boardId, ConnectionTraceOrigin.ALTERNATIVE_HINT_SWITCH)
+    }
+    AsyncFunction("connectLinkedBoard") Coroutine { boardId: String ->
+      selectBoard(boardId, ConnectionTraceOrigin.BOARD_LINKED)
+    }
+    Function("dismissAlternativeHint") { boardId: String ->
+      AlternativeHintTrace.dismissed(context.applicationContext, boardId)
     }
     AsyncFunction("setCompanionPresenceEnabled") { enabled: Boolean, promise: Promise ->
       companionPresence.setEnabled(enabled, promise)
@@ -754,7 +771,22 @@ class VescapeCoreModule : Module() {
       runBlocking { AppDataRepository.get(context.applicationContext).getBoards() }
     }
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).upsertBoard(board)
+      val appCtx = context.applicationContext
+      val repository = AppDataRepository.get(appCtx)
+      val boardId = board["id"] as? String ?: ""
+      val nextBleId = BoardLinkTrace.bleIdOfLink(board["link"])
+      // Only a write that changes the Board Link is worth reading the stored one back for.
+      val previousBleId =
+        if (nextBleId == null) null else BoardLinkTrace.bleIdOfLink(repository.getBoard(boardId)?.get("link"))
+      try {
+        repository.upsertBoard(board)
+      } catch (error: Throwable) {
+        if (nextBleId != null) BoardLinkTrace.failed(appCtx, boardId, error.message)
+        throw error
+      }
+      if (BoardLinkTrace.isLinkPersist(previousBleId, nextBleId)) {
+        BoardLinkTrace.persisted(appCtx, boardId, nextBleId!!)
+      }
       CoreForegroundService.reloadBoardData()
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->
@@ -965,11 +997,16 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.stopGpsMonitoring(context.applicationContext)
   }
 
+  /**
+   * Rider-driven Add Board discovery. Takes exclusive scanner ownership (ADR 0035) so the
+   * foreground Presence Scan yields to it and can never preempt it.
+   */
   private fun startScan(resetRetries: Boolean = true) {
     if (resetRetries) {
       scanRetryCount = 0
     }
     stopScanInternal()
+    addBoardScan = (ScannerCoordinator.shared.acquire(ScanPurpose.AddBoard) as? ScanAcquisition.Granted)?.operation
 
     val s = btAdapter.bluetoothLeScanner ?: run {
       scanStatus = "error"
@@ -1049,6 +1086,8 @@ key == "wearAutoLaunchOnConnect" ||
     scanner = null
     scanCallback = null
     scanStatus = "idle"
+    ScannerCoordinator.shared.release(addBoardScan)
+    addBoardScan = null
   }
 
   private fun startLocationUpdates() {
@@ -1061,9 +1100,10 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
-  private suspend fun selectBoard(boardId: String) {
+  private suspend fun selectBoard(boardId: String, origin: String) {
     val appCtx = context.applicationContext
-    ManualDisconnectAutoStartGate.clear(appCtx)
+    // The one explicit-Connect path: pause clear, durable Connect Intent, recorded selection.
+    CoreForegroundService.beginExplicitConnect(appCtx, boardId, origin)
     AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
@@ -1123,6 +1163,10 @@ key == "wearAutoLaunchOnConnect" ||
 
     cancelActiveProbe(null, "replaced")
     BoardProbeAutoStartGate.enter()
+    // A Board Probe owns the scanner exclusively (ADR 0035): a Presence Scan asking mid-probe is
+    // refused with `scanner_busy` rather than preempting it.
+    val probeScan = (ScannerCoordinator.shared.acquire(ScanPurpose.BoardProbe) as? ScanAcquisition.Granted)
+      ?.operation
 
     try {
       // A Board Probe owns the single BLE connection: tear down any live Board
@@ -1166,6 +1210,7 @@ key == "wearAutoLaunchOnConnect" ||
       }
       return probeResultToBridge(result.await())
     } finally {
+      ScannerCoordinator.shared.release(probeScan)
       BoardProbeAutoStartGate.leave()
     }
   }

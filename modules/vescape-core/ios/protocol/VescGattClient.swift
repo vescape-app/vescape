@@ -9,6 +9,12 @@ import Foundation
 internal protocol VescGattListener: AnyObject {
   func onDeviceDiscovered(id: String, name: String, rssi: Int, serviceUUIDs: [String])
   func onScanFailure(_ message: String)
+  /// The central reached `.poweredOn` and discovery is actually running. The Board Presence Scan
+  /// starts its five-second window here, not at foreground entry (ADR 0035).
+  ///
+  /// @platform-diff Android's scanner is usable the moment `startScan` is accepted by the adapter,
+  /// so its port reports readiness inline instead of through a delegate callback.
+  func onScanReady()
   func onGattConnected()
   func onGattSubscribing()
   func onGattReady()
@@ -22,6 +28,11 @@ internal protocol VescGattListener: AnyObject {
   /// @platform-diff No Android peer: its `CoreForegroundService` keeps the process alive, so there
   /// is nothing to restore.
   func onGattRestored(peripheralIds: [String])
+}
+
+extension VescGattListener {
+  /// Only the Board Presence Scan cares; the probe and replay listeners ignore it.
+  func onScanReady() {}
 }
 
 /// Transport seam under `BoardSessionController` (ADR 0024): everything the controller calls on
@@ -303,6 +314,9 @@ internal final class VescGattClient: NSObject, SessionTransport {
     pendingNotifyEnables = 0
   }
 
+  /// Whether the central can scan right now. `.unknown` / `.resetting` are "not answered yet".
+  var centralState: CBManagerState { central.state }
+
   private func beginScan() {
     // Scan unfiltered, mirroring Android's null-filter scan. VESC boards (Nordic UART BLE
     // modules) don't advertise the NUS service UUID in the advertisement packet — it only
@@ -312,6 +326,7 @@ internal final class VescGattClient: NSObject, SessionTransport {
       withServices: nil,
       options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
     )
+    listener?.onScanReady()
   }
 
   private func resolveReady() {

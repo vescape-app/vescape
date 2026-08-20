@@ -519,6 +519,92 @@ export interface RemoteTiltState {
   decay?: RemoteTiltDecay
 }
 
+/**
+ * Why the BLE scanner is running.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ScannerCoordinator.kt `ScanPurpose`
+ * @parity /modules/vescape-core/ios/connection/ScannerCoordinator.swift `ScanPurpose`
+ */
+export type ScanPurpose = 'presence' | 'add_board' | 'board_probe' | 'connect_intent' | 'reconnect'
+
+/**
+ * Who owns connection work, in ADR 0035 precedence order.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ConnectionOwner.kt
+ * @parity /modules/vescape-core/ios/connection/ConnectionOwner.swift
+ */
+export type ConnectionOwner =
+  | 'board_session'
+  | 'connect_intent'
+  | 'auto_start'
+  | 'auto_connect'
+  | 'alternative_hint'
+  | 'add_board_scan'
+  | 'board_probe'
+  | 'none'
+
+/**
+ * Board Presence Scan phase. `waiting_for_bluetooth` means the scan started but the five-second
+ * window has not — the deadline runs from a usable radio, not from foreground entry.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPresenceScan.kt `PresenceScanPhase`
+ * @parity /modules/vescape-core/ios/connection/BoardPresenceScan.swift `PresenceScanPhase`
+ */
+export type PresenceScanPhase = 'idle' | 'waiting_for_bluetooth' | 'scanning' | 'done'
+
+/**
+ * A linked Board seen advertising during a Presence Scan. A non-selected Board is reported, never
+ * connected.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/PresenceScanPolicy.kt `PresenceObservation`
+ * @parity /modules/vescape-core/ios/connection/PresenceScanPolicy.swift `PresenceObservation`
+ */
+export interface PresenceObservation {
+  boardId: string
+  bleId: string
+  name: string | null
+  rssi: number | null
+  observedAt: number
+  selected: boolean
+}
+
+/**
+ * Native-owned Board Presence Scan surface. JS renders it and never starts or times the scan.
+ *
+ * `decision` and `reason` use the shared connection-trace vocabulary
+ * (`src/modules/diagnostics/connectionTrace.ts`).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardPresenceScan.kt `PresenceScanState`
+ * @parity /modules/vescape-core/ios/connection/BoardPresenceScan.swift `PresenceScanState`
+ */
+export interface PresenceScanState {
+  phase: PresenceScanPhase
+  purpose: ScanPurpose | null
+  owner: ConnectionOwner
+  startedAt: number | null
+  /** Absolute deadline, set once the radio is usable. `null` while waiting for Bluetooth. */
+  deadlineAt: number | null
+  observations: PresenceObservation[]
+  decision: string | null
+  reason: string | null
+}
+
+/**
+ * Board-scoped Automatic Connection Pause (ADR 0035). Disconnect, End ride, Exit, and Android task
+ * removal arm one; explicit Connect, Connect now, and Switch & Connect clear it. Presence still
+ * reports a paused Board — only automatic promotion is blocked.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/ConnectionPause.kt `ConnectionPause`
+ * @parity /modules/vescape-core/ios/connection/ConnectionPause.swift `ConnectionPause`
+ */
+export interface ConnectionPauseState {
+  boardId: string
+  /** Absolute deadline in epoch ms. Expiry is native-owned; JS only renders the remainder. */
+  until: number
+  /** Rider action that armed it, from the shared connection-trace reason vocabulary. */
+  source: string
+}
+
 export interface LiveStateEvent {
   board: {
     phase: BoardPhase
@@ -548,6 +634,9 @@ export interface LiveStateEvent {
     devices: DeviceFoundEvent[]
     error: string | null
   }
+  presence: PresenceScanState
+  /** Automatic Connection Pause for the selected Board, or `null` when it is not paused. */
+  pause: ConnectionPauseState | null
   recording: {
     enabled: boolean
     paused: boolean
@@ -1067,10 +1156,21 @@ export interface AppSettings {
    */
   boardWarningsEnabled: boolean
   /**
+   * Ride summary notifications (#410). On ⇒ a finalized, Ride-History-eligible Ride Recording
+   * sends one silent summary notification. Off ⇒ native skips it; nothing else changes, and the
+   * OS notification permission is never re-prompted either way.
+   */
+  rideSummaryNotificationsEnabled: boolean
+  /**
    * Android-only: minutes to pause companion auto start after the user exits the app
    * manually, so the board reappearing doesn't immediately relaunch it. 0 = off.
    */
-  companionPresenceCooldownMinutes: number
+  /**
+   * Automatic Connection Pause duration in minutes; 0 disables pausing. Stored values up to 1440
+   * stay valid (migrated from the pre-#406 `companionPresenceCooldownMinutes`), while the rider
+   * stepper offers up to 480 for new choices.
+   */
+  automaticConnectionPauseMinutes: number
   /**
    * Android-only: close the whole app (task + service) after `autoCloseDelayMinutes` without a
    * board connection. Does not pause companion auto start — the board reappearing relaunches.
@@ -1792,7 +1892,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   updateAlertTest(value: number): void
   stopAlertTest(): void
   selectBoard(boardId: string): Promise<void>
+  connectLinkedBoard(boardId: string): Promise<void>
+  switchToAlternativeBoard(boardId: string): Promise<void>
   stopBoard(): Promise<void>
+  dismissAlternativeHint(boardId: string): void
   probeBoardLink(bleId: string, probeId: string): Promise<BoardProbeResult>
   cancelBoardProbe(probeId: string): void
   setDebugRecordingEnabled(enabled: boolean): void
@@ -2171,7 +2274,14 @@ export function stopAlertTest(): void {
   }
 }
 
-/** Select saved board by app board id. Native reads BLE id/name from its DB and owns connect. */
+/**
+ * Explicit Connect (ADR 0035). Native reads BLE id/name from its DB and owns the connect: it clears
+ * this Board's Automatic Connection Pause, creates a durable Connect Intent, and records the
+ * selection.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+ */
 export async function selectBoard(boardId: string): Promise<void> {
   if (E2E_ENABLED) {
     e2eFake.selectBoard(boardId)
@@ -2179,6 +2289,55 @@ export async function selectBoard(boardId: string): Promise<void> {
   }
 
   return native.selectBoard(boardId)
+}
+
+/**
+ * Connect the Board a rider just linked or re-linked (ADR 0035, #409). Identical explicit-Connect
+ * semantics to {@link selectBoard} — native runs the same path — and differs only in the
+ * connection-trace origin it records, which native owns so the trace vocabulary stays native-side.
+ *
+ * Call it only once the Board and its Board Link are durably persisted: native reads the Board Link
+ * back from its own database, so a connect issued before persistence finishes finds no link.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+ */
+export async function connectLinkedBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) {
+    e2eFake.selectBoard(boardId)
+    return
+  }
+
+  return native.connectLinkedBoard(boardId)
+}
+
+/**
+ * Switch & Connect on an advisory switch hint (ADR 0035, #408). Identical explicit-Connect semantics
+ * to {@link selectBoard} — native runs the same path — and differs only in the connection-trace
+ * origin it records, which native owns so the trace vocabulary stays native-side.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `beginExplicitConnect`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginExplicitConnect`
+ */
+export async function switchToAlternativeBoard(boardId: string): Promise<void> {
+  if (E2E_ENABLED) {
+    e2eFake.selectBoard(boardId)
+    return
+  }
+
+  return native.switchToAlternativeBoard(boardId)
+}
+
+/**
+ * Acknowledge one advisory switch hint. Purely a trace: native arms no Automatic Connection Pause,
+ * changes no selection, and takes no ownership — the queue itself is JS-local (ADR 0035, #408).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/AlternativeHints.kt `AlternativeHintTrace`
+ * @parity /modules/vescape-core/ios/connection/AlternativeHints.swift `AlternativeHintTrace`
+ */
+export function dismissAlternativeHint(boardId: string): void {
+  if (E2E_ENABLED) return
+  native.dismissAlternativeHint(boardId)
 }
 
 /** Stop native board session. GPS monitoring may continue independently. */

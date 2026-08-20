@@ -166,7 +166,6 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.onChange = { [weak self] boardId, warnings in
         self?.sendBoardWarnings(boardId, warnings)
       }
-      self.autoConnectSelectedBoard()
     }
 
     OnAppEntersForeground {
@@ -226,6 +225,12 @@ public class VescapeCoreModule: Module {
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `exitApp`
     // @platform-diff iOS cannot terminate its own process; graceful shutdown instead of kill.
     Function("exitApp") {
+      // Exit is rider intent even where iOS cannot honour it literally: pause automatic connection.
+      self.coordinator.armConnectionPause(
+        boardId: self.coordinator.connectedBoardId,
+        source: ConnectionTraceReason.appExit,
+        origin: ConnectionTraceOrigin.appExit
+      )
       self.coordinator.stopBoard()
       self.coordinator.stopLocationUpdates()
       self.coordinator.stopScan()
@@ -400,7 +405,7 @@ public class VescapeCoreModule: Module {
     }
 
     Function("setSelectedBoard") { (boardId: String?) in
-      self.clearManualDisconnectAutoStartGate()
+      // Plain Board selection is not a Connect: it leaves the Automatic Connection Pause alone.
       self.selectedBoardId = boardId
       self.appData.updateSetting("selectedBoardId", rawValue: boardId)
     }
@@ -477,24 +482,40 @@ public class VescapeCoreModule: Module {
       promise.resolve(nil)
     }
 
+    Function("dismissAlternativeHint") { (boardId: String) in
+      AlternativeHintTrace.dismissed(boardId: boardId)
+    }
+
+    AsyncFunction("switchToAlternativeBoard") { (boardId: String, promise: Promise) in
+      self.explicitConnect(
+        boardId: boardId,
+        origin: ConnectionTraceOrigin.alternativeHintSwitch,
+        promise: promise
+      )
+    }
+
     AsyncFunction("selectBoard") { (boardId: String, promise: Promise) in
-      self.clearManualDisconnectAutoStartGate()
-      self.selectedBoardId = boardId
-      self.appData.updateSetting("selectedBoardId", rawValue: boardId)
-      guard let config = self.connectConfig(boardId: boardId) else {
-        promise.reject("NO_LINK", "Board has no Board Link: \(boardId)")
-        return
-      }
-      self.coordinator.connect(
-        config: config,
-        onSuccess: { promise.resolve(nil) },
-        onError: { code, message in promise.reject(code, message) }
+      self.explicitConnect(
+        boardId: boardId,
+        origin: ConnectionTraceOrigin.explicitConnect,
+        promise: promise
+      )
+    }
+
+    AsyncFunction("connectLinkedBoard") { (boardId: String, promise: Promise) in
+      self.explicitConnect(
+        boardId: boardId,
+        origin: ConnectionTraceOrigin.boardLinked,
+        promise: promise
       )
     }
 
     AsyncFunction("stopBoard") { (promise: Promise) in
       DispatchQueue.main.async {
-        BoardSessionCommands.stopRide()
+        BoardSessionCommands.stopRide(
+          source: ConnectionTraceReason.manualDisconnect,
+          origin: ConnectionTraceOrigin.manualDisconnect
+        )
         promise.resolve(nil)
       }
     }
@@ -802,7 +823,23 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
+      let boardId = board["id"] as? String ?? ""
+      let nextBleId = BoardLinkTrace.bleId(ofLink: board["link"])
+      // Only a write that changes the Board Link is worth reading the stored one back for.
+      let previousBleId = nextBleId == nil
+        ? nil
+        : BoardLinkTrace.bleId(ofLink: self.appData.getBoard(boardId)?["link"] ?? nil)
       self.appData.upsertBoard(board)
+      if let nextBleId {
+        // GRDB write failures are swallowed inside the repository, so the link is read back: the
+        // connect that follows a link save reads the same row, and a silent miss must be traced.
+        let storedBleId = BoardLinkTrace.bleId(ofLink: self.appData.getBoard(boardId)?["link"] ?? nil)
+        if storedBleId != nextBleId {
+          BoardLinkTrace.failed(boardId: boardId, message: "Board Link was not stored")
+        } else if BoardLinkTrace.isLinkPersist(previousBleId: previousBleId, nextBleId: nextBleId) {
+          BoardLinkTrace.persisted(boardId: boardId, bleId: nextBleId)
+        }
+      }
       self.coordinator.reloadBoardDataForActiveBoard()
       promise.resolve(nil)
     }
@@ -1159,39 +1196,33 @@ public class VescapeCoreModule: Module {
 
   // MARK: - Board session bridge
 
-  /// Auto-connect the selected board at app launch, native-driven and independent of JS. Mirrors
-  /// Android's `AutoConnectProvider` (fires at process start) → `autoConnectSelectedBoard`: JS
-  /// never triggers this, it only toggles the `autoConnect` setting. No-ops when auto-connect is
-  /// off, no board is selected, or the board is unlinked.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
-  private func autoConnectSelectedBoard() {
-    // The shared coordinator already owns a live session (e.g. this module was rebuilt by a JS
-    // reload mid-ride) — never restart it; the new module only re-attached its sinks. Mirrors
-    // Android, where auto-connect fires once at process start, not on every module create.
-    guard coordinator.connectedBoardId == nil else { return }
-    let settings = appData.getSettings()
-    guard settings["autoConnect"] as? Bool ?? true else { return }
-    guard let boardId = settings["selectedBoardId"] as? String, !boardId.isEmpty else { return }
-    guard !ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return }
-    DispatchQueue.main.async {
-      guard let config = self.connectConfig(boardId: boardId) else { return }
-      self.selectedBoardId = boardId
-      self.coordinator.connect(config: config, onSuccess: {}, onError: { _, _ in })
-    }
-  }
-
   /// Resolve the selected board's connect config. The resolution itself lives on
   /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
+  /// The one explicit-Connect path behind every rider Connect (ADR 0035): pause clear, durable
+  /// Connect Intent, recorded selection, then the session. `origin` only names who asked.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `selectBoard`
+  private func explicitConnect(boardId: String, origin: String, promise: Promise) {
+    coordinator.beginExplicitConnect(boardId: boardId, origin: origin)
+    selectedBoardId = boardId
+    appData.updateSetting("selectedBoardId", rawValue: boardId)
+    guard let config = connectConfig(boardId: boardId) else {
+      promise.reject("NO_LINK", "Board has no Board Link: \(boardId)")
+      return
+    }
+    coordinator.connect(
+      config: config,
+      onSuccess: { promise.resolve(nil) },
+      onError: { code, message in promise.reject(code, message) }
+    )
+  }
+
   private func connectConfig(boardId: String) -> BoardConnectConfig? {
     BoardConnectConfig.resolve(
       boardId: boardId,
       appData: appData,
       recordingEnabled: requestedDebugRecordingEnabled
     )
-  }
-
-  private func clearManualDisconnectAutoStartGate() {
-    ManualBoardStop.clearAutoStartSuppression()
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
@@ -1225,6 +1256,14 @@ public class VescapeCoreModule: Module {
         "devices": [] as [Any],
         "error": coordinator.scanError,
       ] as [String: Any?],
+      // Board Presence Scan surface (ADR 0035): purpose, deadline, observations, decision.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
+      "presence": coordinator.presenceScanState.map,
+      // Automatic Connection Pause for the selected Board (ADR 0035), or nil when not paused.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
+      "pause": coordinator.connectionPauseState(
+        boardId: selectedBoardId ?? ((settings["selectedBoardId"] ?? nil) as? String)
+      ),
       "recording": [
         "enabled": coordinator.telemetryRecordingEnabled(),
         "paused": coordinator.recordingPaused(),

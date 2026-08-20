@@ -94,26 +94,39 @@ export function CircleButtonShowcase() {
 }
 
 export function FloatingBarShowcase() {
-  const [kind, setKind] = useState<'spinner' | 'action'>('spinner')
+  const [kind, setKind] = useState<'spinner' | 'action' | 'offer'>('spinner')
 
-  const pill: FloatingStatusPillModel =
-    kind === 'spinner'
-      ? {
-          kind: 'spinner',
-          text: 'Searching...',
-          color: theme.palette.sky.color,
-          onPress: () => undefined,
-        }
-      : {
-          kind: 'action',
-          text: 'Board not connected',
-          buttonText: 'Connect',
-          bg: theme.status.warning.bg,
-          border: theme.status.warning.border,
-          textColor: theme.status.warning.text,
-          buttonBg: theme.status.warning.color,
-          onPress: () => undefined,
-        }
+  const pills: Record<typeof kind, FloatingStatusPillModel> = {
+    spinner: {
+      kind: 'spinner',
+      text: 'Searching...',
+      color: theme.palette.sky.color,
+      onPress: () => undefined,
+    },
+    action: {
+      kind: 'action',
+      text: 'Board not connected',
+      buttonText: 'Connect',
+      bg: theme.status.warning.bg,
+      border: theme.status.warning.border,
+      textColor: theme.status.warning.text,
+      buttonBg: theme.status.warning.color,
+      onPress: () => undefined,
+    },
+    // Advisory switch-and-connect hint (ADR 0035, #408).
+    offer: {
+      kind: 'offer',
+      text: 'Trail Board is nearby',
+      acceptText: 'Switch',
+      dismissText: 'Later',
+      bg: theme.status.info.bg,
+      border: theme.status.info.border,
+      textColor: theme.status.info.text,
+      acceptBg: theme.status.info.color,
+      onAccept: () => undefined,
+      onDismiss: () => undefined,
+    },
+  }
 
   return (
     <ShowcaseCard
@@ -121,7 +134,7 @@ export function FloatingBarShowcase() {
       controls={
         <ChipRow
           label="state"
-          options={['spinner', 'action']}
+          options={['spinner', 'action', 'offer']}
           selected={kind}
           onSelect={(v) => setKind(v as typeof kind)}
         />
@@ -129,7 +142,7 @@ export function FloatingBarShowcase() {
     >
       <View style={styles.floatingPreview}>
         <FloatingBarFrame bottomOffset={18}>
-          <FloatingStatusPill pill={pill} />
+          <FloatingStatusPill pill={pills[kind]} />
         </FloatingBarFrame>
       </View>
     </ShowcaseCard>

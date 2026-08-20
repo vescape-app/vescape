@@ -1,6 +1,8 @@
 package expo.modules.vescapecore
 
 import expo.modules.vescapecore.connection.BoardPhase
+import expo.modules.vescapecore.connection.ConnectionPause
+import expo.modules.vescapecore.connection.PresenceScanState
 import expo.modules.vescapecore.service.SessionConfig
 
 import expo.modules.vescapecore.protocol.LocationSnapshot
@@ -26,6 +28,10 @@ internal data class VescLiveStateSnapshot(
     val remoteTiltPhase: RemoteTiltPhase,
     val remoteTiltDecay: RemoteTiltDecayProgress?,
     val linkIntegrity: LinkIntegrity,
+    /** Board Presence Scan surface (ADR 0035): purpose, deadline, observations, decision. */
+    val presenceScan: PresenceScanState,
+    /** Automatic Connection Pause for the selected Board (ADR 0035), or `null` when not paused. */
+    val connectionPause: ConnectionPause?,
     val settings: AppSettings,
 )
 
@@ -80,6 +86,8 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
             "devices" to emptyList<Map<String, Any?>>(),
             "error" to null,
         ),
+        "presence" to snapshot.presenceScan.toMap(),
+        "pause" to snapshot.connectionPause?.toMap(),
         "recording" to mapOf(
             "enabled" to snapshot.recordingEnabled,
             "paused" to snapshot.recordingPaused,

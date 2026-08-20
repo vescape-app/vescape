@@ -7,6 +7,7 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.connection.ConnectionPausePolicy
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -65,11 +66,22 @@ internal fun validTelemetryPollRateHz(value: Any?): Int? =
     ?.toInt()
     ?.coerceIn(0, 100)
 
-/** Companion auto-start pause after manual app exit, minutes; 0 = off, capped at 24h. */
-internal fun validCompanionCooldownMinutes(value: Any?): Int? =
+/**
+ * Automatic Connection Pause duration in minutes; 0 = never pause, capped at 24h.
+ *
+ * The 24h ceiling is deliberately wider than the 8h the rider-facing stepper offers: a value stored
+ * by an older build under [LEGACY_CONNECTION_PAUSE_MINUTES_KEY] must survive migration untouched
+ * rather than be silently clamped to the new recommendation.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `automaticConnectionPauseMinutes`
+ */
+internal fun validAutomaticConnectionPauseMinutes(value: Any?): Int? =
   (value as? Number)
     ?.toInt()
-    ?.coerceIn(0, 1440)
+    ?.coerceIn(0, ConnectionPausePolicy.MAX_PAUSE_MINUTES)
+
+/** Pre-#406 key for the same duration, when the pause was Android companion-restart only. */
+internal const val LEGACY_CONNECTION_PAUSE_MINUTES_KEY = "companionPresenceCooldownMinutes"
 
 /**
  * Acknowledged Community Message IDs: a de-duplicated list of non-empty ID strings, or `null` when
@@ -283,7 +295,14 @@ class AppDataRepository private constructor(private val context: Context) {
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
-      companionPresenceCooldownMinutes = req("companionPresenceCooldownMinutes", 60, ::validCompanionCooldownMinutes),
+      rideSummaryNotificationsEnabled = req("rideSummaryNotificationsEnabled", true) { it as? Boolean },
+      // #406 migration: read the new key, falling back to the pre-#406 companion cooldown row so a
+      // rider's stored choice carries over exactly. Nothing is rewritten or re-clamped here.
+      automaticConnectionPauseMinutes = req(
+        "automaticConnectionPauseMinutes",
+        req(LEGACY_CONNECTION_PAUSE_MINUTES_KEY, 60, ::validAutomaticConnectionPauseMinutes),
+        ::validAutomaticConnectionPauseMinutes,
+      ),
       autoCloseEnabled = req("autoCloseEnabled", false) { it as? Boolean },
       autoCloseDelayMinutes = req("autoCloseDelayMinutes", 15, ::validAutoCloseDelayMinutes),
       rideSplitGapMinutes = req(
@@ -361,8 +380,9 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
-      "companionPresenceCooldownMinutes" ->
-        validCompanionCooldownMinutes(value) ?: return@withContext
+      "rideSummaryNotificationsEnabled" -> value as? Boolean ?: return@withContext
+      "automaticConnectionPauseMinutes", LEGACY_CONNECTION_PAUSE_MINUTES_KEY ->
+        validAutomaticConnectionPauseMinutes(value) ?: return@withContext
       "autoCloseEnabled" -> value as? Boolean ?: return@withContext
       "autoCloseDelayMinutes" ->
         validAutoCloseDelayMinutes(value) ?: return@withContext
@@ -378,6 +398,7 @@ class AppDataRepository private constructor(private val context: Context) {
     }
     val normalizedKey = when (key) {
       "avgSpeedCutoffKmh", "movingAvgSpeedThresholdKmh" -> "movingSpeedThresholdKmh"
+      LEGACY_CONNECTION_PAUSE_MINUTES_KEY -> "automaticConnectionPauseMinutes"
       else -> key
     }
     if (normalizedKey == "autoConnect" && coerced == false && getTypedSettings().companionPresenceEnabled) {
@@ -412,7 +433,8 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
-        "companionPresenceCooldownMinutes" -> d.companionPresenceCooldownMinutes
+        "rideSummaryNotificationsEnabled" -> d.rideSummaryNotificationsEnabled
+        "automaticConnectionPauseMinutes" -> d.automaticConnectionPauseMinutes
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
         "rideSplitGapMinutes" -> d.rideSplitGapMinutes
@@ -787,7 +809,8 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearNavArrowEnabled" to wearNavArrowEnabled,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
-  "companionPresenceCooldownMinutes" to companionPresenceCooldownMinutes,
+  "rideSummaryNotificationsEnabled" to rideSummaryNotificationsEnabled,
+  "automaticConnectionPauseMinutes" to automaticConnectionPauseMinutes,
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,
   "rideSplitGapMinutes" to rideSplitGapMinutes,

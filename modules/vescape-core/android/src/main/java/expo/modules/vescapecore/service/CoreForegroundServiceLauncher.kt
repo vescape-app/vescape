@@ -6,27 +6,26 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import expo.modules.vescapecore.diagnostics.ConnectionTraceReason
 
 internal enum class ForegroundServiceStartAction {
     BoardSession,
     CompanionDevice,
-    AutoConnectSelectedBoard,
+    PresenceScan,
     GpsMonitoring,
     GroupRideObserve,
 }
 
 internal enum class ForegroundServiceLaunchSkipReason {
-    AutoConnectDisabled,
-    SelectedBoardMissing,
     BluetoothPermissionMissing,
     LocationPermissionMissing,
+    ScanPermissionMissing,
 }
 
 internal data class ForegroundServiceLaunchPreflight(
     val action: ForegroundServiceStartAction,
-    val autoConnectEnabled: Boolean = true,
-    val selectedBoardId: String? = null,
     val bluetoothConnectGranted: Boolean = true,
+    val bluetoothScanGranted: Boolean = true,
     val locationGranted: Boolean = true,
 )
 
@@ -39,13 +38,22 @@ internal data class ForegroundServiceLaunchResult(
         when (skipReason) {
             ForegroundServiceLaunchSkipReason.BluetoothPermissionMissing -> "BLUETOOTH_PERMISSION"
             ForegroundServiceLaunchSkipReason.LocationPermissionMissing -> "LOCATION_PERMISSION"
-            ForegroundServiceLaunchSkipReason.AutoConnectDisabled,
-            ForegroundServiceLaunchSkipReason.SelectedBoardMissing,
+            ForegroundServiceLaunchSkipReason.ScanPermissionMissing -> "BLUETOOTH_SCAN_PERMISSION"
             null -> "FOREGROUND_SERVICE_START"
         }
 
     fun errorMessage(prefix: String): String =
         failureMessage ?: "$prefix: ${skipReason?.message ?: "unknown start failure"}"
+
+    /** Terminal trace reason for a refused start, in the shared connection-trace vocabulary. */
+    fun traceReason(): String =
+        when (skipReason) {
+            ForegroundServiceLaunchSkipReason.BluetoothPermissionMissing,
+            ForegroundServiceLaunchSkipReason.ScanPermissionMissing,
+            ForegroundServiceLaunchSkipReason.LocationPermissionMissing,
+            -> ConnectionTraceReason.PERMISSION_MISSING
+            null -> ConnectionTraceReason.PLATFORM_ERROR
+        }
 
     fun logIfSkipped(prefix: String) {
         if (started) return
@@ -55,9 +63,8 @@ internal data class ForegroundServiceLaunchResult(
 
 private val ForegroundServiceLaunchSkipReason.message: String
     get() = when (this) {
-        ForegroundServiceLaunchSkipReason.AutoConnectDisabled -> "auto-connect disabled"
-        ForegroundServiceLaunchSkipReason.SelectedBoardMissing -> "selected board missing"
         ForegroundServiceLaunchSkipReason.BluetoothPermissionMissing -> "Bluetooth permission not granted"
+        ForegroundServiceLaunchSkipReason.ScanPermissionMissing -> "Bluetooth scan permission not granted"
         ForegroundServiceLaunchSkipReason.LocationPermissionMissing -> "location permission not granted"
     }
 
@@ -73,11 +80,13 @@ internal fun foregroundServiceLaunchSkipReason(
                 null
             }
         }
-        ForegroundServiceStartAction.AutoConnectSelectedBoard -> {
+        // Presence Scan eligibility itself lives in `PresenceScanPolicy`, so every refusal gets a
+        // named reason from one rule. Only the permissions Android needs to *start* the service are
+        // preflighted here.
+        ForegroundServiceStartAction.PresenceScan -> {
             when {
-                !preflight.autoConnectEnabled -> ForegroundServiceLaunchSkipReason.AutoConnectDisabled
-                preflight.selectedBoardId.isNullOrBlank() -> ForegroundServiceLaunchSkipReason.SelectedBoardMissing
                 !preflight.bluetoothConnectGranted -> ForegroundServiceLaunchSkipReason.BluetoothPermissionMissing
+                !preflight.bluetoothScanGranted -> ForegroundServiceLaunchSkipReason.ScanPermissionMissing
                 else -> null
             }
         }
@@ -112,24 +121,19 @@ internal object CoreForegroundServiceLauncher {
             putExtra(EXTRA_COMPANION_ADDRESS, address)
         }
 
-    fun autoConnectSelectedBoard(
-        context: Context,
-        autoConnectEnabled: Boolean,
-        selectedBoardId: String?,
-    ): ForegroundServiceLaunchResult {
+    fun startPresenceScan(context: Context): ForegroundServiceLaunchResult {
         val skipReason = foregroundServiceLaunchSkipReason(
             ForegroundServiceLaunchPreflight(
-                action = ForegroundServiceStartAction.AutoConnectSelectedBoard,
-                autoConnectEnabled = autoConnectEnabled,
-                selectedBoardId = selectedBoardId,
+                action = ForegroundServiceStartAction.PresenceScan,
                 bluetoothConnectGranted = hasBluetoothConnectPermission(context),
+                bluetoothScanGranted = hasBluetoothScanPermission(context),
             ),
         )
         if (skipReason != null) return ForegroundServiceLaunchResult(started = false, skipReason = skipReason)
         return startForegroundService(
             context = context,
-            intentAction = ACTION_AUTO_CONNECT_SELECTED_BOARD,
-            failurePrefix = "Auto-connect service start",
+            intentAction = ACTION_START_PRESENCE_SCAN,
+            failurePrefix = "Presence Scan service start",
             beforeStart = {},
         )
     }
@@ -204,6 +208,10 @@ internal object CoreForegroundServiceLauncher {
     private fun hasBluetoothConnectPermission(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+
+    private fun hasBluetoothScanPermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            context.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
 
     private fun hasLocationPermission(context: Context): Boolean =
         context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||

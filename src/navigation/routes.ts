@@ -43,6 +43,8 @@ export const routes = {
   settingsReleaseNotes: '/settings/release-notes' as Href,
   devMapPlayground: '/dev/map-playground' as Href,
   historyCharts: '/history/charts' as Href,
+  /** Ride summary notification deep link target (#410). */
+  historyRide: '/history/ride/[rideId]' as Href,
 } as const
 
 export const stackScreens = {
@@ -78,4 +80,5 @@ export const stackScreens = {
   settingsReleaseNotes: 'settings/release-notes',
   devMapPlayground: 'dev/map-playground',
   historyCharts: 'history/charts',
+  historyRide: 'history/ride/[rideId]',
 } as const

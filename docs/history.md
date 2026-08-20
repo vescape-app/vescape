@@ -55,6 +55,14 @@ Standalone GPS may update live map state but should not create a Ride Recording.
 
 Selected history is rendered from `sessionSamples`, `sessionGpsSamples`, and `sessionMarkers`.
 
+## Ride Summary Notifications
+
+A finalized Ride Recording that Ride History keeps also sends one silent summary notification
+(distance, duration, final valid Battery SoC Estimate). Its dedup markers live in
+`ride_summary_notifications` (`ride_id` primary key = `deviceId:firstSampleAtMs:lastSampleAtMs`,
+`notified_at_ms`), alongside the ride tables in `vescape.db`. See `docs/connectionState.md` →
+_Ride summaries_ for the full rule, the claim ordering, and the deep link.
+
 ## Media History
 
 Media History is an optional, local-only view of phone photos and videos captured during the selected Ride Recording. It is off by default and requests photo-library permission only when the user enables it.

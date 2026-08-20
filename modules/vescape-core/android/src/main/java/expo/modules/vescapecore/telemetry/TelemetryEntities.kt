@@ -388,7 +388,8 @@ data class AppSettings(
   val wearNavArrowEnabled: Boolean = false,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
-  val companionPresenceCooldownMinutes: Int = 60,
+  val rideSummaryNotificationsEnabled: Boolean = true,
+  val automaticConnectionPauseMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,
   val autoCloseDelayMinutes: Int = 15,
   val riderId: String? = null,
@@ -587,3 +588,23 @@ data class FavoriteMediaEntity(
     "filename" to filename,
   )
 }
+
+/**
+ * Durable "this ride's summary notification was already sent" marker (#410).
+ *
+ * The primary key is the stable Ride History recording id — `deviceId:firstSampleAtMs:
+ * lastSampleAtMs` — so the marker is tied to ride identity rather than to any process, Board
+ * Session, or CoreBluetooth restoration cycle. Living in the ride database means it survives
+ * process death and app restart, which process memory does not.
+ *
+ * @parity /modules/vescape-core/ios/recording/RideSummaryStore.swift `RideSummaryStore`
+ */
+@Entity(tableName = "ride_summary_notifications")
+data class RideSummaryNotificationEntity(
+  @PrimaryKey
+  @ColumnInfo(name = "ride_id")
+  val rideId: String,
+  /** When the send was claimed. Diagnostic only — presence of the row is what dedups. */
+  @ColumnInfo(name = "notified_at_ms")
+  val notifiedAtMs: Long,
+)

@@ -1,12 +1,11 @@
 import { LayoutAnimation, Platform, StyleSheet, Switch, UIManager, View } from 'react-native'
-import { CheckIcon, ClockCountdownIcon, RocketLaunchIcon } from 'phosphor-react-native'
+import { CheckIcon, RocketLaunchIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
-import { Stepper } from '@/components/forms/Stepper'
 import { theme } from '@/constants/theme'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -26,32 +25,23 @@ export interface AutoStartCardProps {
   boards: AutoStartBoard[]
   /** Ids of boards that currently trigger auto start. */
   armedBoardIds: string[]
-  cooldownMinutes: number
   /** Board mid add/remove — its button spins and locks. */
   busyBoardId?: string | null
   masterBusy?: boolean
   onToggle: (enabled: boolean) => void
   onEnableBoard: (boardId: string) => void
   onDisableBoard: (boardId: string) => void
-  onCooldownChange: (minutes: number) => void
 }
-
-const COOLDOWN_MAX_MINUTES = 480
-
-const cooldownStep = (value: number, direction: 1 | -1) =>
-  direction === 1 ? (value < 10 ? 5 : 15) : value <= 10 ? 5 : 15
 
 export function AutoStartCard({
   enabled,
   boards,
   armedBoardIds,
-  cooldownMinutes,
   busyBoardId = null,
   masterBusy = false,
   onToggle,
   onEnableBoard,
   onDisableBoard,
-  onCooldownChange,
 }: AutoStartCardProps) {
   const armed = new Set(armedBoardIds)
   const noBoards = boards.length === 0
@@ -132,27 +122,6 @@ export function AutoStartCard({
               )
             })}
           </View>
-        ) : null}
-
-        {enabled ? (
-          <SettingsRow
-            icon={ClockCountdownIcon}
-            iconColor={theme.palette.orange.color}
-            label="Don’t restart for"
-            hint="Quiet window after you close the app yourself"
-            right={
-              <Stepper
-                value={cooldownMinutes}
-                unit="min"
-                min={0}
-                max={COOLDOWN_MAX_MINUTES}
-                step={cooldownStep}
-                onChange={(next) =>
-                  onCooldownChange(Math.min(COOLDOWN_MAX_MINUTES, Math.max(0, next)))
-                }
-              />
-            }
-          />
         ) : null}
       </SettingsCard>
     </>

@@ -7,6 +7,7 @@ import { exitApp } from 'vescape-core'
 
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { useMainScreenHistoryNavigation } from '@/screens/main/useMainScreenHistoryNavigation'
+import { useRideDeepLink } from '@/screens/main/useRideDeepLink'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
 import { getNextRideSession, getPreviousRideSession } from '@/screens/main/mainState'
 import { useBleStore } from '@/modules/board/store/bleStore'
@@ -249,6 +250,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     removeSession,
     selectRide,
   } = historyNavigation
+
+  useRideDeepLink({ enterHistoryMode, selectRide })
 
   const handleMapFocus = useCallback(() => {
     if (mode === 'map') return

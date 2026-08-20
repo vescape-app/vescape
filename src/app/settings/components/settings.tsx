@@ -23,6 +23,7 @@ import {
   type AutoStartBoard,
   type AutoStartCardProps,
 } from '@/modules/settings/components/AutoStartCard'
+import { ConnectionPausedCard } from '@/modules/settings/components/ConnectionPausedCard'
 import { ReleaseActionPill } from '@/modules/release/components/ReleaseActionPill'
 
 const MOCK_BOARDS: AutoStartBoard[] = [
@@ -35,17 +36,13 @@ const MOCK_BOARDS: AutoStartBoard[] = [
 function useMockAutoStart(): AutoStartCardProps {
   const [enabled, setEnabled] = useState(true)
   const [armedBoardIds, setArmed] = useState<string[]>([MOCK_BOARDS[0].id])
-  const [cooldownMinutes, setCooldown] = useState(60)
-
   return {
     enabled,
     boards: MOCK_BOARDS,
     armedBoardIds,
-    cooldownMinutes,
     onToggle: setEnabled,
     onEnableBoard: (boardId) => setArmed((prev) => [...prev, boardId]),
     onDisableBoard: (boardId) => setArmed((prev) => prev.filter((id) => id !== boardId)),
-    onCooldownChange: setCooldown,
   }
 }
 
@@ -148,6 +145,15 @@ export default function SettingsPage() {
 
         <ShowcaseCard name="BoardTopSpeedCard">
           <BoardTopSpeedCard value={boardTopSpeed} onChange={setBoardTopSpeed} />
+        </ShowcaseCard>
+
+        <ShowcaseCard name="ConnectionPausedCard">
+          <ConnectionPausedCard
+            boardName="Blue Board"
+            remaining="1 h 20 min"
+            reason="you ended the ride"
+            onConnectNow={() => {}}
+          />
         </ShowcaseCard>
 
         <ShowcaseCard name="AutoStartCard">

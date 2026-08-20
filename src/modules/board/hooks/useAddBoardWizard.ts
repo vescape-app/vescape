@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { router } from 'expo-router'
+import { connectLinkedBoard } from 'vescape-core'
 import { useShallow } from 'zustand/react/shallow'
 import type { BatteryConfig, BoardLink } from 'vescape-core'
 
@@ -21,6 +22,7 @@ import {
   getBatterySummary,
   parseVoltage,
 } from '@/modules/board/lib/boardSetup'
+import { completeBoardLink } from '@/modules/board/lib/boardLinkCompletion'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /** The wizard's buffered alert setup for every preset metric, flushed onto the Board on save. */
@@ -72,6 +74,8 @@ interface AddBoardWizardState {
   /** True when the draft battery config is usable (gates SoC %-based presets). */
   hasBatteryConfig: boolean
   canSave: boolean
+  /** True while the Board is being persisted, selected, and connected. Setup stays open until then. */
+  saving: boolean
 }
 
 interface AddBoardWizardActions {
@@ -92,7 +96,7 @@ interface AddBoardWizardActions {
   setManualMaxVoltage: (v: string) => void
   setTopSpeedKmh: (v: number) => void
   setAlertSetup: (metric: AlertPresetMetric, setup: DraftAlertSetup) => void
-  save: () => void
+  save: () => Promise<void>
 }
 
 export type UseAddBoardWizard = AddBoardWizardState & AddBoardWizardActions
@@ -120,6 +124,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const [manualMaxVoltage, setManualMaxVoltage] = useState('84')
   const [topSpeedKmh, setTopSpeedKmh] = useState(DEFAULT_BOARD_TOP_SPEED_KMH)
   const [alertSetup, setAlertSetup] = useState<DraftAlertSetupBag>(DEFAULT_DRAFT_ALERT_SETUP)
+  const [saving, setSaving] = useState(false)
 
   const setMetricAlertSetup = (metric: AlertPresetMetric, setup: DraftAlertSetup) =>
     setAlertSetup((prev) => ({ ...prev, [metric]: setup }))
@@ -178,8 +183,11 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     next()
   }
 
-  const save = () => {
-    if (!canSave) return
+  // Creating a Board ends in a live connection, so it runs the shared completion operation: the
+  // Board and its Board Link are persisted first, then selected, then explicitly connected (#409).
+  const save = async () => {
+    if (!canSave || saving) return
+    setSaving(true)
     const batteryConfig = buildBatteryConfig(
       batteryMode,
       cellPresetId,
@@ -188,29 +196,41 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
-    const board = addBoard({
-      name: name.trim(),
-      description: description.trim() || undefined,
-      link: draftLink,
-      batteryConfig,
-      // Persist the draft alert setup onto the new Board (#254), then materialize its preset rules.
-      topSpeedKmh,
-      alertPreset: draftAlertPresetSelection(alertSetup),
-      alertPresetsOnboarded: true,
-    })
-    setActiveBoard(board.id)
-    void (async () => {
-      await useAlertsStore.getState().load(board.id)
-      // Flush the rider's own rules first: they carry no board id until one exists, and metrics
-      // holding them are `custom`, so the regeneration below never touches them.
-      for (const { rules } of Object.values(alertSetup)) {
-        for (const rule of rules) {
-          await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
-        }
-      }
-      await useAlertPresetStore.getState().regenerateAll()
-    })()
-    router.dismissAll()
+    let createdBoardId = ''
+    try {
+      await completeBoardLink(
+        {
+          async persist() {
+            const board = await addBoard({
+              name: name.trim(),
+              description: description.trim() || undefined,
+              link: draftLink,
+              batteryConfig,
+              // Persist the draft alert setup onto the new Board (#254), then materialize its rules.
+              topSpeedKmh,
+              alertPreset: draftAlertPresetSelection(alertSetup),
+              alertPresetsOnboarded: true,
+            })
+            createdBoardId = board.id
+            await useAlertsStore.getState().load(board.id)
+            // Flush the rider's own rules first: they carry no board id until one exists, and
+            // metrics holding them are `custom`, so the regeneration below never touches them.
+            for (const { rules } of Object.values(alertSetup)) {
+              for (const rule of rules) {
+                await useAlertsStore.getState().upsert({ ...rule, boardId: board.id })
+              }
+            }
+            await useAlertPresetStore.getState().regenerateAll()
+          },
+          select: () => setActiveBoard(createdBoardId),
+          connect: () => connectLinkedBoard(createdBoardId),
+          dismiss: () => router.dismissAll(),
+        },
+        { hasLink: draftLink != null },
+      )
+    } finally {
+      setSaving(false)
+    }
   }
 
   return {
@@ -235,6 +255,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     alertSetup,
     hasBatteryConfig,
     canSave,
+    saving,
     setStep,
     next,
     back,
