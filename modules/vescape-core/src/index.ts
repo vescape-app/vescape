@@ -119,7 +119,9 @@ export interface BoardProbeResult {
  * `connecting` → `handshake` (service discovery) → `pinging` (CAN scan) → per
  * candidate transport `probing` (waiting for telemetry proof) → `bms` (transport
  * confirmed, waiting for a BMS answer) → `identity` (BMS answered, waiting for
- * the Refloat info reply) → `config` (selected candidate's full schema/config read). Steps whose reply never comes are skipped — the probe
+ * the Refloat info reply) → `session` (opening a real Board Session on the pick,
+ * the same path rides use) → `config` (full schema/config read over that
+ * session). Steps whose reply never comes are skipped — the probe
  * window closing resolves them. With several responding CAN ids the sequence
  * revisits `probing` for the next candidate. Final facts are still read from the
  * returned {@link BoardCandidate}s; detail stays in Diagnostic Events.
@@ -135,6 +137,7 @@ export type BoardProbeStep =
   | 'probing'
   | 'bms'
   | 'identity'
+  | 'session'
   | 'config'
   | 'completed'
   | 'failed'

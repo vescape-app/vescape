@@ -68,12 +68,10 @@ function LinkStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
               style={styles.upgradeButton}
               label="Save link"
               icon={CheckCircleIcon}
-              disabled={link.selected == null || link.isFinalizing}
+              disabled={link.selectedLink == null || link.isFinalizing}
               loading={link.isFinalizing}
               onPress={() => {
-                void link.finalize().then((finalized) => {
-                  if (finalized) wizard.onDeviceProbed(finalized)
-                })
+                if (link.selectedLink) wizard.onDeviceProbed(link.selectedLink)
               }}
               testID="add-board-link-save"
             />

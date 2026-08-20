@@ -1166,8 +1166,10 @@ public class VescapeCoreModule: Module {
       return
     }
     let previous = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion)?.capturedAtMs ?? Int64.min
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
     sendEvent("onBoardProbeProgress", [
-      "probeId": probeId, "step": "config", "elapsedMs": 0, "transport": transport.bridgeValue,
+      "probeId": probeId, "step": "session", "elapsedMs": 0, "transport": transport.bridgeValue,
     ])
     coordinator.connect(
       config: BoardConnectConfig(
@@ -1178,6 +1180,9 @@ public class VescapeCoreModule: Module {
         pollIntervalMs: 100, batteryConfig: nil, liveHistoryLimitMinutes: 5
       ),
       onSuccess: { [weak self] in
+        self?.sendEvent("onBoardProbeProgress", [
+          "probeId": probeId, "step": "config", "elapsedMs": 0, "transport": transport.bridgeValue,
+        ])
         self?.awaitProbeConfig(
           probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
           previousCapturedAt: previous, attemptsRemaining: 120, promise: promise
@@ -1204,7 +1209,8 @@ public class VescapeCoreModule: Module {
     let baseVersion = candidate.refloatBaseVersion!
     if let values = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion),
       values.capturedAtMs > previousCapturedAt {
-      completedProbes.removeValue(forKey: probeId)
+      // The probe stays finalizable: the rider may still switch transports, and each pick
+      // acquires config for its own candidate before the link can be saved.
       coordinator.stopBoard()
       promise.resolve([
         "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,

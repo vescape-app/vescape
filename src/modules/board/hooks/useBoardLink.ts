@@ -25,11 +25,13 @@ export interface UseBoardLink {
   candidates: BoardCandidate[]
   selected: BoardCandidate | null
   progress: BoardProbeProgressEvent | null
-  /** Draft Board Link for the current selection, or null while linking/failed. */
+  /**
+   * Draft Board Link for the current selection: non-null only once complete Refloat config has
+   * been acquired for that candidate. Saving is a pure persist of this draft.
+   */
   selectedLink: BoardLink | null
   isFinalizing: boolean
   select: (candidate: BoardCandidate) => void
-  finalize: () => Promise<BoardLink | null>
   retry: () => void
 }
 
@@ -94,7 +96,13 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
 
   useEffect(() => {
     const subscription = addBoardProbeProgressListener((event) => {
-      if (event.probeId !== activeProbeIdRef.current) return
+      // The completed probe still reports: session + config acquisition runs after the probe
+      // window closes, and its milestones drive the last two rows.
+      if (
+        event.probeId !== activeProbeIdRef.current &&
+        event.probeId !== completedProbeIdRef.current
+      )
+        return
       console.log('[board-link] progress', JSON.stringify(event))
       // Terminal events are not stored: the terminal render comes atomically
       // from the probe promise (phase + candidates). Storing `completed` here
@@ -122,19 +130,24 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
     setSelectedLink(null)
   }, [])
 
-  const finalize = useCallback(async (): Promise<BoardLink | null> => {
-    if (!bleId || !selected || !completedProbeId || isFinalizing) return null
+  /**
+   * Acquire complete Refloat config for the current pick and resolve the draft link. Runs as the
+   * last step of the linking run rather than on the Save press, so the checklist the rider reviews
+   * has every check settled — a Board Link is never offered before its config is proven readable.
+   */
+  const acquireConfig = useCallback(async (): Promise<void> => {
+    if (!bleId || !selected || !completedProbeId) return
     const run = runRef.current
     setProgress({
       probeId: completedProbeId,
-      step: 'config',
+      step: 'session',
       elapsedMs: 0,
       transport: selected.transport,
     })
     setIsFinalizing(true)
     try {
       const link = await finalizeBoardLink(completedProbeId, boardId, bleId, selected)
-      if (run !== runRef.current) return null
+      if (run !== runRef.current) return
       setSelectedLink(link)
       setProgress({
         probeId: completedProbeId,
@@ -142,19 +155,23 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
         elapsedMs: 0,
         transport: selected.transport,
       })
-      return link
     } catch (err: unknown) {
-      if (run !== runRef.current) return null
-      console.log('[board-link] config finalization failed', err)
+      if (run !== runRef.current) return
+      console.log('[board-link] config acquisition failed', err)
       setCandidates([])
       setSelected(null)
       setSelectedLink(null)
       setPhase('failed')
-      return null
     } finally {
       if (run === runRef.current) setIsFinalizing(false)
     }
-  }, [bleId, boardId, completedProbeId, isFinalizing, selected])
+  }, [bleId, boardId, completedProbeId, selected])
+
+  // Every settled pick acquires its own config, including after a transport switch.
+  useEffect(() => {
+    if (phase !== 'picking' || selectedLink || isFinalizing) return
+    void acquireConfig()
+  }, [acquireConfig, isFinalizing, phase, selectedLink])
 
   const retry = useCallback(() => {
     const probeId = activeProbeIdRef.current
@@ -181,7 +198,6 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
     selectedLink,
     isFinalizing,
     select,
-    finalize,
     retry,
   }
 }

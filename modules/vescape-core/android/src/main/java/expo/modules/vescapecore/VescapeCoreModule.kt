@@ -1229,7 +1229,9 @@ key == "wearAutoLaunchOnConnect" ||
       ?: error("PROBE_CANDIDATE_UNVERIFIED: Candidate was not confirmed by this Board Probe")
     val baseVersion = candidate.refloatBaseVersion
       ?: error("PROBE_CONFIG_IDENTITY_MISSING: Refloat Tune Compatibility is required")
-    sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
+    sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "session", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
     val appCtx = context.applicationContext
     val repo = AppDataRepository.get(appCtx)
     val previousCapturedAt = repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE
@@ -1256,9 +1258,11 @@ key == "wearAutoLaunchOnConnect" ||
     )
     try {
       connected.await()
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
       repeat(120) {
         if ((repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt) {
-          completedProbes.remove(probeId)
+          // The probe stays finalizable: the rider may still switch transports, and each pick
+          // acquires config for its own candidate before the link can be saved.
           return mapOf(
             "linkVersion" to 4,
             "bleId" to bleId,

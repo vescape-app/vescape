@@ -52,13 +52,12 @@ export default function BoardLinkScreen() {
     })
   }, [])
 
+  // Pure persist: config was already acquired as the last step of the linking run.
   const handleSave = async () => {
-    if (!board) return
+    if (!board || !link.selectedLink) return
     setSaving(true)
     try {
-      const finalized = link.selectedLink ?? (await link.finalize())
-      if (!finalized) return
-      await updateBoard({ ...board, link: finalized })
+      await updateBoard({ ...board, link: link.selectedLink })
       router.back()
     } catch (err) {
       console.log('[board-link] save failed', err)
@@ -120,7 +119,7 @@ export default function BoardLinkScreen() {
             style={styles.upgradeButton}
             label="Save link"
             onPress={handleSave}
-            disabled={link.phase !== 'picking' || link.selected == null || link.isFinalizing}
+            disabled={link.phase !== 'picking' || link.selectedLink == null || link.isFinalizing}
             loading={saving || link.isFinalizing}
             testID="board-link-save"
           />
