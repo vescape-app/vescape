@@ -289,6 +289,44 @@ Debug raw BLE recording is separate. Android Dev → Debug recordings can captur
 raw chunks, connection states, and location for diagnosis, then list and export
 the JSONL files. Debug replay playback is intentionally removed from the app.
 
+## Ride summaries
+
+A finalized Ride Recording sends **one** silent summary notification with distance, duration, and
+the final valid Battery SoC Estimate when there is one. Tapping it opens that exact Ride History
+detail through `vescape://history/ride/<recordingId>`.
+
+Eligibility is not a second rule: the summary reuses the ride grouping and the same
+`avgSpeedSampleCount > 0` filter that decides whether a finalized recording appears in Ride
+History at all. An ineligible tail means no summary, never a summary for an older ride.
+
+The rider setting `rideSummaryNotificationsEnabled` defaults **on** and disables summaries alone —
+it changes nothing else about recording or connection. Ride completion never prompts for the OS
+notification permission; a denied or undetermined status is a silent, traced skip. Android posts on
+its own low-importance, soundless channel `vesc_ride_summary`; iOS posts a local notification with
+no sound and `.passive` interruption level. A missing or stale battery estimate omits the battery
+text entirely rather than rendering an empty or zero value; "stale" means the persisted estimate is
+more than 5 minutes away from the ride's end, or predates its start.
+
+### Durable deduplication
+
+Deduplication is durable, never process memory:
+
+- **Table** `ride_summary_notifications` in the ride database (`vescape.db`) — Room migration
+  `MIGRATION_32_33`, GRDB migration `v33_ride_summary_notifications`.
+- **Columns** `ride_id TEXT NOT NULL PRIMARY KEY`, `notified_at_ms INTEGER NOT NULL`.
+- **Key** the stable Ride History recording id, `deviceId:firstSampleAtMs:lastSampleAtMs` — the same
+  string `HistorySession.id` uses, with `unknown` standing in for a blank device id.
+
+The row is _claimed_ with `INSERT OR IGNORE` inside the database's own transaction **before** the
+notification is posted, and released again only when posting itself failed. A crash, a CoreBluetooth
+restoration, or a repeated finalize callback between claim and post therefore loses at most that one
+notification instead of duplicating it. Only the caller that inserted the row posts; everyone else
+traces `ride_summary_skipped` with `already_notified`.
+
+Every terminal branch is traced under a `ride_finalized` workflow: `ride_summary_prepared`, then
+either `ride_summary_notified` or `ride_summary_skipped` carrying `ride_summary_disabled`,
+`permission_missing`, `already_notified`, or `ride_not_eligible`.
+
 ## Restore
 
 On app foreground/resume, JS calls `syncNativeState()` and shows a restoring state
@@ -367,7 +405,8 @@ Later slices reuse these names. Add a field to all three files at once, never ad
 `auto_connect_disabled`, `auto_start_disabled`, `connection_paused`, `higher_priority_owner`,
 `session_already_active`, `connect_intent_active`, `user_cancelled`, `stop_search`,
 `deadline_expired`, `manual_disconnect`, `end_ride`, `app_exit`, `task_removed`, `auto_close`,
-`mechanical_teardown`, `probe_cancelled`, `platform_error`.
+`mechanical_teardown`, `probe_cancelled`, `platform_error`, `ride_summary_disabled`,
+`ride_not_eligible`, `already_notified`.
 
 ### Privacy
 

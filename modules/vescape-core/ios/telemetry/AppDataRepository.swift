@@ -560,7 +560,7 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
-    } else if key == "boardWarningsEnabled" {
+    } else if key == "boardWarningsEnabled" || key == "rideSummaryNotificationsEnabled" {
       // Strict Bool (Android rejects non-Boolean too): the board-warnings kill switch must never
       // persist a malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
@@ -625,6 +625,7 @@ final class AppDataRepository {
     "autoRecording": true,
     "companionPresenceEnabled": false,
     "boardWarningsEnabled": true,
+    "rideSummaryNotificationsEnabled": true,
     "automaticConnectionPauseMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
     // the keys exist here only so getSettings() returns the full settings shape.

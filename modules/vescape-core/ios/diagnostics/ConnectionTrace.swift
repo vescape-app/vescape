@@ -173,6 +173,9 @@ internal enum ConnectionTraceReason {
   static let mechanicalTeardown = "mechanical_teardown"
   static let probeCancelled = "probe_cancelled"
   static let platformError = "platform_error"
+  static let rideSummaryDisabled = "ride_summary_disabled"
+  static let rideNotEligible = "ride_not_eligible"
+  static let alreadyNotified = "already_notified"
 }
 
 /// One correlated connection workflow. Pass the handle across layers — lifecycle → scanner →

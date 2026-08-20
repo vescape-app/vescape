@@ -76,6 +76,7 @@ const e2eSettings: AppSettings = {
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
+  rideSummaryNotificationsEnabled: true,
   automaticConnectionPauseMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,

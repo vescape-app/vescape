@@ -166,6 +166,9 @@ export const CONNECTION_TRACE_REASON = {
   mechanicalTeardown: 'mechanical_teardown',
   probeCancelled: 'probe_cancelled',
   platformError: 'platform_error',
+  rideSummaryDisabled: 'ride_summary_disabled',
+  rideNotEligible: 'ride_not_eligible',
+  alreadyNotified: 'already_notified',
 } as const
 
 /** Event names whose meaning in the Event Log is a failed or aborted outcome. */

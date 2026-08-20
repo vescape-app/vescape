@@ -86,7 +86,7 @@ class ProfileStatsRepository private constructor(private val context: Context) {
   }
 }
 
-private data class ProfileSessionAggregate(
+internal data class ProfileSessionAggregate(
   val deviceId: String,
   var startAtMs: Long,
   var endAtMs: Long,
@@ -166,7 +166,7 @@ internal fun computeProfileStatMonthsForBuckets(
     .sortedWith(compareByDescending<ProfileStatsMonth> { it.year }.thenByDescending { it.month })
 }
 
-private fun groupProfileSessions(
+internal fun groupProfileSessions(
   buckets: List<TelemetryMinuteBucketEntity>,
   markers: List<TelemetryMarkerEntity>,
   gapMs: Long,

@@ -519,6 +519,15 @@ enum TelemetryDatabase {
       }
     }
 
+    // Ride Summary Notification dedup markers (#410). One row per Ride History recording id
+    // (`deviceId:firstSampleAtMs:lastSampleAtMs`); its presence means the single silent summary for
+    // that ride was already claimed, so restoration, process restart, and repeated finalize
+    // callbacks cannot send a second one.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
+    migrator.registerMigration("v33_ride_summary_notifications") { db in
+      try RideSummaryStore.createTables(db)
+    }
+
     return migrator
   }
 }

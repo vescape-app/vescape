@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 32
+internal const val TELEMETRY_DATABASE_VERSION = 33
 
 @Database(
   entities = [
@@ -32,6 +32,7 @@ internal const val TELEMETRY_DATABASE_VERSION = 32
     BoardWarningEntity::class,
     FavoriteEntity::class,
     FavoriteMediaEntity::class,
+    RideSummaryNotificationEntity::class,
   ],
   version = TELEMETRY_DATABASE_VERSION,
   exportSchema = false,
@@ -590,6 +591,27 @@ abstract class TelemetryDatabase : RoomDatabase() {
     }
 
     /**
+     * Ride Summary Notification dedup markers (#410). One row per Ride History recording id
+     * (`deviceId:firstSampleAtMs:lastSampleAtMs`); its presence means the single silent summary for
+     * that ride was already claimed, so restoration, process restart, and repeated finalize
+     * callbacks cannot send a second one.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v33_ride_summary_notifications`
+     */
+    internal val MIGRATION_32_33 = object : Migration(32, 33) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS ride_summary_notifications (
+            ride_id TEXT NOT NULL PRIMARY KEY,
+            notified_at_ms INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+      }
+    }
+
+    /**
      * One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
      * the whole database lives in the main file, then renames it in place. Idempotent: once the new
      * file exists (or no legacy file is present) this is a no-op.
@@ -648,6 +670,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_29_30,
             MIGRATION_30_31,
             MIGRATION_31_32,
+            MIGRATION_32_33,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

@@ -1156,6 +1156,12 @@ export interface AppSettings {
    */
   boardWarningsEnabled: boolean
   /**
+   * Ride summary notifications (#410). On ⇒ a finalized, Ride-History-eligible Ride Recording
+   * sends one silent summary notification. Off ⇒ native skips it; nothing else changes, and the
+   * OS notification permission is never re-prompted either way.
+   */
+  rideSummaryNotificationsEnabled: boolean
+  /**
    * Android-only: minutes to pause companion auto start after the user exits the app
    * manually, so the board reappearing doesn't immediately relaunch it. 0 = off.
    */

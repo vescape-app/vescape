@@ -177,6 +177,9 @@ object ConnectionTraceReason {
     const val MECHANICAL_TEARDOWN = "mechanical_teardown"
     const val PROBE_CANCELLED = "probe_cancelled"
     const val PLATFORM_ERROR = "platform_error"
+    const val RIDE_SUMMARY_DISABLED = "ride_summary_disabled"
+    const val RIDE_NOT_ELIGIBLE = "ride_not_eligible"
+    const val ALREADY_NOTIFIED = "already_notified"
 }
 
 /**

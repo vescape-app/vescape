@@ -295,6 +295,7 @@ class AppDataRepository private constructor(private val context: Context) {
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
+      rideSummaryNotificationsEnabled = req("rideSummaryNotificationsEnabled", true) { it as? Boolean },
       // #406 migration: read the new key, falling back to the pre-#406 companion cooldown row so a
       // rider's stored choice carries over exactly. Nothing is rewritten or re-clamped here.
       automaticConnectionPauseMinutes = req(
@@ -379,6 +380,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
+      "rideSummaryNotificationsEnabled" -> value as? Boolean ?: return@withContext
       "automaticConnectionPauseMinutes", LEGACY_CONNECTION_PAUSE_MINUTES_KEY ->
         validAutomaticConnectionPauseMinutes(value) ?: return@withContext
       "autoCloseEnabled" -> value as? Boolean ?: return@withContext
@@ -431,6 +433,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
+        "rideSummaryNotificationsEnabled" -> d.rideSummaryNotificationsEnabled
         "automaticConnectionPauseMinutes" -> d.automaticConnectionPauseMinutes
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
@@ -806,6 +809,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearNavArrowEnabled" to wearNavArrowEnabled,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
+  "rideSummaryNotificationsEnabled" to rideSummaryNotificationsEnabled,
   "automaticConnectionPauseMinutes" to automaticConnectionPauseMinutes,
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,

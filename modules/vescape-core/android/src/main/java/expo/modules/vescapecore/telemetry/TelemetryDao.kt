@@ -163,6 +163,15 @@ interface TelemetryDao {
 
   @Query(
     """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms >= :fromMs
+    ORDER BY bucket_start_ms ASC
+    """,
+  )
+  suspend fun getHistoryBucketsSinceAsc(fromMs: Long): List<TelemetryMinuteBucketEntity>
+
+  @Query(
+    """
     SELECT * FROM telemetry_markers
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
@@ -346,6 +355,23 @@ interface TelemetryDao {
     deleteExclusionsRange(fromMs, toMs)
     return frames
   }
+
+  /**
+   * Claim the one summary notification for [rideId] (#410). Returns true only for the caller that
+   * inserted the row; `OnConflictStrategy.IGNORE` makes concurrent or repeated finalize callbacks
+   * lose the race and return false. Claim before posting, release only when posting failed.
+   */
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertRideSummaryNotification(row: RideSummaryNotificationEntity): Long
+
+  @Query("DELETE FROM ride_summary_notifications WHERE ride_id = :rideId")
+  suspend fun deleteRideSummaryNotification(rideId: String)
+
+  @Query("SELECT COUNT(*) FROM ride_summary_notifications WHERE ride_id = :rideId")
+  suspend fun countRideSummaryNotification(rideId: String): Int
+
+  @Query("DELETE FROM ride_summary_notifications")
+  suspend fun clearRideSummaryNotifications()
 
   @Query("DELETE FROM telemetry_frames")
   suspend fun clearFrames()

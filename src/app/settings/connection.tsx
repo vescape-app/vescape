@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   BluetoothConnectedIcon,
   ClockCountdownIcon,
+  FlagCheckeredIcon,
   PowerIcon,
   RecordIcon,
   SpeakerHighIcon,
@@ -49,6 +50,7 @@ export default function ConnectionSettingsScreen() {
   const {
     autoConnect,
     autoRecording,
+    rideSummaryNotificationsEnabled,
     companionPresenceEnabled,
     companionPresenceBoards,
     automaticConnectionPauseMinutes,
@@ -63,6 +65,7 @@ export default function ConnectionSettingsScreen() {
     useShallow((s) => ({
       autoConnect: s.autoConnect,
       autoRecording: s.autoRecording,
+      rideSummaryNotificationsEnabled: s.rideSummaryNotificationsEnabled,
       companionPresenceEnabled: s.companionPresenceEnabled,
       companionPresenceBoards: s.companionPresenceBoards,
       automaticConnectionPauseMinutes: s.automaticConnectionPauseMinutes,
@@ -280,6 +283,23 @@ export default function ConnectionSettingsScreen() {
                 onValueChange={(v) => void set('autoRecording', v)}
                 trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
                 thumbColor={autoRecording ? theme.palette.sky.color : theme.palette.slate.textMuted}
+              />
+            }
+          />
+          <SettingsRow
+            icon={FlagCheckeredIcon}
+            label="Ride summaries"
+            hint="Silent notification with distance, time and battery after a ride"
+            right={
+              <Switch
+                value={rideSummaryNotificationsEnabled}
+                onValueChange={(v) => void set('rideSummaryNotificationsEnabled', v)}
+                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
+                thumbColor={
+                  rideSummaryNotificationsEnabled
+                    ? theme.palette.sky.color
+                    : theme.palette.slate.textMuted
+                }
               />
             }
           />

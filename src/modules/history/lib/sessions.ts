@@ -116,6 +116,11 @@ export function groupHistorySessions(
     .sort((a, b) => b.startAtMs - a.startAtMs)
 }
 
+/** The ride carrying this recording id, or null when the loaded pages do not hold it yet. */
+export function findSessionById(sessions: HistorySession[], rideId: string): HistorySession | null {
+  return sessions.find((session) => session.id === rideId) ?? null
+}
+
 /**
  * The Moving Window of a ride: first→last moving sample. Null when no moving samples were
  * recorded (legacy data with no precomputed window, or a non-ride that was filtered out).
