@@ -117,7 +117,7 @@ final class BoardPresenceScanTests: XCTestCase {
         ownership: ownership,
         scheduler: scheduler,
         nowMs: { [unowned self] in self.scheduler.currentTimeMs },
-        onPromote: { [unowned self] target in self.promoted.append(target) }
+        onPromote: { [unowned self] target, _ in self.promoted.append(target) }
       )
     }
 

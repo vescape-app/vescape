@@ -90,7 +90,7 @@ internal final class BoardPresenceScan {
   private let nowMs: () -> Int64
   private let windowMs: Int64
   private let onStateChanged: (PresenceScanState) -> Void
-  private let onPromote: (PresenceTarget) -> Void
+  private let onPromote: (PresenceTarget, ConnectionWorkflow?) -> Void
 
   private(set) var state = PresenceScanState()
   private var operation: ScanOperation?
@@ -109,7 +109,7 @@ internal final class BoardPresenceScan {
     nowMs: @escaping () -> Int64 = { ConnectionTrace.now() },
     windowMs: Int64 = presenceScanWindowMs,
     onStateChanged: @escaping (PresenceScanState) -> Void = { _ in },
-    onPromote: @escaping (PresenceTarget) -> Void = { _ in }
+    onPromote: @escaping (PresenceTarget, ConnectionWorkflow?) -> Void = { _, _ in }
   ) {
     self.port = port
     self.scanner = scanner
@@ -304,8 +304,9 @@ internal final class BoardPresenceScan {
       ownership.release(.autoConnect)
       ownership.request(.boardSession)
       _ = workflow?.handoff(owner: ConnectionOwner.boardSession.wireValue)
-      workflow?.finish(decision: ConnectionTraceDecision.completed, reason: ConnectionTraceReason.matched)
-      onPromote(target)
+      // The workflow deliberately stays open across the handoff: the Board Session's own terminal
+      // branch is what ends this foreground-entry workflow (#414).
+      onPromote(target, workflow)
     } else {
       workflow?.event(
         ConnectionTraceEvent.autoConnectSkipped,

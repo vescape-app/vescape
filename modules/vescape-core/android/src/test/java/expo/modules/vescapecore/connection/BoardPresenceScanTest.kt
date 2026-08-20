@@ -68,7 +68,7 @@ class BoardPresenceScanTest {
       ownership = ownership,
       scheduler = scheduler,
       nowMs = { scheduler.currentTimeMs },
-      onPromote = { promoted.add(it) },
+      onPromote = { target, _ -> promoted.add(target) },
     )
 
     val targets = listOf(

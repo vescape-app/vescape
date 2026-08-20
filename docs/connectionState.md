@@ -408,6 +408,45 @@ Later slices reuse these names. Add a field to all three files at once, never ad
 `mechanical_teardown`, `probe_cancelled`, `platform_error`, `ride_summary_disabled`,
 `ride_not_eligible`, `already_notified`.
 
+### Traced workflows
+
+Every workflow reconstructs from `connection_workflow_started` to `connection_workflow_finished`
+under one `workflow_id`. The audit (#414) closed the gaps where a workflow ended before its real
+terminal branch, or ran with no correlation at all:
+
+| Workflow                  | Origin                                        | Terminal branches                                                                                 |
+| ------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Foreground Presence Scan  | `foreground_entry`                            | `matched`, `deadline_expired`, `stop_search`, every `presence_scan_skipped` reason                |
+| Auto Connect promotion    | `foreground_entry` (handed off)               | `matched`, `session_already_active`, `platform_error` / `no_board_link`                           |
+| Explicit Connect          | `explicit_connect`, `alternative_hint_switch` | `matched`, then the Connect Intent's own `auto_close` / rider-stop clear                          |
+| Android Auto Start        | `auto_start_wake`                             | `matched`, `connection_paused`, `higher_priority_owner`, `platform_error`                         |
+| Linking                   | `board_linked`                                | `matched`, `platform_error`                                                                       |
+| Reconnect                 | `reconnect`                                   | `matched`, `deadline_expired`, `platform_error`, `mechanical_teardown`                            |
+| CoreBluetooth restoration | `reconnect` (iOS)                             | `matched`, `board_not_present`, `no_board_link`, `session_already_active`, `deadline_expired`     |
+| Ride summary              | `ride_finalized`                              | `matched`, `ride_summary_disabled`, `permission_missing`, `already_notified`, `ride_not_eligible` |
+
+Two consequences of the audit are worth stating outright:
+
+- **The Auto Connect promotion keeps the scan's workflow open.** `auto_connect_promoted` is a
+  handoff, not a terminal: the Board Session config is still being built off-thread, so the
+  foreground-entry workflow finishes only once the session starts, is refused, or fails to build.
+- **Reconnect speaks the shared vocabulary.** The mid-ride rescan reports as
+  `presence_scan_started` / `_matched` / `_timeout` / `_failed` with `scan_purpose = reconnect`,
+  not as a second `reconnect_scan_*` event family. The remaining transport-level breadcrumbs
+  (`reconnect_scheduled`, `reconnect_direct_connect_started`) carry `workflow_id` so they correlate
+  with it.
+
+Service presentation is traced on both platforms, from each one's own surface:
+Android emits `connection_service_promoted_foreground` / `_demoted_background` / `_stopped` from the
+single reconcile pass over foreground-work owners, and iOS emits `connection_service_started` /
+`_promoted_foreground` / `_stopped` from the Live Activity — including its refusals
+(`permission_missing` when Live Activities are off, `platform_error` on a failed request).
+
+`src/modules/diagnostics/connectionTrace.test.ts` fails when a contract event is declared but never
+emitted, and when a `finish(...)` terminal uses a raw string instead of a canonical reason.
+Deliberate one-platform events (Android Auto Start and foreground work, iOS background tasks) are
+listed as explicit exemptions there.
+
 ### Privacy
 
 Full Board ids and BLE ids are deliberately present in Local Diagnostic Events, platform logs, and

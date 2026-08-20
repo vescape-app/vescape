@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -99,5 +99,110 @@ describe('connection trace contract parity', () => {
       ...CONNECTION_TRACE_BAD_EVENTS,
     ])
     expect(Object.values(CONNECTION_TRACE_EVENT).filter((name) => !bucketed.has(name))).toEqual([])
+  })
+})
+
+/**
+ * #414 audit guard. A contract event nobody emits is a workflow the Event Log cannot reconstruct,
+ * so an unemitted name is a test failure rather than a silently dead constant. Exemptions are
+ * explicit and must name the platform difference that justifies them.
+ */
+const androidSources = nativeSources(
+  'modules/vescape-core/android/src/main/java/expo/modules/vescapecore',
+  '.kt',
+)
+const iosSources = nativeSources('modules/vescape-core/ios', '.swift')
+
+/** Emission sites only: the contract file itself declares the names, it does not emit them. */
+function nativeSources(relativeDir: string, extension: string): string {
+  const root = join(repoRoot, relativeDir)
+  const files: string[] = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'build' || entry.name === 'test' || entry.name === '.build') continue
+        walk(path)
+        continue
+      }
+      if (!entry.name.endsWith(extension)) continue
+      if (entry.name.startsWith('ConnectionTrace')) continue
+      if (entry.name.endsWith(`Tests${extension}`) || entry.name.endsWith(`Test${extension}`)) {
+        continue
+      }
+      files.push(path)
+    }
+  }
+  walk(root)
+  return files.map((path) => readFileSync(path, 'utf8')).join('\n')
+}
+
+/** Member name → wire value, read from each contract file, so nothing has to guess the casing. */
+function memberIndex(source: string, header: string, pattern: RegExp): Map<string, string> {
+  const body = blockBody(source, header)
+  return new Map([...body.matchAll(pattern)].map((match) => [match[2], match[1]]))
+}
+
+const kotlinEventMembers = memberIndex(
+  kotlin,
+  'object ConnectionTraceEvent {',
+  /const val ([A-Z0-9_]+) = "([a-z_]+)"/g,
+)
+const swiftEventMembers = memberIndex(
+  swift,
+  'enum ConnectionTraceEvent {',
+  /static let ([A-Za-z0-9]+) = "([a-z_]+)"/g,
+)
+
+/**
+ * Names deliberately emitted on one platform only. Both halves of the contract stay defined so the
+ * three files remain value-identical; only the emission is platform-shaped.
+ */
+const emissionExemptions: Record<string, 'android' | 'ios'> = {
+  // Android Auto Start is a Companion Device Manager feature with no iOS peer (ADR 0035).
+  auto_start_armed: 'android',
+  auto_start_triggered: 'android',
+  auto_start_skipped: 'android',
+  // Foreground-service ownership is Android-only; iOS covers the same handoff with a background
+  // task (`background_task_*`), which Android in turn never emits.
+  foreground_work_acquired: 'android',
+  foreground_work_released: 'android',
+  connection_service_demoted_background: 'android',
+  background_task_started: 'ios',
+  background_task_ended: 'ios',
+  background_task_expired: 'ios',
+}
+
+describe('connection trace emission coverage (#414)', () => {
+  for (const value of Object.values(CONNECTION_TRACE_EVENT)) {
+    test(`${value} is emitted by native code`, () => {
+      // The workflow envelope is emitted by `ConnectionTrace` itself, which is excluded above.
+      if (
+        value === CONNECTION_TRACE_EVENT.workflowStarted ||
+        value === CONNECTION_TRACE_EVENT.workflowFinished
+      ) {
+        return
+      }
+      const kotlinMember = kotlinEventMembers.get(value)
+      const swiftMember = swiftEventMembers.get(value)
+      const exemption = emissionExemptions[value]
+      if (exemption !== 'ios') {
+        expect(androidSources.includes(`ConnectionTraceEvent.${kotlinMember}`)).toBe(true)
+      }
+      if (exemption !== 'android') {
+        expect(iosSources.includes(`ConnectionTraceEvent.${swiftMember}`)).toBe(true)
+      }
+    })
+  }
+
+  test('every workflow terminal uses a canonical reason constant', () => {
+    // `finish(...)` is the terminal branch of a workflow: a raw string there is a reason outside
+    // the contract, which is exactly what the audit forbids.
+    const kotlinFinishes = [...androidSources.matchAll(/\.finish\(\s*([^)]*?)\)/gs)]
+    const swiftFinishes = [...iosSources.matchAll(/\.finish\(\s*decision:([^)]*?)\)/gs)]
+    const offenders = [...kotlinFinishes, ...swiftFinishes]
+      .map((match) => match[1])
+      .filter((args) => /"[a-z_]+"/.test(args))
+    expect(offenders).toEqual([])
   })
 })

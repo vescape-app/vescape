@@ -485,6 +485,39 @@ internal class BoardSessionController(private val service: CoreForegroundService
         scheduler = scheduler,
     )
 
+    /**
+     * One correlated `reconnect` workflow per link loss (#414). The reconnect loop crosses attempts,
+     * rescans, and phases, so every one of them reports under the same `workflow_id` instead of the
+     * untraceable free-text diagnostics it used to emit alone.
+     */
+    private var reconnectWorkflow: ConnectionWorkflow? = null
+
+    /** Open (or reuse) the reconnect workflow. Reused across attempts: one link loss, one workflow. */
+    private fun beginReconnectWorkflow(reason: String, gattStatus: Int?, attempt: Int): ConnectionWorkflow {
+        reconnectWorkflow?.let { return it }
+        val workflow = ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.RECONNECT,
+            owner = ConnectionTraceOwner.BOARD_SESSION,
+            fields = mapOf(
+                ConnectionTraceField.BOARD_ID to boardConfig?.appBoardId,
+                ConnectionTraceField.BLE_ID to boardConfig?.deviceId,
+                ConnectionTraceField.ATTEMPT to attempt,
+                ConnectionTraceField.REASON to reason,
+                ConnectionTraceField.PLATFORM_ERROR_CODE to gattStatus,
+            ),
+        )
+        reconnectWorkflow = workflow
+        return workflow
+    }
+
+    /** Terminal branch of the reconnect workflow. Recovery, teardown, and give-up all land here. */
+    private fun finishReconnectWorkflow(decision: String, reason: String) {
+        val workflow = reconnectWorkflow ?: return
+        reconnectWorkflow = null
+        workflow.finish(decision, reason)
+    }
+
     private val reconnectListener = object : ReconnectListener {
         override fun isReconnectActive(session: BoardSession): Boolean {
             if (!session.isActive || session !== boardSession || isStoppingService) return false
@@ -506,11 +539,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 telemetryPipeline.lastTelemetryAt,
                 reason,
             )
+            val workflow = beginReconnectWorkflow(reason, gattStatus, nextAttempt)
             recordLocalDiagnostic(
                 "reconnect_scheduled",
                 cfg,
                 "connect",
                 mapOf(
+                    // Correlate the transport-level detail with the connection-trace workflow (#414).
+                    ConnectionTraceField.WORKFLOW_ID to workflow.workflowId,
                     "message" to reason,
                     "reason" to reason,
                     "gatt_status" to gattStatus,
@@ -544,62 +580,63 @@ internal class BoardSessionController(private val service: CoreForegroundService
             )
         }
 
+        // The reconnect rescan is a Presence Scan with `scan_purpose = reconnect`, so it reports in
+        // the shared connection-trace vocabulary rather than a second `reconnect_scan_*` family.
         override fun onScanStart(session: BoardSession) {
             transitionBoardPhase(BoardPhase.Rescanning)
-            recordLocalDiagnostic(
-                "reconnect_scan_started",
-                boardConfig,
-                "connect",
-                mapOf("message" to "Reconnect scan started"),
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_STARTED,
+                mapOf(
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.BOARD_ID to boardConfig?.appBoardId,
+                    ConnectionTraceField.BLE_ID to boardConfig?.deviceId,
+                    ConnectionTraceField.DEADLINE_MS to ReconnectPolicy.scanTimeoutMs(),
+                ),
             )
         }
 
         override fun onScanFound(session: BoardSession, match: ReconnectScanMatch) {
-            recordLocalDiagnostic(
-                "reconnect_scan_found",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_MATCHED,
                 mapOf(
-                    "message" to "Reconnect target found",
-                    "scan_result_address" to match.address,
-                    "rssi" to match.rssi,
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.BOARD_ID to boardConfig?.appBoardId,
+                    ConnectionTraceField.BLE_ID to match.address,
+                    ConnectionTraceField.RSSI to match.rssi,
                 ),
             )
         }
 
         override fun onScanTimeout(session: BoardSession) {
-            recordLocalDiagnostic(
-                "reconnect_scan_timeout",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_TIMEOUT,
                 mapOf(
-                    "message" to "Reconnect scan timed out",
-                    "timeout_ms" to ReconnectPolicy.scanTimeoutMs(),
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.REASON to ConnectionTraceReason.DEADLINE_EXPIRED,
+                    ConnectionTraceField.DEADLINE_MS to ReconnectPolicy.scanTimeoutMs(),
                 ),
             )
         }
 
         override fun onScanFailed(session: BoardSession, errorCode: Int) {
             Log.w(VESC_SESSION_TAG, "Reconnect scan failed errorCode=$errorCode")
-            recordLocalDiagnostic(
-                "reconnect_scan_failed",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_FAILED,
                 mapOf(
-                    "message" to "Reconnect scan failed",
-                    "error_code" to errorCode,
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.REASON to ConnectionTraceReason.PLATFORM_ERROR,
+                    ConnectionTraceField.PLATFORM_ERROR_CODE to errorCode,
                 ),
             )
         }
 
         override fun onScanStartFailed(session: BoardSession, error: String?) {
             Log.w(VESC_SESSION_TAG, "Reconnect scan start failed: $error")
-            recordLocalDiagnostic(
-                "reconnect_scan_start_failed",
-                boardConfig,
-                "connect",
+            reconnectWorkflow?.event(
+                ConnectionTraceEvent.PRESENCE_SCAN_FAILED,
                 mapOf(
-                    "message" to "Reconnect scan start failed",
+                    ConnectionTraceField.SCAN_PURPOSE to ScanPurpose.Reconnect.wireValue,
+                    ConnectionTraceField.REASON to ConnectionTraceReason.SCANNER_UNAVAILABLE,
                     "error_message" to error,
                 ),
             )
@@ -620,6 +657,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                 cfg,
                 "connect",
                 mapOf(
+                    ConnectionTraceField.WORKFLOW_ID to reconnectWorkflow?.workflowId,
                     "message" to "Reconnect direct connect started",
                     "reason" to reason,
                 ),
@@ -793,7 +831,50 @@ private var wearAutoLaunchOnConnect = true
         )
         traceForegroundWork(ConnectionTraceEvent.FOREGROUND_WORK_ACQUIRED, change.acquired, change)
         traceForegroundWork(ConnectionTraceEvent.FOREGROUND_WORK_RELEASED, change.released, change)
+        traceServicePresentation(change)
         return change
+    }
+
+    /** Last presentation this service reported, so only real transitions are traced (#414). */
+    private var lastPresentation: ForegroundPresentation = ForegroundPresentation.Stopped
+
+    /**
+     * Service presentation transitions (#414). The shared service is the rider-visible surface of
+     * every connection workflow, so promotion into durable Board Session work, demotion back to the
+     * temporary search surface, and the final stop each carry a canonical reason.
+     */
+    private fun traceServicePresentation(change: ForegroundWorkChange) {
+        val previous = lastPresentation
+        val next = change.presentation
+        if (previous == next) return
+        lastPresentation = next
+        val event = when (next) {
+            ForegroundPresentation.Stopped -> ConnectionTraceEvent.SERVICE_STOPPED
+            ForegroundPresentation.Searching -> ConnectionTraceEvent.SERVICE_DEMOTED_BACKGROUND
+            ForegroundPresentation.Session -> ConnectionTraceEvent.SERVICE_PROMOTED_FOREGROUND
+        }
+        // A first Searching is the scan's own start, already traced as `connection_service_started`.
+        if (next == ForegroundPresentation.Searching && previous == ForegroundPresentation.Stopped) return
+        val reason = when (next) {
+            ForegroundPresentation.Stopped -> ConnectionTraceReason.MECHANICAL_TEARDOWN
+            else -> ConnectionTraceReason.MATCHED
+        }
+        ConnectionTrace.start(
+            context = service.applicationContext,
+            origin = ConnectionTraceOrigin.FOREGROUND_ENTRY,
+            owner = ConnectionTraceOwner.NONE,
+        ).also { workflow ->
+            workflow.event(
+                event,
+                mapOf(
+                    ConnectionTraceField.SERVICE_STATE to next.traceValue,
+                    ConnectionTraceField.FOREGROUND_WORK to
+                        change.owners.joinToString(",") { it.wireValue },
+                    ConnectionTraceField.REASON to reason,
+                ),
+            )
+            workflow.finish(ConnectionTraceDecision.COMPLETED, reason)
+        }
     }
 
     private fun traceForegroundWork(
@@ -959,8 +1040,14 @@ private var wearAutoLaunchOnConnect = true
         }
     }
 
-    /** Promote an observed selected Board into a Board Session (Auto Connect path). */
-    private fun promoteToSession(target: PresenceTarget) {
+    /**
+     * Promote an observed selected Board into a Board Session (Auto Connect path).
+     *
+     * The Presence Scan hands its still-open workflow over, so every terminal branch of the
+     * promotion — session started, refused because one already exists, or config build failure —
+     * closes the *same* correlation instead of ending the trace at `auto_connect_promoted` (#414).
+     */
+    private fun promoteToSession(target: PresenceTarget, workflow: ConnectionWorkflow?) {
         CoreForegroundService.appDataScope.launch {
             val appCtx = service.applicationContext
             val config = try {
@@ -968,13 +1055,26 @@ private var wearAutoLaunchOnConnect = true
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Presence Scan promotion failed: ${e.message}")
                 ConnectionOwnership.shared.release(ConnectionOwner.BoardSession)
+                workflow?.event(
+                    ConnectionTraceEvent.OWNER_RELEASED,
+                    mapOf(
+                        ConnectionTraceField.BOARD_ID to target.boardId,
+                        ConnectionTraceField.OWNER_PREVIOUS to ConnectionOwner.BoardSession.wireValue,
+                    ),
+                )
+                workflow?.finish(ConnectionTraceDecision.FAILED, ConnectionTraceReason.PLATFORM_ERROR)
                 scheduler.post { stopIfIdle() }
                 return@launch
             }
             scheduler.post {
                 if (boardConfig == null) {
+                    workflow?.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
                     beginSession(PendingStart(config, onSuccess = {}, onError = { _, _ -> }))
                 } else {
+                    workflow?.finish(
+                        ConnectionTraceDecision.SKIPPED,
+                        ConnectionTraceReason.SESSION_ALREADY_ACTIVE,
+                    )
                     stopIfIdle()
                 }
             }
@@ -2453,6 +2553,10 @@ private var wearAutoLaunchOnConnect = true
         configController.onSessionTerminated("Board session stopped during Refloat config op")
         val stoppedConfig = boardConfig
         reconnectScheduler.cancelAndReset()
+        finishReconnectWorkflow(
+            ConnectionTraceDecision.CANCELLED,
+            ConnectionTraceReason.MECHANICAL_TEARDOWN,
+        )
         cancelBoardReadyTimeout()
         stopPolling()
         transport.clear(markIntentional = true)
@@ -2558,6 +2662,11 @@ private var wearAutoLaunchOnConnect = true
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        // Reaching `connected` is the reconnect workflow's success terminal: telemetry is flowing
+        // again, so the link loss that opened it is over.
+        if (next == BoardPhase.Connected) {
+            finishReconnectWorkflow(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
+        }
         recordName?.let { recordingCoordinator.recordState(it, recordProperties) }
         rescheduleAutoClose()
         // The notification mirrors the phase, not just telemetry frames: without this a phase change

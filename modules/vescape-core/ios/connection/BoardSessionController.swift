@@ -292,7 +292,7 @@ internal final class BoardSessionController: VescGattListener {
       // would be a keep-alive, which this is explicitly not (ADR 0034).
       if state.phase == .done { self?.presenceScanBackgroundTask.end() }
     },
-    onPromote: { [weak self] target in self?.promoteToSession(target) }
+    onPromote: { [weak self] target, workflow in self?.promoteToSession(target, workflow) }
   )
 
   /// Short background task covering the foreground→lock handoff for the Presence Scan (#405).
@@ -527,8 +527,19 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   /// Promote an observed selected Board into a Board Session (Auto Connect path).
-  private func promoteToSession(_ target: PresenceTarget) {
-    guard session == nil else { return }
+  /// The Presence Scan hands its still-open workflow over, so every terminal branch of the
+  /// promotion — session started, refused because one already exists, or an unresolvable Board Link
+  /// — closes the *same* correlation instead of ending the trace at `auto_connect_promoted` (#414).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `promoteToSession`
+  private func promoteToSession(_ target: PresenceTarget, _ workflow: ConnectionWorkflow?) {
+    guard session == nil else {
+      workflow?.finish(
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.sessionAlreadyActive
+      )
+      return
+    }
     guard
       let config = BoardConnectConfig.resolve(
         boardId: target.boardId,
@@ -537,8 +548,23 @@ internal final class BoardSessionController: VescGattListener {
       )
     else {
       ConnectionOwnership.shared.release(.boardSession)
+      workflow?.event(
+        ConnectionTraceEvent.ownerReleased,
+        fields: [
+          ConnectionTraceField.boardId: target.boardId,
+          ConnectionTraceField.ownerPrevious: ConnectionOwner.boardSession.wireValue,
+        ]
+      )
+      workflow?.finish(
+        decision: ConnectionTraceDecision.failed,
+        reason: ConnectionTraceReason.noBoardLink
+      )
       return
     }
+    workflow?.finish(
+      decision: ConnectionTraceDecision.completed,
+      reason: ConnectionTraceReason.matched
+    )
     connect(config: config, onSuccess: {}, onError: { _, _ in })
   }
 
@@ -898,6 +924,20 @@ internal final class BoardSessionController: VescGattListener {
   /// reap does not kill the surface the resume is about to reuse.
   private var pendingResume: SessionResumeMarker?
   private var pendingResumeExpiry: DispatchWorkItem?
+  /// Correlated workflow for the CoreBluetooth-restoration resume (#414). The restoration crosses a
+  /// process death, so no earlier correlation survives to inherit — this is a fresh `reconnect`
+  /// workflow whose terminal branch is adoption, an unresolvable Board Link, or the expiry window.
+  ///
+  /// @platform-diff Android has no CoreBluetooth state restoration: its foreground service outlives
+  /// the JS runtime, so a Board Session is never rebuilt from a preserved central.
+  private var restoreWorkflow: ConnectionWorkflow?
+
+  /// Terminal branch of the restoration workflow. Every exit from the resume path lands here.
+  private func finishRestoreWorkflow(decision: String, reason: String) {
+    guard let workflow = restoreWorkflow else { return }
+    restoreWorkflow = nil
+    workflow.finish(decision: decision, reason: reason)
+  }
   /// How long a launch waits for `willRestoreState` before deciding no restoration is coming.
   /// CoreBluetooth delivers it inside the launch sequence, so this only guards the case where it
   /// never arrives at all (marker outlived the connection).
@@ -911,6 +951,14 @@ internal final class BoardSessionController: VescGattListener {
     guard session == nil, pendingResume == nil else { return }
     guard let marker = SessionResumeStore.shared.pending else { return }
     pendingResume = marker
+    restoreWorkflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.reconnect,
+      owner: ConnectionTraceOwner.boardSession,
+      fields: [
+        ConnectionTraceField.boardId: marker.appBoardId,
+        ConnectionTraceField.deadlineMs: Int64(pendingResumeWindowSeconds * 1000),
+      ]
+    )
     let expiry = DispatchWorkItem { [weak self] in self?.expirePendingResume() }
     pendingResumeExpiry = expiry
     DispatchQueue.main.asyncAfter(deadline: .now() + pendingResumeWindowSeconds, execute: expiry)
@@ -925,9 +973,17 @@ internal final class BoardSessionController: VescGattListener {
     pendingResumeExpiry = nil
     guard pendingResume != nil, session == nil else {
       pendingResume = nil
+      finishRestoreWorkflow(
+        decision: ConnectionTraceDecision.completed,
+        reason: ConnectionTraceReason.matched
+      )
       return
     }
     pendingResume = nil
+    finishRestoreWorkflow(
+      decision: ConnectionTraceDecision.timeout,
+      reason: ConnectionTraceReason.deadlineExpired
+    )
     reapOrphanLiveActivities()
   }
 
@@ -943,14 +999,32 @@ internal final class BoardSessionController: VescGattListener {
   /// the link comes from (a restored peripheral instead of a fresh connect) and that the recording
   /// keeps appending to the open recording.
   private func resumeSession(marker: SessionResumeMarker, restoredPeripheralIds: [String]) {
-    guard session == nil else { return }
+    guard session == nil else {
+      finishRestoreWorkflow(
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.sessionAlreadyActive
+      )
+      return
+    }
     guard let config = BoardConnectConfig.resolve(boardId: marker.appBoardId, appData: appData) else {
       // Board unlinked or deleted while the app was dead — nothing to resume.
       SessionResumeStore.shared.clear()
       clearPendingResume()
       reapOrphanLiveActivities()
+      finishRestoreWorkflow(
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.noBoardLink
+      )
       return
     }
+    restoreWorkflow?.event(
+      ConnectionTraceEvent.presenceScanMatched,
+      fields: [
+        ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+        ConnectionTraceField.boardId: marker.appBoardId,
+        ConnectionTraceField.bleId: config.bleId,
+      ]
+    )
     gatt.recorder = { [weak self] in self?.recordingCoordinator.currentRecorder() }
     batteryEstimator.ensureLoaded()
     liveSeries.emit = { [weak self] name, body in self?.emit?(name, body) }
@@ -987,6 +1061,12 @@ internal final class BoardSessionController: VescGattListener {
     }
     armConnectTimeout()
     clearPendingResume()
+    finishRestoreWorkflow(
+      decision: ConnectionTraceDecision.completed,
+      reason: restoredId != nil
+        ? ConnectionTraceReason.matched
+        : ConnectionTraceReason.boardNotPresent
+    )
   }
 
   /// Refresh the durable resume marker's recording flag; recording is toggled mid-session by
@@ -1279,6 +1359,13 @@ internal final class BoardSessionController: VescGattListener {
   private func setPhase(_ phase: BoardPhase) {
     guard self.phase != phase else { return }
     self.phase = phase
+    // Reaching `connected` is the reconnect workflow's success terminal: telemetry flows again.
+    if phase == .connected {
+      finishReconnectWorkflow(
+        decision: ConnectionTraceDecision.completed,
+        reason: ConnectionTraceReason.matched
+      )
+    }
     recordingCoordinator.recordState(phase.rawValue)
     onStateChanged?()
     refreshLiveActivity()
@@ -1319,6 +1406,36 @@ internal final class BoardSessionController: VescGattListener {
 
   // MARK: - Reconnect (#58)
 
+  /// One correlated `reconnect` workflow per link loss (#414). The reconnect loop spans rescan
+  /// cycles and phase churn, so all of them report under the same `workflow_id`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `reconnectWorkflow`
+  private var reconnectWorkflow: ConnectionWorkflow?
+
+  /// Open (or reuse) the reconnect workflow. Reused across rescans: one link loss, one workflow.
+  @discardableResult
+  private func beginReconnectWorkflow() -> ConnectionWorkflow {
+    if let reconnectWorkflow { return reconnectWorkflow }
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.reconnect,
+      owner: ConnectionTraceOwner.boardSession,
+      fields: [
+        ConnectionTraceField.boardId: config?.appBoardId,
+        ConnectionTraceField.bleId: config?.bleId,
+      ]
+    )
+    reconnectWorkflow = workflow
+    return workflow
+  }
+
+  /// Terminal branch of the reconnect workflow. Recovery and teardown both land here.
+  private func finishReconnectWorkflow(decision: String, reason: String) {
+    guard let workflow = reconnectWorkflow else { return }
+    reconnectWorkflow = nil
+    workflow.finish(decision: decision, reason: reason)
+  }
+
+
   /// Recover a dropped mid-ride link. Bumps the Board Session identity so any poll/safety timers
   /// still armed under the dead link are discarded (stale-callback guard), hands the persistent
   /// reconnect to CoreBluetooth, and starts the supplemental rescan cycle. The JS `generation`
@@ -1356,6 +1473,7 @@ internal final class BoardSessionController: VescGattListener {
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
+    beginReconnectWorkflow()
     reconnecting = true
     boardError = nil
     lastTelemetryAt = nil
@@ -1370,10 +1488,31 @@ internal final class BoardSessionController: VescGattListener {
   private func scheduleRescanCycle(session: BoardSession) {
     guard reconnecting, session === self.session, session.isActive else { return }
     setPhase(.rescanning)
+    let windowMs = rescanWindowMs
+    // The reconnect rescan is a Presence Scan with `scan_purpose = reconnect`, reported in the
+    // shared connection-trace vocabulary rather than a second reconnect-only event family (#414).
+    reconnectWorkflow?.event(
+      ConnectionTraceEvent.presenceScanStarted,
+      fields: [
+        ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+        ConnectionTraceField.boardId: config?.appBoardId,
+        ConnectionTraceField.bleId: config?.bleId,
+        ConnectionTraceField.deadlineMs: windowMs,
+      ]
+    )
     transport.startReconnectScan()
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(rescanWindowMs) / 1000.0) { [weak self] in
+    DispatchQueue.main.asyncAfter(deadline: .now() + Double(windowMs) / 1000.0) { [weak self] in
       guard let self, self.reconnecting, session === self.session, session.isActive else { return }
       self.transport.stopReconnectScan()
+      // The window closed with the link still down: a named timeout, not a silent re-arm.
+      self.reconnectWorkflow?.event(
+        ConnectionTraceEvent.presenceScanTimeout,
+        fields: [
+          ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+          ConnectionTraceField.reason: ConnectionTraceReason.deadlineExpired,
+          ConnectionTraceField.deadlineMs: windowMs,
+        ]
+      )
       if self.phase == .rescanning { self.setPhase(.reconnecting) }
       DispatchQueue.main.asyncAfter(deadline: .now() + Double(self.rescanIdleMs) / 1000.0) { [weak self] in
         self?.scheduleRescanCycle(session: session)
@@ -1382,6 +1521,10 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func stopReconnect() {
+    finishReconnectWorkflow(
+      decision: ConnectionTraceDecision.cancelled,
+      reason: ConnectionTraceReason.mechanicalTeardown
+    )
     guard reconnecting else { return }
     reconnecting = false
     transport.stopReconnectScan()
@@ -1440,6 +1583,14 @@ internal final class BoardSessionController: VescGattListener {
     if reconnecting {
       reconnecting = false
       transport.stopReconnectScan()
+      reconnectWorkflow?.event(
+        ConnectionTraceEvent.presenceScanMatched,
+        fields: [
+          ConnectionTraceField.scanPurpose: ScanPurpose.reconnect.wireValue,
+          ConnectionTraceField.boardId: config?.appBoardId,
+          ConnectionTraceField.bleId: config?.bleId,
+        ]
+      )
     }
     recordConnectionDiagnostic("gatt_connected", operation: "connect", message: "GATT connected")
     setPhase(.discovering)

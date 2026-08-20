@@ -33,6 +33,20 @@ final class RideLiveActivityController {
   /// not rate-limited by ActivityKit (the session path already pushes up to 1 Hz), so this is cheap.
   private let heartbeatInterval: TimeInterval = 2.5
 
+  /// Service-presentation state for the connection trace. The Live Activity is iOS's rider-visible
+  /// surface for a Board Session, so its start, adoption, refusal, and end are the peers of
+  /// Android's foreground-service presentation events (#414).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `traceServicePresentation`
+  private func traceService(_ event: String, decision: String, reason: String) {
+    let workflow = ConnectionTrace.start(
+      origin: ConnectionTraceOrigin.explicitConnect,
+      owner: ConnectionTraceOwner.boardSession
+    )
+    workflow.event(event, fields: [ConnectionTraceField.serviceState: "live_activity"])
+    workflow.finish(decision: decision, reason: reason)
+  }
+
   private var activity: Activity<RideActivityAttributes>?
   private var lastState: RideActivityAttributes.ContentState?
   private var heartbeat: DispatchSourceTimer?
@@ -48,16 +62,33 @@ final class RideLiveActivityController {
     lastState = nil
     stopHeartbeat()
     end(staleActivities)
-    guard enabled else { return }
+    guard enabled else {
+      traceService(
+        ConnectionTraceEvent.serviceStopped,
+        decision: ConnectionTraceDecision.skipped,
+        reason: ConnectionTraceReason.permissionMissing
+      )
+      return
+    }
     let attributes = RideActivityAttributes()
     do {
       activity = try Activity.request(attributes: attributes, content: content(state))
       lastState = state
       startHeartbeat()
+      traceService(
+        ConnectionTraceEvent.serviceStarted,
+        decision: ConnectionTraceDecision.completed,
+        reason: ConnectionTraceReason.matched
+      )
     } catch {
       // Denied authorization or a background start race — drop silently, mirroring Android's
       // best-effort notify. The session itself is unaffected.
       activity = nil
+      traceService(
+        ConnectionTraceEvent.serviceStopped,
+        decision: ConnectionTraceDecision.failed,
+        reason: ConnectionTraceReason.platformError
+      )
     }
   }
 
@@ -78,6 +109,11 @@ final class RideLiveActivityController {
     activity = adopted
     update(state)
     startHeartbeat()
+    traceService(
+      ConnectionTraceEvent.servicePromotedForeground,
+      decision: ConnectionTraceDecision.completed,
+      reason: ConnectionTraceReason.matched
+    )
   }
 
   /// Push a new snapshot to the running activity. Background-safe; a no-op when none is running.
@@ -91,10 +127,17 @@ final class RideLiveActivityController {
   /// End and immediately dismiss the activity. Idempotent.
   func end() {
     let activities = knownActivities()
+    let wasRunning = self.activity != nil
     self.activity = nil
     lastState = nil
     stopHeartbeat()
     end(activities)
+    guard wasRunning else { return }
+    traceService(
+      ConnectionTraceEvent.serviceStopped,
+      decision: ConnectionTraceDecision.completed,
+      reason: ConnectionTraceReason.mechanicalTeardown
+    )
   }
 
   /// Remove activities this process does not own — the ghosts a previous, killed process left

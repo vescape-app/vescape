@@ -84,7 +84,7 @@ internal class BoardPresenceScan(
     private val nowMs: () -> Long,
     private val windowMs: Long = PRESENCE_SCAN_WINDOW_MS,
     private val onStateChanged: (PresenceScanState) -> Unit = {},
-    private val onPromote: (PresenceTarget) -> Unit = {},
+    private val onPromote: (PresenceTarget, ConnectionWorkflow?) -> Unit = { _, _ -> },
 ) {
     var state: PresenceScanState = PresenceScanState()
         private set
@@ -262,8 +262,10 @@ internal class BoardPresenceScan(
             ownership.release(ConnectionOwner.AutoConnect)
             ownership.request(ConnectionOwner.BoardSession)
             workflow?.handoff(ConnectionOwner.BoardSession.wireValue)
-            workflow?.finish(ConnectionTraceDecision.COMPLETED, ConnectionTraceReason.MATCHED)
-            onPromote(target)
+            // The workflow deliberately stays open across the handoff: the Board Session is still
+            // being built off-thread, and its own terminal branch (started, refused, or failed to
+            // build) is what actually ends this foreground-entry workflow (#414).
+            onPromote(target, workflow)
         } else {
             workflow?.event(
                 ConnectionTraceEvent.AUTO_CONNECT_SKIPPED,
