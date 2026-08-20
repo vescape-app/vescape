@@ -583,7 +583,13 @@ internal final class BoardSessionController: VescGattListener {
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
-      scheduleConfigSafetyRead()
+      // Re-arm: evaluate the config this session already read, or retry the read if it never landed.
+      if let values = boardConfigValues, values.freshness == .fresh {
+        evaluateConfigSafety(values)
+      } else {
+        boardConfigReadScheduled = false
+        scheduleBoardConfigRead()
+      }
     }
     floorMs = effectivePollIntervalMs()
     liveSeries.setWindowMinutes(liveHistoryLimit)
@@ -726,6 +732,10 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     stopPolling()
     stopReconnect()
+    // A live→live connect does not pass through `stopSession`, so end any config op the previous
+    // session left in flight here: its callbacks and payload routing belong to a session that is
+    // about to be replaced, and a new reader must start its own read rather than join a dead one.
+    configController.onSessionTerminated("Board session replaced", connection: fallbackConfigRWConnection())
     reassembler.reset()
 
     sessionSequence += 1
@@ -746,9 +756,13 @@ internal final class BoardSessionController: VescGattListener {
     }
     cellSpreadDetector.reset()
     batteryConfigMismatchDetector.reset()
-    configSafetyReadScheduled = false
+    boardConfigReadScheduled = false
     vescLiveFirmware = nil
     self.config = config
+    // Something to show before the fresh read lands: the cache for this Board + Refloat base
+    // version, restored as `lastKnown` (never a write base — see #396).
+    boardConfigValues = restoredBoardConfigValues(config)
+    alertCoordinator.updateBoardConfigValues(boardConfigValues?.values ?? [:])
     if let session {
       lastEmittedLinkIntegrity = session.startLinkIntegrityCheck(expected: config.linkIdentity())
     }
@@ -861,6 +875,8 @@ internal final class BoardSessionController: VescGattListener {
     session?.invalidate()
     session = nil
     config = nil
+    // Board Config Values are per Board Session; the cache row survives, the held object does not.
+    boardConfigValues = nil
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -1072,6 +1088,12 @@ internal final class BoardSessionController: VescGattListener {
     // Drop prior-connection BMS rows before reconnecting, mirroring Android's reconnect-path
     // `bmsSeriesRing.clear()` next to `telemetryPipeline.clearLiveTelemetry()`.
     bmsSeriesRing.clear()
+    // The Board Session survives the drop, but exclusive ownership of the config does not: while we
+    // were off the link another central could have written. The values stay displayable, they just
+    // stop backing a write until the post-trust read makes them fresh again (ADR 0035).
+    boardConfigValues = boardConfigValues?.demotedToProvisional()
+    // Re-arm the post-trust read so the relinked session gets fresh values back.
+    boardConfigReadScheduled = false
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
@@ -1307,12 +1329,40 @@ internal final class BoardSessionController: VescGattListener {
     )
   }
 
+  /// Take ownership of the Board Config Values a read or write just produced: they become this
+  /// session's config truth, get cached for the next connect, and feed warning evaluation.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onBoardConfigValues`
+  private func onBoardConfigValues(_ values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
+    // The link can go `mismatched` (or the Board change) while a read is on the wire; those bytes
+    // describe a board this session no longer owns, so they must not repopulate what was cleared.
+    guard values.boardId == config?.appBoardId, linkIntegrity == .trusted else { return }
+    boardConfigValues = values
+    alertCoordinator.updateBoardConfigValues(values.values)
+    if origin == .freshRead { BoardConfigStore.shared.saveFresh(values) }
+    else { BoardConfigStore.shared.save(values) }
+    evaluateConfigSafety(values)
+  }
+
+  /// The cached values for the connecting Board, as `lastKnown`.
+  private func restoredBoardConfigValues(_ config: BoardConnectConfig) -> BoardConfigValues? {
+    guard let base = config.refloatBaseVersion else { return nil }
+    return BoardConfigStore.shared.load(boardId: config.appBoardId, refloatBaseVersion: base)
+  }
+
+  /// Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
+  private func clearBoardConfigValues() {
+    boardConfigValues = nil
+    alertCoordinator.updateBoardConfigValues([:])
+    guard let boardId = config?.appBoardId else { return }
+    BoardConfigStore.shared.clear(boardId: boardId)
+  }
+
   /// Evaluate the config-safety rules against a freshly decoded config (background read after link
   /// trust, or the in-hand bytes from a tune write) and report findings / clean evaluations through
   /// the Board Warning registry. Per-cell rules use the configured battery series count and are
   /// skipped when it is absent; skipped kinds report nothing so stored warnings stay untouched.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `evaluateConfigSafety`
-  private func evaluateConfigSafety(_ values: ConfigSafetyValues) {
+  private func evaluateConfigSafety(_ values: BoardConfigValues) {
     guard boardWarningsEnabled, let boardId = config?.appBoardId else { return }
     let seriesCount = config?.batteryConfig?["seriesCount"] as? Int
     let perCellSupported = ConfigSafetyDetector.supportsPerCellVoltage(vescLiveFirmware)
@@ -1342,16 +1392,13 @@ internal final class BoardSessionController: VescGattListener {
     }
   }
 
-  /// Once per Board Session, after the link is trusted, kick off one background Refloat config read so
-  /// the config-safety detectors can evaluate the decoded config. Read-only; reuses the normal config
-  /// read path (pauses/resumes polling) and is skipped if a config op is already in flight.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `triggerConfigSafetyRead`
-  private func triggerConfigSafetyRead(_ session: BoardSession) {
-    guard boardWarningsEnabled else {
-      // Re-arm so re-enabling Board Warnings mid-session can schedule the read again.
-      configSafetyReadScheduled = false
-      return
-    }
+  /// Once per Board Session, after the link is trusted, kick off the one background Refloat config
+  /// read that acquires this session's Board Config Values. Runs regardless of the Board Warnings
+  /// setting — that gate sits on warning *evaluation*, not on acquiring config (ADR 0035). Read-only;
+  /// reuses the normal config read path (pauses/resumes polling), and a consumer asking for config
+  /// while it is in flight joins this read instead of starting a competing one.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `triggerBoardConfigRead`
+  private func triggerBoardConfigRead(_ session: BoardSession) {
     guard session === self.session, session.isActive, let config else { return }
     configController.consumeRead(connection: configConnection(config), onSuccess: { _ in }, onError: { _, _ in })
   }
@@ -1425,7 +1472,23 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private var lastEmittedLinkIntegrity: LinkIntegrity = .unknown
-  private var configSafetyReadScheduled = false
+  private var boardConfigReadScheduled = false
+  /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `lastKnown`
+  /// while it is the cache restored on connect. Native-owned truth; JS mirrors it through
+  /// `getBoardConfigValues` + `onBoardConfigValues`.
+  ///
+  /// Every assignment emits — arrival, refresh after a write, and the clears (session end, board
+  /// switch, `mismatched`) — so the bridge event needs no separate call sites to stay honest.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardConfigValues`
+  private var boardConfigValues: BoardConfigValues? {
+    didSet { emit?("onBoardConfigValues", ["values": boardConfigValues?.toBridgeMap()]) }
+  }
+
+  /// The held Board Config Values in bridge shape, or nil when none are held.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardConfigValuesMap`
+  func boardConfigValuesMap() -> [String: Any?]? {
+    boardConfigValues?.toBridgeMap()
+  }
   /// Live-parsed firmware string ("FW 6.05 · …"), used to resolve per-cell vs pack pushback units.
   /// Mirrors Android `fwVersionString`.
   private var vescLiveFirmware: String?
@@ -1434,16 +1497,19 @@ internal final class BoardSessionController: VescGattListener {
     guard next != lastEmittedLinkIntegrity else { return }
     lastEmittedLinkIntegrity = next
     onStateChanged?()
-    // Link just became trusted — schedule the one background config-safety read for this session.
-    if next == .trusted { scheduleConfigSafetyRead() }
+    // Link just became trusted — schedule the one background config read for this session.
+    if next == .trusted { scheduleBoardConfigRead() }
+    // Mismatched firmware makes every cached offset meaningless: drop the held object and the
+    // persisted rows for this Board. `outdated` keeps them.
+    if next == .mismatched { clearBoardConfigValues() }
   }
 
-  private func scheduleConfigSafetyRead() {
-    guard !configSafetyReadScheduled, let session else { return }
-    configSafetyReadScheduled = true
+  private func scheduleBoardConfigRead() {
+    guard !boardConfigReadScheduled, let session else { return }
+    boardConfigReadScheduled = true
     DispatchQueue.main.asyncAfter(deadline: .now() + configSafetyReadDelaySeconds) { [weak self, weak session] in
       guard let self, let session else { return }
-      self.triggerConfigSafetyRead(session)
+      self.triggerBoardConfigRead(session)
     }
   }
 
@@ -1947,8 +2013,10 @@ internal final class BoardSessionController: VescGattListener {
       appBoardId: config.appBoardId,
       transport: config.transport,
       fwVersion: nil,
+      refloatVersion: config.refloatVersion,
       refloatBaseVersion: config.refloatBaseVersion,
       linkIntegrity: linkIntegrity,
+      boardConfigValues: boardConfigValues,
       isPollingActive: { [weak self] in self?.polling ?? false },
       stopPolling: { [weak self] in self?.stopPolling() },
       startPolling: { [weak self] in self?.restartPollingForConfigRead() },
@@ -1957,7 +2025,7 @@ internal final class BoardSessionController: VescGattListener {
         self?.recordConnectionDiagnostic(name, operation: "config_rw", message: properties["message"] as? String ?? name, extra: properties)
       },
       loadProfile: { profileId in TuneProfileStore.shared.getTuneProfile(profileId) },
-      evaluateConfigSafety: { [weak self] values in self?.evaluateConfigSafety(values) }
+      onBoardConfigValues: { [weak self] values, origin in self?.onBoardConfigValues(values, origin: origin) }
     )
   }
 
@@ -1967,15 +2035,17 @@ internal final class BoardSessionController: VescGattListener {
       appBoardId: config?.appBoardId,
       transport: config?.transport ?? .direct,
       fwVersion: nil,
+      refloatVersion: config?.refloatVersion,
       refloatBaseVersion: config?.refloatBaseVersion,
       linkIntegrity: linkIntegrity,
+      boardConfigValues: nil,
       isPollingActive: { false },
       stopPolling: {},
       startPolling: {},
       sendPayload: { _ in false },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in nil },
-      evaluateConfigSafety: { _ in }
+      onBoardConfigValues: { _, _ in }
     )
   }
 

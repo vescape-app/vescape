@@ -345,6 +345,7 @@ class ConfigRWFsmTest {
             wasPolling = wasPolling,
             appBoardId = "board-1",
             fwVersion = "fw-test",
+            refloatBaseVersion = "3.0",
         )
 
     private fun startWrite(canId: Int?, wasPolling: Boolean): ConfigRWEvent.StartWrite =
@@ -356,6 +357,9 @@ class ConfigRWFsmTest {
             profileFields = profileFields,
             appBoardId = "board-1",
             fwVersion = "fw-test",
+            refloatBaseVersion = "3.0",
+            refloatVersion = null,
+            writeBase = null,
         )
 
     private fun assertTimeoutScheduled(

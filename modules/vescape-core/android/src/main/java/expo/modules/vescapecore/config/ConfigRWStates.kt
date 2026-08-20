@@ -9,6 +9,8 @@ internal data class ReadContext(
     val wasPolling: Boolean,
     val appBoardId: String?,
     val fwVersion: String?,
+    /** Refloat base version of the connected board — Tune Compatibility scope (ADR 0022). */
+    val refloatBaseVersion: String? = null,
     val refloatVersion: String? = null,
 )
 
@@ -20,6 +22,8 @@ internal data class WriteContext(
     val profileFields: Map<String, Any>,
     val appBoardId: String?,
     val fwVersion: String?,
+    /** Refloat base version of the connected board — Tune Compatibility scope (ADR 0022). */
+    val refloatBaseVersion: String? = null,
     val refloatVersion: String? = null,
 )
 

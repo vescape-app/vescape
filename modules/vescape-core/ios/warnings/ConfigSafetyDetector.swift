@@ -1,16 +1,5 @@
 import Foundation
 
-/// Decoded Refloat config values the safety rules evaluate. A `nil` field means the schema did not
-/// carry it (or the raw config was too short) — the rules that need it are skipped, never guessed.
-struct ConfigSafetyValues {
-  let faultAdc1: Double?
-  let faultAdc2: Double?
-  let tiltbackLv: Double?
-  let tiltbackHv: Double?
-  let tiltbackDuty: Double?
-  let movingFaultDisabled: Bool?
-}
-
 /// One config-safety finding to report through the Board Warning registry.
 struct ConfigSafetyFinding {
   let kind: BoardWarningKind
@@ -65,50 +54,60 @@ enum ConfigSafetyDetector {
     return major > perCellFwMajor || (major == perCellFwMajor && minor >= perCellFwMinor)
   }
 
-  static func evaluate(_ values: ConfigSafetyValues, seriesCount: Int?, perCell: Bool?) -> ConfigSafetyReport {
+  /// Schema field ids the rules read off the Board Config Values map. A field absent from the map
+  /// (missing from the schema, truncated, or unparseable) skips its rule.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/warnings/ConfigSafetyDetector.kt
+  static let faultAdc1Id = "fault_adc1"
+  static let faultAdc2Id = "fault_adc2"
+  static let tiltbackLvId = "tiltback_lv"
+  static let tiltbackHvId = "tiltback_hv"
+  static let tiltbackDutyId = "tiltback_duty"
+  static let movingFaultDisabledId = "fault_moving_fault_disabled"
+
+  static func evaluate(_ values: BoardConfigValues, seriesCount: Int?, perCell: Bool?) -> ConfigSafetyReport {
     var findings: [ConfigSafetyFinding] = []
     var clean: [BoardWarningKind] = []
 
     // footpad-disabled (critical): both ADC switch voltages 0 disables the footpad switch entirely.
-    if let adc1 = values.faultAdc1, let adc2 = values.faultAdc2 {
+    if let adc1 = values.number(faultAdc1Id), let adc2 = values.number(faultAdc2Id) {
       if adc1 == 0.0, adc2 == 0.0 {
-        findings.append(finding(.footpadDisabled, .critical, "fault_adc1/fault_adc2", 0.0, 0.0))
+        findings.append(finding(.footpadDisabled, .critical, "\(faultAdc1Id)/\(faultAdc2Id)", 0.0, 0.0))
       } else {
         clean.append(.footpadDisabled)
       }
     }
 
     // lv-pushback-low (critical): LV pushback below the safe minimum, in the firmware's voltage units.
-    if let lv = values.tiltbackLv, let bound = voltageBound(lv, cellLvMinV, perCell, seriesCount) {
+    if let lv = values.number(tiltbackLvId), let bound = voltageBound(lv, cellLvMinV, perCell, seriesCount) {
       if lv < bound {
-        findings.append(finding(.lvPushbackLow, .critical, "tiltback_lv", lv, bound))
+        findings.append(finding(.lvPushbackLow, .critical, tiltbackLvId, lv, bound))
       } else {
         clean.append(.lvPushbackLow)
       }
     }
 
     // hv-pushback-high (warn): HV pushback above the safe maximum, in the firmware's voltage units.
-    if let hv = values.tiltbackHv, let bound = voltageBound(hv, cellHvMaxV, perCell, seriesCount) {
+    if let hv = values.number(tiltbackHvId), let bound = voltageBound(hv, cellHvMaxV, perCell, seriesCount) {
       if hv > bound {
-        findings.append(finding(.hvPushbackHigh, .warn, "tiltback_hv", hv, bound))
+        findings.append(finding(.hvPushbackHigh, .warn, tiltbackHvId, hv, bound))
       } else {
         clean.append(.hvPushbackHigh)
       }
     }
 
     // duty-pushback-high (warn): duty pushback threshold set dangerously close to the duty limit.
-    if let duty = values.tiltbackDuty {
+    if let duty = values.number(tiltbackDutyId) {
       if duty > dutyMax {
-        findings.append(finding(.dutyPushbackHigh, .warn, "tiltback_duty", duty, dutyMax))
+        findings.append(finding(.dutyPushbackHigh, .warn, tiltbackDutyId, duty, dutyMax))
       } else {
         clean.append(.dutyPushbackHigh)
       }
     }
 
     // moving-fault-disabled (warn): moving faults disabled weakens fault protection while riding.
-    if let movingFault = values.movingFaultDisabled {
+    if let movingFault = values.bool(movingFaultDisabledId) {
       if movingFault {
-        findings.append(finding(.movingFaultDisabled, .warn, "fault_moving_fault_disabled", 1.0, 0.0))
+        findings.append(finding(.movingFaultDisabled, .warn, movingFaultDisabledId, 1.0, 0.0))
       } else {
         clean.append(.movingFaultDisabled)
       }

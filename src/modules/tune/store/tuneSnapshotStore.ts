@@ -10,6 +10,7 @@ import {
   firmwareCommandBlockedMessage,
 } from '@/modules/board/lib/boardLinkIntegrity'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
 
 type TuneSnapshotStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -42,11 +43,23 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
     }
 
     const readGeneration = ++generation
-    set({ status: 'loading', snapshot: null, error: null })
+    // Deliberately keeps whatever is already displayed: a re-read of the same config must not blink
+    // the screen back to a loading state, and a prefill has to survive the read starting.
+    set({ status: 'loading', error: null })
     readInFlight = nativeGetRefloatConfigSnapshot()
       .then((snapshot) => {
         if (readGeneration === generation) {
-          set({ status: 'ready', snapshot, error: null })
+          set((state) => ({
+            status: 'ready',
+            // Same board and same raw config as what is on screen -> keep the object, so nothing
+            // downstream recomputes. Anything else is a plain refresh, not a diff prompt.
+            snapshot:
+              state.snapshot?.boardId === snapshot.boardId &&
+              state.snapshot?.rawConfigHash === snapshot.rawConfigHash
+                ? state.snapshot
+                : snapshot,
+            error: null,
+          }))
         }
         return snapshot
       })
@@ -85,3 +98,15 @@ export const useTuneSnapshotStore = create<TuneSnapshotState & TuneSnapshotActio
     set({ status: 'idle', snapshot: null, error: null })
   },
 }))
+
+/**
+ * Tie the Tune Snapshot to the Board Session it was read in (ADR 0035): native empties the Board
+ * Config Values mirror on disconnect, board switch and `mismatched`, and a snapshot from a dead
+ * session must not outlive it — the Tune screen is often unmounted when that happens, so the screen
+ * cannot be the one to notice. Call once at app root; returns an unsubscribe.
+ */
+export function startTuneSnapshotSessionSync(): () => void {
+  return useBoardConfigValuesStore.subscribe((state, previous) => {
+    if (previous.values && !state.values) useTuneSnapshotStore.getState().clear()
+  })
+}

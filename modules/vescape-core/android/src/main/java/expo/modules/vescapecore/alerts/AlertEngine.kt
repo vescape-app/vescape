@@ -191,6 +191,9 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
     // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `AlertEngine`
     private val lastFiredAt = HashMap<String, Long>()
     private val armedState = HashMap<String, Boolean>()
+    private var configValues: Map<String, Any> = emptyMap()
+
+    fun updateBoardConfigValues(values: Map<String, Any>) { configValues = values }
 
     /** Forget every latch and repeat clock. Called when a new Board Session starts. */
     fun resetAlertState() {
@@ -227,17 +230,19 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         val fired = mutableListOf<FiredAlert>()
 
         for (rule in rules) {
+            val effective = effectiveThresholds(rule) ?: continue
             val value = valueFor(rule.controlId) ?: continue
             val compareValue = if (rule.controlId == "battery" && batteryPercent != null) batteryPercent else value
             val aboveDir = alertDirectionIsAbove(rule.controlId)
-            val triggered = if (aboveDir) compareValue >= rule.threshold else compareValue <= rule.threshold
+            val triggered = if (aboveDir) compareValue >= effective.first else compareValue <= effective.first
 
-            if (isRangeRule(rule, aboveDir)) {
+            if (effective.second != null && if (aboveDir) effective.second!! > effective.first else effective.second!! < effective.first) {
                 if (!triggered) continue
                 fired.add(rule.toFiredAlert(
                     value = value,
-                    rangeDepth = alertRangeDepth(compareValue, rule.threshold, rule.thresholdMax, aboveDir),
+                    rangeDepth = alertRangeDepth(compareValue, effective.first, effective.second, aboveDir),
                     now = now,
+                    effective = effective,
                 ))
                 continue
             }
@@ -246,7 +251,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
             // travels back past the threshold by this metric's re-arm margin.
             val armed = armedState[rule.id] ?: true
             if (!triggered) {
-                if (!armed && hasRearmed(compareValue, rule, aboveDir)) {
+                if (!armed && hasRearmed(compareValue, rule, effective.first, aboveDir)) {
                     armedState[rule.id] = true
                     lastFiredAt.remove(rule.id)
                 }
@@ -258,7 +263,7 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
             }
             armedState[rule.id] = false
             lastFiredAt[rule.id] = now
-            fired.add(rule.toFiredAlert(value = value, rangeDepth = null, now = now))
+            fired.add(rule.toFiredAlert(value = value, rangeDepth = null, now = now, effective = effective))
         }
 
         return coalesceByControl(
@@ -287,22 +292,33 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
         }
     }
 
-    private fun AlertRuleEntity.toFiredAlert(value: Double, rangeDepth: Double?, now: Long) = FiredAlert(
+    private fun AlertRuleEntity.toFiredAlert(value: Double, rangeDepth: Double?, now: Long, effective: Pair<Double, Double?> = threshold to thresholdMax) = FiredAlert(
         ruleId = id,
         controlId = controlId,
         value = value,
-        threshold = threshold,
-        thresholdMax = thresholdMax,
+        threshold = effective.first,
+        thresholdMax = effective.second,
         soundType = soundType,
         rangeDepth = rangeDepth,
         beepCount = beepCount,
         firedAt = now,
     )
 
-    /** True once a fired rule's metric has travelled back past its threshold by the re-arm margin. */
-    private fun hasRearmed(compareValue: Double, rule: AlertRuleEntity, aboveDir: Boolean): Boolean {
-        val margin = alertRearmMargin(rule.controlId, rule.threshold)
-        return if (aboveDir) compareValue < rule.threshold - margin else compareValue > rule.threshold + margin
+    private fun effectiveThresholds(rule: AlertRuleEntity): Pair<Double, Double?>? {
+        if (rule.thresholdKind != "config-relative") return rule.threshold to rule.thresholdMax
+        val base = (configValues[rule.configFieldId] as? Number)?.toDouble() ?: return null
+        if (!base.isFinite() || base <= 0.0 || base >= 1.0) return null
+        val percent = base * 100.0
+        return (percent + (rule.thresholdOffset ?: return null)) to rule.thresholdMaxOffset?.let { percent + it }
+    }
+
+    /**
+     * True once a fired rule's metric has travelled back past its effective threshold by the re-arm margin.
+     * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `hasRearmed`
+     */
+    private fun hasRearmed(compareValue: Double, rule: AlertRuleEntity, effectiveThreshold: Double, aboveDir: Boolean): Boolean {
+        val margin = alertRearmMargin(rule.controlId, effectiveThreshold)
+        return if (aboveDir) compareValue < effectiveThreshold - margin else compareValue > effectiveThreshold + margin
     }
 
     private fun alertRearmMargin(controlId: String, threshold: Double): Double =

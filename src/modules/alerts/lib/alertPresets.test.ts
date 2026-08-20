@@ -195,3 +195,23 @@ test('custom survives a selection round-trip', () => {
     speed: 'off',
   })
 })
+
+test('matched duty persists offsets while preview resolves fraction to percentage points', () => {
+  const rules = generateAlertPresetRules('duty', 'safe', {
+    matchDutyBoardConfig: true,
+    tiltbackDuty: 0.82,
+  })
+  expect(rules[0]).toMatchObject({
+    threshold: 67,
+    thresholdMax: 82,
+    thresholdRule: {
+      kind: 'config-relative',
+      fieldId: 'tiltback_duty',
+      thresholdOffset: -15,
+      thresholdMaxOffset: 0,
+    },
+  })
+  expect(
+    generateAlertPresetRules('duty', 'normal', { matchDutyBoardConfig: true, tiltbackDuty: 1 })[0],
+  ).toMatchObject({ threshold: 0, thresholdMax: null })
+})

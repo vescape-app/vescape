@@ -40,6 +40,8 @@ export interface MetricAlertsController {
   rules: DraftAlertRule[]
   topSpeedKmh: number
   hasBatteryConfig: boolean
+  matchDutyBoardConfig: boolean
+  setMatchDutyBoardConfig(enabled: boolean): void
   setLevel(level: AlertPresetLevel): void
   /** Copy the current level's rules into {@link rules} and switch to `custom`. */
   customize(): void
@@ -78,6 +80,8 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       rules,
       topSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      matchDutyBoardConfig: board.matchDutyBoardConfig === true,
+      setMatchDutyBoardConfig: (enabled) => void presets().setMatchDutyBoardConfig(enabled),
       setLevel: (next) => {
         if (metric) void presets().setLevel(metric, next)
       },
@@ -129,6 +133,8 @@ export function useDraftMetricAlerts(
       rules: setup.rules,
       topSpeedKmh,
       hasBatteryConfig,
+      matchDutyBoardConfig: false,
+      setMatchDutyBoardConfig: () => {},
       setLevel: (level) => onChange({ level, rules: setup.rules }),
       customize: () =>
         onChange({

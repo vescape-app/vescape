@@ -13,6 +13,8 @@ interface AlertTestRuleSource {
   customRules: DraftAlertRule[]
   boardTopSpeedKmh: number
   hasBatteryConfig: boolean
+  matchDutyBoardConfig?: boolean
+  tiltbackDuty?: number | null
 }
 
 interface MetricAlertRuleSnapshotSource {
@@ -21,6 +23,8 @@ interface MetricAlertRuleSnapshotSource {
   rules: DraftAlertRule[]
   boardTopSpeedKmh: number
   hasBatteryConfig: boolean
+  matchDutyBoardConfig?: boolean
+  tiltbackDuty?: number | null
 }
 
 /** Cubic ease-out: reach the alert range early, then decelerate without extending the sweep. */
@@ -51,6 +55,8 @@ export function buildAlertTestRules({
   customRules,
   boardTopSpeedKmh,
   hasBatteryConfig,
+  matchDutyBoardConfig,
+  tiltbackDuty,
 }: AlertTestRuleSource): AlertTestRule[] {
   if (level === 'custom') {
     return customRules.filter((rule) => rule.enabled).map(toTestRule)
@@ -59,6 +65,8 @@ export function buildAlertTestRules({
   const presetRules = generateAlertPresetRules(metric, level, {
     boardTopSpeedKmh,
     hasBatteryConfig,
+    matchDutyBoardConfig,
+    tiltbackDuty,
   }).map((rule, index) => ({
     id: `alert-test:preset:${metric}:${index}`,
     ...rule,
@@ -79,6 +87,8 @@ export function buildMetricAlertRuleSnapshot({
   rules,
   boardTopSpeedKmh,
   hasBatteryConfig,
+  matchDutyBoardConfig,
+  tiltbackDuty,
 }: MetricAlertRuleSnapshotSource): AlertTestRule[] {
   if (!metric) return rules.filter((rule) => rule.enabled).map(toTestRule)
   return buildAlertTestRules({
@@ -87,6 +97,8 @@ export function buildMetricAlertRuleSnapshot({
     customRules: rules,
     boardTopSpeedKmh,
     hasBatteryConfig,
+    matchDutyBoardConfig,
+    tiltbackDuty,
   })
 }
 

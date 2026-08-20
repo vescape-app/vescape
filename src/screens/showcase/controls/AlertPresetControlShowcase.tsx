@@ -47,6 +47,7 @@ export function AlertPresetControlShowcase() {
   const [custom, setCustom] = useState(false)
   const [editable, setEditable] = useState(true)
   const [disabled, setDisabled] = useState(false)
+  const [matchDuty, setMatchDuty] = useState(false)
   const liveValue = useSharedValue<number | null>(null)
   const testRules = useMemo(
     () =>
@@ -55,6 +56,8 @@ export function AlertPresetControlShowcase() {
         level,
         boardTopSpeedKmh: 50,
         hasBatteryConfig: true,
+        matchDutyBoardConfig: matchDuty,
+        tiltbackDuty: 0.82,
         customRules:
           level === 'custom'
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
@@ -69,7 +72,7 @@ export function AlertPresetControlShowcase() {
               }))
             : [],
       }),
-    [level, metric],
+    [level, matchDuty, metric],
   )
 
   useEffect(() => {
@@ -101,6 +104,7 @@ export function AlertPresetControlShowcase() {
           <ToggleRow label="custom markers" value={custom} onToggle={setCustom} />
           <ToggleRow label="editable" value={editable} onToggle={setEditable} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
+          <ToggleRow label="match VESC duty" value={matchDuty} onToggle={setMatchDuty} />
         </>
       }
     >
@@ -111,6 +115,9 @@ export function AlertPresetControlShowcase() {
         liveValue={live ? liveValue : undefined}
         boardTopSpeedKmh={50}
         hasBatteryConfig
+        matchDutyBoardConfig={matchDuty}
+        onMatchDutyBoardConfigChange={setMatchDuty}
+        tiltbackDuty={0.82}
         customAlerts={
           custom
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((a) => ({ ...a, thresholdMax: null }))

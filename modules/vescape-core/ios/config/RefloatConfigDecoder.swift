@@ -62,34 +62,49 @@ enum RefloatConfigDecoder {
     )
   }
 
-  /// Decode just the fields the config-safety rules need. Each is `nil` when the schema lacks it or
-  /// the raw config is too short — the caller skips the rules that depend on a missing value.
-  static func decodeSafetyValues(schema: RefloatConfigSchema, rawConfig: [UInt8]) -> ConfigSafetyValues {
-    let byId = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.id, $0) })
-    func fieldOrNull(_ id: String) -> RefloatConfigSchemaField? {
-      guard let field = byId[id], rawConfig.count >= field.offset + field.type.byteSize else { return nil }
-      return field
+  /// Decode **every** field the schema describes, each in its real type — a bool field stays a
+  /// `Bool`, never `1.0` / `0.0`.
+  ///
+  /// A field is left out of the map when the schema places it past the end of the raw config
+  /// (`offset + byteSize` precondition), when it fails to decode (e.g. a scaled type with no scale),
+  /// or when it decodes to a non-finite number. Non-finite is deliberately treated as missing rather
+  /// than as a value: a reader skips an absent field, whereas a NaN would compare false against every
+  /// bound and wrongly count as a clean evaluation that clears a valid warning. One bad field is
+  /// contained to itself and never discards the rest of the map.
+  static func decodeFieldMap(schema: RefloatConfigSchema, rawConfig: [UInt8]) -> [String: Any] {
+    var values: [String: Any] = [:]
+    for field in schema.fields {
+      guard rawConfig.count >= field.offset + field.type.byteSize else { continue }
+      guard let value = try? readValue(rawConfig, field) else { continue }
+      if let double = value as? Double {
+        if double.isFinite { values[field.id] = double }
+        continue
+      }
+      values[field.id] = value
     }
-    func number(_ id: String) -> Double? {
-      guard let field = fieldOrNull(id), let value = try? readValue(rawConfig, field) else { return nil }
-      // Treat a non-finite decode (NaN/Infinity from corrupt bytes) as missing, not as a real value:
-      // the safety rules skip a nil field, whereas a NaN would compare false against every bound and
-      // wrongly count as a clean evaluation that clears a valid warning.
-      if let d = value as? Double { return d.isFinite ? d : nil }
-      if let b = value as? Bool { return b ? 1.0 : 0.0 }
-      return nil
-    }
-    func boolean(_ id: String) -> Bool? {
-      guard let field = fieldOrNull(id), let value = try? readValue(rawConfig, field) else { return nil }
-      return value as? Bool
-    }
-    return ConfigSafetyValues(
-      faultAdc1: number("fault_adc1"),
-      faultAdc2: number("fault_adc2"),
-      tiltbackLv: number("tiltback_lv"),
-      tiltbackHv: number("tiltback_hv"),
-      tiltbackDuty: number("tiltback_duty"),
-      movingFaultDisabled: boolean("fault_moving_fault_disabled")
+    return values
+  }
+
+  /// Decode the whole schema into the Board Session's Board Config Values, retaining the bytes,
+  /// package signature, and schema as the write base. Always `fresh` — it just came off the board.
+  static func decodeBoardConfigValues(
+    schema: RefloatConfigSchema,
+    configBytes: RefloatConfigBytes,
+    boardId: String?,
+    refloatBaseVersion: String?,
+    capturedAt: Int64
+  ) -> BoardConfigValues {
+    BoardConfigValues(
+      boardId: boardId,
+      refloatBaseVersion: refloatBaseVersion,
+      capturedAtMs: capturedAt,
+      freshness: .fresh,
+      values: decodeFieldMap(schema: schema, rawConfig: configBytes.config),
+      writeBase: BoardConfigWriteBase(
+        schema: schema,
+        rawConfig: configBytes.config,
+        packageSignature: configBytes.packageSignature
+      )
     )
   }
 

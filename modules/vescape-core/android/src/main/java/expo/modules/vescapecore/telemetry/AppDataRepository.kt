@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
+import expo.modules.vescapecore.config.BoardConfigValues
+import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -203,7 +205,74 @@ class AppDataRepository private constructor(private val context: Context) {
 
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
     dao.deleteBoardWithSettings(id)
+    dao.deleteBoardConfigValues(id)
+    dao.deleteBoardConfigChangeNotice(id)
     notifyDataChanged(AppDataScope.BOARDS)
+  }
+
+  /**
+   * Last Known Board Config Values for this Board + Refloat base version — displayable, never a
+   * write base (ADR 0035). Null when none exist for that scope.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `load`
+   */
+  internal suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValues? =
+    withContext(Dispatchers.IO) {
+      if (boardId.isBlank() || refloatBaseVersion.isBlank()) return@withContext null
+      val row = dao.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@withContext null
+      BoardConfigValues.lastKnown(
+        boardId = boardId,
+        refloatBaseVersion = refloatBaseVersion,
+        capturedAtMs = row.capturedAt,
+        valuesJson = row.valuesJson,
+      )
+    }
+
+  /**
+   * Persist values just read from the board. Values need both Board and Tune Compatibility scope.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `save`
+   */
+  internal suspend fun saveBoardConfigValues(values: BoardConfigValues): Unit = withContext(Dispatchers.IO) {
+    val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
+    val refloatBaseVersion = values.refloatBaseVersion?.takeIf { it.isNotBlank() } ?: return@withContext
+    dao.upsertBoardConfigValues(
+      BoardConfigValuesEntity(
+        boardId = boardId,
+        refloatBaseVersion = refloatBaseVersion,
+        valuesJson = values.valuesJson(),
+        capturedAt = values.capturedAtMs,
+      ),
+    )
+  }
+
+  internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
+    val boardId = values.boardId ?: return@withContext null
+    val base = values.refloatBaseVersion ?: return@withContext null
+    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, values.valuesJson(), values.capturedAtMs)) { old ->
+      val oldValues = old?.let { BoardConfigValues.lastKnown(boardId, base, it.capturedAt, it.valuesJson).values } ?: return@replaceBaselineAndNotice null
+      val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, values.writeBase?.schema)
+      diffs.takeIf { it.isNotEmpty() }?.let { BoardConfigChangeNoticeEntity(boardId, values.capturedAtMs, BoardConfigChangeNotice(boardId, values.capturedAtMs, it).diffsJson()) }
+    }
+    row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+  }
+
+  internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
+    dao.getBoardConfigChangeNotice(boardId)?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+  }
+
+  suspend fun dismissBoardConfigChangeNotice(boardId: String) = withContext(Dispatchers.IO) {
+    dao.deleteBoardConfigChangeNotice(boardId)
+    CoreForegroundService.emitEvent?.invoke("onBoardConfigChangeNotice", mapOf("notice" to null))
+  }
+
+  /**
+   * Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
+   * behind the link is not the one those offsets were decoded against.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `clear`
+   */
+  internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
+    if (boardId.isBlank()) return@withContext
+    dao.deleteBoardConfigValues(boardId)
+    dao.deleteBoardConfigChangeNotice(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
@@ -712,7 +781,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 }
 
-private const val BOARD_LINK_VERSION = 3
+private const val BOARD_LINK_VERSION = 4
 private val boardLinkStringIdentityKeys = listOf(
   "vescFirmwareVersion",
   "refloatVersion",
@@ -729,7 +798,10 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     buildMap<String, Any?> {
       put("bleId", bleId)
       put("transport", transport)
-      put("linkVersion", (values["linkVersion"] as? Int) ?: BOARD_LINK_VERSION)
+      // Only the current schema version survives the read. A missing or older stored version
+      // reads as absent so the link registers as legacy and re-probes, instead of being laundered
+      // into a current-looking link by a default.
+      (values["linkVersion"] as? Int)?.takeIf { it == BOARD_LINK_VERSION }?.let { put("linkVersion", it) }
       (values["hasBms"] as? Boolean)?.let { put("hasBms", it) }
       boardLinkStringIdentityKeys.forEach { key ->
         (values[key] as? String)?.let { put(key, it) }
@@ -752,6 +824,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
     "alertPreset" to values["alertPreset"],
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
+    "matchDutyBoardConfig" to (values["matchDutyBoardConfig"] ?: false),
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
   )
@@ -826,6 +899,10 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "controlId" to controlId,
   "threshold" to threshold,
   "thresholdMax" to thresholdMax,
+  "thresholdRule" to if (thresholdKind == "config-relative") mapOf(
+    "kind" to thresholdKind, "fieldId" to configFieldId,
+    "thresholdOffset" to thresholdOffset, "thresholdMaxOffset" to thresholdMaxOffset,
+  ) else mapOf("kind" to "fixed"),
   "enabled" to enabled,
   "soundType" to soundType,
   "createdAt" to createdAt,
@@ -1010,6 +1087,7 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
   putOrDelete("alertPreset", normalizeAlertPreset(get("alertPreset")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
+  putOrDelete("matchDutyBoardConfig", get("matchDutyBoardConfig") as? Boolean)
   // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
@@ -1042,6 +1120,7 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
     "alertPreset" -> normalizeAlertPreset(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
+    "matchDutyBoardConfig" -> (raw as? Boolean)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
@@ -1141,6 +1220,10 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   controlId = getString("controlId"),
   threshold = getDouble("threshold"),
   thresholdMax = getDoubleOrNull("thresholdMax"),
+  thresholdKind = ((get("thresholdRule") as? Map<*, *>)?.get("kind") as? String) ?: "fixed",
+  configFieldId = (get("thresholdRule") as? Map<*, *>)?.get("fieldId") as? String,
+  thresholdOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdOffset") as? Number)?.toDouble(),
+  thresholdMaxOffset = ((get("thresholdRule") as? Map<*, *>)?.get("thresholdMaxOffset") as? Number)?.toDouble(),
   enabled = getBoolean("enabled"),
   soundType = get("soundType") as? String ?: "default",
   createdAt = getLong("createdAt"),

@@ -3,7 +3,7 @@ import Foundation
 /// Pure Board Link persistence shape shared by GRDB-backed app storage and SwiftPM tests.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `toMap` / `toBoardSettingEntities`
 internal enum BoardLinkPersistence {
-  static let version = 3
+  static let version = 4
 
   private static let stringIdentityKeys = [
     "vescFirmwareVersion",
@@ -26,7 +26,10 @@ internal enum BoardLinkPersistence {
   static func compose(bleId: String?, storedTransport: String?, values: [String: Any]) -> [String: Any?]? {
     guard let bleId, let transport = BoardTransport.decode(storedTransport)?.bridgeValue else { return nil }
     var built: [String: Any?] = ["bleId": bleId, "transport": transport]
-    built["linkVersion"] = values["linkVersion"] as? Int ?? version
+    // Only the current schema version survives the read. A missing or older stored version
+    // reads as absent so the link registers as legacy and re-probes, instead of being laundered
+    // into a current-looking link by a default.
+    if let stored = values["linkVersion"] as? Int, stored == version { built["linkVersion"] = version }
     if let hasBms = values["hasBms"] as? Bool { built["hasBms"] = hasBms }
     for key in stringIdentityKeys {
       if let value = values[key] as? String { built[key] = value }

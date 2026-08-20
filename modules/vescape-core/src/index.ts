@@ -119,7 +119,9 @@ export interface BoardProbeResult {
  * `connecting` → `handshake` (service discovery) → `pinging` (CAN scan) → per
  * candidate transport `probing` (waiting for telemetry proof) → `bms` (transport
  * confirmed, waiting for a BMS answer) → `identity` (BMS answered, waiting for
- * the Refloat info reply). Steps whose reply never comes are skipped — the probe
+ * the Refloat info reply) → `session` (opening a real Board Session on the pick,
+ * the same path rides use) → `config` (full schema/config read over that
+ * session). Steps whose reply never comes are skipped — the probe
  * window closing resolves them. With several responding CAN ids the sequence
  * revisits `probing` for the next candidate. Final facts are still read from the
  * returned {@link BoardCandidate}s; detail stays in Diagnostic Events.
@@ -135,6 +137,8 @@ export type BoardProbeStep =
   | 'probing'
   | 'bms'
   | 'identity'
+  | 'session'
+  | 'config'
   | 'completed'
   | 'failed'
 
@@ -162,7 +166,7 @@ export type LinkIntegrity = 'unknown' | 'checking' | 'trusted' | 'outdated' | 'm
  */
 export interface BoardLink {
   /** Durable Board Link schema version. Missing/lower versions are normalized as legacy links. */
-  linkVersion?: 3
+  linkVersion?: 4
   bleId: string
   transport: BoardTransport
   /**
@@ -202,6 +206,8 @@ export interface Board {
    * persists this bag. Absent ⇒ all metrics Off (no preset rules until the rider touches setup).
    */
   alertPreset?: Record<string, unknown> | null
+  /** Duty presets follow VESC tiltback_duty when true. Per-Board, default false. */
+  matchDutyBoardConfig?: boolean
   /**
    * One-time gate for the guided Alert Preset step in the add-board wizard, per Board. False until
    * the rider completes that step for this Board. The durable setup home is the Alerts settings
@@ -281,6 +287,15 @@ export interface AlertRule {
   controlId: string
   threshold: number
   thresholdMax: number | null
+  /** Durable threshold source. Missing on legacy rows means fixed. */
+  thresholdRule?:
+    | { kind: 'fixed' }
+    | {
+        kind: 'config-relative'
+        fieldId: string
+        thresholdOffset: number
+        thresholdMaxOffset: number | null
+      }
   enabled: boolean
   soundType: AlertSoundType
   createdAt: number
@@ -1410,6 +1425,66 @@ export interface BoardWarningsEvent {
 }
 
 /**
+ * Whether a Board Config Values object was read from the board in the current Board Session
+ * (`fresh`) or restored as Last Known values on connect (`last-known`). Both render the same;
+ * the distinction only gates config writes (ADR 0035).
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigFreshness`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigFreshness`
+ */
+export type BoardConfigFreshness = 'fresh' | 'last-known'
+
+/**
+ * This Board Session's Refloat configuration as JS sees it: the decoded field map plus how fresh it
+ * is. The raw config bytes, package signature and parsed schema stay native — they are a write base,
+ * and JS never writes config from a decoded map (ADR 0035).
+ *
+ * A field the schema does not carry, or that failed to decode, is simply **absent** from `values`,
+ * so a reader never has to tell "missing" from "unparseable".
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+ */
+export interface BoardConfigValues {
+  boardId: string | null
+  /** Refloat base version the values were decoded against — Tune Compatibility scope (ADR 0022). */
+  refloatBaseVersion: string | null
+  capturedAtMs: number
+  freshness: BoardConfigFreshness
+  /** Decoded fields keyed by schema field id, each in its real type. */
+  values: Record<string, number | boolean>
+}
+
+/**
+ * Board Config Values changed. Nullable so clearing is expressible: fires when the post-trust read
+ * lands, after a config write, when Last Known values are restored, and with `values: null` on
+ * disconnect, board switch and `mismatched` link integrity.
+ *
+ * Deliberately not part of Live State — it changes once per session and is far too wide for an event
+ * that recomposes on every phase, GPS and scan change.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigValues`
+ */
+export interface BoardConfigValuesEvent {
+  values: BoardConfigValues | null
+}
+
+/** @parity native BoardConfigChangeNotice peers. */
+export interface BoardConfigChangeDiff {
+  fieldId: string
+  label: string
+  unit: string | null
+  oldValue: number | boolean | null
+  newValue: number | boolean | null
+}
+export interface BoardConfigChangeNotice {
+  boardId: string
+  detectedAtMs: number
+  diffs: BoardConfigChangeDiff[]
+}
+export interface BoardConfigChangeNoticeEvent {
+  notice: BoardConfigChangeNotice | null
+}
+
+/**
  * Release Policy outcome for the installed marketing version, resolved **by the server**. Native
  * never evaluates SemVer ranges and JS never sees one — both only carry the resolved slug.
  * @parity /modules/vescape-core/ios/appstatus/AppStatus.swift `AppVersionStatus`
@@ -1737,6 +1812,9 @@ type VescapeCoreEvents = {
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
   onBoardWarnings: (event: BoardWarningsEvent) => void
+  /** Board Config Values arrived, changed, or were cleared (`values: null`). */
+  onBoardConfigValues: (event: BoardConfigValuesEvent) => void
+  onBoardConfigChangeNotice: (event: BoardConfigChangeNoticeEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
@@ -1794,6 +1872,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   selectBoard(boardId: string): Promise<void>
   stopBoard(): Promise<void>
   probeBoardLink(bleId: string, probeId: string): Promise<BoardProbeResult>
+  finalizeBoardLink(
+    probeId: string,
+    boardId: string,
+    bleId: string,
+    candidate: BoardCandidate,
+  ): Promise<BoardLink>
   cancelBoardProbe(probeId: string): void
   setDebugRecordingEnabled(enabled: boolean): void
   listDebugRecordings(): Promise<DebugRecording[]>
@@ -1858,6 +1942,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     payloadJson: string,
   ): Promise<void>
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
+  getBoardConfigValues(): Promise<BoardConfigValues | null>
+  getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
+  dismissBoardConfigChangeNotice(boardId: string): Promise<void>
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
@@ -2211,6 +2298,21 @@ export async function probeBoardLink(bleId: string, probeId: string): Promise<Bo
   return native.probeBoardLink(bleId, probeId)
 }
 
+/**
+ * Verify selected probe candidate's full config and persist Last Known values before returning v4.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardLink`
+ */
+export async function finalizeBoardLink(
+  probeId: string,
+  boardId: string,
+  bleId: string,
+  candidate: BoardCandidate,
+): Promise<BoardLink> {
+  if (E2E_ENABLED) return e2eFake.finalizeBoardLink(bleId, candidate)
+  return native.finalizeBoardLink(probeId, boardId, bleId, candidate)
+}
+
 /** Cancel an in-flight native Board Probe if it still matches the operation id. */
 export function cancelBoardProbe(probeId: string): void {
   if (E2E_ENABLED) return
@@ -2471,6 +2573,22 @@ export async function clearBoardWarning(boardId: string, kind: string): Promise<
 /** Manually clear every Board Warning for a board. Still-true conditions re-fire on next evaluation. */
 export async function clearAllBoardWarnings(boardId: string): Promise<void> {
   return native.clearAllBoardWarnings(boardId)
+}
+
+/**
+ * This Board Session's Board Config Values, or `null` when none are held (no session, read not
+ * landed, no cache, or cleared). Pull on mount; `onBoardConfigValues` carries every change after.
+ */
+export async function getBoardConfigValues(): Promise<BoardConfigValues | null> {
+  return native.getBoardConfigValues()
+}
+export async function getBoardConfigChangeNotice(
+  boardId: string,
+): Promise<BoardConfigChangeNotice | null> {
+  return native.getBoardConfigChangeNotice(boardId)
+}
+export async function dismissBoardConfigChangeNotice(boardId: string): Promise<void> {
+  return native.dismissBoardConfigChangeNotice(boardId)
 }
 
 /** Dev-only: inject a fake Board Warning to exercise the fire → persist → emit pipe without a detector. */
@@ -2891,6 +3009,17 @@ export function addBoardWarningsListener(
   cb: (event: BoardWarningsEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardWarnings', cb)
+}
+
+export function addBoardConfigValuesListener(
+  cb: (event: BoardConfigValuesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onBoardConfigValues', cb)
+}
+export function addBoardConfigChangeNoticeListener(
+  cb: (event: BoardConfigChangeNoticeEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onBoardConfigChangeNotice', cb)
 }
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {

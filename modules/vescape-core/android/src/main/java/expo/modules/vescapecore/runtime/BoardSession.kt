@@ -55,7 +55,7 @@ class BoardSession(val id: Long) {
         return linkIntegrity
     }
 
-    private var observations = LinkIdentity(linkVersion = 3)
+    private var observations = LinkIdentity(linkVersion = 4)
 
     private fun updateLinkIntegrity(
         expected: LinkIdentity,
@@ -94,7 +94,7 @@ data class LinkIdentity(
     // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
     // version strings, so it is not required here; matches/mismatches still compare it when present.
     val isComplete: Boolean
-        get() = linkVersion == 3 &&
+        get() = linkVersion == 4 &&
             hasBms != null &&
             !firmware.isNullOrBlank() &&
             !refloatVersion.isNullOrBlank()

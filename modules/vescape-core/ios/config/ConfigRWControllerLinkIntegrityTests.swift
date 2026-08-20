@@ -70,15 +70,17 @@ final class ConfigRWControllerLinkIntegrityTests: XCTestCase {
       appBoardId: "board-1",
       transport: .direct,
       fwVersion: "FW 6.05",
+      refloatVersion: "Refloat 3.0.7",
       refloatBaseVersion: "3.0.7",
       linkIntegrity: linkIntegrity,
+      boardConfigValues: nil,
       isPollingActive: { true },
       stopPolling: { self.stoppedPolling = true },
       startPolling: {},
       sendPayload: { _ in self.sentPayload = true; return true },
       captureDiagnostic: { _, _ in },
       loadProfile: { _ in self.loadedProfile = true; return nil },
-      evaluateConfigSafety: { _ in }
+      onBoardConfigValues: { _, _ in }
     )
   }
 }

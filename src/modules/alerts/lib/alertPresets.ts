@@ -49,6 +49,7 @@ export interface AlertRuleSpec {
   controlId: AlertPresetMetric
   threshold: number
   thresholdMax: number | null
+  thresholdRule?: AlertRule['thresholdRule']
   soundType: string
   /** Seconds between repeats while the metric stays past the threshold; `null` ⇒ announce once. */
   repeatEverySeconds: number | null
@@ -196,6 +197,10 @@ export interface GenerateAlertPresetRulesOptions {
   boardTopSpeedKmh?: number | null
   /** Whether the active board has a valid battery config (battery presets need one). */
   hasBatteryConfig?: boolean
+  /** Resolve Duty from VESC tiltback_duty instead of fixed preset values. */
+  matchDutyBoardConfig?: boolean
+  /** Decoded tiltback_duty fraction. Used for preview only; relation remains durable truth. */
+  tiltbackDuty?: number | null
 }
 
 function isActiveLevel(level: AlertPresetLevel): level is ActiveLevel {
@@ -238,6 +243,27 @@ export function generateAlertPresetRules(
 
   const range = config.levels[level]
   let { start, ceiling } = range
+  if (metric === 'duty' && options.matchDutyBoardConfig) {
+    const offset = level === 'safe' ? -15 : level === 'normal' ? -10 : -5
+    const base = options.tiltbackDuty
+    const valid = typeof base === 'number' && Number.isFinite(base) && base > 0 && base < 1
+    return [
+      {
+        controlId: metric,
+        threshold: valid ? roundTenth(base * 100 + offset) : 0,
+        thresholdMax: valid ? roundTenth(base * 100) : null,
+        thresholdRule: {
+          kind: 'config-relative',
+          fieldId: 'tiltback_duty',
+          thresholdOffset: offset,
+          thresholdMaxOffset: 0,
+        },
+        soundType: config.soundType,
+        repeatEverySeconds: null,
+        beepCount: ALERT_BEEP_COUNT_DEFAULT,
+      },
+    ]
+  }
   if (config.scaledByTopSpeed) {
     const topSpeed = options.boardTopSpeedKmh
     if (typeof topSpeed !== 'number' || !Number.isFinite(topSpeed) || topSpeed <= 0) return []

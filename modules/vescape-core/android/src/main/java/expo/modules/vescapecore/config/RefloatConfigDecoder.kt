@@ -1,6 +1,5 @@
 package expo.modules.vescapecore.config
 
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -58,38 +57,55 @@ internal object RefloatConfigDecoder {
   }
 
   /**
-   * Decode just the fields the config-safety rules need. Each is `null` when the schema lacks it or
-   * the raw config is too short — the caller skips the rules that depend on a missing value.
+   * Decode **every** field the schema describes, each in its real type — a bool field stays a
+   * `Boolean`, never `1.0` / `0.0`.
+   *
+   * A field is left out of the map when the schema places it past the end of the raw config
+   * (`offset + byteSize` precondition), when it fails to decode (e.g. a scaled type with no scale),
+   * or when it decodes to a non-finite number. Non-finite is deliberately treated as missing rather
+   * than as a value: a reader skips an absent field, whereas a NaN would compare false against every
+   * bound and wrongly count as a clean evaluation that clears a valid warning. One bad field is
+   * contained to itself and never discards the rest of the map.
    */
-  fun decodeSafetyValues(schema: RefloatConfigSchema, rawConfig: ByteArray): ConfigSafetyValues {
-    val byId = schema.fields.associateBy { it.id }
-    fun fieldOrNull(id: String): RefloatConfigSchemaField? =
-      byId[id]?.takeIf { rawConfig.size >= it.offset + it.type.byteSize }
-    // Treat a non-finite decode (NaN/Infinity from corrupt bytes) as missing, not as a real value:
-    // the safety rules skip a null field, whereas a NaN would compare false against every bound and
-    // wrongly count as a clean evaluation that clears a valid warning.
-    // Contain a malformed field (e.g. a scaled type with a missing scale) to that one rule instead of
-    // letting one bad decode discard every other safety value.
-    fun decodedOrNull(id: String): Any? = try {
-      fieldOrNull(id)?.let { readValue(rawConfig, it) }
-    } catch (_: Exception) {
-      null
+  fun decodeFieldMap(schema: RefloatConfigSchema, rawConfig: ByteArray): Map<String, Any> {
+    val values = mutableMapOf<String, Any>()
+    for (field in schema.fields) {
+      if (rawConfig.size < field.offset + field.type.byteSize) continue
+      val value = try {
+        readValue(rawConfig, field)
+      } catch (_: Exception) {
+        continue
+      }
+      when (value) {
+        is Double -> if (value.isFinite()) values[field.id] = value
+        else -> values[field.id] = value
+      }
     }
-    fun number(id: String): Double? = when (val v = decodedOrNull(id)) {
-      is Double -> v.takeIf { it.isFinite() }
-      is Boolean -> if (v) 1.0 else 0.0
-      else -> null
-    }
-    fun boolean(id: String): Boolean? = decodedOrNull(id) as? Boolean
-    return ConfigSafetyValues(
-      faultAdc1 = number("fault_adc1"),
-      faultAdc2 = number("fault_adc2"),
-      tiltbackLv = number("tiltback_lv"),
-      tiltbackHv = number("tiltback_hv"),
-      tiltbackDuty = number("tiltback_duty"),
-      movingFaultDisabled = boolean("fault_moving_fault_disabled"),
-    )
+    return values
   }
+
+  /**
+   * Decode the whole schema into the Board Session's Board Config Values, retaining the bytes,
+   * package signature, and schema as the write base. Always fresh — it just came off the board.
+   */
+  fun decodeBoardConfigValues(
+    schema: RefloatConfigSchema,
+    configBytes: RefloatConfigBytes,
+    boardId: String?,
+    refloatBaseVersion: String?,
+    capturedAt: Long,
+  ): BoardConfigValues = BoardConfigValues(
+    boardId = boardId,
+    refloatBaseVersion = refloatBaseVersion,
+    capturedAtMs = capturedAt,
+    freshness = BoardConfigFreshness.FRESH,
+    values = decodeFieldMap(schema, configBytes.config),
+    writeBase = BoardConfigWriteBase(
+      schema = schema,
+      rawConfig = configBytes.config,
+      packageSignature = configBytes.packageSignature,
+    ),
+  )
 
   private fun readValue(bytes: ByteArray, field: RefloatConfigSchemaField): Any {
     val view = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)

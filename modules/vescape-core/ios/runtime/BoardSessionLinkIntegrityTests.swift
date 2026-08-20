@@ -3,7 +3,7 @@ import XCTest
 
 final class BoardSessionLinkIntegrityTests: XCTestCase {
   private let complete = LinkIdentity(
-    linkVersion: 3,
+    linkVersion: 4,
     hasBms: true,
     firmware: "FW 6.05",
     refloatVersion: "Refloat 3.0.7",
@@ -30,6 +30,13 @@ final class BoardSessionLinkIntegrityTests: XCTestCase {
     XCTAssertEqual(.outdated, session.markOutdatedIfIncomplete(expected: legacy))
     XCTAssertEqual(.outdated, session.markOutdatedIfIncomplete(expected: LinkIdentity(
       linkVersion: 3,
+      hasBms: true,
+      firmware: "FW 6.05",
+      refloatVersion: "Refloat 3.0.7",
+      refloatBaseVersion: "3.0.7"
+    )))
+    XCTAssertEqual(.outdated, session.markOutdatedIfIncomplete(expected: LinkIdentity(
+      linkVersion: 4,
       hasBms: nil,
       firmware: "FW 6.05",
       refloatVersion: "Refloat 3.0.7",
@@ -56,7 +63,7 @@ final class BoardSessionLinkIntegrityTests: XCTestCase {
 
   func testExpectedBmsMissingMismatchesButFalseDoesNotNeedBms() {
     let withoutBms = LinkIdentity(
-      linkVersion: 3,
+      linkVersion: 4,
       hasBms: false,
       firmware: "FW 6.05",
       refloatVersion: "Refloat 3.0.7",

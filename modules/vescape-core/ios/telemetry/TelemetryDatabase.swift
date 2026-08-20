@@ -519,6 +519,24 @@ enum TelemetryDatabase {
       }
     }
 
+    // Last Known Board Config Values: latest decoded Refloat config per Board + base version,
+    // restored as `lastKnown` on connect (#393).
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
+    migrator.registerMigration("v33_board_config_values") { db in
+      try BoardConfigStore.createTables(db)
+    }
+
+    migrator.registerMigration("v34_board_config_change_notices") { db in
+      try db.execute(sql: "CREATE TABLE IF NOT EXISTS board_config_change_notices (board_id TEXT NOT NULL PRIMARY KEY, detected_at INTEGER NOT NULL, diffs_json TEXT NOT NULL)")
+    }
+    migrator.registerMigration("v35_alert_config_relative") { db in
+      let columns = try db.columns(in: "alerts").map(\.name)
+      if !columns.contains("threshold_kind") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'") }
+      if !columns.contains("config_field_id") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN config_field_id TEXT") }
+      if !columns.contains("threshold_offset") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_offset REAL") }
+      if !columns.contains("threshold_max_offset") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_max_offset REAL") }
+    }
+
     return migrator
   }
 }

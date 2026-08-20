@@ -10,6 +10,7 @@ internal sealed class ConfigRWEvent {
         val wasPolling: Boolean,
         val appBoardId: String?,
         val fwVersion: String?,
+        val refloatBaseVersion: String?,
     ) : ConfigRWEvent()
 
     data class StartWrite(
@@ -20,6 +21,14 @@ internal sealed class ConfigRWEvent {
         val profileFields: Map<String, Any>,
         val appBoardId: String?,
         val fwVersion: String?,
+        val refloatBaseVersion: String?,
+        /** Refloat version the trusted Board Link observed; seeds the snapshot this write returns. */
+        val refloatVersion: String?,
+        /**
+         * The session's fresh write base, when it holds one. Present means the write patches these
+         * retained bytes directly instead of reading the board first (ADR 0035).
+         */
+        val writeBase: BoardConfigWriteBase?,
     ) : ConfigRWEvent()
 
     data class XmlPayloadReceived(val payload: ByteArray) : ConfigRWEvent()

@@ -25,20 +25,27 @@ final class ConfigReplayHarnessTests: XCTestCase {
 
   func testRealRecordingDecodesKnownSafetyValues() throws {
     let values = try XCTUnwrap(
-      ConfigReplayHarness.decodeSafetyValues(jsonl), "config read must decode from the real recording"
+      ConfigReplayHarness.decodeBoardConfigValues(jsonl), "config read must decode from the real recording"
     )
-    XCTAssertEqual(try XCTUnwrap(values.faultAdc1), 2.0, accuracy: 1e-9)
-    XCTAssertEqual(try XCTUnwrap(values.faultAdc2), 2.0, accuracy: 1e-9)
-    XCTAssertEqual(try XCTUnwrap(values.tiltbackLv), 62.0, accuracy: 1e-9)
-    XCTAssertEqual(try XCTUnwrap(values.tiltbackHv), 86.0, accuracy: 1e-9)
-    XCTAssertEqual(try XCTUnwrap(values.tiltbackDuty), 1.0, accuracy: 1e-9)
+    XCTAssertEqual(try XCTUnwrap(values.number("fault_adc1")), 2.0, accuracy: 1e-9)
+    XCTAssertEqual(try XCTUnwrap(values.number("fault_adc2")), 2.0, accuracy: 1e-9)
+    XCTAssertEqual(try XCTUnwrap(values.number("tiltback_lv")), 62.0, accuracy: 1e-9)
+    XCTAssertEqual(try XCTUnwrap(values.number("tiltback_hv")), 86.0, accuracy: 1e-9)
+    XCTAssertEqual(try XCTUnwrap(values.number("tiltback_duty")), 1.0, accuracy: 1e-9)
     // Schema does not carry the moving-fault flag -> the rule is skipped, never guessed.
-    XCTAssertNil(values.movingFaultDisabled)
+    // The schema types this id as a number, so it is not a Bool the rule can read: the rule stays
+    // skipped rather than guessing from a numeric value.
+    XCTAssertNil(values.bool("fault_moving_fault_disabled"))
+    // The read retains its own write base and is fresh; the decoded map spans the whole schema, not
+    // just the curated tune groups.
+    XCTAssertEqual(values.freshness, .fresh)
+    XCTAssertNotNil(values.writeBase)
+    XCTAssertGreaterThan(values.values.count, 6)
   }
 
   // Thor301 runs 20s pack-mode Refloat: the tiltback voltages are pack totals, not per-cell.
   func testRealConfigSurfacesUnsafeDutyPushback() throws {
-    let values = try XCTUnwrap(ConfigReplayHarness.decodeSafetyValues(jsonl))
+    let values = try XCTUnwrap(ConfigReplayHarness.decodeBoardConfigValues(jsonl))
     let report = ConfigSafetyDetector.evaluate(values, seriesCount: 20, perCell: false)
     // Duty pushback recorded at 1.0 (100%) — a genuinely unsafe setting on the real board.
     XCTAssertTrue(report.findings.contains { $0.kind == .dutyPushbackHigh })

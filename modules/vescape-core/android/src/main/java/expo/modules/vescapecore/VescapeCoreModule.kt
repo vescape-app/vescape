@@ -59,7 +59,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "VescapeCore"
 private const val SCAN_RETRY_LIMIT = 3
@@ -109,6 +111,7 @@ class VescapeCoreModule : Module() {
   private val observedEvents = mutableSetOf<String>()
   private val mainHandler = Handler(Looper.getMainLooper())
   private var activeProbe: ActiveBoardProbe? = null
+  private val completedProbes = ConcurrentHashMap<String, TransportDetection.Result>()
   private var previewAlertFeedback: AlertFeedback? = null
   /** UI alert tests own feedback + evaluator state separate from the live Board Session. */
   private var alertTestFeedback: AlertFeedback? = null
@@ -168,6 +171,8 @@ class VescapeCoreModule : Module() {
       "onGroupRideError",
       "onAppDataChanged",
       "onBoardWarnings",
+      "onBoardConfigValues",
+      "onBoardConfigChangeNotice",
       "onAppStatus",
       "onNavigation",
       "onRouteProgress",
@@ -273,6 +278,14 @@ class VescapeCoreModule : Module() {
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
     }
     OnStopObserving("onBoardWarnings") { stopObserving("onBoardWarnings") }
+    OnStartObserving("onBoardConfigValues") {
+      startObserving("onBoardConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
+    }
+    OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { startObserving("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
@@ -572,6 +585,10 @@ class VescapeCoreModule : Module() {
     AsyncFunction("probeBoardLink") Coroutine { bleId: String, probeId: String ->
       probeBoardLink(bleId, probeId)
     }
+    AsyncFunction("finalizeBoardLink") Coroutine {
+        probeId: String, boardId: String, bleId: String, candidate: Map<String, Any?> ->
+      finalizeBoardLink(probeId, boardId, bleId, candidate)
+    }
     Function("cancelBoardProbe") { probeId: String ->
       cancelActiveProbe(probeId, "js_cancelled")
     }
@@ -593,6 +610,17 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getBoardWarnings") Coroutine { ->
       BoardWarningRegistry.get(context).allWarnings().map { it.toMap() }
     }
+    /**
+     * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
+     * native (ADR 0035).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getBoardConfigValues") {
+      CoreForegroundService.getBoardConfigValues()
+    }
+    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
+    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       BoardWarningRegistry.get(context).clearWarning(boardId, kind)
     }
@@ -1151,6 +1179,7 @@ key == "wearAutoLaunchOnConnect" ||
           onComplete = {
             if (activeProbe === active) {
               activeProbe = null
+              completedProbes[probeId] = it
               result.complete(it)
             }
           },
@@ -1165,17 +1194,93 @@ key == "wearAutoLaunchOnConnect" ||
         detector.start()
       }
       return probeResultToBridge(result.await())
+    } catch (error: Throwable) {
+      completedProbes.remove(probeId)
+      throw error
     } finally {
       BoardProbeAutoStartGate.leave()
     }
   }
 
   private fun cancelActiveProbe(probeId: String?, reason: String) {
+    if (probeId != null) completedProbes.remove(probeId)
     val active = activeProbe ?: return
     if (probeId != null && active.id != probeId) return
     activeProbe = null
     active.detector?.cancel(reason)
     active.result.completeExceptionally(IllegalStateException("PROBE_CANCELLED: Board Probe cancelled"))
+  }
+
+  /**
+   * Finalize only a candidate returned by this native probe; config persistence precedes v4.
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
+   * @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
+   */
+  private suspend fun finalizeBoardLink(
+    probeId: String,
+    boardId: String,
+    bleId: String,
+    rawCandidate: Map<String, Any?>,
+  ): Map<String, Any?> {
+    val result = completedProbes[probeId] ?: error("PROBE_NOT_FOUND: Board Probe is no longer finalizable")
+    val transport = BoardTransport.fromBridge(rawCandidate["transport"])
+      ?: error("PROBE_CANDIDATE_INVALID: Invalid Board Transport")
+    val candidate = result.candidates.firstOrNull { it.transport == transport }
+      ?: error("PROBE_CANDIDATE_UNVERIFIED: Candidate was not confirmed by this Board Probe")
+    val baseVersion = candidate.refloatBaseVersion
+      ?: error("PROBE_CONFIG_IDENTITY_MISSING: Refloat Tune Compatibility is required")
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
+    sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "session", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+    val appCtx = context.applicationContext
+    val repo = AppDataRepository.get(appCtx)
+    val previousCapturedAt = repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE
+    val connected = CompletableDeferred<Unit>()
+    CoreForegroundService.startBoardSession(
+      appCtx,
+      SessionConfig(
+        appBoardId = boardId,
+        deviceId = bleId,
+        deviceName = "Board Probe",
+        transport = transport,
+        linkVersion = 4,
+        hasBms = candidate.hasBms,
+        vescFirmwareVersion = candidate.vescFirmwareVersion,
+        refloatVersion = candidate.refloatVersion,
+        refloatBaseVersion = baseVersion,
+        pollIntervalMs = 100,
+        recordingEnabled = false,
+        telemetryRecordingEnabled = false,
+        autoReconnect = false,
+      ),
+      onSuccess = { connected.complete(Unit) },
+      onError = { code, message -> connected.completeExceptionally(IllegalStateException("$code: $message")) },
+    )
+    try {
+      connected.await()
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+      repeat(120) {
+        if ((repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt) {
+          // The probe stays finalizable: the rider may still switch transports, and each pick
+          // acquires config for its own candidate before the link can be saved.
+          return mapOf(
+            "linkVersion" to 4,
+            "bleId" to bleId,
+            "transport" to BoardTransport.toBridge(transport),
+            "hasBms" to candidate.hasBms,
+            "vescFirmwareVersion" to candidate.vescFirmwareVersion,
+            "refloatVersion" to candidate.refloatVersion,
+            "refloatBaseVersion" to baseVersion,
+          )
+        }
+        delay(250)
+      }
+      error("PROBE_CONFIG_TIMEOUT: Full Refloat config was not acquired")
+    } finally {
+      val stopped = CompletableDeferred<Unit>()
+      CoreForegroundService.stopBoardSession(appCtx) { stopped.complete(Unit) }
+      stopped.await()
+    }
   }
 
   private fun probeResultToBridge(result: TransportDetection.Result): Map<String, Any?> {

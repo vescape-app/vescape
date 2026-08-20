@@ -6,6 +6,7 @@ import {
   SpeakerHighIcon,
   StopIcon,
   TrashIcon,
+  CheckIcon,
 } from 'phosphor-react-native'
 import type { AlertTestRule } from 'vescape-core'
 import Animated, {
@@ -127,6 +128,9 @@ interface AlertPresetControlProps {
   boardTopSpeedKmh?: number | null
   /** Whether the active board has a valid battery config (battery markers need one). */
   hasBatteryConfig?: boolean
+  matchDutyBoardConfig?: boolean
+  onMatchDutyBoardConfigChange?: (enabled: boolean) => void
+  tiltbackDuty?: number | null
   /** Custom (non-preset) alert markers layered onto the same gauge alongside the preset markers. */
   customAlerts?: DualGaugeAlert[]
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
@@ -151,6 +155,9 @@ export function AlertPresetControl({
   liveValue,
   boardTopSpeedKmh,
   hasBatteryConfig,
+  matchDutyBoardConfig = false,
+  onMatchDutyBoardConfigChange,
+  tiltbackDuty,
   customAlerts,
   hotRange,
   disabled,
@@ -169,6 +176,8 @@ export function AlertPresetControl({
     const specs = generateAlertPresetRules(metric, level, {
       boardTopSpeedKmh,
       hasBatteryConfig,
+      matchDutyBoardConfig,
+      tiltbackDuty,
     })
     // Preset markers come straight from the pure generator (instant + atomic as the slider
     // moves, no store round-trip flicker); custom markers layer on top from the caller.
@@ -193,7 +202,16 @@ export function AlertPresetControl({
           (alert.thresholdMax == null ? undefined : gauge.formatMarker(alert.thresholdMax)),
       })),
     ]
-  }, [metric, level, boardTopSpeedKmh, hasBatteryConfig, gauge, customAlerts])
+  }, [
+    metric,
+    level,
+    boardTopSpeedKmh,
+    hasBatteryConfig,
+    matchDutyBoardConfig,
+    tiltbackDuty,
+    gauge,
+    customAlerts,
+  ])
 
   // A stable null placeholder so the gauge always has a SharedValue; the needle is hidden offline.
   const placeholder = useSharedValue<number | null>(null)
@@ -238,6 +256,13 @@ export function AlertPresetControl({
         containerStyle={styles.gauge}
       />
       {controlsHeader}
+      {metric === 'duty' && !isCustom ? (
+        <DutyMatchControl
+          checked={matchDutyBoardConfig}
+          tiltbackDuty={tiltbackDuty}
+          onChange={onMatchDutyBoardConfigChange}
+        />
+      ) : null}
       <View style={styles.levelRow}>
         {isCustom ? (
           <CustomLabel />
@@ -253,6 +278,42 @@ export function AlertPresetControl({
           />
         ) : null}
       </View>
+    </View>
+  )
+}
+
+function DutyMatchControl({
+  checked,
+  tiltbackDuty,
+  onChange,
+}: {
+  checked: boolean
+  tiltbackDuty?: number | null
+  onChange?: (enabled: boolean) => void
+}) {
+  const valid =
+    typeof tiltbackDuty === 'number' &&
+    Number.isFinite(tiltbackDuty) &&
+    tiltbackDuty > 0 &&
+    tiltbackDuty < 1
+  let note: string | null = null
+  if (checked && valid) note = `Follows VESC duty pushback (${Math.round(tiltbackDuty * 100)}%).`
+  else if (checked)
+    note = 'VESC duty pushback is unavailable or disabled. This preset stays inactive.'
+  return (
+    <View>
+      <Pressable
+        style={styles.matchRow}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked }}
+        onPress={() => onChange?.(!checked)}
+      >
+        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
+          {checked ? <CheckIcon size={13} color={theme.palette.slate.text} weight="bold" /> : null}
+        </View>
+        <Text style={styles.matchLabel}>Match VESC board configuration</Text>
+      </Pressable>
+      {note ? <Text style={styles.matchNote}>{note}</Text> : null}
     </View>
   )
 }
@@ -375,6 +436,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  matchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: theme.palette.slate.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: theme.palette.blue.bg,
+    borderColor: theme.palette.blue.border,
+  },
+  matchLabel: { color: theme.palette.slate.text, fontSize: 14, fontWeight: '600' },
+  matchNote: { color: theme.palette.slate.textMuted, fontSize: 12, lineHeight: 17, marginLeft: 28 },
   testButton: {
     height: 28,
     paddingHorizontal: 10,
