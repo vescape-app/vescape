@@ -40,6 +40,37 @@ class BoardLinkPersistenceTest {
 
     assertNotNull(link)
     assertNull(link?.get("hasBms"))
+    assertNull(link?.get("linkVersion"))
+  }
+
+  // A link stored by an older app version must keep reading as legacy. Defaulting an absent or
+  // outdated stored version to the current one would launder a stale link into a trusted one and
+  // silently skip the re-probe.
+  @Test
+  fun storedOutdatedLinkVersionReadsAsLegacy() {
+    val board = mapOf("id" to "b1", "name" to "Board", "createdAt" to 0L)
+    val stored = listOf(
+      BoardSettingEntity("b1", "transport", "\"84\"", 0L),
+      BoardSettingEntity("b1", "linkVersion", "3", 0L),
+      BoardSettingEntity("b1", "hasBms", "true", 0L),
+    )
+    val link = board.toBoardEntity().copy(bleId = "AA:BB").toMap(stored)["link"] as? Map<*, *>
+
+    assertNotNull(link)
+    assertNull(link?.get("linkVersion"))
+  }
+
+  @Test
+  fun storedLinkWithoutVersionReadsAsLegacy() {
+    val board = mapOf("id" to "b1", "name" to "Board", "createdAt" to 0L)
+    val stored = listOf(
+      BoardSettingEntity("b1", "transport", "\"84\"", 0L),
+      BoardSettingEntity("b1", "hasBms", "true", 0L),
+    )
+    val link = board.toBoardEntity().copy(bleId = "AA:BB").toMap(stored)["link"] as? Map<*, *>
+
+    assertNotNull(link)
+    assertNull(link?.get("linkVersion"))
   }
 
   @Test

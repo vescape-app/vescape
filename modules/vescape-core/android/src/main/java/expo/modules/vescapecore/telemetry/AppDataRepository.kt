@@ -798,7 +798,10 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     buildMap<String, Any?> {
       put("bleId", bleId)
       put("transport", transport)
-      put("linkVersion", (values["linkVersion"] as? Int) ?: BOARD_LINK_VERSION)
+      // Only the current schema version survives the read. A missing or older stored version
+      // reads as absent so the link registers as legacy and re-probes, instead of being laundered
+      // into a current-looking link by a default.
+      (values["linkVersion"] as? Int)?.takeIf { it == BOARD_LINK_VERSION }?.let { put("linkVersion", it) }
       (values["hasBms"] as? Boolean)?.let { put("hasBms", it) }
       boardLinkStringIdentityKeys.forEach { key ->
         (values[key] as? String)?.let { put(key, it) }
