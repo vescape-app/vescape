@@ -32,6 +32,8 @@ function Snowflake({
   clock: SharedValue<number>
   flake: (typeof SNOWFLAKES)[number]
 }) {
+  'use no memo'
+
   const snowColor = useResolvedColor(theme.weather.snow)
   const y = useDerivedValue(
     () =>
@@ -58,6 +60,8 @@ function Snowfall() {
 }
 
 function RainWaterFill({ probability }: { probability: number }) {
+  'use no memo'
+
   const waterFillColor = useResolvedColor(theme.alpha(theme.palette.sky.color, 0.12))
   const waterStrokeColor = useResolvedColor(theme.alpha(theme.palette.sky.light, 0.6))
   const clock = useClock()
@@ -65,7 +69,7 @@ function RainWaterFill({ probability }: { probability: number }) {
   const surfaceY =
     FULL_WATER_SURFACE_Y + (EMPTY_WATER_SURFACE_Y - FULL_WATER_SURFACE_Y) * (1 - fill)
   const wavePath = useDerivedValue(() => {
-    const path = Skia.Path.Make()
+    const path = Skia.PathBuilder.Make()
     const phase = (clock.value / 1000) * Math.PI * 1.4
 
     path.moveTo(0, surfaceY + Math.sin(phase) * WAVE_AMPLITUDE)
@@ -73,14 +77,14 @@ function RainWaterFill({ probability }: { probability: number }) {
       const y = surfaceY + Math.sin((x / WAVE_LENGTH) * Math.PI * 2 + phase) * WAVE_AMPLITUDE
       path.lineTo(x, y)
     }
-    return path
+    return path.build()
   })
   const waterPath = useDerivedValue(() => {
-    const path = wavePath.value.copy()
+    const path = Skia.PathBuilder.Make().addPath(wavePath.value)
     path.lineTo(PILL_WIDTH, PILL_HEIGHT)
     path.lineTo(0, PILL_HEIGHT)
     path.close()
-    return path
+    return path.build()
   })
 
   return (
@@ -111,7 +115,7 @@ export function WeatherSidePill({
       onPress={onPress}
       style={[styles.pill, { transform: [{ translateY: verticalOffset }] }]}
     >
-      {icon === 'cloud-rain' && precipProbability != null ? (
+      {icon === 'cloud-rain' && precipProbability != null && precipProbability > 0 ? (
         <RainWaterFill probability={precipProbability} />
       ) : null}
       {icon === 'cloud-snow' ? <Snowfall /> : null}
