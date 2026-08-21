@@ -106,7 +106,7 @@ function AlertLabel({
       y={p.y + LABEL_FONT_SIZE / 2}
       text={text}
       font={font}
-      color={accents.yellow.text}
+      color={accents.yellow.color}
     />
   )
 }

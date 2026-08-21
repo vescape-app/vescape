@@ -218,13 +218,16 @@ export function AlertFormSheet({
         )}
       </SettingsCard>
 
-      <Button
-        label={isEditing ? 'Save' : 'Add alert'}
-        icon={isEditing ? CheckIcon : PlusIcon}
-        variant="accent"
-        onPress={handleSave}
-        style={styles.saveButton}
-      />
+      <View style={styles.actions}>
+        <Button label="Cancel" variant="secondary" onPress={onClose} style={styles.actionButton} />
+        <Button
+          label={isEditing ? 'Save' : 'Add alert'}
+          icon={isEditing ? CheckIcon : PlusIcon}
+          variant="accent"
+          onPress={handleSave}
+          style={styles.actionButton}
+        />
+      </View>
     </EdgeDrawer>
   )
 }
@@ -244,7 +247,13 @@ const styles = StyleSheet.create({
   beepStepper: {
     alignSelf: 'center',
   },
-  saveButton: {
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
     marginTop: 4,
+  },
+  actionButton: {
+    minWidth: 128,
   },
 })

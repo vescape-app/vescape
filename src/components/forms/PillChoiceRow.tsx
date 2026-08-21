@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   },
   highlight: {
     flex: 1,
-    marginHorizontal: 1,
+    marginHorizontal: 2,
     borderRadius: 16,
     borderWidth: 1,
   },

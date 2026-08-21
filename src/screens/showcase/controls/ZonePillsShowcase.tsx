@@ -154,14 +154,13 @@ export function ZonePillsShowcase() {
         <View style={styles.selectorVariant}>
           <Text style={styles.selectorCaption}>regular labels, six items, horizontal scroll</Text>
           <View style={styles.narrowPreviewWide}>
-            <PillSelector activeId={regularScrollId}>
+            <PillSelector activeId={regularScrollId} showFullLabel>
               {regularScrollOptions.map((option) => (
                 <PillSelectorItem
                   key={option.id}
                   id={option.id}
                   label={option.label}
                   icon={option.icon}
-                  labelBehavior="always"
                   color={option.color}
                   onPress={() => setRegularScrollId(option.id)}
                 />

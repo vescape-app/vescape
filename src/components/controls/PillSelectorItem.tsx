@@ -152,14 +152,14 @@ export function PillSelectorItem({
   const control = useResolvedControlColors()
   const neutral = useResolvedNeutralColors()
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const { activeId, contained, variant, openMenu, closeMenu } = usePillSelectorCtx()
+  const { activeId, contained, showFullLabel, variant, openMenu, closeMenu } = usePillSelectorCtx()
   const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const pillRef = useRef<View>(null)
   const active = id === activeId
   const resolved = resolveItemState({
     active,
     icon: IconComp,
-    labelBehavior,
+    labelBehavior: showFullLabel ? 'always' : labelBehavior,
     hintVisibility,
   })
   const accentBorder = useResolvedColor(color?.border ?? theme.palette.green.border)
@@ -178,21 +178,38 @@ export function PillSelectorItem({
 
   const frameStyle = useAnimatedStyle(
     () => ({
-      width: resolved.collapseLabel
-        ? inactiveWidth + (activeWidth - inactiveWidth) * activeProgress.value
-        : undefined,
+      width: showFullLabel
+        ? activeWidth
+        : resolved.collapseLabel
+          ? inactiveWidth + (activeWidth - inactiveWidth) * activeProgress.value
+          : undefined,
       backgroundColor: interpolateColor(
         activeProgress.value,
         [0, 1],
         [
-          useLightTabs ? TRANSPARENT : contained ? TRANSPARENT : control.background,
-          useLightTabs ? neutral.surface : control.backgroundPressed,
+          showFullLabel
+            ? TRANSPARENT
+            : useLightTabs
+              ? TRANSPARENT
+              : contained
+                ? TRANSPARENT
+                : control.background,
+          showFullLabel ? TRANSPARENT : useLightTabs ? neutral.surface : control.backgroundPressed,
         ],
       ),
       borderColor: interpolateColor(
         activeProgress.value,
         [0, 1],
-        [useLightTabs ? TRANSPARENT : contained ? TRANSPARENT : control.border, accentBorder],
+        [
+          showFullLabel
+            ? TRANSPARENT
+            : useLightTabs
+              ? TRANSPARENT
+              : contained
+                ? TRANSPARENT
+                : control.border,
+          showFullLabel ? TRANSPARENT : accentBorder,
+        ],
       ),
     }),
     [
@@ -205,6 +222,7 @@ export function PillSelectorItem({
       control.backgroundPressed,
       control.border,
       neutral.surface,
+      showFullLabel,
       useLightTabs,
     ],
   )

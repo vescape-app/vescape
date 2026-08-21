@@ -11,7 +11,8 @@ import { useMemo } from 'react'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
-import { accentColors, theme } from '@/constants/theme'
+import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 const TRACK_COLOR = theme.palette.slate.border
 export const LINE_THICK = 2
@@ -23,12 +24,6 @@ const MARKER_W = LINE_THICK * 1.5
 export const MARKER_RATIO = 0.5
 // Band tint fades in over the first stretch past the threshold so the edge reads as a soft entry
 // rather than a wall, then holds flat: nothing about the rule escalates further along the scale.
-const ALERT_COLOR = accentColors.dark.orange.color
-const ALERT_BAND_COLORS = [
-  theme.alpha(ALERT_COLOR, 0),
-  theme.alpha(ALERT_COLOR, 0.12),
-  theme.alpha(ALERT_COLOR, 0.12),
-]
 const ALERT_BAND_STOPS = [0, 0.3, 1]
 export const VALUE_GAP = 6
 export const BAR_H = 40
@@ -163,6 +158,16 @@ export function GaugeBar({
   max,
   charging,
 }: GaugeBarProps) {
+  const accents = useResolvedAccentColors()
+  const alertColor = accents.yellow.color
+  const alertBandColors = useMemo(
+    () => [
+      theme.alpha(alertColor, 0),
+      theme.alpha(alertColor, 0.12),
+      theme.alpha(alertColor, 0.12),
+    ],
+    [alertColor],
+  )
   // Line sits at the bottom (the "rim", like the gauge arc). Ticks/glow rise from it.
   const lineY = height - LINE_THICK
   const fillW = width * fraction
@@ -216,7 +221,7 @@ export function GaugeBar({
             <LinearGradient
               start={vec(from, 0)}
               end={vec(to, 0)}
-              colors={ALERT_BAND_COLORS}
+              colors={alertBandColors}
               positions={ALERT_BAND_STOPS}
             />
           </Rect>
@@ -245,7 +250,7 @@ export function GaugeBar({
             y={lineY - TICK_LEN}
             width={TICK_W}
             height={TICK_LEN}
-            color={ALERT_COLOR}
+            color={alertColor}
           />
         ))
       })}

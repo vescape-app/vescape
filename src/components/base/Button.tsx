@@ -7,7 +7,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { useColoredAction } from '@/hooks/useTheme'
+import { useColoredAction, useResolvedColor } from '@/hooks/useTheme'
 
 import { interaction, theme } from '@/constants/theme'
 
@@ -16,6 +16,8 @@ interface ButtonProps {
   onPress: () => Promise<void> | void
   testID?: string
   accessibilityLabel?: string
+  /** Overrides the variant's accent for field-specific actions. */
+  accent?: string
   variant?: 'primary' | 'accent' | 'tune' | 'secondary' | 'success' | 'destructive' | 'groupRide'
   size?: 'sm' | 'md' | 'lg'
   icon?: Icon
@@ -30,6 +32,7 @@ export function Button({
   onPress,
   testID,
   accessibilityLabel,
+  accent,
   variant = 'primary',
   size = 'md',
   icon: IconComponent,
@@ -39,12 +42,23 @@ export function Button({
   style,
 }: ButtonProps) {
   const isDisabled = disabled || loading
-  const coloredAction = useColoredAction(accentColors[variant].border)
+  const resolvedAccent = useResolvedColor(accent ?? accentColors[variant].border)
+  const coloredAction = useColoredAction(accent ?? accentColors[variant].border)
+  const dynamicAccent = accent
+    ? {
+        button: {
+          backgroundColor: coloredAction,
+          borderWidth: 1,
+          borderColor: resolvedAccent,
+        },
+        foreground: resolvedAccent,
+      }
+    : null
   const icon =
     IconComponent && !loading ? (
       <IconComponent
         size={size === 'sm' ? 13 : size === 'lg' ? 17 : 15}
-        color={accentColors[variant].icon}
+        color={dynamicAccent?.foreground ?? accentColors[variant].icon}
         weight="bold"
       />
     ) : null
@@ -54,7 +68,7 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md,
-        accentColors[variant].button(coloredAction),
+        dynamicAccent?.button ?? accentColors[variant].button(coloredAction),
         isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
@@ -66,7 +80,10 @@ export function Button({
       accessibilityLabel={accessibilityLabel ?? label}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={accentColors[variant].indicator} />
+        <ActivityIndicator
+          size="small"
+          color={dynamicAccent?.foreground ?? accentColors[variant].indicator}
+        />
       ) : iconPosition === 'left' ? (
         icon
       ) : null}
@@ -75,7 +92,7 @@ export function Button({
         style={[
           styles.label,
           size === 'sm' ? styles.labelSm : size === 'lg' ? styles.labelLg : styles.labelMd,
-          accentColors[variant].text,
+          dynamicAccent ? { color: dynamicAccent.foreground } : accentColors[variant].text,
         ]}
       >
         {label}

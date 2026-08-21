@@ -191,6 +191,14 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
+            label="Dynamic accent"
+            icon={FadersIcon}
+            accent={theme.palette.pink.color}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
             label="Enabled"
             variant="success"
             icon={CheckIcon}

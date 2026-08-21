@@ -61,7 +61,6 @@ export function TuneScreenHeader({
             fitContent
             variant="lightTabs"
             style={styles.headerPills}
-            contentContainerStyle={styles.headerPillsContent}
           >
             {profiles.map((profile) => (
               <PillSelectorItem
@@ -125,7 +124,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 10,
     paddingBottom: 0,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   headerCenter: {
     flex: 1,
@@ -134,12 +133,8 @@ const styles = StyleSheet.create({
   headerPills: {
     maxWidth: '100%',
   },
-  headerPillsContent: {
-    minWidth: 0,
-    paddingHorizontal: 2,
-  },
   headerTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '900',
   },

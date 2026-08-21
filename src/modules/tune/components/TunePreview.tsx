@@ -248,7 +248,6 @@ export function TunePreview({
 
   return (
     <View style={styles.card}>
-      {' '}
       <TunePreviewHeader
         speedStr={speedStr}
         boardAngleStr={boardAngleStr}

@@ -248,6 +248,7 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
           <Button
             label="Apply"
             icon={CheckIcon}
+            accent={target.color}
             style={styles.actionButton}
             onPress={applyEditor}
           />

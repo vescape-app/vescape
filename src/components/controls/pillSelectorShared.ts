@@ -15,6 +15,7 @@ export interface PillSelectorCtx {
   closeMenu: () => void
   addRef: React.RefObject<View | null>
   contained: boolean
+  showFullLabel: boolean
   variant: 'control' | 'lightTabs'
 }
 
@@ -100,6 +101,13 @@ export const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: theme.palette.green.color,
   },
+  fullLabelHighlight: {
+    position: 'absolute',
+    top: 1,
+    bottom: 1,
+    borderRadius: 17,
+    borderWidth: 1,
+  },
   hint: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -162,6 +170,7 @@ export const styles = StyleSheet.create({
     color: theme.control.textMuted,
   },
   scrollContent: {
+    position: 'relative',
     paddingHorizontal: 16,
     gap: 8,
     alignItems: 'center',
