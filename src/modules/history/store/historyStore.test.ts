@@ -138,7 +138,7 @@ test('removes selected session from history and selects next ride', async () => 
   expect(deleteTelemetryRange).toHaveBeenCalledWith({
     fromMs: selected.startAtMs,
     toMs: selected.endAtMs,
-    deviceId: selected.deviceId,
+    boardId: selected.boardId,
   })
   expect(useHistoryStore.getState().blocks.map((b) => b.id)).toEqual(['newest', 'oldest'])
   expect(useHistoryStore.getState().sessions.map((s) => s.id)).toHaveLength(2)
@@ -202,7 +202,7 @@ test('selects ride immediately while loading its full route', async () => {
   expect(getHistoryRange).toHaveBeenLastCalledWith({
     fromMs: next.startAtMs,
     toMs: next.endAtMs,
-    deviceId: next.deviceId,
+    boardId: next.boardId,
     limit: next.sampleCount + 1,
   })
 
@@ -213,8 +213,8 @@ test('selects ride immediately while loading its full route', async () => {
     gpsSamples: Array.from({ length: next.gpsPointCount }, (_, index) => ({
       id: index + 1,
       capturedAtMs: next.startAtMs + index,
-      deviceId: next.deviceId,
-      deviceName: next.deviceName,
+      boardId: next.boardId,
+      boardName: next.boardName,
       latitude: 51 + index * 0.001,
       longitude: 17 + index * 0.001,
       speedMps: null,
@@ -291,8 +291,8 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
   const previewGps: HistoryGpsSample = {
     id: 1,
     capturedAtMs: ride.startAtMs,
-    deviceId: ride.deviceId,
-    deviceName: ride.deviceName,
+    boardId: ride.boardId,
+    boardName: ride.boardName,
     latitude: 51,
     longitude: 17,
     speedMps: null,
@@ -321,8 +321,8 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
   const select = useHistoryStore.getState().selectSession({
-    deviceId: ride.deviceId,
-    deviceName: ride.deviceName,
+    boardId: ride.boardId,
+    boardName: ride.boardName,
     boundaryBefore: ride.boundaryBefore,
     startAtMs: ride.startAtMs,
     endAtMs: ride.endAtMs,
@@ -350,14 +350,14 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     minLongitude: null,
     maxLongitude: null,
     faultCount: ride.faultCount,
-    id: `${ride.deviceId}:${ride.startAtMs}:${ride.endAtMs}`,
+    id: `${ride.boardId}:${ride.startAtMs}:${ride.endAtMs}`,
   })
   await Promise.resolve()
 
   expect(getHistoryRange).toHaveBeenNthCalledWith(1, {
     fromMs: ride.startAtMs,
     toMs: ride.endAtMs,
-    deviceId: ride.deviceId,
+    boardId: ride.boardId,
     limit: 240,
   })
   expect(getHistoryRange).toHaveBeenCalledTimes(1)

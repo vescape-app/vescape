@@ -115,7 +115,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         ? sessions.find(
             (session) =>
               session.id === selectedSession.id ||
-              (session.deviceId === selectedSession.deviceId &&
+              (session.boardId === selectedSession.boardId &&
                 session.startAtMs <= selectedSession.endAtMs &&
                 session.endAtMs >= selectedSession.startAtMs),
           )
@@ -167,7 +167,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       await deleteTelemetryRange({
         fromMs: selectedSession.startAtMs,
         toMs: selectedSession.endAtMs,
-        deviceId: selectedSession.deviceId,
+        boardId: selectedSession.boardId,
       })
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const blocks = await getTelemetryHistory({ limit: reloadLimit })

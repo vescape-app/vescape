@@ -37,8 +37,8 @@ class MetricSanitizerTest {
   @Test
   fun producesExclusionRangesForExcludedSamples() {
     val points = listOf(
-      point(capturedAtMs = 1000L, deviceId = "board-1", speedCentiKmh = 100),
-      point(capturedAtMs = 2000L, deviceId = "board-1", speedCentiKmh = 500),
+      point(capturedAtMs = 1000L, boardId = "board-1", speedCentiKmh = 100),
+      point(capturedAtMs = 2000L, boardId = "board-1", speedCentiKmh = 500),
     )
 
     val result = sanitizeTelemetrySamples(points, movingSpeedThresholdCentiKmh = 300)
@@ -47,7 +47,7 @@ class MetricSanitizerTest {
     val exclusion = result.exclusions.single()
     assertEquals(1000L, exclusion.startMs)
     assertEquals(1000L, exclusion.endMs)
-    assertEquals("board-1", exclusion.deviceId)
+    assertEquals("board-1", exclusion.boardId)
     assertEquals(EXCLUSION_REASON_LOW_SPEED, exclusion.reason)
     assertEquals(1, exclusion.sampleCount)
   }
@@ -104,12 +104,12 @@ class MetricSanitizerTest {
   @Test
   fun nullDeviceIdUsesUnknownPlaceholder() {
     val points = listOf(
-      point(deviceId = null, speedCentiKmh = 100),
+      point(boardId = null, speedCentiKmh = 100),
     )
 
     val result = sanitizeTelemetrySamples(points, movingSpeedThresholdCentiKmh = 300)
 
-    assertEquals(UNKNOWN_TELEMETRY_DEVICE_ID, result.exclusions.single().deviceId)
+    assertEquals(UNKNOWN_TELEMETRY_BOARD_ID, result.exclusions.single().boardId)
   }
 
   // --- Free-spin detection tests ---
@@ -280,7 +280,7 @@ class MetricSanitizerTest {
         gpsSpeedCentiMps = 100,
         capturedAtMs = 1000L,
         gpsTimestampMs = 1000L,
-        deviceId = "board-1",
+        boardId = "board-1",
       ),
     )
 
@@ -290,7 +290,7 @@ class MetricSanitizerTest {
     assertEquals(EXCLUSION_REASON_FREE_SPIN, exclusion.reason)
     assertEquals(1000L, exclusion.startMs)
     assertEquals(1000L, exclusion.endMs)
-    assertEquals("board-1", exclusion.deviceId)
+    assertEquals("board-1", exclusion.boardId)
     assertEquals(1, exclusion.sampleCount)
   }
 
@@ -351,13 +351,12 @@ class MetricSanitizerTest {
 
   private fun point(
     capturedAtMs: Long = 0L,
-    deviceId: String? = "board-1",
+    boardId: String? = "board-1",
     speedCentiKmh: Int = 0,
     dutyPermille: Int = 0,
   ) = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
-    deviceId = deviceId,
-    deviceName = "Test",
+    boardId = boardId,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = 70_000,
     motorCurrentMa = 0,
@@ -369,7 +368,7 @@ class MetricSanitizerTest {
 
   private fun pointWithGps(
     capturedAtMs: Long = 0L,
-    deviceId: String? = "board-1",
+    boardId: String? = "board-1",
     speedCentiKmh: Int = 0,
     dutyPermille: Int = 0,
     gpsSpeedCentiMps: Int,
@@ -377,8 +376,7 @@ class MetricSanitizerTest {
     gpsAccuracyCm: Int = 500,
   ) = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
-    deviceId = deviceId,
-    deviceName = "Test",
+    boardId = boardId,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = 70_000,
     motorCurrentMa = 0,

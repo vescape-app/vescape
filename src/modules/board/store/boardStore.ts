@@ -85,11 +85,16 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     alertPreset,
     alertPresetsOnboarded,
   }) {
+    const now = Date.now()
     const board: Board = {
       id: generateId(),
       name,
       description: description ?? null,
-      createdAt: Date.now(),
+      createdAt: now,
+      // Native owns `updatedAt` (the incremental-sync cursor) and stamps it from its own clock on
+      // the upsert below; this optimistic value only holds until the next load() replaces the row.
+      updatedAt: now,
+      deletedAt: null,
       batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,
       topSpeedKmh,
       alertPreset: alertPreset ?? null,

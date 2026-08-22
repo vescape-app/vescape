@@ -70,7 +70,16 @@ data class ApiRequest(
 /**
  * @parity /modules/vescape-core/ios/api/ApiResult.swift `ApiResponse`
  */
-data class ApiResponse(val status: Int, val body: String)
+data class ApiResponse(
+  val status: Int,
+  val body: String,
+  /**
+   * Lowercased response headers. Only what a caller has to act on crosses this seam today: a `429`
+   * carries its delay in `Retry-After`, and guessing one instead would either hammer the server or
+   * stall a drain far longer than it asked for.
+   */
+  val headers: Map<String, String> = emptyMap(),
+)
 
 /**
  * The single blocking HTTP seam. Production wires OkHttp; tests wire a fake and never reach the

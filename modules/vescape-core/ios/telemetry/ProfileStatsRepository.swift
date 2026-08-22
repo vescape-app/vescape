@@ -14,7 +14,7 @@ internal struct ProfileStatsMonth: Equatable, Hashable {
 }
 
 internal struct ProfileSessionAggregate {
-  let deviceId: String
+  let boardId: String
   var startAtMs: Int64
   var endAtMs: Int64
   var sampleCount: Int
@@ -77,6 +77,7 @@ internal final class ProfileStatsRepository {
       gapMs: gapMs
     ).map { ["year": $0.year, "month": $0.month] }
   }
+
 
   private func allBuckets() -> [Row] {
     guard let pool else { return [] }
@@ -167,15 +168,15 @@ internal func groupProfileSessions(
   for bucket in buckets.sorted(by: { ($0["first_sample_at_ms"] as Int64) < ($1["first_sample_at_ms"] as Int64) }) {
     if (bucket["sample_count"] as Int) <= 0 { continue }
     let boundary = markerBoundaryForProfileBucket(bucket, markers: markers)
-    let deviceId = bucket["device_id"] as String
-    let breakByDevice = current == nil || current?.deviceId != deviceId
+    let boardId = bucket["board_id"] as String
+    let breakByBoard = current == nil || current?.boardId != boardId
     let breakByGap = previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false
     let breakByBoundary = boundary.map { PROFILE_BREAK_BOUNDARIES.contains($0) } ?? false
 
-    if breakByDevice || breakByGap || breakByBoundary {
+    if breakByBoard || breakByGap || breakByBoundary {
       if let current { sessions.append(current) }
       current = ProfileSessionAggregate(
-        deviceId: deviceId,
+        boardId: boardId,
         startAtMs: bucket["first_sample_at_ms"] as Int64,
         endAtMs: bucket["last_sample_at_ms"] as Int64,
         sampleCount: 0,
@@ -204,11 +205,9 @@ internal func groupProfileSessions(
 internal func markerBoundaryForProfileBucket(_ bucket: Row, markers: [Row]) -> String? {
   markers.last { marker in
     let occurred = marker["occurred_at_ms"] as Int64
-    let markerDevice = marker["device_id"] as String? ?? ""
-    let bucketDevice = bucket["device_id"] as String
     return occurred >= (bucket["first_sample_at_ms"] as Int64) - 5_000 &&
       occurred <= (bucket["first_sample_at_ms"] as Int64) + 1_000 &&
-      markerDevice == bucketDevice
+      (marker["board_id"] as String? ?? "") == (bucket["board_id"] as String)
   }.map { $0["type"] as String }
 }
 

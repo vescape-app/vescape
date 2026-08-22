@@ -51,16 +51,48 @@ final class NativeAuthCoordinator {
       throw NSError(domain: "NativeAuth", code: -5)
     }
 
-    let credential = DeviceCredential(
-      serverUrl: origin,
-      token: token,
-      accountId: accountId,
-      expiresAt: nil
+    // The database is claimed before the credential is stored: a second Account must not be able to
+    // upload from a database full of the first Account's Boards, Ride History and locations. The
+    // Rider confirms the destructive reset, and only then does `confirmAccountReset` finish this.
+    guard SyncCoordinator.shared.bindAccount(accountId) else {
+      var state = stateMap()
+      state["accountChangeRequiresReset"] = true
+      return state
+    }
+
+    try store.write(
+      DeviceCredential(serverUrl: origin, token: token, accountId: accountId, expiresAt: nil)
     )
-    try store.write(credential)
     await MainActor.run {
       AppStatusCoordinator.shared.refresh()
     }
+    SyncCoordinator.shared.start()
+    return stateMap()
+  }
+
+  /// The Rider confirmed that all local app data is erased and cannot yet be restored.
+  ///
+  /// One ordered transition: stop the uploader, invalidate in-flight work, replace the app-data
+  /// database, clear Sync Cursors and pending Sync Actions, bind the fresh database to the new
+  /// Account, install the new Device Token, start the uploader. Cancelling never reaches here, so
+  /// the old database and Account binding stay untouched.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/auth/NativeAuthCoordinator.kt `confirmAccountReset`
+  func confirmAccountReset(
+    serverUrl: String,
+    token: String,
+    accountId: String
+  ) async throws -> [String: Any?] {
+    let origin = serverUrl.hasSuffix("/") ? String(serverUrl.dropLast()) : serverUrl
+    try await SyncCoordinator.shared.resetForAccount(accountId)
+    // The token is installed before the uploader starts: a loop running on the previous Account's
+    // credential against the new Account's database is exactly what this ordering exists to prevent.
+    try store.write(
+      DeviceCredential(serverUrl: origin, token: token, accountId: accountId, expiresAt: nil)
+    )
+    await MainActor.run {
+      AppStatusCoordinator.shared.refresh()
+    }
+    SyncCoordinator.shared.start()
     return stateMap()
   }
 
@@ -81,5 +113,10 @@ final class NativeAuthCoordinator {
     store.clear()
   }
 
-  func clear() { store.clear() }
+  func clear() {
+    store.clear()
+    // Signing out stops the uploader but keeps the Account binding, so data recorded while signed
+    // out stays protected from retention for the same Account.
+    SyncCoordinator.shared.stop()
+  }
 }

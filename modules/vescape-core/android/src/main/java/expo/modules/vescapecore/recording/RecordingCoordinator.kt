@@ -3,6 +3,7 @@ package expo.modules.vescapecore.recording
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import android.content.Context
 import expo.modules.vescapecore.service.SessionConfig
+import expo.modules.vescapecore.sync.SyncCoordinator
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.AppSettings
 import expo.modules.vescapecore.telemetry.TelemetryCapture
@@ -112,8 +113,7 @@ internal class RecordingCoordinator(
         connectionLostMarkerAt = markerAt
         store.recordMarker(
             type = "connection_lost",
-            deviceId = config.deviceId,
-            deviceName = config.deviceName,
+            boardId = config.appBoardId,
             message = reason,
             occurredAtMs = markerAt,
         )
@@ -142,8 +142,15 @@ internal class RecordingCoordinator(
         recorder = null
     }
 
+    /**
+     * The three ways recording stops — the session finishing, failing, or the Rider switching it
+     * off. The flush has to land before the kick, or the uploader scans a ride missing its tail.
+     *
+     * @parity /modules/vescape-core/ios/recording/RecordingCoordinator.swift `flushTelemetryBlocking`
+     */
     private fun flushTelemetryBlocking() {
         telemetryStore?.flushBlocking()
+        SyncCoordinator.get(context).notifyRecordingStopped()
     }
 
     private fun configuredTelemetryStore(): TelemetryRepository {
@@ -172,8 +179,7 @@ internal class RecordingCoordinator(
     private fun recordMarker(type: String, config: SessionConfig?, message: String? = null) {
         telemetryStore?.recordMarker(
             type,
-            config?.deviceId,
-            config?.deviceName,
+            config?.appBoardId,
             message,
         )
     }

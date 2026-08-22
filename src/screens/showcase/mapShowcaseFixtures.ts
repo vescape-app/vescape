@@ -72,8 +72,8 @@ export const FIXTURE_RIDE_GPS_SAMPLES: HistoryGpsSample[] = rideRouteCoordinates
     return {
       id: index + 1,
       capturedAtMs: NOW - (ROUTE_POINT_COUNT - 1 - index) * 5_000,
-      deviceId: 'fixture-board',
-      deviceName: 'Fixture Board',
+      boardId: 'fixture-board',
+      boardName: 'Fixture Board',
       latitude,
       longitude,
       speedMps: 3 + Math.sin(t * Math.PI * 2) * 2.5,
@@ -101,8 +101,8 @@ export const FIXTURE_RIDE_TELEMETRY_SAMPLES: TelemetrySample[] = FIXTURE_RIDE_GP
     return {
       id: index + 1,
       capturedAtMs: gps.capturedAtMs,
-      deviceId: 'fixture-board',
-      deviceName: 'Fixture Board',
+      boardId: 'fixture-board',
+      boardName: 'Fixture Board',
       speedKmh,
       batteryVoltage: 58 - t * 4,
       batteryPercent: 80 - t * 30,
@@ -144,8 +144,7 @@ export const FIXTURE_RIDE_MARKERS: HistoryMarker[] = MARKER_TYPES.map((type, ind
   occurredAtMs:
     FIXTURE_RIDE_GPS_SAMPLES[(2 + index * 2) % FIXTURE_RIDE_GPS_SAMPLES.length].capturedAtMs,
   type,
-  deviceId: 'fixture-board',
-  deviceName: 'Fixture Board',
+  boardId: 'fixture-board',
   message: type === 'error' ? 'Fixture fault for preview' : null,
   gapMs: type === 'gap' ? 15_000 : null,
 }))

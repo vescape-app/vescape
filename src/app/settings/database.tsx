@@ -13,6 +13,7 @@ import { theme } from '@/constants/theme'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { Button } from '@/components/base/Button'
+import { ProgressBar } from '@/components/base/ProgressBar'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { useSettingsDatabaseOps } from '@/modules/settings/hooks/useSettingsDatabaseOps'
 import { IconHero } from '@/components/settings/IconHero'
@@ -57,19 +58,10 @@ export default function DatabaseSettingsScreen() {
           >
             {db.rebuildState === 'running' && (
               <View style={styles.rebuildProgress}>
-                <View style={styles.rebuildProgressTrack}>
-                  <View
-                    style={[
-                      styles.rebuildProgressFill,
-                      {
-                        width: `${Math.round(db.rebuildProgressValue * 100)}%`,
-                      },
-                    ]}
-                  />
-                </View>
-                {db.rebuildProgressLabel ? (
-                  <Text style={styles.rebuildProgressText}>{db.rebuildProgressLabel}</Text>
-                ) : null}
+                <ProgressBar
+                  current={db.rebuildProgress?.current ?? 0}
+                  total={db.rebuildProgress?.total ?? 0}
+                />
               </View>
             )}
           </SettingsRow>
@@ -153,28 +145,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   rebuildProgress: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginHorizontal: 14,
     marginBottom: 12,
-  },
-  rebuildProgressTrack: {
-    flex: 1,
-    height: 3,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  rebuildProgressFill: {
-    height: '100%',
-    backgroundColor: theme.status.warning.color,
-  },
-  rebuildProgressText: {
-    minWidth: 44,
-    color: theme.palette.slate.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'right',
   },
 })

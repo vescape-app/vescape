@@ -98,7 +98,7 @@ interface EventItemProps {
 
 function EventItem({ event, expanded, onToggle }: EventItemProps) {
   const time = new Date(event.occurredAtMs).toLocaleTimeString()
-  const meta = [event.operation, event.phase, event.deviceName].filter(Boolean).join(' · ')
+  const meta = [event.operation, event.phase].filter(Boolean).join(' · ')
   const dotColor = getEventColor(event.eventName)
 
   return (
@@ -122,11 +122,11 @@ function EventItem({ event, expanded, onToggle }: EventItemProps) {
           <Text style={styles.fieldValue} selectable>
             {new Date(event.occurredAtMs).toLocaleString()}
           </Text>
-          {event.deviceId ? (
+          {event.boardId ? (
             <>
-              <Text style={[styles.fieldLabel, styles.fieldGap]}>deviceId</Text>
+              <Text style={[styles.fieldLabel, styles.fieldGap]}>boardId</Text>
               <Text style={styles.fieldValue} selectable>
-                {event.deviceId}
+                {event.boardId}
               </Text>
             </>
           ) : null}

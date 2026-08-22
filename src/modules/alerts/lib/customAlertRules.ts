@@ -17,7 +17,7 @@ import {
  * {@link DraftAlertRule} is that shape; the live adapter maps its store rules down to it
  * and the wizard holds them in memory until `save()` stamps the new Board's id on.
  */
-export type DraftAlertRule = Omit<AlertRule, 'boardId'>
+export type DraftAlertRule = Omit<AlertRule, 'boardId' | 'updatedAt'>
 
 /**
  * Take ownership of a level: expand it exactly as the preset generator would, then hand the

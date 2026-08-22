@@ -78,12 +78,12 @@ test('splits different devices even when adjacent', () => {
   const sessions = groupHistorySessions([
     block({
       id: 'new',
-      deviceId: 'dev-b',
-      deviceName: 'Board B',
+      boardId: 'dev-b',
+      boardName: 'Board B',
       startAtMs: 240_000,
       endAtMs: 300_000,
     }),
-    block({ id: 'old', deviceId: 'dev-a', startAtMs: 120_000, endAtMs: 180_000 }),
+    block({ id: 'old', boardId: 'dev-a', startAtMs: 120_000, endAtMs: 180_000 }),
   ])
   expect(sessions).toHaveLength(2)
 })

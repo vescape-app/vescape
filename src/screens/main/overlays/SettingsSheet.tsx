@@ -22,7 +22,11 @@ import { LinkWidget } from '@/components/widgets/LinkWidget'
 import { widgetSurface } from '@/components/widgets/widgetSurface'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { DASH, fmtCompactCount, fmtTimeAgo, formatBytes } from '@/helpers/format'
-import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/backupSlot'
+import {
+  backupProgressFraction,
+  type BackupBlock,
+  type BackupSlot,
+} from '@/modules/profile/lib/backupSlot'
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useDatabaseSize } from '@/modules/settings/hooks/useDatabaseSize'
@@ -101,7 +105,11 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
       </View>
 
       <View style={styles.strip}>
-        <BackupCell backup={backup} onSignIn={() => go(routes.signIn)} />
+        <BackupCell
+          backup={backup}
+          onSignIn={() => go(routes.signIn)}
+          onOpen={() => go(routes.settingsSync)}
+        />
         <View style={styles.stripDivider} />
         <StripCell
           icon={availableUpdate ? ArrowFatLinesUpIcon : CheckCircleIcon}
@@ -154,8 +162,23 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
   )
 }
 
+/** What a stalled backup is waiting for, at tile width. */
+const BLOCK_LABELS: Record<BackupBlock, string> = {
+  wifi: 'Needs Wi-Fi',
+  offline: 'Offline',
+  paused: 'Paused',
+}
+
 /** The backup third of the status strip — the only cell whose value can be a live count. */
-function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => void }) {
+function BackupCell({
+  backup,
+  onSignIn,
+  onOpen,
+}: {
+  backup: BackupSlot
+  onSignIn: () => void
+  onOpen: () => void
+}) {
   const accent = theme.settingsIcon.sync
 
   if (backup.kind === 'signedOut') {
@@ -172,15 +195,31 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
     )
   }
 
-  if (backup.kind === 'unavailable') {
+  if (backup.kind === 'off') {
     return (
       <StripCell
         icon={ArrowsClockwiseIcon}
         accent={theme.palette.slate.textMuted}
         value="Sync"
-        label="Unavailable"
+        label="Off"
         dim
-        accessibilityLabel="Backup is not available in this build"
+        onPress={onOpen}
+        accessibilityLabel="Backup is off"
+      />
+    )
+  }
+
+  if (backup.kind === 'blocked') {
+    const blocked = backup.reason === 'paused'
+    return (
+      <StripCell
+        icon={ArrowsClockwiseIcon}
+        accent={blocked ? theme.status.error.color : theme.palette.slate.textMuted}
+        value="Sync"
+        label={BLOCK_LABELS[backup.reason]}
+        valueColor={blocked ? theme.status.error.text : undefined}
+        onPress={onOpen}
+        accessibilityLabel={`Backup ${BLOCK_LABELS[backup.reason].toLowerCase()}`}
       />
     )
   }
@@ -192,6 +231,7 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
         accent={accent}
         value="Backed up"
         label={backup.lastUploadAtMs != null ? fmtTimeAgo(backup.lastUploadAtMs) : DASH}
+        onPress={onOpen}
         accessibilityLabel="Rides are backed up"
       />
     )
@@ -204,6 +244,7 @@ function BackupCell({ backup, onSignIn }: { backup: BackupSlot; onSignIn: () => 
       accent={accent}
       value={`${fmtCompactCount(backup.current)}/${fmtCompactCount(backup.total)}`}
       valueColor={accent}
+      onPress={onOpen}
       progress={backupProgressFraction(backup) ?? undefined}
       accessibilityLabel={`Backing up, ${backup.current} of ${backup.total} rows`}
     />

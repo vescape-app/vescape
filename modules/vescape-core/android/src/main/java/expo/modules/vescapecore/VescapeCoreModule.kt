@@ -7,6 +7,7 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
+import expo.modules.vescapecore.sync.SyncCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.connection.BoardTransportDetector
@@ -83,6 +84,9 @@ private fun Map<String, Any?>.toAlertTestRule(): AlertRuleEntity? {
     repeatEverySeconds = normalizedAlertRepeatSeconds((this["repeatEverySeconds"] as? Number)?.toDouble()),
     beepCount = normalizedAlertBeepCount((this["beepCount"] as? Number)?.toInt()),
     source = null,
+    // Ephemeral: the preview rule is never persisted, so it has no last-write-wins timestamp to
+    // carry and never reaches the upload scan.
+    updatedAt = 0,
   )
 }
 
@@ -172,6 +176,7 @@ class VescapeCoreModule : Module() {
       "onNavigation",
       "onRouteProgress",
       "onWeather",
+      "onSyncStatus",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -273,6 +278,26 @@ class VescapeCoreModule : Module() {
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
     }
     OnStopObserving("onBoardWarnings") { stopObserving("onBoardWarnings") }
+    // Native owns backup state; JS mirrors it. Push every transition, and replay the current one on
+    // subscribe so a late listener never renders an empty status line.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendSyncStatus`
+    // @parity /modules/vescape-core/src/index.ts `SyncStatusEvent`
+    SyncCoordinator.get(context).onStatusChanged = { status ->
+      if (shouldEmitToFrontend("onSyncStatus")) {
+        mainHandler.post {
+          if (shouldEmitToFrontend("onSyncStatus")) sendEvent("onSyncStatus", status)
+        }
+      }
+    }
+
+    OnStartObserving("onSyncStatus") {
+      startObserving("onSyncStatus")
+      CoroutineScope(Dispatchers.IO).launch {
+        val status = SyncCoordinator.get(context).status().toMap()
+        mainHandler.post { sendEvent("onSyncStatus", status) }
+      }
+    }
+    OnStopObserving("onSyncStatus") { stopObserving("onSyncStatus") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
@@ -311,6 +336,9 @@ class VescapeCoreModule : Module() {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.get(context).refresh()
+      // The Device Token outlives the process, so a signed-in phone has to pick the uploader back
+      // up here: provisioning only happens once, and nothing else would start the loop again.
+      SyncCoordinator.get(context).resumeIfBound()
     }
 
     OnActivityEntersForeground {
@@ -449,6 +477,19 @@ class VescapeCoreModule : Module() {
     }
     Function("clearDeviceCredential") {
       NativeAuthCoordinator.get(context).clear()
+    }
+    // The Rider confirmed the destructive Account change; native performs the ordered transition.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `confirmSyncAccountReset`
+    AsyncFunction("confirmSyncAccountReset") Coroutine {
+        serverUrl: String,
+        deviceToken: String,
+        accountId: String,
+      ->
+      NativeAuthCoordinator.get(context).confirmAccountReset(serverUrl, deviceToken, accountId)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getSyncStatus`
+    AsyncFunction("getSyncStatus") Coroutine { ->
+      SyncCoordinator.get(context).status().toMap()
     }
     // Stable Vescape route keeps the app decoupled from the final store destination.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `openAppUpdate`

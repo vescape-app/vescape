@@ -51,6 +51,17 @@ describe('settingsTriggerState', () => {
     expect(state.dot).toBe(theme.status.upgrade.color)
   })
 
+  test('badges a paused backup over an available update', () => {
+    const state = settingsTriggerState({
+      versionWarning: false,
+      updateAvailable: true,
+      backup: { kind: 'blocked', reason: 'paused' },
+    })
+    expect(state.takeover).toBeNull()
+    expect(state.dot).toBe(theme.status.error.color)
+    expect(state.accessibilityLabel).toBe('Settings, backup paused')
+  })
+
   test('omits progress for a backlog it cannot measure', () => {
     const state = settingsTriggerState({
       versionWarning: false,

@@ -95,6 +95,30 @@ object DatabaseBackupManager {
     }
   }
 
+  /**
+   * Replace the app-data database with an empty one, taking the Sync Cursors, the pending Sync
+   * Actions and the Account binding with it (#284).
+   *
+   * Deleting the file rather than clearing tables is what makes the Account change safe: nothing can
+   * survive with a cursor position or a binding that belonged to the previous Account. The wipe is
+   * local maintenance and emits no Sync Actions to either Account — the log is part of what goes.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `replaceWithFreshDatabase`
+   */
+  fun replaceWithFreshDatabase(context: Context) {
+    val appContext = context.applicationContext
+    resetRepositoriesAndCloseDatabase()
+
+    val dbFile = appContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
+    // Checked rather than best-effort: a delete that quietly failed would reopen the previous
+    // Account's database, which the caller is about to hand a different Account's Device Token.
+    check(!dbFile.exists() || dbFile.delete()) { "Could not remove the existing database" }
+    sidecarFiles(dbFile).forEach { it.delete() }
+
+    // Opening rebuilds the schema from the entities, so the new database starts unbound.
+    TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
+  }
+
   private fun extractBackup(context: Context, uriString: String, restoredDb: File): JSONObject {
     var manifest: JSONObject? = null
     val uri = Uri.parse(uriString)

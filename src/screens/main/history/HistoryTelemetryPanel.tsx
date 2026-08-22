@@ -54,7 +54,7 @@ interface HistoryTelemetryPanelProps {
   endAtMs: number
   movingStartAtMs: number | null
   movingEndAtMs: number | null
-  deviceName: string
+  boardName: string
   navigationTitle?: string
   navigationSubtitle?: string
   /** Full-density samples retained for recording-continuity and GPS-gap detection. */
@@ -101,7 +101,7 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
   endAtMs,
   movingStartAtMs,
   movingEndAtMs,
-  deviceName,
+  boardName,
   navigationTitle,
   navigationSubtitle,
   gpsGapSamples,
@@ -307,7 +307,7 @@ export const HistoryTelemetryPanel = memo(function HistoryTelemetryPanel({
         <HistoryPanelNav
           titleStartMs={titleStartMs}
           titleEndMs={titleEndMs}
-          deviceName={deviceName}
+          boardName={boardName}
           title={navigationTitle}
           subtitle={navigationSubtitle}
           canPrevious={canPrevious}

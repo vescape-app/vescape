@@ -37,7 +37,7 @@ const val TELEMETRY_MASK2_LOCATION = 1
   tableName = "telemetry_frames",
   indices = [
     Index(value = ["captured_at_ms"]),
-    Index(value = ["device_id", "captured_at_ms"]),
+    Index(value = ["board_id", "captured_at_ms"]),
   ],
 )
 data class TelemetryFrameEntity(
@@ -47,10 +47,13 @@ data class TelemetryFrameEntity(
   val capturedAtMs: Long,
   @ColumnInfo(name = "elapsed_realtime_ms")
   val elapsedRealtimeMs: Long,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String?,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /**
+   * Owning Board (`boards.id`), or null when the samples match no saved Board. Never the BLE
+   * identifier: it is nullable, it moves when a Board is re-linked, and it is not an identity
+   * (ADR 0028). The Board name is resolved from `boards` on read, never denormalized here.
+   */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
   @ColumnInfo(name = "can_id")
   val canId: Int?,
   val flags: Int,
@@ -110,16 +113,23 @@ data class TelemetryFrameEntity(
 
 @Entity(
   tableName = "telemetry_minute_buckets",
-  primaryKeys = ["bucket_start_ms", "device_id"],
-  indices = [Index(value = ["bucket_start_ms"])],
+  primaryKeys = ["bucket_start_ms", "board_id"],
+  indices = [
+    Index(value = ["bucket_start_ms"]),
+    Index(value = ["updated_at"]),
+    Index(value = ["sync_seq"]),
+  ],
 )
 data class TelemetryMinuteBucketEntity(
   @ColumnInfo(name = "bucket_start_ms")
   val bucketStartMs: Long,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /**
+   * Owning Board (`boards.id`), or [UNKNOWN_TELEMETRY_BOARD_ID] when the samples match no saved
+   * Board — the column is part of the primary key, so it cannot be null. Keyed on the Board rather
+   * than the BLE identifier (ADR 0028), which is also what the server keys this table on.
+   */
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
   @ColumnInfo(name = "first_sample_at_ms")
@@ -172,13 +182,26 @@ data class TelemetryMinuteBucketEntity(
   val firstMovingAtMs: Long? = null,
   @ColumnInfo(name = "last_moving_at_ms")
   val lastMovingAtMs: Long? = null,
+  /**
+   * Last-write-wins timestamp: wall-clock epoch ms of the last write to this bucket. Distinct from
+   * [lastSampleAtMs], which tracks the newest *sample* in the bucket — a merge that folds in older
+   * samples, or a bucket rebuild, changes the row without moving that.
+   *
+   * Not the Sync Cursor column; [syncSeq] is. This one crosses the wire and decides which of two
+   * writes to the same row the server keeps, so it stays a truthful wall clock.
+   */
+  @ColumnInfo(name = "updated_at")
+  val updatedAt: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 
 @Entity(
   tableName = "telemetry_markers",
   indices = [
     Index(value = ["occurred_at_ms"]),
-    Index(value = ["device_id", "occurred_at_ms"]),
+    Index(value = ["board_id", "occurred_at_ms"]),
   ],
 )
 data class TelemetryMarkerEntity(
@@ -189,10 +212,9 @@ data class TelemetryMarkerEntity(
   @ColumnInfo(name = "elapsed_realtime_ms")
   val elapsedRealtimeMs: Long,
   val type: String,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String?,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /** Owning Board (`boards.id`); null when the Marker was written with no Board connected. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
   val message: String?,
   @ColumnInfo(name = "gap_ms")
   val gapMs: Long?,
@@ -203,7 +225,7 @@ data class TelemetryMarkerEntity(
   indices = [
     Index(value = ["occurred_at_ms"]),
     Index(value = ["event_name"]),
-    Index(value = ["device_id", "occurred_at_ms"]),
+    Index(value = ["board_id", "occurred_at_ms"]),
   ],
 )
 data class DiagnosticEventEntity(
@@ -217,10 +239,9 @@ data class DiagnosticEventEntity(
   val eventName: String,
   val operation: String?,
   val phase: String?,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String?,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /** Owning Board (`boards.id`); null when the event was recorded with no Board connected. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
   val message: String?,
   @ColumnInfo(name = "properties_json")
   val propertiesJson: String,
@@ -230,6 +251,8 @@ data class DiagnosticEventEntity(
   tableName = "boards",
   indices = [
     Index(value = ["created_at"]),
+    Index(value = ["updated_at"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class BoardEntity(
@@ -240,6 +263,37 @@ data class BoardEntity(
   val bleId: String?,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
+  /**
+   * Last-write-wins timestamp: epoch ms of the last write to this row, from the same clock as
+   * [createdAt]. Equal to [createdAt] on insert and bumped on every mutation. It crosses the wire
+   * and is what the server compares to decide which of two writes to this row it keeps, so it stays
+   * a truthful wall clock rather than a counter.
+   *
+   * Ratcheted to `max(previous + 1, now)` on write. A device clock that steps backwards would
+   * otherwise stamp an edit below the copy the server already holds, and the server's
+   * last-write-wins guard would silently drop it. Per row, so the inflation is bounded by the
+   * rewind and disappears once the wall clock passes it again.
+   */
+  @ColumnInfo(name = "updated_at")
+  val updatedAt: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
+  /**
+   * Tombstone stamp: epoch ms of the rider's delete, null while the Board is alive. A deleted Board
+   * keeps its row so Ride History can still name it and the server's Board-owned foreign keys hold;
+   * only the Board's configuration is hard-deleted (ADR-0027).
+   *
+   * Written by the delete path only — an upsert from the bridge never authors it, like [updatedAt].
+   */
+  @ColumnInfo(name = "deleted_at")
+  val deletedAt: Long? = null,
+)
+
+/** Projection for Ride History name resolution — see `TelemetryDao.getBoardNames`. */
+data class BoardNameRow(
+  val id: String,
+  val name: String,
 )
 
 @Entity(
@@ -247,6 +301,7 @@ data class BoardEntity(
   primaryKeys = ["board_id", "key"],
   indices = [
     Index(value = ["board_id"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class BoardSettingEntity(
@@ -255,8 +310,12 @@ data class BoardSettingEntity(
   val key: String,
   @ColumnInfo(name = "value_json")
   val valueJson: String,
+  /** Ratcheted last-write-wins timestamp; see [BoardEntity.updatedAt]. */
   @ColumnInfo(name = "updated_at")
   val updatedAt: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 
 @Entity(
@@ -267,6 +326,8 @@ data class BoardSettingEntity(
     Index(value = ["control_id"]),
     Index(value = ["enabled"]),
     Index(value = ["created_at"]),
+    Index(value = ["updated_at"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class AlertRuleEntity(
@@ -297,20 +358,205 @@ data class AlertRuleEntity(
    * JS authors and regenerates preset rules; native only persists the string.
    */
   val source: String?,
+  /**
+   * Last-write-wins timestamp, ratcheted on write exactly as [BoardEntity.updatedAt] is, and moved
+   * by every mutation including the targeted enable/disable update.
+   */
+  @ColumnInfo(name = "updated_at")
+  val updatedAt: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
+)
+
+/**
+ * One counter per syncable table, handing out the strictly increasing `sync_seq` those tables stamp
+ * on every write.
+ *
+ * The Sync Cursor is the phone's own record of how far it has uploaded, and it never crosses the
+ * wire — the server stores no watermark and has no opinion about one. That is what lets the scan
+ * run on a counter instead of a clock: a device clock that steps backwards makes an
+ * `updated_at >= watermark` scan skip the write entirely, because the row lands below a cursor the
+ * phone already passed. A counter cannot regress, so the scan stays complete however the clock
+ * behaves.
+ *
+ * The counter lives in its own table rather than being derived as `MAX(sync_seq) + 1` per table:
+ * deleting the highest row would hand the same number out twice, and the second row would fall on
+ * the wrong side of a cursor already advanced past it.
+ */
+@Entity(tableName = "sync_sequences")
+data class SyncSequenceEntity(
+  @PrimaryKey
+  val name: String,
+  @ColumnInfo(name = "last_value")
+  val lastValue: Long,
+)
+
+/** Table names used as [SyncSequenceEntity] keys. */
+internal const val SYNC_SEQ_BOARDS = "boards"
+internal const val SYNC_SEQ_ALERTS = "alerts"
+internal const val SYNC_SEQ_MINUTE_BUCKETS = "telemetry_minute_buckets"
+internal const val SYNC_SEQ_APP_SETTINGS = "app_settings"
+internal const val SYNC_SEQ_BOARD_SETTINGS = "board_settings"
+internal const val SYNC_SEQ_BOARD_WARNINGS = "board_warnings"
+internal const val SYNC_SEQ_PRIVACY_ZONES = "privacy_zones"
+internal const val SYNC_SEQ_TUNE_PROFILES = "tune_profiles"
+internal const val SYNC_SEQ_FAVORITES = "favorites"
+
+/**
+ * The three tables the schema-33 migration gave a `sync_seq`, frozen at the set that existed then.
+ * A migration iterates the tables it actually shipped with, never the current [SYNC_SEQ_TABLES] —
+ * growing that list must not retroactively change what an older migration step does.
+ */
+internal val SYNC_SEQ_TABLES_V33 = listOf(
+  SYNC_SEQ_BOARDS,
+  SYNC_SEQ_ALERTS,
+  SYNC_SEQ_MINUTE_BUCKETS,
+)
+
+/** The six remaining mutable tables, given a `sync_seq` at schema 36 (#281). */
+internal val SYNC_SEQ_TABLES_V36 = listOf(
+  SYNC_SEQ_APP_SETTINGS,
+  SYNC_SEQ_BOARD_SETTINGS,
+  SYNC_SEQ_BOARD_WARNINGS,
+  SYNC_SEQ_PRIVACY_ZONES,
+  SYNC_SEQ_TUNE_PROFILES,
+  SYNC_SEQ_FAVORITES,
+)
+
+/**
+ * Every table carrying a `sync_seq`. Append-only tables are deliberately absent: they declare
+ * `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
+ * key already *is* their cursor.
+ */
+internal val SYNC_SEQ_TABLES = SYNC_SEQ_TABLES_V33 + SYNC_SEQ_TABLES_V36
+
+/**
+ * What a [SyncActionEntity] can name — and, by omission, what it cannot.
+ *
+ * Every case is configuration or current state a Rider edits directly. Ride History is absent on
+ * purpose: Telemetry Samples, markers, minute buckets, exclusion ranges and diagnostic events are
+ * pruned on a retention rule, and an action naming one of those would make the server delete exactly
+ * the rides the backup exists to preserve. Leaving them unnameable makes that boundary structural
+ * rather than a rule someone has to remember (server ADR-0004).
+ *
+ * [table] is the local table the case removes from, so a test can assert no retained table is ever
+ * given a case.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/SyncActionLog.swift `DeleteTarget`
+ * @parity /modules/vescape-core/src/index.ts `DeleteTarget`
+ */
+enum class DeleteTarget(val wire: String, val table: String) {
+  APP_SETTING("appSetting", "app_settings"),
+  BOARD("board", "boards"),
+  BOARD_SETTING("boardSetting", "board_settings"),
+  BOARD_WARNING("boardWarning", "board_warnings"),
+  ALERT("alert", "alerts"),
+  TUNE_PROFILE("tuneProfile", "tune_profiles"),
+  PRIVACY_ZONE("privacyZone", "privacy_zones"),
+
+  /**
+   * Favorites have no server table yet (#286 owns that half), so the uploader drops this case until
+   * they do. The log still records it: a Favorite removed while the phone is offline has to survive
+   * as intent, not as a gap the restore silently re-creates.
+   */
+  FAVORITE("favorite", "favorites"),
+}
+
+/** The only Sync Action type today. Named rather than implied so a later intent needs no second log. */
+internal const val SYNC_ACTION_TYPE_DELETE = "delete"
+
+/**
+ * One Sync Action: an append-only record that something was semantically removed. A deleted row
+ * cannot carry a Change Timestamp saying it is gone, so this log is the only signal the server can
+ * apply the same durable state transition from.
+ *
+ * Its cursor is [id] — `AUTOINCREMENT`, which SQLite guarantees monotonic and never reused — so the
+ * log needs no `sync_seq` of its own. The row is transport state, not durable truth: it is pruned
+ * once the server has accepted it.
+ *
+ * Written only from Rider-facing removal paths, never from a trigger or a retention sweep. Intent
+ * cannot be inferred from SQL alone, so there is no database trigger behind this table.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/SyncActionLog.swift `createSyncActionsTable`
+ */
+@Entity(
+  tableName = "sync_actions",
+  indices = [Index(value = ["target"])],
+)
+data class SyncActionEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  /** Always [SYNC_ACTION_TYPE_DELETE] today; see [DeleteTarget]. */
+  val type: String = SYNC_ACTION_TYPE_DELETE,
+  /** [DeleteTarget.wire]. */
+  val target: String,
+  /** Owning Board, or null when the target is not Board-owned. A Board names itself in [key]. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  /** The removed row's identity within its scope: a settings key, a warning kind, a row id. */
+  val key: String,
+  /**
+   * Epoch ms of the removal, stamped `max(now, row.updated_at)` from the row being removed. A plain
+   * `now` on a rewound clock produces an action the server treats as a no-op, and it cannot
+   * self-heal by re-sending because the row it would re-send is gone.
+   */
+  @ColumnInfo(name = "deleted_at")
+  val deletedAt: Long,
+)
+
+/** [SyncSequenceEntity] key holding the highest action cursor the server has accepted. */
+internal const val SYNC_ACTIONS_UPLOADED_CURSOR = "sync_actions_uploaded"
+
+/**
+ * [SyncSequenceEntity] keys holding how far each table has been accepted — the Sync Cursors the
+ * uploader commits and cursor-gated retention reads back. Prefixed so a cursor can never collide
+ * with the write counters, which are keyed on the bare table name.
+ *
+ * The five below are the retained tables; every other table's key is derived the same way from
+ * `SyncTable`, and a test pins the two spellings together.
+ */
+internal const val SYNC_CURSOR_PREFIX = "sync_cursor_"
+internal const val SYNC_CURSOR_FRAMES = "sync_cursor_telemetry_frames"
+internal const val SYNC_CURSOR_MARKERS = "sync_cursor_telemetry_markers"
+internal const val SYNC_CURSOR_MINUTE_BUCKETS = "sync_cursor_telemetry_minute_buckets"
+internal const val SYNC_CURSOR_DIAGNOSTIC_EVENTS = "sync_cursor_diagnostic_events"
+internal const val SYNC_CURSOR_EXCLUSION_RANGES = "sync_cursor_metric_exclusion_ranges"
+
+/**
+ * Which Vescape Account this local database belongs to. One row, claimed by the first Account to
+ * sign in and never rewritten in place: a different Account replaces the whole database, because
+ * resetting the cursors over these rows would upload the previous Account's Boards, Ride History,
+ * locations and settings to the new one.
+ *
+ * Signing out does not clear the binding, so data recorded while signed out keeps its retention
+ * protection for the same Account.
+ *
+ * @parity /modules/vescape-core/ios/sync/SyncStore.swift `createSyncBindingTable`
+ */
+@Entity(tableName = "sync_binding")
+data class SyncBindingEntity(
+  @PrimaryKey
+  val id: Int = 0,
+  @ColumnInfo(name = "account_id")
+  val accountId: String,
+  @ColumnInfo(name = "bound_at")
+  val boundAt: Long,
 )
 
 @Entity(
   tableName = "metric_exclusion_ranges",
   indices = [
     Index(value = ["start_ms", "end_ms"]),
-    Index(value = ["device_id", "start_ms", "end_ms"]),
+    Index(value = ["board_id", "start_ms", "end_ms"]),
   ],
 )
 data class MetricExclusionRangeEntity(
   @PrimaryKey(autoGenerate = true)
   val id: Long = 0,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String,
+  /** Owning Board (`boards.id`). A range excludes one Board's samples, so it is never absent. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
   val reason: String,
   @ColumnInfo(name = "start_ms")
   val startMs: Long,
@@ -322,6 +568,9 @@ data class MetricExclusionRangeEntity(
 
 @Entity(
   tableName = "privacy_zones",
+  indices = [
+    Index(value = ["sync_seq"]),
+  ],
 )
 data class PrivacyZoneEntity(
   @PrimaryKey
@@ -337,18 +586,74 @@ data class PrivacyZoneEntity(
   val radiusMeters: Int,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
+  /** Ratcheted last-write-wins timestamp; see [BoardEntity.updatedAt]. */
   @ColumnInfo(name = "updated_at")
   val updatedAt: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 
-@Entity(tableName = "app_settings")
+@Entity(
+  tableName = "app_settings",
+  indices = [
+    Index(value = ["sync_seq"]),
+  ],
+)
 data class AppSettingEntity(
   @PrimaryKey
   val key: String,
   @ColumnInfo(name = "value_json")
   val valueJson: String,
+  /** Ratcheted last-write-wins timestamp; see [BoardEntity.updatedAt]. */
   @ColumnInfo(name = "updated_at")
   val updatedAt: Long,
+  /**
+   * Device-local Sync Cursor position; see [SyncSequenceEntity]. Stays 0 — below every cursor, so
+   * invisible to the upload scan — for the keys in [NOT_SYNCED_SETTING_KEYS].
+   */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
+)
+
+/**
+ * App settings that name *this phone* rather than the Rider, and so never leave it: restoring them
+ * onto a second phone would overwrite that phone's own identity or session state. Enforced at the
+ * write path — [TelemetryDao.upsertAppSetting] leaves their `sync_seq` at 0, which is below every
+ * Sync Cursor, so no upload scan ever sees the row.
+ *
+ * Rider Name and Rider Color live in `app_settings` by design, so that Group Ride keeps working
+ * signed-out; that placement is what makes them phone-local rather than Account-scoped. See #277.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `notSyncedSettingKeys`
+ */
+internal val NOT_SYNCED_SETTING_KEYS = setOf(
+  // Rider identity — a second phone in the same Group Ride must not become the same Rider.
+  "riderId",
+  "riderName",
+  "riderColor",
+  // Device/session state — names this phone's current session, not the Rider's configuration.
+  "selectedBoardId",
+  "lastGpsLatitude",
+  "lastGpsLongitude",
+  "directionPointLatitude",
+  "directionPointLongitude",
+  // Connection and companion behaviour — phone-side BLE and foreground policy.
+  "autoConnect",
+  "companionPresenceEnabled",
+  "companionPresenceCooldownMinutes",
+  "connectionSoundsEnabled",
+  "autoCloseEnabled",
+  "autoCloseDelayMinutes",
+  // Wear pairing — the watch is paired to one phone.
+  "wearMirrorIntervalMs",
+  "wearAutoLaunchOnConnect",
+  // The backup master switch is per phone, and deliberately does not travel through the mechanism
+  // it turns off: a restored snapshot must never be able to switch backup back on.
+  "syncEnabled",
+  // The backup choice is per phone: the expensive first upload belongs to the phone that holds the
+  // backlog, so a restore onto a second phone asks that Rider again rather than deciding for them.
+  "syncBackupChoiceMade",
 )
 
 /**
@@ -391,6 +696,12 @@ data class AppSettings(
   val companionPresenceCooldownMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,
   val autoCloseDelayMinutes: Int = 15,
+  /** Backup master switch. Off by default: the uploader does nothing until the Rider turns it on. */
+  val syncEnabled: Boolean = false,
+  /** Nothing uploads on a metered connection while this is on — mid-ride included. */
+  val syncWifiOnly: Boolean = false,
+  /** The one-time backup choice has been offered on this phone and answered. */
+  val syncBackupChoiceMade: Boolean = false,
   val riderId: String? = null,
   val riderName: String? = null,
   val riderColor: String? = null,
@@ -403,6 +714,7 @@ data class AppSettings(
   indices = [
     Index(value = ["board_id"]),
     Index(value = ["board_id", "refloat_base_version"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class TuneProfileEntity(
@@ -419,8 +731,12 @@ data class TuneProfileEntity(
   val fieldsJson: String,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
+  /** Ratcheted last-write-wins timestamp; see [BoardEntity.updatedAt]. */
   @ColumnInfo(name = "updated_at")
   val updatedAt: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 
 @Entity(
@@ -453,6 +769,7 @@ data class TuneHistoryEntryEntity(
   primaryKeys = ["board_id", "kind"],
   indices = [
     Index(value = ["board_id"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class BoardWarningEntity(
@@ -466,6 +783,16 @@ data class BoardWarningEntity(
   val lastDetectedAt: Long,
   @ColumnInfo(name = "payload_json")
   val payloadJson: String,
+  /**
+   * Ratcheted last-write-wins timestamp; see [BoardEntity.updatedAt]. Distinct from
+   * [lastDetectedAt], which moves only when the detector fires — a severity or payload change
+   * rewrites the row without necessarily being a fresh detection.
+   */
+  @ColumnInfo(name = "updated_at")
+  val updatedAt: Long = 0,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 
 /**
@@ -483,6 +810,7 @@ data class BoardWarningEntity(
   indices = [
     Index(value = ["start_ms", "end_ms"]),
     Index(value = ["board_id"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class FavoriteEntity(
@@ -518,6 +846,9 @@ data class FavoriteEntity(
   val maxSpeedCentiKmh: Int,
   @ColumnInfo(name = "battery_used_wh_milli")
   val batteryUsedWhMilli: Long,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 ) {
   /**
    * Board name is resolved on read from `boards`, not snapshotted, so renames propagate.

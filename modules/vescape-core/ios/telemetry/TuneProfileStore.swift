@@ -78,10 +78,14 @@ struct TuneProfileStore {
         color TEXT NOT NULL DEFAULT 'purple',
         fields_json TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        sync_seq INTEGER NOT NULL DEFAULT 0
       )
       """)
     try db.execute(sql: "CREATE INDEX index_tune_profiles_board_id ON tune_profiles(board_id)")
+    try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_tune_profiles_sync_seq ON tune_profiles(sync_seq)")
+    try createSyncSequencesTable(db)
+    try createSyncActionsTable(db)
     try db.execute(sql: "CREATE INDEX index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)")
 
     try db.execute(sql: """
@@ -153,10 +157,13 @@ struct TuneProfileStore {
     return try inWrite { db in
       try db.execute(
         sql: """
-          INSERT INTO tune_profiles (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO tune_profiles (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at, sync_seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [id, boardId, compatibility, name, icon, color, fieldsJson, now, now]
+        arguments: [
+          id, boardId, compatibility, name, icon, color, fieldsJson, now, now,
+          try nextSyncSeq(db, syncSeqTuneProfiles),
+        ]
       )
       try Self.insertHistory(db, profileId: id, fieldsJson: fieldsJson, createdAt: now)
       return try Self.requireProfileMap(db, id)
@@ -173,8 +180,11 @@ struct TuneProfileStore {
     let now = Self.nowMs()
     return try inWrite { db in
       try db.execute(
-        sql: "UPDATE tune_profiles SET name = ?, icon = ?, color = ?, updated_at = ? WHERE id = ?",
-        arguments: [name, icon, color, now, profileId]
+        sql: """
+          UPDATE tune_profiles SET name = ?, icon = ?, color = ?,
+            updated_at = MAX(updated_at + 1, ?), sync_seq = ? WHERE id = ?
+          """,
+        arguments: [name, icon, color, now, try nextSyncSeq(db, syncSeqTuneProfiles), profileId]
       )
       guard let map = try Self.fetchProfileMap(db, profileId) else {
         throw TuneProfileError.profileNotFound(profileId)
@@ -197,8 +207,17 @@ struct TuneProfileStore {
         arguments: [boardId, row["refloat_base_version"] as String]
       ) ?? 0
       if count <= 1 { throw TuneProfileError.cannotDeleteLast }
+      // Tune History is a parent-covered cascade: raw, because the profile's own Sync Action
+      // covers it (#282).
       try db.execute(sql: "DELETE FROM tune_history_entries WHERE profile_id = ?", arguments: [profileId])
-      try db.execute(sql: "DELETE FROM tune_profiles WHERE id = ?", arguments: [profileId])
+      try deleteForSync(
+        db,
+        target: .tuneProfile,
+        boardId: nil,
+        key: profileId,
+        whereClause: "id = ?",
+        keys: [profileId]
+      )
       return true
     }
   }
@@ -224,8 +243,11 @@ struct TuneProfileStore {
 
       try Self.insertHistory(db, profileId: profileId, fieldsJson: profile["fields_json"], createdAt: now)
       try db.execute(
-        sql: "UPDATE tune_profiles SET fields_json = ?, updated_at = ? WHERE id = ?",
-        arguments: [entry["fields_json"] as String, now, profileId]
+        sql: """
+          UPDATE tune_profiles SET fields_json = ?, updated_at = MAX(updated_at + 1, ?), sync_seq = ?
+          WHERE id = ?
+          """,
+        arguments: [entry["fields_json"] as String, now, try nextSyncSeq(db, syncSeqTuneProfiles), profileId]
       )
       guard let map = try Self.fetchProfileMap(db, profileId) else {
         throw TuneProfileError.disappearedDuringRollback(profileId)
@@ -248,10 +270,13 @@ struct TuneProfileStore {
       let color: String = source["color"]
       try db.execute(
         sql: """
-          INSERT INTO tune_profiles (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO tune_profiles (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at, sync_seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [copyId, targetBoardId, source["refloat_base_version"] as String, newName, icon, color, fieldsJson, now, now]
+        arguments: [
+          copyId, targetBoardId, source["refloat_base_version"] as String, newName, icon, color,
+          fieldsJson, now, now, try nextSyncSeq(db, syncSeqTuneProfiles),
+        ]
       )
       try Self.insertHistory(db, profileId: copyId, fieldsJson: fieldsJson, createdAt: now)
       return try Self.requireProfileMap(db, copyId)
@@ -270,8 +295,11 @@ struct TuneProfileStore {
       }
       try Self.insertHistory(db, profileId: profileId, fieldsJson: current["fields_json"], createdAt: now)
       try db.execute(
-        sql: "UPDATE tune_profiles SET fields_json = ?, updated_at = ? WHERE id = ?",
-        arguments: [fieldsJson, now, profileId]
+        sql: """
+          UPDATE tune_profiles SET fields_json = ?, updated_at = MAX(updated_at + 1, ?), sync_seq = ?
+          WHERE id = ?
+          """,
+        arguments: [fieldsJson, now, try nextSyncSeq(db, syncSeqTuneProfiles), profileId]
       )
       guard let map = try Self.fetchProfileMap(db, profileId) else {
         throw TuneProfileError.disappearedDuringSave(profileId)

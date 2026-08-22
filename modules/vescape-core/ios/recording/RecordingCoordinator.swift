@@ -83,7 +83,7 @@ internal final class RecordingCoordinator {
     if let config = activeConfig, enabled {
       recordMarker(markerType, config: config)
     }
-    store.flushBlocking()
+    flushTelemetryBlocking()
     activeConfig = nil
     enabled = false
     startedAtMs = nil
@@ -91,7 +91,7 @@ internal final class RecordingCoordinator {
 
   func failSession() {
     finishDebugRecording(status: "error")
-    store.flushBlocking()
+    flushTelemetryBlocking()
     activeConfig = nil
     enabled = false
     startedAtMs = nil
@@ -111,7 +111,7 @@ internal final class RecordingCoordinator {
     if enabled {
       recordMarker("app_stop", config: config, message: "Recording stopped")
     }
-    store.flushBlocking()
+    flushTelemetryBlocking()
     enabled = false
     startedAtMs = nil
     return true
@@ -144,6 +144,15 @@ internal final class RecordingCoordinator {
     )
   }
 
+  /// The three ways recording stops — the session finishing, failing, or the Rider switching it
+  /// off. The flush has to land before the kick, or the uploader scans a ride missing its tail.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/RecordingCoordinator.kt `flushTelemetryBlocking`
+  private func flushTelemetryBlocking() {
+    store.flushBlocking()
+    SyncCoordinator.shared.notifyRecordingStopped()
+  }
+
   private func finishDebugRecording(status: String) {
     recorder?.finish(status: status)
     recorder = nil
@@ -171,7 +180,7 @@ internal final class RecordingCoordinator {
   }
 
   private func recordMarker(_ type: String, config: BoardConnectConfig, message: String? = nil) {
-    store.recordMarker(type: type, deviceId: config.bleId, deviceName: config.name, message: message)
+    store.recordMarker(type: type, boardId: config.appBoardId, message: message)
   }
 
   private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000.0) }

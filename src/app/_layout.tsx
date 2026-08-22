@@ -23,6 +23,7 @@ import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
+import { startSyncStatusSync } from '@/modules/profile/store/syncStatusStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
@@ -87,6 +88,7 @@ function RootLayout() {
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
+    const stopSyncStatusSync = startSyncStatusSync()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
@@ -95,6 +97,7 @@ function RootLayout() {
       stopAppStatusSync()
       stopNavigationSync()
       stopWeatherSync()
+      stopSyncStatusSync()
     }
   }, [fixturesReady])
 
@@ -176,6 +179,7 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
             <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
             <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
+            <Stack.Screen name={stackScreens.settingsSync} options={{ title: 'Sync' }} />
             <Stack.Screen name={stackScreens.settingsDatabase} options={{ title: 'Database' }} />
             <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
             <Stack.Screen

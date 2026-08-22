@@ -24,9 +24,9 @@ export function formatRideDate(startMs: number, endMs: number): string {
   return `${s.getDate()} ${MONTHS[s.getMonth()]} – ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`
 }
 
-export function formatRideMeta(startAtMs: number, endAtMs: number, deviceName: string): string {
-  return deviceName
-    ? `${formatRideDate(startAtMs, endAtMs)} · ${deviceName}`
+export function formatRideMeta(startAtMs: number, endAtMs: number, boardName: string): string {
+  return boardName
+    ? `${formatRideDate(startAtMs, endAtMs)} · ${boardName}`
     : formatRideDate(startAtMs, endAtMs)
 }
 
@@ -37,12 +37,12 @@ export function formatRideListDateTime(startAtMs: number, endAtMs: number): stri
 export function formatRideListDetails(
   durationMs: number,
   distanceM: number | null,
-  deviceName: string | null,
+  boardName: string | null,
 ): string {
   return [
     formatRideListDuration(durationMs),
     distanceM == null ? null : `${(distanceM / 1000).toFixed(2)} km`,
-    deviceName?.trim() || null,
+    boardName?.trim() || null,
   ]
     .filter((part): part is string => part != null)
     .join(' · ')

@@ -8,16 +8,16 @@ internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
   try db.execute(
     sql: """
       INSERT INTO telemetry_frames (
-        captured_at_ms, elapsed_realtime_ms, device_id, device_name, can_id, flags, changed_mask_1, changed_mask_2,
+        captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, changed_mask_2,
         speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, duty_permille,
         pitch_centi_deg, roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
         switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c,
         fault_code, latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
         altitude_cm, location_timestamp_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
     arguments: [
-      state.capturedAtMs, state.elapsedRealtimeMs, state.deviceId, state.deviceName, state.capture.canId,
+      state.capturedAtMs, state.elapsedRealtimeMs, state.boardId, state.capture.canId,
       TELEMETRY_FLAG_KEYFRAME | (t.hasFault ? TELEMETRY_FLAG_HAS_FAULT : 0) | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
       Int.max, 1,
       telemetryCenti(t.speed), telemetryMilli(t.batteryVoltage), telemetryMilli(t.motorCurrent), telemetryMilli(t.batteryCurrent), telemetryMilli(t.dutyCycle),
@@ -32,20 +32,133 @@ internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
   )
 }
 
-internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
+/// Table names carrying a `sync_seq`, and the keys their counters use in `sync_sequences`.
+internal let syncSeqBoards = "boards"
+internal let syncSeqAlerts = "alerts"
+internal let syncSeqMinuteBuckets = "telemetry_minute_buckets"
+internal let syncSeqAppSettings = "app_settings"
+internal let syncSeqBoardSettings = "board_settings"
+internal let syncSeqBoardWarnings = "board_warnings"
+internal let syncSeqPrivacyZones = "privacy_zones"
+internal let syncSeqTuneProfiles = "tune_profiles"
+internal let syncSeqFavorites = "favorites"
+
+/// The three tables the `v33_sync_seq` migration gave a `sync_seq`, frozen at the set that existed
+/// then. A migration iterates the tables it actually shipped with, never the current
+/// [syncSeqTables] — growing that list must not retroactively change an older migration step.
+internal let syncSeqTablesV33 = [syncSeqBoards, syncSeqAlerts, syncSeqMinuteBuckets]
+
+/// The six remaining mutable tables, given a `sync_seq` by `v36_sync_seq_remaining` (#281).
+internal let syncSeqTablesV36 = [
+  syncSeqAppSettings,
+  syncSeqBoardSettings,
+  syncSeqBoardWarnings,
+  syncSeqPrivacyZones,
+  syncSeqTuneProfiles,
+  syncSeqFavorites,
+]
+
+/// Every table carrying a `sync_seq`. Append-only tables are deliberately absent: they declare
+/// `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
+/// key already *is* their cursor.
+internal let syncSeqTables = syncSeqTablesV33 + syncSeqTablesV36
+
+/// The Sync Cursor counter table. Idempotent, and called both from the migration that introduced it
+/// and from the store-level `createTables` seams tests build their schema from — a table whose write
+/// path allocates a cursor cannot be created without it.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `SyncSequenceEntity`
+internal func createSyncSequencesTable(_ db: Database) throws {
+  try db.execute(
+    sql: """
+      CREATE TABLE IF NOT EXISTS sync_sequences (
+        name TEXT NOT NULL PRIMARY KEY,
+        last_value INTEGER NOT NULL
+      )
+      """
+  )
+}
+
+/// Hands out the next Sync Cursor position for [name].
+///
+/// The Sync Cursor is the phone's own record of how far it has uploaded and never crosses the wire,
+/// which is what lets the upload scan run on a counter instead of a clock: a device clock that steps
+/// backwards makes an `updated_at >= watermark` scan skip the write entirely, because the row lands
+/// below a cursor the phone already passed. A counter cannot regress.
+///
+/// Bump-then-read rather than read-then-bump so two writes racing inside the same database can never
+/// be handed the same number; both statements run in the caller's transaction. The counter lives in
+/// its own table rather than being derived as `MAX(sync_seq) + 1`, which would hand the same number
+/// out twice after the highest row is deleted. Seeded on demand because a database created fresh
+/// never runs the migration that inserts the row.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `nextSyncSeq`
+internal func nextSyncSeq(_ db: Database, _ name: String) throws -> Int64 {
+  try db.execute(
+    sql: "INSERT OR IGNORE INTO sync_sequences (name, last_value) VALUES (?, 0)",
+    arguments: [name]
+  )
+  try db.execute(
+    sql: "UPDATE sync_sequences SET last_value = last_value + 1 WHERE name = ?",
+    arguments: [name]
+  )
+  return try Int64.fetchOne(db, sql: "SELECT last_value FROM sync_sequences WHERE name = ?", arguments: [name]) ?? 0
+}
+
+/// The write-time fold behind `updated_at` on `boards` and `alerts`: never below the value already
+/// stored, and strictly above it whenever the clock fails to be.
+///
+/// `+ 1` rather than a plain `max` because the server keeps the stored row unless the incoming stamp
+/// is strictly newer — freezing at the old value would satisfy the scan and still lose the edit. Per
+/// row, so the inflation is bounded by the rewind and disappears once the wall clock passes it.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `ratchetUpdatedAt`
+internal func ratchetUpdatedAt(_ previous: Int64?, _ now: Int64) -> Int64 {
+  guard let previous else { return now }
+  return max(previous + 1, now)
+}
+
+/// Stamps `updated_at` and `sync_seq` on a row that `INSERT OR REPLACE` is about to rewrite.
+///
+/// Read-modify-write rather than an `ON CONFLICT` fold: `INSERT OR REPLACE` deletes the old row
+/// before inserting, so the ratchet has no `excluded`-style handle on the value it replaces.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `upsertBoardSetting`
+internal func stampSyncColumns(
+  _ db: Database,
+  table: String,
+  sequence: String,
+  whereClause: String,
+  keys: StatementArguments,
+  now: Int64
+) throws -> (updatedAt: Int64, syncSeq: Int64) {
+  let previous = try Int64.fetchOne(
+    db,
+    sql: "SELECT updated_at FROM \(table) WHERE \(whereClause)",
+    arguments: keys
+  )
+  return (ratchetUpdatedAt(previous, now), try nextSyncSeq(db, sequence))
+}
+
+/// [now] is the last-write-wins timestamp stamped on the row, ratcheted on conflict exactly as
+/// boards and alerts are: the server guards this table with `WHERE stored.updated_at <
+/// EXCLUDED.updated_at` like every other mutable table, so a stamp frozen at the stored value would
+/// satisfy the scan and still be dropped server-side.
+///
+/// Completeness is `sync_seq`'s job, and it moves on every write including a merge into a row the
+/// scan may already have passed.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt `toEntity`
+internal func upsertBucket(_ db: Database, _ b: TelemetryBucket, now: Int64 = telemetryNowMs()) throws {
+  let syncSeq = try nextSyncSeq(db, syncSeqMinuteBuckets)
   try db.execute(
     sql: """
       INSERT INTO telemetry_minute_buckets (
-        bucket_start_ms, device_id, device_name, sample_count, first_sample_at_ms, last_sample_at_ms,
+        bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms,
         sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
         max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
         max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, max_duty_abs_permille,
         fault_count, first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
         gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
-        first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(bucket_start_ms, device_id) DO UPDATE SET
-        device_name=excluded.device_name,
+        first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms, updated_at,
+        sync_seq
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(bucket_start_ms, board_id) DO UPDATE SET
         sample_count=telemetry_minute_buckets.sample_count + excluded.sample_count,
         last_sample_at_ms=MAX(telemetry_minute_buckets.last_sample_at_ms, excluded.last_sample_at_ms),
         sum_abs_speed_centi_kmh=telemetry_minute_buckets.sum_abs_speed_centi_kmh + excluded.sum_abs_speed_centi_kmh,
@@ -66,15 +179,18 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         max_temp_mosfet_deci_c=MAX(telemetry_minute_buckets.max_temp_mosfet_deci_c, excluded.max_temp_mosfet_deci_c),
         max_temp_motor_deci_c=MAX(telemetry_minute_buckets.max_temp_motor_deci_c, excluded.max_temp_motor_deci_c),
         first_moving_at_ms=MIN(telemetry_minute_buckets.first_moving_at_ms, excluded.first_moving_at_ms),
-        last_moving_at_ms=MAX(telemetry_minute_buckets.last_moving_at_ms, excluded.last_moving_at_ms)
+        last_moving_at_ms=MAX(telemetry_minute_buckets.last_moving_at_ms, excluded.last_moving_at_ms),
+        updated_at=MAX(telemetry_minute_buckets.updated_at + 1, excluded.updated_at),
+        sync_seq=excluded.sync_seq
       """,
     arguments: [
-      b.bucketStartMs, b.deviceId, b.deviceName, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
+      b.bucketStartMs, b.boardId, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
       b.sumAbsSpeedCentiKmh, b.movingSpeedSampleCount, b.sumMovingAbsSpeedCentiKmh, b.maxAbsSpeedCentiKmh,
       b.minBatteryVoltageMv, b.maxMotorCurrentAbsMa, b.maxBatteryCurrentAbsMa, b.batteryUsedWhMilli,
       b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.faultCount, b.firstOdometerCm, b.lastOdometerCm,
       b.gpsPointCount, b.preciseGpsPointCount, b.maxGpsSpeedCentiMps, b.maxTempMosfetDeciC,
-      b.maxTempMotorDeciC, b.firstLatitudeE7, b.firstLongitudeE7, b.firstMovingAtMs, b.lastMovingAtMs,
+      b.maxTempMotorDeciC, b.firstLatitudeE7, b.firstLongitudeE7, b.firstMovingAtMs, b.lastMovingAtMs, now,
+      syncSeq,
     ]
   )
 }
@@ -83,24 +199,24 @@ internal func insertMarker(_ db: Database, _ marker: [String: Any?]) throws {
   let occurredAtMs = telemetryLong(marker["occurredAtMs"] ?? nil) ?? telemetryNowMs()
   let elapsedRealtimeMs = telemetryLong(marker["elapsedRealtimeMs"] ?? nil) ?? telemetryElapsedMs()
   let type = marker["type"] as? String ?? "event"
-  let deviceId = marker["deviceId"] as? String
-  let deviceName = marker["deviceName"] as? String
+  let boardId = marker["boardId"] as? String
   let message = marker["message"] as? String
   let gapMs = telemetryLong(marker["gapMs"] ?? nil)
   try db.execute(
-    sql: "INSERT INTO telemetry_markers (occurred_at_ms, elapsed_realtime_ms, type, device_id, device_name, message, gap_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    arguments: [occurredAtMs, elapsedRealtimeMs, type, deviceId, deviceName, message, gapMs]
+    sql: "INSERT INTO telemetry_markers (occurred_at_ms, elapsed_realtime_ms, type, board_id, message, gap_ms) VALUES (?, ?, ?, ?, ?, ?)",
+    arguments: [occurredAtMs, elapsedRealtimeMs, type, boardId, message, gapMs]
   )
 }
 
 internal func insertExclusion(_ db: Database, _ range: MetricExclusionRange) throws {
   try db.execute(
-    sql: "INSERT INTO metric_exclusion_ranges (device_id, reason, start_ms, end_ms, sample_count) VALUES (?, ?, ?, ?, ?)",
-    arguments: [range.deviceId, range.reason, range.startMs, range.endMs, range.sampleCount]
+    sql: "INSERT INTO metric_exclusion_ranges (board_id, reason, start_ms, end_ms, sample_count) VALUES (?, ?, ?, ?, ?)",
+    arguments: [range.boardId, range.reason, range.startMs, range.endMs, range.sampleCount]
   )
 }
 
-internal func historyMap(_ row: Row, markers: [Row]) -> [String: Any?] {
+/// [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028).
+internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String]) -> [String: Any?] {
   let sampleCount: Int = row["sample_count"]
   let movingCount: Int? = row["moving_speed_sample_count"]
   let sumMoving: Int64? = row["sum_moving_abs_speed_centi_kmh"]
@@ -108,23 +224,20 @@ internal func historyMap(_ row: Row, markers: [Row]) -> [String: Any?] {
     ?? (sampleCount > 0 ? Double(row["sum_abs_speed_centi_kmh"] as Int64) / Double(sampleCount) / 100.0 : 0.0)
   let marker = markers.last { marker in
     let occurredAtMs = marker["occurred_at_ms"] as Int64
-    let markerDevice = marker["device_id"] as String? ?? ""
-    let bucketDevice = row["device_id"] as String
     return occurredAtMs >= (row["first_sample_at_ms"] as Int64) - 5_000 &&
-      occurredAtMs <= (row["first_sample_at_ms"] as Int64) + 1_000 &&
-      markerDevice == bucketDevice
+      occurredAtMs <= (row["first_sample_at_ms"] as Int64) + 1_000
   }
   let distanceDeltaM: Double? = {
     guard let first = row["first_odometer_cm"] as Int64?, let last = row["last_odometer_cm"] as Int64? else { return nil }
     return Double(max(0, last - first)) / 100.0
   }()
   return [
-    "id": "\(row["device_id"] as String):\(row["bucket_start_ms"] as Int64)",
+    "id": "\(row["board_id"] as String):\(row["bucket_start_ms"] as Int64)",
     "startAtMs": row["first_sample_at_ms"] as Int64,
     "endAtMs": row["last_sample_at_ms"] as Int64,
     "bucketStartMs": row["bucket_start_ms"] as Int64,
-    "deviceId": (row["device_id"] as String).isEmpty ? nil : row["device_id"] as String,
-    "deviceName": row["device_name"] as String? ?? "VESC Board",
+    "boardId": (row["board_id"] as String).isEmpty ? nil : row["board_id"] as String,
+    "boardName": boardNames[row["board_id"] as String] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "sampleCount": sampleCount,
     "gpsPointCount": row["gps_point_count"] as Int,
     "preciseGpsPointCount": row["precise_gps_point_count"] as Int,
@@ -153,12 +266,12 @@ internal func historyMap(_ row: Row, markers: [Row]) -> [String: Any?] {
   ]
 }
 
-internal func sampleMap(_ row: Row, batteryPercent: Double?) -> [String: Any?] {
+internal func sampleMap(_ row: Row, batteryPercent: Double?, boardNames: [String: String]) -> [String: Any?] {
   [
     "id": row["id"] as Int64,
     "capturedAtMs": row["captured_at_ms"] as Int64,
-    "deviceId": row["device_id"] as String?,
-    "deviceName": row["device_name"] as String? ?? "VESC Board",
+    "boardId": row["board_id"] as String?,
+    "boardName": (row["board_id"] as String?).flatMap { boardNames[$0] } ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "speedKmh": Double(row["speed_centi_kmh"] as Int? ?? 0) / 100.0,
     "batteryVoltage": Double(row["battery_voltage_mv"] as Int? ?? 0) / 1000.0,
     "batteryPercent": batteryPercent,
@@ -189,8 +302,7 @@ internal func markerMap(_ row: Row) -> [String: Any?] {
     "id": row["id"] as Int64,
     "occurredAtMs": row["occurred_at_ms"] as Int64,
     "type": row["type"] as String,
-    "deviceId": row["device_id"] as String?,
-    "deviceName": row["device_name"] as String?,
+    "boardId": row["board_id"] as String?,
     "message": row["message"] as String?,
     "gapMs": row["gap_ms"] as Int64?,
   ]
@@ -206,7 +318,7 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   }
   return [
     "id": row["id"] as Int64,
-    "deviceId": (row["device_id"] as String).isEmpty ? nil : row["device_id"] as String,
+    "boardId": row["board_id"] as String,
     "reason": reason,
     "startMs": row["start_ms"] as Int64,
     "endMs": row["end_ms"] as Int64,
@@ -215,22 +327,22 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   ]
 }
 
-internal func gpsMaps(_ rows: [Row]) -> [[String: Any?]] {
-  var previousByDevice: [String: (lat: Double, lon: Double)] = [:]
+internal func gpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: Any?]] {
+  var previousByBoard: [String: (lat: Double, lon: Double)] = [:]
   return rows.compactMap { row in
     guard let latitudeE7 = row["latitude_e7"] as Int64?, let longitudeE7 = row["longitude_e7"] as Int64? else {
       return nil
     }
     let latitude = Double(latitudeE7) / 10_000_000.0
     let longitude = Double(longitudeE7) / 10_000_000.0
-    let deviceId = row["device_id"] as String? ?? ""
-    let previous = previousByDevice[deviceId]
-    previousByDevice[deviceId] = (latitude, longitude)
+    let boardId = row["board_id"] as String? ?? ""
+    let previous = previousByBoard[boardId]
+    previousByBoard[boardId] = (latitude, longitude)
     return [
       "id": row["id"] as Int64,
       "capturedAtMs": row["captured_at_ms"] as Int64,
-      "deviceId": (row["device_id"] as String?) ?? nil,
-      "deviceName": row["device_name"] as String? ?? "VESC Board",
+      "boardId": (row["board_id"] as String?) ?? nil,
+      "boardName": boardNames[boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
       "latitude": latitude,
       "longitude": longitude,
       "speedMps": (row["gps_speed_centi_mps"] as Int?).map { Double($0) / 100.0 },
@@ -247,8 +359,7 @@ internal func gpsMaps(_ rows: [Row]) -> [[String: Any?]] {
 internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
   BucketTelemetryPoint(
     capturedAtMs: row["captured_at_ms"] as Int64,
-    deviceId: row["device_id"] as String?,
-    deviceName: row["device_name"] as String?,
+    boardId: row["board_id"] as String?,
     speedCentiKmh: row["speed_centi_kmh"] as Int? ?? 0,
     batteryVoltageMv: row["battery_voltage_mv"] as Int? ?? 0,
     motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,

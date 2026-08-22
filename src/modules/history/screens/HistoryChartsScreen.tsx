@@ -136,7 +136,7 @@ export function HistoryChartsScreen() {
                 {formatRideTime(session.startAtMs, session.endAtMs)}
               </Text>
               <Text style={styles.subtitle} numberOfLines={1}>
-                {formatRideMeta(session.startAtMs, session.endAtMs, session.deviceName)}
+                {formatRideMeta(session.startAtMs, session.endAtMs, session.boardName)}
               </Text>
             </>
           ) : null}

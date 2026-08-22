@@ -18,7 +18,7 @@ import { formatRideMeta, formatRideTime } from '@/modules/history/lib/rideFormat
 interface HistoryPanelNavProps {
   titleStartMs: number
   titleEndMs: number
-  deviceName: string
+  boardName: string
   title?: string
   subtitle?: string
   canPrevious: boolean
@@ -43,7 +43,7 @@ interface HistoryPanelNavProps {
 export function HistoryPanelNav({
   titleStartMs,
   titleEndMs,
-  deviceName,
+  boardName,
   title,
   subtitle,
   canPrevious,
@@ -64,7 +64,7 @@ export function HistoryPanelNav({
   onOpenCharts,
 }: HistoryPanelNavProps) {
   const primaryLabel = title ?? formatRideTime(titleStartMs, titleEndMs)
-  const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, deviceName)
+  const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, boardName)
 
   return (
     <View style={styles.navControls}>

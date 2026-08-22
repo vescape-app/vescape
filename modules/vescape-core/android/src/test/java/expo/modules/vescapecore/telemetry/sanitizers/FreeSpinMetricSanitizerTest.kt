@@ -98,8 +98,7 @@ class FreeSpinMetricSanitizerTest {
     dutyPermille: Int = 0,
   ) = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
-    deviceId = deviceId,
-    deviceName = "Test",
+    boardId = deviceId,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = 70_000,
     motorCurrentMa = 0,
@@ -119,8 +118,7 @@ class FreeSpinMetricSanitizerTest {
     gpsAccuracyCm: Int = 500,
   ) = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
-    deviceId = deviceId,
-    deviceName = "Test",
+    boardId = deviceId,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = 70_000,
     motorCurrentMa = 0,

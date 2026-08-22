@@ -301,8 +301,7 @@ final class FavoriteStoreTests: XCTestCase {
       let offset = Int64(index) * intervalMs
       return BucketTelemetryPoint(
         capturedAtMs: startMs + offset,
-        deviceId: "board-1",
-        deviceName: "VESC Board",
+        boardId: "board-1",
         speedCentiKmh: speedCentiKmh,
         batteryVoltageMv: 50_000,
         motorCurrentMa: 10_000,

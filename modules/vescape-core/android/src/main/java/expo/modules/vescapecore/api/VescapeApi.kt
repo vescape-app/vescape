@@ -55,6 +55,38 @@ class VescapeApi(
   }
 
   /**
+   * One call whose status code is the answer, not an error to classify. The uploader needs `409`,
+   * `413` and `429` kept apart — each has a different recovery — so it reads the raw exchange while
+   * still going through this class's credential, headers and 401 policy.
+   *
+   * Never retried here: `POST /api/sync` carries no create key, and the caller's own backoff is what
+   * decides when the same batch is offered again.
+   *
+   * @parity /modules/vescape-core/ios/api/VescapeApi.swift `exchange`
+   */
+  suspend fun exchange(
+    method: HttpMethod,
+    path: String,
+    rawBody: String?,
+    auth: AuthMode = AuthMode.Required,
+  ): ApiResponse? = withContext(Dispatchers.IO) {
+    val token = token(auth) ?: return@withContext ApiResponse(401, "")
+    val request = ApiRequest(
+      method = method,
+      url = url(path, emptyMap()),
+      headers = headers(token.ifEmpty { null }, rawBody != null),
+      body = rawBody,
+    )
+    val response = try {
+      transport.execute(request)
+    } catch (_: Exception) {
+      return@withContext null
+    }
+    if (response.status == 401 && token.isNotEmpty()) onUnauthorized()
+    response
+  }
+
+  /**
    * Resolved bearer token, empty when the call goes out anonymously, `null` when a required
    * credential is missing. A credential minted against another origin belongs to another
    * environment, so it counts as missing rather than being sent to this one.
@@ -188,7 +220,11 @@ object OkHttpApiTransport : ApiTransport {
     }
     builder.method(request.method.name, body)
     return client.newCall(builder.build()).execute().use { response ->
-      ApiResponse(response.code, response.body?.string().orEmpty())
+      ApiResponse(
+        status = response.code,
+        body = response.body?.string().orEmpty(),
+        headers = response.headers.names().associate { it.lowercase() to response.header(it).orEmpty() },
+      )
     }
   }
 }

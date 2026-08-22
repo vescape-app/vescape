@@ -56,6 +56,32 @@ final class VescapeApi {
     return await send(request, authenticated: !token.isEmpty, parse: parse)
   }
 
+  /// One call whose status code is the answer, not an error to classify. The uploader needs `409`,
+  /// `413` and `429` kept apart — each has a different recovery — so it reads the raw exchange while
+  /// still going through this class's credential, headers and 401 policy.
+  ///
+  /// Never retried here: `POST /api/sync` carries no create key, and the caller's own backoff is
+  /// what decides when the same batch is offered again.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/api/VescapeApi.kt `exchange`
+  func exchange(
+    _ method: HttpMethod,
+    path: String,
+    rawBody: String?,
+    auth: AuthMode = .required
+  ) async -> ApiResponse? {
+    guard let token = token(for: auth) else { return ApiResponse(status: 401, body: "") }
+    let request = ApiRequest(
+      method: method,
+      url: url(path: path, query: [:]),
+      headers: headers(token: token.isEmpty ? nil : token, hasBody: rawBody != nil),
+      body: rawBody
+    )
+    guard let response = try? await transport.execute(request) else { return nil }
+    if response.status == 401 && !token.isEmpty { onUnauthorized() }
+    return response
+  }
+
   /// Resolved bearer token, empty when the call goes out anonymously, `nil` when a required
   /// credential is missing. A credential minted against another origin belongs to another
   /// environment, so it counts as missing rather than being sent to this one.
@@ -195,6 +221,15 @@ struct UrlSessionApiTransport: ApiTransport {
     guard let http = response as? HTTPURLResponse else {
       throw NSError(domain: "VescapeApi", code: -2)
     }
-    return ApiResponse(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+    var headers: [String: String] = [:]
+    for (name, value) in http.allHeaderFields {
+      guard let name = name as? String, let value = value as? String else { continue }
+      headers[name.lowercased()] = value
+    }
+    return ApiResponse(
+      status: http.statusCode,
+      body: String(data: data, encoding: .utf8) ?? "",
+      headers: headers
+    )
   }
 }

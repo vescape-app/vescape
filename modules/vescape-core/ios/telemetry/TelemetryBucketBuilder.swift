@@ -3,8 +3,9 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt
 internal struct TelemetryBucket {
   let bucketStartMs: Int64
-  let deviceId: String
-  var deviceName: String?
+  /// Owning Board (`boards.id`), or `""` when the samples match no saved Board — the column is part
+  /// of the bucket primary key, so unattributed rows need a value rather than null (ADR 0028).
+  let boardId: String
   var sampleCount = 0
   var firstSampleAtMs = Int64.max
   var lastSampleAtMs = Int64.min
@@ -34,7 +35,6 @@ internal struct TelemetryBucket {
 
   mutating func add(_ point: BucketTelemetryPoint) {
     sampleCount += 1
-    if point.deviceName != nil { deviceName = point.deviceName }
     firstSampleAtMs = min(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = max(lastSampleAtMs, point.capturedAtMs)
     let absSpeed = abs(point.speedCentiKmh)
@@ -82,9 +82,9 @@ internal func buildTelemetryBuckets(_ points: [BucketTelemetryPoint]) -> [Teleme
   var buckets: [String: TelemetryBucket] = [:]
   for point in points.sorted(by: { $0.capturedAtMs < $1.capturedAtMs }) {
     let bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
-    let deviceId = point.deviceId ?? ""
-    let key = "\(deviceId):\(bucketStart)"
-    var bucket = buckets[key] ?? TelemetryBucket(bucketStartMs: bucketStart, deviceId: deviceId, deviceName: point.deviceName)
+    let boardId = point.boardId ?? UNKNOWN_TELEMETRY_BOARD_ID
+    let key = "\(boardId):\(bucketStart)"
+    var bucket = buckets[key] ?? TelemetryBucket(bucketStartMs: bucketStart, boardId: boardId)
     bucket.add(point)
     buckets[key] = bucket
   }

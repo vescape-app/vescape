@@ -5,7 +5,7 @@ import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_FREE_SPIN
 import expo.modules.vescapecore.telemetry.FREE_SPIN_GPS_PRECISE_ACCURACY_CM
 import expo.modules.vescapecore.telemetry.FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH
 import expo.modules.vescapecore.telemetry.FREE_SPIN_NEAREST_GPS_MAX_AGE_MS
-import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_DEVICE_ID
+import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
 import kotlin.math.abs
 
 internal class FreeSpinMetricSanitizer(
@@ -36,7 +36,7 @@ internal class FreeSpinMetricSanitizer(
       exclusions = listOf(
         MetricExclusionSample(
           capturedAtMs = point.capturedAtMs,
-          deviceId = point.deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID,
+          boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID,
           reason = EXCLUSION_REASON_FREE_SPIN,
         ),
       ),

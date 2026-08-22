@@ -181,6 +181,8 @@ internal fun withLegalModeOverlay(
         soundType = "preset:tick",
         createdAt = 0L,
         source = null,
+        // In-memory overlay: no row is ever persisted, so the sync cursor is meaningless here.
+        updatedAt = 0L,
     )
 }
 

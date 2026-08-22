@@ -78,7 +78,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onSyncStatus")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -156,6 +156,12 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onWeather", ["weather": WeatherCoordinator.shared.current?.map])
     }
     OnStopObserving("onWeather") { self.observedEvents.remove("onWeather") }
+    OnStartObserving("onSyncStatus") {
+      self.observedEvents.insert("onSyncStatus")
+      // Late subscriber: replay the current backup status so JS is immediately consistent.
+      self.sendSyncStatus(SyncCoordinator.shared.status().toMap())
+    }
+    OnStopObserving("onSyncStatus") { self.observedEvents.remove("onSyncStatus") }
 
     OnCreate {
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
@@ -178,6 +184,12 @@ public class VescapeCoreModule: Module {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
       // coalesced into this request.
       AppStatusCoordinator.shared.refresh()
+      // The Device Token outlives the process, so a signed-in phone has to pick the uploader back
+      // up here: provisioning only happens once, and nothing else would start the loop again.
+      // Native owns backup state; JS mirrors it. Push every transition (late subscribers replay
+      // above and through `getSyncStatus`).
+      SyncCoordinator.shared.onStatusChanged = { [weak self] status in self?.sendSyncStatus(status) }
+      SyncCoordinator.shared.resumeIfBound()
       self.attachToCoordinator()
       // Launch-time honesty pass (ADR 0034): a process killed mid-ride leaves its Live Activity
       // rendering a confident live session forever. Guarded by the coordinator so a running or
@@ -407,6 +419,20 @@ public class VescapeCoreModule: Module {
     }
     Function("clearDeviceCredential") {
       NativeAuthCoordinator.shared.clear()
+    }
+    // The Rider confirmed the destructive Account change; native performs the ordered transition.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `confirmSyncAccountReset`
+    AsyncFunction("confirmSyncAccountReset") {
+      (serverUrl: String, deviceToken: String, accountId: String) async throws -> [String: Any?] in
+      try await NativeAuthCoordinator.shared.confirmAccountReset(
+        serverUrl: serverUrl,
+        token: deviceToken,
+        accountId: accountId
+      )
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getSyncStatus`
+    AsyncFunction("getSyncStatus") { () -> [String: Any?] in
+      SyncCoordinator.shared.status().toMap()
     }
 
     // Stable Vescape route keeps the app decoupled from the final store destination.
@@ -1089,7 +1115,11 @@ public class VescapeCoreModule: Module {
       createdAt: 0,
       repeatEverySeconds: normalizedAlertRepeatSeconds((value["repeatEverySeconds"] as? NSNumber)?.doubleValue),
       beepCount: normalizedAlertBeepCount((value["beepCount"] as? NSNumber)?.intValue),
-      source: nil
+      source: nil,
+      source: nil,
+      // Ephemeral: the preview rule is never persisted, so it has no last-write-wins timestamp to
+      // carry and never reaches the upload scan.
+      updatedAt: 0
     )
   }
 
@@ -1378,6 +1408,18 @@ public class VescapeCoreModule: Module {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onRouteProgress") else { return }
       self.sendEvent("onRouteProgress", ["progress": progress?.toMap()])
+    }
+  }
+
+  /// Emit `onSyncStatus` with the uploader's current state. `sendEvent` must run on the main thread;
+  /// drop the emit when no JS listener is attached — the replay on subscribe and the next transition
+  /// self-heal it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onSyncStatus`
+  /// @parity /modules/vescape-core/src/index.ts `SyncStatusEvent`
+  private func sendSyncStatus(_ status: [String: Any?]) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onSyncStatus") else { return }
+      self.sendEvent("onSyncStatus", status)
     }
   }
 

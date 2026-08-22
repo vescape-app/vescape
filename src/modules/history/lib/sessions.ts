@@ -13,8 +13,8 @@ export const RIDE_TRIM_PADDING_MS = 5_000
 
 export interface HistorySession {
   id: string
-  deviceId: string | null
-  deviceName: string
+  boardId: string | null
+  boardName: string
   startAtMs: number
   endAtMs: number
   /** First/last moving Telemetry Sample across the session — the Moving Window. Null on legacy data. */
@@ -46,8 +46,8 @@ export interface HistorySession {
 }
 
 interface MutableSessionAggregate {
-  deviceId: string | null
-  deviceName: string
+  boardId: string | null
+  boardName: string
   boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
   startAtMs: number
   endAtMs: number
@@ -94,7 +94,7 @@ export function groupHistorySessions(
   let previousBlock: TelemetryMinuteBucket | null = null
 
   for (const block of oldestFirst) {
-    const breakByDevice = !current || current.deviceId !== block.deviceId
+    const breakByDevice = !current || current.boardId !== block.boardId
     const breakByGap = !!previousBlock && block.startAtMs - previousBlock.endAtMs > gapMs
     const breakByBoundary = SESSION_BREAK_BOUNDARIES.has(block.boundaryBefore)
 
@@ -138,8 +138,8 @@ export function rideDurationMs(
 
 function createAggregate(block: TelemetryMinuteBucket): MutableSessionAggregate {
   const aggregate: MutableSessionAggregate = {
-    deviceId: block.deviceId,
-    deviceName: block.deviceName,
+    boardId: block.boardId,
+    boardName: block.boardName,
     boundaryBefore: block.boundaryBefore,
     startAtMs: block.startAtMs,
     endAtMs: block.endAtMs,
@@ -275,9 +275,9 @@ function finalizeSession(session: MutableSessionAggregate): HistorySession {
     session.coordinateCount > 0 ? session.longitudeSum / session.coordinateCount : null
 
   return {
-    id: `${session.deviceId ?? 'unknown'}:${session.startAtMs}:${session.endAtMs}`,
-    deviceId: session.deviceId,
-    deviceName: session.deviceName,
+    id: `${session.boardId ?? 'unknown'}:${session.startAtMs}:${session.endAtMs}`,
+    boardId: session.boardId,
+    boardName: session.boardName,
     startAtMs: session.startAtMs,
     endAtMs: session.endAtMs,
     movingStartAtMs: session.movingStartAtMs,
