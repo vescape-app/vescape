@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   BroadcastIcon,
-  ChartLineUpIcon,
   CrosshairIcon,
   PaletteIcon,
   PlusIcon,
@@ -12,41 +11,23 @@ import {
   WarningIcon,
   XIcon,
 } from 'phosphor-react-native'
-import { router } from 'expo-router'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { ColorPicker } from '@/components/forms/ColorPicker'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { InputWidget } from '@/components/widgets/InputWidget'
-import { LinkWidget } from '@/components/widgets/LinkWidget'
 import { riderColorOptions } from '@/modules/group-ride/constants/riderColors'
-import { routes } from '@/navigation/routes'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
-interface SocialSheetProps {
-  /** Called before navigating away so the host can dismiss the sheet. */
-  onNavigate: () => void
-}
-
-export function SocialSheet({ onNavigate }: SocialSheetProps) {
+export function SocialSheet() {
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
       <GroupRideWidget />
-      <LinkWidget
-        icon={ChartLineUpIcon}
-        accent={theme.palette.sky.color}
-        label="Profile stats"
-        hint="All-time & monthly riding totals"
-        onPress={() => {
-          onNavigate()
-          router.push(routes.profileStats)
-        }}
-      />
     </View>
   )
 }

@@ -301,7 +301,7 @@ export function TopBar({
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet onNavigate={() => setSocialOpen(false)} />
+        <SocialSheet />
       </EdgeDrawer>
 
       <EdgeDrawer

@@ -6,7 +6,6 @@ import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { theme } from '@/constants/theme'
 
 interface BoardWarningsSheetProps {
   boardId: string
@@ -32,7 +31,6 @@ export function BoardWarningsSheet({ boardId, warnings }: BoardWarningsSheetProp
           icon={ShieldCheckIcon}
           title="No warnings"
           description="This board is clean."
-          iconColor={theme.status.success.color}
         />
       </View>
     )

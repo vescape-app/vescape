@@ -8,6 +8,7 @@ import {
   FloatingActionPillShowcase,
   FloatingBarShowcase,
   PrevNextSelectorShowcase,
+  SegmentedToggleShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
 import { ExpandableCircleMenuShowcase } from '@/screens/showcase/controls/ExpandableCircleMenuShowcase'
 import { ZonePillsShowcase } from '@/screens/showcase/controls/ZonePillsShowcase'
@@ -27,6 +28,7 @@ export default function ControlsPage() {
         <FloatingBarShowcase />
         <FloatingActionPillShowcase />
         <PrevNextSelectorShowcase />
+        <SegmentedToggleShowcase />
         <ZonePillsShowcase />
         <ExpandableCircleMenuShowcase />
       </ScrollView>

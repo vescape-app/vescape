@@ -8,7 +8,6 @@ interface PlaceholderProps {
   icon: Icon
   title?: string
   description: string
-  iconColor?: string
   action?: ReactNode
   style?: ViewStyle
 }
@@ -17,13 +16,12 @@ export function Placeholder({
   icon: IconComponent,
   title,
   description,
-  iconColor = theme.palette.slate.textMuted,
   action,
   style,
 }: PlaceholderProps) {
   return (
     <View style={[styles.container, style]}>
-      <IconComponent size={58} color={iconColor} weight="thin" />
+      <IconComponent size={58} color={theme.palette.slate.textMuted} weight="thin" />
       <View style={styles.textBlock}>
         {title ? <Text style={styles.title}>{title}</Text> : null}
         <Text style={styles.description}>{description}</Text>

@@ -1,125 +1,32 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
-import { useFocusEffect } from 'expo-router'
+import { useCallback, useMemo } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import {
-  BatteryChargingVerticalIcon,
-  BatteryPlusVerticalIcon,
-  ClockCountdownIcon,
-  GaugeIcon,
-  PathIcon,
-  RepeatIcon,
-  RoadHorizonIcon,
-  TrophyIcon,
-} from 'phosphor-react-native'
-import type { Icon } from 'phosphor-react-native'
-import {
-  getMonthlyProfileStats,
-  getProfileStatMonths,
-  getTotalProfileStats,
-  type ProfileStats,
-  type ProfileStatsMonth,
-} from 'vescape-core'
+import { ChartLineUpIcon } from 'phosphor-react-native'
 
-import {
-  formatDistance,
-  formatDuration,
-  formatEnergy,
-  formatMonthLabel,
-  formatSpeed,
-  getAdjacentMonths,
-  selectInitialMonth,
-} from '@/modules/profile/lib/profileStats'
+import { Placeholder } from '@/components/base/Placeholder'
+import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
+import { profileStatItems } from '@/modules/profile/components/profileStatItems'
+import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
+import { formatMonthLabel, getAdjacentMonths } from '@/modules/profile/lib/profileStats'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
 import { Select, type SelectOption } from '@/components/forms/Select'
 import { theme } from '@/constants/theme'
 
-const EMPTY_STATS: ProfileStats = {
-  distanceM: null,
-  rideCount: 0,
-  rideTimeMs: 0,
-  topSpeedKmh: 0,
-  avgSpeedKmh: 0,
-  longestRideM: null,
-  batteryUsedWh: null,
-  batteryRegenWh: null,
-}
-
-interface StatItem {
-  key: string
-  label: string
-  value: string
-  icon: Icon
-  accent: string
-}
-
 export function RideStatsSection() {
-  const [totalStats, setTotalStats] = useState<ProfileStats>(EMPTY_STATS)
-  const [monthlyStats, setMonthlyStats] = useState<ProfileStats>(EMPTY_STATS)
-  const [months, setMonths] = useState<ProfileStatsMonth[]>([])
-  const [selectedMonth, setSelectedMonth] = useState<ProfileStatsMonth>(selectInitialMonth([]))
-  const [loading, setLoading] = useState(true)
-  const [monthLoading, setMonthLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const selectedMonthRef = useRef(selectedMonth)
-  selectedMonthRef.current = selectedMonth
-  const loadedRef = useRef(false)
-
-  /**
-   * Reload every stat from native. Runs on focus, not just on mount: a ride recorded while this
-   * screen sat mounted behind another tab would otherwise leave lifetime stats frozen below what
-   * Ride History already shows for that ride.
-   */
-  const refresh = useCallback(async () => {
-    if (!loadedRef.current) setLoading(true)
-    setError(null)
-    try {
-      const [total, availableMonths] = await Promise.all([
-        getTotalProfileStats(),
-        getProfileStatMonths(),
-      ])
-      // Keep the month the rider is looking at; fall back when it is gone (or on first load).
-      const current = selectedMonthRef.current
-      const keep =
-        loadedRef.current &&
-        availableMonths.some((m) => m.year === current.year && m.month === current.month)
-      const month = keep ? current : selectInitialMonth(availableMonths)
-      const monthStats = await getMonthlyProfileStats(month)
-      setTotalStats(total)
-      setMonths(availableMonths)
-      setSelectedMonth(month)
-      setMonthlyStats(monthStats)
-      loadedRef.current = true
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useFocusEffect(
-    useCallback(() => {
-      void refresh()
-    }, [refresh]),
-  )
-
-  const loadMonth = useCallback(async (month: ProfileStatsMonth) => {
-    setSelectedMonth(month)
-    setMonthLoading(true)
-    setError(null)
-    try {
-      const stats = await getMonthlyProfileStats(month)
-      setMonthlyStats(stats)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setMonthLoading(false)
-    }
-  }, [])
-
-  const totalItems = useMemo(() => statsToItems(totalStats), [totalStats])
-  const monthItems = useMemo(() => statsToItems(monthlyStats), [monthlyStats])
+  const {
+    total,
+    monthly,
+    months,
+    selectedMonth,
+    loading,
+    monthLoading,
+    error,
+    empty,
+    refresh,
+    selectMonth,
+  } = useProfileStats()
+  const totalItems = useMemo(() => profileStatItems(total), [total])
+  const monthItems = useMemo(() => profileStatItems(monthly), [monthly])
   const adjacent = useMemo(() => getAdjacentMonths(months, selectedMonth), [months, selectedMonth])
 
   const monthOptions: SelectOption[] = useMemo(
@@ -137,46 +44,57 @@ export function RideStatsSection() {
     (val: string) => {
       const [year, month] = val.split('-').map(Number)
       const found = months.find((m) => m.year === year && m.month === month)
-      if (found) void loadMonth(found)
+      if (found) void selectMonth(found)
     },
-    [months, loadMonth],
+    [months, selectMonth],
   )
 
   return (
     <View testID="profile-stats-section" style={styles.section}>
-      <Text style={styles.sectionTitle}>All time</Text>
-      <StatsGrid items={totalItems} />
+      {empty && !loading ? (
+        <Placeholder
+          icon={ChartLineUpIcon}
+          title="No riding stats yet"
+          description="Record a ride and your totals appear here"
+          style={styles.empty}
+        />
+      ) : (
+        <>
+          <Text style={styles.sectionTitle}>All time</Text>
+          <ProfileStatsGrid items={totalItems} />
 
-      <View style={styles.monthHeader}>
-        <Text style={styles.sectionTitle}>Monthly</Text>
-        {monthLoading ? (
-          <ActivityIndicator
-            testID="profile-month-loading"
-            size="small"
-            color={theme.palette.sky.color}
+          <View style={styles.monthHeader}>
+            <Text style={styles.sectionTitle}>Monthly</Text>
+            {monthLoading ? (
+              <ActivityIndicator
+                testID="profile-month-loading"
+                size="small"
+                color={theme.palette.sky.color}
+              />
+            ) : null}
+          </View>
+          <PrevNextSelector
+            label={formatMonthLabel(selectedMonth)}
+            previousDisabled={!adjacent.previous}
+            nextDisabled={!adjacent.next}
+            onPrevious={() => adjacent.previous && void selectMonth(adjacent.previous)}
+            onNext={() => adjacent.next && void selectMonth(adjacent.next)}
+            accessibilityLabel="Select profile month"
+            style={styles.monthNav}
+            selectControl={
+              <Select
+                options={monthOptions}
+                value={selectedMonthValue}
+                onChange={handleMonthSelect}
+                placeholder="Select month"
+                testID="profile-month-select"
+                style={styles.monthSelect}
+              />
+            }
           />
-        ) : null}
-      </View>
-      <PrevNextSelector
-        label={formatMonthLabel(selectedMonth)}
-        previousDisabled={!adjacent.previous}
-        nextDisabled={!adjacent.next}
-        onPrevious={() => adjacent.previous && void loadMonth(adjacent.previous)}
-        onNext={() => adjacent.next && void loadMonth(adjacent.next)}
-        accessibilityLabel="Select profile month"
-        style={styles.monthNav}
-        selectControl={
-          <Select
-            options={monthOptions}
-            value={selectedMonthValue}
-            onChange={handleMonthSelect}
-            placeholder="Select month"
-            testID="profile-month-select"
-            style={styles.monthSelect}
-          />
-        }
-      />
-      <StatsGrid items={monthItems} />
+          <ProfileStatsGrid items={monthItems} />
+        </>
+      )}
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -195,88 +113,6 @@ export function RideStatsSection() {
   )
 }
 
-function statsToItems(stats: ProfileStats): StatItem[] {
-  return [
-    {
-      key: 'distance',
-      label: 'Distance',
-      value: formatDistance(stats.distanceM),
-      icon: RoadHorizonIcon,
-      accent: theme.palette.sky.color,
-    },
-    {
-      key: 'rides',
-      label: 'Rides',
-      value: String(stats.rideCount),
-      icon: PathIcon,
-      accent: theme.palette.cyan.color,
-    },
-    {
-      key: 'rideTime',
-      label: 'Ride time',
-      value: formatDuration(stats.rideTimeMs),
-      icon: ClockCountdownIcon,
-      accent: theme.palette.purple.color,
-    },
-    {
-      key: 'topSpeed',
-      label: 'Top speed',
-      value: formatSpeed(stats.topSpeedKmh),
-      icon: GaugeIcon,
-      accent: theme.status.warning.color,
-    },
-    {
-      key: 'avgSpeed',
-      label: 'Avg speed',
-      value: formatSpeed(stats.avgSpeedKmh),
-      icon: RepeatIcon,
-      accent: theme.palette.cyan.color,
-    },
-    {
-      key: 'longestRide',
-      label: 'Longest ride',
-      value: formatDistance(stats.longestRideM),
-      icon: TrophyIcon,
-      accent: theme.palette.yellow.color,
-    },
-    {
-      key: 'used',
-      label: 'Battery used',
-      value: formatEnergy(stats.batteryUsedWh),
-      icon: BatteryChargingVerticalIcon,
-      accent: theme.palette.sky.color,
-    },
-    {
-      key: 'regen',
-      label: 'Regen',
-      value: formatEnergy(stats.batteryRegenWh),
-      icon: BatteryPlusVerticalIcon,
-      accent: theme.palette.green.text,
-    },
-  ]
-}
-
-interface StatsGridProps {
-  items: StatItem[]
-}
-
-function StatsGrid({ items }: StatsGridProps) {
-  return (
-    <View style={styles.grid}>
-      {items.map((item) => {
-        const IconComponent = item.icon
-        return (
-          <View key={item.key} style={styles.cell}>
-            <IconComponent size={18} color={item.accent} weight="duotone" />
-            <Text style={styles.cellValue}>{item.value}</Text>
-            <Text style={styles.cellLabel}>{item.label}</Text>
-          </View>
-        )
-      })}
-    </View>
-  )
-}
-
 const styles = StyleSheet.create({
   section: {
     gap: 12,
@@ -290,25 +126,9 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     marginTop: 4,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  cell: {
-    width: '50%',
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-  },
-  cellValue: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  cellLabel: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
+  empty: {
+    minHeight: 260,
+    paddingVertical: 32,
   },
   monthHeader: {
     marginTop: 8,

@@ -249,7 +249,6 @@ function ButtonShowcase() {
 function PlaceholderShowcase() {
   const [showTitle, setShowTitle] = useState(true)
   const [showAction, setShowAction] = useState(true)
-  const [color, setColor] = useState<string>(theme.palette.slate.textMuted)
 
   return (
     <ShowcaseCard
@@ -258,16 +257,6 @@ function PlaceholderShowcase() {
         <>
           <ToggleRow label="showTitle" value={showTitle} onToggle={setShowTitle} />
           <ToggleRow label="showAction" value={showAction} onToggle={setShowAction} />
-          <ChipRow
-            label="iconColor"
-            options={[
-              theme.palette.slate.textMuted,
-              theme.palette.sky.color,
-              theme.status.error.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
-          />
         </>
       }
     >
@@ -276,7 +265,6 @@ function PlaceholderShowcase() {
           icon={GhostIcon}
           title={showTitle ? 'No data yet' : undefined}
           description="Connect board to start streaming telemetry"
-          iconColor={color}
           action={
             showAction ? (
               <Button label="Get started" size="lg" icon={ArrowRightIcon} onPress={() => {}} />
