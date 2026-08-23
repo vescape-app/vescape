@@ -196,13 +196,7 @@ export default function ImuScreen() {
         />
       </View>
 
-      <View style={styles.attitudePanel}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>ATTITUDE</Text>
-          <Text style={styles.sectionHint}>Gray line shows balance pitch</Text>
-        </View>
-        <HotAttitudeBars pitch={hot.pitch} roll={hot.roll} balancePitch={hot.balancePitch} />
-      </View>
+      <HotAttitudeBars pitch={hot.pitch} roll={hot.roll} balancePitch={hot.balancePitch} />
 
       <LiveChartStack charts={charts} />
     </ControlDetailLayout>
@@ -228,26 +222,6 @@ const styles = StyleSheet.create({
   },
   liveValue: {
     alignSelf: 'stretch',
-  },
-  attitudePanel: {
-    gap: 10,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionLabel: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  sectionHint: {
-    color: theme.palette.slate.textDim,
-    fontSize: 11,
-    fontWeight: '600',
   },
   attitudeGrid: {
     flexDirection: 'row',

@@ -1,7 +1,5 @@
 import { PulseIcon } from 'phosphor-react-native'
-import { StyleSheet, View } from 'react-native'
-
-import { Text } from '@/components/base/Text'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { theme } from '@/constants/theme'
 import {
   formatFocusedSeriesDetail,
@@ -21,35 +19,11 @@ export function FocusedSeriesHeader() {
   const configuredMinutes = useSettingsStore((s) => s.liveHistoryLimit)
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <PulseIcon size={20} color={theme.palette.blue.color} weight="duotone" />
-        <Text style={styles.title}>{formatFocusedSeriesSpan(spanMs, configuredMinutes)}</Text>
-      </View>
-      <Text style={styles.detail}>{formatFocusedSeriesDetail(spanMs, sampleRateHz)}</Text>
-    </View>
+    <SectionHeader
+      icon={PulseIcon}
+      color={theme.palette.blue.color}
+      title={formatFocusedSeriesSpan(spanMs, configuredMinutes)}
+      description={formatFocusedSeriesDetail(spanMs, sampleRateHz)}
+    />
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    gap: 2,
-    paddingTop: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  title: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  detail: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 11,
-    letterSpacing: 0.3,
-  },
-})

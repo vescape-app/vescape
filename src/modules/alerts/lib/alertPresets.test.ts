@@ -4,6 +4,7 @@ import {
   ALERT_PRESET_ACTIVE_LEVELS,
   ALERT_PRESET_GEIGER_SOUND_TYPE,
   ALERT_PRESET_LEVELS,
+  describeAlertPreset,
   generateAlertPresetRules,
   normalizeAlertPresetSelection,
   type AlertPresetMetric,
@@ -194,4 +195,32 @@ test('custom survives a selection round-trip', () => {
     battery: 'custom',
     speed: 'off',
   })
+})
+
+test('describes a geiger range as a ramp with a ceiling', () => {
+  expect(describeAlertPreset('duty', 'normal')).toBe(
+    'Ticks like a Geiger counter from 80%, faster the deeper you go, solid tone at 90%.',
+  )
+})
+
+test('describes a temperature ladder and its repeating top rung', () => {
+  expect(describeAlertPreset('controller-temp', 'normal')).toBe(
+    'Speaks the temperature at 75° and 85°. The last step repeats every 10 s while you stay above it.',
+  )
+})
+
+test('battery speaks charge left, not temperature', () => {
+  expect(describeAlertPreset('battery', 'minimal', { hasBatteryConfig: true })).toBe(
+    'Speaks the charge left at 20%, 10% and 5%.',
+  )
+})
+
+test('off and custom describe themselves', () => {
+  expect(describeAlertPreset('speed', 'off')).toBe('No sound from this metric.')
+  expect(describeAlertPreset('speed', 'custom')).toBe('Your own rules — edit them below.')
+})
+
+test('no description for a metric guarded away', () => {
+  expect(describeAlertPreset('speed', 'normal')).toBeNull()
+  expect(describeAlertPreset('battery', 'normal')).toBeNull()
 })

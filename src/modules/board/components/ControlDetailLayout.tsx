@@ -3,6 +3,7 @@ import { BellRingingIcon } from 'phosphor-react-native'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 
 import { MetricAlerts } from '@/modules/alerts/components/MetricAlerts'
@@ -161,12 +162,7 @@ function ControlDetailAlerts({
 }
 
 function AlertsHeader() {
-  return (
-    <View style={styles.sectionHeader}>
-      <BellRingingIcon size={20} color={theme.palette.yellow.color} weight="duotone" />
-      <Text style={styles.sectionLabel}>Alerts</Text>
-    </View>
-  )
+  return <SectionHeader icon={BellRingingIcon} color={theme.palette.yellow.color} title="Alerts" />
 }
 
 const styles = StyleSheet.create({
@@ -180,19 +176,6 @@ const styles = StyleSheet.create({
   },
   alertsSection: {
     gap: 10,
-    paddingTop: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  sectionLabel: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.2,
   },
   stateNote: {
     color: theme.palette.slate.textDim,

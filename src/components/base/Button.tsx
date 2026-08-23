@@ -15,7 +15,7 @@ interface ButtonProps {
   onPress: () => Promise<void> | void
   testID?: string
   accessibilityLabel?: string
-  variant?: 'primary' | 'accent' | 'tune' | 'secondary' | 'success' | 'destructive'
+  variant?: 'primary' | 'accent' | 'tune' | 'secondary' | 'success' | 'caution' | 'destructive'
   size?: 'sm' | 'md' | 'lg'
   icon?: Icon
   iconPosition?: 'left' | 'right'
@@ -125,6 +125,16 @@ const variantStyles = {
     text: { color: theme.status.success.text },
     iconColor: theme.status.success.text,
     indicatorColor: theme.status.success.text,
+  },
+  caution: {
+    button: {
+      backgroundColor: theme.status.caution.bg,
+      borderWidth: 1,
+      borderColor: theme.status.caution.border,
+    },
+    text: { color: theme.status.caution.text },
+    iconColor: theme.status.caution.text,
+    indicatorColor: theme.status.caution.text,
   },
   destructive: {
     button: {

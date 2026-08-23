@@ -77,6 +77,7 @@ export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 6,
+    // The heading names the charts; it should not sit on top of the first plot line.
+    gap: 12,
   },
 })
