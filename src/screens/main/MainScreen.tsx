@@ -25,7 +25,6 @@ interface MainScreenProps {
 
 function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenController>) {
   return {
-    enterHistoryMode: controller.enterHistoryMode,
     selectedSession: controller.selectedSession,
     sessionSamples: controller.sessionSamples,
     sessionChartSamples: controller.sessionChartSamples,
@@ -67,6 +66,7 @@ function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenCon
     selectPreviousRide: controller.selectPreviousRide,
     selectNextRide: controller.selectNextRide,
     selectRide: controller.selectRide,
+    selectFavoriteRide: controller.selectFavoriteRide,
     exitHistory: controller.exitHistory,
     removeSession: controller.removeSession,
     setActiveHistoryMapMetric: controller.setActiveHistoryMapMetric,

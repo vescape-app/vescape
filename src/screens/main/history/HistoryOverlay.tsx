@@ -65,6 +65,7 @@ export interface MainHistoryOverlayProps {
   selectPreviousRide: () => Promise<void>
   selectNextRide: () => Promise<void>
   selectRide: (session: HistorySession) => void
+  selectFavoriteRide: (favoriteId: string, session: HistorySession) => void
   exitHistory: () => void
   removeSession: () => void
   setActiveHistoryMapMetric: (metric: HistoryMetricKey) => void

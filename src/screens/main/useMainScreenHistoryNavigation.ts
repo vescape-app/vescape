@@ -1,23 +1,18 @@
 import { useCallback } from 'react'
 
 import { useHistoryStore, type HistorySession } from '@/modules/history/store/historyStore'
-import {
-  getLatestSession,
-  getNextRideSession,
-  getPreviousRideSession,
-} from '@/screens/main/mainState'
+import { getNextRideSession, getPreviousRideSession } from '@/screens/main/mainState'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
+import { openHistoryTarget, type HistoryTarget } from '@/screens/main/history/historyEntry'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
 
-const TARGET_INITIAL_HISTORY_SESSIONS = 12
 const MAX_HISTORY_PREFETCH_PAGES = 8
 
 interface HistoryNavigationDeps {
   mapRef: React.RefObject<MainMapHandle | null>
   enterHistory: () => void
   enterTelemetry: () => void
-  historyFavorites: { loadFavorites: () => Promise<void>; resetHistoryFavorites: () => void }
-  loadInitial: () => Promise<void>
+  historyFavorites: { resetHistoryFavorites: () => void }
   selectSession: (session: HistorySession | null) => Promise<void>
   removeSelectedSession: () => Promise<void>
   setHistorySheetVisible: (visible: boolean) => void
@@ -30,7 +25,6 @@ export function useMainScreenHistoryNavigation({
   enterHistory,
   enterTelemetry,
   historyFavorites,
-  loadInitial,
   selectSession,
   removeSelectedSession,
   setHistorySheetVisible,
@@ -46,32 +40,20 @@ export function useMainScreenHistoryNavigation({
     )
   }, [enterTelemetry, historyFavorites, mapRef, selectSession, setOpenMediaAssetId])
 
-  const loadOlderHistoryPages = useCallback(
-    async (targetSessionCount = TARGET_INITIAL_HISTORY_SESSIONS) => {
-      let pagesLoaded = 0
-      while (
-        useHistoryStore.getState().hasMore &&
-        useHistoryStore.getState().sessions.length < targetSessionCount &&
-        pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
-      ) {
-        await useHistoryStore.getState().loadMore()
-        pagesLoaded += 1
-      }
+  const openTarget = useCallback(
+    (target: HistoryTarget) => {
+      return openHistoryTarget(target, {
+        enterHistory,
+        setHistoryTab: useMainScreenStore.getState().setHistoryTab,
+        openFavorite: useMainScreenStore.getState().openFavorite,
+        closeFavorite: useMainScreenStore.getState().closeFavorite,
+        setHistorySheetVisible,
+        setOpenMediaAssetId,
+        selectSession,
+      })
     },
-    [],
+    [enterHistory, selectSession, setHistorySheetVisible, setOpenMediaAssetId],
   )
-
-  const enterHistoryMode = useCallback(async () => {
-    enterHistory()
-    void historyFavorites.loadFavorites()
-    await loadInitial()
-    await loadOlderHistoryPages()
-    if (useMainScreenStore.getState().mode !== 'history') return
-    const latest = getLatestSession(useHistoryStore.getState().sessions)
-    if (latest) {
-      await selectSession(latest)
-    }
-  }, [enterHistory, historyFavorites, loadInitial, loadOlderHistoryPages, selectSession])
 
   const selectPreviousRide = useCallback(async () => {
     setOpenMediaAssetId(null)
@@ -110,21 +92,24 @@ export function useMainScreenHistoryNavigation({
 
   const selectRide = useCallback(
     (session: HistorySession) => {
-      setOpenMediaAssetId(null)
-      setHistorySheetVisible(false)
-      void selectSession(session)
-      enterHistory()
+      void openTarget({ kind: 'ride', session })
     },
-    [enterHistory, selectSession, setHistorySheetVisible, setOpenMediaAssetId],
+    [openTarget],
+  )
+
+  const selectFavoriteRide = useCallback(
+    (favoriteId: string, session: HistorySession) => {
+      void openTarget({ kind: 'favorite', favoriteId, session })
+    },
+    [openTarget],
   )
 
   return {
     exitHistory,
-    loadOlderHistoryPages,
-    enterHistoryMode,
     selectPreviousRide,
     selectNextRide,
     removeSession,
     selectRide,
+    selectFavoriteRide,
   }
 }

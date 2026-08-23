@@ -23,7 +23,6 @@ import { useFavoriteStore, type Favorite } from '@/modules/history/store/favorit
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { ProfileStatsSummary } from '@/modules/profile/components/ProfileStatsSummary'
 import { routes } from '@/navigation/routes'
-import { useMainScreenStore } from '@/screens/main/mainScreenStore'
 
 type ListMode = 'rides' | 'favorites' | null
 
@@ -31,7 +30,8 @@ interface HistoryDrawerProps {
   visible: boolean
   triggerRef: RefObject<View | null>
   onClose: () => void
-  onEnterHistory: () => void
+  onOpenRide: (session: HistorySession) => void
+  onOpenFavorite: (favoriteId: string, session: HistorySession) => void
 }
 
 /** Riding overview opened from the main History button. */
@@ -39,7 +39,8 @@ export function HistoryDrawer({
   visible,
   triggerRef,
   onClose,
-  onEnterHistory,
+  onOpenRide,
+  onOpenFavorite,
 }: HistoryDrawerProps) {
   const [listMode, setListMode] = useState<ListMode>(null)
   const [ridesLoaded, setRidesLoaded] = useState(false)
@@ -78,35 +79,22 @@ export function HistoryDrawer({
     [blocks, favorites],
   )
 
-  const enterHistory = useCallback(
-    (after: () => void) => {
-      setListMode(null)
-      onClose()
-      onEnterHistory()
-      after()
-    },
-    [onClose, onEnterHistory],
-  )
-
   const openRide = useCallback(
     (session: HistorySession) => {
-      enterHistory(() => {
-        useMainScreenStore.getState().setHistoryTab('history')
-        void useHistoryStore.getState().selectSession(session)
-      })
+      setListMode(null)
+      onClose()
+      onOpenRide(session)
     },
-    [enterHistory],
+    [onClose, onOpenRide],
   )
 
   const openFavorite = useCallback(
     (favorite: Favorite) => {
-      enterHistory(() => {
-        useMainScreenStore.getState().setHistoryTab('favorites')
-        useMainScreenStore.getState().openFavorite(favorite.id)
-        void useHistoryStore.getState().selectSession(favoriteToSession(favorite, blocks))
-      })
+      setListMode(null)
+      onClose()
+      onOpenFavorite(favorite.id, favoriteToSession(favorite, blocks))
     },
-    [blocks, enterHistory],
+    [blocks, onClose, onOpenFavorite],
   )
 
   const showList = useCallback(

@@ -15,6 +15,7 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
+import type { HistorySession } from '@/modules/history/store/historyStore'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapRevealGesture } from '@/screens/main/map/MapRevealGesture'
 import {
@@ -57,7 +58,8 @@ interface TelemetryOverlayProps {
   onCancelMapFocus: () => void
   onEnterWeather: () => void
   onEnterLegalLimits: () => void
-  onEnterHistory: () => void
+  onOpenHistoryRide: (session: HistorySession) => void
+  onOpenHistoryFavorite: (favoriteId: string, session: HistorySession) => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
   activeNavigationTarget: MapSelection | null
   onCancelNavigation: () => void
@@ -86,7 +88,8 @@ export function TelemetryOverlay({
   onCancelMapFocus,
   onEnterWeather,
   onEnterLegalLimits,
-  onEnterHistory,
+  onOpenHistoryRide,
+  onOpenHistoryFavorite,
   onOffscreenIndicatorPress,
   activeNavigationTarget,
   onCancelNavigation,
@@ -232,7 +235,8 @@ export function TelemetryOverlay({
             visible={historyDrawerOpen}
             triggerRef={historyButtonRef}
             onClose={() => setHistoryDrawerOpen(false)}
-            onEnterHistory={onEnterHistory}
+            onOpenRide={onOpenHistoryRide}
+            onOpenFavorite={onOpenHistoryFavorite}
           />
           <View
             ref={tuneButtonRef}
