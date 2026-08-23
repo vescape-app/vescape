@@ -574,7 +574,27 @@ class TelemetryRepository private constructor(context: Context) {
   suspend fun getFavorites(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     favoriteMediaStore.reconcileAll()
     val boardNames = dao.getBoards().associate { it.id to it.name }
-    dao.getFavorites().map { it.toMap(boardNames[it.boardId]) }
+    dao.getFavorites().map { favorite ->
+      favorite.toMap(boardNames[favorite.boardId], favoriteRoutePoints(favorite))
+    }
+  }
+
+  /** Coarse native route projection for Favorite cards, independent of JS history pagination. */
+  private suspend fun favoriteRoutePoints(favorite: FavoriteEntity): List<Map<String, Double>> {
+    val fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
+    return dao.getHistoryBuckets(
+      fromMs = fromBucketMs,
+      toMs = favorite.endMs,
+      beforeMs = favorite.endMs,
+      deviceId = null,
+      limit = Int.MAX_VALUE,
+    ).asReversed()
+      .filter { it.firstSampleAtMs <= favorite.endMs && it.lastSampleAtMs >= favorite.startMs }
+      .mapNotNull { bucket ->
+        val latitude = bucket.firstLatitudeE7 ?: return@mapNotNull null
+        val longitude = bucket.firstLongitudeE7 ?: return@mapNotNull null
+        mapOf("latitude" to latitude / 1e7, "longitude" to longitude / 1e7)
+      }
   }
 
   /**
@@ -617,7 +637,10 @@ class TelemetryRepository private constructor(context: Context) {
       batteryUsedWhMilli = summary.batteryUsedWhMilli,
     )
     dao.insertFavorite(favorite)
-    favorite.toMap(boards.firstOrNull { it.id == boardId }?.name)
+    favorite.toMap(
+      boards.firstOrNull { it.id == boardId }?.name,
+      favoriteRoutePoints(favorite),
+    )
   }
 
   /**
@@ -653,7 +676,10 @@ class TelemetryRepository private constructor(context: Context) {
       batteryUsedWhMilli = summary.batteryUsedWhMilli,
     )
     if (dao.updateFavorite(updated) == 0) return@withContext null
-    updated.toMap(dao.getBoards().firstOrNull { it.id == updated.boardId }?.name)
+    updated.toMap(
+      dao.getBoards().firstOrNull { it.id == updated.boardId }?.name,
+      favoriteRoutePoints(updated),
+    )
   }
 
   /**

@@ -240,8 +240,36 @@ internal final class TelemetryRepository {
     FavoriteMediaStore.shared.reconcileAll()
     let boardNames = Self.boardNamesById()
     return FavoriteStore.shared.list().map { favorite in
-      favorite.toMap(boardName: favorite.boardId.flatMap { boardNames[$0] })
+      favorite.toMap(
+        boardName: favorite.boardId.flatMap { boardNames[$0] },
+        routePoints: favoriteRoutePoints(favorite)
+      )
     }
+  }
+
+  /// Coarse native route projection for Favorite cards, independent of JS history pagination.
+  private func favoriteRoutePoints(_ favorite: Favorite) -> [[String: Double]] {
+    guard let pool else { return [] }
+    let fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
+    return (try? pool.read { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+          SELECT first_latitude_e7, first_longitude_e7
+          FROM telemetry_minute_buckets
+          WHERE bucket_start_ms >= ? AND bucket_start_ms <= ?
+            AND first_sample_at_ms <= ? AND last_sample_at_ms >= ?
+            AND first_latitude_e7 IS NOT NULL AND first_longitude_e7 IS NOT NULL
+          ORDER BY bucket_start_ms ASC
+          """,
+        arguments: [fromBucketMs, favorite.endMs, favorite.endMs, favorite.startMs]
+      ).map { row in
+        [
+          "latitude": Double(row["first_latitude_e7"] as Int64) / 1e7,
+          "longitude": Double(row["first_longitude_e7"] as Int64) / 1e7,
+        ]
+      }
+    }) ?? []
   }
 
   /// Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
@@ -281,7 +309,10 @@ internal final class TelemetryRepository {
       summary: summary
     )
     guard FavoriteStore.shared.insert(favorite) else { return nil }
-    return favorite.toMap(boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] })
+    return favorite.toMap(
+      boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] },
+      routePoints: favoriteRoutePoints(favorite)
+    )
   }
 
   /// The Board that recorded under this BLE peripheral id, resolved once at creation. The ble id is
@@ -350,7 +381,10 @@ internal final class TelemetryRepository {
       summary: Self.favoriteSummary(points, config: config)
     )
     guard let stored = FavoriteStore.shared.update(updated) else { return nil }
-    return stored.toMap(boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] })
+    return stored.toMap(
+      boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] },
+      routePoints: favoriteRoutePoints(stored)
+    )
   }
 
   /// Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).

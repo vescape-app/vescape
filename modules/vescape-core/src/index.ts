@@ -879,6 +879,8 @@ export interface Favorite {
   avgSpeedKmh: number
   maxSpeedKmh: number
   batteryUsedWh: number
+  /** Native coarse route projection; available without loading the surrounding History page. */
+  routePoints: RideRoutePoint[]
 }
 
 /**
