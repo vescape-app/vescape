@@ -1,12 +1,13 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { View } from 'react-native'
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router, useLocalSearchParams } from 'expo-router'
-import { WarningIcon } from 'phosphor-react-native'
+import { router, useLocalSearchParams, useNavigation } from 'expo-router'
+import { BracketsCurlyIcon, WarningIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { BoardBatteryEditorModal } from '@/modules/board/components/BoardBatteryEditorModal'
+import { IconButton } from '@/components/base/IconButton'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
@@ -31,6 +32,7 @@ export default function EditBoardScreen() {
       removeBoard: s.removeBoard,
     })),
   )
+  const navigation = useNavigation()
   const editingBoard = boards.find((b) => b.id === boardId)
   // Kill switch off hides the whole Board Warnings surface, matching BoardWarningControl.
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
@@ -45,6 +47,19 @@ export default function EditBoardScreen() {
     board: editingBoard,
     updateBoard,
   })
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <IconButton
+          icon={BracketsCurlyIcon}
+          onPress={() => router.push({ pathname: routes.editBoardConfig, params: { boardId } })}
+          accessibilityLabel="Board config"
+          testID="edit-board-config-button"
+        />
+      ),
+    })
+  }, [navigation, boardId])
 
   const handleRemoveBoard = useCallback(async () => {
     if (!editingBoard) return
