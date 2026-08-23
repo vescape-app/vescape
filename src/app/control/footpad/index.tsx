@@ -2,6 +2,15 @@ import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import {
+  BoardConfigSection,
+  erpm,
+  isEnabled,
+  millis,
+  onOff,
+  volts,
+  type BoardConfigRow,
+} from '@/modules/board/components/BoardConfigSection'
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
@@ -24,6 +33,66 @@ const adc2 = telemetry.footpadAdc2
 function thresholdLines(threshold: number | null): number[] | undefined {
   return threshold != null && threshold > 0 ? [threshold] : undefined
 }
+
+/**
+ * What the board itself does with these two sensors: when a zone counts as engaged, how long it
+ * tolerates a foot coming off, and the switches that weaken that protection.
+ */
+const FOOTPAD_CONFIG_ROWS: BoardConfigRow[] = [
+  {
+    id: 'fault_adc1',
+    label: 'Zone 1 engages at',
+    format: (v) => volts(v, 'Disabled'),
+  },
+  {
+    id: 'fault_adc2',
+    label: 'Zone 2 engages at',
+    format: (v) => volts(v, 'Disabled'),
+  },
+  {
+    id: 'fault_is_dual_switch',
+    label: 'Both zones as one (Posi)',
+    format: onOff,
+    note: (v) =>
+      isEnabled(v) ? 'Heel-lift dismount is off — either zone holds the board on.' : null,
+  },
+  {
+    id: 'fault_adc_half_erpm',
+    label: 'One zone off is a fault below',
+    format: erpm,
+  },
+  {
+    id: 'fault_delay_switch_half',
+    label: 'One zone off, cutoff after',
+    format: millis,
+  },
+  {
+    id: 'fault_delay_switch_full',
+    label: 'Both zones off, cutoff after',
+    format: millis,
+  },
+  {
+    // Refloat's own field is the negative one ("Disable Moving Faults"), so the row is named after
+    // the setting rather than inverted into "Moving faults: Active" — an inverted row reads as the
+    // opposite of the toggle the rider set, which is the one thing a config readout must not do.
+    id: 'fault_moving_fault_disabled',
+    label: 'Moving faults disabled',
+    format: onOff,
+    note: (v) =>
+      isEnabled(v) ? 'The board will not disengage on sensors while rolling forward.' : null,
+  },
+  {
+    id: 'fault_darkride_enabled',
+    label: 'Darkride',
+    format: onOff,
+    note: (v) => (isEnabled(v) ? 'Riding upside down without sensors is allowed.' : null),
+  },
+  {
+    id: 'enable_quickstop',
+    label: 'Quickstop',
+    format: onOff,
+  },
+]
 
 export default function FootpadScreen() {
   const adc1Data = useLiveMetric(liveSelectors.footpadAdc1)
@@ -83,6 +152,7 @@ export default function FootpadScreen() {
       }
     >
       <LiveChartStack charts={charts} />
+      <BoardConfigSection rows={FOOTPAD_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }
