@@ -7,6 +7,7 @@ import { CaretDownIcon, CheckIcon } from 'phosphor-react-native'
 import { interaction, theme } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
 import { inputBase } from '@/components/forms/Input'
+import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const MAX_DROPDOWN_HEIGHT = 280
 
@@ -32,6 +33,8 @@ export function Select<T extends string = string>({
 }: SelectProps<T>) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)
+  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
 
   const selectedOption = options.find((o) => o.value === value)
 
@@ -45,11 +48,22 @@ export function Select<T extends string = string>({
 
   return (
     <>
-      <Pressable ref={triggerRef} style={[styles.trigger, style]} onPress={() => setOpen(true)}>
+      <Pressable
+        ref={triggerRef}
+        style={[
+          styles.trigger,
+          {
+            backgroundColor: control.background,
+            borderColor: control.border,
+          },
+          style,
+        ]}
+        onPress={() => setOpen(true)}
+      >
         <Text style={[styles.triggerText, !selectedOption && styles.placeholderText]}>
           {selectedOption?.label ?? placeholder}
         </Text>
-        <CaretDownIcon size={14} color={theme.neutral.textMuted} weight="bold" />
+        <CaretDownIcon size={14} color={neutral.textMuted} weight="bold" />
       </Pressable>
 
       <Dropdown
@@ -66,7 +80,10 @@ export function Select<T extends string = string>({
                 key={option.value}
                 style={({ pressed }) => [
                   styles.option,
-                  index < options.length - 1 && styles.optionBorder,
+                  index < options.length - 1 && [
+                    styles.optionBorder,
+                    { borderColor: neutral.border },
+                  ],
                   selected && styles.optionSelected,
                   pressed && styles.optionPressed,
                 ]}

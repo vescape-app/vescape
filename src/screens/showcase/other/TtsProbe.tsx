@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react'
-import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { SpeakerHighIcon } from 'phosphor-react-native'
 import { previewAlertSound } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
+import { Input } from '@/components/forms/Input'
 import { theme } from '@/constants/theme'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 
@@ -43,12 +44,11 @@ export function TtsProbe() {
             </Pressable>
           ))}
         </View>
-        <TextInput
+        <Input
           style={styles.ttsInput}
           value={ttsTemplate}
           onChangeText={setTtsTemplate}
           placeholder="Enter template…"
-          placeholderTextColor={theme.neutral.textDim}
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -116,13 +116,8 @@ const styles = StyleSheet.create({
     color: theme.neutral.textPrimary,
   },
   ttsInput: {
-    backgroundColor: theme.neutral.surfaceDeep,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
-    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: theme.neutral.textPrimary,
     fontSize: 13,
     marginBottom: 12,
     fontFamily: 'monospace',

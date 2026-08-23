@@ -2,6 +2,7 @@ import { StyleSheet, View } from 'react-native'
 import Animated, { FadeOut, withTiming } from 'react-native-reanimated'
 
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const pointerEntering = () => {
   'worklet'
@@ -33,6 +34,9 @@ const pulseEntering = () => {
 
 /** The viewfinder the add menu places a feature at, pulsing once per placement. */
 export function CenterPlacementPointer({ color, pulseKey }: { color: string; pulseKey: number }) {
+  const neutral = useResolvedNeutralColors()
+  const resolvedColor = useResolvedColor(color)
+
   return (
     <Animated.View
       pointerEvents="none"
@@ -44,11 +48,25 @@ export function CenterPlacementPointer({ color, pulseKey }: { color: string; pul
         <Animated.View
           key={pulseKey}
           entering={pulseEntering}
-          style={[styles.pulse, { borderColor: color }]}
+          style={[
+            styles.pulse,
+            {
+              backgroundColor: theme.alpha(neutral.surfaceDeep, 0.3),
+              borderColor: resolvedColor,
+            },
+          ]}
         />
       ) : null}
-      <View style={[styles.ball, { borderColor: color }]}>
-        <View style={[styles.dot, { backgroundColor: color }]} />
+      <View
+        style={[
+          styles.ball,
+          {
+            backgroundColor: theme.alpha(neutral.surfaceDeep, 0.4),
+            borderColor: resolvedColor,
+          },
+        ]}
+      >
+        <View style={[styles.dot, { backgroundColor: resolvedColor }]} />
       </View>
     </Animated.View>
   )
@@ -69,7 +87,6 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.4),
   },
   pulse: {
     position: 'absolute',
@@ -77,7 +94,6 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     borderWidth: 2,
-    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.3),
   },
   dot: {
     width: 8,

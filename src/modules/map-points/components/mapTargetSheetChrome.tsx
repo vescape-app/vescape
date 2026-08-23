@@ -190,13 +190,23 @@ export function MapTargetEditHeader({
   name: string
   onChangeName: (name: string) => void
 }) {
+  const neutral = useResolvedNeutralColors()
+
   return (
     <TextInput
       value={name}
       onChangeText={onChangeName}
       placeholder={getMapPointKindLabel(point.category)}
-      placeholderTextColor={theme.neutral.textMuted}
-      style={[styles.input, styles.nameInput]}
+      placeholderTextColor={neutral.textMuted}
+      style={[
+        styles.input,
+        styles.nameInput,
+        {
+          backgroundColor: theme.alpha(neutral.bg, 0.75),
+          borderColor: theme.alpha(neutral.textSecondary, 0.3),
+          color: neutral.textPrimary,
+        },
+      ]}
       accessibilityLabel="Map feature name"
     />
   )
@@ -350,10 +360,7 @@ const styles = StyleSheet.create({
     minHeight: 42,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.neutral.bg, 0.75),
     paddingHorizontal: 12,
-    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },

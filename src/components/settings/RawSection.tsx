@@ -5,6 +5,7 @@ import { ExportIcon } from 'phosphor-react-native'
 
 import { theme } from '@/constants/theme'
 import { tokenizeJson, type JsonTokenType } from '@/helpers/jsonHighlight'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const TOKEN_COLORS: Record<JsonTokenType, string> = {
   key: theme.palette.sky.light,
@@ -25,6 +26,7 @@ interface RawSectionProps {
 
 /** Key/value card that renders any record as syntax-highlighted, exportable JSON. */
 export function RawSection({ title, data, exportName, empty }: RawSectionProps) {
+  const neutral = useResolvedNeutralColors()
   const entries =
     data && typeof data === 'object' ? Object.entries(data as Record<string, unknown>) : []
 
@@ -37,20 +39,32 @@ export function RawSection({ title, data, exportName, empty }: RawSectionProps) 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {entries.length > 0 ? (
-          <Pressable style={styles.exportButton} onPress={handleExport} hitSlop={8}>
+          <Pressable
+            style={[
+              styles.exportButton,
+              { backgroundColor: neutral.surface, borderColor: neutral.border },
+            ]}
+            onPress={handleExport}
+            hitSlop={8}
+          >
             <ExportIcon size={14} color={theme.palette.sky.light} weight="bold" />
             <Text style={styles.exportText}>Export JSON</Text>
           </Pressable>
         ) : null}
       </View>
-      <View style={styles.card}>
+      <View
+        style={[styles.card, { backgroundColor: neutral.surface, borderColor: neutral.border }]}
+      >
         {entries.length === 0 ? (
           <Text style={styles.emptyText}>{empty ?? 'No data'}</Text>
         ) : (
           entries.map(([key, value]) => {
             const isObject = value !== null && typeof value === 'object'
             return (
-              <View key={key} style={isObject ? styles.kvColumn : styles.kvRow}>
+              <View
+                key={key}
+                style={[isObject ? styles.kvColumn : styles.kvRow, { borderColor: neutral.border }]}
+              >
                 <Text style={styles.kvKey} selectable>
                   {key}
                 </Text>
@@ -101,8 +115,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
-    backgroundColor: theme.neutral.surface,
   },
   exportText: {
     color: theme.palette.sky.light,
@@ -110,10 +122,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   card: {
-    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   kvRow: {
@@ -123,14 +133,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.neutral.border,
   },
   kvColumn: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.neutral.border,
   },
   jsonBlock: {
     fontSize: 12,

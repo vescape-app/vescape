@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
 import type { Icon } from 'phosphor-react-native'
-import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface MapPinProps {
   id: string
@@ -61,6 +61,8 @@ export function MapPin({
   onSelected,
 }: MapPinProps) {
   const neutral = useResolvedNeutralColors()
+  const resolvedColor = useResolvedColor(color)
+  const resolvedIconColor = useResolvedColor(iconColor ?? color)
 
   if (IconComponent) {
     if (selected && expandSelected && label) {
@@ -71,13 +73,13 @@ export function MapPin({
             <Pressable
               style={[
                 styles.iconPin,
-                iconPinStyle(metrics, color),
+                iconPinStyle(metrics, resolvedColor),
                 styles.iconPinExpanded,
                 { backgroundColor: neutral.surface },
               ]}
               onPress={onSelected}
             >
-              <IconComponent size={metrics.iconSize} color={iconColor ?? color} weight="bold" />
+              <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
             </Pressable>
             <View style={[styles.selectedMapPointExtension, { backgroundColor: neutral.surface }]}>
               <Text
@@ -101,8 +103,8 @@ export function MapPin({
       id,
       selected,
       navigationActive,
-      color,
-      iconColor,
+      resolvedColor,
+      resolvedIconColor,
       neutral.surface,
     )
     return (
@@ -115,12 +117,12 @@ export function MapPin({
           <View
             style={[
               styles.iconPin,
-              iconPinStyle(metrics, color),
+              iconPinStyle(metrics, resolvedColor),
               selected && styles.iconPinSelected,
               { backgroundColor: neutral.surface },
             ]}
           >
-            <IconComponent size={metrics.iconSize} color={iconColor ?? color} weight="bold" />
+            <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
           </View>
         </View>
       </PointAnnotation>
@@ -128,13 +130,18 @@ export function MapPin({
   }
 
   return (
-    <PointAnnotation id={id} coordinate={coordinate} onSelected={onSelected}>
+    <PointAnnotation
+      key={`${id}-${resolvedColor}-${neutral.surface}`}
+      id={id}
+      coordinate={coordinate}
+      onSelected={onSelected}
+    >
       {/* collapsable={false}: see icon branch above (rnmapbox #3682). */}
       <View
         collapsable={false}
-        style={[styles.pin, { backgroundColor: neutral.surface, borderColor: color }]}
+        style={[styles.pin, { backgroundColor: neutral.surface, borderColor: resolvedColor }]}
       >
-        <View style={[styles.pinCore, { backgroundColor: color }]} />
+        <View style={[styles.pinCore, { backgroundColor: resolvedColor }]} />
       </View>
     </PointAnnotation>
   )

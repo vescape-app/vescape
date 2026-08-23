@@ -5,7 +5,7 @@ import type { MapPoint, MapPointPatch } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useColoredAction } from '@/hooks/useTheme'
+import { useColoredAction, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useKeyboardLift } from '@/hooks/useKeyboardLift'
 import { MapPointMediaActions } from '@/modules/map-points/components/MapPointMediaAddButton'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
@@ -47,6 +47,7 @@ export function MapTargetEditBody({
   // Colored actions wear the two-layer colored surface.
   const deleteSurface = useColoredAction(theme.palette.red.color)
   const saveSurface = useColoredAction(theme.palette.cyan.color)
+  const neutral = useResolvedNeutralColors()
   const handleSave = useCallback(async () => {
     if (onSaveMapPoint) await onSaveMapPoint(point.id, { name, description })
     onSave?.()
@@ -65,9 +66,17 @@ export function MapTargetEditBody({
           value={description}
           onChangeText={setDescription}
           placeholder="Description"
-          placeholderTextColor={theme.neutral.textMuted}
+          placeholderTextColor={neutral.textMuted}
           multiline
-          style={[mapTargetSheetChromeStyles.input, styles.descriptionInput]}
+          style={[
+            mapTargetSheetChromeStyles.input,
+            styles.descriptionInput,
+            {
+              backgroundColor: theme.alpha(neutral.bg, 0.75),
+              borderColor: theme.alpha(neutral.textSecondary, 0.3),
+              color: neutral.textPrimary,
+            },
+          ]}
           accessibilityLabel="Map feature description"
         />
         {MAP_POINT_MEDIA_ENABLED ? (

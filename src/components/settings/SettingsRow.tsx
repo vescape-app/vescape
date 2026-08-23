@@ -4,6 +4,7 @@ import { Text } from '@/components/base/Text'
 import { CaretRightIcon } from 'phosphor-react-native'
 import type { Icon, IconWeight } from 'phosphor-react-native'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SettingsRowProps {
   icon: Icon
@@ -18,7 +19,7 @@ export interface SettingsRowProps {
 
 export function SettingsRow({
   icon: IconComponent,
-  iconColor = theme.neutral.textSecondary,
+  iconColor,
   iconWeight = 'duotone',
   label,
   hint,
@@ -27,27 +28,27 @@ export function SettingsRow({
   children,
 }: SettingsRowProps) {
   const showChevron = onPress && !right
+  const neutral = useResolvedNeutralColors()
+  const resolvedIconColor = iconColor ?? neutral.textSecondary
 
   const content = (
     <View style={styles.row}>
-      <View style={styles.icon}>
-        <IconComponent size={20} color={iconColor} weight={iconWeight} />
+      <View style={[styles.icon, { backgroundColor: neutral.surface }]}>
+        <IconComponent size={20} color={resolvedIconColor} weight={iconWeight} />
       </View>
       <View style={styles.body}>
         <Text style={styles.label}>{label}</Text>
         {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       </View>
       {right}
-      {showChevron ? (
-        <CaretRightIcon size={18} color={theme.neutral.textMuted} weight="bold" />
-      ) : null}
+      {showChevron ? <CaretRightIcon size={18} color={neutral.textMuted} weight="bold" /> : null}
     </View>
   )
 
   if (onPress) {
     return (
       <Pressable
-        style={({ pressed }) => [styles.container, pressed && styles.containerPressed]}
+        style={({ pressed }) => [styles.container, pressed && { backgroundColor: neutral.surface }]}
         onPress={onPress}
       >
         {content}
@@ -68,9 +69,6 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-  containerPressed: {
-    backgroundColor: theme.neutral.surface,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -82,7 +80,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: theme.neutral.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },

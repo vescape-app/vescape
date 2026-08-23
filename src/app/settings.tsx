@@ -37,6 +37,7 @@ import { ReleaseActionPill } from '@/modules/release/components/ReleaseActionPil
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { openAppUpdate } from 'vescape-core'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const appVersion = Constants.expoConfig?.version ?? DASH
 
@@ -45,6 +46,7 @@ export default function SettingsScreen() {
   const navigation = useNavigation()
   const appStatus = useAppStatusStore((state) => state.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
+  const neutral = useResolvedNeutralColors()
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -59,7 +61,7 @@ export default function SettingsScreen() {
   }, [navigation])
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: neutral.bg }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero media={<VescapeWordmark width={200} />}>
           <View style={styles.headerStats}>
@@ -200,7 +202,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

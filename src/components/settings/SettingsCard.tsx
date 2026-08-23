@@ -1,6 +1,6 @@
 import { Children, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 export interface SettingsCardProps {
   children: ReactNode
@@ -10,12 +10,22 @@ export interface SettingsCardProps {
 
 export function SettingsCard({ children, separatorInset = 58 }: SettingsCardProps) {
   const items = Children.toArray(children)
+  const neutral = useResolvedNeutralColors()
 
   return (
-    <View style={styles.card}>
+    <View
+      style={[styles.card, { backgroundColor: neutral.surfaceDeep, borderColor: neutral.border }]}
+    >
       {items.map((child, index) => (
         <View key={index}>
-          {index > 0 ? <View style={[styles.separator, { marginLeft: separatorInset }]} /> : null}
+          {index > 0 ? (
+            <View
+              style={[
+                styles.separator,
+                { marginLeft: separatorInset, backgroundColor: neutral.border },
+              ]}
+            />
+          ) : null}
           {child}
         </View>
       ))}
@@ -25,14 +35,11 @@ export function SettingsCard({ children, separatorInset = 58 }: SettingsCardProp
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   separator: {
     height: 1,
-    backgroundColor: theme.neutral.border,
   },
 })
