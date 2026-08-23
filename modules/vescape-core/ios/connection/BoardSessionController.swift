@@ -387,7 +387,6 @@ internal final class BoardSessionController: VescGattListener {
         recordingName: recordingName,
         listener: self,
         onLocation: { [weak self] fix in self?.onReplayLocation(fix) },
-        onHeading: { [weak self] heading in self?.onReplayHeading(heading) },
         clock: ReplayClock(warmupMs: warmupMs, warmupSpeed: warmupSpeed)
       ),
       onSuccess: onSuccess,
@@ -1913,24 +1912,6 @@ internal final class BoardSessionController: VescGattListener {
         precise: isPreciseGpsFix(accuracyM: fix.accuracyM)
       )
     )
-  }
-
-  /// Hand a recorded compass reading back to JS, which owns the magnetometer and therefore has to be
-  /// the one to feed it into the map. Emitted rather than applied natively for the same reason it was
-  /// recorded from JS: the sensor lives there.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onReplayHeading`
-  private func onReplayHeading(_ heading: ReplayHeading) {
-    emit?("onReplayPhoneHeading", ["headingDeg": heading.headingDeg])
-  }
-
-  /// Offer a compass reading to whatever Debug Recording is running; dropped when nothing is
-  /// recording. JS pushes these unconditionally while the map's heading layer is live, and native is
-  /// the one that knows whether a recorder exists.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `recordPhoneHeading`
-  func recordPhoneHeading(_ headingDeg: Double) {
-    recordingCoordinator.currentRecorder()?.recordPhoneHeading(headingDeg)
   }
 
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {

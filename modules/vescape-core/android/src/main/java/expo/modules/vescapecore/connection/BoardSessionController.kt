@@ -57,7 +57,6 @@ import expo.modules.vescapecore.protocol.SessionTransport
 import expo.modules.vescapecore.protocol.VescGattClient
 import expo.modules.vescapecore.protocol.VescGattListener
 import expo.modules.vescapecore.replay.ReplayLocation
-import expo.modules.vescapecore.replay.ReplayHeading
 import expo.modules.vescapecore.replay.ReplayClock
 import expo.modules.vescapecore.replay.ReplayTransport
 import expo.modules.vescapecore.VescLiveStateSnapshot
@@ -1016,7 +1015,6 @@ private var wearAutoLaunchOnConnect = true
                 listener = gattListener,
                 dispatchListener = ::dispatchGattEvent,
                 onLocation = ::onReplayLocation,
-                onHeading = ::onReplayHeading,
                 clock = ReplayClock(
                     warmupMs = start.boardConfig.replayWarmupMs,
                     warmupSpeed = start.boardConfig.replayWarmupSpeed,
@@ -2266,11 +2264,6 @@ private var wearAutoLaunchOnConnect = true
         gpsMonitor.stop()
     }
 
-    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `recordPhoneHeading` */
-    fun recordPhoneHeading(headingDeg: Double) {
-        recordingCoordinator.currentRecorder()?.recordPhoneHeading(headingDeg)
-    }
-
     fun setTelemetryRecordingEnabled(enabled: Boolean) {
         val session = boardConfig
         if (enabled) {
@@ -2325,17 +2318,6 @@ private var wearAutoLaunchOnConnect = true
             fix.altitudeM?.let { altitude = it }
         }
         onLocationUpdated(location)
-    }
-
-    /**
-     * Hand a recorded compass reading back to JS, which owns the magnetometer and therefore has to
-     * be the one to feed it into the map. Emitted rather than applied natively for the same reason
-     * it was recorded from JS: the sensor lives there.
-     *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onReplayHeading`
-     */
-    private fun onReplayHeading(heading: ReplayHeading) {
-        emitEvent("onReplayPhoneHeading", mapOf("headingDeg" to heading.headingDeg))
     }
 
     private fun onLocationUpdated(location: Location) {

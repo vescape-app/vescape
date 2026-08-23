@@ -147,7 +147,7 @@ final class SessionRecorderTests: XCTestCase {
         gate.wait()
         for i in 0..<perThread {
           if index % 2 == 0 {
-            recorder.recordPhoneHeading(Double(index * 1000 + i))
+            recorder.recordState("probe-\(index * 1000 + i)")
           } else {
             recorder.recordChunk(direction: "rx", bytes: [UInt8(index), UInt8(i % 256)])
           }

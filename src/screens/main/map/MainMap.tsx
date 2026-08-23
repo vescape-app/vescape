@@ -21,7 +21,6 @@ import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
-import { usePhoneHeadingAdapter } from '@/screens/main/map/usePhoneHeadingAdapter'
 import type {
   HistoryGpsSample,
   HistoryMarker,
@@ -265,7 +264,6 @@ export const MainMap = memo(
     const [phoneHeadingStatus, setPhoneHeadingStatus] = useState<PhoneHeadingStatus | 'idle'>(
       'idle',
     )
-    const phoneHeadingAdapter = usePhoneHeadingAdapter()
     const headingFollowMode = gpsHeadingMode || phoneHeadingMode
     useRenderRateWarning('MainMap')
     const followHeadingDeg = gpsHeadingMode
@@ -509,7 +507,6 @@ export const MainMap = memo(
           followGps={followGps}
           accuracyFix={accuracyFix}
           onPhoneFollowHeading={handlePhoneFollowHeading}
-          phoneHeadingAdapter={phoneHeadingAdapter}
           onPhoneHeadingChange={handlePhoneHeadingChange}
           onPhoneHeadingStatusChange={setPhoneHeadingStatus}
           mode={mode}

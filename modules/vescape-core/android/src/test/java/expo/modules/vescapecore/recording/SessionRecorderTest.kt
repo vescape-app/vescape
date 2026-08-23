@@ -41,7 +41,7 @@ class SessionRecorderTest {
                 start.await()
                 repeat(perThread) { i ->
                     if (index % 2 == 0) {
-                        recorder.recordPhoneHeading(index * 1000.0 + i)
+                        recorder.recordState("probe-${index * 1000 + i}")
                     } else {
                         recorder.recordState("tick", mapOf("thread" to index, "i" to i))
                     }

@@ -155,7 +155,6 @@ class VescapeCoreModule : Module() {
       "onBms",
       "onBmsSeries",
       "onLocation",
-      "onReplayPhoneHeading",
       "onTelemetryRebuildProgress",
       "onBoardProbeProgress",
       "onGroupRideConnection",
@@ -368,9 +367,6 @@ class VescapeCoreModule : Module() {
     }
     Function("updateGroupRideIdentity") { riderId: String, riderName: String, riderColor: String? ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName, riderColor)
-    }
-    Function("recordPhoneHeading") { headingDeg: Double ->
-      CoreForegroundService.recordPhoneHeading(context.applicationContext, headingDeg)
     }
     Function("setWatchRouteSpanM") { spanM: Double? ->
       WatchRouteMirror.viewportSpanM = spanM

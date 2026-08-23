@@ -1,5 +1,11 @@
 # Debug Recording replay drives the real session stack through the transport seam
 
+> **Updated 2026-08-23 on the compass question.** The `phone-heading` line kind and its whole
+> record/replay path are removed. The compass only ever drove map presentation, which is not what a
+> Debug Recording exists to reproduce, and it was the one signal that had to be pushed _down_ from
+> JS to be recorded at all. Recorded GPS fixes stay. A replay now runs the live magnetometer, so
+> compass-driven map rotation during playback reflects the phone on the desk, not the ride.
+
 We need to test Board Warning detectors (and eventually most of the live-session stack) against real
 board data without a board present: committed clean recordings guard against false positives, and a
 dev-mode UI replay reproduces field behavior almost end-to-end. A Debug Recording already captures
@@ -9,9 +15,9 @@ replayable.
 ## Decision
 
 Replay injects recorded chunks at the **transport seam** (`VescGattListener` / iOS peer): a
-`ReplayTransport` fakes the connect/ready callbacks, emits recorded `rx` chunks, GPS fixes and phone
-sensor readings at their recorded `t` on one merged timeline, and swallows writes. Playback is 1×
-real time unless a caller asks for a warmup (below), and the recording owns position and heading for
+`ReplayTransport` fakes the connect/ready callbacks, emits recorded `rx` chunks and GPS fixes at
+their recorded `t` on one merged timeline, and swallows writes. Playback is 1×
+real time unless a caller asks for a warmup (below), and the recording owns position for
 the whole session. Everything above the seam — packet reassembly, telemetry pipeline, BMS pipe,
 warning detectors, recording, live state, JS UI — runs unmodified and cannot tell replay from a live
 board.
@@ -44,11 +50,8 @@ so both platforms record and replay.
 - **Dispatching the warmup as fast as it decodes**, with no rate. Rejected: an unbounded burst whose
   size depends on the device, and — with no speed to divide by — nothing downstream can adapt its own
   cadence to it. A Replay Speed makes the load predictable and the emit-rate fix a division.
-- **Deriving a replay's compass from its GPS course.** Rejected: the ease curve turning a 1 Hz
-  bearing into smooth rotation is invented motion, presented as if measured. Recording the compass
-  costs one more line kind and replays what the phone actually read. Fixtures predating the line kind
-  are backfilled from their own GPS bearings by `scripts/backfill-replay-heading.ts` — a built prop
-  in a fixture file, which is a different thing from runtime code fabricating a sensor.
+- **Deriving a replay's compass from its GPS course.** Rejected, then moot: recording the compass
+  replaced it, and the compass was later dropped from recording altogether (see the note at the top).
 - **Full-real board id for UI replay.** Rejected: pollutes Ride History and warning stores of real
   boards; synthetic id keeps end-to-end write paths exercised while staying cleanable.
 
@@ -77,13 +80,14 @@ a minute of ride in a couple of enormous batches and the charts jump instead of 
 A recording captures what the board sent, but a ride also has state only the phone can see, and the
 phone replaying it is usually lying still on a desk. Each such signal follows the same four steps:
 
-1. **Recorder** — a new `kind` line (`location`, `phone-heading`).
+1. **Recorder** — a new `kind` line (`location`).
 2. **Decoder** — a parallel decode function on the shared decode core.
 3. **Transport** — a `ReplayEvent` case, merged into the one ordered timeline.
-4. **Delivery** — applied natively where native owns the signal (GPS fixes go through
-   `onLocationUpdated`), or emitted to JS where JS does (the compass is read via `expo-sensors`, so
-   native can only store and replay it; JS re-encodes it at the sensor boundary through a
-   `PhoneHeadingAdapter`).
+4. **Delivery** — applied natively, where native owns the signal: GPS fixes go through
+   `onLocationUpdated`.
+
+A signal native cannot observe on its own is a bad fit for this shape — it has to be pushed down
+from JS purely to be written back out again. That is what the removed `phone-heading` path did.
 
 Step 4 is the one that varies, and it follows ownership: the replay stands in wherever the real
 signal enters the app, so everything downstream runs its production code path.
