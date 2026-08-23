@@ -856,6 +856,7 @@ public class VescapeCoreModule: Module {
     AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
       self.appData.upsertBoard(board)
       self.coordinator.reloadBoardDataForActiveBoard()
+      self.connectSavedBoardLink(boardId: board["id"] as? String)
       promise.resolve(nil)
     }
 
@@ -1163,6 +1164,7 @@ public class VescapeCoreModule: Module {
   }
 
   private func cancelActiveProbe(probeId: String? = nil, reason: String) {
+    PendingLinkConnect.clear()
     if let probeId { completedProbes.removeValue(forKey: probeId) }
     guard let activeProbe else { return }
     if let probeId, activeProbe.id != probeId { return }
@@ -1237,6 +1239,7 @@ public class VescapeCoreModule: Module {
       values.capturedAtMs > previousCapturedAt {
       // The probe stays finalizable: the rider may still switch transports, and each pick
       // acquires config for its own candidate before the link can be saved.
+      PendingLinkConnect.arm(boardId: boardId)
       coordinator.stopBoard()
       promise.resolve([
         "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
@@ -1313,6 +1316,28 @@ public class VescapeCoreModule: Module {
       boardId: boardId,
       appData: appData,
       recordingEnabled: requestedDebugRecordingEnabled
+    )
+  }
+
+  /// Start the real Board Session for a Board Link the rider just saved. Linking already proved the
+  /// connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
+  /// rider lands back on a disconnected app until the next app launch. Only the Board that proved a
+  /// link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
+  /// session.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `connectSavedBoardLink`
+  private func connectSavedBoardLink(boardId: String?) {
+    guard let boardId, PendingLinkConnect.consume(boardId: boardId), activeProbe == nil else { return }
+    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
+    // intent, so the suppression must not outlive it.
+    clearManualDisconnectAutoStartGate()
+    guard let config = connectConfig(boardId: boardId) else { return }
+    coordinator.connect(
+      config: config,
+      onSuccess: {},
+      onError: { [weak self] _, message in
+        self?.sendEvent("onError", ["message": message])
+      }
     )
   }
 

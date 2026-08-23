@@ -167,6 +167,10 @@ Rides computed from buckets + markers:
 | `upsertBoard(board)` | async | void                               |
 | `deleteBoard(id)`    | async | void                               |
 
+`upsertBoard` also starts the real Board Session when the Board being written is the one that just
+proved a link in `finalizeBoardLink` — linking connects over a throwaway probe session and drops it,
+so the persist on Save is what reconnects for real.
+
 ### Board shape
 
 ```ts

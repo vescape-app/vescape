@@ -19,6 +19,7 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
+import expo.modules.vescapecore.connection.PendingLinkConnect
 import expo.modules.vescapecore.connection.buildSessionConfig
 
 import expo.modules.vescapecore.navigation.NavigationController
@@ -781,6 +782,7 @@ class VescapeCoreModule : Module() {
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
       AppDataRepository.get(context.applicationContext).upsertBoard(board)
       CoreForegroundService.reloadBoardData()
+      connectSavedBoardLink(board["id"] as? String)
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->
       AppDataRepository.get(context.applicationContext).deleteBoard(id)
@@ -1086,6 +1088,36 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
+  /**
+   * Start the real Board Session for a Board Link the rider just saved. Linking already proved the
+   * connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
+   * rider lands back on a disconnected app until the next process start. Only the Board that proved
+   * a link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
+   * session.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `connectSavedBoardLink`
+   */
+  private suspend fun connectSavedBoardLink(boardId: String?) {
+    if (boardId == null || !PendingLinkConnect.consume(boardId)) return
+    if (BoardProbeAutoStartGate.isActive()) return
+    val appCtx = context.applicationContext
+    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
+    // intent, so the suppression must not outlive it.
+    ManualDisconnectAutoStartGate.clear(appCtx)
+    val config = try {
+      buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
+    } catch (error: Throwable) {
+      Log.w(TAG, "Board Link saved but session config failed: ${error.message}")
+      return
+    }
+    CoreForegroundService.startBoardSession(
+      appCtx,
+      config,
+      onSuccess = {},
+      onError = { _, message -> sendEvent("onError", mapOf("message" to message)) },
+    )
+  }
+
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
     ManualDisconnectAutoStartGate.clear(appCtx)
@@ -1200,6 +1232,7 @@ key == "wearAutoLaunchOnConnect" ||
   }
 
   private fun cancelActiveProbe(probeId: String?, reason: String) {
+    PendingLinkConnect.clear()
     if (probeId != null) completedProbes.remove(probeId)
     val active = activeProbe ?: return
     if (probeId != null && active.id != probeId) return
@@ -1260,6 +1293,7 @@ key == "wearAutoLaunchOnConnect" ||
         if ((repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt) {
           // The probe stays finalizable: the rider may still switch transports, and each pick
           // acquires config for its own candidate before the link can be saved.
+          PendingLinkConnect.arm(boardId)
           return mapOf(
             "linkVersion" to 4,
             "bleId" to bleId,
