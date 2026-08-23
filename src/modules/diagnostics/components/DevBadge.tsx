@@ -18,6 +18,7 @@ import { Text } from '@/components/base/Text'
 import { isDevelopmentApp } from '@/config/appVariant'
 import { showDevControls } from '@/config/env'
 import { theme } from '@/constants/theme'
+import { useBleStore } from '@/modules/board/store/bleStore'
 import { routes } from '@/navigation/routes'
 
 const DEV_BADGE_HIDE_MS = 60_000
@@ -34,7 +35,7 @@ const DEV_PAGE_SHORTCUTS = [
     label: 'Debug recordings',
     route: routes.settingsDebugRecordings,
     icon: RecordIcon,
-    iconColor: theme.palette.red.color,
+    iconColor: theme.status.warning.color,
   },
   {
     label: 'Navigation diagnostics',
@@ -68,6 +69,8 @@ async function reloadRuntime() {
 export function DevBadge() {
   const [hidden, setHidden] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const recordDebugSession = useBleStore((state) => state.recordDebugSession)
+  const setRecordDebugSession = useBleStore((state) => state.setRecordDebugSession)
   if (!isDevelopmentApp || !showDevControls) return null
 
   if (hidden) return null
@@ -132,6 +135,12 @@ export function DevBadge() {
             }}
           />
           <MenuAction
+            icon={RecordIcon}
+            label="Debug recording"
+            active={recordDebugSession}
+            onPress={() => setRecordDebugSession(!recordDebugSession)}
+          />
+          <MenuAction
             icon={ArrowsClockwiseIcon}
             label="Reload app"
             onPress={() => void reloadRuntime()}
@@ -147,20 +156,28 @@ function MenuAction({
   icon: IconComponent,
   label,
   onPress,
+  active,
 }: {
   icon: Icon
   label: string
   onPress: () => void
+  active?: boolean
 }) {
   return (
     <Pressable
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
       onPress={onPress}
-      accessibilityRole="button"
+      accessibilityRole={active === undefined ? 'button' : 'switch'}
       accessibilityLabel={label}
+      accessibilityState={active === undefined ? undefined : { checked: active }}
     >
-      <IconComponent size={16} color={theme.palette.slate.textSecondary} weight="duotone" />
+      <IconComponent
+        size={16}
+        color={active ? theme.status.warning.color : theme.palette.slate.textSecondary}
+        weight={active ? 'fill' : 'duotone'}
+      />
       <Text style={styles.actionText}>{label}</Text>
+      {active === undefined ? null : <View style={[styles.dot, active && styles.dotActive]} />}
     </Pressable>
   )
 }
@@ -234,5 +251,15 @@ const styles = StyleSheet.create({
     color: theme.palette.slate.textPrimary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    marginLeft: 'auto',
+    borderRadius: 999,
+    backgroundColor: theme.palette.slate.border,
+  },
+  dotActive: {
+    backgroundColor: theme.status.warning.color,
   },
 })

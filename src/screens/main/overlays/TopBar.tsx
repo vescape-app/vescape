@@ -9,6 +9,7 @@ import {
   GearSixIcon,
   PencilSimpleIcon,
   PowerIcon,
+  RecordIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
@@ -130,10 +131,32 @@ const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
           </Pressable>
         </>
       )}
+      <DebugRecordingControl />
       {activeBoardId && <BoardWarningControl boardId={activeBoardId} />}
     </View>
   )
 })
+
+/** Dev-only "session is being recorded" indicator; tapping it stops the recording. */
+function DebugRecordingControl() {
+  const recording = useBleStore((s) => s.recordDebugSession)
+  const setRecording = useBleStore((s) => s.setRecordDebugSession)
+  if (!showDevControls || !recording) return null
+
+  return (
+    <>
+      <View style={styles.divider} />
+      <Pressable
+        style={styles.plugButton}
+        onPress={() => setRecording(false)}
+        testID="debug-recording-button"
+        accessibilityLabel="Debug recording active"
+      >
+        <RecordIcon size={14} color={theme.status.warning.color} weight="bold" />
+      </Pressable>
+    </>
+  )
+}
 
 export function TopBar({
   boards,
