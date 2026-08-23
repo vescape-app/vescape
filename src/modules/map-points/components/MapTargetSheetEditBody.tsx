@@ -103,6 +103,7 @@ export function MapTargetEditBody({
           onPress={() => void handleSave()}
           style={({ pressed }) => [
             mapTargetSheetChromeStyles.actionButton,
+            mapTargetSheetChromeStyles.actionButtonLead,
             { backgroundColor: saveSurface, borderColor: theme.palette.cyan.color },
             pressed && mapSheetStyles.mapTargetNavigatePressed,
           ]}
