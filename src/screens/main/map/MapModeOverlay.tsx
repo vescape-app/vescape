@@ -48,6 +48,9 @@ export function MapModeOverlay({
   const [signInPromptVisible, setSignInPromptVisible] = useState(false)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [acceptedNavigationComputedAtMs, setAcceptedNavigationComputedAtMs] = useState<
+    number | null
+  >(null)
 
   // Native owns whether a path exists; this only decides what the sheet says about it. Read here
   // rather than drilled from the screen, because the sheet is its only consumer.
@@ -55,6 +58,10 @@ export function MapModeOverlay({
   const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
   const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
   const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
+  const navigationComputedAtMs = useMapStore((s) => s.navigation?.computedAtMs ?? null)
+  const navigationRemainingDistanceMeters = useMapStore(
+    (s) => s.routeProgress?.remainingMeters ?? null,
+  )
   const navigationComputing = useMapStore((s) => s.navigationComputing)
   const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
   const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
@@ -73,6 +80,8 @@ export function MapModeOverlay({
       : null)
   const targetSheetVisible =
     selectedNavigationTarget != null || (navigationTarget != null && !addMenuOpen)
+  const activeNavigationAccepted =
+    navigationComputedAtMs != null && acceptedNavigationComputedAtMs === navigationComputedAtMs
   const accents = useResolvedAccentColors()
   const navigationAction = navigationActionColors(
     riderColor,
@@ -182,8 +191,17 @@ export function MapModeOverlay({
             onBeginEdit={setEditingMapPointId}
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
-            onCancelNavigation={onCancelNavigation}
-            onConfirmNavigation={onExit}
+            onCancelNavigation={() => {
+              setAcceptedNavigationComputedAtMs(null)
+              onCancelNavigation()
+            }}
+            onConfirmNavigation={() => {
+              setAcceptedNavigationComputedAtMs(navigationComputedAtMs)
+              onExit()
+            }}
+            activeNavigationAccepted={activeNavigationAccepted}
+            onEditActiveNavigation={() => setAcceptedNavigationComputedAtMs(null)}
+            navigationRemainingDistanceMeters={navigationRemainingDistanceMeters}
             navigationStatus={navigationStatus}
             navigationPath={
               navigationStatus === 'ready'

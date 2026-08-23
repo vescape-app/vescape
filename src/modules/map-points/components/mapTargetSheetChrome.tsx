@@ -1,6 +1,7 @@
 import { MapPinIcon, ThumbsDownIcon, ThumbsUpIcon, XIcon, type Icon } from 'phosphor-react-native'
 import { createElement, type ReactNode } from 'react'
 import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import Animated, { Keyframe } from 'react-native-reanimated'
 import type { MapPoint } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
@@ -32,6 +33,11 @@ export interface MapTargetSheetAction {
   onPress: () => void
 }
 
+const MAP_TARGET_ENTERING = new Keyframe({
+  0: { opacity: 0, transform: [{ translateY: 16 }] },
+  100: { opacity: 1, transform: [{ translateY: 0 }] },
+}).duration(140)
+
 export function MapTargetSheetFrame({
   target,
   bottom,
@@ -40,6 +46,7 @@ export function MapTargetSheetFrame({
   fallbackTextColor = theme.neutral.textPrimary,
   onDismiss,
   onFocusTarget,
+  animateEntrance = false,
   children,
 }: {
   target: MapSelection
@@ -49,34 +56,24 @@ export function MapTargetSheetFrame({
   fallbackTextColor?: string
   onDismiss?: () => void
   onFocusTarget?: () => void
+  animateEntrance?: boolean
   children: ReactNode
 }) {
   const neutral = useResolvedNeutralColors()
-  const isMapPoint = target.type === 'mapPoint'
-  const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
-  const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
-  const IconComponent = isMapPoint
-    ? getMapPointKindIcon(target.point.category)
-    : target.type === 'place'
-      ? getPlaceCategoryIcon(target.category)
-      : MapPinIcon
-  const icon = createElement(IconComponent, { size: 18, color: textColor, weight: 'duotone' })
   const headerContent = (
     <>
-      <View
-        style={[
-          mapSheetStyles.mapTargetIcon,
-          { backgroundColor: neutral.surfaceDeep, borderColor: color },
-        ]}
-      >
-        {icon}
-      </View>
+      <MapTargetIdentityIcon
+        target={target}
+        fallbackColor={fallbackColor}
+        fallbackTextColor={fallbackTextColor}
+      />
       <View style={mapSheetStyles.mapTargetTitleBlock}>{header}</View>
     </>
   )
 
   return (
-    <View
+    <Animated.View
+      entering={animateEntrance ? MAP_TARGET_ENTERING : undefined}
       style={[
         styles.sheet,
         {
@@ -111,13 +108,50 @@ export function MapTargetSheetFrame({
         ) : null}
       </View>
       {children}
+    </Animated.View>
+  )
+}
+
+export function MapTargetIdentityIcon({
+  target,
+  fallbackColor = theme.map.target,
+  fallbackTextColor = theme.neutral.textPrimary,
+}: {
+  target: MapSelection
+  fallbackColor?: string
+  fallbackTextColor?: string
+}) {
+  const neutral = useResolvedNeutralColors()
+  const isMapPoint = target.type === 'mapPoint'
+  const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
+  const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
+  const IconComponent = isMapPoint
+    ? getMapPointKindIcon(target.point.category)
+    : target.type === 'place'
+      ? getPlaceCategoryIcon(target.category)
+      : MapPinIcon
+
+  return (
+    <View
+      style={[
+        mapSheetStyles.mapTargetIcon,
+        { backgroundColor: neutral.surfaceDeep, borderColor: color },
+      ]}
+    >
+      {createElement(IconComponent, { size: 18, color: textColor, weight: 'duotone' })}
     </View>
   )
 }
 
+export function getMapTargetDisplayTitle(target: MapSelection) {
+  return target.type === 'mapPoint'
+    ? target.point.name?.trim() || getMapPointKindLabel(target.point.category)
+    : target.title
+}
+
 export function MapTargetReadHeader({ target }: { target: MapSelection }) {
   if (target.type === 'mapPoint') {
-    const title = target.point.name?.trim() || getMapPointKindLabel(target.point.category)
+    const title = getMapTargetDisplayTitle(target)
     const created = new Date(target.point.createdAt).toLocaleDateString()
     return (
       <>

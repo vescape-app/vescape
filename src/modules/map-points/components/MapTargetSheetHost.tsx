@@ -3,6 +3,7 @@ import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } fro
 
 import { theme } from '@/constants/theme'
 import { useColoredAction, useResolvedAccentColors } from '@/hooks/useTheme'
+import { ActiveNavigationSheet } from '@/modules/map-points/components/ActiveNavigationSheet'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -25,6 +26,11 @@ interface MapTargetSheetHostProps {
   onCancelNavigation: () => void
   /** The rider accepting the drawn path: the map steps aside and the ride view takes over. */
   onConfirmNavigation: () => void
+  /** The rider already accepted this path and returned to the map. */
+  activeNavigationAccepted: boolean
+  /** Reopens the full path/profile chooser from the compact active state. */
+  onEditActiveNavigation: () => void
+  navigationRemainingDistanceMeters: number | null
   /** How the path to the active target ended up. `null` while there is no Navigation at all. */
   navigationStatus: NavigationStatus | null
   /** How far the drawn path runs and how long it takes. `null` while no path is drawn. */
@@ -69,6 +75,9 @@ export function MapTargetSheetHost({
   onNavigateSelected,
   onCancelNavigation,
   onConfirmNavigation,
+  activeNavigationAccepted,
+  onEditActiveNavigation,
+  navigationRemainingDistanceMeters,
   navigationStatus,
   navigationPath,
   navigationComputing,
@@ -145,6 +154,24 @@ export function MapTargetSheetHost({
   }
 
   if (!activeTarget || activeTargetSuppressed) return null
+
+  if (activeNavigationAccepted) {
+    return (
+      <ActiveNavigationSheet
+        target={activeTarget}
+        bottom={bottom}
+        remainingDistanceMeters={navigationRemainingDistanceMeters}
+        durationSeconds={navigationPath?.durationSeconds ?? 0}
+        targetColor={actionColor}
+        targetTextColor={actionTextColor}
+        accentColor={accents.purple.light}
+        cancelColor={accents.red.light}
+        cancelBackgroundColor={cancelSurface}
+        onOpen={onEditActiveNavigation}
+        onCancel={onCancelNavigation}
+      />
+    )
+  }
 
   const cancelAction = {
     color: accents.red.light,
