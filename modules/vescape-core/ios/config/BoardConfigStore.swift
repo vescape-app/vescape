@@ -16,9 +16,21 @@ struct BoardConfigChangeNotice {
   func toMap() -> [String: Any] { ["boardId": boardId, "detectedAtMs": detectedAtMs, "diffs": diffs.map { ["fieldId": $0.fieldId, "label": $0.label, "unit": $0.unit, "oldValue": $0.oldValue?.toBridge(), "newValue": $0.newValue?.toBridge()] as [String: Any?] }] }
   func diffsJson() -> String { String(data: try! JSONEncoder().encode(diffs), encoding: .utf8)! }
   static func from(boardId: String, detectedAtMs: Int64, diffsJson: String) -> Self? { guard let data = diffsJson.data(using: .utf8), let diffs = try? JSONDecoder().decode([BoardConfigChangeDiff].self, from: data) else { return nil }; return .init(boardId: boardId, detectedAtMs: detectedAtMs, diffs: diffs) }
+  /// Relative tolerance for number fields. Two decodes of the same board bytes can differ by a few
+  /// ULP once a value has been through the cache JSON or the `float32_auto` reconstruction, and a
+  /// rider must never be told `0.026 -> 0.026`. Well below the smallest step any Refloat field
+  /// exposes, so a real edit still diffs.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `NUMBER_TOLERANCE`
+  static let numberTolerance = 1e-6
+
+  static func changed(_ a: ConfigNoticeValue?, _ b: ConfigNoticeValue?) -> Bool {
+    if case .number(let x) = a, case .number(let y) = b { return abs(x - y) > numberTolerance * max(1, max(abs(x), abs(y))) }
+    return a != b
+  }
+
   static func diff(old: [String: Any], new: [String: Any], schema: RefloatConfigSchema?) -> [BoardConfigChangeDiff] {
     let metadata = Dictionary(uniqueKeysWithValues: (schema?.fields ?? []).map { ($0.id, ($0.label, $0.unit)) })
-    return Set(old.keys).union(new.keys).sorted().compactMap { id in let a = ConfigNoticeValue(old[id]), b = ConfigNoticeValue(new[id]); guard a != b else { return nil }; let meta = metadata[id]; return .init(fieldId: id, label: meta?.0 ?? id, unit: meta?.1, oldValue: a, newValue: b) }
+    return Set(old.keys).union(new.keys).sorted().compactMap { id in let a = ConfigNoticeValue(old[id]), b = ConfigNoticeValue(new[id]); guard changed(a, b) else { return nil }; let meta = metadata[id]; return .init(fieldId: id, label: meta?.0 ?? id, unit: meta?.1, oldValue: a, newValue: b) }
   }
 }
 

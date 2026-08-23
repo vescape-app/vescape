@@ -16,4 +16,13 @@ final class BoardConfigChangeNoticeTests: XCTestCase {
     XCTAssertEqual(diffs[2].oldValue, .number(1))
     XCTAssertEqual(diffs[2].newValue, .bool(true))
   }
+
+  func testDiffIgnoresFloatNoiseButKeepsRealEdits() {
+    let diffs = BoardConfigChangeNotice.diff(
+      old: ["noise": 0.026000000000002, "edit": 0.026, "big": 30000.0],
+      new: ["noise": 0.026, "edit": 0.027, "big": 30000.000000001],
+      schema: nil
+    )
+    XCTAssertEqual(diffs.map(\.fieldId), ["edit"])
+  }
 }

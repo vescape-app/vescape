@@ -20,4 +20,14 @@ class BoardConfigChangeNoticeTest {
     assertEquals(1.0, diffs[2].oldValue)
     assertEquals(true, diffs[2].newValue)
   }
+
+  @Test
+  fun diffIgnoresFloatNoiseButKeepsRealEdits() {
+    val diffs = BoardConfigChangeNotice.diff(
+      old = mapOf("noise" to 0.026000000000002, "edit" to 0.026, "big" to 30000.0),
+      new = mapOf("noise" to 0.026, "edit" to 0.027, "big" to 30000.000000001),
+      schema = null,
+    )
+    assertEquals(listOf("edit"), diffs.map { it.fieldId })
+  }
 }

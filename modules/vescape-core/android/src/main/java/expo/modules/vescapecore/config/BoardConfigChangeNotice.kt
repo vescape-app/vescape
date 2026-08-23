@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.config
 
+import kotlin.math.abs
+import kotlin.math.max
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -13,12 +15,24 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
   fun toMap() = mapOf("boardId" to boardId, "detectedAtMs" to detectedAtMs, "diffs" to diffs.map { it.toMap() })
   fun diffsJson() = JSONArray().also { a -> diffs.forEach { a.put(it.toJson()) } }.toString()
   companion object {
+    /**
+     * Relative tolerance for number fields. Two decodes of the same board bytes can differ by a few
+     * ULP once a value has been through the cache JSON or the `float32_auto` reconstruction, and a
+     * rider must never be told `0.026 -> 0.026`. Well below the smallest step any Refloat field
+     * exposes, so a real edit still diffs.
+     */
+    private const val NUMBER_TOLERANCE = 1e-6
+
+    private fun changed(a: Any?, b: Any?): Boolean {
+      if (a is Double && b is Double) return abs(a - b) > NUMBER_TOLERANCE * max(1.0, max(abs(a), abs(b)))
+      return a?.javaClass != b?.javaClass || a != b
+    }
+
     fun diff(old: Map<String, Any>, new: Map<String, Any>, schema: RefloatConfigSchema?): List<BoardConfigChangeDiff> {
       val metadata = schema?.fields?.associateBy { it.id }.orEmpty()
       return (old.keys + new.keys).sorted().mapNotNull { id ->
         val a = old[id]; val b = new[id]
-        val equal = a?.javaClass == b?.javaClass && a == b
-        if (equal) null else BoardConfigChangeDiff(id, metadata[id]?.label ?: id, metadata[id]?.unit, a, b)
+        if (!changed(a, b)) null else BoardConfigChangeDiff(id, metadata[id]?.label ?: id, metadata[id]?.unit, a, b)
       }
     }
     fun from(boardId: String, at: Long, json: String): BoardConfigChangeNotice? = runCatching {
