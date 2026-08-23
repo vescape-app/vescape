@@ -67,6 +67,16 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   const headingDegRef = useRef<number | null>(null)
   const coordinateRef = useRef(coordinate)
   const followCameraRef = useRef(followCamera)
+  // The callbacks the map hands down change identity as the rider moves — the tracked-point list
+  // they close over is rebuilt every metre. Reading them through refs keeps the sensor
+  // subscription tied to `active` alone, instead of restarting DeviceMotion several times a
+  // second mid-ride.
+  const onFollowHeadingRef = useRef(onFollowHeading)
+  const onHeadingChangeRef = useRef(onHeadingChange)
+  const onStatusChangeRef = useRef(onStatusChange)
+  onFollowHeadingRef.current = onFollowHeading
+  onHeadingChangeRef.current = onHeadingChange
+  onStatusChangeRef.current = onStatusChange
 
   useEffect(() => {
     coordinateRef.current = coordinate
@@ -80,8 +90,8 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   useEffect(() => {
     if (!active) {
       headingDegRef.current = null
-      onHeadingChange(null)
-      onStatusChange('idle')
+      onHeadingChangeRef.current(null)
+      onStatusChangeRef.current('idle')
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
         shape: JSON.stringify(phoneHeadingShape(null, null, false)),
@@ -98,7 +108,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       if (headingDeg === headingDegRef.current) return
 
       headingDegRef.current = headingDeg
-      onHeadingChange(headingDeg)
+      onHeadingChangeRef.current(headingDeg)
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
         shape: JSON.stringify(
@@ -107,21 +117,21 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       })
 
       if (!followCameraRef.current) return
-      onFollowHeading(headingDeg)
+      onFollowHeadingRef.current(headingDeg)
     }).then((subscription) => {
       if (disposed) {
         subscription.remove()
         return
       }
       remove = subscription.remove
-      onStatusChange(subscription.status)
+      onStatusChangeRef.current(subscription.status)
     })
 
     return () => {
       disposed = true
       remove?.()
     }
-  }, [active, onFollowHeading, onHeadingChange, onStatusChange])
+  }, [active])
 
   return (
     <>
