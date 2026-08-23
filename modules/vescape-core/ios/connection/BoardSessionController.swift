@@ -766,6 +766,57 @@ internal final class BoardSessionController: VescGattListener {
     reapOrphanLiveActivities()
   }
 
+  // MARK: - Launch auto-connect (#401)
+
+  /// Auto-connect the selected Board at **process launch**, native-driven and independent of JS.
+  /// Called from `VescapeLaunchSubscriber` right after `prepareForLaunch()`, so restoration adoption
+  /// decides first: while a resume is pending (or a session is already live) this stands down and
+  /// lets the restored session own the launch.
+  ///
+  /// The trigger is the app-delegate launch hook, not the Expo module lifecycle — a JS reload
+  /// creates a new module but no new process, so it cannot restart or duplicate a live session, and
+  /// a launch that brings up no JS at all still auto-connects.
+  ///
+  /// JS never triggers this; it only toggles the `autoConnect` setting. No-ops when auto-connect is
+  /// off, no Board is selected, the Board is unlinked, or the Board is gated by a manual stop.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/AutoConnectProvider.kt
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
+  func autoConnectSelectedBoard() {
+    let settings = appData.getSettings()
+    let decision = AutoConnectGate.decide(
+      settings: settings,
+      suppressedBoardId: ManualBoardStop.suppressedBoardId(),
+      hasLiveSession: session != nil,
+      resumePending: pendingResume != nil
+    )
+    NSLog(
+      "[VescAutoConnect] launch decision=%@ settingsKeys=%d autoConnect=%@ selectedBoardId=%@ tombstone=%@",
+      String(describing: decision),
+      settings.count,
+      String(describing: settings["autoConnect"] as? Bool),
+      String(describing: settings["selectedBoardId"] as? String),
+      String(describing: ManualBoardStop.suppressedBoardId())
+    )
+    guard case let .connect(boardId) = decision else { return }
+    DispatchQueue.main.async {
+      // Re-check on the main queue: restoration can adopt the session between the launch hook and
+      // this hop, and that session must not be replaced by a fresh connect.
+      guard self.session == nil, self.pendingResume == nil else {
+        NSLog("[VescAutoConnect] aborted on main queue: session adopted between launch and connect")
+        return
+      }
+      guard let config = BoardConnectConfig.resolve(boardId: boardId, appData: self.appData) else {
+        NSLog("[VescAutoConnect] no connect config for board %@ (unlinked?)", boardId)
+        return
+      }
+      NSLog("[VescAutoConnect] connecting board=%@ bleId=%@", boardId, config.bleId)
+      self.connect(config: config, onSuccess: {}, onError: { code, message in
+        NSLog("[VescAutoConnect] connect failed %@: %@", code, message)
+      })
+    }
+  }
+
   private func clearPendingResume() {
     pendingResumeExpiry?.cancel()
     pendingResumeExpiry = nil
@@ -865,6 +916,13 @@ internal final class BoardSessionController: VescGattListener {
     configSafetyReadScheduled = false
     vescLiveFirmware = nil
     self.config = config
+    // A Board Session actually started, so the manual stop that gated auto-connect is spent: the
+    // rider is riding again. Without this the tombstone outlives every later launch and auto-connect
+    // stays dead until the Board is re-selected. Replay sessions are synthetic and leave it alone.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `connectSelectedBoard`
+    if replayTransport == nil {
+      ManualBoardStop.clearAutoStartSuppression()
+    }
     if let session {
       lastEmittedLinkIntegrity = session.startLinkIntegrityCheck(expected: config.linkIdentity())
     }

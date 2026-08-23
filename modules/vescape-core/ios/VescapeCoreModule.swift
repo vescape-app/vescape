@@ -189,7 +189,6 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.onChange = { [weak self] boardId, warnings in
         self?.sendBoardWarnings(boardId, warnings)
       }
-      self.autoConnectSelectedBoard()
     }
 
     OnAppEntersForeground {
@@ -1191,27 +1190,6 @@ public class VescapeCoreModule: Module {
   }
 
   // MARK: - Board session bridge
-
-  /// Auto-connect the selected board at app launch, native-driven and independent of JS. Mirrors
-  /// Android's `AutoConnectProvider` (fires at process start) → `autoConnectSelectedBoard`: JS
-  /// never triggers this, it only toggles the `autoConnect` setting. No-ops when auto-connect is
-  /// off, no board is selected, or the board is unlinked.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
-  private func autoConnectSelectedBoard() {
-    // The shared coordinator already owns a live session (e.g. this module was rebuilt by a JS
-    // reload mid-ride) — never restart it; the new module only re-attached its sinks. Mirrors
-    // Android, where auto-connect fires once at process start, not on every module create.
-    guard coordinator.connectedBoardId == nil else { return }
-    let settings = appData.getSettings()
-    guard settings["autoConnect"] as? Bool ?? true else { return }
-    guard let boardId = settings["selectedBoardId"] as? String, !boardId.isEmpty else { return }
-    guard !ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return }
-    DispatchQueue.main.async {
-      guard let config = self.connectConfig(boardId: boardId) else { return }
-      self.selectedBoardId = boardId
-      self.coordinator.connect(config: config, onSuccess: {}, onError: { _, _ in })
-    }
-  }
 
   /// Resolve the selected board's connect config. The resolution itself lives on
   /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
