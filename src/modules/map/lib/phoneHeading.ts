@@ -19,6 +19,14 @@ interface Subscription {
 }
 
 export interface PhoneHeadingAdapter {
+  /**
+   * Degrees to add to `-rotation.alpha` so the result is the bearing of the phone's top edge.
+   *
+   * `rotation.alpha` does not mean the same thing on both platforms, and the difference is a
+   * property of the sensor source, not of the math — so each adapter states its own origin and the
+   * pure heading code stays platform-free.
+   */
+  headingOffsetDeg: number
   isAvailableAsync: () => Promise<boolean>
   getPermissionsAsync: () => Promise<PermissionResponse>
   requestPermissionsAsync: () => Promise<PermissionResponse>
@@ -45,10 +53,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-export function phoneHeadingFromDeviceMotion(event: DeviceMotionMeasurement): number | null {
+export function phoneHeadingFromDeviceMotion(
+  event: DeviceMotionMeasurement,
+  headingOffsetDeg = 0,
+): number | null {
   const alpha = event.rotation?.alpha
   if (typeof alpha !== 'number' || !Number.isFinite(alpha)) return null
-  return normalizeHeading((-alpha * 180) / Math.PI + event.orientation)
+  return normalizeHeading((-alpha * 180) / Math.PI + event.orientation + headingOffsetDeg)
 }
 
 export function smoothPhoneHeading(
@@ -110,7 +121,7 @@ export async function startPhoneHeadingUpdates(
 
   adapter.setUpdateInterval(PHONE_HEADING_INTERVAL_MS)
   const subscription = adapter.addListener((event) => {
-    const heading = phoneHeadingFromDeviceMotion(event)
+    const heading = phoneHeadingFromDeviceMotion(event, adapter.headingOffsetDeg)
     if (heading != null) onHeading(heading)
   })
   return { status: 'ready', remove: () => subscription.remove() }

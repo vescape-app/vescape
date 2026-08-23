@@ -20,6 +20,9 @@ import type { PhoneHeadingAdapter } from '@/modules/map/lib/phoneHeading'
  */
 export function createReplayPhoneHeadingAdapter(): PhoneHeadingAdapter {
   return {
+    // A recorded bearing is already a heading, not a raw yaw, so there is no platform origin to
+    // correct for.
+    headingOffsetDeg: 0,
     isAvailableAsync: async () => true,
     getPermissionsAsync: async () => ({ status: 'granted' }),
     requestPermissionsAsync: async () => ({ status: 'granted' }),
@@ -30,7 +33,7 @@ export function createReplayPhoneHeadingAdapter(): PhoneHeadingAdapter {
       const subscription = addReplayPhoneHeadingListener(({ headingDeg }) => {
         listener({
           rotation: {
-            // Inverse of `phoneHeadingFromDeviceMotion` at orientation 0.
+            // Inverse of `phoneHeadingFromDeviceMotion` at orientation 0 and no heading offset.
             alpha: (-headingDeg * Math.PI) / 180,
             beta: 0,
             gamma: 0,
