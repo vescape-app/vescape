@@ -9,7 +9,7 @@ import {
   FloatingBarShowcase,
   PrevNextSelectorShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
-import { MapOptionSelectorShowcase } from '@/screens/showcase/controls/MapOptionSelectorShowcase'
+import { ExpandableCircleMenuShowcase } from '@/screens/showcase/controls/ExpandableCircleMenuShowcase'
 import { ZonePillsShowcase } from '@/screens/showcase/controls/ZonePillsShowcase'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
@@ -20,7 +20,7 @@ export default function ControlsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
-          description="CircleButton, FloatingBar, PrevNextSelector, PillSelector, MapOptionSelector, AlertPresetControl."
+          description="CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl."
         />
         <AlertPresetControlShowcase />
         <CircleButtonShowcase />
@@ -28,7 +28,7 @@ export default function ControlsPage() {
         <FloatingActionPillShowcase />
         <PrevNextSelectorShowcase />
         <ZonePillsShowcase />
-        <MapOptionSelectorShowcase />
+        <ExpandableCircleMenuShowcase />
       </ScrollView>
     </SafeAreaView>
   )

@@ -1,30 +1,31 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
-interface MapOption<Key extends string> {
+interface ExpandableCircleMenuOption<Key extends string> {
   key: Key
   label: string
   icon: ReactNode
 }
 
-interface MapOptionSelectorProps<Key extends string> {
+interface ExpandableCircleMenuProps<Key extends string> {
   activeKey: Key
   activeIcon: ReactNode
   activeColor: string
   activeBackground: string
   collapsedAccessibilityLabel: string
   expanded: boolean
-  size?: MapOptionSelectorSize
-  options: MapOption<Key>[]
+  size?: ExpandableCircleMenuSize
+  options: ExpandableCircleMenuOption<Key>[]
+  autoCloseDelayMs?: number | null
   onToggle: () => void
   onSelect: (key: Key) => void
 }
 
-export type MapOptionSelectorSize = keyof typeof SELECTOR_METRICS
+export type ExpandableCircleMenuSize = keyof typeof MENU_METRICS
 
-const SELECTOR_METRICS = {
+const MENU_METRICS = {
   sm: {
     height: 38,
     collapsedWidth: 38,
@@ -55,9 +56,10 @@ const SELECTOR_METRICS = {
   },
 } as const
 const ANIMATION = { duration: 180 } as const
+const DEFAULT_AUTO_CLOSE_DELAY_MS = 3_000
 const TRANSPARENT_OPTION_COLOR = theme.alpha(theme.palette.mono.black, 0)
 
-export function MapOptionSelector<Key extends string>({
+export function ExpandableCircleMenu<Key extends string>({
   activeKey,
   activeIcon,
   activeColor,
@@ -66,11 +68,23 @@ export function MapOptionSelector<Key extends string>({
   expanded,
   size = 'md',
   options,
+  autoCloseDelayMs = DEFAULT_AUTO_CLOSE_DELAY_MS,
   onToggle,
   onSelect,
-}: MapOptionSelectorProps<Key>) {
-  const metrics = SELECTOR_METRICS[size]
+}: ExpandableCircleMenuProps<Key>) {
+  const metrics = MENU_METRICS[size]
   const optionCount = options.length
+  const onToggleRef = useRef(onToggle)
+
+  useEffect(() => {
+    onToggleRef.current = onToggle
+  }, [onToggle])
+
+  useEffect(() => {
+    if (!expanded || autoCloseDelayMs === null) return
+    const timeout = setTimeout(() => onToggleRef.current(), autoCloseDelayMs)
+    return () => clearTimeout(timeout)
+  }, [autoCloseDelayMs, expanded])
   const shellStyle = useAnimatedStyle(
     () => ({
       width: withTiming(getSelectorWidth(metrics, optionCount, expanded), ANIMATION),
@@ -105,7 +119,7 @@ export function MapOptionSelector<Key extends string>({
         style={[styles.options, optionsStyle]}
       >
         {options.map((option) => (
-          <MapOptionButton
+          <CircleMenuOptionButton
             key={option.key}
             label={option.label}
             icon={option.icon}
@@ -152,7 +166,7 @@ export function MapOptionSelector<Key extends string>({
   )
 }
 
-interface MapOptionButtonProps {
+interface CircleMenuOptionButtonProps {
   label: string
   icon: ReactNode
   selected: boolean
@@ -160,11 +174,11 @@ interface MapOptionButtonProps {
   activeColor: string
   activeBackground: string
   activeBorder: string
-  metrics: (typeof SELECTOR_METRICS)[MapOptionSelectorSize]
+  metrics: (typeof MENU_METRICS)[ExpandableCircleMenuSize]
   onPress: () => void
 }
 
-function MapOptionButton({
+function CircleMenuOptionButton({
   label,
   icon,
   selected,
@@ -174,7 +188,7 @@ function MapOptionButton({
   activeBorder,
   metrics,
   onPress,
-}: MapOptionButtonProps) {
+}: CircleMenuOptionButtonProps) {
   const style = useAnimatedStyle(
     () => ({
       width: withTiming(getOptionWidth(metrics, expanded, selected), ANIMATION),
@@ -229,7 +243,7 @@ function MapOptionButton({
 }
 
 function getSelectorWidth(
-  metrics: (typeof SELECTOR_METRICS)[MapOptionSelectorSize],
+  metrics: (typeof MENU_METRICS)[ExpandableCircleMenuSize],
   optionCount: number,
   expanded: boolean,
 ) {
@@ -239,7 +253,7 @@ function getSelectorWidth(
 }
 
 function getOptionWidth(
-  metrics: (typeof SELECTOR_METRICS)[MapOptionSelectorSize],
+  metrics: (typeof MENU_METRICS)[ExpandableCircleMenuSize],
   expanded: boolean,
   selected: boolean,
 ) {
@@ -248,7 +262,7 @@ function getOptionWidth(
 }
 
 function getLabelMaxWidth(
-  metrics: (typeof SELECTOR_METRICS)[MapOptionSelectorSize],
+  metrics: (typeof MENU_METRICS)[ExpandableCircleMenuSize],
   expanded: boolean,
   selected: boolean,
 ) {

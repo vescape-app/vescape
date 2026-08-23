@@ -3,9 +3,9 @@ import { useState, type ComponentType } from 'react'
 import type { NavigationProfile } from 'vescape-core'
 
 import {
-  MapOptionSelector,
-  type MapOptionSelectorSize,
-} from '@/components/controls/MapOptionSelector'
+  ExpandableCircleMenu,
+  type ExpandableCircleMenuSize,
+} from '@/components/controls/ExpandableCircleMenu'
 import { theme } from '@/constants/theme'
 
 /**
@@ -26,7 +26,7 @@ export function NavigationProfileSelector({
   onSelect,
 }: {
   activeProfile: NavigationProfile
-  size?: MapOptionSelectorSize
+  size?: ExpandableCircleMenuSize
   /** Show all profiles side by side instead of collapsing to the active one. */
   open?: boolean
   onSelect: (profile: NavigationProfile) => void
@@ -49,13 +49,14 @@ export function NavigationProfileSelector({
   const ActiveIcon = profileOption(activeProfile).Icon
 
   return (
-    <MapOptionSelector
+    <ExpandableCircleMenu
       activeKey={activeProfile}
       activeIcon={<ActiveIcon size={iconSize} color={theme.palette.mono.white} weight="bold" />}
       activeColor={ACTIVE_COLOR}
       activeBackground={theme.alpha(theme.palette.green.color, 0.12)}
       collapsedAccessibilityLabel={`Path follows: ${profileOption(activeProfile).label}`}
       expanded={open || expanded}
+      autoCloseDelayMs={open ? null : undefined}
       size={size}
       options={options}
       onToggle={() => {
