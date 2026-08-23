@@ -122,7 +122,6 @@ function RootLayout() {
           <ThemeController />
           <MapThemeCoordinator />
           <Stack
-            key={resolvedTheme}
             screenOptions={{
               headerStyle: { backgroundColor: resolvedNeutral.bg },
               headerTintColor: resolvedNeutral.textPrimary,

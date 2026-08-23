@@ -9,6 +9,7 @@ import { useMainScreenController } from '@/screens/main/useMainScreenController'
 import { useMainScreenMapTargets } from '@/screens/main/useMainScreenMapTargets'
 
 import type { Board } from '@/modules/board/store/boardStore'
+import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { theme } from '@/constants/theme'
 
 interface MainScreenProps {
@@ -118,10 +119,25 @@ export function MainScreen({
   const {
     offscreenMapIndicators,
     selectedNavigationTarget,
-    activeNavigationTarget,
+    activeNavigationTarget: detailedActiveNavigationTarget,
     longPressMapTarget,
     mapInteractionHandlerRef,
   } = targets
+  const activeNavigationTarget = useMemo<MapSelection | null>(
+    () =>
+      detailedActiveNavigationTarget ??
+      (controller.directionPoint
+        ? {
+            type: 'coordinate',
+            id: `direction-${controller.directionPoint.latitude}-${controller.directionPoint.longitude}`,
+            latitude: controller.directionPoint.latitude,
+            longitude: controller.directionPoint.longitude,
+            title: 'Direction point',
+            subtitle: null,
+          }
+        : null),
+    [controller.directionPoint, detailedActiveNavigationTarget],
+  )
 
   // Grouped MainMap props are memoized so the memo'd map does not re-render on every
   // MainScreen render just because a fresh object literal was handed to it.

@@ -48,9 +48,6 @@ export function MapModeOverlay({
   const [signInPromptVisible, setSignInPromptVisible] = useState(false)
   const [editingMapPointId, setEditingMapPointId] = useState<string | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
-  const [acceptedNavigationComputedAtMs, setAcceptedNavigationComputedAtMs] = useState<
-    number | null
-  >(null)
 
   // Native owns whether a path exists; this only decides what the sheet says about it. Read here
   // rather than drilled from the screen, because the sheet is its only consumer.
@@ -59,12 +56,15 @@ export function MapModeOverlay({
   const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
   const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
   const navigationComputedAtMs = useMapStore((s) => s.navigation?.computedAtMs ?? null)
+  const acceptedNavigationComputedAtMs = useMapStore((s) => s.acceptedNavigationComputedAtMs)
   const navigationRemainingDistanceMeters = useMapStore(
     (s) => s.routeProgress?.remainingMeters ?? null,
   )
   const navigationComputing = useMapStore((s) => s.navigationComputing)
   const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
   const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
+  const acceptNavigation = useMapStore((s) => s.acceptNavigation)
+  const editNavigation = useMapStore((s) => s.editNavigation)
 
   const navigationTarget =
     activeNavigationTarget ??
@@ -192,15 +192,15 @@ export function MapModeOverlay({
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
             onCancelNavigation={() => {
-              setAcceptedNavigationComputedAtMs(null)
+              editNavigation()
               onCancelNavigation()
             }}
             onConfirmNavigation={() => {
-              setAcceptedNavigationComputedAtMs(navigationComputedAtMs)
+              acceptNavigation()
               onExit()
             }}
             activeNavigationAccepted={activeNavigationAccepted}
-            onEditActiveNavigation={() => setAcceptedNavigationComputedAtMs(null)}
+            onEditActiveNavigation={editNavigation}
             navigationRemainingDistanceMeters={navigationRemainingDistanceMeters}
             navigationStatus={navigationStatus}
             navigationPath={
