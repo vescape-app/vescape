@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useFocusEffect } from 'expo-router'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
@@ -61,20 +62,35 @@ export function RideStatsSection() {
   const [monthLoading, setMonthLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadInitial = useCallback(async () => {
-    setLoading(true)
+  const selectedMonthRef = useRef(selectedMonth)
+  selectedMonthRef.current = selectedMonth
+  const loadedRef = useRef(false)
+
+  /**
+   * Reload every stat from native. Runs on focus, not just on mount: a ride recorded while this
+   * screen sat mounted behind another tab would otherwise leave lifetime stats frozen below what
+   * Ride History already shows for that ride.
+   */
+  const refresh = useCallback(async () => {
+    if (!loadedRef.current) setLoading(true)
     setError(null)
     try {
       const [total, availableMonths] = await Promise.all([
         getTotalProfileStats(),
         getProfileStatMonths(),
       ])
-      const initialMonth = selectInitialMonth(availableMonths)
-      const monthStats = await getMonthlyProfileStats(initialMonth)
+      // Keep the month the rider is looking at; fall back when it is gone (or on first load).
+      const current = selectedMonthRef.current
+      const keep =
+        loadedRef.current &&
+        availableMonths.some((m) => m.year === current.year && m.month === current.month)
+      const month = keep ? current : selectInitialMonth(availableMonths)
+      const monthStats = await getMonthlyProfileStats(month)
       setTotalStats(total)
       setMonths(availableMonths)
-      setSelectedMonth(initialMonth)
+      setSelectedMonth(month)
       setMonthlyStats(monthStats)
+      loadedRef.current = true
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -82,10 +98,11 @@ export function RideStatsSection() {
     }
   }, [])
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async load on mount, setState in async continuation
-    loadInitial()
-  }, [loadInitial])
+  useFocusEffect(
+    useCallback(() => {
+      void refresh()
+    }, [refresh]),
+  )
 
   const loadMonth = useCallback(async (month: ProfileStatsMonth) => {
     setSelectedMonth(month)
@@ -168,7 +185,7 @@ export function RideStatsSection() {
       ) : null}
 
       {error ? (
-        <Pressable style={styles.errorCard} onPress={() => void loadInitial()}>
+        <Pressable style={styles.errorCard} onPress={() => void refresh()}>
           <Text style={styles.errorTitle}>Could not load profile stats</Text>
           <Text style={styles.errorText}>{error}</Text>
           <Text style={styles.retryText}>Tap to retry</Text>

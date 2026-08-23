@@ -28,7 +28,7 @@ import {
 } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { LiveHud } from '@/screens/main/overlays/LiveHud'
 import { TopBar } from '@/screens/main/overlays/TopBar'
-import { TuneDrawer } from '@/screens/main/overlays/TuneDrawer'
+import { BoardDrawer } from '@/screens/main/overlays/BoardDrawer'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 const RECORD_BUTTON_HEIGHT = 48
@@ -235,11 +235,11 @@ export function TelemetryOverlay({
           <EdgeDrawer
             visible={tuneDrawerOpen}
             triggerRef={tuneButtonRef}
-            title="Board Settings"
+            title="Board"
             icon={SlidersHorizontalIcon}
             onClose={() => setTuneDrawerOpen(false)}
           >
-            <TuneDrawer
+            <BoardDrawer
               onNavigate={() => setTuneDrawerOpen(false)}
               onOpenLegalLimits={() => {
                 setTuneDrawerOpen(false)
