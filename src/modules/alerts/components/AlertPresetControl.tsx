@@ -43,7 +43,6 @@ import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
  */
 
 interface PresetGaugeDescriptor {
-  title: string
   color: string
   /** Readout unit shown under the live value. */
   unit: string
@@ -61,7 +60,6 @@ const round = (value: number) => Math.round(value)
 // Battery is percent-scaled here (its thresholds are SoC %), unlike the voltage telemetry metric.
 const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
   battery: {
-    title: 'Battery',
     color: telemetry.battVoltage.color,
     unit: '%',
     decimals: 0,
@@ -70,7 +68,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}%`,
   },
   speed: {
-    title: 'Speed',
     color: telemetry.speed.color,
     unit: 'km/h',
     decimals: 0,
@@ -79,7 +76,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)} km/h`,
   },
   duty: {
-    title: 'Duty',
     color: telemetry.duty.color,
     unit: '%',
     decimals: 0,
@@ -88,7 +84,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}%`,
   },
   'motor-temp': {
-    title: 'Motor Temp',
     color: telemetry.motorTemp.color,
     unit: '°C',
     decimals: 0,
@@ -97,7 +92,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}°`,
   },
   'controller-temp': {
-    title: 'Controller Temp',
     color: telemetry.controllerTemp.color,
     unit: '°C',
     decimals: 0,
@@ -219,25 +213,25 @@ export function AlertPresetControl({
         color={gauge.color}
         unit={gauge.unit}
         decimals={gauge.decimals}
-        label={gauge.title.toUpperCase()}
-        headerRight={
-          <Button
-            label={alertTest.running ? 'Stop test' : 'Run test'}
-            icon={alertTest.running ? StopIcon : SpeakerHighIcon}
-            variant="secondary"
-            size="sm"
-            disabled={disabled || !alertTest.canRun}
-            onPress={alertTest.running ? alertTest.stop : alertTest.start}
-            testID={`alert-test-${metric}`}
-            style={styles.testButton}
-          />
-        }
         alerts={alerts}
         hotRange={hotRange}
         showValue={gaugeValue != null}
         containerStyle={styles.gauge}
       />
-      {controlsHeader}
+      {/* The test drives the alerts, so it sits with the Alerts heading rather than the gauge. */}
+      <View style={styles.headerRow}>
+        {controlsHeader}
+        <Button
+          label={alertTest.running ? 'Stop test' : 'Run test'}
+          icon={alertTest.running ? StopIcon : SpeakerHighIcon}
+          variant="secondary"
+          size="sm"
+          disabled={disabled || !alertTest.canRun}
+          onPress={alertTest.running ? alertTest.stop : alertTest.start}
+          testID={`alert-test-${metric}`}
+          style={styles.testButton}
+        />
+      </View>
       <View style={styles.levelRow}>
         {isCustom ? (
           <CustomLabel />
@@ -369,6 +363,12 @@ const styles = StyleSheet.create({
   gauge: {
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   levelRow: {
     flexDirection: 'row',

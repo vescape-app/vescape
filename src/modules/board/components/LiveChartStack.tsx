@@ -1,9 +1,11 @@
 import { use, useMemo } from 'react'
-import { View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
+import { ChartGestureHint } from '@/components/charts/ChartGestureHint'
 import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
 import { ChartStack } from '@/components/charts/line/ChartStack'
+import { FocusedSeriesHeader } from '@/modules/board/components/FocusedSeriesHeader'
 import type { LiveChartSpec } from '@/modules/board/components/metricDetailData'
 import { MetricDetailAlertContext } from '@/modules/board/components/metricDetailAlertContext'
 import { FOCUS_DEFER_MS } from '@/modules/board/hooks/useLiveMetric'
@@ -41,18 +43,24 @@ export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
   // and survives the once-a-second arrival of new samples.
   const dataKey = charts.map((chart) => chart.key).join('|')
 
+  // A lone chart is already named by the screen it is on; a stack needs to say which line is
+  // which, so labels are the stack's business rather than each caller's.
+  const labelled = charts.length > 1
+
   const specs = useMemo(
     () =>
-      charts.map(({ controlId, ...chart }) =>
-        alerts && controlId === alerts.controlId
-          ? { ...chart, thresholds: alerts.thresholds }
-          : chart,
-      ),
-    [alerts, charts],
+      charts.map(({ controlId, ...chart }) => {
+        const spec = labelled ? chart : { ...chart, label: undefined }
+        return alerts && controlId === alerts.controlId
+          ? { ...spec, thresholds: alerts.thresholds }
+          : spec
+      }),
+    [alerts, charts, labelled],
   )
 
   return (
-    <View>
+    <View style={styles.container}>
+      <FocusedSeriesHeader />
       <ChartStack
         charts={specs}
         dataKey={dataKey}
@@ -61,7 +69,14 @@ export function LiveChartStack({ charts, scrubTimeMs }: LiveChartStackProps) {
         showHead
         scrubTimeMs={scrubTimeMs}
       />
+      <ChartGestureHint />
       {loading ? <ChartLoadingOverlay /> : null}
     </View>
   )
 }
+
+const styles = StyleSheet.create({
+  container: {
+    gap: 6,
+  },
+})

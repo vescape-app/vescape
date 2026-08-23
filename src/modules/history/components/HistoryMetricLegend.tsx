@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native'
 
+import { ChartGestureHint } from '@/components/charts/ChartGestureHint'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
@@ -26,6 +27,7 @@ export function HistoryMetricLegend() {
           No GPS
         </Text>
       </View>
+      <ChartGestureHint compact />
     </View>
   )
 }
