@@ -14,17 +14,21 @@ import java.io.File
 import java.io.FileWriter
 import java.io.InputStream
 
-// @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `SessionRecorder`
-internal class SessionRecorder(context: Context, private val boardConfig: SessionConfig) {
-    private val store = DebugRecordingStore(context)
-    private val startedAt = System.currentTimeMillis()
-    private val writer: FileWriter
-    val file: File
+/**
+ * Lines are appended from several threads — BLE chunks arrive on the GATT callback thread, phone
+ * heading comes from JS on the module thread — so every write holds [writeLock]. Without it two
+ * `write()` calls interleave on the shared handle and emit a concatenated line, which breaks
+ * replay of the whole recording.
+ *
+ * @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `SessionRecorder`
+ */
+internal class SessionRecorder(private val boardConfig: SessionConfig, val file: File) {
+    constructor(context: Context, boardConfig: SessionConfig) :
+        this(boardConfig, DebugRecordingStore(context).createFile(boardConfig.deviceName))
 
-    init {
-        file = store.createFile(boardConfig.deviceName)
-        writer = FileWriter(file, false)
-    }
+    private val startedAt = System.currentTimeMillis()
+    private val writeLock = Any()
+    private val writer: FileWriter = FileWriter(file, false)
 
     fun start() {
         write(
@@ -94,8 +98,10 @@ internal class SessionRecorder(context: Context, private val boardConfig: Sessio
     fun finish(status: String) {
         try {
             recordState(status)
-            writer.flush()
-            writer.close()
+            synchronized(writeLock) {
+                writer.flush()
+                writer.close()
+            }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Recording close failed: ${e.message}")
         }
@@ -104,9 +110,12 @@ internal class SessionRecorder(context: Context, private val boardConfig: Sessio
     private fun elapsed(): Long = System.currentTimeMillis() - startedAt
 
     private fun write(json: JSONObject) {
+        val line = json.toString()
         try {
-            writer.append(json.toString()).append('\n')
-            writer.flush()
+            synchronized(writeLock) {
+                writer.append(line).append('\n')
+                writer.flush()
+            }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Recording write failed: ${e.message}")
         }

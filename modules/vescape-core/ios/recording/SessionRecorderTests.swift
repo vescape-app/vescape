@@ -123,4 +123,50 @@ final class SessionRecorderTests: XCTestCase {
     XCTAssertEqual(exported["name"] as? String, second.lastPathComponent)
     XCTAssertEqual(exported["sizeBytes"] as? Int64, 2)
   }
+
+  /// BLE chunks are written on the CoreBluetooth callback queue while phone heading arrives from
+  /// JS on the module queue — unserialized writes concatenated two objects onto one line and broke
+  /// replay of the whole recording.
+  func testConcurrentWritesProduceOnlyWellFormedLines() throws {
+    let store = DebugRecordingStore(directory: directory)
+    let recorder = try XCTUnwrap(SessionRecorder(
+      store: store,
+      deviceName: "Thor301",
+      deviceId: "AA:BB",
+      pollIntervalMs: 100
+    ))
+    recorder.start()
+
+    let threads = 8
+    let perThread = 500
+    let gate = DispatchSemaphore(value: 0)
+    let done = DispatchGroup()
+    for index in 0..<threads {
+      done.enter()
+      Thread {
+        gate.wait()
+        for i in 0..<perThread {
+          if index % 2 == 0 {
+            recorder.recordPhoneHeading(Double(index * 1000 + i))
+          } else {
+            recorder.recordChunk(direction: "rx", bytes: [UInt8(index), UInt8(i % 256)])
+          }
+        }
+        done.leave()
+      }.start()
+    }
+    for _ in 0..<threads { gate.signal() }
+    XCTAssertEqual(done.wait(timeout: .now() + 30), .success)
+    recorder.finish(status: "stopped")
+
+    let content = try String(contentsOf: recorder.fileURL, encoding: .utf8)
+    let lines = content.split(separator: "\n").filter { !$0.isEmpty }
+    // meta + recording-started + all writes + stopped
+    XCTAssertEqual(lines.count, 3 + threads * perThread)
+    for line in lines {
+      XCTAssertFalse(line.contains("}{"), "concatenated line: \(line)")
+      let parsed = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
+      XCTAssertNotNil(parsed?["kind"], "malformed line: \(line)")
+    }
+  }
 }
