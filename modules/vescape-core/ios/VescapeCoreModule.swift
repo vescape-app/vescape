@@ -539,6 +539,11 @@ public class VescapeCoreModule: Module {
       promise.resolve(TelemetryRepository.shared.getHistory(options))
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideHistoryPage`
+    AsyncFunction("getRideHistoryPage") { (options: [String: Any], promise: Promise) in
+      promise.resolve(RideHistoryRepository.shared.getPage(options))
+    }
+
     AsyncFunction("getTelemetrySamples") { (options: [String: Any], promise: Promise) in
       promise.resolve(TelemetryRepository.shared.getSamples(options))
     }
@@ -745,16 +750,9 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    AsyncFunction("getTotalProfileStats") { (promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getTotalProfileStats())
-    }
-
-    AsyncFunction("getMonthlyProfileStats") { (options: [String: Any], promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getMonthlyProfileStats(options))
-    }
-
-    AsyncFunction("getProfileStatMonths") { (promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getProfileStatMonths())
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getProfileStatsSnapshot`
+    AsyncFunction("getProfileStatsSnapshot") { (options: [String: Any], promise: Promise) in
+      promise.resolve(ProfileStatsRepository.shared.getProfileStatsSnapshot(options))
     }
 
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps

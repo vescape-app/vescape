@@ -1,12 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
-import {
-  getMonthlyProfileStats,
-  getProfileStatMonths,
-  getTotalProfileStats,
-  type ProfileStats,
-  type ProfileStatsMonth,
-} from 'vescape-core'
+import { getProfileStatsSnapshot, type ProfileStats, type ProfileStatsMonth } from 'vescape-core'
 
 import { selectInitialMonth } from '@/modules/profile/lib/profileStats'
 
@@ -44,10 +38,10 @@ export function useProfileStats(active = true) {
     if (!loadedRef.current) setLoading(true)
     setError(null)
     try {
-      const [totalStats, availableMonths] = await Promise.all([
-        getTotalProfileStats(),
-        getProfileStatMonths(),
-      ])
+      const snapshot = await getProfileStatsSnapshot(
+        loadedRef.current ? selectedMonthRef.current : undefined,
+      )
+      const availableMonths = snapshot.months
       // Keep the month the rider is looking at; fall back when it is gone (or on first load).
       const current = selectedMonthRef.current
       const keep =
@@ -56,11 +50,14 @@ export function useProfileStats(active = true) {
           (month) => month.year === current.year && month.month === current.month,
         )
       const month = keep ? current : selectInitialMonth(availableMonths)
-      const monthStats = await getMonthlyProfileStats(month)
-      setTotal(totalStats)
+      const resolvedSnapshot =
+        month.year === snapshot.selectedMonth.year && month.month === snapshot.selectedMonth.month
+          ? snapshot
+          : await getProfileStatsSnapshot(month)
+      setTotal(resolvedSnapshot.total)
       setMonths(availableMonths)
       setSelectedMonth(month)
-      setMonthly(monthStats)
+      setMonthly(resolvedSnapshot.monthly)
       loadedRef.current = true
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -80,7 +77,10 @@ export function useProfileStats(active = true) {
     setMonthLoading(true)
     setError(null)
     try {
-      setMonthly(await getMonthlyProfileStats(month))
+      const snapshot = await getProfileStatsSnapshot(month)
+      setTotal(snapshot.total)
+      setMonths(snapshot.months)
+      setMonthly(snapshot.monthly)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, type RefObject } from 'react'
+import { useCallback, useMemo, useRef, type RefObject } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { ClockCounterClockwiseIcon, StarIcon } from 'phosphor-react-native'
@@ -14,15 +14,13 @@ import {
   formatRideListDateTime,
   formatRideListDetails,
 } from '@/modules/history/lib/rideFormat'
-import { sessionRoutePoints } from '@/modules/history/lib/routePreview'
 import { rideMovingWindow } from '@/modules/history/lib/sessions'
-import type { HistorySession, TelemetryMinuteBucket } from '@/modules/history/store/historyStore'
+import type { HistorySession } from '@/modules/history/store/historyStore'
 
 interface HistorySessionSheetProps {
   visible: boolean
   triggerRef: RefObject<View | null>
   favoriteMode: boolean
-  blocks: TelemetryMinuteBucket[]
   sessions: HistorySession[]
   favorites: Favorite[]
   selectedSessionId: string | null
@@ -37,7 +35,6 @@ export function HistorySessionSheet({
   visible,
   triggerRef,
   favoriteMode,
-  blocks,
   sessions,
   favorites,
   selectedSessionId,
@@ -53,6 +50,68 @@ export function HistorySessionSheet({
     [favorites],
   )
 
+  const renderSession = useCallback(
+    ({ item }: { item: unknown }) => {
+      const session = item as HistorySession
+      const selected = session.id === selectedSessionId
+      const favorite = favoritesBySessionId.get(session.id)
+      const rideWindow = rideMovingWindow(session) ?? {
+        startMs: session.startAtMs,
+        endMs: session.endAtMs,
+      }
+      const dateTime = formatRideListDateTime(rideWindow.startMs, rideWindow.endMs)
+      const details = formatRideListDetails(
+        rideWindow.endMs - rideWindow.startMs,
+        session.distanceM,
+        favorite?.boardName ?? session.deviceName,
+      )
+      return (
+        <HistoryRideRow
+          ref={selected ? selectedRowRef : undefined}
+          testID={`history-session-row-${session.id}`}
+          title={
+            favorite
+              ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
+              : dateTime
+          }
+          subtitle={favorite ? dateTime : details}
+          details={favorite ? details : undefined}
+          routePoints={session.routePoints}
+          selected={selected}
+          onPress={() => onSelectSession(session)}
+        />
+      )
+    },
+    [favoritesBySessionId, onSelectSession, selectedSessionId],
+  )
+
+  const empty = (
+    <Placeholder
+      icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
+      title={favoriteMode ? 'No favorites yet' : 'No rides yet'}
+      description={
+        favoriteMode
+          ? 'Open a ride in History, tap the star, adjust the range, then save'
+          : 'Record a ride and it shows up in this list'
+      }
+      style={styles.empty}
+    />
+  )
+
+  const footer = hasMore ? (
+    <Pressable
+      style={({ pressed }) => [styles.loadingRow, pressed && styles.loadingPressed]}
+      disabled={loadingMore}
+      onPress={onLoadMore}
+    >
+      {loadingMore ? (
+        <ActivityIndicator size="small" color={theme.palette.sky.color} />
+      ) : (
+        <Text style={styles.loadingText}>Load older rides</Text>
+      )}
+    </Pressable>
+  ) : null
+
   return (
     <EdgeDrawer
       visible={visible}
@@ -62,76 +121,28 @@ export function HistorySessionSheet({
       iconColor={favoriteMode ? theme.palette.amber.color : theme.palette.purple.color}
       onClose={onClose}
       initialFocusRef={selectedRowRef}
-      onReachContentEnd={hasMore && !loadingMore ? onLoadMore : undefined}
       backdropTestID="history-session-sheet-backdrop"
-    >
-      <View testID="history-session-sheet" style={styles.content}>
-        {sessions.length === 0 ? (
-          <Placeholder
-            icon={favoriteMode ? StarIcon : ClockCounterClockwiseIcon}
-            title={favoriteMode ? 'No favorites yet' : 'No rides yet'}
-            description={
-              favoriteMode
-                ? 'Open a ride in History, tap the star, adjust the range, then save'
-                : 'Record a ride and it shows up in this list'
-            }
-            style={styles.empty}
-          />
-        ) : (
-          sessions.map((session) => {
-            const selected = session.id === selectedSessionId
-            const favorite = favoritesBySessionId.get(session.id)
-            const rideWindow = rideMovingWindow(session) ?? {
-              startMs: session.startAtMs,
-              endMs: session.endAtMs,
-            }
-            const dateTime = formatRideListDateTime(rideWindow.startMs, rideWindow.endMs)
-            const details = formatRideListDetails(
-              rideWindow.endMs - rideWindow.startMs,
-              session.distanceM,
-              favorite?.boardName ?? session.deviceName,
-            )
-            return (
-              <HistoryRideRow
-                ref={selected ? selectedRowRef : undefined}
-                key={session.id}
-                testID={`history-session-row-${session.id}`}
-                title={
-                  favorite
-                    ? formatFavoriteName(favorite.name, favorite.startMs, favorite.endMs)
-                    : dateTime
-                }
-                subtitle={favorite ? dateTime : details}
-                details={favorite ? details : undefined}
-                routePoints={sessionRoutePoints(blocks, session)}
-                selected={selected}
-                onPress={() => onSelectSession(session)}
-              />
-            )
-          })
-        )}
-        {hasMore && (
-          <Pressable
-            style={({ pressed }) => [styles.loadingRow, pressed && styles.loadingPressed]}
-            disabled={loadingMore}
-            onPress={onLoadMore}
-          >
-            {loadingMore ? (
-              <ActivityIndicator size="small" color={theme.palette.sky.color} />
-            ) : (
-              <Text style={styles.loadingText}>Load older rides</Text>
-            )}
-          </Pressable>
-        )}
-      </View>
-    </EdgeDrawer>
+      virtualizedContent={{
+        data: sessions,
+        renderItem: renderSession,
+        keyExtractor: (item) => (item as HistorySession).id,
+        empty,
+        footer,
+        separator: HistoryRowSeparator,
+        onEndReached: hasMore && !loadingMore ? onLoadMore : undefined,
+        onEndReachedThreshold: 0.75,
+        testID: 'history-session-sheet',
+      }}
+    />
   )
 }
 
+function HistoryRowSeparator() {
+  return <View style={styles.separator} />
+}
+
 const styles = StyleSheet.create({
-  content: {
-    gap: 8,
-  },
+  separator: { height: 8 },
   empty: {
     paddingVertical: 28,
   },

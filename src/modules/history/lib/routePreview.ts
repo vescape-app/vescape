@@ -1,29 +1,8 @@
 import { Skia } from '@shopify/react-native-skia'
 
-import type { HistorySession } from '@/modules/history/lib/sessions'
-import type { TelemetryMinuteBucket } from 'vescape-core'
-
 export interface RoutePoint {
   latitude: number
   longitude: number
-}
-
-/**
- * One coarse point per recorded minute of a ride — enough to recognise a route as a thumbnail
- * without loading its GPS samples.
- */
-export function sessionRoutePoints(
-  blocks: TelemetryMinuteBucket[],
-  session: Pick<HistorySession, 'blockIds'>,
-): RoutePoint[] {
-  const blockIds = new Set(session.blockIds)
-  return blocks
-    .filter(
-      (block) =>
-        blockIds.has(block.id) && block.firstLatitude != null && block.firstLongitude != null,
-    )
-    .sort((a, b) => a.startAtMs - b.startAtMs)
-    .map((block) => ({ latitude: block.firstLatitude!, longitude: block.firstLongitude! }))
 }
 
 /** The route fitted into a `width`×`height` thumbnail, or null when there is nothing to draw. */

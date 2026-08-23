@@ -18,7 +18,6 @@ import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
 import { formatRideListDateTime, formatRideListDetails } from '@/modules/history/lib/rideFormat'
-import { sessionRoutePoints } from '@/modules/history/lib/routePreview'
 import { rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
@@ -43,7 +42,8 @@ export function HistoryDrawer({
   onEnterHistory,
 }: HistoryDrawerProps) {
   const [listMode, setListMode] = useState<ListMode>(null)
-  const [loaded, setLoaded] = useState(false)
+  const [ridesLoaded, setRidesLoaded] = useState(false)
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false)
   const blocks = useHistoryStore((state) => state.blocks)
   const sessions = useHistoryStore((state) => state.sessions)
   const historyLoading = useHistoryStore((state) => state.loading)
@@ -56,14 +56,21 @@ export function HistoryDrawer({
 
   useEffect(() => {
     if (!visible) return
-    const loadRecentRides = async () => {
-      if (useHistoryStore.getState().sessions.length === 0) {
-        await useHistoryStore.getState().loadInitial()
-      }
-      const history = useHistoryStore.getState()
-      if (history.sessions.length < 3 && history.hasMore) await history.loadMore()
+    let cancelled = false
+    setRidesLoaded(false)
+    setFavoritesLoaded(false)
+    void useHistoryStore
+      .getState()
+      .loadInitial()
+      .then(() => {
+        if (!cancelled) setRidesLoaded(true)
+      })
+    void loadFavorites().then(() => {
+      if (!cancelled) setFavoritesLoaded(true)
+    })
+    return () => {
+      cancelled = true
     }
-    void Promise.allSettled([loadRecentRides(), loadFavorites()]).then(() => setLoaded(true))
   }, [loadFavorites, visible])
 
   const favoriteSessions = useMemo(
@@ -152,17 +159,13 @@ export function HistoryDrawer({
                 iconPosition="right"
                 size="sm"
                 variant="secondary"
-                disabled={!loaded || historyLoading || sessions.length === 0}
+                disabled={!ridesLoaded || historyLoading || sessions.length === 0}
                 onPress={() => showList('rides')}
               />
             }
           />
-          {sessions.length === 0 && (!loaded || historyLoading) ? (
-            <ActivityIndicator
-              size="small"
-              color={theme.palette.purple.color}
-              style={styles.loading}
-            />
+          {!ridesLoaded || historyLoading ? (
+            <RideListSkeleton />
           ) : sessions.length === 0 && historyError ? (
             <Placeholder
               icon={WarningCircleIcon}
@@ -201,7 +204,7 @@ export function HistoryDrawer({
                     key={session.id}
                     title={formatRideListDateTime(window.startMs, window.endMs)}
                     subtitle={details}
-                    routePoints={sessionRoutePoints(blocks, session)}
+                    routePoints={session.routePoints}
                     onPress={() => openRide(session)}
                   />
                 )
@@ -220,12 +223,12 @@ export function HistoryDrawer({
                 iconPosition="right"
                 size="sm"
                 variant="secondary"
-                disabled={!loaded || favoritesLoading || favorites.length === 0}
+                disabled={!favoritesLoaded || favoritesLoading || favorites.length === 0}
                 onPress={() => showList('favorites')}
               />
             }
           />
-          {favorites.length === 0 && (!loaded || favoritesLoading) ? (
+          {favorites.length === 0 && (!favoritesLoaded || favoritesLoading) ? (
             <ActivityIndicator
               size="small"
               color={theme.palette.amber.color}
@@ -254,11 +257,11 @@ export function HistoryDrawer({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.favoriteList}
             >
-              {favorites.slice(0, 8).map((favorite) => (
+              {favorites.slice(0, 8).map((favorite, index) => (
                 <FavoriteRideCard
                   key={favorite.id}
                   favorite={favorite}
-                  routePoints={sessionRoutePoints(blocks, favoriteToSession(favorite, blocks))}
+                  routePoints={favoriteSessions[index]?.routePoints ?? []}
                   onPress={() => openFavorite(favorite)}
                 />
               ))}
@@ -271,7 +274,6 @@ export function HistoryDrawer({
         visible={listMode !== null}
         triggerRef={triggerRef}
         favoriteMode={listMode === 'favorites'}
-        blocks={blocks}
         sessions={listMode === 'favorites' ? favoriteSessions : sessions}
         favorites={favorites}
         selectedSessionId={null}
@@ -289,6 +291,16 @@ export function HistoryDrawer({
   )
 }
 
+function RideListSkeleton() {
+  return (
+    <View style={styles.rideList} accessibilityLabel="Loading recent rides">
+      {[0, 1, 2].map((index) => (
+        <View key={index} style={styles.rideSkeleton} />
+      ))}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   content: {
     padding: 12,
@@ -296,6 +308,14 @@ const styles = StyleSheet.create({
   },
   rideList: {
     gap: 8,
+  },
+  rideSkeleton: {
+    height: 74,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.palette.slate.surfaceDeep,
+    opacity: 0.55,
   },
   favoriteList: {
     gap: 10,

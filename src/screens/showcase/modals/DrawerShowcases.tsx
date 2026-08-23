@@ -134,6 +134,51 @@ export function EdgeDrawerLongContentShowcase() {
   )
 }
 
+const VIRTUALIZED_ROWS = Array.from({ length: 100 }, (_, index) => ({
+  id: `virtualized-${index}`,
+  label: `Virtualized row ${index + 1}`,
+}))
+
+export function EdgeDrawerVirtualizedShowcase() {
+  const triggerRef = useTriggerRef()
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <ShowcaseCard
+      name="EdgeDrawer — virtualized list"
+      controls={
+        <View ref={triggerRef} collapsable={false} style={styles.trigger}>
+          <OpenButton label="Open 100 rows" onPress={() => setVisible(true)} />
+        </View>
+      }
+    >
+      <Text style={styles.previewHint}>FlatList path for long lists and early pagination.</Text>
+      <EdgeDrawer
+        visible={visible}
+        triggerRef={triggerRef}
+        title="Virtualized rows"
+        onClose={() => setVisible(false)}
+        virtualizedContent={{
+          data: VIRTUALIZED_ROWS,
+          keyExtractor: (item) => (item as (typeof VIRTUALIZED_ROWS)[number]).id,
+          renderItem: ({ item }) => (
+            <View style={styles.tile}>
+              <Text style={styles.tileText}>
+                {(item as (typeof VIRTUALIZED_ROWS)[number]).label}
+              </Text>
+            </View>
+          ),
+          separator: VirtualizedRowSeparator,
+        }}
+      />
+    </ShowcaseCard>
+  )
+}
+
+function VirtualizedRowSeparator() {
+  return <View style={styles.virtualizedSeparator} />
+}
+
 export function EdgeDrawerInitialFocusShowcase() {
   const triggerRef = useTriggerRef()
   const focusedRowRef = useRef<View>(null)
@@ -272,4 +317,5 @@ const styles = StyleSheet.create({
   },
   tileText: { color: theme.palette.slate.textSecondary, fontSize: 14 },
   trigger: { alignSelf: 'flex-start' },
+  virtualizedSeparator: { height: 8 },
 })

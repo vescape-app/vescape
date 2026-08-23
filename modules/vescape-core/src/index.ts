@@ -995,6 +995,71 @@ export interface ProfileStatsMonth {
   month: number
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `getProfileStatsSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
+ */
+export interface ProfileStatsSnapshot {
+  total: ProfileStats
+  monthly: ProfileStats
+  months: ProfileStatsMonth[]
+  selectedMonth: ProfileStatsMonth
+}
+
+export interface RideRoutePoint {
+  latitude: number
+  longitude: number
+}
+
+/**
+ * One complete native-owned Ride History aggregate.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `rideSessionMap`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `rideSessionMap`
+ */
+export interface RideHistorySession {
+  id: string
+  deviceId: string | null
+  deviceName: string
+  startAtMs: number
+  endAtMs: number
+  movingStartAtMs: number | null
+  movingEndAtMs: number | null
+  blockIds: string[]
+  blockCount: number
+  sampleCount: number
+  gpsPointCount: number
+  preciseGpsPointCount: number
+  distanceM: number | null
+  maxSpeedKmh: number
+  avgSpeedKmh: number
+  maxTempMosfet: number | null
+  maxTempMotor: number | null
+  maxDuty: number
+  batteryUsedWh: number
+  batteryRegenWh: number
+  firstLatitude: number | null
+  firstLongitude: number | null
+  centerLatitude: number | null
+  centerLongitude: number | null
+  minLatitude: number | null
+  maxLatitude: number | null
+  minLongitude: number | null
+  maxLongitude: number | null
+  faultCount: number
+  boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
+  routePoints: RideRoutePoint[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `getPage`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
+ */
+export interface RideHistoryPage {
+  sessions: RideHistorySession[]
+  hasMore: boolean
+  nextCursorBeforeMs: number | null
+}
+
 export interface LegalPolicyReference {
   jurisdictionCode: string
 }
@@ -1825,6 +1890,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   addCompanionPresenceBoard(boardId: string): Promise<void>
   removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
+  getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): Promise<RideHistoryPage>
   getTelemetrySamples(options: {
     fromMs: number
     toMs: number
@@ -1890,9 +1956,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
-  getTotalProfileStats(): Promise<ProfileStats>
-  getMonthlyProfileStats(options: ProfileStatsMonth): Promise<ProfileStats>
-  getProfileStatMonths(): Promise<ProfileStatsMonth[]>
+  getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
   rebuildTelemetryBuckets(): Promise<number>
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
@@ -2367,6 +2431,13 @@ export async function getTelemetryHistory(
   return native.getTelemetryHistory(options)
 }
 
+export async function getRideHistoryPage(
+  options: { limit?: number; cursorBeforeMs?: number } = {},
+): Promise<RideHistoryPage> {
+  if (E2E_ENABLED) return e2eFake.getRideHistoryPage(options)
+  return native.getRideHistoryPage(options)
+}
+
 export async function getTelemetrySamples(options: {
   fromMs: number
   toMs: number
@@ -2618,16 +2689,10 @@ export async function pushProfileToBoard(profileId: string): Promise<RefloatConf
   return native.pushProfileToBoard(profileId)
 }
 
-export async function getTotalProfileStats(): Promise<ProfileStats> {
-  return native.getTotalProfileStats()
-}
-
-export async function getMonthlyProfileStats(options: ProfileStatsMonth): Promise<ProfileStats> {
-  return native.getMonthlyProfileStats(options)
-}
-
-export async function getProfileStatMonths(): Promise<ProfileStatsMonth[]> {
-  return native.getProfileStatMonths()
+export async function getProfileStatsSnapshot(
+  options?: ProfileStatsMonth,
+): Promise<ProfileStatsSnapshot> {
+  return native.getProfileStatsSnapshot(options ?? {})
 }
 
 export async function rebuildTelemetryBuckets(): Promise<number> {

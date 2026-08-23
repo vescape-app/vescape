@@ -154,7 +154,6 @@ export function HistoryOverlay({
         visible={history.historySheetVisible}
         triggerRef={listButtonRef}
         favoriteMode={favoriteMode}
-        blocks={history.blocks}
         sessions={favoriteMode ? history.favoriteSessions : history.sessions}
         favorites={favoriteMode ? history.favorites : []}
         selectedSessionId={history.selectedSession?.id ?? null}

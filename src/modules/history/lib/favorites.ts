@@ -99,6 +99,12 @@ export function favoriteToSession(
     maxLongitude: maxOrNull(longitudes),
     faultCount: sum(spanned.map((block) => block.faultCount)),
     boundaryBefore: 'none',
+    routePoints: spanned
+      .filter((block) => block.firstLatitude != null && block.firstLongitude != null)
+      .map((block) => ({
+        latitude: block.firstLatitude!,
+        longitude: block.firstLongitude!,
+      })),
   }
 }
 

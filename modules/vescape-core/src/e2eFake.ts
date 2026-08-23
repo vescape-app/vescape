@@ -13,6 +13,8 @@ import type {
   LiveStateEvent,
   MetricExclusion,
   PrivacyZone,
+  RideHistoryPage,
+  RideHistorySession,
   TelemetryEvent,
   TelemetryHistoryEvent,
   TelemetryHistoryOptions,
@@ -310,6 +312,55 @@ function getTelemetryHistory(options: TelemetryHistoryOptions): TelemetryMinuteB
     buckets = buckets.slice(0, options.limit)
   }
   return buckets
+}
+
+function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): RideHistoryPage {
+  const buckets = getTelemetryHistory({ cursorBeforeMs: options.cursorBeforeMs }).sort(
+    (a, b) => b.startAtMs - a.startAtMs,
+  )
+  const sessions: RideHistorySession[] = buckets.map((bucket) => ({
+    id: `${bucket.deviceId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
+    deviceId: bucket.deviceId,
+    deviceName: bucket.deviceName,
+    startAtMs: bucket.startAtMs,
+    endAtMs: bucket.endAtMs,
+    movingStartAtMs: bucket.firstMovingAtMs,
+    movingEndAtMs: bucket.lastMovingAtMs,
+    blockIds: [bucket.id],
+    blockCount: 1,
+    sampleCount: bucket.sampleCount,
+    gpsPointCount: bucket.gpsPointCount,
+    preciseGpsPointCount: bucket.preciseGpsPointCount,
+    distanceM: bucket.distanceDeltaM ?? bucket.gpsDistanceM,
+    maxSpeedKmh: bucket.maxAbsSpeedKmh,
+    avgSpeedKmh: bucket.avgSpeedKmh,
+    maxTempMosfet: bucket.maxTempMosfet,
+    maxTempMotor: bucket.maxTempMotor,
+    maxDuty: bucket.maxDuty,
+    batteryUsedWh: bucket.batteryUsedWh,
+    batteryRegenWh: bucket.batteryRegenWh,
+    firstLatitude: bucket.firstLatitude,
+    firstLongitude: bucket.firstLongitude,
+    centerLatitude: bucket.firstLatitude,
+    centerLongitude: bucket.firstLongitude,
+    minLatitude: bucket.firstLatitude,
+    maxLatitude: bucket.firstLatitude,
+    minLongitude: bucket.firstLongitude,
+    maxLongitude: bucket.firstLongitude,
+    faultCount: bucket.faultCount,
+    boundaryBefore: bucket.boundaryBefore,
+    routePoints:
+      bucket.firstLatitude != null && bucket.firstLongitude != null
+        ? [{ latitude: bucket.firstLatitude, longitude: bucket.firstLongitude }]
+        : [],
+  }))
+  const limit = Math.max(1, options.limit ?? 10)
+  const page = sessions.slice(0, limit)
+  return {
+    sessions: page,
+    hasMore: sessions.length > page.length,
+    nextCursorBeforeMs: sessions.length > page.length ? (page.at(-1)?.startAtMs ?? null) : null,
+  }
 }
 
 function encodeBoardSamples(samples: TelemetrySample[]): {
@@ -808,6 +859,8 @@ export const e2eFake = {
   },
 
   getTelemetryHistory,
+
+  getRideHistoryPage,
 
   getHistoryRange,
 
