@@ -21,10 +21,13 @@ function motion(alpha: number, orientation = PORTRAIT): DeviceMotionMeasurement 
   }
 }
 
-function fakeAdapter(options: { available?: boolean; permission?: string } = {}) {
+function fakeAdapter(
+  options: { available?: boolean; permission?: string; headingOffsetDeg?: number } = {},
+) {
   let listener: ((event: DeviceMotionMeasurement) => void) | null = null
   let removed = false
   const adapter: PhoneHeadingAdapter = {
+    headingOffsetDeg: options.headingOffsetDeg ?? 0,
     isAvailableAsync: async () => options.available ?? true,
     getPermissionsAsync: async () => ({ status: options.permission ?? 'granted' }) as never,
     requestPermissionsAsync: async () => ({ status: options.permission ?? 'granted' }) as never,
@@ -50,6 +53,13 @@ describe('phoneHeading', () => {
     expect(phoneHeadingFromDeviceMotion(motion(-Math.PI / 2))).toBe(90)
     expect(phoneHeadingFromDeviceMotion(motion(Math.PI / 2))).toBe(270)
     expect(phoneHeadingFromDeviceMotion(motion(0, RIGHT_LANDSCAPE))).toBe(90)
+  })
+
+  test('re-bases yaw onto the top edge of the phone for sources with an offset origin', () => {
+    // iOS: `-yaw` is the bearing of the right edge, so the top edge is 90° counter-clockwise.
+    expect(phoneHeadingFromDeviceMotion(motion(0), -90)).toBe(270)
+    expect(phoneHeadingFromDeviceMotion(motion(-Math.PI / 2), -90)).toBe(0)
+    expect(phoneHeadingFromDeviceMotion(motion(-Math.PI / 2, RIGHT_LANDSCAPE), -90)).toBe(90)
   })
 
   test('smooths compass heading across the shortest wrap-around path', () => {
@@ -86,6 +96,19 @@ describe('phoneHeading', () => {
     expect(subscription.status).toBe('ready')
     expect(headings).toEqual([180])
     expect(source.removed()).toBe(true)
+  })
+
+  test("applies the adapter's heading origin to the readings it emits", async () => {
+    const source = fakeAdapter({ headingOffsetDeg: -90 })
+    const headings: number[] = []
+
+    const subscription = await startPhoneHeadingUpdates(source.adapter, (heading) =>
+      headings.push(heading),
+    )
+    source.emit(motion(Math.PI))
+    subscription.remove()
+
+    expect(headings).toEqual([90])
   })
 
   test('returns fallback statuses without subscribing', async () => {

@@ -17,7 +17,10 @@ import {
   CubeIcon,
   FadersIcon,
   GearSixIcon,
+  BellRingingIcon,
   GhostIcon,
+  ScalesIcon,
+  SpeakerHighIcon,
   TrashIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native'
@@ -28,6 +31,7 @@ import type { MonoValueAlign } from '@/components/base/MonoValue'
 import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Placeholder } from '@/components/base/Placeholder'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
@@ -199,6 +203,14 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
+            label="Preview"
+            variant="caution"
+            icon={SpeakerHighIcon}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
             label="Delete"
             variant="destructive"
             onPress={() => {}}
@@ -237,7 +249,6 @@ function ButtonShowcase() {
 function PlaceholderShowcase() {
   const [showTitle, setShowTitle] = useState(true)
   const [showAction, setShowAction] = useState(true)
-  const [color, setColor] = useState<string>(theme.palette.slate.textMuted)
 
   return (
     <ShowcaseCard
@@ -246,16 +257,6 @@ function PlaceholderShowcase() {
         <>
           <ToggleRow label="showTitle" value={showTitle} onToggle={setShowTitle} />
           <ToggleRow label="showAction" value={showAction} onToggle={setShowAction} />
-          <ChipRow
-            label="iconColor"
-            options={[
-              theme.palette.slate.textMuted,
-              theme.palette.sky.color,
-              theme.status.error.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
-          />
         </>
       }
     >
@@ -264,7 +265,6 @@ function PlaceholderShowcase() {
           icon={GhostIcon}
           title={showTitle ? 'No data yet' : undefined}
           description="Connect board to start streaming telemetry"
-          iconColor={color}
           action={
             showAction ? (
               <Button label="Get started" size="lg" icon={ArrowRightIcon} onPress={() => {}} />
@@ -367,16 +367,31 @@ function TickTextShowcase() {
   )
 }
 
+function SectionHeaderShowcase() {
+  return (
+    <ShowcaseCard name="SectionHeader">
+      <SectionHeader icon={BellRingingIcon} color={theme.palette.yellow.color} title="Alerts" />
+      <SectionHeader
+        icon={ScalesIcon}
+        title="Cell balance"
+        description="20S pack"
+        right={<Button label="Preview" variant="caution" size="sm" onPress={() => {}} />}
+      />
+    </ShowcaseCard>
+  )
+}
+
 export default function BaseComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CubeIcon}
-          description="Button, IconButton, Banner, Placeholder, TickText."
+          description="Button, IconButton, SectionHeader, Banner, Placeholder, TickText."
         />
         <IconButtonShowcase />
         <ButtonShowcase />
+        <SectionHeaderShowcase />
         <PlaceholderShowcase />
         <BannerShowcase />
         <TickTextShowcase />

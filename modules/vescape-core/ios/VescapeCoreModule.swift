@@ -44,6 +44,9 @@ public class VescapeCoreModule: Module {
   private var frontendActive = true
   /// Events with at least one live JS listener, tracked via `OnStartObserving`/`OnStopObserving`.
   private var observedEvents = Set<String>()
+  /// Remover for this module's App Status mirror subscription; the Group Ride online gate holds its
+  /// own, so the sink cannot be a single assignable closure.
+  private var appStatusUnsubscribe: (() -> Void)?
 
   /// Shared, app-level Board Session owner that outlives this module instance. A JS runtime reload
   /// (dev reload, OTA update, JS crash recovery) tears down this module and builds a fresh one; the
@@ -103,6 +106,23 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onLocation") { self.observedEvents.remove("onLocation") }
     OnStartObserving("onTelemetryRebuildProgress") { self.observedEvents.insert("onTelemetryRebuildProgress") }
     OnStopObserving("onTelemetryRebuildProgress") { self.observedEvents.remove("onTelemetryRebuildProgress") }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onGroupRideConnection`
+    OnStartObserving("onGroupRideConnection") { self.observedEvents.insert("onGroupRideConnection") }
+    OnStopObserving("onGroupRideConnection") { self.observedEvents.remove("onGroupRideConnection") }
+    OnStartObserving("onGroupRideSnapshot") { self.observedEvents.insert("onGroupRideSnapshot") }
+    OnStopObserving("onGroupRideSnapshot") { self.observedEvents.remove("onGroupRideSnapshot") }
+    OnStartObserving("onGroupRideCreated") { self.observedEvents.insert("onGroupRideCreated") }
+    OnStopObserving("onGroupRideCreated") { self.observedEvents.remove("onGroupRideCreated") }
+    OnStartObserving("onGroupRideUpdated") { self.observedEvents.insert("onGroupRideUpdated") }
+    OnStopObserving("onGroupRideUpdated") { self.observedEvents.remove("onGroupRideUpdated") }
+    OnStartObserving("onGroupRideEnded") { self.observedEvents.insert("onGroupRideEnded") }
+    OnStopObserving("onGroupRideEnded") { self.observedEvents.remove("onGroupRideEnded") }
+    OnStartObserving("onGroupRideJoined") { self.observedEvents.insert("onGroupRideJoined") }
+    OnStopObserving("onGroupRideJoined") { self.observedEvents.remove("onGroupRideJoined") }
+    OnStartObserving("onGroupRideRoster") { self.observedEvents.insert("onGroupRideRoster") }
+    OnStopObserving("onGroupRideRoster") { self.observedEvents.remove("onGroupRideRoster") }
+    OnStartObserving("onGroupRideError") { self.observedEvents.insert("onGroupRideError") }
+    OnStopObserving("onGroupRideError") { self.observedEvents.remove("onGroupRideError") }
     OnStartObserving("onBoardWarnings") {
       self.observedEvents.insert("onBoardWarnings")
       // Late subscriber: replay the current warnings for every board so JS is immediately consistent.
@@ -149,7 +169,10 @@ public class VescapeCoreModule: Module {
     OnCreate {
       // Native owns App Status truth; JS mirrors it. Push every successful refresh (late
       // subscribers replay above and through `getAppStatus`).
-      AppStatusCoordinator.shared.onChange = { [weak self] status in self?.sendAppStatus(status) }
+      self.appStatusUnsubscribe?()
+      self.appStatusUnsubscribe = AppStatusCoordinator.shared.addChangeListener { [weak self] status in
+        self?.sendAppStatus(status)
+      }
 
       // The forecast is native-owned too; JS mirrors whatever the coordinator resolves.
       WeatherCoordinator.shared.onChange = { [weak self] weather in self?.sendWeather(weather) }
@@ -176,7 +199,6 @@ public class VescapeCoreModule: Module {
         self?.sendBoardWarnings(boardId, warnings)
       }
       BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
-      self.autoConnectSelectedBoard()
     }
 
     OnAppEntersForeground {
@@ -197,7 +219,8 @@ public class VescapeCoreModule: Module {
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
       BoardConfigStore.onNoticeChanged = nil
-      AppStatusCoordinator.shared.onChange = nil
+      self.appStatusUnsubscribe?()
+      self.appStatusUnsubscribe = nil
       NavigationController.shared.onChange = nil
       NavigationController.shared.onProgressChange = nil
       self.frontendActive = false
@@ -242,36 +265,43 @@ public class VescapeCoreModule: Module {
       self.coordinator.stopScan()
     }
 
-    // MARK: Group Ride (Android native implementation; iOS keeps bridge shape)
-    // @platform-diff Group Ride networking is Android-only, so the Online Capability gate (refuse/
-    // tear down the relay socket while App Status is Online/App Blocked, `blocked` connection state,
-    // `Vescape-App-Version` upgrade header, 426 handling) has no iOS peer. These stubs never open a
-    // socket, so there is nothing to gate; iOS AppStatusCoordinator keeps its single `onChange` sink.
+    // MARK: Group Ride
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startGroupRideObserve`
 
-    Function("startGroupRideObserve") { (_: String) in
-      self.sendEvent("onGroupRideConnection", ["state": "idle"])
-      self.sendEvent("onGroupRideSnapshot", ["rides": []])
+    Function("startGroupRideObserve") { (serverUrl: String) in
+      self.coordinator.startGroupRideObserve(serverUrl)
     }
 
     Function("stopGroupRideObserve") {
-      self.sendEvent("onGroupRideConnection", ["state": "idle"])
+      self.coordinator.stopGroupRideObserve()
     }
 
-    Function("createGroupRide") { (_: String, _: String, _: String?, _: String?, _: Double, _: Double) in
-      // no-op until iOS native Group Ride support lands
+    Function("createGroupRide") { (riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) in
+      self.coordinator.createGroupRide(
+        riderId: riderId,
+        riderName: riderName,
+        riderColor: riderColor,
+        name: name,
+        lat: lat,
+        lng: lng
+      )
     }
 
-    Function("joinGroupRide") { (_: String, _: String, _: String?, _: String) in
-      // no-op until iOS native Group Ride support lands
+    Function("joinGroupRide") { (riderId: String, riderName: String, riderColor: String?, rideId: String) in
+      self.coordinator.joinGroupRide(
+        riderId: riderId,
+        riderName: riderName,
+        riderColor: riderColor,
+        rideId: rideId
+      )
     }
 
     Function("leaveGroupRide") {
-      self.sendEvent("onGroupRideJoined", ["rideId": nil])
-      self.sendEvent("onGroupRideRoster", ["rideId": nil, "riders": []])
+      self.coordinator.leaveGroupRide()
     }
 
-    Function("updateGroupRideIdentity") { (_: String, _: String, _: String?) in
-      // no-op until iOS native Group Ride support lands
+    Function("updateGroupRideIdentity") { (riderId: String, riderName: String, riderColor: String?) in
+      self.coordinator.updateGroupRideIdentity(riderId: riderId, riderName: riderName, riderColor: riderColor)
     }
 
     // MARK: Telemetry recording toggle
@@ -475,10 +505,6 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    Function("recordPhoneHeading") { (headingDeg: Double) in
-      self.coordinator.recordPhoneHeading(headingDeg)
-    }
-
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setWatchRouteSpanM`
     // @platform-diff Wear Mirror is Android-only; keep the shared TS contract callable on iOS.
     Function("setWatchRouteSpanM") { (_: Double?) in }
@@ -529,6 +555,11 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("getTelemetryHistory") { (options: [String: Any], promise: Promise) in
       promise.resolve(TelemetryRepository.shared.getHistory(options))
+    }
+
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideHistoryPage`
+    AsyncFunction("getRideHistoryPage") { (options: [String: Any], promise: Promise) in
+      promise.resolve(RideHistoryRepository.shared.getPage(options))
     }
 
     AsyncFunction("getTelemetrySamples") { (options: [String: Any], promise: Promise) in
@@ -747,16 +778,9 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    AsyncFunction("getTotalProfileStats") { (promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getTotalProfileStats())
-    }
-
-    AsyncFunction("getMonthlyProfileStats") { (options: [String: Any], promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getMonthlyProfileStats(options))
-    }
-
-    AsyncFunction("getProfileStatMonths") { (promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getProfileStatMonths())
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getProfileStatsSnapshot`
+    AsyncFunction("getProfileStatsSnapshot") { (options: [String: Any], promise: Promise) in
+      promise.resolve(ProfileStatsRepository.shared.getProfileStatsSnapshot(options))
     }
 
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
@@ -933,9 +957,11 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    // The direction target is personal client state, never a Map Point.
+    // The direction target is personal client state, never a Map Point. Native keeps it so Group
+    // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") { (latitude: Double?, longitude: Double?, promise: Promise) in
       self.appData.setDirectionPoint(latitude: latitude, longitude: longitude)
+      self.coordinator.loadGroupRideTarget()
 
       // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
       // one ends it. The Directions call runs off the promise so the pin lands immediately.
@@ -1280,27 +1306,6 @@ public class VescapeCoreModule: Module {
 
   // MARK: - Board session bridge
 
-  /// Auto-connect the selected board at app launch, native-driven and independent of JS. Mirrors
-  /// Android's `AutoConnectProvider` (fires at process start) → `autoConnectSelectedBoard`: JS
-  /// never triggers this, it only toggles the `autoConnect` setting. No-ops when auto-connect is
-  /// off, no board is selected, or the board is unlinked.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
-  private func autoConnectSelectedBoard() {
-    // The shared coordinator already owns a live session (e.g. this module was rebuilt by a JS
-    // reload mid-ride) — never restart it; the new module only re-attached its sinks. Mirrors
-    // Android, where auto-connect fires once at process start, not on every module create.
-    guard coordinator.connectedBoardId == nil else { return }
-    let settings = appData.getSettings()
-    guard settings["autoConnect"] as? Bool ?? true else { return }
-    guard let boardId = settings["selectedBoardId"] as? String, !boardId.isEmpty else { return }
-    guard !ManualBoardStop.isAutoStartSuppressed(boardId: boardId) else { return }
-    DispatchQueue.main.async {
-      guard let config = self.connectConfig(boardId: boardId) else { return }
-      self.selectedBoardId = boardId
-      self.coordinator.connect(config: config, onSuccess: {}, onError: { _, _ in })
-    }
-  }
-
   /// Resolve the selected board's connect config. The resolution itself lives on
   /// `BoardConnectConfig` so the headless resume path (#378) rebuilds the identical config.
   private func connectConfig(boardId: String) -> BoardConnectConfig? {
@@ -1368,6 +1373,8 @@ public class VescapeCoreModule: Module {
   /// immediately, not just on the next session. Mirrors Android `reloadPrivacyZonesIntoRecorder`.
   private func reloadPrivacyZonesIntoRecorder() {
     TelemetryRepository.shared.reloadPrivacyZones(appData.getEnabledPrivacyZoneEntities())
+    // The same zones gate Group Ride presence egress, so a mid-ride edit must reach both.
+    coordinator.loadPrivacyZones()
   }
 
   /// Emit `onAppDataChanged` so JS reloads the store for [scope]. Bypasses the `frontendActive`

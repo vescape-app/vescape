@@ -65,6 +65,7 @@ export interface MainHistoryOverlayProps {
   selectPreviousRide: () => Promise<void>
   selectNextRide: () => Promise<void>
   selectRide: (session: HistorySession) => void
+  selectFavoriteRide: (favoriteId: string, session: HistorySession) => void
   exitHistory: () => void
   removeSession: () => void
   setActiveHistoryMapMetric: (metric: HistoryMetricKey) => void
@@ -154,7 +155,6 @@ export function HistoryOverlay({
         visible={history.historySheetVisible}
         triggerRef={listButtonRef}
         favoriteMode={favoriteMode}
-        blocks={history.blocks}
         sessions={favoriteMode ? history.favoriteSessions : history.sessions}
         favorites={favoriteMode ? history.favorites : []}
         selectedSessionId={history.selectedSession?.id ?? null}

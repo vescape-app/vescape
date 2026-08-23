@@ -57,7 +57,7 @@ export function BoardWarningControl({ boardId }: BoardWarningControlProps) {
               testID="board-warnings-button"
               accessibilityLabel="Board warnings"
             >
-              <EngineIcon size={16} color={color} weight="regular" />
+              <EngineIcon size={14} color={color} weight="bold" />
             </Pressable>
           </View>
         </>

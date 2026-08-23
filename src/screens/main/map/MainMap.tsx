@@ -21,7 +21,6 @@ import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
-import { usePhoneHeadingAdapter } from '@/screens/main/map/usePhoneHeadingAdapter'
 import type {
   HistoryGpsSample,
   HistoryMarker,
@@ -265,7 +264,6 @@ export const MainMap = memo(
     const [phoneHeadingStatus, setPhoneHeadingStatus] = useState<PhoneHeadingStatus | 'idle'>(
       'idle',
     )
-    const phoneHeadingAdapter = usePhoneHeadingAdapter()
     const headingFollowMode = gpsHeadingMode || phoneHeadingMode
     useRenderRateWarning('MainMap')
     const followHeadingDeg = gpsHeadingMode
@@ -355,26 +353,21 @@ export const MainMap = memo(
       },
       [engine],
     )
+    /**
+     * The compass never moves the edge indicators itself. It only retargets the camera spring, so
+     * its heading runs ahead of the heading the map is actually drawn with; repositioning from both
+     * left the indicators alternating between the predicted and the real angle every frame. The
+     * camera-changed echo is the single writer, and the indicators lag exactly as much as the map.
+     */
     const handlePhoneHeadingChange = useCallback(
       (headingDeg: number | null) => {
         phoneHeadingDegRef.current = headingDeg
         onPhoneHeadingChange(headingDeg)
 
         if (headingDeg == null || !phoneHeadingMode || !followGps) return
-        const currentCamera = currentCameraRef.current
-        if (!currentCamera) return
-
-        repositionOffscreenIndicatorsForCamera({ ...currentCamera, heading: headingDeg })
         scheduleOffscreenMapIndicatorRefresh()
       },
-      [
-        currentCameraRef,
-        followGps,
-        onPhoneHeadingChange,
-        phoneHeadingMode,
-        repositionOffscreenIndicatorsForCamera,
-        scheduleOffscreenMapIndicatorRefresh,
-      ],
+      [followGps, onPhoneHeadingChange, phoneHeadingMode, scheduleOffscreenMapIndicatorRefresh],
     )
     const { handleOffscreenIndicatorPress, handleFocusDirectionPoint } = useMainMapFocusActions({
       engine,
@@ -509,7 +502,6 @@ export const MainMap = memo(
           followGps={followGps}
           accuracyFix={accuracyFix}
           onPhoneFollowHeading={handlePhoneFollowHeading}
-          phoneHeadingAdapter={phoneHeadingAdapter}
           onPhoneHeadingChange={handlePhoneHeadingChange}
           onPhoneHeadingStatusChange={setPhoneHeadingStatus}
           mode={mode}

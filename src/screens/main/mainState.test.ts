@@ -42,6 +42,7 @@ function session(id: string, startAtMs: number): HistorySession {
     minLongitude: null,
     maxLongitude: null,
     boundaryBefore: 'none',
+    routePoints: [],
   }
 }
 

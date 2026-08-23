@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Box, render, Text, useApp, useInput } from 'ink'
 
-import { Hint, Menu } from '../release/ui'
+import { Hint, isEnter, Menu } from '../release/ui'
 
 interface SelectOption<T extends string> {
   value: T
@@ -19,10 +19,10 @@ function SelectPrompt<T extends string>({
 }) {
   const { exit } = useApp()
   const [index, setIndex] = useState(0)
-  useInput((_input, key) => {
+  useInput((input, key) => {
     if (key.upArrow) setIndex((value) => (value - 1 + options.length) % options.length)
     else if (key.downArrow) setIndex((value) => (value + 1) % options.length)
-    else if (key.return) {
+    else if (isEnter(input, key)) {
       finish(options[index].value)
       exit()
     } else if (key.escape) {
@@ -50,6 +50,7 @@ export async function selectPrompt<T extends string>(
     <SelectPrompt title={title} options={options} finish={(value) => (selected = value)} />,
   )
   await instance.waitUntilExit()
+  instance.clear()
   instance.unmount()
   if (selected === undefined) throw new Error('Selection cancelled')
   return selected
@@ -59,7 +60,7 @@ function TextPrompt({ title, finish }: { title: string; finish: (value: string |
   const { exit } = useApp()
   const [value, setValue] = useState('')
   useInput((input, key) => {
-    if (key.return && value.trim()) {
+    if (isEnter(input, key) && value.trim()) {
       finish(value.trim())
       exit()
     } else if (key.escape) {
@@ -86,6 +87,7 @@ export async function textPrompt(title: string): Promise<string | null> {
   let result: string | null | undefined
   const instance = render(<TextPrompt title={title} finish={(value) => (result = value)} />)
   await instance.waitUntilExit()
+  instance.clear()
   instance.unmount()
   return result ?? null
 }

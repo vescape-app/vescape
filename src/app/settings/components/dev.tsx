@@ -7,7 +7,7 @@ import { Text } from '@/components/base/Text'
 import { IconHero } from '@/components/settings/IconHero'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
-import { DevBadge } from '@/components/dev/DevBadge'
+import { DevBadge } from '@/modules/diagnostics/components/DevBadge'
 import { theme } from '@/constants/theme'
 
 function DevBadgeShowcase() {

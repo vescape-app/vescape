@@ -50,6 +50,7 @@ import expo.modules.vescapecore.mappoints.MapPointApi
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
+import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
@@ -158,7 +159,6 @@ class VescapeCoreModule : Module() {
       "onBms",
       "onBmsSeries",
       "onLocation",
-      "onReplayPhoneHeading",
       "onTelemetryRebuildProgress",
       "onBoardProbeProgress",
       "onGroupRideConnection",
@@ -363,6 +363,7 @@ class VescapeCoreModule : Module() {
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startGroupRideObserve`
     Function("startGroupRideObserve") { serverUrl: String ->
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
     }
@@ -380,9 +381,6 @@ class VescapeCoreModule : Module() {
     }
     Function("updateGroupRideIdentity") { riderId: String, riderName: String, riderColor: String? ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName, riderColor)
-    }
-    Function("recordPhoneHeading") { headingDeg: Double ->
-      CoreForegroundService.recordPhoneHeading(context.applicationContext, headingDeg)
     }
     Function("setWatchRouteSpanM") { spanM: Double? ->
       WatchRouteMirror.viewportSpanM = spanM
@@ -595,6 +593,10 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getTelemetryHistory") Coroutine { options: Map<String, Any?> ->
       TelemetryRepository.get(context.applicationContext).getHistory(options)
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideHistoryPage`
+    AsyncFunction("getRideHistoryPage") Coroutine { options: Map<String, Any?> ->
+      RideHistoryRepository.get(context.applicationContext).getPage(options)
+    }
     AsyncFunction("getTelemetrySamples") Coroutine { options: Map<String, Any?> ->
       TelemetryRepository.get(context.applicationContext).getSamples(options)
     }
@@ -713,14 +715,9 @@ class VescapeCoreModule : Module() {
     AsyncFunction("saveProfile") Coroutine { profileId: String, fields: Map<String, Any?> ->
       AppDataRepository.get(context.applicationContext).saveProfile(profileId, fields)
     }
-    AsyncFunction("getTotalProfileStats") {
-      runBlocking { ProfileStatsRepository.get(context.applicationContext).getTotalProfileStats() }
-    }
-    AsyncFunction("getMonthlyProfileStats") Coroutine { options: Map<String, Any?> ->
-      ProfileStatsRepository.get(context.applicationContext).getMonthlyProfileStats(options)
-    }
-    AsyncFunction("getProfileStatMonths") {
-      runBlocking { ProfileStatsRepository.get(context.applicationContext).getProfileStatMonths() }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getProfileStatsSnapshot`
+    AsyncFunction("getProfileStatsSnapshot") Coroutine { options: Map<String, Any?> ->
+      ProfileStatsRepository.get(context.applicationContext).getProfileStatsSnapshot(options)
     }
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.

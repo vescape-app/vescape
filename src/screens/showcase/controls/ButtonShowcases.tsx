@@ -21,6 +21,7 @@ import {
   type FloatingStatusPillModel,
 } from '@/components/controls/FloatingBar'
 import { PrevNextSelector } from '@/components/controls/PrevNextSelector'
+import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow } from '@/components/dev/ShowcaseControls'
@@ -180,6 +181,25 @@ export function PrevNextSelectorShowcase() {
           onPrevious={() => setIndex((v) => Math.max(0, v - 1))}
           onNext={() => setIndex((v) => Math.min(labels.length - 1, v + 1))}
           onSelect={() => undefined}
+        />
+      </View>
+    </ShowcaseCard>
+  )
+}
+
+export function SegmentedToggleShowcase() {
+  const [value, setValue] = useState<'total' | 'month'>('total')
+
+  return (
+    <ShowcaseCard name="SegmentedToggle">
+      <View style={styles.centeredPreview}>
+        <SegmentedToggle
+          options={[
+            { value: 'total', label: 'All time' },
+            { value: 'month', label: 'August 2026' },
+          ]}
+          value={value}
+          onChange={setValue}
         />
       </View>
     </ShowcaseCard>

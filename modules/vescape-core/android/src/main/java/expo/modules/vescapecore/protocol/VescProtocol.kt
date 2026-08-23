@@ -83,8 +83,14 @@ internal const val BOARD_MOVE_INPUT_MAX = 127
 /** Motor current a full-scale `RC_MOVE` request asks for, in tenths of an amp. */
 private const val RC_MOVE_CURRENT_MAX_DECIAMPS = 60
 
-/** `RC_MOVE` runs for `time` firmware steps of ~1s; the controller re-sends before it lapses. */
-private const val RC_MOVE_TIME_STEPS = 1
+/**
+ * How long one `RC_MOVE` request runs. `time` is not seconds: firmware runs the
+ * request for `time * 100` control-loop steps, and that loop ticks at ~832 Hz,
+ * so one unit is only ~120 ms. Eight units cover ~1s, which outlives the
+ * controller's repeat tick — a request that lapses before its re-send lands is
+ * exactly what makes the motor stutter.
+ */
+private const val RC_MOVE_TIME_STEPS = 8
 
 /**
  * Builds a Board Move command: motor output while the board is disengaged, not

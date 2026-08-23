@@ -1,5 +1,12 @@
 import { createContext, useContext } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  View,
+  type FlatList,
+  type ListRenderItem,
+} from 'react-native'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Reanimated from 'react-native-reanimated'
 import type { Icon } from 'phosphor-react-native'
@@ -14,6 +21,18 @@ const EdgeDrawerScrollContext = createContext<(() => void) | null>(null)
 /** Lets content deep inside a drawer scroll the drawer back to its open edge. */
 export function useEdgeDrawerScrollToOpenEdge() {
   return useContext(EdgeDrawerScrollContext)
+}
+
+interface EdgeDrawerVirtualizedContent {
+  data: readonly unknown[]
+  renderItem: ListRenderItem<unknown>
+  keyExtractor: (item: unknown, index: number) => string
+  empty?: React.ReactElement | null
+  footer?: React.ReactElement | null
+  separator?: React.ComponentType
+  onEndReached?: () => void
+  onEndReachedThreshold?: number
+  testID?: string
 }
 
 interface EdgeDrawerProps {
@@ -33,7 +52,9 @@ interface EdgeDrawerProps {
   /** Called after scrolling settles near the end of the drawer content. */
   onReachContentEnd?: () => void
   backdropTestID?: string
-  children: React.ReactNode
+  children?: React.ReactNode
+  /** Dedicated FlatList path for long/unknown content; avoids nesting virtualization in a ScrollView. */
+  virtualizedContent?: EdgeDrawerVirtualizedContent
 }
 
 /**
@@ -54,6 +75,7 @@ export function EdgeDrawer({
   onReachContentEnd,
   backdropTestID,
   children,
+  virtualizedContent,
 }: EdgeDrawerProps) {
   const {
     mounted,
@@ -88,6 +110,38 @@ export function EdgeDrawer({
     <Pressable style={{ height: dismissAreaHeight }} onPress={close} accessible={false} />
   )
 
+  const drawerTitle = title ? (
+    <Pressable
+      style={styles.drawerHeader}
+      onPress={close}
+      accessibilityRole="button"
+      accessibilityLabel={`Close ${title}`}
+    >
+      {IconComponent ? <IconComponent size={28} color={iconColor} weight="duotone" /> : null}
+      <Text style={styles.drawerTitle}>{title}</Text>
+    </Pressable>
+  ) : null
+
+  const listHeader = virtualizedContent ? (
+    <>
+      {!opensFromTop ? emptyDismissArea : null}
+      <View style={[styles.listChrome, opensFromTop && { paddingTop: edgePadding }]}>
+        {!opensFromTop ? <View style={styles.grabber} /> : null}
+        {drawerTitle}
+      </View>
+    </>
+  ) : null
+
+  const listFooter = virtualizedContent ? (
+    <>
+      {virtualizedContent.footer}
+      <View style={[styles.listChrome, opensFromTop ? undefined : { paddingBottom: edgePadding }]}>
+        {opensFromTop ? <View style={styles.grabber} /> : null}
+      </View>
+      {opensFromTop ? emptyDismissArea : null}
+    </>
+  ) : null
+
   return (
     <Modal
       visible
@@ -108,46 +162,65 @@ export function EdgeDrawer({
         <Reanimated.View style={[styles.drawer, presenceStyle]}>
           <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
             <GestureDetector gesture={nativeScrollGesture}>
-              <Reanimated.ScrollView
-                ref={scrollRef}
-                onContentSizeChange={handleContentSizeChange}
-                onScroll={scrollHandler}
-                onScrollEndDrag={handleScrollEndDrag}
-                onMomentumScrollEnd={handleScrollEnd}
-                scrollEnabled={!closing}
-                scrollEventThrottle={16}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                overScrollMode="never"
-              >
-                {!opensFromTop ? emptyDismissArea : null}
-                <View
-                  style={[
-                    styles.drawerBody,
-                    opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
-                  ]}
+              {virtualizedContent ? (
+                <Reanimated.FlatList
+                  ref={scrollRef as React.RefObject<FlatList<unknown>>}
+                  data={virtualizedContent.data as unknown[]}
+                  renderItem={virtualizedContent.renderItem}
+                  keyExtractor={virtualizedContent.keyExtractor}
+                  ListHeaderComponent={listHeader}
+                  ListEmptyComponent={virtualizedContent.empty}
+                  ListFooterComponent={listFooter}
+                  ItemSeparatorComponent={virtualizedContent.separator}
+                  contentContainerStyle={styles.virtualizedContent}
+                  onEndReached={virtualizedContent.onEndReached}
+                  onEndReachedThreshold={virtualizedContent.onEndReachedThreshold ?? 0.6}
+                  onContentSizeChange={handleContentSizeChange}
+                  onScroll={scrollHandler}
+                  onScrollEndDrag={handleScrollEndDrag}
+                  onMomentumScrollEnd={handleScrollEnd}
+                  scrollEnabled={!closing}
+                  scrollEventThrottle={16}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  overScrollMode="never"
+                  testID={virtualizedContent.testID}
+                  initialNumToRender={8}
+                  maxToRenderPerBatch={8}
+                  windowSize={7}
+                />
+              ) : (
+                <Reanimated.ScrollView
+                  ref={
+                    scrollRef as React.RefObject<React.ComponentRef<typeof Reanimated.ScrollView>>
+                  }
+                  onContentSizeChange={handleContentSizeChange}
+                  onScroll={scrollHandler}
+                  onScrollEndDrag={handleScrollEndDrag}
+                  onMomentumScrollEnd={handleScrollEnd}
+                  scrollEnabled={!closing}
+                  scrollEventThrottle={16}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  overScrollMode="never"
                 >
-                  {!opensFromTop ? <View style={styles.grabber} /> : null}
-                  {title ? (
-                    <Pressable
-                      style={styles.drawerHeader}
-                      onPress={close}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Close ${title}`}
-                    >
-                      {IconComponent ? (
-                        <IconComponent size={28} color={iconColor} weight="duotone" />
-                      ) : null}
-                      <Text style={styles.drawerTitle}>{title}</Text>
-                    </Pressable>
-                  ) : null}
-                  <EdgeDrawerScrollContext.Provider value={scrollToOpenEdge}>
-                    <View style={styles.drawerContent}>{children}</View>
-                  </EdgeDrawerScrollContext.Provider>
-                  {opensFromTop ? <View style={styles.grabber} /> : null}
-                </View>
-                {opensFromTop ? emptyDismissArea : null}
-              </Reanimated.ScrollView>
+                  {!opensFromTop ? emptyDismissArea : null}
+                  <View
+                    style={[
+                      styles.drawerBody,
+                      opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
+                    ]}
+                  >
+                    {!opensFromTop ? <View style={styles.grabber} /> : null}
+                    {drawerTitle}
+                    <EdgeDrawerScrollContext.Provider value={scrollToOpenEdge}>
+                      <View style={styles.drawerContent}>{children}</View>
+                    </EdgeDrawerScrollContext.Provider>
+                    {opensFromTop ? <View style={styles.grabber} /> : null}
+                  </View>
+                  {opensFromTop ? emptyDismissArea : null}
+                </Reanimated.ScrollView>
+              )}
             </GestureDetector>
           </NativeScrollGestureContext.Provider>
         </Reanimated.View>
@@ -178,6 +251,13 @@ const styles = StyleSheet.create({
   drawerBody: {
     paddingHorizontal: 12,
     gap: 10,
+  },
+  listChrome: {
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+  virtualizedContent: {
+    paddingHorizontal: 12,
   },
   drawerHeader: {
     minHeight: 56,

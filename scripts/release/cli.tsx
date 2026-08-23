@@ -48,7 +48,7 @@ import {
 import { Dashboard } from './dashboard/Dashboard'
 import { availableActions, defaultActionIndex, type ActionId } from './dashboard/actions'
 import { initialReleaseState, loadReleaseState, type ReleaseState } from './dashboard/state'
-import { Confirm, Hint, Menu, Rule } from './ui'
+import { Confirm, Hint, isEnter, Menu, Rule } from './ui'
 import {
   productionFields,
   promotionFields,
@@ -577,10 +577,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   }
 
   useInput((input, key) => {
+    const enter = isEnter(input, key)
     if (phase === 'dashboard') {
       if (releaseState.loading && !releaseState.error) return
       moveIndex(key, actions.length)
-      if (key.return && actions[index]) startAction(actions[index].id)
+      if (enter && actions[index]) startAction(actions[index].id)
       else if (key.escape) {
         finish({ kind: 'exit' })
         exit()
@@ -589,7 +590,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'version-bump') {
       moveIndex(key, versionBumps.length)
-      if (key.return) {
+      if (enter) {
         setBumpIndex(index)
         goto('version-confirm')
       } else if (key.escape) loadDashboard()
@@ -597,7 +598,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'version-confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX) {
           finish({ kind: 'prepare', bump: versionBumps[bumpIndex].bump })
           exit()
@@ -606,14 +607,14 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     if (phase === 'build-source') {
-      if (key.return) {
+      if (enter) {
         if (sourcePreview) void prepare()
       } else if (key.escape) loadDashboard()
       else if (key.backspace || key.delete) {
         setSourceRefEdited(true)
         setSourceRef((value) => (sourceRefEdited ? value.slice(0, -1) : ''))
       } else if (input && !key.ctrl && !key.meta) {
-        // Buffered stdin can deliver control characters (bare LF does not set key.return)
+        // Keep other buffered control characters out of the source ref.
         const typed = input.replace(/[^\w./-]/g, '')
         if (typed) {
           setSourceRefEdited(true)
@@ -624,24 +625,24 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'candidate') {
       moveIndex(key, candidates.length)
-      if (key.return) void confirmPromotionCandidate(index)
+      if (enter) void confirmPromotionCandidate(index)
       else if (key.escape) loadDashboard()
       return
     }
     if (phase === 'internal-runs') {
       moveIndex(key, internalRuns.length)
-      if (key.return) void resumeInternalRun(index)
+      if (enter) void resumeInternalRun(index)
       else if (key.escape) loadDashboard()
       return
     }
     if (phase === 'production-candidate') {
       moveIndex(key, productionCandidates.length)
-      if (key.return) void confirmProductionCandidate(index)
+      if (enter) void confirmProductionCandidate(index)
       else if (key.escape) loadDashboard()
       return
     }
     if (phase === 'production-percentage') {
-      if (key.return) confirmProductionPercentage()
+      if (enter) confirmProductionPercentage()
       else if (key.escape) loadDashboard()
       else if (key.backspace || key.delete) setRolloutInput((value) => value.slice(0, -1))
       else if (/^[0-9.]$/.test(input)) setRolloutInput((value) => value + input)
@@ -649,7 +650,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX && plan) void dispatch(plan)
         else gotoBuildSource()
       } else if (key.escape) gotoBuildSource()
@@ -657,7 +658,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'promote-confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX && promotionPlan) void promote(promotionPlan)
         else goto('candidate')
       } else if (key.escape) goto('candidate')
@@ -665,7 +666,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'production-confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX && productionPlan) void runProduction(productionPlan)
         else loadDashboard()
       } else if (key.escape) loadDashboard()
@@ -685,7 +686,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     if (phase === 'complete' || phase === 'error') {
-      if (key.return || key.escape) loadDashboard()
+      if (enter || key.escape) loadDashboard()
       else if (input === 'q') {
         finish({ kind: 'exit' })
         exit()

@@ -15,6 +15,7 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
+import type { HistorySession } from '@/modules/history/store/historyStore'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapRevealGesture } from '@/screens/main/map/MapRevealGesture'
 import {
@@ -28,7 +29,8 @@ import {
 } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { LiveHud } from '@/screens/main/overlays/LiveHud'
 import { TopBar } from '@/screens/main/overlays/TopBar'
-import { TuneDrawer } from '@/screens/main/overlays/TuneDrawer'
+import { BoardDrawer } from '@/screens/main/overlays/BoardDrawer'
+import { HistoryDrawer } from '@/screens/main/overlays/HistoryDrawer'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 const RECORD_BUTTON_HEIGHT = 48
@@ -56,7 +58,8 @@ interface TelemetryOverlayProps {
   onCancelMapFocus: () => void
   onEnterWeather: () => void
   onEnterLegalLimits: () => void
-  onEnterHistory: () => void
+  onOpenHistoryRide: (session: HistorySession) => void
+  onOpenHistoryFavorite: (favoriteId: string, session: HistorySession) => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
   activeNavigationTarget: MapSelection | null
   onCancelNavigation: () => void
@@ -85,7 +88,8 @@ export function TelemetryOverlay({
   onCancelMapFocus,
   onEnterWeather,
   onEnterLegalLimits,
-  onEnterHistory,
+  onOpenHistoryRide,
+  onOpenHistoryFavorite,
   onOffscreenIndicatorPress,
   activeNavigationTarget,
   onCancelNavigation,
@@ -93,6 +97,8 @@ export function TelemetryOverlay({
   const insets = useSafeAreaInsets()
   const [revealGestureActive, setRevealGestureActive] = useState(false)
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const historyButtonRef = useRef<View>(null)
   const revealCommittedRef = useRef(false)
   const tuneButtonRef = useRef<View>(null)
   // Derived, not effect-driven: the fade follows `mode` from the first evaluation on, so a Fast
@@ -213,12 +219,24 @@ export function TelemetryOverlay({
             onRetryConnect={onRetryConnect}
             bottomOffset={aboveStripBottom}
           />
-          <IconButton
-            icon={ClockCounterClockwiseIcon}
-            size="lg"
-            onPress={onEnterHistory}
-            testID="history-button"
+          <View
+            ref={historyButtonRef}
+            collapsable={false}
             style={[styles.historyButton, { bottom: buttonBottom }]}
+          >
+            <IconButton
+              icon={ClockCounterClockwiseIcon}
+              size="lg"
+              onPress={() => setHistoryDrawerOpen(true)}
+              testID="history-button"
+            />
+          </View>
+          <HistoryDrawer
+            visible={historyDrawerOpen}
+            triggerRef={historyButtonRef}
+            onClose={() => setHistoryDrawerOpen(false)}
+            onOpenRide={onOpenHistoryRide}
+            onOpenFavorite={onOpenHistoryFavorite}
           />
           <View
             ref={tuneButtonRef}
@@ -235,11 +253,11 @@ export function TelemetryOverlay({
           <EdgeDrawer
             visible={tuneDrawerOpen}
             triggerRef={tuneButtonRef}
-            title="Board Settings"
+            title="Board"
             icon={SlidersHorizontalIcon}
             onClose={() => setTuneDrawerOpen(false)}
           >
-            <TuneDrawer
+            <BoardDrawer
               onNavigate={() => setTuneDrawerOpen(false)}
               onOpenLegalLimits={() => {
                 setTuneDrawerOpen(false)

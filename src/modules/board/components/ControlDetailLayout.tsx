@@ -3,6 +3,7 @@ import { BellRingingIcon } from 'phosphor-react-native'
 import { type ReactNode, useEffect, useMemo } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 
 import { MetricAlerts } from '@/modules/alerts/components/MetricAlerts'
@@ -13,7 +14,6 @@ import {
 import { asAlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
 import { useBoardMetricAlerts } from '@/modules/alerts/hooks/useMetricAlerts'
 import { theme } from '@/constants/theme'
-import { FocusedSeriesCaption } from '@/modules/board/components/FocusedSeriesCaption'
 import { MetricDetailAlertContext } from '@/modules/board/components/metricDetailAlertContext'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import {
@@ -53,24 +53,16 @@ export function ControlDetailLayout({
     navigation.setOptions({ title })
   }, [title, navigation])
 
-  // The caption travels with the charts: whichever branch renders `children`, it sits above them.
-  const charts = (
-    <>
-      <FocusedSeriesCaption />
-      {children}
-    </>
-  )
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {controlId ? (
         <ControlDetailAlerts controlId={controlId} unit={unit} liveValue={liveValue} gauge={gauge}>
-          {charts}
+          {children}
         </ControlDetailAlerts>
       ) : (
         <>
           {gauge}
-          {charts}
+          {children}
         </>
       )}
     </ScrollView>
@@ -170,12 +162,7 @@ function ControlDetailAlerts({
 }
 
 function AlertsHeader() {
-  return (
-    <View style={styles.sectionHeader}>
-      <BellRingingIcon size={20} color={theme.palette.yellow.color} weight="duotone" />
-      <Text style={styles.sectionLabel}>Alerts</Text>
-    </View>
-  )
+  return <SectionHeader icon={BellRingingIcon} color={theme.palette.yellow.color} title="Alerts" />
 }
 
 const styles = StyleSheet.create({
@@ -189,19 +176,6 @@ const styles = StyleSheet.create({
   },
   alertsSection: {
     gap: 10,
-    paddingTop: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  sectionLabel: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.2,
   },
   stateNote: {
     color: theme.palette.slate.textDim,

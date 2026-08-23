@@ -563,9 +563,11 @@ There are two observed Refloat protocol generations:
 - Refloat 1.0–1.2 uses `RC_MOVE` (`7`). Payload:
   `[direction, current, time, current + time]` after the package id and command.
   `direction = 1` moves one way and `0` flips current negative. `current` is
-  tenths of amps and is clamped by firmware; `time` is in firmware steps of
-  roughly one second (`time * 100` loop steps). A stop-ish command is
-  `[1, 0, 1, 1]`.
+  tenths of amps and is clamped by firmware; `time` is `time * 100` control-loop
+  steps, and that loop ticks at ~832 Hz, so one unit is only ~120 ms — not the
+  second it reads like. Firmware also zeroes its move current and ramps back to
+  the target on every request, so a re-send costs a short dip. A stop-ish command
+  is `[1, 0, 1, 1]`.
 - Refloat 1.3+ uses `REMOTE` (`15`). Payload is one signed byte after the
   package id and command. The firmware maps `-127..127` to `-1..1` remote input
   (`-128` is ignored). It then derives move speed from configured

@@ -58,7 +58,6 @@ import expo.modules.vescapecore.protocol.SessionTransport
 import expo.modules.vescapecore.protocol.VescGattClient
 import expo.modules.vescapecore.protocol.VescGattListener
 import expo.modules.vescapecore.replay.ReplayLocation
-import expo.modules.vescapecore.replay.ReplayHeading
 import expo.modules.vescapecore.replay.ReplayClock
 import expo.modules.vescapecore.replay.ReplayTransport
 import expo.modules.vescapecore.VescLiveStateSnapshot
@@ -389,6 +388,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             onLocation = ::onLocationUpdated,
         )
     }
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideObserver` */
     private val groupRideObserver by lazy {
         GroupRideObserver(
             handler = mainHandler,
@@ -741,7 +741,13 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** @parity /modules/vescape-core/ios/VescapeCoreModule.swift `autoConnectSelectedBoard` */
+    /**
+     * Auto-connect the selected Board at process start. Reached from `AutoConnectProvider`, i.e.
+     * before any JS exists — the trigger is the process, never the JS module lifecycle. iOS mirrors
+     * this from its app-delegate launch hook.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `autoConnectSelectedBoard`
+     */
     fun autoConnectSelectedBoard() {
         if (BoardProbeAutoStartGate.isActive()) {
             Log.i(VESC_SESSION_TAG, "Auto-connect skipped: Board Probe active")
@@ -818,6 +824,12 @@ private var wearAutoLaunchOnConnect = true
         return companionBoardIdForAddress(repo.getBoards(), address)
     }
 
+    /**
+     * Native connect path (notification Connect, auto-connect). Clears the manual-disconnect gate:
+     * a started Board Session spends the stop that set it.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
+     */
     private fun connectSelectedBoard(recordingEnabled: Boolean) {
         if (boardConfig != null) return
         CoreForegroundService.appDataScope.launch {
@@ -914,6 +926,7 @@ private var wearAutoLaunchOnConnect = true
         startGpsMonitoring()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `startGroupRideObserve` */
     fun consumePendingGroupRideObserve() {
         val url = CoreForegroundService.claimPendingGroupRideUrl() ?: return
         isStoppingService = false
@@ -925,6 +938,7 @@ private var wearAutoLaunchOnConnect = true
         reassertForeground()
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopGroupRideObserve` */
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
         groupRideObserver.stop()
@@ -1011,7 +1025,6 @@ private var wearAutoLaunchOnConnect = true
                 listener = gattListener,
                 dispatchListener = ::dispatchGattEvent,
                 onLocation = ::onReplayLocation,
-                onHeading = ::onReplayHeading,
                 clock = ReplayClock(
                     warmupMs = start.boardConfig.replayWarmupMs,
                     warmupSpeed = start.boardConfig.replayWarmupSpeed,
@@ -1830,6 +1843,7 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `isTelemetryStale` */
     private fun isTelemetryStale(now: Long = nowMs()): Boolean =
         now - telemetryPipeline.lastTelemetryAt >= TELEMETRY_STALE_MS
 
@@ -2347,11 +2361,6 @@ private var wearAutoLaunchOnConnect = true
         gpsMonitor.stop()
     }
 
-    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `recordPhoneHeading` */
-    fun recordPhoneHeading(headingDeg: Double) {
-        recordingCoordinator.currentRecorder()?.recordPhoneHeading(headingDeg)
-    }
-
     fun setTelemetryRecordingEnabled(enabled: Boolean) {
         val session = boardConfig
         if (enabled) {
@@ -2406,17 +2415,6 @@ private var wearAutoLaunchOnConnect = true
             fix.altitudeM?.let { altitude = it }
         }
         onLocationUpdated(location)
-    }
-
-    /**
-     * Hand a recorded compass reading back to JS, which owns the magnetometer and therefore has to
-     * be the one to feed it into the map. Emitted rather than applied natively for the same reason
-     * it was recorded from JS: the sensor lives there.
-     *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onReplayHeading`
-     */
-    private fun onReplayHeading(heading: ReplayHeading) {
-        emitEvent("onReplayPhoneHeading", mapOf("headingDeg" to heading.headingDeg))
     }
 
     private fun onLocationUpdated(location: Location) {
@@ -2498,6 +2496,7 @@ private var wearAutoLaunchOnConnect = true
         watchWeatherPusher.push(weather.toWatchWeather())
     }
 
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
         val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
         // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
@@ -2519,7 +2518,10 @@ private var wearAutoLaunchOnConnect = true
         )
     }
 
-    /** Device battery as a 0–1 fraction, or null when the platform can't report it. */
+    /**
+     * Device battery as a 0–1 fraction, or null when the platform can't report it.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readPhoneBattery`
+     */
     private fun readPhoneBattery(): Double? {
         val manager = service.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -2534,7 +2536,10 @@ private var wearAutoLaunchOnConnect = true
         return isInsideAnyPrivacyZone(latitudeE7, longitudeE7, zones)
     }
 
-    /** Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD). */
+    /**
+     * Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadPrivacyZones`
+     */
     suspend fun loadPrivacyZones(context: Context) {
         groupRidePrivacyZones = try {
             AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
@@ -2548,6 +2553,8 @@ private var wearAutoLaunchOnConnect = true
      * Refresh the shared Group Ride target from native storage (observe start + direction-point
      * CRUD), then push presence immediately so peers see the change without waiting for the
      * next GPS tick.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadGroupRideTarget`
      */
     suspend fun loadGroupRideTarget(context: Context) {
         groupRideTarget = try {

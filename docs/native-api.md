@@ -6,16 +6,16 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 ## Term map
 
-| Domain (CONTEXT.md) | Native/API name                                                        |
-| ------------------- | ---------------------------------------------------------------------- |
-| Board               | `device_id` in DB, `boardId` in API                                    |
-| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                        |
-| Ride Recording      | frames + buckets + markers in DB                                       |
-| Ride History        | `getTelemetryHistory` (buckets), `getHistoryRange` (full)              |
-| Tune Profile        | `tune_profiles` table, `TuneProfile` type                              |
-| Tune Snapshot       | `RefloatConfigSnapshot`                                                |
-| Alert Rule          | `alerts` table, `AlertRule` type                                       |
-| User Profile Stats  | `ProfileStats` type, `getTotalProfileStats` / `getMonthlyProfileStats` |
+| Domain (CONTEXT.md) | Native/API name                                                 |
+| ------------------- | --------------------------------------------------------------- |
+| Board               | `device_id` in DB, `boardId` in API                             |
+| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                 |
+| Ride Recording      | frames + buckets + markers in DB                                |
+| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full) |
+| Tune Profile        | `tune_profiles` table, `TuneProfile` type                       |
+| Tune Snapshot       | `RefloatConfigSnapshot`                                         |
+| Alert Rule          | `alerts` table, `AlertRule` type                                |
+| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`               |
 
 ---
 
@@ -95,6 +95,7 @@ Field omitted (null) when change < threshold from previous:
 | fn                                                    | returns                                                                    | notes                                                                                             |
 | ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `getTelemetryHistory(opts?)`                          | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
+| `getRideHistoryPage({limit?,cursorBeforeMs?})`        | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
 | `getTelemetrySamples({fromMs,toMs,deviceId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
 | `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
 | `getTelemetrySummary()`                               | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
@@ -139,11 +140,9 @@ Field omitted (null) when change < threshold from previous:
 
 ## User Profile Stats
 
-| fn                                     | returns                                      |
-| -------------------------------------- | -------------------------------------------- |
-| `getTotalProfileStats()`               | `ProfileStats` across all rides              |
-| `getMonthlyProfileStats({year,month})` | `ProfileStats` for one month                 |
-| `getProfileStatMonths()`               | `{year,month}[]` desc. Months with ride data |
+| fn                                        | returns                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `getProfileStatsSnapshot({year?,month?})` | Lifetime + selected-month stats and available months from one native pass |
 
 ### ProfileStats shape
 

@@ -39,7 +39,7 @@ export function BoardMoveControl({
   return (
     <CollapsibleWidget
       icon={ArrowsDownUpIcon}
-      title="Move board"
+      title="Move"
       description="Hold to roll the board while you are off it."
       accent={theme.palette.cyan.color}
       collapsible={collapsible}

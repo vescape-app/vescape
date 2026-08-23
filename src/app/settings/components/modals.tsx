@@ -8,6 +8,7 @@ import {
   EdgeDrawerInitialFocusShowcase,
   EdgeDrawerLongContentShowcase,
   EdgeDrawerPositionShowcase,
+  EdgeDrawerVirtualizedShowcase,
   FloatingSheetShowcase,
 } from '@/screens/showcase/modals/DrawerShowcases'
 import {
@@ -55,6 +56,7 @@ export default function ModalsPage() {
           description="Always opens from the bottom. The complete drawer follows a downward drag."
         />
         <EdgeDrawerLongContentShowcase />
+        <EdgeDrawerVirtualizedShowcase />
         <EdgeDrawerInitialFocusShowcase />
         <FloatingSheetShowcase />
       </ScrollView>

@@ -3,17 +3,15 @@ import Foundation
 /// Wall-clock tail after the last recorded chunk before the replay disconnects the session.
 private let replayEndTailSeconds = 0.25
 
-/// One scheduled playback event — board chunk, GPS fix or compass reading — by recorded time.
+/// One scheduled playback event — board chunk or GPS fix — by recorded time.
 private enum ReplayEvent {
   case chunk(ReplayChunk)
   case fix(ReplayLocation)
-  case heading(ReplayHeading)
 
   var t: Int64 {
     switch self {
     case let .chunk(chunk): return chunk.t
     case let .fix(fix): return fix.t
-    case let .heading(heading): return heading.t
     }
   }
 }
@@ -38,7 +36,6 @@ internal final class ReplayTransport: SessionTransport {
   private weak var listener: VescGattListener?
   private let recordingName: String
   private let onLocation: (ReplayLocation) -> Void
-  private let onHeading: (ReplayHeading) -> Void
   /// The session clock this playback drives; installed by the controller for the session.
   let clock: ReplayClock
   private var cancelled = false
@@ -49,13 +46,11 @@ internal final class ReplayTransport: SessionTransport {
     recordingName: String,
     listener: VescGattListener,
     onLocation: @escaping (ReplayLocation) -> Void,
-    onHeading: @escaping (ReplayHeading) -> Void,
     clock: ReplayClock
   ) {
     self.recordingName = recordingName
     self.listener = listener
     self.onLocation = onLocation
-    self.onHeading = onHeading
     self.clock = clock
   }
 
@@ -75,8 +70,7 @@ internal final class ReplayTransport: SessionTransport {
       }
       let events =
         (ReplayChunkDecoder.rxChunks(jsonl).map(ReplayEvent.chunk)
-          + ReplayChunkDecoder.locations(jsonl).map(ReplayEvent.fix)
-          + ReplayChunkDecoder.headings(jsonl).map(ReplayEvent.heading))
+          + ReplayChunkDecoder.locations(jsonl).map(ReplayEvent.fix))
         .sorted { $0.t < $1.t }
       DispatchQueue.main.async { self.startPlayback(events) }
     }
@@ -111,7 +105,6 @@ internal final class ReplayTransport: SessionTransport {
       switch event {
       case let .chunk(chunk): self.listener?.onGattFrameChunk(chunk.bytes)
       case let .fix(fix): self.onLocation(fix)
-      case let .heading(heading): self.onHeading(heading)
       }
       self.scheduleNext(events, index: index + 1)
     }

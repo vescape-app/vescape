@@ -32,6 +32,7 @@ export interface HistoryState {
   sessionTruncated: boolean
   error: string | undefined
   hasMore: boolean
+  nextCursorBeforeMs: number | null
 }
 
 export interface HistoryActions {
@@ -71,4 +72,5 @@ export const INITIAL_HISTORY_STATE: HistoryState = {
   sessionTruncated: false,
   error: undefined,
   hasMore: true,
+  nextCursorBeforeMs: null,
 }

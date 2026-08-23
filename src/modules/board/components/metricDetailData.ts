@@ -56,7 +56,6 @@ export interface LiveChartSpec extends ChartSpec {
 export interface LiveChartInput {
   key: string
   metric: TelemetryMetricConfig
-  label?: string
   data: ChartSeriesData
   range: ChartYRange
   height?: number
@@ -69,7 +68,6 @@ export interface LiveChartInput {
     data: ChartSeriesData
     range: ChartYRange
     color: string
-    label?: string
     unit?: string
     decimals?: number
   }
@@ -81,7 +79,6 @@ const DEFAULT_CHART_HEIGHT = 80
 export function toLiveChart({
   key,
   metric,
-  label,
   data,
   range,
   height = DEFAULT_CHART_HEIGHT,
@@ -91,7 +88,7 @@ export function toLiveChart({
 }: LiveChartInput): LiveChartSpec {
   return {
     key,
-    label: label ?? metric.label,
+    label: metric.label,
     height,
     controlId: metric.controlId,
     left: { range },
@@ -103,7 +100,6 @@ export function toLiveChart({
         key,
         data,
         color: metric.color,
-        label: label ?? metric.label,
         unit: metric.unit,
         decimals: metric.decimals,
       },
@@ -114,7 +110,6 @@ export function toLiveChart({
               data: secondary.data,
               color: secondary.color,
               axis: 'right' as const,
-              label: secondary.label,
               unit: secondary.unit,
               decimals: secondary.decimals,
             },

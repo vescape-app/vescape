@@ -1,7 +1,7 @@
 import {
-  MapOptionSelector,
-  type MapOptionSelectorSize,
-} from '@/components/controls/MapOptionSelector'
+  ExpandableCircleMenu,
+  type ExpandableCircleMenuSize,
+} from '@/components/controls/ExpandableCircleMenu'
 import { IS_MAPY_CONFIGURED } from '@/config/mapy'
 import { MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
 import { theme } from '@/constants/theme'
@@ -9,7 +9,7 @@ import { theme } from '@/constants/theme'
 interface MapStyleSwitchProps {
   activeKey: MapStyleKey
   expanded: boolean
-  size?: MapOptionSelectorSize
+  size?: ExpandableCircleMenuSize
   onToggle: () => void
   onSelect: (key: MapStyleKey) => void
 }
@@ -46,7 +46,7 @@ export function MapStyleSwitch({
   }))
 
   return (
-    <MapOptionSelector
+    <ExpandableCircleMenu
       activeKey={effectiveActiveKey}
       activeIcon={<activeStyle.Icon size={iconSize} color={theme.palette.sky.text} weight="fill" />}
       activeColor={theme.palette.sky.text}
