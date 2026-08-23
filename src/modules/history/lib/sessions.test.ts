@@ -238,3 +238,22 @@ test('returns newest-first sessions', () => {
   expect(sessions[0].startAtMs).toBe(2_000_000)
   expect(sessions[1].startAtMs).toBe(120_000)
 })
+
+test('empty buckets neither split a ride nor start one, matching native ride grouping', () => {
+  const sessions = groupHistorySessions([
+    block({ id: 'after', startAtMs: 120_000, endAtMs: 180_000, maxAbsSpeedKmh: 30 }),
+    block({
+      id: 'empty',
+      startAtMs: 60_000,
+      endAtMs: 120_000,
+      sampleCount: 0,
+      avgSpeedSampleCount: 0,
+      boundaryBefore: 'disconnected',
+    }),
+    block({ id: 'before', startAtMs: 0, endAtMs: 60_000, maxAbsSpeedKmh: 25 }),
+  ])
+
+  expect(sessions).toHaveLength(1)
+  expect(sessions[0].maxSpeedKmh).toBe(30)
+  expect(sessions[0].blockIds).toEqual(['before', 'after'])
+})

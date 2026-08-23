@@ -154,6 +154,10 @@ internal func computeProfileStatMonthsForBuckets(
     }
 }
 
+/// Group Ride History buckets into rides, by the same rules the Ride History list applies in JS.
+///
+/// @parity /src/modules/history/lib/sessions.ts `groupHistorySessions`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `groupProfileSessions`
 internal func groupProfileSessions(
   buckets: [Row],
   markers: [Row],

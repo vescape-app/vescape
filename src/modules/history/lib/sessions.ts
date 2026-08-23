@@ -82,6 +82,18 @@ interface MutableSessionAggregate {
   faultCount: number
 }
 
+/**
+ * Group Ride History buckets into rides.
+ *
+ * The split rules — empty buckets skipped, break on device change, on a gap wider than the rider's
+ * split gap, on a break boundary marker, and rides with no moving samples dropped — are the same
+ * rules native applies for Profile stats. They have to stay identical: a ride's Top Speed here and
+ * the lifetime Top Speed there are both a max over the same buckets, so any drift in what counts as
+ * a ride shows up as two different numbers for the same ride.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `groupProfileSessions`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `groupProfileSessions`
+ */
 export function groupHistorySessions(
   blocks: TelemetryMinuteBucket[],
   options?: { gapMs?: number },
@@ -94,6 +106,9 @@ export function groupHistorySessions(
   let previousBlock: TelemetryMinuteBucket | null = null
 
   for (const block of oldestFirst) {
+    // A bucket with no samples carries no ride: skipping it keeps a stray empty minute from
+    // splitting a ride, and matches what native counts.
+    if (block.sampleCount <= 0) continue
     const breakByDevice = !current || current.deviceId !== block.deviceId
     const breakByGap = !!previousBlock && block.startAtMs - previousBlock.endAtMs > gapMs
     const breakByBoundary = SESSION_BREAK_BOUNDARIES.has(block.boundaryBefore)

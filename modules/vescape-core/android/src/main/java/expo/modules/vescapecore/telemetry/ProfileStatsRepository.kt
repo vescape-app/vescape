@@ -166,6 +166,12 @@ internal fun computeProfileStatMonthsForBuckets(
     .sortedWith(compareByDescending<ProfileStatsMonth> { it.year }.thenByDescending { it.month })
 }
 
+/**
+ * Group Ride History buckets into rides, by the same rules the Ride History list applies in JS.
+ *
+ * @parity /src/modules/history/lib/sessions.ts `groupHistorySessions`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `groupProfileSessions`
+ */
 private fun groupProfileSessions(
   buckets: List<TelemetryMinuteBucketEntity>,
   markers: List<TelemetryMarkerEntity>,
