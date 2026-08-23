@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
+import { StyleSheet, View } from 'react-native'
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
+import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
@@ -61,8 +64,32 @@ export default function FootpadScreen() {
   }, [adc1Data, adc2Data, adc1Threshold, adc2Threshold, windowMs])
 
   return (
-    <ControlDetailLayout title="Footpad">
+    <ControlDetailLayout
+      title="Footpad"
+      gauge={
+        // The same pad as the telemetry strip, at a size where each rail's fill is readable while
+        // the rider shifts weight — the charts below answer "what happened", this answers "now".
+        <View style={styles.padWrap}>
+          <FootpadIndicator
+            adc1={liveTelemetryRuntime.values.adc1}
+            adc2={liveTelemetryRuntime.values.adc2}
+            threshold1={adc1Threshold}
+            threshold2={adc2Threshold}
+            width={132}
+            showValues
+            testID="footpad-detail-indicator"
+          />
+        </View>
+      }
+    >
       <LiveChartStack charts={charts} />
     </ControlDetailLayout>
   )
 }
+
+const styles = StyleSheet.create({
+  padWrap: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+})

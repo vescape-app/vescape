@@ -20,6 +20,7 @@ import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
 import type { SparklinePoint } from '@/components/charts/Sparkline'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
@@ -226,6 +227,7 @@ export default function BoardComponentsPage() {
         <BoardWarningRowShowcase />
         <ReplayBadgeShowcase />
         <TelemetryCellShowcase />
+        <FootpadIndicatorShowcase />
       </ScrollView>
     </SafeAreaView>
   )

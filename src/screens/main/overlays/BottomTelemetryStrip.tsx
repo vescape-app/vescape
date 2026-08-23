@@ -11,37 +11,10 @@ import { routes } from '@/navigation/routes'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import {
-  FOOTPAD_FALLBACK_THRESHOLD_V,
-  useFootpadThreshold,
-} from '@/modules/board/store/boardConfigValuesStore'
+import { useFootpadThreshold } from '@/modules/board/store/boardConfigValuesStore'
+import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 
 export const STRIP_CONTENT_HEIGHT = 160
-
-/**
- * One footpad dot's colours, resolved against that zone's own engagement threshold — the two zones
- * can be configured differently, so neither dot may borrow the other's number.
- *
- * The threshold is a plain number captured into the worklet closure. The style runs on the UI thread
- * on every telemetry frame (~31Hz); reading a store from inside it would put a subscription in the
- * hot path (see `docs/agents/react.md`).
- */
-function useFootpadDotStyle(value: SharedValue<number | null>, threshold: number | null) {
-  // No config yet (first connection, read not landed, no cache) falls back silently — the gap is
-  // seconds and a loading state on a 9px dot would be worse than a slightly wrong one.
-  const engageAt = threshold ?? FOOTPAD_FALLBACK_THRESHOLD_V
-  // `fault_adc = 0` disables that zone's switch outright: it can never engage, so the dot stays dark
-  // for the whole session. The `footpad-disabled` Board Warning already carries the explanation.
-  const disabled = engageAt === 0
-  return useAnimatedStyle(() => {
-    const adc = value.value
-    const active = !disabled && adc != null && adc >= engageAt
-    return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
-      backgroundColor: active ? theme.palette.green.text : 'transparent',
-    }
-  })
-}
 
 interface BottomTelemetryStripProps {
   revealProgress?: SharedValue<number>
@@ -52,7 +25,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
   const insets = useSafeAreaInsets()
   const bleStatus = useBleStore((s) => s.status)
   const imuConnected = bleStatus === 'connected'
-  // Live numbers, IMU tilt and footpad dots read SharedValues (hot path, ~31Hz, no re-render).
+  // Live numbers, IMU tilt and the footpad pad read SharedValues (hot path, ~31Hz, no re-render).
   const tick = liveTelemetryRuntime.values
 
   const revealStyle = useAnimatedStyle(() => ({
@@ -65,8 +38,6 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
 
   const footpad1Threshold = useFootpadThreshold(0)
   const footpad2Threshold = useFootpadThreshold(1)
-  const footpad1Style = useFootpadDotStyle(tick.adc1, footpad1Threshold)
-  const footpad2Style = useFootpadDotStyle(tick.adc2, footpad2Threshold)
 
   return (
     <Animated.View
@@ -143,10 +114,13 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
             android_ripple={interaction.rippleBorderless}
             onPress={() => router.push(routes.controlFootpad)}
           >
-            <View style={styles.footpadRow}>
-              <Animated.View style={[styles.footpadDot, footpad1Style]} />
-              <Animated.View style={[styles.footpadDot, footpad2Style]} />
-            </View>
+            <FootpadIndicator
+              adc1={tick.adc1}
+              adc2={tick.adc2}
+              threshold1={footpad1Threshold}
+              threshold2={footpad2Threshold}
+              testID="telemetry-footpad-indicator"
+            />
           </Pressable>
         </View>
       </Animated.View>
@@ -184,18 +158,6 @@ const styles = StyleSheet.create({
   batteryCenter: {
     flex: 1,
     marginHorizontal: 4,
-  },
-  footpadRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  footpadDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.textDim,
-    backgroundColor: 'transparent',
   },
   cellPressed: {
     opacity: interaction.pressedOpacity,
