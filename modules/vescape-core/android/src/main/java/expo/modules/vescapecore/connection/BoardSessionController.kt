@@ -1109,12 +1109,24 @@ private var wearAutoLaunchOnConnect = true
         startForeground(type)
     }
 
+    /**
+     * Android 12+ refuses a foreground promotion requested while the process counts as background
+     * (`ForegroundServiceStartNotAllowedException`). Every caller here is a plain intent — GPS,
+     * Group Ride, a session repaint — so the refusal must not escape: thrown from a module call it
+     * rejects the JS call and, thrown from `onStartCommand`, it kills the process. Degrade instead:
+     * drop the promotion, and stop the service when nothing durable is left to keep alive.
+     */
     private fun startForeground(type: Int) {
         val notification = presenter.build(reportedBoardPhase())
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            service.startForeground(NOTIFICATION_ID, notification, type)
-        } else {
-            service.startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                service.startForeground(NOTIFICATION_ID, notification, type)
+            } else {
+                service.startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(VESC_SESSION_TAG, "startForeground refused (type=$type): ${e.message}")
+            stopIfIdle()
         }
     }
 
