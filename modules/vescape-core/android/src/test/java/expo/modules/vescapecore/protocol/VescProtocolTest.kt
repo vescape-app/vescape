@@ -45,6 +45,21 @@ class VescProtocolTest {
   }
 
   @Test
+  fun buildsBoardMoveRcMoveCommandForOlderRefloat() {
+    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]. `time` runs the
+    // request for `time * 100` control-loop steps (~120 ms each), so it must outlive the repeat tick.
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 7, 1, 60, 8, 68),
+      buildBoardMoveCommand(BoardTransport.Direct, BoardMoveGeneration.RcMove, input = 127),
+    )
+    // A stop needs no run time of its own.
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 7, 1, 0, 1, 1),
+      buildBoardMoveCommand(BoardTransport.Direct, BoardMoveGeneration.RcMove, input = 0),
+    )
+  }
+
+  @Test
   fun boardMoveGenerationFollowsTheRefloatBaseVersion() {
     assertEquals(BoardMoveGeneration.RcMove, BoardMoveGeneration.forBaseVersion("1.2.0"))
     assertEquals(BoardMoveGeneration.RcMove, BoardMoveGeneration.forBaseVersion("1.0.0"))
