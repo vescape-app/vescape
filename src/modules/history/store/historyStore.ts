@@ -10,7 +10,7 @@ import {
   type TelemetryMinuteBucket,
   type TelemetrySample,
 } from 'vescape-core'
-import type { HistorySession } from '@/modules/history/lib/sessions'
+import { matchRideSession, type HistorySession } from '@/modules/history/lib/sessions'
 
 import { INITIAL_HISTORY_STATE, type HistoryStore } from '@/modules/history/store/historyStoreTypes'
 import { createHistorySelectionSlice } from '@/modules/history/store/historySelectionSlice'
@@ -84,16 +84,23 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         const blocks = Array.from(known.values()).sort((a, b) => b.bucketStartMs - a.bucketStartMs)
         const oldestRecent = recentPage.sessions.at(-1)?.startAtMs ?? Number.NEGATIVE_INFINITY
         const olderSessions = state.sessions.filter((session) => session.startAtMs < oldestRecent)
+        const sessions = [...recentPage.sessions, ...olderSessions]
+        const { selectedSession } = state
         return {
           summary,
           blocks,
-          sessions: [...recentPage.sessions, ...olderSessions],
+          sessions,
+          error: undefined,
+          selectedSession: selectedSession
+            ? (matchRideSession(sessions, selectedSession) ?? selectedSession)
+            : selectedSession,
           hasMore: olderSessions.length > 0 ? state.hasMore : recentPage.hasMore,
           nextCursorBeforeMs:
             olderSessions.length > 0 ? state.nextCursorBeforeMs : recentPage.nextCursorBeforeMs,
         }
       })
     } catch (err) {
+      if (version !== recentRefreshVersion) return
       set({ error: err instanceof Error ? err.message : String(err) })
     } finally {
       recentRefreshInFlight = false
@@ -116,13 +123,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       ]
       const selectedSession = get().selectedSession
       const nextSelectedSession = selectedSession
-        ? sessions.find(
-            (session) =>
-              session.id === selectedSession.id ||
-              (session.deviceId === selectedSession.deviceId &&
-                session.startAtMs <= selectedSession.endAtMs &&
-                session.endAtMs >= selectedSession.startAtMs),
-          )
+        ? matchRideSession(sessions, selectedSession)
         : null
       set({
         sessions,

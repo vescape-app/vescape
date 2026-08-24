@@ -39,3 +39,22 @@ export function rideDurationMs(
 export function isLiveRide(session: Pick<HistorySession, 'endAtMs'>, nowMs: number): boolean {
   return nowMs - session.endAtMs <= LIVE_RIDE_MAX_AGE_MS
 }
+
+/**
+ * The same Ride after a reload. A ride being recorded keeps growing, and its id carries `endAtMs`,
+ * so identity falls back to the same board plus an overlapping span.
+ */
+export function matchRideSession(
+  sessions: HistorySession[],
+  selected: HistorySession,
+): HistorySession | null {
+  return (
+    sessions.find(
+      (session) =>
+        session.id === selected.id ||
+        (session.deviceId === selected.deviceId &&
+          session.startAtMs <= selected.endAtMs &&
+          session.endAtMs >= selected.startAtMs),
+    ) ?? null
+  )
+}

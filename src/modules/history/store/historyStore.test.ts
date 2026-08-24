@@ -537,3 +537,20 @@ test('clearHistory invalidates an in-flight recent refresh', async () => {
 
   expect(useHistoryStore.getState().blocks).toEqual([])
 })
+
+test('refreshRecent follows the growing ride and clears a stale error', async () => {
+  const started = block({ id: 'live', startAtMs: 2_000_000, endAtMs: 2_060_000 })
+  const grown = block({ id: 'live', startAtMs: 2_000_000, endAtMs: 2_180_000 })
+  getRideHistoryPage.mockImplementation(async () => ridePage([started]))
+  const { useHistoryStore } = await import('@/modules/history/store/historyStore')
+  await useHistoryStore.getState().loadInitial()
+  const selected = useHistoryStore.getState().sessions[0]
+  useHistoryStore.setState({ selectedSession: selected, error: 'stale failure' })
+
+  getRideHistoryPage.mockImplementation(async () => ridePage([grown]))
+  await useHistoryStore.getState().refreshRecent()
+
+  expect(useHistoryStore.getState().selectedSession?.endAtMs).toBe(2_180_000)
+  expect(useHistoryStore.getState().selectedSession?.id).not.toBe(selected.id)
+  expect(useHistoryStore.getState().error).toBeUndefined()
+})
