@@ -40,6 +40,7 @@ import expo.modules.vescapecore.location.LocationTracker
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
 import expo.modules.vescapecore.config.McconfDecodeResult
+import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.McconfDecoder
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.service.PendingStart
@@ -1066,6 +1067,7 @@ private var wearAutoLaunchOnConnect = true
         // every connection. Mirrors iOS, which assigns the restored value once.
         alertCoordinator.updateBoardConfigValues(emptyMap())
         restoreBoardConfigValues(start.boardConfig)
+        restoreMotorConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
         // Tag telemetry frames with the CAN id resolved from the stored transport.
         telemetryPipeline.updateCanId(currentCanId)
@@ -1587,11 +1589,36 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
+     * Restore the cached Motor Config Values for the connecting Board as `lastKnown`. Unlike the
+     * Refloat cache there is no scope key to match on up front — the board's MCCONF signature is not
+     * known until it answers — so the latest row is restored optimistically and replaced when the
+     * session's own read lands under whatever signature the board reports.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoreMotorConfigValues`
+     */
+    private fun restoreMotorConfigValues(config: SessionConfig) {
+        val boardId = config.appBoardId ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        val session = boardSession
+        CoreForegroundService.appDataScope.launch {
+            val restored = repo.getLatestMotorConfigValues(boardId) ?: return@launch
+            scheduler.post {
+                if (session == null || !isCurrentBoardSession(session)) return@post
+                if (boardConfig?.appBoardId != boardId) return@post
+                if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
+                // The session's own read wins — never downgrade fresh values to a cached lastKnown.
+                if (motorConfigValues != null) return@post
+                motorConfigValues = restored
+            }
+        }
+    }
+
+    /**
      * Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `clearBoardConfigValues`
      */
     private fun clearBoardConfigValues() {
         boardConfigValues = null
+        motorConfigValues = null
         alertCoordinator.updateBoardConfigValues(emptyMap())
         val boardId = boardConfig?.appBoardId ?: return
         val repo = AppDataRepository.get(service.applicationContext)
@@ -1661,7 +1688,17 @@ private var wearAutoLaunchOnConnect = true
     private fun handleMcconfPayload(body: ByteArray) {
         when (val result = McconfDecoder.decode(body)) {
             is McconfDecodeResult.Decoded -> {
-                motorConfigValues = result.values
+                val values = MotorConfigValues(
+                    boardId = boardConfig?.appBoardId,
+                    signature = result.signature,
+                    firmware = result.firmware,
+                    capturedAtMs = nowMs(),
+                    freshness = BoardConfigFreshness.FRESH,
+                    values = result.values,
+                )
+                motorConfigValues = values
+                val repo = AppDataRepository.get(service.applicationContext)
+                CoreForegroundService.appDataScope.launch { repo.saveMotorConfigValues(values) }
                 Log.i(
                     VESC_SESSION_TAG,
                     "MCCONF decoded: ${result.firmware} signature=${result.signature} fields=${result.values.size}",
@@ -1763,7 +1800,7 @@ private var wearAutoLaunchOnConnect = true
      * been decoded — no layout for the board's signature is a normal reason for that.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValues`
      */
-    private var motorConfigValues: Map<String, Double>? = null
+    private var motorConfigValues: MotorConfigValues? = null
 
     /**
      * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `LAST_KNOWN`

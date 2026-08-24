@@ -10,7 +10,9 @@ import Foundation
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt
 enum BoardConfigFreshness: String {
   case fresh
-  case lastKnown
+  // Explicit wire string: the bridge contract is `last-known`, which the default rawValue
+  // (`lastKnown`) does not spell. Kotlin carries the same strings in `BoardConfigFreshness.wire`.
+  case lastKnown = "last-known"
 }
 
 /// The only valid base for a Refloat config write: the raw bytes exactly as the board sent them, the

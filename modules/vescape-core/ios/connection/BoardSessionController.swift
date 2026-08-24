@@ -930,6 +930,9 @@ internal final class BoardSessionController: VescGattListener {
     // Something to show before the fresh read lands: the cache for this Board + Refloat base
     // version, restored as `lastKnown` (never a write base — see #396).
     boardConfigValues = restoredBoardConfigValues(config)
+    // No scope key to match on: the board's MCCONF signature is unknown until it answers, so the
+    // latest row is restored optimistically and replaced when this session's own read lands.
+    motorConfigValues = MotorConfigStore.shared.loadLatest(boardId: config.appBoardId)
     alertCoordinator.updateBoardConfigValues(boardConfigValues?.values ?? [:])
     // A Board Session actually started, so the manual stop that gated auto-connect is spent: the
     // rider is riding again. Without this the tombstone outlives every later launch and auto-connect
@@ -1533,9 +1536,11 @@ internal final class BoardSessionController: VescGattListener {
   /// Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
   private func clearBoardConfigValues() {
     boardConfigValues = nil
+    motorConfigValues = nil
     alertCoordinator.updateBoardConfigValues([:])
     guard let boardId = config?.appBoardId else { return }
     BoardConfigStore.shared.clear(boardId: boardId)
+    MotorConfigStore.shared.clear(boardId: boardId)
   }
 
   /// Evaluate the config-safety rules against a freshly decoded config (background read after link
@@ -1613,7 +1618,16 @@ internal final class BoardSessionController: VescGattListener {
   private func handleMcconfPayload(_ body: [UInt8]) {
     switch McconfDecoder.decode(body) {
     case .decoded(let signature, let firmware, let values):
-      motorConfigValues = values
+      let decoded = MotorConfigValues(
+        boardId: config?.appBoardId,
+        signature: signature,
+        firmware: firmware,
+        capturedAtMs: nowMs(),
+        freshness: .fresh,
+        values: values
+      )
+      motorConfigValues = decoded
+      MotorConfigStore.shared.save(decoded)
       NSLog("MCCONF decoded: \(firmware) signature=\(signature) fields=\(values.count)")
     // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
     // Report the signature so a table can be generated for it; decode nothing.
@@ -1699,7 +1713,7 @@ internal final class BoardSessionController: VescGattListener {
   /// This Board Session's decoded motor config, keyed by firmware field id, or nil while none has
   /// been decoded — no layout for the board's signature is a normal reason for that.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `motorConfigValues`
-  private var motorConfigValues: [String: Double]?
+  private var motorConfigValues: MotorConfigValues?
   /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `lastKnown`
   /// while it is the cache restored on connect. Native-owned truth; JS mirrors it through
   /// `getBoardConfigValues` + `onBoardConfigValues`.

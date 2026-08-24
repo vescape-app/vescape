@@ -537,6 +537,10 @@ enum TelemetryDatabase {
       if !columns.contains("threshold_max_offset") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_max_offset REAL") }
     }
 
+    migrator.registerMigration("v36_motor_config_values") { db in
+      try MotorConfigStore.createTables(db)
+    }
+
     return migrator
   }
 }

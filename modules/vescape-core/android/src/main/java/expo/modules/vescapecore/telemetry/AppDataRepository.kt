@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.config.BoardConfigValues
+import expo.modules.vescapecore.config.MotorConfigValues
 import expo.modules.vescapecore.config.BoardConfigChangeNotice
 import expo.modules.vescapecore.config.RefloatConfigSnapshot
 
@@ -287,6 +288,39 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   /**
+   * The Board's most recently captured Motor Config Values, whatever signature they were read
+   * under. Restored as `lastKnown`; the caller drops them if the live board turns out to answer
+   * with a different signature.
+   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `latest`
+   */
+  internal suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValues? =
+    withContext(Dispatchers.IO) {
+      if (boardId.isBlank()) return@withContext null
+      val row = dao.getLatestMotorConfigValues(boardId) ?: return@withContext null
+      MotorConfigValues.lastKnown(
+        boardId = boardId,
+        signature = row.mcconfSignature,
+        firmware = row.firmware,
+        capturedAtMs = row.capturedAt,
+        valuesJson = row.valuesJson,
+      )
+    }
+
+  /** @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `save` */
+  internal suspend fun saveMotorConfigValues(values: MotorConfigValues): Unit = withContext(Dispatchers.IO) {
+    val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
+    dao.upsertMotorConfigValues(
+      MotorConfigValuesEntity(
+        boardId = boardId,
+        mcconfSignature = values.signature,
+        firmware = values.firmware,
+        valuesJson = values.valuesJson(),
+        capturedAt = values.capturedAtMs,
+      ),
+    )
+  }
+
+  /**
    * Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
    * behind the link is not the one those offsets were decoded against.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `clear`
@@ -295,6 +329,7 @@ class AppDataRepository private constructor(private val context: Context) {
     if (boardId.isBlank()) return@withContext
     dao.deleteBoardConfigValues(boardId)
     dao.deleteBoardConfigChangeNotice(boardId)
+    dao.deleteMotorConfigValues(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {

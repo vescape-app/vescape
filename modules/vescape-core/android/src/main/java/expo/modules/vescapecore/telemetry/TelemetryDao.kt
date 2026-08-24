@@ -574,6 +574,15 @@ interface TelemetryDao {
   @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
   suspend fun deleteBoardConfigValues(boardId: String)
 
+  @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertMotorConfigValues(values: MotorConfigValuesEntity)
+
+  @Query("DELETE FROM motor_config_values WHERE board_id = :boardId")
+  suspend fun deleteMotorConfigValues(boardId: String)
+
   @Query("SELECT * FROM board_config_change_notices WHERE board_id = :boardId LIMIT 1")
   suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNoticeEntity?
 
