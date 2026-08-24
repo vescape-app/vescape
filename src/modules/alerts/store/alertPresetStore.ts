@@ -5,12 +5,13 @@ import {
   ALERT_PRESET_FALLBACK_LEVEL,
   ALERT_PRESET_METRICS,
   ALERT_PRESET_SOURCE,
-  generateAlertPresetRules,
+  resolvedAlertPresetRules,
   isPresetAlertRule,
   presetAlertRuleId,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
+import { readBoardConfigBases } from '@/modules/alerts/lib/boardConfigBases'
 import { materializePresetRules } from '@/modules/alerts/lib/customAlertRules'
 import {
   boardAlertPresetSelection,
@@ -69,9 +70,13 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     const board = targetBoard(boardId)
     if (!board) return
     // Expand the outgoing level before overwriting it — that expansion *is* the rider's set.
+    // Matched rules included: taking ownership must not silently move a threshold, so the outgoing
+    // level expands under the same options regeneration used, config match and all.
     const seed = materializePresetRules(metric, boardAlertPresetSelection(board)[metric], {
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      matchBoardConfig: boardMatchBoardConfig(board),
+      configBases: readBoardConfigBases(),
     })
     // Level first: a crash after this leaves stale preset rules a retry cleans up, whereas the
     // reverse order would leave the metric silent while its level still claims a preset.
@@ -169,12 +174,15 @@ async function regenerateMetric(
 
   set({ syncing: true })
   try {
-    const specs = generateAlertPresetRules(metric, boardAlertPresetSelection(board)[metric], {
+    // A matched rule persists its offset and native re-resolves it, but its `threshold` column is
+    // still read by every consumer that has no config in hand (the HUD gauge, chart lines), so it
+    // is written resolved. A rule whose anchor does not resolve is not written at all — a
+    // placeholder threshold would draw a marker at a value the board will never act on.
+    const specs = resolvedAlertPresetRules(metric, boardAlertPresetSelection(board)[metric], {
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
-      // Offsets, not thresholds: a matched rule persists the relationship and native resolves it
-      // against live config, so no board config is needed here to write the right rule.
       matchBoardConfig: boardMatchBoardConfig(board),
+      configBases: readBoardConfigBases(),
     })
 
     // Delete-then-upsert scoped to this metric's preset rules, so other metrics' preset rules and

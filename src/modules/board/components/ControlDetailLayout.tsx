@@ -12,6 +12,7 @@ import {
   getAlertThresholdValues,
 } from '@/modules/alerts/lib/alertTest'
 import { asAlertPresetMetric } from '@/modules/alerts/lib/alertPresets'
+import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
 import { useBoardMetricAlerts } from '@/modules/alerts/hooks/useMetricAlerts'
 import { theme } from '@/constants/theme'
 import { MetricDetailAlertContext } from '@/modules/board/components/metricDetailAlertContext'
@@ -87,6 +88,7 @@ function ControlDetailAlerts({
   children: ReactNode
 }) {
   const controller = useBoardMetricAlerts(controlId)
+  const configBases = useBoardConfigBases()
   const gradientsEnabled = useSettingsStore((s) => s.historyMetricGradientsEnabled)
   const hotRanges = useSettingsStore((s) => s.historyMetricHotRanges)
 
@@ -99,9 +101,11 @@ function ControlDetailAlerts({
             rules: controller.rules,
             boardTopSpeedKmh: controller.topSpeedKmh,
             hasBatteryConfig: controller.hasBatteryConfig,
+            matchBoardConfig: controller.matchBoardConfig,
+            configBases,
           })
         : [],
-    [controller],
+    [controller, configBases],
   )
   const thresholds = useMemo(() => getAlertThresholdValues(ruleSnapshot), [ruleSnapshot])
   const alertContext = useMemo(() => ({ controlId, thresholds }), [controlId, thresholds])
