@@ -1708,7 +1708,11 @@ private var wearAutoLaunchOnConnect = true
                 )
                 motorConfigValues = values
                 val repo = AppDataRepository.get(service.applicationContext)
-                CoreForegroundService.appDataScope.launch { repo.saveMotorConfigValues(values) }
+                CoreForegroundService.appDataScope.launch {
+                    repo.saveFreshMotorConfigValues(values)?.let {
+                        emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
+                    }
+                }
                 Log.i(
                     VESC_SESSION_TAG,
                     "MCCONF decoded: ${result.firmware} signature=${result.signature} fields=${result.values.size}",

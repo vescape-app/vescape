@@ -1636,7 +1636,7 @@ internal final class BoardSessionController: VescGattListener {
         values: values
       )
       motorConfigValues = decoded
-      MotorConfigStore.shared.save(decoded)
+      MotorConfigStore.shared.saveFresh(decoded)
       NSLog("MCCONF decoded: \(firmware) signature=\(signature) fields=\(values.count)")
     // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
     // Report the signature so a table can be generated for it; decode nothing.

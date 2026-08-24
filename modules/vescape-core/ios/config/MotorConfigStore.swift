@@ -68,10 +68,60 @@ struct MotorConfigStore {
     )
   }
 
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveMotorConfigValues`
-  func save(_ values: MotorConfigValues) {
+  /// A freshly decoded motor config: compare against the Board's last stored motor values, then merge
+  /// any differences into the Board's change notice and replace the baseline in one transaction.
+  ///
+  /// No previous row means first read — a baseline, never a notice. Values read under a *different*
+  /// signature are not compared either: a firmware update rewrites the layout wholesale, and every
+  /// field would diff.
+  ///
+  /// Both configs write into one `board_config_change_notices` row per Board: a rider does not care
+  /// which subsystem a setting lives in, only that their board changed while Vescape was away.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveFreshMotorConfigValues`
+  func saveFresh(_ values: MotorConfigValues) {
     guard let boardId = values.boardId, !boardId.isEmpty, let writer = resolveWriter() else { return }
+    var notice: BoardConfigChangeNotice?
+    var committed = false
     try? writer.write { db in
+      let oldRow = try Row.fetchOne(
+        db,
+        sql: """
+          SELECT mcconf_signature, firmware, values_json FROM motor_config_values
+          WHERE board_id = ? ORDER BY captured_at DESC LIMIT 1
+          """,
+        arguments: [boardId]
+      )
+      let oldSignature: Int64? = oldRow?["mcconf_signature"]
+      if let oldRow, oldSignature == Int64(values.signature) {
+        let oldFirmware: String = oldRow["firmware"]
+        let oldValuesJson: String = oldRow["values_json"]
+        let old = MotorConfigValues.lastKnown(
+          boardId: boardId,
+          signature: values.signature,
+          firmware: oldFirmware,
+          capturedAtMs: 0,
+          valuesJson: oldValuesJson
+        )
+        // Motor config carries no schema, so a field's id is its own label (ADR 0036).
+        let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: nil)
+        if !diffs.isEmpty {
+          let existing = try Row.fetchOne(
+            db,
+            sql: "SELECT diffs_json FROM board_config_change_notices WHERE board_id = ?",
+            arguments: [boardId]
+          )
+          let existingDiffsJson: String? = existing?["diffs_json"]
+          let previous = existingDiffsJson
+            .flatMap { BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: 0, diffsJson: $0) }?.diffs ?? []
+          let merged = BoardConfigChangeNotice.mergeDiffs(previous: previous, incoming: diffs)
+          let built = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: values.capturedAtMs, diffs: merged)
+          notice = built
+          try db.execute(
+            sql: "INSERT OR REPLACE INTO board_config_change_notices (board_id, detected_at, diffs_json) VALUES (?, ?, ?)",
+            arguments: [boardId, values.capturedAtMs, built.diffsJson()]
+          )
+        }
+      }
       try db.execute(
         sql: """
           INSERT INTO motor_config_values (board_id, mcconf_signature, firmware, values_json, captured_at)
@@ -83,7 +133,9 @@ struct MotorConfigStore {
           """,
         arguments: [boardId, Int64(values.signature), values.firmware, values.valuesJson(), values.capturedAtMs]
       )
+      committed = true
     }
+    if committed, let notice { BoardConfigStore.onNoticeChanged?(notice) }
   }
 
   /// Drop every stored signature for a Board. Called when link integrity goes `mismatched`.

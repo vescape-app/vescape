@@ -306,19 +306,49 @@ class AppDataRepository private constructor(private val context: Context) {
       )
     }
 
-  /** @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `save` */
-  internal suspend fun saveMotorConfigValues(values: MotorConfigValues): Unit = withContext(Dispatchers.IO) {
-    val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext
-    dao.upsertMotorConfigValues(
-      MotorConfigValuesEntity(
+  /**
+   * A freshly decoded motor config: compare against the Board's last stored motor values, then merge
+   * any differences into the Board's change notice and replace the baseline in one transaction.
+   *
+   * No previous row means first read — a baseline, never a notice. Values read under a *different*
+   * signature are not compared either: a firmware update rewrites the layout wholesale, and every
+   * field would diff.
+   * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift `saveFresh`
+   */
+  internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
+    withContext(Dispatchers.IO) {
+      val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext null
+      val entity = MotorConfigValuesEntity(
         boardId = boardId,
         mcconfSignature = values.signature,
         firmware = values.firmware,
         valuesJson = values.valuesJson(),
         capturedAt = values.capturedAtMs,
-      ),
-    )
-  }
+      )
+      val row = dao.replaceMotorBaselineAndNotice(entity) { old, existingNotice ->
+        if (old == null || old.mcconfSignature != values.signature) return@replaceMotorBaselineAndNotice existingNotice
+        val oldValues = MotorConfigValues.lastKnown(
+          boardId = boardId,
+          signature = old.mcconfSignature,
+          firmware = old.firmware,
+          capturedAtMs = old.capturedAt,
+          valuesJson = old.valuesJson,
+        ).values
+        // Motor config carries no schema, so a field's id is its own label (ADR 0036).
+        val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, null)
+        if (diffs.isEmpty()) return@replaceMotorBaselineAndNotice existingNotice
+        val previous = existingNotice
+          ?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson)?.diffs }
+          .orEmpty()
+        val merged = BoardConfigChangeNotice.mergeDiffs(previous, diffs)
+        BoardConfigChangeNoticeEntity(
+          boardId,
+          values.capturedAtMs,
+          BoardConfigChangeNotice(boardId, values.capturedAtMs, merged).diffsJson(),
+        )
+      }
+      row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+    }
 
   /**
    * Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware

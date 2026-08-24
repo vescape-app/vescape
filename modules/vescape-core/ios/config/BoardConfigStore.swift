@@ -28,6 +28,20 @@ struct BoardConfigChangeNotice {
     return a != b
   }
 
+  /// Fold new diffs into an undismissed notice rather than replacing it: a Refloat change and a motor
+  /// config change found in the same session are one piece of news to the rider. A field that diffs
+  /// twice keeps the newer comparison, in its original position.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt `mergeDiffs`
+  static func mergeDiffs(previous: [BoardConfigChangeDiff], incoming: [BoardConfigChangeDiff]) -> [BoardConfigChangeDiff] {
+    var order: [String] = []
+    var byId: [String: BoardConfigChangeDiff] = [:]
+    for diff in previous + incoming {
+      if byId[diff.fieldId] == nil { order.append(diff.fieldId) }
+      byId[diff.fieldId] = diff
+    }
+    return order.compactMap { byId[$0] }
+  }
+
   static func diff(old: [String: Any], new: [String: Any], schema: RefloatConfigSchema?) -> [BoardConfigChangeDiff] {
     let metadata = Dictionary(uniqueKeysWithValues: (schema?.fields ?? []).map { ($0.id, ($0.label, $0.unit)) })
     return Set(old.keys).union(new.keys).sorted().compactMap { id in let a = ConfigNoticeValue(old[id]), b = ConfigNoticeValue(new[id]); guard changed(a, b) else { return nil }; let meta = metadata[id]; return .init(fieldId: id, label: meta?.0 ?? id, unit: meta?.1, oldValue: a, newValue: b) }

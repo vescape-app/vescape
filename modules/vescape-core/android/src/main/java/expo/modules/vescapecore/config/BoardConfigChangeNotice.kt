@@ -28,6 +28,18 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
       return a?.javaClass != b?.javaClass || a != b
     }
 
+    /**
+     * Fold new diffs into an undismissed notice rather than replacing it: a Refloat change and a motor
+     * config change found in the same session are one piece of news to the rider. A field that diffs
+     * twice keeps the newer comparison, in its original position.
+     * @parity /modules/vescape-core/ios/config/BoardConfigChangeNotice.swift `mergeDiffs`
+     */
+    fun mergeDiffs(previous: List<BoardConfigChangeDiff>, incoming: List<BoardConfigChangeDiff>): List<BoardConfigChangeDiff> {
+      val byId = LinkedHashMap<String, BoardConfigChangeDiff>()
+      for (diff in previous + incoming) byId[diff.fieldId] = diff
+      return byId.values.toList()
+    }
+
     fun diff(old: Map<String, Any>, new: Map<String, Any>, schema: RefloatConfigSchema?): List<BoardConfigChangeDiff> {
       val metadata = schema?.fields?.associateBy { it.id }.orEmpty()
       return (old.keys + new.keys).sorted().mapNotNull { id ->

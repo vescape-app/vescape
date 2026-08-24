@@ -583,6 +583,22 @@ interface TelemetryDao {
   @Query("DELETE FROM motor_config_values WHERE board_id = :boardId")
   suspend fun deleteMotorConfigValues(boardId: String)
 
+  /**
+   * Same baseline-then-notice transaction as [replaceBaselineAndNotice], for motor config. Both
+   * configs write into one notice row per Board: a rider does not care which subsystem a setting
+   * lives in, only that their board changed while Vescape was away.
+   */
+  @Transaction
+  suspend fun replaceMotorBaselineAndNotice(
+    values: MotorConfigValuesEntity,
+    buildNotice: (MotorConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?,
+  ): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getLatestMotorConfigValues(values.boardId), getBoardConfigChangeNotice(values.boardId))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertMotorConfigValues(values)
+    return notice
+  }
+
   @Query("SELECT * FROM board_config_change_notices WHERE board_id = :boardId LIMIT 1")
   suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNoticeEntity?
 
