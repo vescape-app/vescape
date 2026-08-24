@@ -18,6 +18,8 @@
 - [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every kind's slug, title, severity, trigger, payload, clear semantics
 - [pin-lock.md](./pin-lock.md) — upstream VESC PIN write-lock: fork firmware, commands, what it blocks (not implemented)
 - [watch-mirror.md](./watch-mirror.md) — Wear OS Mirror local install and Data Layer troubleshooting
+- [performance-findings.md](./performance-findings.md) — live telemetry: hot/cold split, render-rate rules
+- [performance-map-camera.md](./performance-map-camera.md) — compass-mode camera cost, watchdog kill & fix
 - [release.md](./release.md) — versioning, per-version notes tiers, tags & GitHub Releases
 
 ## Status
