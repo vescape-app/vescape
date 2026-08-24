@@ -122,6 +122,7 @@ internal final class AlertAudioPlayer {
   private static var audioSessionOwnerCount = 0
 
   private let engine = AVAudioEngine()
+  private static let geigerQueueMarker = DispatchSpecificKey<ObjectIdentifier>()
   private let geigerQueue = DispatchQueue(label: "vescape.alerts.geiger", qos: .userInitiated)
   private let synthesizer = AVSpeechSynthesizer()
   private let assetsDirectory: URL?
@@ -140,6 +141,7 @@ internal final class AlertAudioPlayer {
   /// engine graph is exercised for real.
   init(assetsDirectory: URL? = nil) {
     self.assetsDirectory = assetsDirectory
+    geigerQueue.setSpecific(key: Self.geigerQueueMarker, value: ObjectIdentifier(self))
     acquireAudioSession()
     let standardFormat = makeStandardFormat()
     do {
@@ -371,7 +373,10 @@ internal final class AlertAudioPlayer {
   func updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
     guard !isReleased else { return }
     geigerQueue.async { [weak self] in
-      self?.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
+      // Re-check on the queue: `release()` can land between the check above and this block, and a
+      // loop created afterwards would re-arm its tick forever against a torn-down engine.
+      guard let self, !self.isReleased else { return }
+      self.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
     }
   }
 
@@ -535,23 +540,32 @@ internal final class AlertAudioPlayer {
     synthesizer.stopSpeaking(at: .immediate)
     // Everything touching the engine graph or the node bookkeeping runs on `geigerQueue`, so a
     // completion handler queued behind this block sees the drained state (and a node whose
-    // `engine` is already nil) instead of racing it.
-    geigerQueue.sync {
-      for loop in geigerLoops.values {
-        loop.workItem?.cancel()
-        stopSustainedPlaybackForLoop(loop)
-      }
-      geigerLoops.removeAll(keepingCapacity: true)
-      for node in activeOneShotNodes {
-        node.stop()
-        detachPlayerNode(node)
-      }
-      activeOneShotNodes.removeAll(keepingCapacity: true)
-      if engine.isRunning { engine.stop() }
-      started = false
-      buffersByFileName.removeAll(keepingCapacity: true)
+    // `engine` is already nil) instead of racing it. A queued closure strongifies `self` while it
+    // runs, so the last reference can drop on `geigerQueue` and reach here through `deinit` —
+    // `sync` onto the current serial queue would deadlock, so tear down inline in that case.
+    if DispatchQueue.getSpecific(key: Self.geigerQueueMarker) == ObjectIdentifier(self) {
+      releaseOnQueue()
+    } else {
+      geigerQueue.sync { releaseOnQueue() }
     }
     releaseAudioSession()
+  }
+
+  /// Must run on `geigerQueue`.
+  private func releaseOnQueue() {
+    for loop in geigerLoops.values {
+      loop.workItem?.cancel()
+      stopSustainedPlaybackForLoop(loop)
+    }
+    geigerLoops.removeAll(keepingCapacity: true)
+    for node in activeOneShotNodes {
+      node.stop()
+      detachPlayerNode(node)
+    }
+    activeOneShotNodes.removeAll(keepingCapacity: true)
+    if engine.isRunning { engine.stop() }
+    started = false
+    buffersByFileName.removeAll(keepingCapacity: true)
   }
 
   // MARK: - Low-level

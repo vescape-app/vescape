@@ -43,6 +43,19 @@ final class AlertAudioPlayerTests: XCTestCase {
     Thread.sleep(forTimeInterval: 0.1)
   }
 
+  /// No explicit `release()`: `deinit` must tear down without deadlocking, including when the last
+  /// reference drops while completion handlers are still running on the player's own queue.
+  func testDeallocWithoutExplicitReleaseWhilePlaybackIsInFlight() {
+    for _ in 0..<5 {
+      autoreleasepool {
+        let player = makePlayer()
+        player.updateGeiger(ruleId: "sustained", soundType: "preset:sustained", rangeDepth: 1.0)
+        player.playSingle(soundType: "preset:beep", beepCount: 2)
+      }
+      Thread.sleep(forTimeInterval: 0.05)
+    }
+  }
+
   func testConcurrentPlaybackFromManyThreadsThenRelease() {
     let player = makePlayer()
     let group = DispatchGroup()
