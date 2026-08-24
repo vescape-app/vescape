@@ -1728,7 +1728,15 @@ internal final class BoardSessionController: VescGattListener {
   /// This Board Session's decoded motor config, keyed by firmware field id, or nil while none has
   /// been decoded — no layout for the board's signature is a normal reason for that.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `motorConfigValues`
-  private var motorConfigValues: MotorConfigValues?
+  private var motorConfigValues: MotorConfigValues? {
+    didSet { emit?("onMotorConfigValues", ["values": motorConfigValues?.toBridgeMap()]) }
+  }
+
+  /// The held Motor Config Values in bridge shape, or nil when none are held.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `motorConfigValuesMap`
+  func motorConfigValuesMap() -> [String: Any?]? {
+    motorConfigValues?.toBridgeMap()
+  }
   /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `lastKnown`
   /// while it is the cache restored on connect. Native-owned truth; JS mirrors it through
   /// `getBoardConfigValues` + `onBoardConfigValues`.

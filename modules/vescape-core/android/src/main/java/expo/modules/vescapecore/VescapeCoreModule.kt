@@ -173,6 +173,7 @@ class VescapeCoreModule : Module() {
       "onAppDataChanged",
       "onBoardWarnings",
       "onBoardConfigValues",
+      "onMotorConfigValues",
       "onBoardConfigChangeNotice",
       "onAppStatus",
       "onNavigation",
@@ -285,6 +286,12 @@ class VescapeCoreModule : Module() {
       sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
     }
     OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
+    OnStartObserving("onMotorConfigValues") {
+      startObserving("onMotorConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onMotorConfigValues", mapOf("values" to CoreForegroundService.getMotorConfigValues()))
+    }
+    OnStopObserving("onMotorConfigValues") { stopObserving("onMotorConfigValues") }
     OnStartObserving("onBoardConfigChangeNotice") { startObserving("onBoardConfigChangeNotice") }
     OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
@@ -622,6 +629,25 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getBoardConfigValues") {
       CoreForegroundService.getBoardConfigValues()
     }
+    /**
+     * This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
+     * permanently: there is no write base and no encoder (ADR 0036).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getMotorConfigValues") {
+      CoreForegroundService.getMotorConfigValues()
+    }
+
+    /**
+     * Last Known Motor Config Values for a Board with no Board Session.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getLastKnownMotorConfigValues") Coroutine { boardId: String ->
+      AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap()
+    }
+
     /**
      * Last Known Board Config Values for a Board with no Board Session — the values survive a
      * disconnect even though the session object does not.

@@ -23,6 +23,7 @@ import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
 import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
+import { startMotorConfigValuesSync } from '@/modules/board/store/motorConfigValuesStore'
 import { startBoardConfigChangeNoticeSync } from '@/modules/board/store/boardConfigChangeNoticeStore'
 import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardConfigChangeNoticeModal'
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
@@ -88,6 +89,7 @@ function RootLayout() {
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
     const stopBoardConfigValuesSync = startBoardConfigValuesSync()
+    const stopMotorConfigValuesSync = startMotorConfigValuesSync()
     const stopBoardConfigChangeNoticeSync = startBoardConfigChangeNoticeSync()
     const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
@@ -99,6 +101,7 @@ function RootLayout() {
       stopAppDataSync()
       stopBoardWarningsSync()
       stopBoardConfigValuesSync()
+      stopMotorConfigValuesSync()
       stopBoardConfigChangeNoticeSync()
       stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()

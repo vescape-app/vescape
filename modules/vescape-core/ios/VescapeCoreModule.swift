@@ -79,7 +79,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onBoardConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -135,6 +135,12 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onBoardConfigValues", ["values": self.coordinator.boardConfigValuesMap()])
     }
     OnStopObserving("onBoardConfigValues") { self.observedEvents.remove("onBoardConfigValues") }
+    OnStartObserving("onMotorConfigValues") {
+      self.observedEvents.insert("onMotorConfigValues")
+      // Late subscriber: replay the held values (or the nil) so JS is immediately consistent.
+      self.sendEvent("onMotorConfigValues", ["values": self.coordinator.motorConfigValuesMap()])
+    }
+    OnStopObserving("onMotorConfigValues") { self.observedEvents.remove("onMotorConfigValues") }
     OnStartObserving("onBoardConfigChangeNotice") { self.observedEvents.insert("onBoardConfigChangeNotice") }
     OnStopObserving("onBoardConfigChangeNotice") { self.observedEvents.remove("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
@@ -628,6 +634,19 @@ public class VescapeCoreModule: Module {
     /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
     AsyncFunction("getLastKnownBoardConfigValues") { (boardId: String, promise: Promise) in
       promise.resolve(BoardConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap())
+    }
+    /// This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
+    /// permanently: there is no write base and no encoder (ADR 0036).
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+    AsyncFunction("getMotorConfigValues") { (promise: Promise) in
+      promise.resolve(self.coordinator.motorConfigValuesMap())
+    }
+    /// Last Known Motor Config Values for a Board with no Board Session.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownMotorConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+    AsyncFunction("getLastKnownMotorConfigValues") { (boardId: String, promise: Promise) in
+      promise.resolve(MotorConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap())
     }
     AsyncFunction("getBoardConfigChangeNotice") { (boardId: String, promise: Promise) in promise.resolve(BoardConfigStore.shared.loadNotice(boardId: boardId)?.toMap()) }
     AsyncFunction("dismissBoardConfigChangeNotice") { (boardId: String, promise: Promise) in BoardConfigStore.shared.dismissNotice(boardId: boardId); promise.resolve(nil) }

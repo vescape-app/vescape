@@ -1534,6 +1534,39 @@ export interface BoardConfigValuesEvent {
   values: BoardConfigValues | null
 }
 
+/**
+ * This Board Session's VESC motor configuration (MCCONF) as JS sees it: the decoded field map plus
+ * the signature it was decoded under.
+ *
+ * Read-only permanently — there is no write base and no encoder. The board serves no schema for
+ * MCCONF, so values exist only when a layout carries the board's signature; an unrecognized
+ * signature yields `null` rather than a guess (ADR 0036).
+ * @parity /modules/vescape-core/ios/config/MotorConfigValues.swift `MotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/MotorConfigValues.kt `MotorConfigValues`
+ */
+export interface MotorConfigValues {
+  boardId: string | null
+  /** `MCCONF_SIGNATURE` the values were decoded under — the layout identity and the cache scope. */
+  signature: number
+  /** Firmware branch whose layout carries this signature, e.g. `release_6_05`. */
+  firmware: string
+  capturedAtMs: number
+  freshness: BoardConfigFreshness
+  /** Decoded fields keyed by firmware field id, e.g. `l_temp_fet_start`. Every value is a number. */
+  values: Record<string, number>
+}
+
+/**
+ * Motor Config Values changed. Nullable so clearing is expressible: fires when the session's read
+ * lands, when Last Known values are restored, and with `values: null` on disconnect, board switch,
+ * `mismatched` link integrity, and when the board answers with a signature no layout carries.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+ */
+export interface MotorConfigValuesEvent {
+  values: MotorConfigValues | null
+}
+
 /** @parity native BoardConfigChangeNotice peers. */
 export interface BoardConfigChangeDiff {
   fieldId: string
@@ -1880,6 +1913,7 @@ type VescapeCoreEvents = {
   onBoardWarnings: (event: BoardWarningsEvent) => void
   /** Board Config Values arrived, changed, or were cleared (`values: null`). */
   onBoardConfigValues: (event: BoardConfigValuesEvent) => void
+  onMotorConfigValues: (event: MotorConfigValuesEvent) => void
   onBoardConfigChangeNotice: (event: BoardConfigChangeNoticeEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
@@ -2010,6 +2044,8 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
   getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
+  getMotorConfigValues(): Promise<MotorConfigValues | null>
+  getLastKnownMotorConfigValues(boardId: string): Promise<MotorConfigValues | null>
   getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
   dismissBoardConfigChangeNotice(boardId: string): Promise<void>
   getDatabaseSizeBytes(): Promise<number>
@@ -2667,6 +2703,28 @@ export async function getLastKnownBoardConfigValues(
   return native.getLastKnownBoardConfigValues(boardId)
 }
 
+/**
+ * This Board Session's Motor Config Values, or `null` when none are held (no read yet, a signature
+ * no layout carries, or cleared). Pull on mount; `onMotorConfigValues` carries every change after.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+ */
+export async function getMotorConfigValues(): Promise<MotorConfigValues | null> {
+  return native.getMotorConfigValues()
+}
+
+/**
+ * The durable Last Known Motor Config Values for one Board, surviving the Board Session that
+ * {@link getMotorConfigValues} is scoped to.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownMotorConfigValues`
+ */
+export async function getLastKnownMotorConfigValues(
+  boardId: string,
+): Promise<MotorConfigValues | null> {
+  return native.getLastKnownMotorConfigValues(boardId)
+}
+
 export async function getBoardConfigChangeNotice(
   boardId: string,
 ): Promise<BoardConfigChangeNotice | null> {
@@ -3094,6 +3152,11 @@ export function addBoardConfigValuesListener(
   cb: (event: BoardConfigValuesEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardConfigValues', cb)
+}
+export function addMotorConfigValuesListener(
+  cb: (event: MotorConfigValuesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onMotorConfigValues', cb)
 }
 export function addBoardConfigChangeNoticeListener(
   cb: (event: BoardConfigChangeNoticeEvent) => void,

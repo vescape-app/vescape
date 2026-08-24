@@ -1819,6 +1819,16 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValues`
      */
     private var motorConfigValues: MotorConfigValues? = null
+        set(value) {
+            field = value
+            emitEvent("onMotorConfigValues", mapOf("values" to value?.toBridgeMap()))
+        }
+
+    /**
+     * The held Motor Config Values in bridge shape, or null when none are held.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValuesMap`
+     */
+    internal fun motorConfigValuesMap(): Map<String, Any?>? = motorConfigValues?.toBridgeMap()
 
     /**
      * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `LAST_KNOWN`
