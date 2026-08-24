@@ -1,10 +1,13 @@
+import { useEffect } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import {
   addBoardConfigValuesListener,
   getBoardConfigValues,
+  getLastKnownBoardConfigValues,
   type BoardConfigValues,
 } from 'vescape-core'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /**
  * Refloat footpad ADC switch voltages — the reading each zone disengages below. `0` means the switch
@@ -32,13 +35,51 @@ export const FOOTPAD_FALLBACK_THRESHOLD_V = 0.8
  */
 interface BoardConfigValuesState {
   values: BoardConfigValues | null
+  /**
+   * The durable copy for one Board, loaded on demand for readers that outlive the Board Session.
+   * Session values always win; this only fills the gap while the Board is off.
+   */
+  lastKnown: BoardConfigValues | null
   replace: (values: BoardConfigValues | null) => void
+  loadLastKnown: (boardId: string) => Promise<void>
 }
 
-export const useBoardConfigValuesStore = create<BoardConfigValuesState>((set) => ({
+export const useBoardConfigValuesStore = create<BoardConfigValuesState>((set, get) => ({
   values: null,
+  lastKnown: null,
   replace: (values) => set({ values }),
+  loadLastKnown: async (boardId) => {
+    if (get().lastKnown?.boardId === boardId) return
+    try {
+      const values = await getLastKnownBoardConfigValues(boardId)
+      // A Board switch mid-flight must not land the wrong Board's values.
+      if (values == null || values.boardId === boardId) set({ lastKnown: values })
+    } catch {
+      // Nothing to show is the same outcome as a failed load; the next mount retries.
+    }
+  },
 }))
+
+/**
+ * This Board's config as a reader should see it: the live session values, or the durable Last Known
+ * copy while the Board is off.
+ *
+ * A Board Session's values are cleared natively on disconnect — the session object is per-session,
+ * the DB row is not — so a config readout has to ask for the durable copy itself.
+ */
+export function useBoardConfigFields(): BoardConfigValues | null {
+  const values = useBoardConfigValuesStore((s) => s.values)
+  const lastKnown = useBoardConfigValuesStore((s) => s.lastKnown)
+  const boardId = useBoardStore((s) => s.activeBoardId)
+  const loadLastKnown = useBoardConfigValuesStore((s) => s.loadLastKnown)
+
+  useEffect(() => {
+    if (values == null && boardId != null) void loadLastKnown(boardId)
+  }, [values, boardId, loadLastKnown])
+
+  if (values != null) return values
+  return lastKnown?.boardId === boardId ? lastKnown : null
+}
 
 /** A decoded config field as a finite number, or null when absent, unparseable, or a bool. */
 function configNumber(values: BoardConfigValues | null, id: string): number | null {

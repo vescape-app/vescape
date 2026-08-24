@@ -565,6 +565,9 @@ interface TelemetryDao {
   @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
   suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
 
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestBoardConfigValues(boardId: String): BoardConfigValuesEntity?
+
   @Upsert
   suspend fun upsertBoardConfigValues(values: BoardConfigValuesEntity)
 

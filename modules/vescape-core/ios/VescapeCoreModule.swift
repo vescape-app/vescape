@@ -622,6 +622,13 @@ public class VescapeCoreModule: Module {
     AsyncFunction("getBoardConfigValues") { (promise: Promise) in
       promise.resolve(self.coordinator.boardConfigValuesMap())
     }
+    /// Last Known Board Config Values for a Board with no Board Session — the values survive a
+    /// disconnect even though the session object does not.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+    AsyncFunction("getLastKnownBoardConfigValues") { (boardId: String, promise: Promise) in
+      promise.resolve(BoardConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap())
+    }
     AsyncFunction("getBoardConfigChangeNotice") { (boardId: String, promise: Promise) in promise.resolve(BoardConfigStore.shared.loadNotice(boardId: boardId)?.toMap()) }
     AsyncFunction("dismissBoardConfigChangeNotice") { (boardId: String, promise: Promise) in BoardConfigStore.shared.dismissNotice(boardId: boardId); promise.resolve(nil) }
 

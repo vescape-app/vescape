@@ -2009,6 +2009,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   ): Promise<void>
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
+  getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
   getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
   dismissBoardConfigChangeNotice(boardId: string): Promise<void>
   getDatabaseSizeBytes(): Promise<number>
@@ -2653,6 +2654,19 @@ export async function clearAllBoardWarnings(boardId: string): Promise<void> {
 export async function getBoardConfigValues(): Promise<BoardConfigValues | null> {
   return native.getBoardConfigValues()
 }
+/**
+ * Last Known Board Config Values for a Board with no Board Session — the durable copy behind
+ * {@link getBoardConfigValues}, so a config readout still has something to show while the Board is
+ * off. Always `last-known`, never a write base (ADR 0035).
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
+ */
+export async function getLastKnownBoardConfigValues(
+  boardId: string,
+): Promise<BoardConfigValues | null> {
+  return native.getLastKnownBoardConfigValues(boardId)
+}
+
 export async function getBoardConfigChangeNotice(
   boardId: string,
 ): Promise<BoardConfigChangeNotice | null> {

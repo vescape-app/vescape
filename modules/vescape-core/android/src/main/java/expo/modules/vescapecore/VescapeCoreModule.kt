@@ -622,6 +622,15 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getBoardConfigValues") {
       CoreForegroundService.getBoardConfigValues()
     }
+    /**
+     * Last Known Board Config Values for a Board with no Board Session — the values survive a
+     * disconnect even though the session object does not.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getLastKnownBoardConfigValues") Coroutine { boardId: String ->
+      AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap()
+    }
     AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
     AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->

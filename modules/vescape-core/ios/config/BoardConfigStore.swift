@@ -101,6 +101,35 @@ struct BoardConfigStore {
     )
   }
 
+  /// The most recently captured Last Known scope for a Board, whichever Refloat base version it was
+  /// read against.
+  ///
+  /// For readers with no Board Session to tell them the base version — a screen opened while the
+  /// Board is off. Displayable only, exactly like `load`: the newest row is the last thing Vescape
+  /// saw on that Board, and picking a scope is meaningless without a connection to say which
+  /// firmware is running now.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getLatestBoardConfigValues`
+  func loadLatest(boardId: String) -> BoardConfigValues? {
+    guard !boardId.isEmpty, let writer = resolveWriter() else { return nil }
+    let row = try? writer.read { db in
+      try Row.fetchOne(
+        db,
+        sql: """
+          SELECT refloat_base_version, values_json, captured_at FROM board_config_values
+          WHERE board_id = ? ORDER BY captured_at DESC LIMIT 1
+          """,
+        arguments: [boardId]
+      )
+    }
+    guard let row = row ?? nil else { return nil }
+    return BoardConfigValues.lastKnown(
+      boardId: boardId,
+      refloatBaseVersion: row["refloat_base_version"],
+      capturedAtMs: row["captured_at"],
+      valuesJson: row["values_json"]
+    )
+  }
+
   /// Persist values just read from the board. Rows need both Board and Tune Compatibility scope.
   func save(_ values: BoardConfigValues) {
     guard

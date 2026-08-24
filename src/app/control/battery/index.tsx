@@ -5,6 +5,8 @@ import { useSharedValue } from 'react-native-reanimated'
 
 import { BmsCellVoltages } from '@/modules/battery/components/BmsCellVoltages'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { BATTERY_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { IconButton } from '@/components/base/IconButton'
@@ -141,6 +143,7 @@ export default function BatteryScreen() {
       {/* Cell groups sit above the charts so a scrubbing thumb doesn't cover them. */}
       <BmsCellVoltages scrubTimeMs={scrubTimeMs} windowMs={windowMs} />
       <LiveChartStack charts={charts} scrubTimeMs={scrubTimeMs} />
+      <BoardConfigSection rows={BATTERY_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

@@ -228,6 +228,28 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   /**
+   * The most recently captured Last Known scope for a Board, whichever Refloat base version it was
+   * read against.
+   *
+   * For readers with no Board Session to tell them the base version — a screen opened while the
+   * Board is off. Displayable only, exactly like [getBoardConfigValues]: the newest row is the last
+   * thing Vescape saw on that Board, and picking a scope is meaningless without a connection to say
+   * which firmware is running now.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `loadLatest`
+   */
+  internal suspend fun getLatestBoardConfigValues(boardId: String): BoardConfigValues? =
+    withContext(Dispatchers.IO) {
+      if (boardId.isBlank()) return@withContext null
+      val row = dao.getLatestBoardConfigValues(boardId) ?: return@withContext null
+      BoardConfigValues.lastKnown(
+        boardId = boardId,
+        refloatBaseVersion = row.refloatBaseVersion,
+        capturedAtMs = row.capturedAt,
+        valuesJson = row.valuesJson,
+      )
+    }
+
+  /**
    * Persist values just read from the board. Values need both Board and Tune Compatibility scope.
    * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `save`
    */

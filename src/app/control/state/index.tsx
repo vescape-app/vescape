@@ -2,6 +2,8 @@ import { StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { STATE_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
@@ -15,6 +17,7 @@ export default function StateScreen() {
         <Text style={styles.label}>BOARD STATE</Text>
         <Text style={styles.stateName}>{hasLiveTelemetry ? 'LIVE' : DASH}</Text>
       </View>
+      <BoardConfigSection rows={STATE_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

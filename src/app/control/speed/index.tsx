@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { SPEED_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import {
   toChartBands,
@@ -46,6 +48,7 @@ export default function SpeedScreen() {
       liveValue={liveTelemetryRuntime.values.speedKmh}
     >
       <LiveChartStack charts={charts} />
+      <BoardConfigSection rows={SPEED_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

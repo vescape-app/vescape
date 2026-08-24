@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { DUTY_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import {
   toChartBands,
@@ -46,6 +48,7 @@ export default function DutyScreen() {
       liveValue={liveTelemetryRuntime.values.dutyPercent}
     >
       <LiveChartStack charts={charts} />
+      <BoardConfigSection rows={DUTY_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

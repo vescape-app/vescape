@@ -1,10 +1,11 @@
 import { StyleSheet, View } from 'react-native'
 import { SlidersHorizontalIcon } from 'phosphor-react-native'
 
+import { Placeholder } from '@/components/base/Placeholder'
 import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
+import { useBoardConfigFields } from '@/modules/board/store/boardConfigValuesStore'
 
 /** A decoded config value, or `undefined` when the schema does not carry the field. */
 export type BoardConfigValue = number | boolean | undefined
@@ -39,6 +40,21 @@ export function erpm(value: BoardConfigValue): string {
 }
 
 /**
+ * A numeric field with Refloat's own suffix. `decimals` follows the field's real resolution — an
+ * angle in whole degrees printed as `5.0°` reads as a precision the board does not have.
+ */
+export function unit(suffix: string, decimals = 1): (value: BoardConfigValue) => string {
+  const separator = suffix.startsWith('°') && suffix.length === 1 ? '' : ' '
+  return (value) =>
+    typeof value === 'number' ? `${value.toFixed(decimals)}${separator}${suffix}` : MISSING
+}
+
+/** A `0…1` fraction as a percentage — Refloat stores duty that way, riders read it as `80%`. */
+export function percent(value: BoardConfigValue): string {
+  return typeof value === 'number' ? `${Math.round(value * 100)}%` : MISSING
+}
+
+/**
  * Refloat's toggles are `<type>5</type>` in the settings XML, which the schema reads as an `int8` —
  * so a toggle arrives as `1` / `0`, not as a bool. Both are accepted rather than assuming either.
  */
@@ -68,7 +84,7 @@ export function BoardConfigSection({
   title?: string
   rows: BoardConfigRow[]
 }) {
-  const values = useBoardConfigValuesStore((s) => s.values)
+  const values = useBoardConfigFields()
 
   return (
     <View style={styles.section}>
@@ -82,7 +98,11 @@ export function BoardConfigSection({
       />
       <View style={styles.card}>
         {values == null ? (
-          <Text style={styles.empty}>Connect the board to read its config.</Text>
+          <Placeholder
+            icon={SlidersHorizontalIcon}
+            description="No config read from this board yet. Connect it to read its setup."
+            style={styles.empty}
+          />
         ) : (
           rows.map((row) => {
             const value = values.values[row.id]
@@ -138,8 +158,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   empty: {
-    color: theme.palette.slate.textDim,
-    fontSize: 14,
-    paddingVertical: 7,
+    // The section is one block in a scrolling screen, so the placeholder sizes to its content
+    // instead of taking the height a whole empty screen would.
+    flex: 0,
+    paddingVertical: 24,
   },
 })
