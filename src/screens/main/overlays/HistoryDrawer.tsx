@@ -18,7 +18,8 @@ import { HistoryRideRow } from '@/modules/history/components/HistoryRideRow'
 import { HistorySessionSheet } from '@/modules/history/components/HistorySessionSheet'
 import { favoriteSessionId, favoriteToSession } from '@/modules/history/lib/favorites'
 import { formatRideListDateTime, formatRideListDetails } from '@/modules/history/lib/rideFormat'
-import { rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
+import { isLiveRide, rideMovingWindow, type HistorySession } from '@/modules/history/lib/sessions'
+import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import { useFavoriteStore, type Favorite } from '@/modules/history/store/favoriteStore'
 import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { ProfileStatsSummary } from '@/modules/profile/components/ProfileStatsSummary'
@@ -54,6 +55,8 @@ export function HistoryDrawer({
   const favoritesLoading = useFavoriteStore((state) => state.loading)
   const favoritesError = useFavoriteStore((state) => state.error)
   const loadFavorites = useFavoriteStore((state) => state.load)
+
+  useHistoryAutoRefresh(visible)
 
   useEffect(() => {
     if (!visible) return
@@ -190,7 +193,11 @@ export function HistoryDrawer({
                 return (
                   <HistoryRideRow
                     key={session.id}
-                    title={formatRideListDateTime(window.startMs, window.endMs)}
+                    title={formatRideListDateTime(
+                      window.startMs,
+                      window.endMs,
+                      isLiveRide(session, Date.now()),
+                    )}
                     subtitle={details}
                     routePoints={session.routePoints}
                     onPress={() => openRide(session)}

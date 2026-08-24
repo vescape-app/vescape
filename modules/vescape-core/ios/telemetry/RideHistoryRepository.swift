@@ -92,7 +92,7 @@ internal final class RideHistoryRepository {
         )
         let grouped = groupRideSessions(buckets: buckets, markers: markers, gapMs: gapMs)
           .filter { $0.avgSpeedSampleCount > 0 }
-        complete = hasOlderBuckets ? Array(grouped.dropLast()) : grouped
+        complete = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
       }
       let sorted = complete.sorted { $0.startAtMs > $1.startAtMs }
       let cutoff = sorted.indices.contains(limit - 1) ? sorted[limit - 1].firstBucketStartMs : nil
@@ -110,6 +110,16 @@ internal final class RideHistoryRepository {
     let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
     return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
   }
+}
+
+/// Buckets arrive newest-first, so the only ride that may still grow backwards is the OLDEST one in
+/// the window. Dropping the newest instead hides the ride being recorded right now.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `completeRideSessions`
+internal func completeRideSessions(
+  _ grouped: [RideSessionAggregate],
+  hasOlderBuckets: Bool
+) -> [RideSessionAggregate] {
+  hasOlderBuckets ? Array(grouped.dropFirst()) : grouped
 }
 
 /// Native Ride boundaries/aggregates shared by History pages and Profile stats.

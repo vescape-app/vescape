@@ -143,7 +143,6 @@ beforeEach(async () => {
   useHistoryStore.setState({
     blocks: [],
     sessions: [],
-    liveBlocks: [],
     selectedBlock: null,
     selectedSession: null,
     samples: [],
@@ -151,8 +150,6 @@ beforeEach(async () => {
     sessionSamples: [],
     sessionGpsSamples: [],
     sessionMarkers: [],
-    liveSamples: [],
-    liveGpsSamples: [],
     markers: [],
     summary: null,
     loading: false,
@@ -516,7 +513,7 @@ test('loads complete ride pages without changing an already visible ride', async
   expect(useHistoryStore.getState().selectedSession).toEqual(selectedBefore)
 })
 
-test('clearHistory invalidates an in-flight live refresh', async () => {
+test('clearHistory invalidates an in-flight recent refresh', async () => {
   const stale = block({
     id: 'stale',
     startAtMs: 1_000_000,
@@ -532,12 +529,11 @@ test('clearHistory invalidates an in-flight live refresh', async () => {
   getTelemetryHistory.mockResolvedValueOnce([])
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
-  const refresh = useHistoryStore.getState().refreshLive()
+  const refresh = useHistoryStore.getState().refreshRecent()
   await Promise.resolve()
   await useHistoryStore.getState().clearHistory()
   resolveRefresh([stale])
   await refresh
 
   expect(useHistoryStore.getState().blocks).toEqual([])
-  expect(useHistoryStore.getState().liveBlocks).toEqual([])
 })

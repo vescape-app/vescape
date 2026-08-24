@@ -1,9 +1,9 @@
-export function formatRideTime(startMs: number, endMs: number): string {
+export function formatRideTime(startMs: number, endMs: number, live = false): string {
   const start = new Date(startMs)
   const end = new Date(endMs)
   const h = (d: Date) => d.getHours().toString().padStart(2, '0')
   const m = (d: Date) => d.getMinutes().toString().padStart(2, '0')
-  return `${h(start)}:${m(start)} – ${h(end)}:${m(end)}`
+  return `${h(start)}:${m(start)} – ${live ? 'now' : `${h(end)}:${m(end)}`}`
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -30,8 +30,8 @@ export function formatRideMeta(startAtMs: number, endAtMs: number, deviceName: s
     : formatRideDate(startAtMs, endAtMs)
 }
 
-export function formatRideListDateTime(startAtMs: number, endAtMs: number): string {
-  return `${formatRideTime(startAtMs, endAtMs)} · ${formatRideDate(startAtMs, endAtMs)}`
+export function formatRideListDateTime(startAtMs: number, endAtMs: number, live = false): string {
+  return `${formatRideTime(startAtMs, endAtMs, live)} · ${formatRideDate(startAtMs, endAtMs)}`
 }
 
 export function formatRideListDetails(
