@@ -1300,6 +1300,7 @@ key == "wearAutoLaunchOnConnect" ||
     val appCtx = context.applicationContext
     val repo = AppDataRepository.get(appCtx)
     val previousCapturedAt = repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE
+    val previousMotorCapturedAt = repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE
     val connected = CompletableDeferred<Unit>()
     CoreForegroundService.startBoardSession(
       appCtx,
@@ -1324,29 +1325,43 @@ key == "wearAutoLaunchOnConnect" ||
     try {
       connected.await()
       sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
-      repeat(120) {
-        if ((repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt) {
-          // The probe stays finalizable: the rider may still switch transports, and each pick
-          // acquires config for its own candidate before the link can be saved.
-          PendingLinkConnect.arm(boardId)
-          return mapOf(
-            "linkVersion" to 4,
-            "bleId" to bleId,
-            "transport" to BoardTransport.toBridge(transport),
-            "hasBms" to candidate.hasBms,
-            "vescFirmwareVersion" to candidate.vescFirmwareVersion,
-            "refloatVersion" to candidate.refloatVersion,
-            "refloatBaseVersion" to baseVersion,
-          )
-        }
-        delay(250)
+      if (!awaitUntil(120) { (repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt }) {
+        error("PROBE_CONFIG_TIMEOUT: Full Refloat config was not acquired")
       }
-      error("PROBE_CONFIG_TIMEOUT: Full Refloat config was not acquired")
+      // Motor config is read after the Refloat read completes, so it is waited for separately rather
+      // than in the same loop. A board whose MCCONF signature no layout carries never lands a row and
+      // fails the link here — deliberate: a Board Link is only offered once every config it will show
+      // is proven readable.
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "motor-config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+      if (!awaitUntil(80) { (repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE) > previousMotorCapturedAt }) {
+        error("PROBE_MOTOR_CONFIG_TIMEOUT: VESC motor config was not acquired — this firmware may not be supported yet")
+      }
+      // The probe stays finalizable: the rider may still switch transports, and each pick
+      // acquires config for its own candidate before the link can be saved.
+      PendingLinkConnect.arm(boardId)
+      return mapOf(
+        "linkVersion" to 4,
+        "bleId" to bleId,
+        "transport" to BoardTransport.toBridge(transport),
+        "hasBms" to candidate.hasBms,
+        "vescFirmwareVersion" to candidate.vescFirmwareVersion,
+        "refloatVersion" to candidate.refloatVersion,
+        "refloatBaseVersion" to baseVersion,
+      )
     } finally {
       val stopped = CompletableDeferred<Unit>()
       CoreForegroundService.stopBoardSession(appCtx) { stopped.complete(Unit) }
       stopped.await()
     }
+  }
+
+  /** Poll [condition] every 250 ms up to [attempts] times; false when it never held. */
+  private suspend fun awaitUntil(attempts: Int, condition: suspend () -> Boolean): Boolean {
+    repeat(attempts) {
+      if (condition()) return true
+      delay(250)
+    }
+    return false
   }
 
   private fun probeResultToBridge(result: TransportDetection.Result): Map<String, Any?> {

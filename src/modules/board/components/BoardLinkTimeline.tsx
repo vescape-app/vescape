@@ -8,6 +8,7 @@ import {
   CpuIcon,
   HandshakeIcon,
   type Icon,
+  EngineIcon,
   LightningIcon,
   LinkIcon,
   MagnifyingGlassIcon,
@@ -46,6 +47,7 @@ type StepKey =
   | 'identity'
   | 'session'
   | 'config'
+  | 'motorConfig'
 
 const STEP_KEYS: StepKey[] = [
   'connect',
@@ -56,6 +58,7 @@ const STEP_KEYS: StepKey[] = [
   'identity',
   'session',
   'config',
+  'motorConfig',
 ]
 
 const STEP_LABEL: Record<StepKey, string> = {
@@ -66,7 +69,8 @@ const STEP_LABEL: Record<StepKey, string> = {
   bms: 'Smart BMS',
   identity: 'Firmware',
   session: 'Board session',
-  config: 'Board config',
+  config: 'Refloat config',
+  motorConfig: 'Motor config',
 }
 
 const STEP_ICON: Record<StepKey, Icon> = {
@@ -78,6 +82,7 @@ const STEP_ICON: Record<StepKey, Icon> = {
   identity: CpuIcon,
   session: PlugsConnectedIcon,
   config: LightningIcon,
+  motorConfig: EngineIcon,
 }
 
 /** What each step does — shown until a concrete result replaces it. */
@@ -90,6 +95,7 @@ const STEP_DESC: Record<StepKey, string> = {
   identity: 'Reading firmware versions',
   session: 'Connecting the way rides connect',
   config: 'Reading complete Refloat config',
+  motorConfig: 'Reading VESC motor config',
 }
 
 /**
@@ -106,6 +112,7 @@ const STEP_REACH: Record<BoardProbeStep, number> = {
   identity: 5,
   session: 6,
   config: 7,
+  'motor-config': 8,
   completed: STEP_KEYS.length,
   failed: -1,
 }
@@ -228,7 +235,8 @@ function pickingSteps(
  */
 function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineStep[] {
   const step = progress?.step
-  const sessionDone = step === 'config' || step === 'completed'
+  const sessionDone = step === 'config' || step === 'motor-config' || step === 'completed'
+  const configDone = step === 'motor-config' || step === 'completed'
   return [
     row(
       'session',
@@ -237,8 +245,45 @@ function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineSte
     ),
     row(
       'config',
-      step === 'completed' ? 'done' : step === 'config' ? 'active' : 'pending',
-      step === 'completed' ? 'Last Known values saved' : STEP_DESC.config,
+      configDone ? 'done' : step === 'config' ? 'active' : 'pending',
+      configDone ? 'Last Known values saved' : STEP_DESC.config,
+    ),
+    row(
+      'motorConfig',
+      step === 'completed' ? 'done' : step === 'motor-config' ? 'active' : 'pending',
+      step === 'completed' ? 'Last Known values saved' : STEP_DESC.motorConfig,
+    ),
+  ]
+}
+
+/**
+ * The three acquisition rows of a failed run. Which one failed is whichever step the probe last
+ * reported: every row before it got far enough to have passed.
+ */
+function failedAcquisitionSteps(step: BoardProbeStep | undefined): TimelineStep[] {
+  const reachedConfig = step === 'config' || step === 'motor-config'
+  const reachedMotorConfig = step === 'motor-config'
+  return [
+    row(
+      'session',
+      step === 'session' ? 'failed' : reachedConfig ? 'done' : 'pending',
+      step === 'session'
+        ? 'Could not open a Board Session'
+        : reachedConfig
+          ? 'Session connected'
+          : STEP_DESC.session,
+    ),
+    row(
+      'config',
+      step === 'config' ? 'failed' : reachedMotorConfig ? 'done' : 'pending',
+      reachedMotorConfig ? 'Last Known values saved' : STEP_DESC.config,
+    ),
+    row(
+      'motorConfig',
+      reachedMotorConfig ? 'failed' : 'pending',
+      reachedMotorConfig
+        ? 'Could not read motor config — firmware may not be supported'
+        : STEP_DESC.motorConfig,
     ),
   ]
 }
@@ -278,16 +323,7 @@ function failedSteps(
     ),
     row('bms', 'absent', 'No BMS answer'),
     row('identity', 'absent', 'No firmware info'),
-    row(
-      'session',
-      progress?.step === 'session' ? 'failed' : progress?.step === 'config' ? 'done' : 'pending',
-      progress?.step === 'session'
-        ? 'Could not open a Board Session'
-        : progress?.step === 'config'
-          ? 'Session connected'
-          : STEP_DESC.session,
-    ),
-    row('config', progress?.step === 'config' ? 'failed' : 'pending', STEP_DESC.config),
+    ...failedAcquisitionSteps(progress?.step),
   ]
 }
 

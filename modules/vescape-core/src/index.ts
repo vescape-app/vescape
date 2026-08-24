@@ -139,6 +139,7 @@ export type BoardProbeStep =
   | 'identity'
   | 'session'
   | 'config'
+  | 'motor-config'
   | 'completed'
   | 'failed'
 

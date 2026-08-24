@@ -1607,9 +1607,9 @@ internal final class BoardSessionController: VescGattListener {
   /// after the Refloat read rather than beside it: both are multi-packet transfers over one BLE link,
   /// and the Refloat read owns the polling pause while it runs.
   ///
-  /// Unlike the Refloat read this is optional — the board serves no schema for MCCONF, so an
-  /// unrecognized signature is an ordinary outcome that decodes nothing and never blocks the link
-  /// (ADR 0036).
+  /// Mandatory link state, like the Refloat read: the Board Probe waits for the decoded values and
+  /// fails the link without them, so a board whose signature no layout carries is refused at link
+  /// time rather than losing its cutoffs silently at ride time (ADR 0036).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `requestMotorConfig`
   private func requestMotorConfig(_ session: BoardSession) {
     guard session === self.session, session.isActive, !motorConfigRequested, let config else { return }

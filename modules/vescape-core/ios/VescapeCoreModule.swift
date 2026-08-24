@@ -1220,6 +1220,7 @@ public class VescapeCoreModule: Module {
       return
     }
     let previous = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion)?.capturedAtMs ?? Int64.min
+    let previousMotor = MotorConfigStore.shared.loadLatest(boardId: boardId)?.capturedAtMs ?? Int64.min
     // The config read runs over a real Board Session — the same path rides use — so linking proves
     // the production connect, not just the probe's own detection client.
     sendEvent("onBoardProbeProgress", [
@@ -1239,7 +1240,8 @@ public class VescapeCoreModule: Module {
         ])
         self?.awaitProbeConfig(
           probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
-          previousCapturedAt: previous, attemptsRemaining: 120, promise: promise
+          previousCapturedAt: previous, previousMotorCapturedAt: previousMotor,
+          attemptsRemaining: 120, promise: promise
         )
       },
       onError: { [weak self] code, message in
@@ -1253,7 +1255,7 @@ public class VescapeCoreModule: Module {
   private func awaitProbeConfig(
     probeId: String, boardId: String, bleId: String,
     candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
-    attemptsRemaining: Int, promise: Promise
+    previousMotorCapturedAt: Int64, attemptsRemaining: Int, promise: Promise
   ) {
     guard completedProbes[probeId] != nil else {
       coordinator.stopBoard()
@@ -1263,17 +1265,17 @@ public class VescapeCoreModule: Module {
     let baseVersion = candidate.refloatBaseVersion!
     if let values = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion),
       values.capturedAtMs > previousCapturedAt {
-      // The probe stays finalizable: the rider may still switch transports, and each pick
-      // acquires config for its own candidate before the link can be saved.
-      PendingLinkConnect.arm(boardId: boardId)
-      coordinator.stopBoard()
-      promise.resolve([
-        "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
-        "hasBms": candidate.hasBms,
-        "vescFirmwareVersion": candidate.vescFirmwareVersion,
-        "refloatVersion": candidate.refloatVersion,
-        "refloatBaseVersion": baseVersion,
-      ] as [String: Any?])
+      // Motor config is read after the Refloat read completes, so it is waited for separately. A
+      // board whose MCCONF signature no layout carries never lands a row and fails the link here —
+      // deliberate: a Board Link is only offered once every config it will show is proven readable.
+      sendEvent("onBoardProbeProgress", [
+        "probeId": probeId, "step": "motor-config", "elapsedMs": 0,
+        "transport": candidate.transport.bridgeValue,
+      ])
+      awaitProbeMotorConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousMotorCapturedAt, attemptsRemaining: 80, promise: promise
+      )
       return
     }
     guard attemptsRemaining > 0 else {
@@ -1284,6 +1286,49 @@ public class VescapeCoreModule: Module {
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
       self?.awaitProbeConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousCapturedAt, previousMotorCapturedAt: previousMotorCapturedAt,
+        attemptsRemaining: attemptsRemaining - 1, promise: promise
+      )
+    }
+  }
+
+  private func awaitProbeMotorConfig(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
+    attemptsRemaining: Int, promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    if let values = MotorConfigStore.shared.loadLatest(boardId: boardId),
+      values.capturedAtMs > previousCapturedAt {
+      // The probe stays finalizable: the rider may still switch transports, and each pick
+      // acquires config for its own candidate before the link can be saved.
+      PendingLinkConnect.arm(boardId: boardId)
+      coordinator.stopBoard()
+      promise.resolve([
+        "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
+        "hasBms": candidate.hasBms,
+        "vescFirmwareVersion": candidate.vescFirmwareVersion,
+        "refloatVersion": candidate.refloatVersion,
+        "refloatBaseVersion": candidate.refloatBaseVersion!,
+      ] as [String: Any?])
+      return
+    }
+    guard attemptsRemaining > 0 else {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      promise.reject(
+        "PROBE_MOTOR_CONFIG_TIMEOUT",
+        "VESC motor config was not acquired — this firmware may not be supported yet"
+      )
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.awaitProbeMotorConfig(
         probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
         previousCapturedAt: previousCapturedAt, attemptsRemaining: attemptsRemaining - 1,
         promise: promise
