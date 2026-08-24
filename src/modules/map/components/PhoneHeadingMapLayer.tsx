@@ -2,6 +2,7 @@ import { Images, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { memo, useEffect, useRef } from 'react'
 
 import { theme } from '@/constants/theme'
+import { useAppActive } from '@/hooks/useAppActive'
 import { deviceMotionPhoneHeadingAdapter } from '@/modules/map/lib/deviceMotionPhoneHeadingAdapter'
 
 import {
@@ -63,6 +64,11 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   onHeadingChange,
   onStatusChange,
 }: PhoneHeadingMapLayerProps) {
+  // The compass exists to be looked at: nothing records it, and no native work depends on it. A
+  // backgrounded app kept the sensor running at 60 Hz and kept retargeting the camera spring
+  // against a map nobody could see, and the retargets came due all at once on unlock.
+  const appActive = useAppActive()
+  const subscribed = active && appActive
   const sourceRef = useRef<ShapeSource>(null)
   const headingDegRef = useRef<number | null>(null)
   const coordinateRef = useRef(coordinate)
@@ -88,7 +94,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
   }, [coordinate, followCamera])
 
   useEffect(() => {
-    if (!active) {
+    if (!subscribed) {
       headingDegRef.current = null
       onHeadingChangeRef.current(null)
       onStatusChangeRef.current('idle')
@@ -109,15 +115,20 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
 
       headingDegRef.current = headingDeg
       onHeadingChangeRef.current(headingDeg)
+
+      if (followCameraRef.current) {
+        // The cone is pinned to the viewport while following, so its shape does not depend on the
+        // heading — see `phoneHeadingShape`. Rewriting the source per sample re-serialized and
+        // re-tiled a feature collection that had not changed, sixty times a second, in the one mode
+        // where the main thread is already the scarce resource.
+        onFollowHeadingRef.current(headingDeg)
+        return
+      }
+
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
-        shape: JSON.stringify(
-          phoneHeadingShape(coordinateRef.current, headingDeg, followCameraRef.current),
-        ),
+        shape: JSON.stringify(phoneHeadingShape(coordinateRef.current, headingDeg, false)),
       })
-
-      if (!followCameraRef.current) return
-      onFollowHeadingRef.current(headingDeg)
     }).then((subscription) => {
       if (disposed) {
         subscription.remove()
@@ -131,7 +142,7 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       disposed = true
       remove?.()
     }
-  }, [active])
+  }, [subscribed])
 
   return (
     <>
