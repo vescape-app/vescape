@@ -11,6 +11,7 @@
 - [bleAndroid.md](./bleAndroid.md) — BLE connection problems & fixes (custom native module)
 - [vescProtocol.md](./vescProtocol.md) — VESC packet framing, CAN forwarding, Refloat commands
 - [refloatAlldata.md](./refloatAlldata.md) — Refloat `COMMAND_GET_ALLDATA` binary layout
+- [mcconf.md](./mcconf.md) — VESC motor config binary layout, signature versioning, decode traps
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [chargingDetection.md](./chargingDetection.md) — charging indicator investigation & findings
 - [alerts.md](./alerts.md) — telemetry alerts: storage, native evaluation, Geiger mode
