@@ -124,14 +124,22 @@ internal final class AlertAudioPlayer {
   private let engine = AVAudioEngine()
   private let geigerQueue = DispatchQueue(label: "vescape.alerts.geiger", qos: .userInitiated)
   private let synthesizer = AVSpeechSynthesizer()
+  private let assetsDirectory: URL?
   private var buffersByFileName: [String: AVAudioPCMBuffer] = [:]
   private var geigerLoops: [String: GeigerLoop] = [:]
   private var activeOneShotNodes: [AVAudioPlayerNode] = []
   private var started = false
   private var ownsAudioSession = false
+  /// `released` is read from any thread (bridge, main, geiger queue) so it carries its own lock
+  /// rather than riding on `geigerQueue`; every other mutable field below is owned by `geigerQueue`.
+  private let releasedLock = NSLock()
   private var released = false
 
-  init() {
+  /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle` lookup. Production passes
+  /// nil; the SPM test target has no resource bundle and points at the repo's wav directory so the
+  /// engine graph is exercised for real.
+  init(assetsDirectory: URL? = nil) {
+    self.assetsDirectory = assetsDirectory
     acquireAudioSession()
     let standardFormat = makeStandardFormat()
     do {
@@ -150,6 +158,22 @@ internal final class AlertAudioPlayer {
 
   deinit {
     release()
+  }
+
+  /// True once `release()` has run. Safe to read from any thread.
+  private var isReleased: Bool {
+    releasedLock.lock()
+    defer { releasedLock.unlock() }
+    return released
+  }
+
+  /// Flip `released` once; returns false when another caller already released.
+  private func markReleased() -> Bool {
+    releasedLock.lock()
+    defer { releasedLock.unlock() }
+    if released { return false }
+    released = true
+    return true
   }
 
   private static func log(_ message: String) {
@@ -196,7 +220,7 @@ internal final class AlertAudioPlayer {
   }
 
   private func startIfNeeded() {
-    guard !released, !started, engine.isRunning == false else { return }
+    guard !isReleased, !started, engine.isRunning == false else { return }
     do {
       try AVAudioSession.sharedInstance().setActive(true, options: [])
       try engine.start()
@@ -207,13 +231,19 @@ internal final class AlertAudioPlayer {
   }
 
   private func loadBuffers(using standardFormat: AVAudioFormat) {
-    guard let bundleURL = bundledAssetsURL(), let bundle = Bundle(url: bundleURL) else {
-      Self.log("AlertAudioPlayer: bundledAssetsURL missing — no presets will play")
-      return
+    let resolve: (String) -> URL?
+    if let assetsDirectory {
+      resolve = { assetsDirectory.appendingPathComponent("\($0).wav") }
+    } else {
+      guard let bundleURL = bundledAssetsURL(), let bundle = Bundle(url: bundleURL) else {
+        Self.log("AlertAudioPlayer: bundledAssetsURL missing — no presets will play")
+        return
+      }
+      resolve = { bundle.url(forResource: $0, withExtension: "wav") }
     }
     var buffers: [String: AVAudioPCMBuffer] = [:]
     for fileName in alertSoundPresets.map(\.fileName) + ["on", "off"] {
-      guard let url = bundle.url(forResource: fileName, withExtension: "wav") else {
+      guard let url = resolve(fileName), FileManager.default.fileExists(atPath: url.path) else {
         Self.log("AlertAudioPlayer: missing \(fileName).wav in bundle")
         continue
       }
@@ -301,7 +331,7 @@ internal final class AlertAudioPlayer {
   /// Play one announcement: `beepCount` plays of the rule's sound, `alertBeepSpacingMs` apart.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `playSingle`
   func playSingle(soundType: String, beepCount: Int = alertBeepCountDefault) {
-    guard !released else { return }
+    guard !isReleased else { return }
     let preset = resolveAlertPreset(soundType: soundType, category: alertCategorySingle)
     let beeps = normalizedAlertBeepCount(beepCount)
     play(preset.fileName)
@@ -309,7 +339,7 @@ internal final class AlertAudioPlayer {
     let spacing = alertBeepSpacingMs / 1000
     for index in 1..<beeps {
       geigerQueue.asyncAfter(deadline: .now() + spacing * Double(index)) { [weak self] in
-        self?.play(preset.fileName)
+        self?.playOnQueue(preset.fileName)
       }
     }
   }
@@ -318,7 +348,7 @@ internal final class AlertAudioPlayer {
 
   /// Play a preset once for UI preview, or speak a `tts:` template with a sample fired alert.
   func preview(soundType: String) {
-    guard !released else { return }
+    guard !isReleased else { return }
     Self.log("AlertAudioPlayer.preview: \(soundType)")
     if soundType.hasPrefix(ttsPrefix) {
       let template = String(soundType.dropFirst(ttsPrefix.count))
@@ -339,7 +369,7 @@ internal final class AlertAudioPlayer {
   // MARK: - Geiger
 
   func updateGeiger(ruleId: String, soundType: String, rangeDepth: Double) {
-    guard !released else { return }
+    guard !isReleased else { return }
     geigerQueue.async { [weak self] in
       self?.updateGeigerSync(ruleId: ruleId, soundType: soundType, rangeDepth: rangeDepth)
     }
@@ -407,7 +437,7 @@ internal final class AlertAudioPlayer {
     let workItem = DispatchWorkItem { [weak self] in
       guard let self else { return }
       guard let existing = self.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-      self.play(fileName)
+      self.playOnQueue(fileName)
       let interval = self.geigerIntervalMs(rangeDepth: loop.rangeDepth)
       self.scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: interval)
     }
@@ -472,7 +502,7 @@ internal final class AlertAudioPlayer {
   // MARK: - TTS
 
   func speakMessage(_ text: String) {
-    guard !released else { return }
+    guard !isReleased else { return }
     let utterance = AVSpeechUtterance(string: text)
     utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
     utterance.preUtteranceDelay = 0
@@ -485,7 +515,7 @@ internal final class AlertAudioPlayer {
   /// Haptic feedback mirroring Android `vibrate`. A range-less alert triggers a crisp waveform
   /// pattern; a geiger alert scales one-shot intensity with `rangeDepth`.
   func vibrate(rangeDepth: Double?) {
-    guard !released else { return }
+    guard !isReleased else { return }
     #if canImport(UIKit)
     if let rangeDepth {
       let intensity = min(max(rangeDepth, 0.0), 1.0)
@@ -501,16 +531,15 @@ internal final class AlertAudioPlayer {
   // MARK: - Release
 
   func release() {
-    guard !released else { return }
-    released = true
+    guard markReleased() else { return }
     synthesizer.stopSpeaking(at: .immediate)
+    // Everything touching the engine graph or the node bookkeeping runs on `geigerQueue`, so a
+    // completion handler queued behind this block sees the drained state (and a node whose
+    // `engine` is already nil) instead of racing it.
     geigerQueue.sync {
       for loop in geigerLoops.values {
         loop.workItem?.cancel()
-        if let node = loop.sustainedNode {
-          node.stop()
-          detachPlayerNode(node)
-        }
+        stopSustainedPlaybackForLoop(loop)
       }
       geigerLoops.removeAll(keepingCapacity: true)
       for node in activeOneShotNodes {
@@ -518,17 +547,27 @@ internal final class AlertAudioPlayer {
         detachPlayerNode(node)
       }
       activeOneShotNodes.removeAll(keepingCapacity: true)
+      if engine.isRunning { engine.stop() }
+      started = false
+      buffersByFileName.removeAll(keepingCapacity: true)
     }
-    if engine.isRunning { engine.stop() }
-    started = false
     releaseAudioSession()
-    buffersByFileName.removeAll(keepingCapacity: true)
   }
 
   // MARK: - Low-level
 
+  /// Entry point from any thread. Hops to `geigerQueue`, the single owner of the engine graph and
+  /// of `activeOneShotNodes`.
   private func play(_ fileName: String) {
-    guard !released else { return }
+    guard !isReleased else { return }
+    geigerQueue.async { [weak self] in
+      self?.playOnQueue(fileName)
+    }
+  }
+
+  /// Must run on `geigerQueue`.
+  private func playOnQueue(_ fileName: String) {
+    guard !isReleased else { return }
     guard let buffer = buffersByFileName[fileName] else {
       Self.log("AlertAudioPlayer.play: NO BUFFER for \(fileName)")
       return
@@ -554,7 +593,15 @@ internal final class AlertAudioPlayer {
     return node
   }
 
+  /// Detach is idempotent: `release()` and a pending completion handler can both reach the same
+  /// node, and `disconnectNodeOutput` raises an ObjC `NSException` (uncatchable from Swift, so it
+  /// aborts the process) when the node is no longer attached. `node.engine` is the attachment.
+  /// Must run on `geigerQueue`.
   private func detachPlayerNode(_ node: AVAudioPlayerNode) {
+    guard node.engine != nil else {
+      Self.log("AlertAudioPlayer.detachPlayerNode: already detached, skipping")
+      return
+    }
     engine.disconnectNodeOutput(node)
     engine.detach(node)
   }
