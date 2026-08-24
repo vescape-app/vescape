@@ -14,9 +14,9 @@ describe('Mapy.com tile URL config', () => {
     expect(buildMapyTileUrlTemplate('   ')).toBeNull()
   })
 
-  test('builds current Mapy.com outdoor tile template with encoded API key', () => {
+  test('builds current Mapy.com outdoor retina tile template with encoded API key', () => {
     expect(buildMapyTileUrlTemplate(' key with spaces ')).toBe(
-      'https://api.mapy.com/v1/maptiles/outdoor/256/{z}/{x}/{y}?lang=en&apikey=key+with+spaces',
+      'https://api.mapy.com/v1/maptiles/outdoor/256@2x/{z}/{x}/{y}?lang=en&apikey=key+with+spaces',
     )
   })
 })
