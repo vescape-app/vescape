@@ -111,23 +111,23 @@ enum RefloatConfigDecoder {
   private static func readValue(_ bytes: [UInt8], _ field: RefloatConfigSchemaField) throws -> Any {
     switch field.type {
     case .float32:
-      return Double(Float(bitPattern: readUInt32(bytes, field.offset)))
+      return Double(Float(bitPattern: VescNumeric.uint32(bytes, field.offset)))
     case .float32Scaled:
       let scale = try requireScale(field)
-      return Double(Int32(bitPattern: readUInt32(bytes, field.offset))) / scale
+      return Double(Int32(bitPattern: VescNumeric.uint32(bytes, field.offset))) / scale
     case .float32Auto:
-      return float32Auto(bytes, field.offset)
+      return VescNumeric.float32Auto(bytes, field.offset)
     case .float16Scaled:
       let scale = try requireScale(field)
-      return Double(Int16(bitPattern: readUInt16(bytes, field.offset))) / scale
+      return Double(Int16(bitPattern: VescNumeric.uint16(bytes, field.offset))) / scale
     case .int32:
-      return Double(Int32(bitPattern: readUInt32(bytes, field.offset)))
+      return Double(Int32(bitPattern: VescNumeric.uint32(bytes, field.offset)))
     case .uint32:
-      return Double(readUInt32(bytes, field.offset))
+      return Double(VescNumeric.uint32(bytes, field.offset))
     case .int16:
-      return Double(Int16(bitPattern: readUInt16(bytes, field.offset)))
+      return Double(Int16(bitPattern: VescNumeric.uint16(bytes, field.offset)))
     case .uint16:
-      return Double(readUInt16(bytes, field.offset))
+      return Double(VescNumeric.uint16(bytes, field.offset))
     case .int8:
       return Double(Int8(bitPattern: bytes[field.offset]))
     case .uint8:
@@ -144,27 +144,7 @@ enum RefloatConfigDecoder {
     return scale
   }
 
-  private static func float32Auto(_ bytes: [UInt8], _ offset: Int) -> Double {
-    let raw = readUInt32(bytes, offset)
-    let eRaw = (raw >> 23) & 0xff
-    let sigI = raw & 0x7fffff
-    let neg = (raw >> 31) != 0
-    if eRaw == 0 && sigI == 0 { return 0.0 }
-    let sig = Double(sigI) / (8_388_608.0 * 2.0) + 0.5
-    let result = sig * pow(2.0, Double(Int(eRaw) - 126))
-    return neg ? -result : result
-  }
 
-  private static func readUInt16(_ bytes: [UInt8], _ offset: Int) -> UInt16 {
-    (UInt16(bytes[offset]) << 8) | UInt16(bytes[offset + 1])
-  }
-
-  private static func readUInt32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
-    (UInt32(bytes[offset]) << 24)
-      | (UInt32(bytes[offset + 1]) << 16)
-      | (UInt32(bytes[offset + 2]) << 8)
-      | UInt32(bytes[offset + 3])
-  }
 
   private static func sha256(_ bytes: [UInt8]) -> String {
     SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()

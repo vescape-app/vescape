@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.config
 
+import expo.modules.vescapecore.protocol.VescNumeric
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -113,7 +114,7 @@ internal object RefloatConfigDecoder {
     return when (field.type) {
       RefloatConfigValueType.FLOAT32 -> view.float.toDouble()
       RefloatConfigValueType.FLOAT32_SCALED -> view.int / requireScale(field)
-      RefloatConfigValueType.FLOAT32_AUTO -> float32Auto(bytes, field.offset)
+      RefloatConfigValueType.FLOAT32_AUTO -> VescNumeric.float32Auto(bytes, field.offset)
       RefloatConfigValueType.FLOAT16_SCALED -> view.short / requireScale(field)
       RefloatConfigValueType.INT32 -> view.int.toDouble()
       RefloatConfigValueType.UINT32 -> (view.int.toLong() and 0xffffffffL).toDouble()
@@ -127,17 +128,6 @@ internal object RefloatConfigDecoder {
 
   private fun requireScale(field: RefloatConfigSchemaField): Double {
     return field.scale ?: throw RefloatConfigDecodeException("CONFIG_DECODE_FAILED: missing scale for ${field.id}")
-  }
-
-  private fun float32Auto(bytes: ByteArray, offset: Int): Double {
-    val raw = ByteBuffer.wrap(bytes, offset, 4).order(ByteOrder.BIG_ENDIAN).int
-    val eRaw = (raw ushr 23) and 0xff
-    val sigI = raw and 0x7fffff
-    val neg = (raw ushr 31) != 0
-    if (eRaw == 0 && sigI == 0) return 0.0
-    val sig = sigI / (8388608.0 * 2.0) + 0.5
-    val result = sig * Math.pow(2.0, (eRaw - 126).toDouble())
-    return if (neg) -result else result
   }
 
   private fun sha256(bytes: ByteArray): String {
