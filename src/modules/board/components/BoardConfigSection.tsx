@@ -70,21 +70,38 @@ export function onOff(value: BoardConfigValue): string {
 }
 
 /**
- * A read-only window onto part of this Board Session's Refloat config, next to the live telemetry it
+ * The shape this section renders: a decoded field map and how fresh it is. Both Refloat config
+ * (ADR 0035) and VESC motor config (ADR 0036) satisfy it, which is why one component serves both.
+ */
+export interface BoardConfigSectionValues {
+  freshness: 'fresh' | 'last-known'
+  values: Record<string, number | boolean>
+}
+
+/**
+ * A read-only window onto part of this Board Session's config, next to the live telemetry it
  * explains — a footpad chart means little without the voltage the board actually engages at.
  *
- * Every screen passes its own rows, so the same section serves duty, tiltback or fault angles later
- * without a second component. Read-only on purpose: config is written from Tune against the native
- * write base, never from a decoded map (ADR 0035).
+ * Every screen passes its own rows, so the same section serves duty, tiltback or fault angles
+ * without a second component. Pass `values` to render a config other than Refloat's — the motor
+ * temperature screens read VESC motor config, which has its own store. Read-only on purpose: config
+ * is written from Tune against the native write base, never from a decoded map, and motor config is
+ * never written at all.
  */
 export function BoardConfigSection({
   title = 'Board config',
   rows,
+  values: override,
+  empty = 'No config read from this board yet. Connect it to read its setup.',
 }: {
   title?: string
   rows: BoardConfigRow[]
+  /** Defaults to this Board's Refloat config. */
+  values?: BoardConfigSectionValues | null
+  empty?: string
 }) {
-  const values = useBoardConfigFields()
+  const refloat = useBoardConfigFields()
+  const values = override === undefined ? refloat : override
 
   return (
     <View style={styles.section}>
@@ -98,11 +115,7 @@ export function BoardConfigSection({
       />
       <View style={styles.card}>
         {values == null ? (
-          <Placeholder
-            icon={SlidersHorizontalIcon}
-            description="No config read from this board yet. Connect it to read its setup."
-            style={styles.empty}
-          />
+          <Placeholder icon={SlidersHorizontalIcon} description={empty} style={styles.empty} />
         ) : (
           rows.map((row) => {
             const value = values.values[row.id]

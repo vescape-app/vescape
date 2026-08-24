@@ -13,9 +13,9 @@ import {
  * Which Refloat config fields each `/control/<metric>` screen shows beside its live telemetry.
  *
  * One file rather than a list per route: the choice of fields is domain knowledge about what
- * explains a metric, and the routes stay thin. A screen whose metric Refloat has no say over
- * (motor and controller temperature, battery current — VESC motor config, not Refloat) gets no
- * section at all rather than an empty one.
+ * explains a metric, and the routes stay thin. A screen whose metric Refloat has no say over gets no
+ * section here — the temperature screens read VESC motor config instead, from
+ * `motorConfigRows.ts`.
  */
 
 /**

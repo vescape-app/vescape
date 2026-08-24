@@ -1,10 +1,13 @@
+import { useEffect } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import {
   addMotorConfigValuesListener,
+  getLastKnownMotorConfigValues,
   getMotorConfigValues,
   type MotorConfigValues,
 } from 'vescape-core'
+import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /**
  * Dumb JS mirror of the native-owned Motor Config Values (MCCONF) for the current Board Session.
@@ -14,13 +17,45 @@ import {
  */
 interface MotorConfigValuesState {
   values: MotorConfigValues | null
+  /** The durable copy for one Board, loaded on demand for readers that outlive the Board Session. */
+  lastKnown: MotorConfigValues | null
   replace: (values: MotorConfigValues | null) => void
+  loadLastKnown: (boardId: string) => Promise<void>
 }
 
-export const useMotorConfigValuesStore = create<MotorConfigValuesState>((set) => ({
+export const useMotorConfigValuesStore = create<MotorConfigValuesState>((set, get) => ({
   values: null,
+  lastKnown: null,
   replace: (values) => set({ values }),
+  loadLastKnown: async (boardId) => {
+    if (get().lastKnown?.boardId === boardId) return
+    try {
+      const values = await getLastKnownMotorConfigValues(boardId)
+      // A Board switch mid-flight must not land the wrong Board's values.
+      if (values == null || values.boardId === boardId) set({ lastKnown: values })
+    } catch {
+      // Nothing to show is the same outcome as a failed load; the next mount retries.
+    }
+  },
 }))
+
+/**
+ * This Board's motor config as a reader should see it: the live session values, or the durable Last
+ * Known copy while the Board is off.
+ */
+export function useMotorConfigFields(): MotorConfigValues | null {
+  const values = useMotorConfigValuesStore((s) => s.values)
+  const lastKnown = useMotorConfigValuesStore((s) => s.lastKnown)
+  const boardId = useBoardStore((s) => s.activeBoardId)
+  const loadLastKnown = useMotorConfigValuesStore((s) => s.loadLastKnown)
+
+  useEffect(() => {
+    if (values == null && boardId != null) void loadLastKnown(boardId)
+  }, [values, boardId, loadLastKnown])
+
+  if (values != null) return values
+  return lastKnown?.boardId === boardId ? lastKnown : null
+}
 
 /**
  * Wire the native → JS Motor Config Values mirror. Call once at app root; returns an unsubscribe.
