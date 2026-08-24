@@ -113,10 +113,13 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
       const headingDeg = deadBandPhoneHeading(headingDegRef.current, rawHeadingDeg)
       if (headingDeg === headingDegRef.current) return
 
+      // Until the first heading arrives the collection is empty and there is no cone to pin, so
+      // that one write has to happen even while following.
+      const hadHeading = headingDegRef.current != null
       headingDegRef.current = headingDeg
       onHeadingChangeRef.current(headingDeg)
 
-      if (followCameraRef.current) {
+      if (followCameraRef.current && hadHeading) {
         // The cone is pinned to the viewport while following, so its shape does not depend on the
         // heading — see `phoneHeadingShape`. Rewriting the source per sample re-serialized and
         // re-tiled a feature collection that had not changed, sixty times a second, in the one mode
@@ -127,8 +130,11 @@ export const PhoneHeadingMapLayer = memo(function PhoneHeadingMapLayer({
 
       sourceRef.current?.setNativeProps({
         id: 'center-phone-heading-source',
-        shape: JSON.stringify(phoneHeadingShape(coordinateRef.current, headingDeg, false)),
+        shape: JSON.stringify(
+          phoneHeadingShape(coordinateRef.current, headingDeg, followCameraRef.current),
+        ),
       })
+      if (followCameraRef.current) onFollowHeadingRef.current(headingDeg)
     }).then((subscription) => {
       if (disposed) {
         subscription.remove()
