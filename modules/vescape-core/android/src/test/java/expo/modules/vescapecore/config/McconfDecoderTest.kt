@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The fixture is the real head of a `COMM_GET_MCCONF` response captured from a Floatwheel ADV2 on
+ * The fixture is the real head of a `COMM_GET_MCCONF` response captured from a Thor301 on
  * 2026-08-24, and the expected values are what VESC Tool showed for that board at the same moment.
  * It is the only check that the generated offsets describe an actual blob rather than our reading of
  * firmware source.

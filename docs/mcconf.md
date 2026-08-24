@@ -7,7 +7,7 @@ Unlike Refloat config, **the board serves no schema for it** — there is no XML
 must come from a layout the app carries. This document records how that layout is obtained, what it
 looks like, and which parts of it are safe across firmware versions.
 
-Status: **verified against hardware.** A one-shot probe read the blob off a Floatwheel ADV2 on
+Status: **verified against hardware.** A one-shot probe read the blob off a Thor301 on
 2026-08-24 and every decoded value matched VESC Tool. No production MCCONF read is implemented yet.
 
 ## The blob is self-versioning
@@ -46,7 +46,7 @@ no `6.05` tag in the repo.
 
 ## Confirmed against a real board
 
-A Floatwheel ADV2 answered `COMM_GET_MCCONF` **directly, not CAN-forwarded**, with a 477-byte body:
+A Thor301 answered `COMM_GET_MCCONF` **directly, not CAN-forwarded**, with a 477-byte body:
 
 ```
 signature = 1065524471 (0x3F829CF7)   -> release_6_05, exact match
@@ -59,8 +59,19 @@ Temperature page exactly — `l_temp_fet_start` 70 °C, `l_temp_fet_end` 80 °C,
 too (160 A phase, 70 A battery, −45 A regen, 240 A abs max, ±18000 erpm, 38–97 V, 54/50 V cutoff),
 so the offsets are right across the whole prefix, not just at the fields we were checking.
 
-This settles the open risk that a vendor board would report an unknown signature. It does not: the
-ADV2 runs stock-layout 6.05 despite its ESP32 BLE bridge.
+A second probe decoded the whole 477-byte blob — all 196 fields — and the tail holds up. The
+strongest evidence is internal rather than eyeballed: `si_battery_cells` (20) sits near byte 460 while
+`l_battery_cut_start` (54.0 V) and `l_battery_cut_end` (50.0 V) sit at bytes 54 and 56, and
+20 × 2.7 V and 20 × 2.5 V reproduce them exactly. A misaligned tail cannot manufacture that agreement.
+`foc_offsets_current` reading 2039/2052/2041 around the 2048 ADC midpoint and a canonical
+`255,1,3,2,5,6,4,255` hall table point the same way, and no field decoded to an implausible value.
+
+The Thor301 answered directly rather than through `COMM_FORWARD_CAN`, unlike the telemetry commands
+documented in [vescProtocol](./vescProtocol.md) for bridged setups. The read path must handle both
+framings rather than assuming either.
+
+One vendor controller reporting a stock signature is weak evidence about vendor firmware generally —
+it narrows nothing. Treat an unknown signature as the expected case it always was.
 
 ## Two traps that make hand-derivation mandatory
 
