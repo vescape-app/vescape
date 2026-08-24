@@ -29,28 +29,25 @@ export function getSatelliteImageryPaint(
   }
 }
 
+/**
+ * The imagery raster is deliberately absent: it is mounted as an owned `RasterSource`/`RasterLayer`
+ * child instead (see `SatelliteImageryLayer`). Adopting a style-JSON layer through `existing` does
+ * not receive paint updates on iOS in Release builds (#423), so the style owns only the backdrop,
+ * street lines, and labels, and the imagery stays a first-class layer we control.
+ */
 export function getSatelliteDarkMapStyle(
-  imageryOpacity = DEFAULT_SATELLITE_IMAGERY_OPACITY,
   showPoiLabels = true,
   showPoiIcons = true,
   showDistrictLabels = true,
   showStreetLines = false,
-  imagerySaturation = DEFAULT_SATELLITE_IMAGERY_SATURATION,
   streetLineOpacity = 0.8,
 ) {
-  const satelliteImageryPaint = getSatelliteImageryPaint(imageryOpacity, imagerySaturation)
-
   return JSON.stringify({
     version: 8,
     name: 'Satellite Dark',
     sprite: 'mapbox://sprites/mapbox/satellite-streets-v12',
     glyphs: 'mapbox://fonts/mapbox/{fontstack}/{range}.pbf',
     sources: {
-      satellite: {
-        type: 'raster',
-        url: 'mapbox://mapbox.satellite',
-        tileSize: 256,
-      },
       composite: {
         type: 'vector',
         url: 'mapbox://mapbox.mapbox-streets-v8',
@@ -61,16 +58,6 @@ export function getSatelliteDarkMapStyle(
         id: 'background',
         type: 'background',
         paint: { 'background-color': theme.palette.slate.surfaceDeep },
-      },
-      {
-        id: 'satellite',
-        type: 'raster',
-        source: 'satellite',
-        paint: {
-          'raster-opacity': satelliteImageryPaint.rasterOpacity,
-          'raster-saturation': satelliteImageryPaint.rasterSaturation,
-          'raster-contrast': satelliteImageryPaint.rasterContrast,
-        },
       },
       ...satelliteStreetLineLayers(showStreetLines, streetLineOpacity),
       {
