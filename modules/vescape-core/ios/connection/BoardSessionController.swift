@@ -923,6 +923,8 @@ internal final class BoardSessionController: VescGattListener {
     cellSpreadDetector.reset()
     batteryConfigMismatchDetector.reset()
     boardConfigReadScheduled = false
+    motorConfigRequested = false
+    motorConfigValues = nil
     vescLiveFirmware = nil
     self.config = config
     // Something to show before the fresh read lands: the cache for this Board + Refloat base
@@ -1268,6 +1270,7 @@ internal final class BoardSessionController: VescGattListener {
     boardConfigValues = boardConfigValues?.demotedToProvisional()
     // Re-arm the post-trust read so the relinked session gets fresh values back.
     boardConfigReadScheduled = false
+    motorConfigRequested = false
 
     sessionSequence += 1
     session = BoardSession(id: sessionSequence)
@@ -1420,6 +1423,10 @@ internal final class BoardSessionController: VescGattListener {
       handleBms(Array(payload[2...]))
     case COMM_FORWARD_CAN where payload.count >= 3 && Int(payload[2]) == COMM_FW_VERSION:
       handleFwVersion(Array(payload[2...]))
+    case COMM_GET_MCCONF:
+      handleMcconfPayload(Array(payload[1...]))
+    case COMM_FORWARD_CAN where payload.count >= 4 && Int(payload[2]) == COMM_GET_MCCONF:
+      handleMcconfPayload(Array(payload[3...]))
     default:
       break
     }
@@ -1574,7 +1581,47 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `triggerBoardConfigRead`
   private func triggerBoardConfigRead(_ session: BoardSession) {
     guard session === self.session, session.isActive, let config else { return }
-    configController.consumeRead(connection: configConnection(config), onSuccess: { _ in }, onError: { _, _ in })
+    configController.consumeRead(
+      connection: configConnection(config),
+      onSuccess: { [weak self, weak session] _ in
+        guard let self, let session else { return }
+        self.requestMotorConfig(session)
+      },
+      onError: { [weak self, weak session] _, _ in
+        guard let self, let session else { return }
+        self.requestMotorConfig(session)
+      }
+    )
+  }
+
+  /// Ask the controller for its motor config (MCCONF) once per Board Session. Deliberately sequenced
+  /// after the Refloat read rather than beside it: both are multi-packet transfers over one BLE link,
+  /// and the Refloat read owns the polling pause while it runs.
+  ///
+  /// Unlike the Refloat read this is optional — the board serves no schema for MCCONF, so an
+  /// unrecognized signature is an ordinary outcome that decodes nothing and never blocks the link
+  /// (ADR 0036).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `requestMotorConfig`
+  private func requestMotorConfig(_ session: BoardSession) {
+    guard session === self.session, session.isActive, !motorConfigRequested, let config else { return }
+    motorConfigRequested = true
+    _ = transport.sendPayload(config.transport.frame([UInt8(COMM_GET_MCCONF)]))
+  }
+
+  /// - Parameter body: the MCCONF response with its framing (and CAN wrapper) already stripped.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `handleMcconfPayload`
+  private func handleMcconfPayload(_ body: [UInt8]) {
+    switch McconfDecoder.decode(body) {
+    case .decoded(let signature, let firmware, let values):
+      motorConfigValues = values
+      NSLog("MCCONF decoded: \(firmware) signature=\(signature) fields=\(values.count)")
+    // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
+    // Report the signature so a table can be generated for it; decode nothing.
+    case .unknownSignature(let signature, let byteCount):
+      NSLog("MCCONF signature \(signature) has no layout (\(byteCount) bytes)")
+    case .malformed(let reason):
+      NSLog("MCCONF malformed: \(reason)")
+    }
   }
 
   /// Battery-detail focus/blur intent from JS. Focus flips the gate open and immediately pushes
@@ -1647,6 +1694,12 @@ internal final class BoardSessionController: VescGattListener {
 
   private var lastEmittedLinkIntegrity: LinkIntegrity = .unknown
   private var boardConfigReadScheduled = false
+  private var motorConfigRequested = false
+
+  /// This Board Session's decoded motor config, keyed by firmware field id, or nil while none has
+  /// been decoded — no layout for the board's signature is a normal reason for that.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `motorConfigValues`
+  private var motorConfigValues: [String: Double]?
   /// This Board Session's Board Config Values: `fresh` once the post-trust read lands, `lastKnown`
   /// while it is the cache restored on connect. Native-owned truth; JS mirrors it through
   /// `getBoardConfigValues` + `onBoardConfigValues`.

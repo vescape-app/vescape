@@ -21,6 +21,7 @@ import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
 import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
+import expo.modules.vescapecore.protocol.COMM_GET_MCCONF
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
@@ -38,6 +39,8 @@ import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.location.LocationTracker
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
+import expo.modules.vescapecore.config.McconfDecodeResult
+import expo.modules.vescapecore.config.McconfDecoder
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.service.PendingStart
 import expo.modules.vescapecore.protocol.REFLOAT_GET_INFO
@@ -502,6 +505,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             boardConfigValues = boardConfigValues?.demotedToProvisional()
             // Re-arm the post-trust read so the relinked session gets fresh values back.
             boardConfigReadScheduled = false
+            motorConfigRequested = false
             boardError = reason
             transitionBoardPhase(
                 next = BoardPhase.Reconnecting,
@@ -1055,6 +1059,8 @@ private var wearAutoLaunchOnConnect = true
         batteryConfigMismatchDetector.reset()
         warningFailuresReported.clear()
         boardConfigReadScheduled = false
+        motorConfigRequested = false
+        motorConfigValues = null
         // No re-clear here: `stopCurrentBoardSession` above already nulled the held values, and the
         // setter emits on every assignment — a second null would send a duplicate bridge event on
         // every connection. Mirrors iOS, which assigns the restored value once.
@@ -1319,6 +1325,7 @@ private var wearAutoLaunchOnConnect = true
                 ConfigRWEvent.ConfigBytesPayloadReceived(payload, nowMs()),
             )
             COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+            COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
                 if (payload.size >= 3) {
                     when (payload[2].toInt() and 0xff) {
@@ -1330,6 +1337,7 @@ private var wearAutoLaunchOnConnect = true
                             ConfigRWEvent.ConfigBytesPayloadReceived(payload, nowMs()),
                         )
                         COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+                        COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
                     }
                 }
             }
@@ -1621,7 +1629,52 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun triggerBoardConfigRead(session: BoardSession) {
         if (!isCurrentBoardSession(session)) return
-        configController.consumeRead(PendingConfigRead(onSuccess = {}, onError = { _, _ -> }))
+        configController.consumeRead(
+            PendingConfigRead(
+                onSuccess = { requestMotorConfig(session) },
+                onError = { _, _ -> requestMotorConfig(session) },
+            ),
+        )
+    }
+
+    /**
+     * Ask the controller for its motor config (MCCONF) once per Board Session. Deliberately sequenced
+     * after the Refloat read rather than beside it: both are multi-packet transfers over one BLE link,
+     * and the Refloat read owns the polling pause while it runs.
+     *
+     * Unlike the Refloat read this is optional — the board serves no schema for MCCONF, so an
+     * unrecognized signature is an ordinary outcome that decodes nothing and never blocks the link
+     * (ADR 0036).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `requestMotorConfig`
+     */
+    private fun requestMotorConfig(session: BoardSession) {
+        if (!isCurrentBoardSession(session) || motorConfigRequested) return
+        val transport = currentBoardTransport() ?: return
+        motorConfigRequested = true
+        sendPayloadWithRetry(transport.frame(byteArrayOf(COMM_GET_MCCONF.toByte())), session)
+    }
+
+    /**
+     * @param body the MCCONF response with its framing (and CAN wrapper) already stripped.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handleMcconfPayload`
+     */
+    private fun handleMcconfPayload(body: ByteArray) {
+        when (val result = McconfDecoder.decode(body)) {
+            is McconfDecodeResult.Decoded -> {
+                motorConfigValues = result.values
+                Log.i(
+                    VESC_SESSION_TAG,
+                    "MCCONF decoded: ${result.firmware} signature=${result.signature} fields=${result.values.size}",
+                )
+            }
+            // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
+            // Report the signature so a table can be generated for it; decode nothing.
+            is McconfDecodeResult.UnknownSignature -> Log.w(
+                VESC_SESSION_TAG,
+                "MCCONF signature ${result.signature} has no layout (${result.byteCount} bytes)",
+            )
+            is McconfDecodeResult.Malformed -> Log.w(VESC_SESSION_TAG, "MCCONF malformed: ${result.reason}")
+        }
     }
 
     /**
@@ -1703,6 +1756,14 @@ private var wearAutoLaunchOnConnect = true
 
     private var lastEmittedLinkIntegrity = LinkIntegrity.Unknown
     private var boardConfigReadScheduled = false
+    private var motorConfigRequested = false
+
+    /**
+     * This Board Session's decoded motor config, keyed by firmware field id, or null while none has
+     * been decoded — no layout for the board's signature is a normal reason for that.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValues`
+     */
+    private var motorConfigValues: Map<String, Double>? = null
 
     /**
      * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `LAST_KNOWN`
