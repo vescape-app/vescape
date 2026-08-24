@@ -114,6 +114,14 @@ Rules:
 - `src/app/` — Expo Router routes only. Thin re-exports from modules/screens.
 - `src/constants/` — `theme.ts` only. `src/config/`, `src/navigation/` — static defs.
 
+## Docs
+
+`docs/index.md` maps every document in `docs/` — platform, protocol, features, performance, and the
+agent guides. Read it before assuming something is undocumented; the rules that always apply are in
+this file, the depth is there.
+
+Root `CONTEXT.md` holds the domain language and `docs/adr/` the decisions behind it.
+
 ## React Native
 
 React Native UI conventions, including icon usage, live in `docs/agents/react.md`.
