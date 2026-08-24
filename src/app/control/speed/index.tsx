@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { SPEED_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
@@ -9,6 +10,7 @@ import {
   toChartSeries,
   toLiveChart,
 } from '@/modules/board/components/metricDetailData'
+import { SPEED_MOTOR_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   useLiveMetric,
@@ -49,6 +51,7 @@ export default function SpeedScreen() {
     >
       <LiveChartStack charts={charts} />
       <BoardConfigSection rows={SPEED_CONFIG_ROWS} />
+      <MotorConfigSection rows={SPEED_MOTOR_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

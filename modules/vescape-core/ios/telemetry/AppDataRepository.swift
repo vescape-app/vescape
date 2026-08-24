@@ -112,9 +112,9 @@ final class AppDataRepository {
       ("batteryConfig", Self.normalizeBatteryConfig(board["batteryConfig"] ?? nil)),
       ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
-      ("alertPreset", Self.normalizeAlertPreset(board["alertPreset"] ?? nil)),
+      ("alertPreset", Self.normalizeMetricBag(board["alertPreset"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
-      ("matchDutyBoardConfig", board["matchDutyBoardConfig"] as? Bool),
+      ("matchBoardConfig", Self.normalizeMetricBag(board["matchBoardConfig"] ?? nil)),
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
@@ -200,7 +200,7 @@ final class AppDataRepository {
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPreset": values["alertPreset"],
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
-      "matchDutyBoardConfig": values["matchDutyBoardConfig"] ?? false,
+      "matchBoardConfig": values["matchBoardConfig"] ?? nil,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
     ]
@@ -226,11 +226,11 @@ final class AppDataRepository {
     case "topSpeedKmh":
       return topSpeedKmh(raw)
     case "alertPreset":
-      return normalizeAlertPreset(raw)
+      return normalizeMetricBag(raw)
     case "alertPresetsOnboarded":
       return raw as? Bool
-    case "matchDutyBoardConfig":
-      return raw as? Bool
+    case "matchBoardConfig":
+      return normalizeMetricBag(raw)
     case "legalMode":
       return normalizeLegalMode(raw)
     default:
@@ -238,10 +238,11 @@ final class AppDataRepository {
     }
   }
 
-  /// Durable Alert Preset per-metric level selection bag. JS owns behavior; native persists it as an
-  /// opaque object. Non-object/empty payloads normalize away (row removed).
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeAlertPreset`
-  private static func normalizeAlertPreset(_ raw: Any?) -> [String: Any]? {
+  /// A durable per-metric Alert Preset bag — the level selection, and which metrics match the
+  /// board's own configuration. JS owns behavior; native persists each as an opaque object.
+  /// Non-object/empty payloads normalize away (row removed).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeMetricBag`
+  private static func normalizeMetricBag(_ raw: Any?) -> [String: Any]? {
     guard let map = raw as? [String: Any], !map.isEmpty else { return nil }
     return map
   }

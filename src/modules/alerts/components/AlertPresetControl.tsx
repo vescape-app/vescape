@@ -23,11 +23,17 @@ import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
+  ALERT_PRESET_CONFIG_MATCH,
   describeAlertPreset,
-  generateAlertPresetRules,
+  resolvedAlertPresetRules,
+  supportsBoardConfigMatch,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
+import {
+  resolveConfigRelativeBase,
+  type BoardConfigBases,
+} from '@/modules/alerts/lib/configRelativeFields'
 import { theme } from '@/constants/theme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 
@@ -122,9 +128,11 @@ interface AlertPresetControlProps {
   boardTopSpeedKmh?: number | null
   /** Whether the active board has a valid battery config (battery markers need one). */
   hasBatteryConfig?: boolean
-  matchDutyBoardConfig?: boolean
-  onMatchDutyBoardConfigChange?: (enabled: boolean) => void
-  tiltbackDuty?: number | null
+  /** Metrics whose preset follows the board's own configuration. */
+  matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
+  onMatchBoardConfigChange?: (enabled: boolean) => void
+  /** The board's decoded configs, for resolving what a matched preset lands on right now. */
+  configBases?: BoardConfigBases
   /** Custom (non-preset) alert markers layered onto the same gauge alongside the preset markers. */
   customAlerts?: DualGaugeAlert[]
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
@@ -149,9 +157,9 @@ export function AlertPresetControl({
   liveValue,
   boardTopSpeedKmh,
   hasBatteryConfig,
-  matchDutyBoardConfig = false,
-  onMatchDutyBoardConfigChange,
-  tiltbackDuty,
+  matchBoardConfig,
+  onMatchBoardConfigChange,
+  configBases,
   customAlerts,
   hotRange,
   disabled,
@@ -167,11 +175,13 @@ export function AlertPresetControl({
       : gauge.defaultMax
 
   const alerts = useMemo<DualGaugeAlert[]>(() => {
-    const specs = generateAlertPresetRules(metric, level, {
+    // Dormant config-relative specs are already filtered out: a preset waiting on a config the
+    // board has not supplied has no number to draw, and a placeholder would draw at zero.
+    const specs = resolvedAlertPresetRules(metric, level, {
       boardTopSpeedKmh,
       hasBatteryConfig,
-      matchDutyBoardConfig,
-      tiltbackDuty,
+      matchBoardConfig,
+      configBases,
     })
     // Preset markers come straight from the pure generator (instant + atomic as the slider
     // moves, no store round-trip flicker); custom markers layer on top from the caller.
@@ -201,8 +211,8 @@ export function AlertPresetControl({
     level,
     boardTopSpeedKmh,
     hasBatteryConfig,
-    matchDutyBoardConfig,
-    tiltbackDuty,
+    matchBoardConfig,
+    configBases,
     gauge,
     customAlerts,
   ])
@@ -222,7 +232,12 @@ export function AlertPresetControl({
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
   // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
-  const description = describeAlertPreset(metric, level, { boardTopSpeedKmh, hasBatteryConfig })
+  const description = describeAlertPreset(metric, level, {
+    boardTopSpeedKmh,
+    hasBatteryConfig,
+    matchBoardConfig,
+    configBases,
+  })
 
   return (
     <View style={styles.container}>
@@ -253,11 +268,12 @@ export function AlertPresetControl({
         />
       </View>
       {description ? <Text style={styles.description}>{description}</Text> : null}
-      {metric === 'duty' && !isCustom ? (
-        <DutyMatchControl
-          checked={matchDutyBoardConfig}
-          tiltbackDuty={tiltbackDuty}
-          onChange={onMatchDutyBoardConfigChange}
+      {supportsBoardConfigMatch(metric) && !isCustom ? (
+        <BoardConfigMatchControl
+          metric={metric}
+          checked={matchBoardConfig?.[metric] === true}
+          configBases={configBases}
+          onChange={onMatchBoardConfigChange}
         />
       ) : null}
       <View style={styles.levelRow}>
@@ -279,24 +295,40 @@ export function AlertPresetControl({
   )
 }
 
-function DutyMatchControl({
+/**
+ * Per-metric wording for the match note. The board's setting has a different name on every metric,
+ * and "follows the board" alone does not tell a rider *which* number moved.
+ */
+const MATCH_SUBJECT: Partial<Record<AlertPresetMetric, string>> = {
+  duty: 'duty pushback',
+  'motor-temp': 'motor temperature limiting',
+  'controller-temp': 'controller temperature limiting',
+}
+
+/**
+ * Opt one metric's preset into following the board's own configuration. The note underneath states
+ * the number being followed, because that is the whole promise of the checkbox — and says plainly
+ * when there is no such number, since a ticked box with nothing behind it means a silent preset.
+ */
+function BoardConfigMatchControl({
+  metric,
   checked,
-  tiltbackDuty,
+  configBases,
   onChange,
 }: {
+  metric: AlertPresetMetric
   checked: boolean
-  tiltbackDuty?: number | null
+  configBases?: BoardConfigBases
   onChange?: (enabled: boolean) => void
 }) {
-  const valid =
-    typeof tiltbackDuty === 'number' &&
-    Number.isFinite(tiltbackDuty) &&
-    tiltbackDuty > 0 &&
-    tiltbackDuty < 1
+  const fieldId = ALERT_PRESET_CONFIG_MATCH[metric]?.fieldId
+  const base = fieldId == null ? null : resolveConfigRelativeBase(fieldId, configBases ?? {})
+  const subject = MATCH_SUBJECT[metric] ?? 'configuration'
   let note: string | null = null
-  if (checked && valid) note = `Follows VESC duty pushback (${Math.round(tiltbackDuty * 100)}%).`
-  else if (checked)
-    note = 'VESC duty pushback is unavailable or disabled. This preset stays inactive.'
+  if (checked && base != null) {
+    note = `Follows VESC ${subject} (${PRESET_GAUGE[metric].formatMarker(base)}).`
+  } else if (checked)
+    note = `VESC ${subject} is unavailable or disabled. This preset stays inactive.`
   return (
     <View>
       <Pressable

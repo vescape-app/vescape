@@ -2,10 +2,11 @@ import type { AlertTestRule } from 'vescape-core'
 
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import {
-  generateAlertPresetRules,
+  resolvedAlertPresetRules,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
+import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
 
 interface AlertTestRuleSource {
   metric: AlertPresetMetric
@@ -13,8 +14,8 @@ interface AlertTestRuleSource {
   customRules: DraftAlertRule[]
   boardTopSpeedKmh: number
   hasBatteryConfig: boolean
-  matchDutyBoardConfig?: boolean
-  tiltbackDuty?: number | null
+  matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
+  configBases?: BoardConfigBases
 }
 
 interface MetricAlertRuleSnapshotSource {
@@ -23,8 +24,8 @@ interface MetricAlertRuleSnapshotSource {
   rules: DraftAlertRule[]
   boardTopSpeedKmh: number
   hasBatteryConfig: boolean
-  matchDutyBoardConfig?: boolean
-  tiltbackDuty?: number | null
+  matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
+  configBases?: BoardConfigBases
 }
 
 /** Cubic ease-out: reach the alert range early, then decelerate without extending the sweep. */
@@ -55,18 +56,19 @@ export function buildAlertTestRules({
   customRules,
   boardTopSpeedKmh,
   hasBatteryConfig,
-  matchDutyBoardConfig,
-  tiltbackDuty,
+  matchBoardConfig,
+  configBases,
 }: AlertTestRuleSource): AlertTestRule[] {
   if (level === 'custom') {
     return customRules.filter((rule) => rule.enabled).map(toTestRule)
   }
 
-  const presetRules = generateAlertPresetRules(metric, level, {
+  // Dormant config-relative rules are left out: they have no threshold to test or draw.
+  const presetRules = resolvedAlertPresetRules(metric, level, {
     boardTopSpeedKmh,
     hasBatteryConfig,
-    matchDutyBoardConfig,
-    tiltbackDuty,
+    matchBoardConfig,
+    configBases,
   }).map((rule, index) => ({
     id: `alert-test:preset:${metric}:${index}`,
     ...rule,
@@ -87,8 +89,8 @@ export function buildMetricAlertRuleSnapshot({
   rules,
   boardTopSpeedKmh,
   hasBatteryConfig,
-  matchDutyBoardConfig,
-  tiltbackDuty,
+  matchBoardConfig,
+  configBases,
 }: MetricAlertRuleSnapshotSource): AlertTestRule[] {
   if (!metric) return rules.filter((rule) => rule.enabled).map(toTestRule)
   return buildAlertTestRules({
@@ -97,8 +99,8 @@ export function buildMetricAlertRuleSnapshot({
     customRules: rules,
     boardTopSpeedKmh,
     hasBatteryConfig,
-    matchDutyBoardConfig,
-    tiltbackDuty,
+    matchBoardConfig,
+    configBases,
   })
 }
 

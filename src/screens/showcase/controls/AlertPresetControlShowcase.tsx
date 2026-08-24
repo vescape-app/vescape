@@ -40,6 +40,12 @@ const PRESET_DEMO_CUSTOM_ALERTS: Record<AlertPresetMetric, { id: string; thresho
   'controller-temp': [{ id: 'demo-controller', threshold: 78 }],
 }
 
+/** Stand-in board configs so the match toggle resolves to real numbers with no board connected. */
+const SHOWCASE_CONFIG_BASES = {
+  refloat: { tiltback_duty: 0.82 },
+  motor: { l_temp_fet_start: 85, l_temp_motor_start: 100 },
+}
+
 export function AlertPresetControlShowcase() {
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
@@ -47,7 +53,7 @@ export function AlertPresetControlShowcase() {
   const [custom, setCustom] = useState(false)
   const [editable, setEditable] = useState(true)
   const [disabled, setDisabled] = useState(false)
-  const [matchDuty, setMatchDuty] = useState(false)
+  const [match, setMatch] = useState(false)
   const liveValue = useSharedValue<number | null>(null)
   const testRules = useMemo(
     () =>
@@ -56,8 +62,8 @@ export function AlertPresetControlShowcase() {
         level,
         boardTopSpeedKmh: 50,
         hasBatteryConfig: true,
-        matchDutyBoardConfig: matchDuty,
-        tiltbackDuty: 0.82,
+        matchBoardConfig: { [metric]: match },
+        configBases: SHOWCASE_CONFIG_BASES,
         customRules:
           level === 'custom'
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
@@ -72,7 +78,7 @@ export function AlertPresetControlShowcase() {
               }))
             : [],
       }),
-    [level, matchDuty, metric],
+    [level, match, metric],
   )
 
   useEffect(() => {
@@ -104,7 +110,7 @@ export function AlertPresetControlShowcase() {
           <ToggleRow label="custom markers" value={custom} onToggle={setCustom} />
           <ToggleRow label="editable" value={editable} onToggle={setEditable} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
-          <ToggleRow label="match VESC duty" value={matchDuty} onToggle={setMatchDuty} />
+          <ToggleRow label="match VESC config" value={match} onToggle={setMatch} />
         </>
       }
     >
@@ -115,9 +121,9 @@ export function AlertPresetControlShowcase() {
         liveValue={live ? liveValue : undefined}
         boardTopSpeedKmh={50}
         hasBatteryConfig
-        matchDutyBoardConfig={matchDuty}
-        onMatchDutyBoardConfigChange={setMatchDuty}
-        tiltbackDuty={0.82}
+        matchBoardConfig={{ [metric]: match }}
+        onMatchBoardConfigChange={setMatch}
+        configBases={SHOWCASE_CONFIG_BASES}
         customAlerts={
           custom
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((a) => ({ ...a, thresholdMax: null }))

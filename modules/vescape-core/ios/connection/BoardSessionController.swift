@@ -1729,7 +1729,13 @@ internal final class BoardSessionController: VescGattListener {
   /// been decoded — no layout for the board's signature is a normal reason for that.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `motorConfigValues`
   private var motorConfigValues: MotorConfigValues? {
-    didSet { emit?("onMotorConfigValues", ["values": motorConfigValues?.toBridgeMap()]) }
+    didSet {
+      // Config-relative Alert Rules may anchor to MCCONF fields (temperature cutoffs), so the
+      // engine follows this value the same way it follows the Refloat config.
+      let motorValues: [String: Any] = motorConfigValues?.values ?? [:]
+      alertCoordinator.updateMotorConfigValues(motorValues)
+      emit?("onMotorConfigValues", ["values": motorConfigValues?.toBridgeMap()])
+    }
   }
 
   /// The held Motor Config Values in bridge shape, or nil when none are held.

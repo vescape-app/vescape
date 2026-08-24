@@ -136,10 +136,24 @@ Runtime behavior:
 
 ## Alert Presets
 
-Presets generate Alert Rules in JS. Fixed rules carry concrete thresholds; opt-in Duty presets carry
-a durable `tiltback_duty` relationship. Native resolves that fraction to percent from Last Known
-Board Config Values and follows fresh reads/writes without rewriting the rule. Missing, invalid, or
-disabled (`1.0`) duty pushback leaves the relationship inactive.
+Presets generate Alert Rules in JS. Fixed rules carry concrete thresholds; a preset the rider opts
+into matching carries a durable relationship to a board config field instead. Native resolves that
+field from Last Known Board Config Values (Refloat) or Last Known Motor Config Values (MCCONF) and
+follows fresh reads/writes without rewriting the rule.
+
+Per-metric opt-in, persisted in the Board's `matchBoardConfig` bag:
+
+| metric            | field                | config  | units    |
+| ----------------- | -------------------- | ------- | -------- |
+| `duty`            | `tiltback_duty`      | Refloat | fraction |
+| `motor-temp`      | `l_temp_motor_start` | MCCONF  | °C       |
+| `controller-temp` | `l_temp_fet_start`   | MCCONF  | °C       |
+
+What a field id means — which config it lives in, its scale, and the value at which the board's own
+protection is off (duty `1.0`) — is a property of the field, not of the rule, so it lives in one
+table mirrored across TS and both platforms (`configRelativeFields`) rather than on every row. A
+field that is missing, unread, or disabled leaves the relationship inactive: the rule persists, and
+neither a sound nor a gauge marker comes from it until the board supplies a value.
 
 A rider picks one **level** per **metric**; `generateAlertPresetRules` (`src/modules/alerts/lib/alertPresets.ts`)
 deterministically expands `(metric, level, options)` into concrete rule specs the Alert Preset store

@@ -13,8 +13,8 @@ import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetContr
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
+import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
 
 /** Structural mirror of the gauge hot-range span; keeps this module clear of the history module. */
 interface MetricAlertsHotRange {
@@ -51,10 +51,7 @@ export function MetricAlerts({
   ruleSnapshot,
 }: MetricAlertsProps) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
-  const tiltbackDuty = useBoardConfigValuesStore((s) => {
-    const value = s.values?.values.tiltback_duty
-    return typeof value === 'number' ? value : null
-  })
+  const configBases = useBoardConfigBases()
 
   const batteryConfig = useBatteryConfig(controller?.controlId)
   const customMarkers = useMemo<DualGaugeAlert[]>(
@@ -78,11 +75,11 @@ export function MetricAlerts({
             rules: controller.rules,
             boardTopSpeedKmh: controller.topSpeedKmh,
             hasBatteryConfig: controller.hasBatteryConfig,
-            matchDutyBoardConfig: controller.matchDutyBoardConfig,
-            tiltbackDuty,
+            matchBoardConfig: controller.matchBoardConfig,
+            configBases,
           })
         : [],
-    [controller, tiltbackDuty],
+    [controller, configBases],
   )
   const visibleRuleSnapshot = ruleSnapshot ?? derivedRuleSnapshot
 
@@ -103,9 +100,9 @@ export function MetricAlerts({
           liveValue={liveValue}
           boardTopSpeedKmh={controller.topSpeedKmh}
           hasBatteryConfig={hasBatteryConfig}
-          matchDutyBoardConfig={controller.matchDutyBoardConfig}
-          onMatchDutyBoardConfigChange={controller.setMatchDutyBoardConfig}
-          tiltbackDuty={tiltbackDuty}
+          matchBoardConfig={controller.matchBoardConfig}
+          onMatchBoardConfigChange={controller.setMatchBoardConfig}
+          configBases={configBases}
           customAlerts={customMarkers}
           hotRange={hotRange}
           disabled={batteryBlocked}

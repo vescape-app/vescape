@@ -192,8 +192,12 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
     private val lastFiredAt = HashMap<String, Long>()
     private val armedState = HashMap<String, Boolean>()
     private var configValues: Map<String, Any> = emptyMap()
+    private var motorConfigValues: Map<String, Any> = emptyMap()
 
     fun updateBoardConfigValues(values: Map<String, Any>) { configValues = values }
+
+    /** VESC motor config (MCCONF), the other half of what a config-relative rule may anchor to. */
+    fun updateMotorConfigValues(values: Map<String, Any>) { motorConfigValues = values }
 
     /** Forget every latch and repeat clock. Called when a new Board Session starts. */
     fun resetAlertState() {
@@ -306,10 +310,8 @@ internal class AlertEngine(private val now: () -> Long = { System.currentTimeMil
 
     private fun effectiveThresholds(rule: AlertRuleEntity): Pair<Double, Double?>? {
         if (rule.thresholdKind != "config-relative") return rule.threshold to rule.thresholdMax
-        val base = (configValues[rule.configFieldId] as? Number)?.toDouble() ?: return null
-        if (!base.isFinite() || base <= 0.0 || base >= 1.0) return null
-        val percent = base * 100.0
-        return (percent + (rule.thresholdOffset ?: return null)) to rule.thresholdMaxOffset?.let { percent + it }
+        val base = resolveConfigRelativeBase(rule.configFieldId, configValues, motorConfigValues) ?: return null
+        return (base + (rule.thresholdOffset ?: return null)) to rule.thresholdMaxOffset?.let { base + it }
     }
 
     /**

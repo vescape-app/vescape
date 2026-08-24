@@ -911,7 +911,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "topSpeedKmh" to (values["topSpeedKmh"] ?: DEFAULT_TOP_SPEED_KMH),
     "alertPreset" to values["alertPreset"],
     "alertPresetsOnboarded" to (values["alertPresetsOnboarded"] ?: false),
-    "matchDutyBoardConfig" to (values["matchDutyBoardConfig"] ?: false),
+    "matchBoardConfig" to values["matchBoardConfig"],
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
   )
@@ -1172,9 +1172,9 @@ internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<Lis
   putOrDelete("batteryConfig", normalizeBatteryConfig(get("batteryConfig")))
   putOrDelete("dismissedWarnings", normalizeDismissedWarnings(get("dismissedWarnings")))
   putOrDelete("topSpeedKmh", validTopSpeedKmh(get("topSpeedKmh")))
-  putOrDelete("alertPreset", normalizeAlertPreset(get("alertPreset")))
+  putOrDelete("alertPreset", normalizeMetricBag(get("alertPreset")))
   putOrDelete("alertPresetsOnboarded", get("alertPresetsOnboarded") as? Boolean)
-  putOrDelete("matchDutyBoardConfig", get("matchDutyBoardConfig") as? Boolean)
+  putOrDelete("matchBoardConfig", normalizeMetricBag(get("matchBoardConfig")))
   // Legal Mode changes only through the dedicated native intent.
   val link = normalizedBoardLink()
   putOrDelete("transport", BoardTransport.encode(BoardTransport.fromBridge(link?.get("transport"))))
@@ -1205,9 +1205,9 @@ private fun BoardSettingEntity.decodeBoardSetting(): Pair<String, Any?>? {
     "lastBattery" -> decodeLastBattery(raw)?.let { key to it }
     "dismissedWarnings" -> normalizeDismissedWarnings(raw)?.let { key to it }
     "topSpeedKmh" -> validTopSpeedKmh(raw)?.let { key to it }
-    "alertPreset" -> normalizeAlertPreset(raw)?.let { key to it }
+    "alertPreset" -> normalizeMetricBag(raw)?.let { key to it }
     "alertPresetsOnboarded" -> (raw as? Boolean)?.let { key to it }
-    "matchDutyBoardConfig" -> (raw as? Boolean)?.let { key to it }
+    "matchBoardConfig" -> normalizeMetricBag(raw)?.let { key to it }
     "legalMode" -> normalizeLegalMode(raw)?.let { key to it }
     else -> null
   }
@@ -1217,11 +1217,12 @@ private fun normalizeLegalMode(raw: Any?): Map<String, Boolean>? =
   (raw.asStringKeyMap()?.get("enabled") as? Boolean)?.let { mapOf("enabled" to it) }
 
 /**
- * Durable Alert Preset per-metric level selection bag. JS owns behavior; native persists it as an
- * opaque object. Non-object/empty payloads normalize away (row removed).
- * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeAlertPreset`
+ * A durable per-metric Alert Preset bag — the level selection, and which metrics match the board's
+ * own configuration. JS owns behavior; native persists each as an opaque object. Non-object/empty
+ * payloads normalize away (row removed).
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `normalizeMetricBag`
  */
-private fun normalizeAlertPreset(raw: Any?): Map<String, Any?>? {
+private fun normalizeMetricBag(raw: Any?): Map<String, Any?>? {
   val map = raw.asStringKeyMap() ?: return null
   return map.ifEmpty { null }
 }

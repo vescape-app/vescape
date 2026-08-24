@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { DUTY_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
@@ -9,6 +10,7 @@ import {
   toChartSeries,
   toLiveChart,
 } from '@/modules/board/components/metricDetailData'
+import { DUTY_MOTOR_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   useLiveMetric,
@@ -49,6 +51,7 @@ export default function DutyScreen() {
     >
       <LiveChartStack charts={charts} />
       <BoardConfigSection rows={DUTY_CONFIG_ROWS} />
+      <MotorConfigSection rows={DUTY_MOTOR_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

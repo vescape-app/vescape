@@ -1825,6 +1825,9 @@ private var wearAutoLaunchOnConnect = true
     private var motorConfigValues: MotorConfigValues? = null
         set(value) {
             field = value
+            // Config-relative Alert Rules may anchor to MCCONF fields (temperature cutoffs), so the
+            // engine follows this value the same way it follows the Refloat config.
+            alertCoordinator.updateMotorConfigValues(value?.values.orEmpty())
             emitEvent("onMotorConfigValues", mapOf("values" to value?.toBridgeMap()))
         }
 

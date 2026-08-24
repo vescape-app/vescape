@@ -43,6 +43,16 @@ final class AlertEngineTests: XCTestCase {
     XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.99)).isEmpty)
   }
 
+  func testConfigRelativeMotorTemperatureAnchorsToMcconfCutoffInAbsoluteUnits() {
+    let relative = rule(controlId: "controller-temp", thresholdKind: "config-relative", configFieldId: "l_temp_fet_start", thresholdOffset: -10)
+    engine.updateMotorConfigValues(["l_temp_fet_start": 90.0])
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(tempMosfet: 82)).first?.threshold, 80)
+    // No motor config read: the rule is dormant rather than firing at its stored placeholder.
+    engine.updateMotorConfigValues([:])
+    engine.resetAlertState()
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(tempMosfet: 82)).isEmpty)
+  }
+
   func testConfigRelativeDutyRearmsAgainstUpdatedEffectiveThreshold() {
     let relative = rule(threshold: 70, thresholdKind: "config-relative", configFieldId: "tiltback_duty", thresholdOffset: -10)
     engine.updateBoardConfigValues(["tiltback_duty": 0.9])

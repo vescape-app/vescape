@@ -15,6 +15,8 @@ internal class AlertCoordinator(
     private var activeGeigerRuleIds: Set<String> = emptySet()
     fun updateBoardConfigValues(values: Map<String, Any>) = engine.updateBoardConfigValues(values)
 
+    fun updateMotorConfigValues(values: Map<String, Any>) = engine.updateMotorConfigValues(values)
+
     fun replaceRules(value: List<AlertRuleEntity>) {
         val geigerRuleIds = value
             .asSequence()

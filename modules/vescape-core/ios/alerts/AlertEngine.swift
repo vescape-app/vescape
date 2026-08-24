@@ -272,8 +272,12 @@ internal final class AlertEngine {
   private var lastFiredAt: [String: Int64] = [:]
   private var armedState: [String: Bool] = [:]
   private var configValues: [String: Any] = [:]
+  private var motorConfigValues: [String: Any] = [:]
 
   func updateBoardConfigValues(_ values: [String: Any]) { configValues = values }
+
+  /// VESC motor config (MCCONF), the other half of what a config-relative rule may anchor to.
+  func updateMotorConfigValues(_ values: [String: Any]) { motorConfigValues = values }
 
 
   /// Forget every latch and repeat clock. Called when a new Board Session starts.
@@ -363,11 +367,11 @@ internal final class AlertEngine {
 
   private func effectiveThresholds(_ rule: AlertRule) -> (Double, Double?)? {
     guard rule.thresholdKind == "config-relative" else { return (rule.threshold, rule.thresholdMax) }
-    guard let field = rule.configFieldId, let number = configValues[field] as? NSNumber else { return nil }
-    let base = number.doubleValue
-    guard base.isFinite, base > 0, base < 1, let offset = rule.thresholdOffset else { return nil }
-    let percent = base * 100
-    return (percent + offset, rule.thresholdMaxOffset.map { percent + $0 })
+    guard
+      let base = resolveConfigRelativeBase(rule.configFieldId, refloat: configValues, motor: motorConfigValues),
+      let offset = rule.thresholdOffset
+    else { return nil }
+    return (base + offset, rule.thresholdMaxOffset.map { base + $0 })
   }
 
   /// Keep one single-threshold announcement per metric — the most severe, which the caller has

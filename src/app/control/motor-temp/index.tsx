@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
-import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
@@ -10,7 +10,6 @@ import { telemetry } from '@/modules/board/constants/telemetry'
 import { liveSelectors, useLiveMetric } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import { useMotorConfigFields } from '@/modules/board/store/motorConfigValuesStore'
 
 const cfg = telemetry.motorTemp
 const CHART_HEIGHT = 120
@@ -18,7 +17,6 @@ const CHART_HEIGHT = 120
 export default function MotorTempScreen() {
   const motorTemp = useLiveMetric(liveSelectors.motorTemp)
   const windowMs = useLiveWindowMs()
-  const motorConfig = useMotorConfigFields()
 
   const charts = useMemo(() => {
     const data = toChartSeries(motorTemp, windowMs)
@@ -41,12 +39,7 @@ export default function MotorTempScreen() {
       liveValue={liveTelemetryRuntime.values.motorTemp}
     >
       <LiveChartStack charts={charts} />
-      <BoardConfigSection
-        title="Motor config"
-        rows={MOTOR_TEMP_CONFIG_ROWS}
-        values={motorConfig}
-        empty="No motor config read from this board yet. Connect it to read its cutoffs."
-      />
+      <MotorConfigSection rows={MOTOR_TEMP_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

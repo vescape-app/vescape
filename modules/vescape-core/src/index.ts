@@ -207,8 +207,12 @@ export interface Board {
    * persists this bag. Absent ⇒ all metrics Off (no preset rules until the rider touches setup).
    */
   alertPreset?: Record<string, unknown> | null
-  /** Duty presets follow VESC tiltback_duty when true. Per-Board, default false. */
-  matchDutyBoardConfig?: boolean
+  /**
+   * Per-metric opt-in: which Alert Presets follow the board's own configuration instead of fixed
+   * values. Same shape and contract as {@link alertPreset} — JS owns behavior, native persists the
+   * bag opaquely. Absent ⇒ no metric matches.
+   */
+  matchBoardConfig?: Record<string, unknown> | null
   /**
    * One-time gate for the guided Alert Preset step in the add-board wizard, per Board. False until
    * the rider completes that step for this Board. The durable setup home is the Alerts settings
