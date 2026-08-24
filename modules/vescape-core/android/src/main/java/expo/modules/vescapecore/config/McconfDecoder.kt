@@ -36,7 +36,9 @@ internal object McconfDecoder {
         val layout = McconfLayouts.bySignature[signature]
             ?: return McconfDecodeResult.UnknownSignature(signature, body.size)
 
-        if (body.size < layout.totalBytes) {
+        // Exact, not "at least": a signature identifies one layout of one length. A longer blob means
+        // the framing or the table is wrong, and decoding its prefix would return plausible garbage.
+        if (body.size != layout.totalBytes) {
             return McconfDecodeResult.Malformed(
                 "blob is ${body.size} bytes, layout ${layout.firmware} needs ${layout.totalBytes}",
             )

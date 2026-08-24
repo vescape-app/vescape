@@ -75,6 +75,12 @@ final class McconfDecoderTests: XCTestCase {
     }
   }
 
+  func testBlobLongerThanItsLayoutIsMalformedNotPrefixDecoded() {
+    guard case .malformed = McconfDecoder.decode(boardBlob + [UInt8](repeating: 0, count: 8)) else {
+      return XCTFail("expected malformed")
+    }
+  }
+
   func testEveryLayoutHasAscendingOffsetsThatFitItsDeclaredLength() {
     for (signature, layout) in McconfLayouts.bySignature {
       XCTAssertEqual(signature, layout.signature)

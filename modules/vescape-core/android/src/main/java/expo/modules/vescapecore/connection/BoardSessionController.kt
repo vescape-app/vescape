@@ -506,6 +506,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
             boardConfigValues = boardConfigValues?.demotedToProvisional()
             // Re-arm the post-trust read so the relinked session gets fresh values back.
             boardConfigReadScheduled = false
+            // Same reasoning as the Refloat demote above: the disconnected window is where another
+            // tool could have rewritten the controller, so the values stay displayable but stop
+            // claiming to describe the live board.
+            motorConfigValues = motorConfigValues?.demotedToLastKnown()
             motorConfigRequested = false
             boardError = reason
             transitionBoardPhase(
@@ -1686,6 +1690,12 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handleMcconfPayload`
      */
     private fun handleMcconfPayload(body: ByteArray) {
+        // A response only counts for the session that asked. The link can go `Mismatched` (clearing
+        // held and persisted values) or the Board can change while the blob is on the wire; without
+        // these guards those late bytes repopulate what was just cleared.
+        val session = boardSession ?: return
+        if (!isCurrentBoardSession(session) || !motorConfigRequested) return
+        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
         when (val result = McconfDecoder.decode(body)) {
             is McconfDecodeResult.Decoded -> {
                 val values = MotorConfigValues(
@@ -1705,12 +1715,20 @@ private var wearAutoLaunchOnConnect = true
                 )
             }
             // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
-            // Report the signature so a table can be generated for it; decode nothing.
-            is McconfDecodeResult.UnknownSignature -> Log.w(
-                VESC_SESSION_TAG,
-                "MCCONF signature ${result.signature} has no layout (${result.byteCount} bytes)",
-            )
-            is McconfDecodeResult.Malformed -> Log.w(VESC_SESSION_TAG, "MCCONF malformed: ${result.reason}")
+            // Report the signature so a table can be generated for it, and drop the optimistically
+            // restored cache row — it was read under a signature this board does not answer with,
+            // and no motor config is the honest answer here (ADR 0036).
+            is McconfDecodeResult.UnknownSignature -> {
+                motorConfigValues = null
+                Log.w(
+                    VESC_SESSION_TAG,
+                    "MCCONF signature ${result.signature} has no layout (${result.byteCount} bytes)",
+                )
+            }
+            is McconfDecodeResult.Malformed -> {
+                motorConfigValues = null
+                Log.w(VESC_SESSION_TAG, "MCCONF malformed: ${result.reason}")
+            }
         }
     }
 
@@ -2225,6 +2243,8 @@ private var wearAutoLaunchOnConnect = true
         telemetry = null
         // Board Config Values are per Board Session; the cache row survives, the held object does not.
         boardConfigValues = null
+        motorConfigValues = null
+        motorConfigRequested = false
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread

@@ -83,6 +83,12 @@ class McconfDecoderTest {
   }
 
   @Test
+  fun `a blob longer than its layout is malformed, not prefix-decoded`() {
+    val oversized = boardBlob.copyOf(boardBlob.size + 8)
+    assertTrue(McconfDecoder.decode(oversized) is McconfDecodeResult.Malformed)
+  }
+
+  @Test
   fun `every layout has ascending offsets that fit its declared length`() {
     for ((signature, layout) in McconfLayouts.bySignature) {
       assertEquals(signature, layout.signature)

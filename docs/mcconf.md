@@ -7,8 +7,15 @@ Unlike Refloat config, **the board serves no schema for it** — there is no XML
 must come from a layout the app carries. This document records how that layout is obtained, what it
 looks like, and which parts of it are safe across firmware versions.
 
-Status: **verified against hardware.** A one-shot probe read the blob off a Thor301 on
-2026-08-24 and every decoded value matched VESC Tool. No production MCCONF read is implemented yet.
+Status: **implemented and verified against hardware.** The read runs once per Board Session
+(`COMM_GET_MCCONF`, sequenced after the Refloat read, never gating the link), decodes through
+`McconfDecoder`, and caches per Board and signature in `motor_config_values`. Every decoded value
+matched VESC Tool on a Thor301 on 2026-08-24.
+
+Two limits stand: only `release_6_05` is confirmed against real hardware — the `release_6_06` and
+`release_7_00` tables pass structural tests but no board has answered with their signatures — and no
+board running Floatwheel firmware has been probed, which is the case most likely to report a
+signature no table carries.
 
 ## The blob is self-versioning
 

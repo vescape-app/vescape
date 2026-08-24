@@ -1056,6 +1056,8 @@ internal final class BoardSessionController: VescGattListener {
     config = nil
     // Board Config Values are per Board Session; the cache row survives, the held object does not.
     boardConfigValues = nil
+    motorConfigValues = nil
+    motorConfigRequested = false
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -1273,6 +1275,8 @@ internal final class BoardSessionController: VescGattListener {
     boardConfigValues = boardConfigValues?.demotedToProvisional()
     // Re-arm the post-trust read so the relinked session gets fresh values back.
     boardConfigReadScheduled = false
+    // Same reasoning as the Refloat demote above.
+    motorConfigValues = motorConfigValues?.demotedToLastKnown()
     motorConfigRequested = false
 
     sessionSequence += 1
@@ -1616,6 +1620,11 @@ internal final class BoardSessionController: VescGattListener {
   /// - Parameter body: the MCCONF response with its framing (and CAN wrapper) already stripped.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `handleMcconfPayload`
   private func handleMcconfPayload(_ body: [UInt8]) {
+    // A response only counts for the session that asked. The link can go `mismatched` (clearing held
+    // and persisted values) or the Board can change while the blob is on the wire; without these
+    // guards those late bytes repopulate what was just cleared.
+    guard let session, session === self.session, session.isActive, motorConfigRequested else { return }
+    guard linkIntegrity == .trusted else { return }
     switch McconfDecoder.decode(body) {
     case .decoded(let signature, let firmware, let values):
       let decoded = MotorConfigValues(
@@ -1631,9 +1640,15 @@ internal final class BoardSessionController: VescGattListener {
       NSLog("MCCONF decoded: \(firmware) signature=\(signature) fields=\(values.count)")
     // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
     // Report the signature so a table can be generated for it; decode nothing.
+    // Not a failure of ours: this board runs a firmware whose layout is not carried yet. Report the
+    // signature so a table can be generated for it, and drop the optimistically restored cache row —
+    // it was read under a signature this board does not answer with, and no motor config is the
+    // honest answer here (ADR 0036).
     case .unknownSignature(let signature, let byteCount):
+      motorConfigValues = nil
       NSLog("MCCONF signature \(signature) has no layout (\(byteCount) bytes)")
     case .malformed(let reason):
+      motorConfigValues = nil
       NSLog("MCCONF malformed: \(reason)")
     }
   }

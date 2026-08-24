@@ -27,6 +27,22 @@ struct MotorConfigValues {
     return value
   }
 
+  /// Demote to `lastKnown`. Called when the BLE link drops: the values stay worth showing, but the
+  /// disconnected window is where another tool could have rewritten the controller, so they stop
+  /// claiming to describe the live board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/MotorConfigValues.kt `demotedToLastKnown`
+  func demotedToLastKnown() -> MotorConfigValues {
+    guard freshness == .fresh else { return self }
+    return MotorConfigValues(
+      boardId: boardId,
+      signature: signature,
+      firmware: firmware,
+      capturedAtMs: capturedAtMs,
+      freshness: .lastKnown,
+      values: values
+    )
+  }
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/MotorConfigValues.kt `toBridgeMap`
   func toBridgeMap() -> [String: Any?] {
     [

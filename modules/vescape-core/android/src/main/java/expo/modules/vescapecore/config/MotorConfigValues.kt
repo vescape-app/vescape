@@ -29,6 +29,15 @@ internal data class MotorConfigValues(
   /** A finite number field, or null when the layout does not carry it. */
   fun number(id: String): Double? = values[id]?.takeIf { it.isFinite() }
 
+  /**
+   * Demote to [BoardConfigFreshness.LAST_KNOWN]. Called when the BLE link drops: the values stay worth
+   * showing, but the disconnected window is where another tool could have rewritten the controller,
+   * so they stop claiming to describe the live board.
+   * @parity /modules/vescape-core/ios/config/MotorConfigValues.swift `demotedToLastKnown`
+   */
+  fun demotedToLastKnown(): MotorConfigValues =
+    if (freshness == BoardConfigFreshness.FRESH) copy(freshness = BoardConfigFreshness.LAST_KNOWN) else this
+
   /** @parity /modules/vescape-core/ios/config/MotorConfigValues.swift `toBridgeMap` */
   fun toBridgeMap(): Map<String, Any?> = mapOf(
     "boardId" to boardId,

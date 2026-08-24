@@ -29,7 +29,9 @@ enum McconfDecoder {
     guard let layout = McconfLayouts.bySignature[signature] else {
       return .unknownSignature(signature: signature, byteCount: body.count)
     }
-    if body.count < layout.totalBytes {
+    // Exact, not "at least": a signature identifies one layout of one length. A longer blob means
+    // the framing or the table is wrong, and decoding its prefix would return plausible garbage.
+    if body.count != layout.totalBytes {
       return .malformed(
         reason: "blob is \(body.count) bytes, layout \(layout.firmware) needs \(layout.totalBytes)"
       )
