@@ -5,7 +5,7 @@ import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { pickProfileStatItems } from '@/modules/profile/components/profileStatItems'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
@@ -69,7 +69,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
 
 const styles = StyleSheet.create({
   card: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     padding: 14,
     gap: 12,
   },
