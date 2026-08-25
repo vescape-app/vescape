@@ -27,7 +27,6 @@ export interface ProductionPlan {
   notesPath: string
   tracks: ReleaseTrackConfig
   operation: ProductionOperation
-  rolloutPercentage?: number
 }
 
 export function promotionFields(promotionPlan: PromotionPlan): ConfirmField[] {
@@ -70,9 +69,6 @@ export function productionFields(productionPlan: ProductionPlan): ConfirmField[]
     },
     { label: 'Canonical notes', value: `${productionPlan.notesPath} at exact source SHA` },
   ]
-  if (productionPlan.operation === 'promote' || productionPlan.operation === 'advance') {
-    fields.push({ label: 'Rollout percentage', value: `${productionPlan.rolloutPercentage}%` })
-  }
   if (productionPlan.operation === 'promote') {
     fields.push({
       label: 'Existing prerelease',

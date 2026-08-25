@@ -4,9 +4,6 @@ export type ActionId =
   | 'watch'
   | 'promote-open'
   | 'promote-production'
-  | 'advance'
-  | 'halt'
-  | 'resume'
   | 'status'
   | 'build'
   | 'prepare'
@@ -49,17 +46,7 @@ export function availableActions(state: ReleaseState): DashboardAction[] {
   }
 
   if (production) {
-    const rollout = production.rolloutPercentage
-    if (production.halted) {
-      actions.push({ id: 'resume', label: `Resume halted ${production.marketingVersion} rollout` })
-    } else if (rollout !== null && rollout < 100) {
-      actions.push({
-        id: 'advance',
-        label: `Advance ${production.marketingVersion} rollout (${rollout}% → …)`,
-      })
-      actions.push({ id: 'halt', label: `Halt ${production.marketingVersion} rollout` })
-    }
-    actions.push({ id: 'status', label: 'Refresh live Play rollout status' })
+    actions.push({ id: 'status', label: 'Refresh live Play release status' })
   }
 
   actions.push({ id: 'build', label: 'Build and send to Internal' })
