@@ -63,7 +63,9 @@ export function Select<T extends string = string>({
         testID={testID}
         onPress={() => setOpen(true)}
       >
-        <Text style={[styles.triggerText, !selectedOption && styles.placeholderText]}>
+        <Text
+          style={[styles.triggerText, { color: selectedOption ? control.text : control.textMuted }]}
+        >
           {selectedOption?.label ?? placeholder}
         </Text>
         <CaretDownIcon size={14} color={neutral.textMuted} weight="bold" />
@@ -123,9 +125,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     flex: 1,
-  },
-  placeholderText: {
-    color: theme.neutral.textMuted,
   },
   option: {
     flexDirection: 'row',

@@ -287,6 +287,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   scanStatus: {
+    flex: 1,
+    minWidth: 0,
     color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '600',
