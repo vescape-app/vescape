@@ -1,13 +1,13 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { View } from 'react-native'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native'
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import { PencilSimpleIcon, WarningIcon } from 'phosphor-react-native'
+import { BracketsCurlyIcon, WarningIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { BoardBatteryEditorModal } from '@/modules/board/components/BoardBatteryEditorModal'
-import { BoardInfoEditorModal } from '@/modules/board/components/BoardInfoEditorModal'
+import { IconButton } from '@/components/base/IconButton'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
@@ -33,7 +33,6 @@ export default function EditBoardScreen() {
     })),
   )
   const navigation = useNavigation()
-
   const editingBoard = boards.find((b) => b.id === boardId)
   // Kill switch off hides the whole Board Warnings surface, matching BoardWarningControl.
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
@@ -41,7 +40,6 @@ export default function EditBoardScreen() {
   const warnings = boardWarningsEnabled ? storedWarnings : EMPTY_WARNINGS
   const warningsAnchorRef = useRef<View>(null)
   const [warningsOpen, setWarningsOpen] = useState(false)
-  const [infoModalVisible, setInfoModalVisible] = useState(false)
   const [batteryModalVisible, setBatteryModalVisible] = useState(false)
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const [removeSaving, setRemoveSaving] = useState(false)
@@ -53,17 +51,15 @@ export default function EditBoardScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable
-          onPress={() => setInfoModalVisible(true)}
-          style={styles.headerAction}
-          hitSlop={8}
-          testID="edit-board-header"
-        >
-          <PencilSimpleIcon size={20} color={theme.palette.slate.textSecondary} weight="duotone" />
-        </Pressable>
+        <IconButton
+          icon={BracketsCurlyIcon}
+          onPress={() => router.push({ pathname: routes.editBoardConfig, params: { boardId } })}
+          accessibilityLabel="Board config"
+          testID="edit-board-config-button"
+        />
       ),
     })
-  }, [navigation])
+  }, [navigation, boardId])
 
   const handleRemoveBoard = useCallback(async () => {
     if (!editingBoard) return
@@ -109,7 +105,8 @@ export default function EditBoardScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <EditBoardSettings
             name={form.name}
-            description={form.description}
+            nameSaving={form.saving === 'info'}
+            onSaveName={form.saveName}
             link={editingBoard.link}
             linkSaving={form.saving === 'link'}
             keepMissingBatteryConfig={form.keepMissingBatteryConfig}
@@ -150,17 +147,6 @@ export default function EditBoardScreen() {
         <BoardWarningsSheet boardId={editingBoard.id} warnings={warnings} />
       </EdgeDrawer>
 
-      <BoardInfoEditorModal
-        visible={infoModalVisible}
-        name={form.name}
-        description={form.description}
-        saving={form.saving === 'info'}
-        onSave={async (value) => {
-          await form.saveInfo(value)
-          setInfoModalVisible(false)
-        }}
-        onCancel={() => setInfoModalVisible(false)}
-      />
       <BoardBatteryEditorModal
         visible={batteryModalVisible}
         batteryMode={form.battery.batteryMode}
@@ -200,8 +186,5 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 8,
-  },
-  headerAction: {
-    marginRight: 4,
   },
 })

@@ -22,6 +22,7 @@ import {
   parseVoltage,
 } from '@/modules/board/lib/boardSetup'
 import { useBoardStore } from '@/modules/board/store/boardStore'
+import { generateId } from '@/helpers/id'
 
 /** The wizard's buffered alert setup for every preset metric, flushed onto the Board on save. */
 export type DraftAlertSetupBag = Record<AlertPresetMetric, DraftAlertSetup>
@@ -48,6 +49,7 @@ export type WizardStepId = (typeof WIZARD_STEPS)[number]
 type PairPhase = 'select' | 'probing'
 
 interface AddBoardWizardState {
+  boardId: string
   step: number
   stepId: WizardStepId
   /** Active steps for this run. */
@@ -106,6 +108,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   const steps = WIZARD_STEPS
 
   const [step, setStep] = useState(0)
+  const [boardId] = useState(generateId)
   const [pairPhase, setPairPhase] = useState<PairPhase>('select')
   const [bleId, setBleId] = useState('')
   const [bleName, setBleName] = useState('')
@@ -189,6 +192,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMaxVoltage,
     )
     const board = addBoard({
+      id: boardId,
       name: name.trim(),
       description: description.trim() || undefined,
       link: draftLink,
@@ -214,6 +218,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   }
 
   return {
+    boardId,
     step,
     stepId: steps[step] ?? steps[steps.length - 1]!,
     steps,

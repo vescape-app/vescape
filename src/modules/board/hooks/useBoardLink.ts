@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   addBoardProbeProgressListener,
   cancelBoardProbe,
+  finalizeBoardLink,
   probeBoardLink,
   type BoardCandidate,
   type BoardLink,
@@ -24,8 +25,12 @@ export interface UseBoardLink {
   candidates: BoardCandidate[]
   selected: BoardCandidate | null
   progress: BoardProbeProgressEvent | null
-  /** Draft Board Link for the current selection, or null while linking/failed. */
+  /**
+   * Draft Board Link for the current selection: non-null only once complete Refloat config has
+   * been acquired for that candidate. Saving is a pure persist of this draft.
+   */
   selectedLink: BoardLink | null
+  isFinalizing: boolean
   select: (candidate: BoardCandidate) => void
   retry: () => void
 }
@@ -36,11 +41,15 @@ export interface UseBoardLink {
  * the rider's pick. Persistence (saving or clearing a Board Link) is the
  * caller's responsibility — this hook only resolves a draft link.
  */
-export function useBoardLink(bleId: string | null): UseBoardLink {
+export function useBoardLink(bleId: string | null, boardId: string): UseBoardLink {
   const [phase, setPhase] = useState<BoardLinkPhase>('linking')
   const [candidates, setCandidates] = useState<BoardCandidate[]>([])
   const [selected, setSelected] = useState<BoardCandidate | null>(null)
   const [progress, setProgress] = useState<BoardProbeProgressEvent | null>(null)
+  const [selectedLink, setSelectedLink] = useState<BoardLink | null>(null)
+  const [completedProbeId, setCompletedProbeId] = useState<string | null>(null)
+  const [isFinalizing, setIsFinalizing] = useState(false)
+  const completedProbeIdRef = useRef<string | null>(null)
   const runRef = useRef(0)
   const activeProbeIdRef = useRef<string | null>(null)
 
@@ -49,6 +58,8 @@ export function useBoardLink(bleId: string | null): UseBoardLink {
     // their UI, so there's nothing to run here.
     if (!bleId) return
     const run = ++runRef.current
+    completedProbeIdRef.current = null
+    setCompletedProbeId(null)
     const probeId = `${bleId}:${run}:${Date.now()}`
     activeProbeIdRef.current = probeId
     // End any live Board Session before probing so the probe owns the BLE link.
@@ -62,6 +73,8 @@ export function useBoardLink(bleId: string | null): UseBoardLink {
       .then((result) => {
         if (run !== runRef.current) return
         activeProbeIdRef.current = null
+        completedProbeIdRef.current = probeId
+        setCompletedProbeId(probeId)
         console.log('[board-link] probe result', JSON.stringify(result))
         if (result.candidates.length === 0) {
           setPhase('failed')
@@ -83,7 +96,13 @@ export function useBoardLink(bleId: string | null): UseBoardLink {
 
   useEffect(() => {
     const subscription = addBoardProbeProgressListener((event) => {
-      if (event.probeId !== activeProbeIdRef.current) return
+      // The completed probe still reports: session + config acquisition runs after the probe
+      // window closes, and its milestones drive the last two rows.
+      if (
+        event.probeId !== activeProbeIdRef.current &&
+        event.probeId !== completedProbeIdRef.current
+      )
+        return
       console.log('[board-link] progress', JSON.stringify(event))
       // Terminal events are not stored: the terminal render comes atomically
       // from the probe promise (phase + candidates). Storing `completed` here
@@ -102,39 +121,83 @@ export function useBoardLink(bleId: string | null): UseBoardLink {
       const probeId = activeProbeIdRef.current
       activeProbeIdRef.current = null
       if (probeId) cancelBoardProbe(probeId)
+      if (completedProbeIdRef.current) cancelBoardProbe(completedProbeIdRef.current)
     }
   }, [runProbe])
 
-  const select = useCallback((candidate: BoardCandidate) => setSelected(candidate), [])
+  const select = useCallback((candidate: BoardCandidate) => {
+    setSelected(candidate)
+    setSelectedLink(null)
+  }, [])
+
+  /**
+   * Acquire complete Refloat config for the current pick and resolve the draft link. Runs as the
+   * last step of the linking run rather than on the Save press, so the checklist the rider reviews
+   * has every check settled — a Board Link is never offered before its config is proven readable.
+   */
+  const acquireConfig = useCallback(async (): Promise<void> => {
+    if (!bleId || !selected || !completedProbeId) return
+    const run = runRef.current
+    setProgress({
+      probeId: completedProbeId,
+      step: 'session',
+      elapsedMs: 0,
+      transport: selected.transport,
+    })
+    setIsFinalizing(true)
+    try {
+      const link = await finalizeBoardLink(completedProbeId, boardId, bleId, selected)
+      if (run !== runRef.current) return
+      setSelectedLink(link)
+      setProgress({
+        probeId: completedProbeId,
+        step: 'completed',
+        elapsedMs: 0,
+        transport: selected.transport,
+      })
+    } catch (err: unknown) {
+      if (run !== runRef.current) return
+      console.log('[board-link] config acquisition failed', err)
+      setCandidates([])
+      setSelected(null)
+      setSelectedLink(null)
+      setPhase('failed')
+    } finally {
+      if (run === runRef.current) setIsFinalizing(false)
+    }
+  }, [bleId, boardId, completedProbeId, selected])
+
+  // Every settled pick acquires its own config, including after a transport switch.
+  useEffect(() => {
+    if (phase !== 'picking' || selectedLink || isFinalizing) return
+    void acquireConfig()
+  }, [acquireConfig, isFinalizing, phase, selectedLink])
 
   const retry = useCallback(() => {
     const probeId = activeProbeIdRef.current
     if (probeId) cancelBoardProbe(probeId)
+    if (completedProbeIdRef.current) cancelBoardProbe(completedProbeIdRef.current)
     setPhase('linking')
     setCandidates([])
     setSelected(null)
     setProgress(null)
+    setSelectedLink(null)
+    setCompletedProbeId(null)
+    setIsFinalizing(false)
+    completedProbeIdRef.current = null
     runProbe()
   }, [runProbe])
 
   // Omit unknown identity fields entirely: the native bridge rejects maps
   // holding `undefined` values ("Cannot convert ... Value is undefined").
-  const selectedLink: BoardLink | null =
-    bleId != null && selected != null
-      ? {
-          linkVersion: 3,
-          bleId,
-          transport: selected.transport,
-          hasBms: selected.hasBms,
-          ...(selected.vescFirmwareVersion != null && {
-            vescFirmwareVersion: selected.vescFirmwareVersion,
-          }),
-          ...(selected.refloatVersion != null && { refloatVersion: selected.refloatVersion }),
-          ...(selected.refloatBaseVersion != null && {
-            refloatBaseVersion: selected.refloatBaseVersion,
-          }),
-        }
-      : null
-
-  return { phase, candidates, selected, progress, selectedLink, select, retry }
+  return {
+    phase,
+    candidates,
+    selected,
+    progress,
+    selectedLink,
+    isFinalizing,
+    select,
+    retry,
+  }
 }

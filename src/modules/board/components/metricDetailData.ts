@@ -60,6 +60,8 @@ export interface LiveChartInput {
   range: ChartYRange
   height?: number
   bands?: ChartBand[]
+  /** Horizontal reference lines on the left axis — where a configured threshold sits. */
+  thresholds?: number[]
   /** A second line on the right-hand axis — pack voltage under pack percent. */
   secondary?: {
     key: string
@@ -81,6 +83,7 @@ export function toLiveChart({
   range,
   height = DEFAULT_CHART_HEIGHT,
   bands,
+  thresholds,
   secondary,
 }: LiveChartInput): LiveChartSpec {
   return {
@@ -91,6 +94,7 @@ export function toLiveChart({
     left: { range },
     right: secondary ? { range: secondary.range } : undefined,
     bands,
+    thresholds,
     series: [
       {
         key,

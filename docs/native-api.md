@@ -167,11 +167,15 @@ Rides computed from buckets + markers:
 | `upsertBoard(board)` | async | void                               |
 | `deleteBoard(id)`    | async | void                               |
 
+`upsertBoard` also starts the real Board Session when the Board being written is the one that just
+proved a link in `finalizeBoardLink` — linking connects over a throwaway probe session and drops it,
+so the persist on Save is what reconnects for real.
+
 ### Board shape
 
 ```ts
 { id, name, description?, createdAt, batteryConfig?,
-  link: { linkVersion: 3, bleId, transport, hasBms,
+  link: { linkVersion: 4, bleId, transport, hasBms,
           vescFirmwareVersion: string | null,
           refloatVersion: string | null,
           refloatBaseVersion: string | null } | null }
@@ -179,8 +183,9 @@ Rides computed from buckets + markers:
 
 A **Board Link** is saved whole or not at all: it always carries a proven BLE peripheral id
 plus a selected Board Transport (`'direct'` | CAN id). Current links also carry
-`linkVersion: 3`, a required `hasBms` boolean, exact firmware identity keys, and normalized
-`refloatBaseVersion` for Tune Compatibility. Missing or null required identity values keep
+`linkVersion: 4`, a required `hasBms` boolean, exact firmware identity keys, and normalized
+`refloatBaseVersion` for Tune Compatibility. Native finalization reads and persists Last Known
+Board Config Values before returning a saveable v4 link. Missing or null required identity values keep
 telemetry available but require re-link before firmware-dependent commands.
 
 Stored Board Links are normalized defensively: missing or malformed newer fields default to safe

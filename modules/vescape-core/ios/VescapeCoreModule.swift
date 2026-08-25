@@ -33,6 +33,7 @@ public class VescapeCoreModule: Module {
   /// Retains the in-flight Board Probe across its async BLE lifecycle. Only one runs at a time —
   /// the probe owns the single BLE link (see Android `probeBoardLink`).
   private var activeProbe: ActiveBoardProbe?
+  private var completedProbes: [String: TransportDetection.Result] = [:]
 
   /// Frontend liveness gate. False while the app is backgrounded so the high-frequency telemetry
   /// firehose (`onLiveTick` at the board's poll rate, `onTelemetryHistory`, `onLiveSeries`) never
@@ -78,7 +79,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -128,6 +129,20 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.emitSnapshot()
     }
     OnStopObserving("onBoardWarnings") { self.observedEvents.remove("onBoardWarnings") }
+    OnStartObserving("onBoardConfigValues") {
+      self.observedEvents.insert("onBoardConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      self.sendEvent("onBoardConfigValues", ["values": self.coordinator.boardConfigValuesMap()])
+    }
+    OnStopObserving("onBoardConfigValues") { self.observedEvents.remove("onBoardConfigValues") }
+    OnStartObserving("onMotorConfigValues") {
+      self.observedEvents.insert("onMotorConfigValues")
+      // Late subscriber: replay the held values (or the nil) so JS is immediately consistent.
+      self.sendEvent("onMotorConfigValues", ["values": self.coordinator.motorConfigValuesMap()])
+    }
+    OnStopObserving("onMotorConfigValues") { self.observedEvents.remove("onMotorConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { self.observedEvents.insert("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { self.observedEvents.remove("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
       self.observedEvents.insert("onAppStatus")
       // Late subscriber: replay the current App Status so JS is immediately consistent.
@@ -189,6 +204,7 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.onChange = { [weak self] boardId, warnings in
         self?.sendBoardWarnings(boardId, warnings)
       }
+      BoardConfigStore.onNoticeChanged = { [weak self] notice in self?.sendEvent("onBoardConfigChangeNotice", ["notice": notice?.toMap()]) }
     }
 
     OnAppEntersForeground {
@@ -208,6 +224,7 @@ public class VescapeCoreModule: Module {
       self.detachFromCoordinator()
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
+      BoardConfigStore.onNoticeChanged = nil
       self.appStatusUnsubscribe?()
       self.appStatusUnsubscribe = nil
       NavigationController.shared.onChange = nil
@@ -529,6 +546,13 @@ public class VescapeCoreModule: Module {
       DispatchQueue.main.async { self.startProbe(bleId: bleId, probeId: probeId, promise: promise) }
     }
 
+    AsyncFunction("finalizeBoardLink") {
+      (probeId: String, boardId: String, bleId: String, candidate: [String: Any?], promise: Promise) in
+      DispatchQueue.main.async {
+        self.finalizeBoardLink(probeId: probeId, boardId: boardId, bleId: bleId, rawCandidate: candidate, promise: promise)
+      }
+    }
+
     Function("cancelBoardProbe") { (probeId: String) in
       DispatchQueue.main.async { self.cancelActiveProbe(probeId: probeId, reason: "js_cancelled") }
     }
@@ -596,6 +620,36 @@ public class VescapeCoreModule: Module {
       )
       promise.resolve(nil)
     }
+
+    /// This Board Session's Board Config Values, decoded map + freshness only. The write base stays
+    /// native (ADR 0035).
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+    AsyncFunction("getBoardConfigValues") { (promise: Promise) in
+      promise.resolve(self.coordinator.boardConfigValuesMap())
+    }
+    /// Last Known Board Config Values for a Board with no Board Session — the values survive a
+    /// disconnect even though the session object does not.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+    AsyncFunction("getLastKnownBoardConfigValues") { (boardId: String, promise: Promise) in
+      promise.resolve(BoardConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap())
+    }
+    /// This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
+    /// permanently: there is no write base and no encoder (ADR 0036).
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+    AsyncFunction("getMotorConfigValues") { (promise: Promise) in
+      promise.resolve(self.coordinator.motorConfigValuesMap())
+    }
+    /// Last Known Motor Config Values for a Board with no Board Session.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownMotorConfigValues`
+    /// @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+    AsyncFunction("getLastKnownMotorConfigValues") { (boardId: String, promise: Promise) in
+      promise.resolve(MotorConfigStore.shared.loadLatest(boardId: boardId)?.toBridgeMap())
+    }
+    AsyncFunction("getBoardConfigChangeNotice") { (boardId: String, promise: Promise) in promise.resolve(BoardConfigStore.shared.loadNotice(boardId: boardId)?.toMap()) }
+    AsyncFunction("dismissBoardConfigChangeNotice") { (boardId: String, promise: Promise) in BoardConfigStore.shared.dismissNotice(boardId: boardId); promise.resolve(nil) }
 
     AsyncFunction("devReportCleanBoardWarning") { (boardId: String, kind: String, promise: Promise) in
       BoardWarningRegistry.shared.reportCleanEvaluation(boardId: boardId, kind: kind)
@@ -828,6 +882,7 @@ public class VescapeCoreModule: Module {
     AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
       self.appData.upsertBoard(board)
       self.coordinator.reloadBoardDataForActiveBoard()
+      self.connectSavedBoardLink(boardId: board["id"] as? String)
       promise.resolve(nil)
     }
 
@@ -1115,6 +1170,7 @@ public class VescapeCoreModule: Module {
       onComplete: { [weak self] result in
         guard self?.activeProbe?.id == probeId else { return }
         self?.activeProbe = nil
+        self?.completedProbes[probeId] = result
         promise.resolve(
           self?.probeResultToBridge(result) ?? [
             "outcome": "none",
@@ -1134,11 +1190,150 @@ public class VescapeCoreModule: Module {
   }
 
   private func cancelActiveProbe(probeId: String? = nil, reason: String) {
+    PendingLinkConnect.clear()
+    if let probeId { completedProbes.removeValue(forKey: probeId) }
     guard let activeProbe else { return }
     if let probeId, activeProbe.id != probeId { return }
     self.activeProbe = nil
     activeProbe.detector.cancel(reason: reason)
     activeProbe.promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+  }
+
+  /// Finalize only a candidate returned by this native probe; config persistence precedes v4.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardLink`
+  /// @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
+  private func finalizeBoardLink(
+    probeId: String, boardId: String, bleId: String,
+    rawCandidate: [String: Any?], promise: Promise
+  ) {
+    guard let result = completedProbes[probeId] else {
+      promise.reject("PROBE_NOT_FOUND", "Board Probe is no longer finalizable")
+      return
+    }
+    guard let transport = BoardTransport.fromBridge(rawCandidate["transport"] ?? nil),
+      let candidate = result.candidates.first(where: { $0.transport == transport }) else {
+      promise.reject("PROBE_CANDIDATE_UNVERIFIED", "Candidate was not confirmed by this Board Probe")
+      return
+    }
+    guard let baseVersion = candidate.refloatBaseVersion, !baseVersion.isEmpty else {
+      promise.reject("PROBE_CONFIG_IDENTITY_MISSING", "Refloat Tune Compatibility is required")
+      return
+    }
+    let previous = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion)?.capturedAtMs ?? Int64.min
+    let previousMotor = MotorConfigStore.shared.loadLatest(boardId: boardId)?.capturedAtMs ?? Int64.min
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
+    sendEvent("onBoardProbeProgress", [
+      "probeId": probeId, "step": "session", "elapsedMs": 0, "transport": transport.bridgeValue,
+    ])
+    coordinator.connect(
+      config: BoardConnectConfig(
+        appBoardId: boardId, bleId: bleId, name: "Board Probe", transport: transport,
+        linkVersion: 4, hasBms: candidate.hasBms,
+        vescFirmwareVersion: candidate.vescFirmwareVersion,
+        refloatVersion: candidate.refloatVersion, refloatBaseVersion: baseVersion,
+        pollIntervalMs: 100, batteryConfig: nil, liveHistoryLimitMinutes: 5
+      ),
+      onSuccess: { [weak self] in
+        self?.sendEvent("onBoardProbeProgress", [
+          "probeId": probeId, "step": "config", "elapsedMs": 0, "transport": transport.bridgeValue,
+        ])
+        self?.awaitProbeConfig(
+          probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+          previousCapturedAt: previous, previousMotorCapturedAt: previousMotor,
+          attemptsRemaining: 120, promise: promise
+        )
+      },
+      onError: { [weak self] code, message in
+        self?.completedProbes.removeValue(forKey: probeId)
+        self?.coordinator.stopBoard()
+        promise.reject(code, message)
+      }
+    )
+  }
+
+  private func awaitProbeConfig(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
+    previousMotorCapturedAt: Int64, attemptsRemaining: Int, promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    let baseVersion = candidate.refloatBaseVersion!
+    if let values = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion),
+      values.capturedAtMs > previousCapturedAt {
+      // Motor config is read after the Refloat read completes, so it is waited for separately. A
+      // board whose MCCONF signature no layout carries never lands a row and fails the link here —
+      // deliberate: a Board Link is only offered once every config it will show is proven readable.
+      sendEvent("onBoardProbeProgress", [
+        "probeId": probeId, "step": "motor-config", "elapsedMs": 0,
+        "transport": candidate.transport.bridgeValue,
+      ])
+      awaitProbeMotorConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousMotorCapturedAt, attemptsRemaining: 80, promise: promise
+      )
+      return
+    }
+    guard attemptsRemaining > 0 else {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      promise.reject("PROBE_CONFIG_TIMEOUT", "Full Refloat config was not acquired")
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.awaitProbeConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousCapturedAt, previousMotorCapturedAt: previousMotorCapturedAt,
+        attemptsRemaining: attemptsRemaining - 1, promise: promise
+      )
+    }
+  }
+
+  private func awaitProbeMotorConfig(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
+    attemptsRemaining: Int, promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    if let values = MotorConfigStore.shared.loadLatest(boardId: boardId),
+      values.capturedAtMs > previousCapturedAt {
+      // The probe stays finalizable: the rider may still switch transports, and each pick
+      // acquires config for its own candidate before the link can be saved.
+      PendingLinkConnect.arm(boardId: boardId)
+      coordinator.stopBoard()
+      promise.resolve([
+        "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
+        "hasBms": candidate.hasBms,
+        "vescFirmwareVersion": candidate.vescFirmwareVersion,
+        "refloatVersion": candidate.refloatVersion,
+        "refloatBaseVersion": candidate.refloatBaseVersion!,
+      ] as [String: Any?])
+      return
+    }
+    guard attemptsRemaining > 0 else {
+      coordinator.stopBoard()
+      completedProbes.removeValue(forKey: probeId)
+      promise.reject(
+        "PROBE_MOTOR_CONFIG_TIMEOUT",
+        "VESC motor config was not acquired — this firmware may not be supported yet"
+      )
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.awaitProbeMotorConfig(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousCapturedAt: previousCapturedAt, attemptsRemaining: attemptsRemaining - 1,
+        promise: promise
+      )
+    }
   }
 
   private func probeResultToBridge(_ result: TransportDetection.Result) -> [String: Any?] {
@@ -1192,6 +1387,28 @@ public class VescapeCoreModule: Module {
       boardId: boardId,
       appData: appData,
       recordingEnabled: requestedDebugRecordingEnabled
+    )
+  }
+
+  /// Start the real Board Session for a Board Link the rider just saved. Linking already proved the
+  /// connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
+  /// rider lands back on a disconnected app until the next app launch. Only the Board that proved a
+  /// link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
+  /// session.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `connectSavedBoardLink`
+  private func connectSavedBoardLink(boardId: String?) {
+    guard let boardId, PendingLinkConnect.consume(boardId: boardId), activeProbe == nil else { return }
+    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
+    // intent, so the suppression must not outlive it.
+    clearManualDisconnectAutoStartGate()
+    guard let config = connectConfig(boardId: boardId) else { return }
+    coordinator.connect(
+      config: config,
+      onSuccess: {},
+      onError: { [weak self] _, message in
+        self?.sendEvent("onError", ["message": message])
+      }
     )
   }
 

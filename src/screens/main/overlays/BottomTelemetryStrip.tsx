@@ -11,8 +11,9 @@ import { routes } from '@/navigation/routes'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import { useFootpadThreshold } from '@/modules/board/store/boardConfigValuesStore'
+import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 
-const FOOTPAD_ACTIVE_V = 0.8
 export const STRIP_CONTENT_HEIGHT = 160
 
 interface BottomTelemetryStripProps {
@@ -24,7 +25,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
   const insets = useSafeAreaInsets()
   const bleStatus = useBleStore((s) => s.status)
   const imuConnected = bleStatus === 'connected'
-  // Live numbers, IMU tilt and footpad dots read SharedValues (hot path, ~31Hz, no re-render).
+  // Live numbers, IMU tilt and the footpad pad read SharedValues (hot path, ~31Hz, no re-render).
   const tick = liveTelemetryRuntime.values
 
   const revealStyle = useAnimatedStyle(() => ({
@@ -35,23 +36,8 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
     return { transform: [{ rotate: `${imuConnected ? p : 0}deg` }] }
   })
 
-  const footpad1Style = useAnimatedStyle(() => {
-    const a = tick.adc1.value
-    const active = a != null && a > FOOTPAD_ACTIVE_V
-    return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
-      backgroundColor: active ? theme.palette.green.text : 'transparent',
-    }
-  })
-
-  const footpad2Style = useAnimatedStyle(() => {
-    const a = tick.adc2.value
-    const active = a != null && a > FOOTPAD_ACTIVE_V
-    return {
-      borderColor: active ? theme.palette.green.text : theme.palette.slate.textDim,
-      backgroundColor: active ? theme.palette.green.text : 'transparent',
-    }
-  })
+  const footpad1Threshold = useFootpadThreshold(0)
+  const footpad2Threshold = useFootpadThreshold(1)
 
   return (
     <Animated.View
@@ -128,10 +114,13 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
             android_ripple={interaction.rippleBorderless}
             onPress={() => router.push(routes.controlFootpad)}
           >
-            <View style={styles.footpadRow}>
-              <Animated.View style={[styles.footpadDot, footpad1Style]} />
-              <Animated.View style={[styles.footpadDot, footpad2Style]} />
-            </View>
+            <FootpadIndicator
+              adc1={tick.adc1}
+              adc2={tick.adc2}
+              threshold1={footpad1Threshold}
+              threshold2={footpad2Threshold}
+              testID="telemetry-footpad-indicator"
+            />
           </Pressable>
         </View>
       </Animated.View>
@@ -169,18 +158,6 @@ const styles = StyleSheet.create({
   batteryCenter: {
     flex: 1,
     marginHorizontal: 4,
-  },
-  footpadRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  footpadDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.textDim,
-    backgroundColor: 'transparent',
   },
   cellPressed: {
     opacity: interaction.pressedOpacity,

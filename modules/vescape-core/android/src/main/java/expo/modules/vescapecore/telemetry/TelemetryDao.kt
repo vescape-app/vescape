@@ -562,6 +562,60 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
+  suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
+
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestBoardConfigValues(boardId: String): BoardConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigValues(values: BoardConfigValuesEntity)
+
+  @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigValues(boardId: String)
+
+  @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertMotorConfigValues(values: MotorConfigValuesEntity)
+
+  @Query("DELETE FROM motor_config_values WHERE board_id = :boardId")
+  suspend fun deleteMotorConfigValues(boardId: String)
+
+  /**
+   * Same baseline-then-notice transaction as [replaceBaselineAndNotice], for motor config. Both
+   * configs write into one notice row per Board: a rider does not care which subsystem a setting
+   * lives in, only that their board changed while Vescape was away.
+   */
+  @Transaction
+  suspend fun replaceMotorBaselineAndNotice(
+    values: MotorConfigValuesEntity,
+    buildNotice: (MotorConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?,
+  ): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getLatestMotorConfigValues(values.boardId), getBoardConfigChangeNotice(values.boardId))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertMotorConfigValues(values)
+    return notice
+  }
+
+  @Query("SELECT * FROM board_config_change_notices WHERE board_id = :boardId LIMIT 1")
+  suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNoticeEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigChangeNotice(notice: BoardConfigChangeNoticeEntity)
+
+  @Query("DELETE FROM board_config_change_notices WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigChangeNotice(boardId: String)
+
+  @Transaction
+  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertBoardConfigValues(values)
+    return notice
+  }
+
   // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
   // inside the range is never touched here.
   // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift

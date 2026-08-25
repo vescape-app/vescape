@@ -13,6 +13,7 @@ import { AlertPresetControl } from '@/modules/alerts/components/AlertPresetContr
 import { AlertRuleList } from '@/modules/alerts/components/AlertRuleList'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
+import { useBoardConfigBases } from '@/modules/alerts/hooks/useBoardConfigBases'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 
 /** Structural mirror of the gauge hot-range span; keeps this module clear of the history module. */
@@ -50,6 +51,7 @@ export function MetricAlerts({
   ruleSnapshot,
 }: MetricAlertsProps) {
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
+  const configBases = useBoardConfigBases()
 
   const batteryConfig = useBatteryConfig(controller?.controlId)
   const customMarkers = useMemo<DualGaugeAlert[]>(
@@ -73,9 +75,11 @@ export function MetricAlerts({
             rules: controller.rules,
             boardTopSpeedKmh: controller.topSpeedKmh,
             hasBatteryConfig: controller.hasBatteryConfig,
+            matchBoardConfig: controller.matchBoardConfig,
+            configBases,
           })
         : [],
-    [controller],
+    [controller, configBases],
   )
   const visibleRuleSnapshot = ruleSnapshot ?? derivedRuleSnapshot
 
@@ -96,6 +100,9 @@ export function MetricAlerts({
           liveValue={liveValue}
           boardTopSpeedKmh={controller.topSpeedKmh}
           hasBatteryConfig={hasBatteryConfig}
+          matchBoardConfig={controller.matchBoardConfig}
+          onMatchBoardConfigChange={controller.setMatchBoardConfig}
+          configBases={configBases}
           customAlerts={customMarkers}
           hotRange={hotRange}
           disabled={batteryBlocked}

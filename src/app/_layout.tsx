@@ -19,9 +19,15 @@ import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBo
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
+import { startAlertPresetConfigSync } from '@/modules/alerts/lib/alertPresetConfigSync'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
+import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
+import { startMotorConfigValuesSync } from '@/modules/board/store/motorConfigValuesStore'
+import { startBoardConfigChangeNoticeSync } from '@/modules/board/store/boardConfigChangeNoticeStore'
+import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardConfigChangeNoticeModal'
+import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
@@ -83,7 +89,12 @@ function RootLayout() {
     useGroupRideStore.getState().startObserving()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
+    const stopBoardConfigValuesSync = startBoardConfigValuesSync()
+    const stopMotorConfigValuesSync = startMotorConfigValuesSync()
+    const stopBoardConfigChangeNoticeSync = startBoardConfigChangeNoticeSync()
+    const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
+    const stopAlertPresetConfigSync = startAlertPresetConfigSync()
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
@@ -91,7 +102,12 @@ function RootLayout() {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
       stopBoardWarningsSync()
+      stopBoardConfigValuesSync()
+      stopMotorConfigValuesSync()
+      stopBoardConfigChangeNoticeSync()
+      stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()
+      stopAlertPresetConfigSync()
       stopAppStatusSync()
       stopNavigationSync()
       stopWeatherSync()
@@ -112,6 +128,7 @@ function RootLayout() {
       __experimental_resourceCache={resourceCache}
     >
       <DeviceAuthSync />
+      <BoardConfigChangeNoticeModal />
       <DiagnosticErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <Stack
@@ -194,6 +211,7 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
             <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
             <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
+            <Stack.Screen name={stackScreens.editBoardConfig} options={{ title: 'Board Config' }} />
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />

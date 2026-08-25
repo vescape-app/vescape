@@ -1,10 +1,14 @@
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { MOTOR_CURRENT_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { MetricDetailGauge } from '@/modules/board/components/MetricDetailGauge'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
+import { MOTOR_CURRENT_MOTOR_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { liveSelectors, useLiveMetric } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
@@ -38,6 +42,8 @@ export default function MotorCurrentScreen() {
       gauge={<MetricDetailGauge metric={cfg} value={liveTelemetryRuntime.values.motorCurrent} />}
     >
       <LiveChartStack charts={charts} />
+      <BoardConfigSection rows={MOTOR_CURRENT_CONFIG_ROWS} />
+      <MotorConfigSection rows={MOTOR_CURRENT_MOTOR_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

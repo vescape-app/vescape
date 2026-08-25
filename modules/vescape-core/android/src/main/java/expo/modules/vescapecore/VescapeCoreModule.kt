@@ -19,6 +19,7 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
+import expo.modules.vescapecore.connection.PendingLinkConnect
 import expo.modules.vescapecore.connection.buildSessionConfig
 
 import expo.modules.vescapecore.navigation.NavigationController
@@ -60,7 +61,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "VescapeCore"
 private const val SCAN_RETRY_LIMIT = 3
@@ -110,6 +113,7 @@ class VescapeCoreModule : Module() {
   private val observedEvents = mutableSetOf<String>()
   private val mainHandler = Handler(Looper.getMainLooper())
   private var activeProbe: ActiveBoardProbe? = null
+  private val completedProbes = ConcurrentHashMap<String, TransportDetection.Result>()
   private var previewAlertFeedback: AlertFeedback? = null
   /** UI alert tests own feedback + evaluator state separate from the live Board Session. */
   private var alertTestFeedback: AlertFeedback? = null
@@ -168,6 +172,9 @@ class VescapeCoreModule : Module() {
       "onGroupRideError",
       "onAppDataChanged",
       "onBoardWarnings",
+      "onBoardConfigValues",
+      "onMotorConfigValues",
+      "onBoardConfigChangeNotice",
       "onAppStatus",
       "onNavigation",
       "onRouteProgress",
@@ -273,6 +280,20 @@ class VescapeCoreModule : Module() {
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
     }
     OnStopObserving("onBoardWarnings") { stopObserving("onBoardWarnings") }
+    OnStartObserving("onBoardConfigValues") {
+      startObserving("onBoardConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
+    }
+    OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
+    OnStartObserving("onMotorConfigValues") {
+      startObserving("onMotorConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onMotorConfigValues", mapOf("values" to CoreForegroundService.getMotorConfigValues()))
+    }
+    OnStopObserving("onMotorConfigValues") { stopObserving("onMotorConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { startObserving("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
@@ -570,6 +591,10 @@ class VescapeCoreModule : Module() {
     AsyncFunction("probeBoardLink") Coroutine { bleId: String, probeId: String ->
       probeBoardLink(bleId, probeId)
     }
+    AsyncFunction("finalizeBoardLink") Coroutine {
+        probeId: String, boardId: String, bleId: String, candidate: Map<String, Any?> ->
+      finalizeBoardLink(probeId, boardId, bleId, candidate)
+    }
     Function("cancelBoardProbe") { probeId: String ->
       cancelActiveProbe(probeId, "js_cancelled")
     }
@@ -595,6 +620,45 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getBoardWarnings") Coroutine { ->
       BoardWarningRegistry.get(context).allWarnings().map { it.toMap() }
     }
+    /**
+     * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
+     * native (ADR 0035).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getBoardConfigValues") {
+      CoreForegroundService.getBoardConfigValues()
+    }
+    /**
+     * This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
+     * permanently: there is no write base and no encoder (ADR 0036).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getMotorConfigValues") {
+      CoreForegroundService.getMotorConfigValues()
+    }
+
+    /**
+     * Last Known Motor Config Values for a Board with no Board Session.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getLastKnownMotorConfigValues") Coroutine { boardId: String ->
+      AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap()
+    }
+
+    /**
+     * Last Known Board Config Values for a Board with no Board Session — the values survive a
+     * disconnect even though the session object does not.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getLastKnownBoardConfigValues") Coroutine { boardId: String ->
+      AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap()
+    }
+    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
+    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       BoardWarningRegistry.get(context).clearWarning(boardId, kind)
     }
@@ -753,6 +817,7 @@ class VescapeCoreModule : Module() {
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
       AppDataRepository.get(context.applicationContext).upsertBoard(board)
       CoreForegroundService.reloadBoardData()
+      connectSavedBoardLink(board["id"] as? String)
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->
       AppDataRepository.get(context.applicationContext).deleteBoard(id)
@@ -1058,6 +1123,36 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
+  /**
+   * Start the real Board Session for a Board Link the rider just saved. Linking already proved the
+   * connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
+   * rider lands back on a disconnected app until the next process start. Only the Board that proved
+   * a link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
+   * session.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `connectSavedBoardLink`
+   */
+  private suspend fun connectSavedBoardLink(boardId: String?) {
+    if (boardId == null || !PendingLinkConnect.consume(boardId)) return
+    if (BoardProbeAutoStartGate.isActive()) return
+    val appCtx = context.applicationContext
+    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
+    // intent, so the suppression must not outlive it.
+    ManualDisconnectAutoStartGate.clear(appCtx)
+    val config = try {
+      buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
+    } catch (error: Throwable) {
+      Log.w(TAG, "Board Link saved but session config failed: ${error.message}")
+      return
+    }
+    CoreForegroundService.startBoardSession(
+      appCtx,
+      config,
+      onSuccess = {},
+      onError = { _, message -> sendEvent("onError", mapOf("message" to message)) },
+    )
+  }
+
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
     ManualDisconnectAutoStartGate.clear(appCtx)
@@ -1148,6 +1243,7 @@ key == "wearAutoLaunchOnConnect" ||
           onComplete = {
             if (activeProbe === active) {
               activeProbe = null
+              completedProbes[probeId] = it
               result.complete(it)
             }
           },
@@ -1162,17 +1258,110 @@ key == "wearAutoLaunchOnConnect" ||
         detector.start()
       }
       return probeResultToBridge(result.await())
+    } catch (error: Throwable) {
+      completedProbes.remove(probeId)
+      throw error
     } finally {
       BoardProbeAutoStartGate.leave()
     }
   }
 
   private fun cancelActiveProbe(probeId: String?, reason: String) {
+    PendingLinkConnect.clear()
+    if (probeId != null) completedProbes.remove(probeId)
     val active = activeProbe ?: return
     if (probeId != null && active.id != probeId) return
     activeProbe = null
     active.detector?.cancel(reason)
     active.result.completeExceptionally(IllegalStateException("PROBE_CANCELLED: Board Probe cancelled"))
+  }
+
+  /**
+   * Finalize only a candidate returned by this native probe; config persistence precedes v4.
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
+   * @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
+   */
+  private suspend fun finalizeBoardLink(
+    probeId: String,
+    boardId: String,
+    bleId: String,
+    rawCandidate: Map<String, Any?>,
+  ): Map<String, Any?> {
+    val result = completedProbes[probeId] ?: error("PROBE_NOT_FOUND: Board Probe is no longer finalizable")
+    val transport = BoardTransport.fromBridge(rawCandidate["transport"])
+      ?: error("PROBE_CANDIDATE_INVALID: Invalid Board Transport")
+    val candidate = result.candidates.firstOrNull { it.transport == transport }
+      ?: error("PROBE_CANDIDATE_UNVERIFIED: Candidate was not confirmed by this Board Probe")
+    val baseVersion = candidate.refloatBaseVersion
+      ?: error("PROBE_CONFIG_IDENTITY_MISSING: Refloat Tune Compatibility is required")
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
+    sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "session", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+    val appCtx = context.applicationContext
+    val repo = AppDataRepository.get(appCtx)
+    val previousCapturedAt = repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE
+    val previousMotorCapturedAt = repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE
+    val connected = CompletableDeferred<Unit>()
+    CoreForegroundService.startBoardSession(
+      appCtx,
+      SessionConfig(
+        appBoardId = boardId,
+        deviceId = bleId,
+        deviceName = "Board Probe",
+        transport = transport,
+        linkVersion = 4,
+        hasBms = candidate.hasBms,
+        vescFirmwareVersion = candidate.vescFirmwareVersion,
+        refloatVersion = candidate.refloatVersion,
+        refloatBaseVersion = baseVersion,
+        pollIntervalMs = 100,
+        recordingEnabled = false,
+        telemetryRecordingEnabled = false,
+        autoReconnect = false,
+      ),
+      onSuccess = { connected.complete(Unit) },
+      onError = { code, message -> connected.completeExceptionally(IllegalStateException("$code: $message")) },
+    )
+    try {
+      connected.await()
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+      if (!awaitUntil(120) { (repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt }) {
+        error("PROBE_CONFIG_TIMEOUT: Full Refloat config was not acquired")
+      }
+      // Motor config is read after the Refloat read completes, so it is waited for separately rather
+      // than in the same loop. A board whose MCCONF signature no layout carries never lands a row and
+      // fails the link here — deliberate: a Board Link is only offered once every config it will show
+      // is proven readable.
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "motor-config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+      if (!awaitUntil(80) { (repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE) > previousMotorCapturedAt }) {
+        error("PROBE_MOTOR_CONFIG_TIMEOUT: VESC motor config was not acquired — this firmware may not be supported yet")
+      }
+      // The probe stays finalizable: the rider may still switch transports, and each pick
+      // acquires config for its own candidate before the link can be saved.
+      PendingLinkConnect.arm(boardId)
+      return mapOf(
+        "linkVersion" to 4,
+        "bleId" to bleId,
+        "transport" to BoardTransport.toBridge(transport),
+        "hasBms" to candidate.hasBms,
+        "vescFirmwareVersion" to candidate.vescFirmwareVersion,
+        "refloatVersion" to candidate.refloatVersion,
+        "refloatBaseVersion" to baseVersion,
+      )
+    } finally {
+      val stopped = CompletableDeferred<Unit>()
+      CoreForegroundService.stopBoardSession(appCtx) { stopped.complete(Unit) }
+      stopped.await()
+    }
+  }
+
+  /** Poll [condition] every 250 ms up to [attempts] times; false when it never held. */
+  private suspend fun awaitUntil(attempts: Int, condition: suspend () -> Boolean): Boolean {
+    repeat(attempts) {
+      if (condition()) return true
+      delay(250)
+    }
+    return false
   }
 
   private fun probeResultToBridge(result: TransportDetection.Result): Map<String, Any?> {

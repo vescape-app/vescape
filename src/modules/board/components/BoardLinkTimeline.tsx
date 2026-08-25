@@ -8,10 +8,12 @@ import {
   CpuIcon,
   HandshakeIcon,
   type Icon,
+  EngineIcon,
   LightningIcon,
   LinkIcon,
   MagnifyingGlassIcon,
   PathIcon,
+  PlugsConnectedIcon,
   WarningCircleIcon,
 } from 'phosphor-react-native'
 import type { BoardCandidate, BoardProbeProgressEvent, BoardProbeStep } from 'vescape-core'
@@ -29,11 +31,35 @@ import { interaction, theme } from '@/constants/theme'
 /**
  * One row per real probe activity, in the order the probe performs them:
  * open GATT → discover the VESC service → ping the CAN bus → prove a transport
- * with a telemetry request → wait for a BMS answer → read the Refloat identity.
+ * with a telemetry request → wait for a BMS answer → read identity → open a real Board Session on
+ * the pick → acquire complete config over it.
+ *
+ * The `session` row is the only check that exercises the production connect path rather than the
+ * probe's own detection client, so it stays visible: linking proves rides can connect, and the
+ * teardown afterwards is the test cleaning up, not a dropped connection.
  */
-type StepKey = 'connect' | 'handshake' | 'scan' | 'transport' | 'bms' | 'identity'
+type StepKey =
+  | 'connect'
+  | 'handshake'
+  | 'scan'
+  | 'transport'
+  | 'bms'
+  | 'identity'
+  | 'session'
+  | 'config'
+  | 'motorConfig'
 
-const STEP_KEYS: StepKey[] = ['connect', 'handshake', 'scan', 'transport', 'bms', 'identity']
+const STEP_KEYS: StepKey[] = [
+  'connect',
+  'handshake',
+  'scan',
+  'transport',
+  'bms',
+  'identity',
+  'session',
+  'config',
+  'motorConfig',
+]
 
 const STEP_LABEL: Record<StepKey, string> = {
   connect: 'Connecting',
@@ -42,6 +68,9 @@ const STEP_LABEL: Record<StepKey, string> = {
   transport: 'Transport',
   bms: 'Smart BMS',
   identity: 'Firmware',
+  session: 'Board session',
+  config: 'Refloat config',
+  motorConfig: 'Motor config',
 }
 
 const STEP_ICON: Record<StepKey, Icon> = {
@@ -51,6 +80,9 @@ const STEP_ICON: Record<StepKey, Icon> = {
   transport: PathIcon,
   bms: BatteryChargingIcon,
   identity: CpuIcon,
+  session: PlugsConnectedIcon,
+  config: LightningIcon,
+  motorConfig: EngineIcon,
 }
 
 /** What each step does — shown until a concrete result replaces it. */
@@ -61,6 +93,9 @@ const STEP_DESC: Record<StepKey, string> = {
   transport: 'Waiting for telemetry proof',
   bms: 'Waiting for a BMS answer',
   identity: 'Reading firmware versions',
+  session: 'Connecting the way rides connect',
+  config: 'Reading complete Refloat config',
+  motorConfig: 'Reading VESC motor config',
 }
 
 /**
@@ -75,6 +110,9 @@ const STEP_REACH: Record<BoardProbeStep, number> = {
   probing: 3,
   bms: 4,
   identity: 5,
+  session: 6,
+  config: 7,
+  'motor-config': 8,
   completed: STEP_KEYS.length,
   failed: -1,
 }
@@ -186,6 +224,67 @@ function pickingSteps(
       ? row('bms', 'done', 'Smart BMS answered')
       : row('bms', 'absent', 'No smart BMS'),
     identityRow(resolved),
+    ...acquisitionSteps(progress),
+  ]
+}
+
+/**
+ * Session + config rows, driven by the acquisition that runs after the probe window closes. The
+ * session is opened to read config and torn down afterwards, so its `done` caption says the check
+ * passed rather than claiming a connection the rider still has.
+ */
+function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineStep[] {
+  const step = progress?.step
+  const sessionDone = step === 'config' || step === 'motor-config' || step === 'completed'
+  const configDone = step === 'motor-config' || step === 'completed'
+  return [
+    row(
+      'session',
+      sessionDone ? 'done' : step === 'session' ? 'active' : 'pending',
+      sessionDone ? 'Session connected' : STEP_DESC.session,
+    ),
+    row(
+      'config',
+      configDone ? 'done' : step === 'config' ? 'active' : 'pending',
+      configDone ? 'Last Known values saved' : STEP_DESC.config,
+    ),
+    row(
+      'motorConfig',
+      step === 'completed' ? 'done' : step === 'motor-config' ? 'active' : 'pending',
+      step === 'completed' ? 'Last Known values saved' : STEP_DESC.motorConfig,
+    ),
+  ]
+}
+
+/**
+ * The three acquisition rows of a failed run. Which one failed is whichever step the probe last
+ * reported: every row before it got far enough to have passed.
+ */
+function failedAcquisitionSteps(step: BoardProbeStep | undefined): TimelineStep[] {
+  const reachedConfig = step === 'config' || step === 'motor-config'
+  const reachedMotorConfig = step === 'motor-config'
+  return [
+    row(
+      'session',
+      step === 'session' ? 'failed' : reachedConfig ? 'done' : 'pending',
+      step === 'session'
+        ? 'Could not open a Board Session'
+        : reachedConfig
+          ? 'Session connected'
+          : STEP_DESC.session,
+    ),
+    row(
+      'config',
+      step === 'config' ? 'failed' : reachedMotorConfig ? 'done' : 'pending',
+      reachedMotorConfig ? 'Last Known values saved' : STEP_DESC.config,
+    ),
+    row(
+      'motorConfig',
+      reachedMotorConfig ? 'failed' : 'pending',
+      reachedMotorConfig
+        ? 'Could not read motor config — firmware may not be supported'
+        : STEP_DESC.motorConfig,
+    ),
   ]
 }
 
@@ -224,6 +323,7 @@ function failedSteps(
     ),
     row('bms', 'absent', 'No BMS answer'),
     row('identity', 'absent', 'No firmware info'),
+    ...failedAcquisitionSteps(progress?.step),
   ]
 }
 

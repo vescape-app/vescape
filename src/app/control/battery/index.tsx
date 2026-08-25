@@ -4,11 +4,15 @@ import { BracketsCurlyIcon } from 'phosphor-react-native'
 import { useSharedValue } from 'react-native-reanimated'
 
 import { BmsCellVoltages } from '@/modules/battery/components/BmsCellVoltages'
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { BATTERY_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { IconButton } from '@/components/base/IconButton'
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import { BATTERY_MOTOR_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { theme } from '@/constants/theme'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
@@ -141,6 +145,8 @@ export default function BatteryScreen() {
       {/* Cell groups sit above the charts so a scrubbing thumb doesn't cover them. */}
       <BmsCellVoltages scrubTimeMs={scrubTimeMs} windowMs={windowMs} />
       <LiveChartStack charts={charts} scrubTimeMs={scrubTimeMs} />
+      <BoardConfigSection rows={BATTERY_CONFIG_ROWS} />
+      <MotorConfigSection rows={BATTERY_MOTOR_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

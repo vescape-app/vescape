@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.replay
 
+import expo.modules.vescapecore.config.BoardConfigFreshness
 import expo.modules.vescapecore.warnings.BoardWarningKind
 import expo.modules.vescapecore.warnings.ConfigSafetyDetector
 import org.junit.Assert.assertEquals
@@ -24,22 +25,29 @@ class ConfigReplayHarnessTest {
 
   @Test
   fun realRecordingDecodesKnownSafetyValues() {
-    val values = ConfigReplayHarness.decodeSafetyValues(jsonl)
+    val values = ConfigReplayHarness.decodeBoardConfigValues(jsonl)
     assertNotNull("config read must decode from the real recording", values)
     values!!
-    assertEquals(2.0, values.faultAdc1!!, 1e-9)
-    assertEquals(2.0, values.faultAdc2!!, 1e-9)
-    assertEquals(62.0, values.tiltbackLv!!, 1e-9)
-    assertEquals(86.0, values.tiltbackHv!!, 1e-9)
-    assertEquals(1.0, values.tiltbackDuty!!, 1e-9)
+    assertEquals(2.0, values.number("fault_adc1")!!, 1e-9)
+    assertEquals(2.0, values.number("fault_adc2")!!, 1e-9)
+    assertEquals(62.0, values.number("tiltback_lv")!!, 1e-9)
+    assertEquals(86.0, values.number("tiltback_hv")!!, 1e-9)
+    assertEquals(1.0, values.number("tiltback_duty")!!, 1e-9)
     // Schema does not carry the moving-fault flag -> the rule is skipped, never guessed.
-    assertNull(values.movingFaultDisabled)
+    // The schema types this id as a number, so it is not a Boolean the rule can read: the rule stays
+    // skipped rather than guessing from a numeric value.
+    assertNull(values.bool("fault_moving_fault_disabled"))
+    // The read retains its own write base and is fresh; the decoded map spans the whole schema, not
+    // just the curated tune groups.
+    assertEquals(BoardConfigFreshness.FRESH, values.freshness)
+    assertNotNull(values.writeBase)
+    assertTrue(values.values.size > 6)
   }
 
   // Thor301 runs 20s pack-mode Refloat: the tiltback voltages are pack totals, not per-cell.
   @Test
   fun realConfigSurfacesUnsafeDutyPushback() {
-    val values = ConfigReplayHarness.decodeSafetyValues(jsonl)!!
+    val values = ConfigReplayHarness.decodeBoardConfigValues(jsonl)!!
     val report = ConfigSafetyDetector.evaluate(values, seriesCount = 20, perCell = false)
     // Duty pushback recorded at 1.0 (100%) — a genuinely unsafe setting on the real board.
     assertTrue(report.findings.any { it.kind == BoardWarningKind.DUTY_PUSHBACK_HIGH })

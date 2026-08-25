@@ -9,6 +9,8 @@ import Animated, {
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { IMU_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { TickText } from '@/components/base/TickText'
@@ -199,6 +201,7 @@ export default function ImuScreen() {
       <HotAttitudeBars pitch={hot.pitch} roll={hot.roll} balancePitch={hot.balancePitch} />
 
       <LiveChartStack charts={charts} />
+      <BoardConfigSection rows={IMU_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

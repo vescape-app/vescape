@@ -21,11 +21,13 @@ import expo.modules.vescapecore.protocol.COMM_FORWARD_CAN
 import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
+import expo.modules.vescapecore.protocol.COMM_GET_MCCONF
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
+import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.location.GpsMonitor
@@ -37,6 +39,9 @@ import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.location.LocationTracker
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
+import expo.modules.vescapecore.config.McconfDecodeResult
+import expo.modules.vescapecore.config.MotorConfigValues
+import expo.modules.vescapecore.config.McconfDecoder
 import expo.modules.vescapecore.config.PendingConfigRead
 import expo.modules.vescapecore.service.PendingStart
 import expo.modules.vescapecore.protocol.REFLOAT_GET_INFO
@@ -92,8 +97,9 @@ import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import expo.modules.vescapecore.warnings.BoardWarningStore
 import expo.modules.vescapecore.warnings.CellSpreadDetector
+import expo.modules.vescapecore.config.BoardConfigFreshness
+import expo.modules.vescapecore.config.BoardConfigValues
 import expo.modules.vescapecore.warnings.ConfigSafetyDetector
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityManager
@@ -362,6 +368,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
                         currentBoardTransport(),
                         fwVersionString,
                         boardSession?.linkIntegrity ?: LinkIntegrity.Unknown,
+                        boardConfigValues,
                     )
                 override fun isPollingActive() = pollingLoop.isActive
                 override fun stopPolling() = this@BoardSessionController.stopPolling()
@@ -373,8 +380,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
                     this@BoardSessionController.diagnosticProperties(config, category)
                 override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) =
                     this@BoardSessionController.dumpRefloatConfigDebug(xmlBytes, configBytes)
-                override fun evaluateConfigSafety(values: ConfigSafetyValues) =
-                    this@BoardSessionController.evaluateConfigSafety(values)
+                override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) =
+                    this@BoardSessionController.onBoardConfigValues(values, origin)
             },
         )
     }
@@ -492,6 +499,18 @@ internal class BoardSessionController(private val service: CoreForegroundService
             transport.clear(markIntentional = false)
             bmsSeriesRing.clear()
             telemetryPipeline.clearLiveTelemetry()
+            // The Board Session survives the drop, but exclusive ownership of the config does not:
+            // while we were off the link another central could have written. The values stay
+            // displayable, they just stop backing a write until the post-trust read makes them fresh
+            // again (ADR 0035).
+            boardConfigValues = boardConfigValues?.demotedToProvisional()
+            // Re-arm the post-trust read so the relinked session gets fresh values back.
+            boardConfigReadScheduled = false
+            // Same reasoning as the Refloat demote above: the disconnected window is where another
+            // tool could have rewritten the controller, so the values stay displayable but stop
+            // claiming to describe the live board.
+            motorConfigValues = motorConfigValues?.demotedToLastKnown()
+            motorConfigRequested = false
             boardError = reason
             transitionBoardPhase(
                 next = BoardPhase.Reconnecting,
@@ -1044,7 +1063,15 @@ private var wearAutoLaunchOnConnect = true
         cellSpreadDetector.reset()
         batteryConfigMismatchDetector.reset()
         warningFailuresReported.clear()
-        configSafetyReadScheduled = false
+        boardConfigReadScheduled = false
+        motorConfigRequested = false
+        motorConfigValues = null
+        // No re-clear here: `stopCurrentBoardSession` above already nulled the held values, and the
+        // setter emits on every assignment — a second null would send a duplicate bridge event on
+        // every connection. Mirrors iOS, which assigns the restored value once.
+        alertCoordinator.updateBoardConfigValues(emptyMap())
+        restoreBoardConfigValues(start.boardConfig)
+        restoreMotorConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
         // Tag telemetry frames with the CAN id resolved from the stored transport.
         telemetryPipeline.updateCanId(currentCanId)
@@ -1094,12 +1121,24 @@ private var wearAutoLaunchOnConnect = true
         startForeground(type)
     }
 
+    /**
+     * Android 12+ refuses a foreground promotion requested while the process counts as background
+     * (`ForegroundServiceStartNotAllowedException`). Every caller here is a plain intent — GPS,
+     * Group Ride, a session repaint — so the refusal must not escape: thrown from a module call it
+     * rejects the JS call and, thrown from `onStartCommand`, it kills the process. Degrade instead:
+     * drop the promotion, and stop the service when nothing durable is left to keep alive.
+     */
     private fun startForeground(type: Int) {
         val notification = presenter.build(reportedBoardPhase())
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            service.startForeground(NOTIFICATION_ID, notification, type)
-        } else {
-            service.startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                service.startForeground(NOTIFICATION_ID, notification, type)
+            } else {
+                service.startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(VESC_SESSION_TAG, "startForeground refused (type=$type): ${e.message}")
+            stopIfIdle()
         }
     }
 
@@ -1292,6 +1331,7 @@ private var wearAutoLaunchOnConnect = true
                 ConfigRWEvent.ConfigBytesPayloadReceived(payload, nowMs()),
             )
             COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+            COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
                 if (payload.size >= 3) {
                     when (payload[2].toInt() and 0xff) {
@@ -1303,6 +1343,7 @@ private var wearAutoLaunchOnConnect = true
                             ConfigRWEvent.ConfigBytesPayloadReceived(payload, nowMs()),
                         )
                         COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
+                        COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
                     }
                 }
             }
@@ -1503,13 +1544,99 @@ private var wearAutoLaunchOnConnect = true
     }
 
     /**
+     * Take ownership of the Board Config Values a read or write just produced: they become this
+     * session's config truth, get cached for the next connect, and feed warning evaluation.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onBoardConfigValues`
+     */
+    private fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) {
+        // The link can go `Mismatched` (or the Board change) while a read is on the wire; those bytes
+        // describe a board this session no longer owns, so they must not repopulate what was cleared.
+        if (values.boardId != boardConfig?.appBoardId) return
+        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
+        boardConfigValues = values
+        alertCoordinator.updateBoardConfigValues(values.values)
+        val repo = AppDataRepository.get(service.applicationContext)
+        CoreForegroundService.appDataScope.launch {
+            if (origin == BoardConfigOperationOrigin.FRESH_READ) {
+                repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+            } else repo.saveBoardConfigValues(values)
+        }
+        evaluateConfigSafety(values)
+    }
+
+    /**
+     * Restore the cached values for the connecting Board as `lastKnown`, so consumers have
+     * something before this session's fresh read lands. Never a write base (#396).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoredBoardConfigValues`
+     */
+    private fun restoreBoardConfigValues(config: SessionConfig) {
+        val boardId = config.appBoardId ?: return
+        val refloatBaseVersion = config.refloatBaseVersion ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        val session = boardSession
+        CoreForegroundService.appDataScope.launch {
+            val restored = repo.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@launch
+            scheduler.post {
+                // The load is async, so re-check everything that could have moved since: the session
+                // must still be the one that asked, on the same Board and Refloat base version, with a
+                // link that has not gone `Mismatched` (which clears the cache). And the session's own
+                // read wins — never downgrade fresh values to a cached lastKnown.
+                if (session == null || !isCurrentBoardSession(session)) return@post
+                if (boardConfig?.appBoardId != boardId) return@post
+                if (boardConfig?.refloatBaseVersion != refloatBaseVersion) return@post
+                if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
+                if (boardConfigValues != null) return@post
+                boardConfigValues = restored
+                alertCoordinator.updateBoardConfigValues(restored.values)
+            }
+        }
+    }
+
+    /**
+     * Restore the cached Motor Config Values for the connecting Board as `lastKnown`. Unlike the
+     * Refloat cache there is no scope key to match on up front — the board's MCCONF signature is not
+     * known until it answers — so the latest row is restored optimistically and replaced when the
+     * session's own read lands under whatever signature the board reports.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `restoreMotorConfigValues`
+     */
+    private fun restoreMotorConfigValues(config: SessionConfig) {
+        val boardId = config.appBoardId ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        val session = boardSession
+        CoreForegroundService.appDataScope.launch {
+            val restored = repo.getLatestMotorConfigValues(boardId) ?: return@launch
+            scheduler.post {
+                if (session == null || !isCurrentBoardSession(session)) return@post
+                if (boardConfig?.appBoardId != boardId) return@post
+                if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
+                // The session's own read wins — never downgrade fresh values to a cached lastKnown.
+                if (motorConfigValues != null) return@post
+                motorConfigValues = restored
+            }
+        }
+    }
+
+    /**
+     * Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `clearBoardConfigValues`
+     */
+    private fun clearBoardConfigValues() {
+        boardConfigValues = null
+        motorConfigValues = null
+        alertCoordinator.updateBoardConfigValues(emptyMap())
+        val boardId = boardConfig?.appBoardId ?: return
+        val repo = AppDataRepository.get(service.applicationContext)
+        CoreForegroundService.appDataScope.launch { repo.clearBoardConfigValues(boardId) }
+    }
+
+    /**
      * Evaluate the config-safety rules against a freshly decoded config (background read after link
      * trust, or the in-hand bytes from a tune write) and report findings / clean evaluations through
      * the Board Warning registry. Per-cell rules use the configured battery series count and are
      * skipped when it is absent; skipped kinds report nothing so stored warnings stay untouched.
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `evaluateConfigSafety`
      */
-    private fun evaluateConfigSafety(values: ConfigSafetyValues) = guardWarningEval("config_safety") {
+    private fun evaluateConfigSafety(values: BoardConfigValues) = guardWarningEval("config_safety") {
         if (!boardWarningsEnabled) return@guardWarningEval
         val boardId = boardConfig?.appBoardId ?: return@guardWarningEval
         val seriesCount = (batteryConfigCache?.get("seriesCount") as? Number)?.toInt()
@@ -1531,14 +1658,82 @@ private var wearAutoLaunchOnConnect = true
      * the config-safety detectors can evaluate the decoded config. Read-only; reuses the normal config
      * read path (pauses/resumes polling) and is skipped if a config op is already in flight.
      */
-    private fun triggerConfigSafetyRead(session: BoardSession) {
-        if (!boardWarningsEnabled) {
-            // Re-arm so re-enabling Board Warnings mid-session can schedule the read again.
-            configSafetyReadScheduled = false
-            return
-        }
+    private fun triggerBoardConfigRead(session: BoardSession) {
         if (!isCurrentBoardSession(session)) return
-        configController.consumeRead(PendingConfigRead(onSuccess = {}, onError = { _, _ -> }))
+        configController.consumeRead(
+            PendingConfigRead(
+                onSuccess = { requestMotorConfig(session) },
+                onError = { _, _ -> requestMotorConfig(session) },
+            ),
+        )
+    }
+
+    /**
+     * Ask the controller for its motor config (MCCONF) once per Board Session. Deliberately sequenced
+     * after the Refloat read rather than beside it: both are multi-packet transfers over one BLE link,
+     * and the Refloat read owns the polling pause while it runs.
+     *
+     * Mandatory link state, like the Refloat read: the Board Probe waits for the decoded values and
+     * fails the link without them, so a board whose signature no layout carries is refused at link
+     * time rather than losing its cutoffs silently at ride time (ADR 0036).
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `requestMotorConfig`
+     */
+    private fun requestMotorConfig(session: BoardSession) {
+        if (!isCurrentBoardSession(session) || motorConfigRequested) return
+        val transport = currentBoardTransport() ?: return
+        motorConfigRequested = true
+        sendPayloadWithRetry(transport.frame(byteArrayOf(COMM_GET_MCCONF.toByte())), session)
+    }
+
+    /**
+     * @param body the MCCONF response with its framing (and CAN wrapper) already stripped.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handleMcconfPayload`
+     */
+    private fun handleMcconfPayload(body: ByteArray) {
+        // A response only counts for the session that asked. The link can go `Mismatched` (clearing
+        // held and persisted values) or the Board can change while the blob is on the wire; without
+        // these guards those late bytes repopulate what was just cleared.
+        val session = boardSession ?: return
+        if (!isCurrentBoardSession(session) || !motorConfigRequested) return
+        if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
+        when (val result = McconfDecoder.decode(body)) {
+            is McconfDecodeResult.Decoded -> {
+                val values = MotorConfigValues(
+                    boardId = boardConfig?.appBoardId,
+                    signature = result.signature,
+                    firmware = result.firmware,
+                    capturedAtMs = nowMs(),
+                    freshness = BoardConfigFreshness.FRESH,
+                    values = result.values,
+                )
+                motorConfigValues = values
+                val repo = AppDataRepository.get(service.applicationContext)
+                CoreForegroundService.appDataScope.launch {
+                    repo.saveFreshMotorConfigValues(values)?.let {
+                        emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
+                    }
+                }
+                Log.i(
+                    VESC_SESSION_TAG,
+                    "MCCONF decoded: ${result.firmware} signature=${result.signature} fields=${result.values.size}",
+                )
+            }
+            // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
+            // Report the signature so a table can be generated for it, and drop the optimistically
+            // restored cache row — it was read under a signature this board does not answer with,
+            // and no motor config is the honest answer here (ADR 0036).
+            is McconfDecodeResult.UnknownSignature -> {
+                motorConfigValues = null
+                Log.w(
+                    VESC_SESSION_TAG,
+                    "MCCONF signature ${result.signature} has no layout (${result.byteCount} bytes)",
+                )
+            }
+            is McconfDecodeResult.Malformed -> {
+                motorConfigValues = null
+                Log.w(VESC_SESSION_TAG, "MCCONF malformed: ${result.reason}")
+            }
+        }
     }
 
     /**
@@ -1619,22 +1814,67 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private var lastEmittedLinkIntegrity = LinkIntegrity.Unknown
-    private var configSafetyReadScheduled = false
+    private var boardConfigReadScheduled = false
+    private var motorConfigRequested = false
+
+    /**
+     * This Board Session's decoded motor config, keyed by firmware field id, or null while none has
+     * been decoded — no layout for the board's signature is a normal reason for that.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValues`
+     */
+    private var motorConfigValues: MotorConfigValues? = null
+        set(value) {
+            field = value
+            // Config-relative Alert Rules may anchor to MCCONF fields (temperature cutoffs), so the
+            // engine follows this value the same way it follows the Refloat config.
+            alertCoordinator.updateMotorConfigValues(value?.values.orEmpty())
+            emitEvent("onMotorConfigValues", mapOf("values" to value?.toBridgeMap()))
+        }
+
+    /**
+     * The held Motor Config Values in bridge shape, or null when none are held.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `motorConfigValuesMap`
+     */
+    internal fun motorConfigValuesMap(): Map<String, Any?>? = motorConfigValues?.toBridgeMap()
+
+    /**
+     * This Board Session's Board Config Values: `FRESH` once the post-trust read lands, `LAST_KNOWN`
+     * while it is the cache restored on connect. Native-owned truth; JS mirrors it through
+     * `getBoardConfigValues` + `onBoardConfigValues`.
+     *
+     * Every assignment emits — arrival, refresh after a write, and the clears (session end, board
+     * switch, `Mismatched`) — so the bridge event needs no separate call sites to stay honest.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValues`
+     */
+    private var boardConfigValues: BoardConfigValues? = null
+        set(value) {
+            field = value
+            emitEvent("onBoardConfigValues", mapOf("values" to value?.toBridgeMap()))
+        }
+
+    /**
+     * The held Board Config Values in bridge shape, or null when none are held.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardConfigValuesMap`
+     */
+    internal fun boardConfigValuesMap(): Map<String, Any?>? = boardConfigValues?.toBridgeMap()
 
     private fun updateLinkIntegrity(next: LinkIntegrity) {
         if (next == lastEmittedLinkIntegrity) return
         lastEmittedLinkIntegrity = next
         emitState()
-        // Link just became trusted — schedule the one background config-safety read for this session.
-        if (next == LinkIntegrity.Trusted) scheduleConfigSafetyRead()
+        // Link just became trusted — schedule the one background config read for this session.
+        if (next == LinkIntegrity.Trusted) scheduleBoardConfigRead()
+        // Mismatched firmware makes every cached offset meaningless: drop the held object and the
+        // persisted rows for this Board. `outdated` keeps them.
+        if (next == LinkIntegrity.Mismatched) clearBoardConfigValues()
     }
 
-    private fun scheduleConfigSafetyRead() {
-        if (configSafetyReadScheduled) return
-        configSafetyReadScheduled = true
+    private fun scheduleBoardConfigRead() {
+        if (boardConfigReadScheduled) return
+        boardConfigReadScheduled = true
         val session = boardSession ?: return
         scheduler.postDelayedForSession(session, CONFIG_SAFETY_READ_DELAY_MS, ::isCurrentBoardSession) {
-            triggerConfigSafetyRead(session)
+            triggerBoardConfigRead(session)
         }
     }
 
@@ -2018,6 +2258,10 @@ private var wearAutoLaunchOnConnect = true
         connectionCoordinator.clearPending()
         fwVersionString = null
         telemetry = null
+        // Board Config Values are per Board Session; the cache row survives, the held object does not.
+        boardConfigValues = null
+        motorConfigValues = null
+        motorConfigRequested = false
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread
@@ -2633,10 +2877,18 @@ private var wearAutoLaunchOnConnect = true
         val warningsWereEnabled = boardWarningsEnabled
         boardWarningsEnabled = settings.boardWarningsEnabled
         // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
-        // schedule the config-safety read here (main-scheduler, like the rest of the one-shot state).
+        // re-arm here (main-scheduler, like the rest of the one-shot state) — evaluate the config this
+        // session already read, or retry the read if it never landed.
         if (!warningsWereEnabled && boardWarningsEnabled) {
             scheduler.post {
-                if (lastEmittedLinkIntegrity == LinkIntegrity.Trusted) scheduleConfigSafetyRead()
+                if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return@post
+                val values = boardConfigValues
+                if (values != null && values.freshness == BoardConfigFreshness.FRESH) {
+                    evaluateConfigSafety(values)
+                } else {
+                    boardConfigReadScheduled = false
+                    scheduleBoardConfigRead()
+                }
             }
         }
         configuredPollIntervalMs = pollIntervalMsForHz(settings.telemetryPollRateHz)

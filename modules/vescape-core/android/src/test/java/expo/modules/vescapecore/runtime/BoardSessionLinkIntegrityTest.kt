@@ -5,7 +5,7 @@ import org.junit.Test
 
 class BoardSessionLinkIntegrityTest {
     private val complete = LinkIdentity(
-        linkVersion = 3,
+        linkVersion = 4,
         hasBms = true,
         firmware = "FW 6.05",
         refloatVersion = "Refloat 3.0.7",
@@ -25,6 +25,7 @@ class BoardSessionLinkIntegrityTest {
 
         assertEquals(LinkIntegrity.Checking, session.startLinkIntegrityCheck(complete.copy(linkVersion = null)))
         assertEquals(LinkIntegrity.Outdated, session.markOutdatedIfIncomplete(complete.copy(linkVersion = null)))
+        assertEquals(LinkIntegrity.Outdated, session.markOutdatedIfIncomplete(complete.copy(linkVersion = 3)))
         assertEquals(LinkIntegrity.Outdated, session.markOutdatedIfIncomplete(complete.copy(hasBms = null)))
         assertEquals(LinkIntegrity.Outdated, session.markOutdatedIfIncomplete(complete.copy(firmware = null)))
     }

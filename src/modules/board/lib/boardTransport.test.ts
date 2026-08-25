@@ -48,10 +48,10 @@ describe('formatRefloatIdentity', () => {
 })
 
 describe('formatBoardLinkFacts', () => {
-  it('shows compact Board Link v3 facts', () => {
+  it('shows compact Board Link v4 facts', () => {
     expect(
       formatBoardLinkFacts({
-        linkVersion: 3,
+        linkVersion: 4,
         bleId: 'AA:BB',
         transport: 84,
         hasBms: false,
@@ -61,7 +61,7 @@ describe('formatBoardLinkFacts', () => {
         refloatBaseVersion: '1.3.0',
       }),
     ).toBe(
-      'Board Link v3 · AA:BB · CAN id 84 · Refloat 1.3.0-preview2 · base 1.3.0 · FW 6.05 · ADV500 · no BMS',
+      'Board Link v4 · AA:BB · CAN id 84 · Refloat 1.3.0-preview2 · base 1.3.0 · FW 6.05 · ADV500 · no BMS',
     )
   })
 })
