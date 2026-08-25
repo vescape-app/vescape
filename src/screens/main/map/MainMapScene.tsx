@@ -178,7 +178,7 @@ export function MainMapScene({
           isMapy={mapStyle.isMapy}
           isOneDark={mapStyle.isOneDark}
           isSatellite={mapStyle.isSatelliteOverlay}
-          showBuildings3d={mapStyle.showBuildings3d}
+          showBuildings3d={mapStyle.showBuildings3d && mapStyle.canUpdateExistingStyleLayers}
           weatherActive={weatherActive}
           legalLimitsActive={legalLimitsActive}
           liveTrailShape={liveTrailShape}

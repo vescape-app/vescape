@@ -24,7 +24,7 @@ interface SectionHeaderProps {
 export function SectionHeader({
   icon: HeaderIcon,
   title,
-  color = theme.palette.slate.textSecondary,
+  color = theme.neutral.textSecondary,
   description,
   right,
 }: SectionHeaderProps) {
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.2,
@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
   },
   description: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     letterSpacing: 0.3,
   },
