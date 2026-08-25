@@ -66,32 +66,3 @@ export async function runCodexDraft(options: {
     threadId: options.threadId ?? threadIdFromJsonl(stdout),
   }
 }
-
-export async function generateGithubReleaseBody(options: {
-  root: string
-  outputFile: string
-  version: string
-  previousTag: string | null
-  commitLog: string
-}): Promise<string> {
-  const range = options.previousTag
-    ? `${options.previousTag}..v${options.version}`
-    : 'repository start'
-  const result = await runCodexDraft({
-    root: options.root,
-    outputFile: options.outputFile,
-    prompt: [
-      `Write the GitHub prerelease body for Vescape v${options.version}.`,
-      `Source range: ${range}.`,
-      'Turn the commit log below into concise, human-friendly Markdown release notes.',
-      'Group related user-visible changes. Mention technical work only when useful to users.',
-      'Do not invent behavior, include commit hashes, add a title, or use a preamble.',
-      'Return only the complete Markdown body.',
-      '',
-      options.commitLog,
-    ].join('\n'),
-  })
-  const markdown = result.markdown.trim()
-  if (!markdown) throw new Error('Codex generated an empty GitHub release body')
-  return `${markdown}\n`
-}

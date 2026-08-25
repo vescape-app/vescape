@@ -117,6 +117,29 @@ Every implementation issue must have exactly one complexity label. Complexity re
 | `complexity:medium` | Moderate integration surface, needs care but not safety-critical     | sonnet         | GPT-5.4 Codex |
 | `complexity:high`   | Critical paths, subtle correctness, native pipelines, data integrity | opus           | GPT-5.5       |
 
+## Kind labels
+
+Alongside the area and complexity labels, tag what kind of work an issue is. These are not
+mutually exclusive with `area:*` — an issue carries both.
+
+| Label               | Use for                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| `🐛🐞🐜🐝🪲 BUG!!!` | Something is broken: crashes, hangs, wrong behavior in shipped code |
+| `enhancement`       | New feature or capability                                           |
+| `nice-to-have`      | Wanted, but nothing is blocked without it                           |
+
+The bug label is literally named `🐛🐞🐜🐝🪲 BUG!!!`, emoji and all. Match it exactly when
+filtering or applying:
+
+```sh
+gh issue edit <number> --add-label "🐛🐞🐜🐝🪲 BUG!!!"
+gh issue list --label "🐛🐞🐜🐝🪲 BUG!!!" --state open
+```
+
+Do not create a plain `bug` label. A `gh label list | grep -i "^bug"` will miss the real one
+because of the emoji prefix — check the full `gh label list` output before concluding a label is
+absent.
+
 ## When a skill says "fetch the relevant ticket"
 
 Run:

@@ -525,7 +525,10 @@ data class FavoriteEntity(
    *
    * @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `Favorite.toMap`
    */
-  fun toMap(boardName: String?): Map<String, Any?> = mapOf(
+  fun toMap(
+    boardName: String?,
+    routePoints: List<Map<String, Double>> = emptyList(),
+  ): Map<String, Any?> = mapOf(
     "id" to id,
     "boardId" to boardId,
     "boardName" to boardName,
@@ -541,6 +544,7 @@ data class FavoriteEntity(
     "avgSpeedKmh" to avgSpeedCentiKmh / 100.0,
     "maxSpeedKmh" to maxSpeedCentiKmh / 100.0,
     "batteryUsedWh" to batteryUsedWhMilli / 1000.0,
+    "routePoints" to routePoints,
   )
 }
 

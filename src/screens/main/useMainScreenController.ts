@@ -87,7 +87,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     loading: historyLoading,
     hasMore: historyHasMore,
     error: historyError,
-    loadInitial,
     loadMore,
     selectSession,
     removeSelectedSession,
@@ -104,7 +103,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       loading: s.loading,
       hasMore: s.hasMore,
       error: s.error,
-      loadInitial: s.loadInitial,
       loadMore: s.loadMore,
       selectSession: s.selectSession,
       removeSelectedSession: s.removeSelectedSession,
@@ -238,7 +236,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     enterHistory,
     enterTelemetry,
     historyFavorites,
-    loadInitial,
     selectSession,
     removeSelectedSession,
     setHistorySheetVisible,
@@ -246,11 +243,11 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   })
   const {
     exitHistory,
-    enterHistoryMode,
     selectPreviousRide,
     selectNextRide,
     removeSession,
     selectRide,
+    selectFavoriteRide,
   } = historyNavigation
 
   const handleMapFocus = useCallback(() => {
@@ -385,10 +382,10 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     loadMoreHistory: loadMore,
     selectPreviousRide,
     selectNextRide,
-    enterHistoryMode,
     exitHistory,
     removeSession,
     selectRide,
+    selectFavoriteRide,
     weatherActive,
     enterWeatherMode,
     exitWeatherMode,

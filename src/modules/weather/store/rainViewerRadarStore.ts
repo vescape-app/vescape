@@ -44,8 +44,29 @@ export function buildRainViewerTileTemplate(host: string, frame: RainViewerRadar
 export function formatRainViewerFrameTime(time: number): string {
   return new Date(time * 1_000).toLocaleTimeString([], {
     hour: '2-digit',
+    hourCycle: 'h23',
     minute: '2-digit',
   })
+}
+
+export function findClosestRainViewerFrameIndex(
+  frames: readonly RainViewerRadarFrame[],
+  targetTime: number,
+): number {
+  if (frames.length === 0) return -1
+
+  let closestIndex = 0
+  let closestDistance = Math.abs(frames[0].time - targetTime)
+
+  for (let index = 1; index < frames.length; index += 1) {
+    const distance = Math.abs(frames[index].time - targetTime)
+    if (distance < closestDistance) {
+      closestIndex = index
+      closestDistance = distance
+    }
+  }
+
+  return closestIndex
 }
 
 export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerRadarActions>(

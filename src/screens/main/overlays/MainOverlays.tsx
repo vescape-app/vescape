@@ -74,7 +74,7 @@ interface MainOverlaysProps {
   mapInteractionHandlerRef: RefObject<(selection?: MapSelection) => boolean | undefined>
   board: MainBoardOverlayProps
   map: MainMapOverlayProps
-  history: MainHistoryOverlayProps & { enterHistoryMode: () => void }
+  history: MainHistoryOverlayProps
 }
 
 /**
@@ -138,7 +138,8 @@ export function MainOverlays({
         onCancelMapFocus={map.cancelMapFocus}
         onEnterWeather={map.enterWeather}
         onEnterLegalLimits={map.enterLegalLimits}
-        onEnterHistory={() => void history.enterHistoryMode()}
+        onOpenHistoryRide={history.selectRide}
+        onOpenHistoryFavorite={history.selectFavoriteRide}
         onOffscreenIndicatorPress={map.onOffscreenIndicatorPress}
         activeNavigationTarget={map.activeNavigationTarget}
         onCancelNavigation={map.onCancelNavigation}

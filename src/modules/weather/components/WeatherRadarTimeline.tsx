@@ -19,11 +19,13 @@ import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
+  findClosestRainViewerFrameIndex,
   formatRainViewerFrameTime,
   useRainViewerRadarStore,
 } from '@/modules/weather/store/rainViewerRadarStore'
 
 const FRAME_INTERVAL_MS = 450
+const INITIAL_FRAME_OFFSET_SECONDS = 30 * 60
 const TIME_FONT_SIZE = 12
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
@@ -83,6 +85,7 @@ export function WeatherRadarTimeline() {
   const [playing, setPlaying] = useState(true)
   const frameCountRef = useRef(0)
   const frameIndexRef = useRef(0)
+  const initialFrameSelectedRef = useRef(false)
   const labelsRef = useRef<string[]>([])
   const instantFrameIndexRef = useRef<number | null>(null)
   const frameCount = useSharedValue(0)
@@ -100,7 +103,17 @@ export function WeatherRadarTimeline() {
     frameCount.value = frames.length
     labelsRef.current = frames.map((frame) => formatRainViewerFrameTime(frame.time))
 
-    const selectedFrameIndex = useRainViewerRadarStore.getState().selectedFrameIndex
+    let selectedFrameIndex = useRainViewerRadarStore.getState().selectedFrameIndex
+    if (!initialFrameSelectedRef.current && frames.length > 0) {
+      selectedFrameIndex = findClosestRainViewerFrameIndex(
+        frames,
+        Date.now() / 1_000 - INITIAL_FRAME_OFFSET_SECONDS,
+      )
+      initialFrameSelectedRef.current = true
+      instantFrameIndexRef.current = selectedFrameIndex
+      useRainViewerRadarStore.getState().setFrameIndex(selectedFrameIndex, 'auto')
+    }
+
     frameIndexRef.current = Math.max(0, Math.min(frames.length - 1, selectedFrameIndex))
     progress.value = frames.length <= 1 ? 1 : frameIndexRef.current / (frames.length - 1)
     frameLabel.value = labelsRef.current[frameIndexRef.current] ?? 'Radar'

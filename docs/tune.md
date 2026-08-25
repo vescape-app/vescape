@@ -563,9 +563,11 @@ There are two observed Refloat protocol generations:
 - Refloat 1.0–1.2 uses `RC_MOVE` (`7`). Payload:
   `[direction, current, time, current + time]` after the package id and command.
   `direction = 1` moves one way and `0` flips current negative. `current` is
-  tenths of amps and is clamped by firmware; `time` is in firmware steps of
-  roughly one second (`time * 100` loop steps). A stop-ish command is
-  `[1, 0, 1, 1]`.
+  tenths of amps and is clamped by firmware; `time` is `time * 100` control-loop
+  steps, and that loop ticks at ~832 Hz, so one unit is only ~120 ms — not the
+  second it reads like. Firmware also zeroes its move current and ramps back to
+  the target on every request, so a re-send costs a short dip. A stop-ish command
+  is `[1, 0, 1, 1]`.
 - Refloat 1.3+ uses `REMOTE` (`15`). Payload is one signed byte after the
   package id and command. The firmware maps `-127..127` to `-1..1` remote input
   (`-128` is ignored). It then derives move speed from configured
@@ -635,14 +637,14 @@ trusted base version, the rider explicitly creates one from the current board co
 
 Known version-sensitive field semantics:
 
-| Area                      | Affected fields                        | Compatibility note                                                                                                                                                                                      |
-| ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| High/low voltage pushback | `tiltback_hv`, `tiltback_lv`           | Refloat 1.2 with VESC firmware `6.05+` supports per-cell voltage values. Older `6.02` setups use total pack voltage, e.g. `4.3V * cell_count` for high voltage and `3.0V * cell_count` for low voltage. |
-| I term limit              | `ki_limit`                             | Older firmware exposed this concept as `Deadzone`; the modern value is scaled up 10x. A previous `Deadzone = 3` corresponds to `ki_limit = 30A`.                                                        |
-| ATR strength              | `atr_strength_up`, `atr_strength_down` | Older `5.3 ATR` values are scaled 10x smaller. A previous ATR strength of `0.10` corresponds to modern `1.0`.                                                                                           |
-| BMS temperature alert     | BMS temperature threshold fields       | Some BMS-related options require VESC firmware `6.06+` and sufficiently recent BMS firmware.                                                                                                            |
-| Parking brake             | `parking_brake_mode`                   | Firmware `6.05+` applies parking brake by shorting motor phases; older behavior may differ.                                                                                                             |
-| Audible feedback          | haptic/audible feedback fields         | Some generated tones rely on `foc_play_tone` behavior from firmware `6.05`; other modes use current modulation instead.                                                                                 |
+| Area                      | Affected fields                        | Compatibility note                                                                                                                                                                                                                                  |
+| ------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| High/low voltage pushback | `tiltback_hv`, `tiltback_lv`           | Refloat 1.2 with VESC firmware `6.05+` supports per-cell values below `10 V` while retaining total pack values. Older `6.02` setups use only total pack voltage, e.g. `4.3V * cell_count` for high voltage and `3.0V * cell_count` for low voltage. |
+| I term limit              | `ki_limit`                             | Older firmware exposed this concept as `Deadzone`; the modern value is scaled up 10x. A previous `Deadzone = 3` corresponds to `ki_limit = 30A`.                                                                                                    |
+| ATR strength              | `atr_strength_up`, `atr_strength_down` | Older `5.3 ATR` values are scaled 10x smaller. A previous ATR strength of `0.10` corresponds to modern `1.0`.                                                                                                                                       |
+| BMS temperature alert     | BMS temperature threshold fields       | Some BMS-related options require VESC firmware `6.06+` and sufficiently recent BMS firmware.                                                                                                                                                        |
+| Parking brake             | `parking_brake_mode`                   | Firmware `6.05+` applies parking brake by shorting motor phases; older behavior may differ.                                                                                                                                                         |
+| Audible feedback          | haptic/audible feedback fields         | Some generated tones rely on `foc_play_tone` behavior from firmware `6.05`; other modes use current modulation instead.                                                                                                                             |
 
 For our app, this means tune read/write support requires a trusted Board Link with known Refloat
 package version. Writes are still gated by schema validation and field presence, but profile

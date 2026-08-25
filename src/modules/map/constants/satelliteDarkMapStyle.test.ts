@@ -7,8 +7,8 @@ import {
 
 describe('satellite dark map style', () => {
   test('keeps the style JSON stable while imagery paint changes at reveal time', () => {
-    const telemetryStyle = getSatelliteDarkMapStyle(0.2, true, true, false, true, -0.35)
-    const mapStyle = getSatelliteDarkMapStyle(0.2, true, true, false, true, -0.35)
+    const telemetryStyle = getSatelliteDarkMapStyle(true, true, false, true)
+    const mapStyle = getSatelliteDarkMapStyle(true, true, false, true)
 
     expect(mapStyle).toBe(telemetryStyle)
     expect(getSatelliteImageryPaint(0.2, -0.35)).toEqual({
@@ -44,21 +44,19 @@ describe('satellite dark map style', () => {
     })
   })
 
-  test('stores satellite overlay paint in the style JSON', () => {
-    const style = JSON.parse(
-      getSatelliteDarkMapStyle(0.2, false, false, false, true, -0.35, 2),
-    ) as {
+  test('leaves imagery out of the style JSON so the owned raster layer owns it', () => {
+    const style = JSON.parse(getSatelliteDarkMapStyle(false, false, false, true, 2)) as {
+      sources: Record<string, unknown>
       layers: {
         id: string
         paint?: Record<string, unknown>
       }[]
     }
 
-    expect(style.layers.find((layer) => layer.id === 'satellite')?.paint).toMatchObject({
-      'raster-opacity': 0.2,
-      'raster-saturation': -0.35,
-      'raster-contrast': -0.25,
-    })
+    // #423: the imagery is mounted as an owned RasterSource/RasterLayer instead, because an
+    // `existing` layer adopted from this JSON never receives paint updates on iOS Release builds.
+    expect(style.layers.some((layer) => layer.id === 'satellite')).toBe(false)
+    expect(style.sources.satellite).toBeUndefined()
     expect(style.layers.find((layer) => layer.id === 'road-path')?.paint).toMatchObject({
       'line-opacity': 1,
     })
@@ -68,8 +66,10 @@ describe('satellite dark map style', () => {
 
   test('accepts a theme-matched background behind satellite tiles', () => {
     const style = JSON.parse(
-      getSatelliteDarkMapStyle(1, true, true, false, true, 0, 0.75, 0, '#e8eef5'),
-    ) as { layers: { id: string; paint: Record<string, unknown> }[] }
+      getSatelliteDarkMapStyle(true, true, false, true, 0.75, '#e8eef5'),
+    ) as {
+      layers: { id: string; paint: Record<string, unknown> }[]
+    }
 
     expect(style.layers.find((layer) => layer.id === 'background')?.paint).toEqual({
       'background-color': '#e8eef5',

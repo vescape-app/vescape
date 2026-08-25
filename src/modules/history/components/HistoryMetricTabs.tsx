@@ -37,6 +37,8 @@ export function HistoryMetricTabs({
           <Pressable
             key={metric.key}
             testID={`history-metric-tab-${metric.key}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
             style={[
               styles.metricTab,
               { width: `${100 / perRow}%` },

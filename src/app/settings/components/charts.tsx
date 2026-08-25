@@ -6,6 +6,7 @@ import { Easing, useSharedValue, withRepeat, withTiming } from 'react-native-rea
 import { ChartLineUpIcon } from 'phosphor-react-native'
 import { LinearGauge } from '@/components/charts/LinearGauge'
 import { IconHero } from '@/components/settings/IconHero'
+import { ChartGestureHint } from '@/components/charts/ChartGestureHint'
 import { ChartLoadingOverlay } from '@/components/charts/ChartLoadingOverlay'
 import { ChartStackShowcase } from '@/components/charts/line/ChartStackShowcase'
 import { ChartStack } from '@/components/charts/line/ChartStack'
@@ -403,7 +404,7 @@ export default function ChartsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ChartLineUpIcon}
-          description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, BmsCellVoltages."
+          description="ChartStack, Sparkline, LinearGauge, SingleGauge, DualGauge, ChartLoadingOverlay, ChartGestureHint, BmsCellVoltages."
         />
         <ChartStackShowcase />
         <SparklineShowcase />
@@ -411,6 +412,10 @@ export default function ChartsPage() {
         <AnimatedSingleGaugeShowcase />
         <AnimatedDualGaugeShowcase />
         <ChartLoadingOverlayShowcase />
+        <ShowcaseCard name="ChartGestureHint">
+          <ChartGestureHint />
+          <ChartGestureHint compact />
+        </ShowcaseCard>
         <BmsCellVoltagesShowcase />
       </ScrollView>
     </SafeAreaView>

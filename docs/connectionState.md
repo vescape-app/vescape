@@ -88,10 +88,29 @@ Commands call native only:
 
 ## Auto-connect
 
-JS controls permissions. After permissions are granted, JS may send connect intent
-if settings allow auto-connect and native board phase is `idle` or `error`.
+Auto-connect is triggered by **process launch on both platforms**, never by the JS
+runtime coming up:
 
-Native owns the actual connection after that. The foreground service keeps BLE work
+- Android: `AutoConnectProvider` (a `ContentProvider`) → `CoreForegroundService.autoConnectSelectedBoard`
+  → `BoardSessionController.autoConnectSelectedBoard`.
+- iOS: `VescapeLaunchSubscriber` in `didFinishLaunchingWithOptions` → `BoardSessionController.autoConnectSelectedBoard`,
+  called right after `prepareForLaunch()`.
+
+On iOS the order inside the launch hook is fixed: CoreBluetooth state restoration
+(ADR 0034) decides first, and auto-connect starts a session only when no live session
+is being resumed. A JS reload creates a new module but no new process, so it never
+restarts or duplicates a live session.
+
+Auto-connect no-ops when the `autoConnect` setting is off, no board is selected, the
+board is unlinked, or the board is gated by a manual-stop tombstone. Starting a Board
+Session clears that tombstone on both platforms, so a manual stop followed by a real
+reconnect auto-connects on the next launch.
+
+JS never triggers auto-connect. Its only part is writing the `autoConnect` setting and
+prompting for BLE permissions; the launch path reads the persisted setting and connects
+on its own, with or without a JS runtime.
+
+Native owns the connection throughout. On Android the foreground service keeps BLE work
 alive while JS is backgrounded or frozen.
 
 ### Fast Connect Stability

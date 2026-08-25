@@ -1,5 +1,10 @@
 import React, { type ReactNode } from 'react'
-import { Box, Text } from 'ink'
+import { Box, type Key, Text } from 'ink'
+
+/** Ink only sets `key.return` for CR; Codex terminals may deliver Enter as one or more LFs. */
+export function isEnter(input: string, key: Pick<Key, 'return'>): boolean {
+  return key.return || /^[\r\n]+$/.test(input)
+}
 
 export interface MenuItem {
   key: string

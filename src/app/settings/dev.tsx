@@ -30,7 +30,7 @@ const DEV_PAGE_SHORTCUTS = [
     hint: 'Capture and export raw BLE sessions',
     route: routes.settingsDebugRecordings,
     icon: RecordIcon,
-    iconColor: theme.palette.red.color,
+    iconColor: theme.status.warning.color,
   },
   {
     label: 'Navigation diagnostics',

@@ -294,7 +294,7 @@ export function useGpsGapBands(samples: TelemetrySample[]): ChartBand[] {
  * Sessions already split on a 30-minute pause, so what is left inside one ride is a coffee stop or
  * a wait at lights — minutes of flat line that squeeze the riding either side of it into a corner.
  */
-const GAP_MIN_MS = 5 * 60_000
+const GAP_MIN_MS = 2 * 60_000
 const GAP_WIDTH_MS = 20_000
 
 /** The ride's long pauses, or `null` when it has none — see {@link buildTimeline}. */

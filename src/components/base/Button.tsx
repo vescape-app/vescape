@@ -18,7 +18,15 @@ interface ButtonProps {
   accessibilityLabel?: string
   /** Overrides the variant's accent for field-specific actions. */
   accent?: string
-  variant?: 'primary' | 'accent' | 'tune' | 'secondary' | 'success' | 'destructive' | 'groupRide'
+  variant?:
+    | 'primary'
+    | 'accent'
+    | 'tune'
+    | 'secondary'
+    | 'success'
+    | 'caution'
+    | 'destructive'
+    | 'groupRide'
   size?: 'sm' | 'md' | 'lg'
   icon?: Icon
   iconPosition?: 'left' | 'right'
@@ -157,6 +165,17 @@ const accentColors = {
       borderColor: theme.palette.green.color,
     }),
     text: { color: theme.palette.green.light },
+  },
+  caution: {
+    border: theme.status.caution.border,
+    icon: theme.status.caution.text,
+    indicator: theme.status.caution.text,
+    button: (background: string) => ({
+      backgroundColor: background,
+      borderWidth: 1,
+      borderColor: theme.status.caution.border,
+    }),
+    text: { color: theme.status.caution.text },
   },
   destructive: {
     border: theme.palette.red.color,

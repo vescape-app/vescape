@@ -1,7 +1,6 @@
-import Mapbox, { RasterLayer, SymbolLayer } from '@rnmapbox/maps'
+import Mapbox, { SymbolLayer } from '@rnmapbox/maps'
 import { memo } from 'react'
 
-import type { getSatelliteImageryPaint } from '@/modules/map/constants/satelliteDarkMapStyle'
 import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
 
 const SATELLITE_ROAD_LINE_LAYER_IDS = [
@@ -28,7 +27,6 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   isSatellite,
   isSatelliteOverlay,
   mapDetailsVisible,
-  satelliteImageryPaint,
   satelliteRoadLineOpacity,
 }: {
   enabled: boolean
@@ -37,7 +35,6 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   isSatellite: boolean
   isSatelliteOverlay: boolean
   mapDetailsVisible: boolean
-  satelliteImageryPaint: ReturnType<typeof getSatelliteImageryPaint>
   satelliteRoadLineOpacity: number
 }) {
   if (!enabled) return null
@@ -46,16 +43,6 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (isSatelliteOverlay) {
     return (
       <>
-        <RasterLayer
-          id="satellite"
-          existing
-          style={{
-            ...satelliteImageryPaint,
-            rasterOpacityTransition: LAYER_TRANSITION,
-            rasterSaturationTransition: LAYER_TRANSITION,
-            rasterContrastTransition: LAYER_TRANSITION,
-          }}
-        />
         {SATELLITE_ROAD_LINE_LAYER_IDS.map((id) => (
           <Mapbox.LineLayer
             key={id}
@@ -103,18 +90,6 @@ export const MapBaseStyleLayers = memo(function MapBaseStyleLayers({
   if (styleKey === 'outdoors' || isSatellite) {
     return (
       <>
-        {isSatellite ? (
-          <RasterLayer
-            id="satellite"
-            existing
-            style={{
-              ...satelliteImageryPaint,
-              rasterOpacityTransition: LAYER_TRANSITION,
-              rasterSaturationTransition: LAYER_TRANSITION,
-              rasterContrastTransition: LAYER_TRANSITION,
-            }}
-          />
-        ) : null}
         <SymbolLayer id="poi-label" existing style={{ visibility }} />
         <SymbolLayer id="transit-label" existing style={{ visibility }} />
       </>

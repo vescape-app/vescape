@@ -31,9 +31,10 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testBuildsBoardMoveRcMoveCommandForOlderRefloat() {
-    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]
+    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]. `time` runs the
+    // request for `time * 100` control-loop steps (~120 ms each), so it must outlive the repeat tick.
     XCTAssertEqual(
-      [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 60, 1, 61],
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 60, 8, 68],
       buildBoardMoveCommand(transport: .direct, generation: .rcMove, input: 127)
     )
     XCTAssertEqual(

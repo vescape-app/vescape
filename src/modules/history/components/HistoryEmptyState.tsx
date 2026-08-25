@@ -46,7 +46,7 @@ export function HistoryEmptyState({ favoriteMode = false }: HistoryEmptyStatePro
         title={favoriteMode ? 'No favorites yet' : 'No rides yet'}
         description={
           favoriteMode
-            ? 'Star a ride in History to keep it here'
+            ? 'Open a ride in History, tap the star, adjust the range, then save'
             : 'Record your first ride and its stats will show up here'
         }
       />

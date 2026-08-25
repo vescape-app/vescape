@@ -61,15 +61,18 @@ export function DebugRecordingsScreen() {
           <SettingsRow
             icon={RecordIcon}
             iconWeight="fill"
-            iconColor={theme.status.error.color}
+            iconColor={theme.status.warning.color}
             label="Record future sessions"
             hint="Applies to every new board session until disabled"
             right={
               <Switch
                 value={debug.enabled}
                 onValueChange={debug.setEnabled}
-                trackColor={{ false: theme.neutral.border, true: theme.status.error.border }}
-                thumbColor={debug.enabled ? theme.status.error.color : theme.neutral.textMuted}
+                trackColor={{
+                  false: theme.neutral.border,
+                  true: theme.status.warning.border,
+                }}
+                thumbColor={debug.enabled ? theme.status.warning.color : theme.neutral.textMuted}
               />
             }
           />

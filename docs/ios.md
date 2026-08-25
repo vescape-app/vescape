@@ -119,6 +119,12 @@ iOS has no Android `ForegroundService` equivalent. A locked-screen ride cannot r
   - set `pausesLocationUpdatesAutomatically = false`;
   - request the location permission level needed for locked-screen ride recording.
 - Keep BLE polling and telemetry persistence in native Swift. JS should render state and send intents, not own durable ride work.
+- **Background modes keep JS and the sensors running.** `bluetooth-central` and `location` mean the
+  JS thread, CoreMotion, and CoreLocation all keep going with the screen off; only
+  `requestAnimationFrame` pauses. Anything that exists purely to be looked at — map camera writes,
+  heading sensors, animations — must gate on `AppState`, or it burns battery against a dark screen
+  and pays the backlog on the main thread at unlock. See
+  [performance-map-camera.md](./performance-map-camera.md) (#420).
 - CoreBluetooth state preservation/restoration (done, #378 / ADR 0034):
   - the Board Session central carries `CBCentralManagerOptionRestoreIdentifierKey`; the Board Probe
     central stays bare;

@@ -9,9 +9,9 @@ import { StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
 import {
-  MapOptionSelector,
-  type MapOptionSelectorSize,
-} from '@/components/controls/MapOptionSelector'
+  ExpandableCircleMenu,
+  type ExpandableCircleMenuSize,
+} from '@/components/controls/ExpandableCircleMenu'
 import { MAP_ORIENTATION_MODES, type MapOrientationMode } from '@/modules/map/constants/mapStyles'
 import { theme } from '@/constants/theme'
 
@@ -21,7 +21,7 @@ interface MapOrientationSelectorProps {
   activeMode: MapOrientationMode
   heading: SharedValue<number>
   expanded: boolean
-  size?: MapOptionSelectorSize
+  size?: ExpandableCircleMenuSize
   onToggle: () => void
   onSelect: (mode: MapOrientationMode) => void
 }
@@ -66,7 +66,7 @@ export function MapOrientationSelector({
     )
 
   return (
-    <MapOptionSelector
+    <ExpandableCircleMenu
       activeKey={activeMode}
       activeIcon={activeIcon}
       activeColor={theme.palette.green.color}

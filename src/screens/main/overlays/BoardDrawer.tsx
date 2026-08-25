@@ -32,7 +32,7 @@ interface TuneDrawerProps {
   onOpenLegalLimits: () => void
 }
 
-export function TuneDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
+export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   const [tuneSelectOpen, setTuneSelectOpen] = useState(false)
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
   // The label outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
@@ -132,7 +132,7 @@ export function TuneDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
       <SelectWidget
         icon={FadersIcon}
         selectIcon={SelectIcon}
-        label="Tune profiles"
+        label="Tune"
         value={activeName}
         description="Pick how your board should feel."
         accent={theme.tune.color}
@@ -167,14 +167,6 @@ export function TuneDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
             )
           })}
         </ScrollView>
-      ) : null}
-
-      <View style={styles.remoteTiltBox}>
-        <RemoteTiltControl collapsible defaultExpanded={false} />
-      </View>
-
-      {waitingForTrustedLink ? (
-        <Text style={styles.quickDisabledNote}>Quick controls waiting for trusted board link.</Text>
       ) : null}
 
       <View style={styles.quickGrid}>
@@ -213,6 +205,14 @@ export function TuneDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
           </Pressable>
         </View>
       </View>
+
+      <View style={styles.remoteTiltBox}>
+        <RemoteTiltControl collapsible defaultExpanded={false} />
+      </View>
+
+      {waitingForTrustedLink ? (
+        <Text style={styles.quickDisabledNote}>Quick controls waiting for trusted board link.</Text>
+      ) : null}
 
       <View style={styles.remoteTiltBox}>
         <BoardMoveControl />

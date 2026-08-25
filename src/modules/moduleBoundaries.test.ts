@@ -36,7 +36,9 @@ const ALLOWED_EDGES = new Set([
   // TODO(decouple): board components read alertsStore + history color scale
   'board -> alerts',
   'board -> history',
-  // TODO(decouple): AlertFormSheet renders TuneDial
+  // DevBadge toggles debug session recording on the board store
+  'diagnostics -> board',
+  // TODO(decouple): AlertFormModal renders TuneDial
   'alerts -> tune',
 ])
 

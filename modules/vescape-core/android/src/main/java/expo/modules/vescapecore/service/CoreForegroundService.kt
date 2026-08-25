@@ -348,16 +348,6 @@ class CoreForegroundService : Service() {
             instance?.controller?.updateGroupRideIdentity(riderId, riderName, riderColor)
         }
 
-        /**
-         * Offer a compass reading to whatever Debug Recording is running. No service, no session or
-         * no active recorder means it is simply dropped — JS pushes these unconditionally while the
-         * map's heading layer is live, and native is the one that knows whether anything is
-         * recording.
-         */
-        fun recordPhoneHeading(context: Context, headingDeg: Double) {
-            instance?.controller?.recordPhoneHeading(headingDeg)
-        }
-
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {
             RecordingCoordinator.requestTelemetryRecording(enabled)
             instance?.controller?.setTelemetryRecordingEnabled(enabled)

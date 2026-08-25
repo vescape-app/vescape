@@ -20,6 +20,7 @@ import {
 
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
+import { historyBottomGradientStart } from '@/screens/main/map/mapVignetteGeometry'
 
 interface MapVignetteProps {
   mode: MainViewState
@@ -176,8 +177,7 @@ export function MapVignette({
   const mapEdgeSpace = mapEdgeVignetteSpace(mode === 'telemetry' ? 'map' : mode)
   const homeOpacity = useSharedValue(visible && mode === 'telemetry' ? 1 : 0)
   const mapSurfaceOpacity = useSharedValue(visible && mapSurfaceVisible ? 1 : 0)
-  const panelTop = panelHeight > 0 ? Math.max(0.2, 1 - panelHeight / height) : 0.55
-  const historyBottomStart = Math.max(0.05, panelTop - 0.28)
+  const historyBottomStart = historyBottomGradientStart(panelHeight, height)
   const historyBottomStartValue = useSharedValue(historyBottomStart)
   const homeLayerOpacity = useDerivedValue(
     () => homeOpacity.value * (1 - (fadeOutProgress?.value ?? 0)),

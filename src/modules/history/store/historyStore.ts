@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import {
   getTelemetryHistory,
-  getHistoryRange,
+  getRideHistoryPage,
   getTelemetrySummary,
   clearTelemetryHistory,
   deleteTelemetryRange,
@@ -10,20 +10,18 @@ import {
   type TelemetryMinuteBucket,
   type TelemetrySample,
 } from 'vescape-core'
-import { groupHistorySessions, type HistorySession } from '@/modules/history/lib/sessions'
-import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { matchRideSession, type HistorySession } from '@/modules/history/lib/sessions'
 
 import { INITIAL_HISTORY_STATE, type HistoryStore } from '@/modules/history/store/historyStoreTypes'
 import { createHistorySelectionSlice } from '@/modules/history/store/historySelectionSlice'
 
-const PAGE_SIZE = 100
-let liveRefreshInFlight = false
-let liveRefreshVersion = 0
-
-/** Rider-set ride split gap. Read per grouping call so a settings change re-groups on next load. */
-function rideSplitGapMs() {
-  return useSettingsStore.getState().rideSplitGapMinutes * 60_000
-}
+const BUCKET_PAGE_SIZE = 100
+const RIDE_PAGE_SIZE = 10
+/** Window re-read on every recent refresh, wide enough to cover a ride still being recorded. */
+const RECENT_WINDOW_MS = 60 * 60_000
+const RECENT_BUCKET_LIMIT = 120
+let recentRefreshInFlight = false
+let recentRefreshVersion = 0
 
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
   ...INITIAL_HISTORY_STATE,
@@ -32,15 +30,15 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   async loadInitial() {
     set({ loading: true, error: undefined })
     try {
-      const [summary, blocks] = await Promise.all([
+      const [summary, blocks, page] = await Promise.all([
         getTelemetrySummary(),
-        getTelemetryHistory({ limit: PAGE_SIZE }),
+        getTelemetryHistory({ limit: BUCKET_PAGE_SIZE }),
+        getRideHistoryPage({ limit: RIDE_PAGE_SIZE }),
       ])
       set({
         summary,
         blocks,
-        sessions: groupHistorySessions(blocks, { gapMs: rideSplitGapMs() }),
-        liveBlocks: blocks.slice(0, useSettingsStore.getState().liveHistoryLimit),
+        sessions: page.sessions,
         selectedBlock: null,
         selectedSession: null,
         samples: [],
@@ -52,7 +50,8 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         sessionExclusions: [],
         markers: [],
         sessionTruncated: false,
-        hasMore: blocks.length === PAGE_SIZE,
+        hasMore: page.hasMore,
+        nextCursorBeforeMs: page.nextCursorBeforeMs,
       })
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) })
@@ -61,70 +60,76 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     }
   },
 
-  async refreshLive() {
-    if (liveRefreshInFlight) return
-    liveRefreshInFlight = true
-    const version = ++liveRefreshVersion
+  async refreshRecent() {
+    if (recentRefreshInFlight) return
+    recentRefreshInFlight = true
+    const version = ++recentRefreshVersion
     try {
       const now = Date.now()
-      const limit = useSettingsStore.getState().liveHistoryLimit
-      const fromMs = now - 10 * 60_000
-      const [summary, liveBlocks, range] = await Promise.all([
+      const [summary, recentBlocks, recentPage] = await Promise.all([
         getTelemetrySummary(),
-        getTelemetryHistory({ fromMs, toMs: now, limit }),
-        getHistoryRange({ fromMs, toMs: now, limit: 120 }),
+        getTelemetryHistory({
+          fromMs: now - RECENT_WINDOW_MS,
+          toMs: now,
+          limit: RECENT_BUCKET_LIMIT,
+        }),
+        getRideHistoryPage({ limit: RIDE_PAGE_SIZE }),
       ])
-      if (version !== liveRefreshVersion) return
+      if (version !== recentRefreshVersion) return
       set((state) => {
         const known = new Map(state.blocks.map((b) => [b.id, b]))
-        for (const block of liveBlocks) {
+        for (const block of recentBlocks) {
           known.set(block.id, block)
         }
         const blocks = Array.from(known.values()).sort((a, b) => b.bucketStartMs - a.bucketStartMs)
+        const oldestRecent = recentPage.sessions.at(-1)?.startAtMs ?? Number.NEGATIVE_INFINITY
+        const olderSessions = state.sessions.filter((session) => session.startAtMs < oldestRecent)
+        const sessions = [...recentPage.sessions, ...olderSessions]
+        const { selectedSession } = state
         return {
           summary,
-          liveBlocks,
-          liveSamples: range.boardSamples,
-          liveGpsSamples: range.gpsSamples,
           blocks,
-          sessions: groupHistorySessions(blocks, { gapMs: rideSplitGapMs() }),
+          sessions,
+          error: undefined,
+          selectedSession: selectedSession
+            ? (matchRideSession(sessions, selectedSession) ?? selectedSession)
+            : selectedSession,
+          hasMore: olderSessions.length > 0 ? state.hasMore : recentPage.hasMore,
+          nextCursorBeforeMs:
+            olderSessions.length > 0 ? state.nextCursorBeforeMs : recentPage.nextCursorBeforeMs,
         }
       })
     } catch (err) {
+      if (version !== recentRefreshVersion) return
       set({ error: err instanceof Error ? err.message : String(err) })
     } finally {
-      liveRefreshInFlight = false
+      recentRefreshInFlight = false
     }
   },
 
   async loadMore() {
-    const { blocks, hasMore, loading } = get()
-    if (loading || !hasMore || blocks.length === 0) return
+    const { sessions: loadedSessions, hasMore, loading, nextCursorBeforeMs } = get()
+    if (loading || !hasMore || nextCursorBeforeMs == null) return
     set({ loading: true, error: undefined })
     try {
-      const cursorBeforeMs = Math.min(...blocks.map((b) => b.bucketStartMs)) - 1
-      const next = await getTelemetryHistory({
-        limit: PAGE_SIZE,
-        cursorBeforeMs,
+      const page = await getRideHistoryPage({
+        limit: RIDE_PAGE_SIZE,
+        cursorBeforeMs: nextCursorBeforeMs,
       })
-      const ids = new Set(blocks.map((b) => b.id))
-      const merged = [...blocks, ...next.filter((b) => !ids.has(b.id))]
-      const sessions = groupHistorySessions(merged, { gapMs: rideSplitGapMs() })
+      const known = new Set(loadedSessions.map((session) => session.id))
+      const sessions = [
+        ...loadedSessions,
+        ...page.sessions.filter((session) => !known.has(session.id)),
+      ]
       const selectedSession = get().selectedSession
       const nextSelectedSession = selectedSession
-        ? sessions.find(
-            (session) =>
-              session.id === selectedSession.id ||
-              (session.deviceId === selectedSession.deviceId &&
-                session.startAtMs <= selectedSession.endAtMs &&
-                session.endAtMs >= selectedSession.startAtMs),
-          )
+        ? matchRideSession(sessions, selectedSession)
         : null
       set({
-        blocks: merged,
         sessions,
         selectedSession: nextSelectedSession ?? selectedSession,
-        hasMore: next.length === PAGE_SIZE,
+        hasMore: page.hasMore,
+        nextCursorBeforeMs: page.nextCursorBeforeMs,
       })
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) })
@@ -142,26 +147,16 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     }
   },
 
-  /** Re-group the loaded blocks after the ride split gap changed. Grouping is read-time, no reload. */
+  /** Native owns Ride boundaries; changing the gap invalidates the page cursor and reloads it. */
   regroupSessions() {
-    const { blocks, selectedSession } = get()
-    if (!blocks.length) return
-    const sessions = groupHistorySessions(blocks, { gapMs: rideSplitGapMs() })
-    set({
-      sessions,
-      // A merged/split ride keeps a matching id only by luck; drop a selection that no longer exists.
-      selectedSession:
-        selectedSession && sessions.some((session) => session.id === selectedSession.id)
-          ? selectedSession
-          : null,
-    })
+    void get().loadInitial()
   },
 
   async removeSelectedSession() {
     const { selectedSession, sessions } = get()
     if (!selectedSession) return
-    const reloadLimit = Math.min(500, Math.max(PAGE_SIZE, get().blocks.length))
-    liveRefreshVersion++
+    const reloadLimit = Math.min(500, Math.max(BUCKET_PAGE_SIZE, get().blocks.length))
+    recentRefreshVersion++
     set({ loadingSession: true, error: undefined })
     try {
       await deleteTelemetryRange({
@@ -170,9 +165,11 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         deviceId: selectedSession.deviceId,
       })
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
-      const blocks = await getTelemetryHistory({ limit: reloadLimit })
-      const liveBlocks = blocks.slice(0, useSettingsStore.getState().liveHistoryLimit)
-      const nextSessions = groupHistorySessions(blocks, { gapMs: rideSplitGapMs() })
+      const [blocks, page] = await Promise.all([
+        getTelemetryHistory({ limit: reloadLimit }),
+        getRideHistoryPage({ limit: Math.min(50, Math.max(RIDE_PAGE_SIZE, sessions.length)) }),
+      ])
+      const nextSessions = page.sessions
       const nextSelectedSession =
         selectedIndex >= 0
           ? (nextSessions[selectedIndex] ?? nextSessions[selectedIndex - 1] ?? null)
@@ -181,7 +178,6 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       set({
         summary,
         blocks,
-        liveBlocks,
         sessions: nextSessions,
         selectedBlock: null,
         selectedSession: nextSelectedSession,
@@ -194,7 +190,8 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         sessionExclusions: [],
         markers: [],
         sessionTruncated: false,
-        hasMore: blocks.length === reloadLimit,
+        hasMore: page.hasMore,
+        nextCursorBeforeMs: page.nextCursorBeforeMs,
       })
       if (nextSelectedSession) {
         await get().selectSession(nextSelectedSession)
@@ -207,16 +204,18 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   },
 
   async clearHistory() {
-    const reloadLimit = Math.min(500, Math.max(PAGE_SIZE, get().blocks.length))
-    liveRefreshVersion++
+    const reloadLimit = Math.min(500, Math.max(BUCKET_PAGE_SIZE, get().blocks.length))
+    recentRefreshVersion++
     set({ loading: true, error: undefined })
     try {
       await clearTelemetryHistory()
-      const blocks = await getTelemetryHistory({ limit: reloadLimit })
+      const [blocks, page] = await Promise.all([
+        getTelemetryHistory({ limit: reloadLimit }),
+        getRideHistoryPage({ limit: RIDE_PAGE_SIZE }),
+      ])
       set({
         blocks,
-        sessions: groupHistorySessions(blocks, { gapMs: rideSplitGapMs() }),
-        liveBlocks: blocks.slice(0, useSettingsStore.getState().liveHistoryLimit),
+        sessions: page.sessions,
         selectedBlock: null,
         selectedSession: null,
         samples: [],
@@ -226,12 +225,11 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
         sessionGpsSamples: [],
         sessionMarkers: [],
         sessionExclusions: [],
-        liveSamples: [],
-        liveGpsSamples: [],
         markers: [],
         sessionTruncated: false,
         summary: await getTelemetrySummary(),
-        hasMore: blocks.length === reloadLimit,
+        hasMore: page.hasMore,
+        nextCursorBeforeMs: page.nextCursorBeforeMs,
       })
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) })

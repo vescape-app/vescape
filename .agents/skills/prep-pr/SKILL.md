@@ -55,8 +55,10 @@ Stop and confirm with the user when the current branch looks unrelated, i.e. any
 
 In that case do **not** refresh the existing PR. Ask the user, and prefer branching a fresh feature branch off base (e.g. `dev`):
 
+Branch off the fetched remote base, never off a local `dev` that may be behind:
+
 ```bash
-git checkout <base> && git checkout -b <feature-name>
+git fetch origin <base> && git checkout -b <feature-name> origin/<base>
 ```
 
 Only proceed on the current branch once it passes this check or the user explicitly approves it.

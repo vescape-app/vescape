@@ -22,7 +22,7 @@ import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
-  ALERT_PRESET_ACTIVE_LEVELS,
+  describeAlertPreset,
   generateAlertPresetRules,
   type AlertPresetLevel,
   type AlertPresetMetric,
@@ -44,7 +44,6 @@ import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
  */
 
 interface PresetGaugeDescriptor {
-  title: string
   color: string
   /** Readout unit shown under the live value. */
   unit: string
@@ -62,7 +61,6 @@ const round = (value: number) => Math.round(value)
 // Battery is percent-scaled here (its thresholds are SoC %), unlike the voltage telemetry metric.
 const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
   battery: {
-    title: 'Battery',
     color: telemetry.battVoltage.color,
     unit: '%',
     decimals: 0,
@@ -71,7 +69,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}%`,
   },
   speed: {
-    title: 'Speed',
     color: telemetry.speed.color,
     unit: 'km/h',
     decimals: 0,
@@ -80,7 +77,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)} km/h`,
   },
   duty: {
-    title: 'Duty',
     color: telemetry.duty.color,
     unit: '%',
     decimals: 0,
@@ -89,7 +85,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}%`,
   },
   'motor-temp': {
-    title: 'Motor Temp',
     color: telemetry.motorTemp.color,
     unit: '°C',
     decimals: 0,
@@ -98,7 +93,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}°`,
   },
   'controller-temp': {
-    title: 'Controller Temp',
     color: telemetry.controllerTemp.color,
     unit: '°C',
     decimals: 0,
@@ -210,6 +204,8 @@ export function AlertPresetControl({
     slowForMessages: metric === 'motor-temp' || metric === 'controller-temp',
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
+  // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
+  const description = describeAlertPreset(metric, level, { boardTopSpeedKmh, hasBatteryConfig })
 
   return (
     <View style={styles.container}>
@@ -220,30 +216,31 @@ export function AlertPresetControl({
         color={gauge.color}
         unit={gauge.unit}
         decimals={gauge.decimals}
-        label={gauge.title.toUpperCase()}
-        headerRight={
-          <Button
-            label={alertTest.running ? 'Stop test' : 'Run test'}
-            icon={alertTest.running ? StopIcon : SpeakerHighIcon}
-            variant="secondary"
-            size="sm"
-            disabled={disabled || !alertTest.canRun}
-            onPress={alertTest.running ? alertTest.stop : alertTest.start}
-            testID={`alert-test-${metric}`}
-            style={styles.testButton}
-          />
-        }
         alerts={alerts}
         hotRange={hotRange}
         showValue={gaugeValue != null}
         containerStyle={styles.gauge}
       />
-      {controlsHeader}
+      {/* The test drives the alerts, so it sits with the Alerts heading rather than the gauge. */}
+      <View style={styles.headerRow}>
+        {controlsHeader}
+        <Button
+          label={alertTest.running ? 'Stop' : 'Preview'}
+          icon={alertTest.running ? StopIcon : SpeakerHighIcon}
+          variant="caution"
+          size="sm"
+          disabled={disabled || !alertTest.canRun}
+          onPress={alertTest.running ? alertTest.stop : alertTest.start}
+          testID={`alert-test-${metric}`}
+          style={styles.testButton}
+        />
+      </View>
+      {description ? <Text style={styles.description}>{description}</Text> : null}
       <View style={styles.levelRow}>
         {isCustom ? (
           <CustomLabel />
         ) : (
-          <LevelSlider value={level} onChange={onLevelChange} disabled={disabled} />
+          <LevelSlider metric={metric} value={level} onChange={onLevelChange} disabled={disabled} />
         )}
         {editAction && !disabled ? (
           <IconButton
@@ -280,24 +277,26 @@ interface LevelTone {
 
 const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string }[] = [
   { id: 'off', label: 'Off' },
-  // Cautiousness ramp, not an alarm ramp: careful (blue) → balanced (green) → risky (yellow).
-  // Green marks the recommended default; orange and red stay reserved for real alerts, so
-  // `minimal` must not borrow either — it is a choice, never a fault.
-  { id: 'safe', label: 'Safe' },
-  { id: 'normal', label: 'Normal' },
+  // Rising cautiousness left to right, so the row reads as one ramp out of `off`: risky (yellow)
+  // → balanced (green) → careful (blue). Green marks the recommended default; orange and red stay
+  // reserved for real alerts, so `minimal` must not borrow either — it is a choice, never a fault.
   { id: 'minimal', label: 'Minimal' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'safe', label: 'Safe' },
 ]
 
-const ALL_LEVELS: AlertPresetLevel[] = ['off', ...ALERT_PRESET_ACTIVE_LEVELS]
+/** The row's own order — the preset levels themselves have no ranking. */
+const ALL_LEVELS: AlertPresetLevel[] = LEVEL_OPTIONS.map((option) => option.id)
 const SLIDER_ANIMATION = { duration: 180 } as const
 
 interface LevelSliderProps {
+  metric: AlertPresetMetric
   value: AlertPresetLevel
   onChange: (level: AlertPresetLevel) => void
   disabled?: boolean
 }
 
-function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
+function LevelSlider({ metric, value, onChange, disabled }: LevelSliderProps) {
   const neutral = useResolvedNeutralColors()
   const accents = useResolvedAccentColors()
   const tones: Record<AlertPresetLevel, LevelTone> = {
@@ -340,10 +339,11 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
         return (
           <Pressable
             key={option.id}
+            testID={`alert-level-${metric}-${option.id}`}
             style={styles.sliderSegment}
             accessibilityRole="button"
             accessibilityState={{ selected: active, disabled }}
-            accessibilityLabel={option.label}
+            accessibilityLabel={active ? `${option.label}, selected` : option.label}
             disabled={disabled}
             onPress={() => onChange(option.id)}
           >
@@ -370,6 +370,17 @@ const styles = StyleSheet.create({
   gauge: {
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  description: {
+    color: theme.palette.slate.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
   },
   levelRow: {
     flexDirection: 'row',

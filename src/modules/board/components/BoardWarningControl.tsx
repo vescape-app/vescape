@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { WarningIcon } from 'phosphor-react-native'
+import { EngineIcon } from 'phosphor-react-native'
 
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
@@ -57,7 +57,7 @@ export function BoardWarningControl({ boardId }: BoardWarningControlProps) {
               testID="board-warnings-button"
               accessibilityLabel="Board warnings"
             >
-              <WarningIcon size={16} color={color} weight="fill" />
+              <EngineIcon size={14} color={color} weight="bold" />
             </Pressable>
           </View>
         </>
@@ -67,7 +67,7 @@ export function BoardWarningControl({ boardId }: BoardWarningControlProps) {
         visible={open}
         triggerRef={anchorRef}
         title="Warnings"
-        icon={WarningIcon}
+        icon={EngineIcon}
         iconColor={color}
         onClose={() => setOpen(false)}
       >

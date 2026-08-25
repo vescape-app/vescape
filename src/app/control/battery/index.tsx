@@ -106,7 +106,6 @@ export default function BatteryScreen() {
           data: voltageSeries,
           range: voltageRange,
           color: theme.alpha(neutral.textDim, 0.6),
-          label: battVoltageCfg.label,
           unit: battVoltageCfg.unit,
           decimals: battVoltageCfg.decimals,
         },

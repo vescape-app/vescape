@@ -9,6 +9,7 @@ import type { MainViewState } from '@/screens/main/mainViewState'
 import { MainMapLayers } from '@/screens/main/map/MainMapLayers'
 import { MainMapOverlays } from '@/screens/main/map/MainMapOverlays'
 import { MapBaseStyleLayers } from '@/screens/main/map/MapBaseStyleLayers'
+import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import type { MainMapHistoryProps, MainMapPointsProps } from '@/screens/main/map/MainMap'
 import type { CameraSnapshot } from '@/screens/main/map/useCameraControls'
 import type { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
@@ -42,7 +43,6 @@ interface MainMapSceneProps {
   followGps: boolean
   accuracyFix: LayerProps['accuracyFix']
   onPhoneFollowHeading: ComponentProps<typeof PhoneHeadingMapLayer>['onFollowHeading']
-  phoneHeadingAdapter: ComponentProps<typeof PhoneHeadingMapLayer>['adapter']
   onPhoneHeadingChange: ComponentProps<typeof PhoneHeadingMapLayer>['onHeadingChange']
   onPhoneHeadingStatusChange: ComponentProps<typeof PhoneHeadingMapLayer>['onStatusChange']
   mode: MainViewState
@@ -94,7 +94,6 @@ export function MainMapScene({
   followGps,
   accuracyFix,
   onPhoneFollowHeading,
-  phoneHeadingAdapter,
   onPhoneHeadingChange,
   onPhoneHeadingStatusChange,
   mode,
@@ -153,6 +152,9 @@ export function MainMapScene({
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
           animationMode="easeTo"
         />
+        {mapStyle.isSatelliteOverlay && (
+          <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />
+        )}
         <MapBaseStyleLayers
           enabled={mapStyle.canUpdateExistingStyleLayers}
           styleKey={mapStyle.styleKey}
@@ -160,12 +162,10 @@ export function MainMapScene({
           isSatellite={mapStyle.isSatellite}
           isSatelliteOverlay={mapStyle.isSatelliteOverlay}
           mapDetailsVisible={mapStyle.mapDetailsVisible}
-          satelliteImageryPaint={mapStyle.satelliteImageryPaint}
           satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
         />
         <PhoneHeadingMapLayer
           active={!historyActive && !gpsHeadingMode}
-          adapter={phoneHeadingAdapter}
           followCamera={phoneHeadingMode && followGps}
           coordinate={accuracyFix}
           onFollowHeading={onPhoneFollowHeading}

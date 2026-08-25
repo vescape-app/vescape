@@ -84,8 +84,9 @@ the first step of that: it boots from fixtures and a replay instead of `e2eFake`
 
 ## Smoke
 
-`bun run smoke` walks the screens a rider actually opens — live telemetry, map modes, Ride History,
-the add-board wizard — and asserts on them. Android only, like the E2E suite.
+`bun run smoke` walks the screens a rider actually opens — live telemetry and persisted alerts,
+map modes, Ride History, Profile stats, and the add-board wizard — and asserts on them. Android
+only, like the E2E suite.
 
 ```sh
 bun run smoke                      # picks a device, builds, runs every flow
@@ -108,10 +109,10 @@ which fixtures and replay now supply.
 
 The replay recording has to outlast the flows that need it. `replay-thor301.jsonl` is a 13-minute
 ride, and a full pass can run longer than that — Maestro spends most of its time waiting for a live
-view hierarchy to settle. Flows 01-03 finish inside the window; `04-add-board` is written to work
+view hierarchy to settle. Flows 01-04 finish inside the window; `05-add-board` is written to work
 whether the session is still up or has already ended on its own.
 
-Flow order is load-bearing. `04-add-board` runs last because saving a board hands it to the
+Flow order is load-bearing. `05-add-board` runs last because saving a board hands it to the
 connection manager, which goes at the real BLE stack, finds nothing, and takes the replay session
 down with it. That flow therefore asserts the wizard and the durable write, not a connection: a
 replay runs under a synthetic `replay:` board id (ADR 0024) and cannot stand in for a chosen board's

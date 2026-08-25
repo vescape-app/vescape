@@ -84,9 +84,9 @@ export function MetricDetailGauge({
       hotRange={hotRange}
       headerRight={
         <Button
-          label={alertTest.running ? 'Stop test' : 'Run test'}
+          label={alertTest.running ? 'Stop' : 'Preview'}
           icon={alertTest.running ? StopIcon : SpeakerHighIcon}
-          variant="secondary"
+          variant="caution"
           size="sm"
           disabled={!alertTest.canRun}
           onPress={alertTest.running ? alertTest.stop : alertTest.start}

@@ -29,6 +29,10 @@ fun interface AppStatusTransport {
  * @platform-diff Android-only: Group Ride networking is the sole Online Capability consumer and has
  * no iOS peer, so the iOS [AppStatusCoordinator] keeps a single `onChange` sink with none of this.
  */
+/**
+ * The slice of App Status the Group Ride relay socket gates on.
+ * @parity /modules/vescape-core/ios/appstatus/AppStatusCoordinator.swift `OnlineCapability`
+ */
 interface OnlineCapability {
   /** True while online work (Group Ride) is denied — Online Block or App Block. Unknown fails open. */
   val onlineBlocked: Boolean

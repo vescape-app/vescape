@@ -298,6 +298,48 @@ export function formatAlertPresetSummary(
     .join(', ')
 }
 
+/** `1, 2 and 3` — a spoken list, since this text is read as a sentence. */
+function joinList(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? ''
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
+
+/**
+ * What the rider will actually hear at the selected level, in a sentence. Built from
+ * {@link generateAlertPresetRules} for the same reason {@link formatAlertPresetSummary} is: the
+ * only description worth showing is one that cannot drift from the rules being applied.
+ *
+ * `null` where there is nothing to describe — a metric guarded away (battery without a config,
+ * speed without a Board Top Speed) is explained by the screen, not by this line.
+ */
+export function describeAlertPreset(
+  metric: AlertPresetMetric,
+  level: AlertPresetLevel,
+  options: GenerateAlertPresetRulesOptions = {},
+): string | null {
+  if (level === 'off') return 'No sound from this metric.'
+  if (level === 'custom') return 'Your own rules — edit them below.'
+
+  const specs = generateAlertPresetRules(metric, level, options)
+  if (specs.length === 0) return null
+  const unit = ALERT_PRESET_UNIT[metric]
+  const value = (threshold: number) => `${Math.round(threshold)}${unit}`
+
+  const range = specs.find((spec) => spec.thresholdMax != null)
+  const ceiling = range?.thresholdMax
+  if (range && ceiling != null) {
+    return `Ticks like a Geiger counter from ${value(range.threshold)}, faster the deeper you go, solid tone at ${value(ceiling)}.`
+  }
+
+  const points = joinList(specs.map((spec) => value(spec.threshold)))
+  const repeat = specs.find((spec) => spec.repeatEverySeconds != null)
+  if (metric === 'battery') return `Speaks the charge left at ${points}.`
+  const nag = repeat
+    ? ` The last step repeats every ${repeat.repeatEverySeconds} s while you stay above it.`
+    : ''
+  return `Speaks the temperature at ${points}.${nag}`
+}
+
 // --- Provenance + persistence (the store's contract) ---
 //
 // @parity /modules/vescape-core/src/index.ts `AlertRule.source`

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { generateGithubReleaseBody } from '../release-notes/codex'
+import { validateReleaseMarkdown } from '../release-notes/bundler'
 
 export interface ReleaseCommandResult {
   exitCode: number
@@ -12,8 +12,6 @@ export interface ReleaseCommandResult {
 
 export interface GithubReleaseDependencies {
   run?: (command: 'git' | 'gh', args: string[]) => Promise<ReleaseCommandResult>
-  generateBody?: typeof generateGithubReleaseBody
-  root?: string
 }
 
 async function runReleaseCommand(
@@ -34,45 +32,20 @@ function requireCommand(result: ReleaseCommandResult, label: string): string {
   return result.stdout
 }
 
-/** Codex authors the release body locally, from the commit range fixed by the source commit. */
-export async function composeGithubReleaseBody(
+/** Read the accepted canonical notes from the immutable source commit. */
+export async function readCanonicalReleaseBody(
   sourceSha: string,
   marketingVersion: string,
   dependencies: GithubReleaseDependencies = {},
 ): Promise<string> {
   const run = dependencies.run ?? runReleaseCommand
-  const generateBody = dependencies.generateBody ?? generateGithubReleaseBody
-  const root =
-    dependencies.root ??
-    requireCommand(await run('git', ['rev-parse', '--show-toplevel']), 'Cannot resolve repository')
-  const previous = await run('git', [
-    'describe',
-    '--tags',
-    '--match',
-    'v*',
-    '--abbrev=0',
-    `${sourceSha}^`,
-  ])
-  const previousTag = previous.exitCode === 0 && previous.stdout ? previous.stdout : null
-  const range = previousTag ? `${previousTag}..${sourceSha}` : sourceSha
-  const commitLog = requireCommand(
-    await run('git', ['log', '--no-merges', '--max-count=200', '--format=- %s (%h)', range]),
-    'Cannot build GitHub release commit log',
+  const notesPath = `release-notes/${marketingVersion}.md`
+  const body = requireCommand(
+    await run('git', ['show', `${sourceSha}:${notesPath}`]),
+    `Cannot read canonical release notes ${notesPath} from ${sourceSha}`,
   )
-  if (!commitLog) throw new Error(`No commits found for GitHub release v${marketingVersion}`)
-
-  const directory = await mkdtemp(join(tmpdir(), 'vescape-github-release-'))
-  try {
-    return await generateBody({
-      root,
-      outputFile: join(directory, 'notes.md'),
-      version: marketingVersion,
-      previousTag,
-      commitLog,
-    })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
+  validateReleaseMarkdown(body, notesPath)
+  return `${body}\n`
 }
 
 /**
@@ -137,7 +110,7 @@ export async function publishGithubRelease(
   ])
   if (existingRelease.exitCode === 0) return 'existing'
 
-  const body = await composeGithubReleaseBody(sourceSha, target.marketingVersion, {
+  const body = await readCanonicalReleaseBody(sourceSha, target.marketingVersion, {
     ...dependencies,
     run,
   })

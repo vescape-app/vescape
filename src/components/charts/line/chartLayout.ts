@@ -6,6 +6,8 @@ export const AXIS_FONT_SIZE = 8
 export const LABEL_FONT_SIZE = 10
 /** Strip above each plot carrying its label. */
 export const LABEL_HEIGHT = 14
+/** What an unlabelled plot keeps above it, so the line never touches whatever sits above it. */
+export const PLOT_TOP_PAD = 8
 /** Strip below the whole stack carrying the shared time axis. */
 export const TIME_AXIS_HEIGHT = 12
 /** Vertical space between stacked charts. */
@@ -34,6 +36,8 @@ export function stackChromeHeight(chartCount: number): number {
 export interface ChartRowInput {
   width: number
   height: number
+  /** A chart without a label spends no height on the strip above the plot. */
+  hasLabel?: boolean
 }
 
 export interface ChartRowLayout {
@@ -50,12 +54,13 @@ export interface ChartRowLayout {
  * on screen: opening or closing a neighbour is a React Native layout change and leaves this
  * canvas's picture untouched. Placing the stack is ordinary flex layout, not arithmetic.
  */
-export function computeChartRow({ width, height }: ChartRowInput): ChartRowLayout {
+export function computeChartRow({ width, height, hasLabel = true }: ChartRowInput): ChartRowLayout {
+  const strip = hasLabel ? LABEL_HEIGHT : PLOT_TOP_PAD
   return {
     // Baseline sits just above the plot, leaving the font's descender clear of the top line.
-    labelBaseline: LABEL_HEIGHT - 4,
-    plot: { x: AXIS_WIDTH, y: LABEL_HEIGHT, width: plotWidthFor(width), height },
-    canvasHeight: LABEL_HEIGHT + height,
+    labelBaseline: strip - 4,
+    plot: { x: AXIS_WIDTH, y: strip, width: plotWidthFor(width), height },
+    canvasHeight: strip + height,
   }
 }
 

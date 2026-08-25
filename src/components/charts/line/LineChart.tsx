@@ -61,8 +61,8 @@ export function LineChart({ chart, width, index }: LineChartProps) {
   } = useChartStack()
 
   const { plot, labelBaseline, canvasHeight } = useMemo(
-    () => computeChartRow({ width, height: chart.height }),
-    [chart.height, width],
+    () => computeChartRow({ width, height: chart.height, hasLabel: chart.label != null }),
+    [chart.height, chart.label, width],
   )
   const clip = useMemo(
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
