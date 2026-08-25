@@ -130,6 +130,7 @@ export function HistoryDrawer({
             action={
               <Button
                 label="Details"
+                testID="history-stats-details"
                 icon={CaretRightIcon}
                 iconPosition="right"
                 size="sm"
