@@ -130,6 +130,7 @@ export function HistoryDrawer({
             action={
               <Button
                 label="Details"
+                testID="history-stats-details"
                 icon={CaretRightIcon}
                 iconPosition="right"
                 size="sm"
@@ -181,7 +182,7 @@ export function HistoryDrawer({
             />
           ) : (
             <View style={styles.rideList}>
-              {sessions.slice(0, 3).map((session) => {
+              {sessions.slice(0, 3).map((session, index) => {
                 const window = rideMovingWindow(session) ?? {
                   startMs: session.startAtMs,
                   endMs: session.endAtMs,
@@ -193,6 +194,7 @@ export function HistoryDrawer({
                 return (
                   <HistoryRideRow
                     key={session.id}
+                    testID={index === 0 ? 'history-latest-ride' : undefined}
                     title={formatRideListDateTime(
                       window.startMs,
                       window.endMs,

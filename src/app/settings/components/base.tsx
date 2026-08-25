@@ -291,6 +291,7 @@ function PlaceholderShowcase() {
     >
       <View style={{ height: 220 }}>
         <Placeholder
+          iconColor={color}
           icon={GhostIcon}
           title={showTitle ? 'No data yet' : undefined}
           description="Connect board to start streaming telemetry"

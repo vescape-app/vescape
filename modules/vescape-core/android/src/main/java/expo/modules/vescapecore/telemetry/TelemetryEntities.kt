@@ -278,6 +278,10 @@ data class AlertRuleEntity(
   val threshold: Double,
   @ColumnInfo(name = "threshold_max")
   val thresholdMax: Double?,
+  @ColumnInfo(name = "threshold_kind") val thresholdKind: String = "fixed",
+  @ColumnInfo(name = "config_field_id") val configFieldId: String? = null,
+  @ColumnInfo(name = "threshold_offset") val thresholdOffset: Double? = null,
+  @ColumnInfo(name = "threshold_max_offset") val thresholdMaxOffset: Double? = null,
   val enabled: Boolean,
   @ColumnInfo(name = "sound_type")
   val soundType: String,
@@ -592,3 +596,65 @@ data class FavoriteMediaEntity(
     "filename" to filename,
   )
 }
+
+/**
+ * Cached Board Config Values: the last decoded Refloat config for one Board and Refloat base version,
+ * restored as `lastKnown` on connect so consumers have something before this session's fresh read
+ * lands (ADR 0035). Scoped like Tune Compatibility (ADR 0022) — field offsets only mean anything
+ * against the firmware they were read from — and deleted for the whole Board on `mismatched` link
+ * integrity.
+ *
+ * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift
+ */
+@Entity(
+  tableName = "board_config_values",
+  primaryKeys = ["board_id", "refloat_base_version"],
+  indices = [
+    Index(value = ["board_id"]),
+  ],
+)
+data class BoardConfigValuesEntity(
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  @ColumnInfo(name = "refloat_base_version")
+  val refloatBaseVersion: String,
+  @ColumnInfo(name = "values_json")
+  val valuesJson: String,
+  @ColumnInfo(name = "captured_at")
+  val capturedAt: Long,
+)
+
+/**
+ * Cached Motor Config Values: the last decoded VESC motor config for one Board and MCCONF signature,
+ * restored as `lastKnown` on connect so consumers have something before this session's read lands.
+ * Scoped by signature because that is the layout identity (ADR 0036), and deleted for the whole
+ * Board on `mismatched` link integrity.
+ *
+ * @parity /modules/vescape-core/ios/config/MotorConfigStore.swift
+ */
+@Entity(
+  tableName = "motor_config_values",
+  primaryKeys = ["board_id", "mcconf_signature"],
+  indices = [
+    Index(value = ["board_id"]),
+  ],
+)
+data class MotorConfigValuesEntity(
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  @ColumnInfo(name = "mcconf_signature")
+  val mcconfSignature: Long,
+  @ColumnInfo(name = "firmware")
+  val firmware: String,
+  @ColumnInfo(name = "values_json")
+  val valuesJson: String,
+  @ColumnInfo(name = "captured_at")
+  val capturedAt: Long,
+)
+
+@Entity(tableName = "board_config_change_notices")
+data class BoardConfigChangeNoticeEntity(
+  @PrimaryKey @ColumnInfo(name = "board_id") val boardId: String,
+  @ColumnInfo(name = "detected_at") val detectedAt: Long,
+  @ColumnInfo(name = "diffs_json") val diffsJson: String,
+)

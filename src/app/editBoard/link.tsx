@@ -39,7 +39,7 @@ export default function BoardLinkScreen() {
   const [bleId] = useState(() => routeBleId ?? board?.link?.bleId ?? null)
   const existingLink = board?.link ?? null
 
-  const link = useBoardLink(bleId)
+  const link = useBoardLink(bleId, boardId)
   const [saving, setSaving] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
 
@@ -52,6 +52,7 @@ export default function BoardLinkScreen() {
     })
   }, [])
 
+  // Pure persist: config was already acquired as the last step of the linking run.
   const handleSave = async () => {
     if (!board || !link.selectedLink) return
     setSaving(true)
@@ -119,8 +120,8 @@ export default function BoardLinkScreen() {
             label="Save link"
             variant="tune"
             onPress={handleSave}
-            disabled={link.phase !== 'picking' || link.selectedLink == null}
-            loading={saving}
+            disabled={link.phase !== 'picking' || link.selectedLink == null || link.isFinalizing}
+            loading={saving || link.isFinalizing}
             testID="board-link-save"
           />
         </View>

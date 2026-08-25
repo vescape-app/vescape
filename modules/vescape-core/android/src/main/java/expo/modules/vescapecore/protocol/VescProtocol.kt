@@ -14,6 +14,7 @@ internal const val COMM_FW_VERSION = 0
 internal const val COMM_FORWARD_CAN = 34
 internal const val COMM_CUSTOM_APP_DATA = 36
 internal const val COMM_BMS_GET_VALUES = 96
+internal const val COMM_GET_MCCONF = 14
 internal const val COMM_GET_CUSTOM_CONFIG_XML = 92
 internal const val COMM_GET_CUSTOM_CONFIG = 93
 internal const val COMM_SET_CUSTOM_CONFIG = 95

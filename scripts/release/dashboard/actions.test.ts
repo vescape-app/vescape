@@ -10,8 +10,6 @@ const production = (overrides: Partial<ProductionRow> = {}): ProductionRow => ({
   wear: 1389,
   detail: 'promoted',
   runId: 10,
-  rolloutPercentage: 25,
-  halted: false,
   openPromotionRunId: 99,
   age: '2h ago',
   ...overrides,
@@ -59,26 +57,12 @@ describe('availableActions', () => {
     ).not.toContain('promote-open')
   })
 
-  test('offers advance and halt while a staged rollout is live', () => {
-    const available = ids(state({ production: production() }))
-    expect(available).toContain('advance')
-    expect(available).toContain('halt')
-    expect(available).not.toContain('resume')
+  test('offers a live status refresh once something is on production', () => {
+    expect(ids(state({ production: production() }))).toContain('status')
   })
 
-  test('offers resume instead of advance while halted', () => {
-    const available = ids(state({ production: production({ halted: true }) }))
-    expect(available).toContain('resume')
-    expect(available).not.toContain('advance')
-    expect(available).not.toContain('halt')
-  })
-
-  test('offers no rollout controls at full rollout', () => {
-    const available = ids(state({ production: production({ rolloutPercentage: 100 }) }))
-    expect(available).not.toContain('advance')
-    expect(available).not.toContain('halt')
-    expect(available).not.toContain('resume')
-    expect(available).toContain('status')
+  test('offers no production action before anything reaches production', () => {
+    expect(ids(state())).not.toContain('status')
   })
 
   test('leads with preparing but preselects a running release so Enter watches it', () => {

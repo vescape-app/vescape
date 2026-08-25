@@ -66,7 +66,6 @@ type Phase =
   | 'checking'
   | 'candidate'
   | 'production-candidate'
-  | 'production-percentage'
   | 'confirm'
   | 'promote-confirm'
   | 'production-confirm'
@@ -123,7 +122,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [clock, setClock] = useState(Date.now())
   const [currentVersion, setCurrentVersion] = useState('')
   const [bumpIndex, setBumpIndex] = useState(1)
-  const [rolloutInput, setRolloutInput] = useState('10')
   const [run, setRun] = useState<{ id: number; url: string } | null>(null)
   const [iosRun, setIosRun] = useState<{ id: number; url: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -276,17 +274,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     const next = { ...basePlan, candidate, notesPath }
     setProductionPlan(next)
     setStatus('')
-    if (next.operation === 'promote' || next.operation === 'advance') {
-      setRolloutInput(String(next.rolloutPercentage ?? 10))
-      goto('production-percentage')
-    } else {
-      goto('production-confirm', CANCEL_INDEX)
-    }
+    goto('production-confirm', CANCEL_INDEX)
   }
 
   /**
-   * Rollout controls act on whatever is already on production, so only `promote` needs the
-   * candidate picker; the rest resolve the candidate from the recorded production version.
+   * A status refresh reads whatever is already on production, so only `promote` needs the
+   * candidate picker; `status` resolves its candidate from the recorded production version.
    */
   const prepareProduction = async (operation: ProductionOperation) => {
     goto('checking')
@@ -308,7 +301,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         notesPath: '',
         tracks,
         operation,
-        rolloutPercentage: 10,
       }
       if (operation === 'promote') {
         setProductionCandidates(available)
@@ -324,8 +316,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       if (!target)
         throw new Error(
           live
-            ? `No open-tested manifest matches the exact artifacts on production (open promotion run ${live.openPromotionRunId}); cannot target the live rollout`
-            : 'Nothing is recorded on production; cannot target a live rollout',
+            ? `No open-tested manifest matches the exact artifacts on production (open promotion run ${live.openPromotionRunId}); cannot target the live release`
+            : 'Nothing is recorded on production; cannot target a live release',
         )
       await applyProductionCandidate(basePlan, target)
     } catch (caught) {
@@ -342,18 +334,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     } catch (caught) {
       fail(caught)
     }
-  }
-
-  const confirmProductionPercentage = () => {
-    if (!productionPlan) return
-    const percentage = Number(rolloutInput)
-    if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
-      setError('Rollout percentage must be greater than 0 and at most 100')
-      goto('error')
-      return
-    }
-    setProductionPlan({ ...productionPlan, rolloutPercentage: percentage })
-    goto('production-confirm', CANCEL_INDEX)
   }
 
   const prepareInternalRuns = async () => {
@@ -520,9 +500,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           confirmedPlan.candidate,
           confirmedPlan.operation,
           confirmedPlan.requestId,
-          confirmedPlan.operation === 'promote' || confirmedPlan.operation === 'advance'
-            ? confirmedPlan.rolloutPercentage
-            : undefined,
           confirmedPlan.workflowRef,
         ),
       )
@@ -541,7 +518,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         await sleep(10_000)
         workflowRun = await getWorkflowRun(confirmedPlan.repo, workflowRun.id)
       }
-      setStatus('Reading exact production rollout state…')
+      setStatus('Reading exact production release state…')
       const manifest = await downloadProductionManifest(workflowRun.id)
       setStatus(productionSummary(manifest))
       if (
@@ -561,9 +538,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     if (id === 'watch') void prepareInternalRuns()
     else if (id === 'promote-open') void preparePromotion()
     else if (id === 'promote-production') void prepareProduction('promote')
-    else if (id === 'advance') void prepareProduction('advance')
-    else if (id === 'halt') void prepareProduction('halt')
-    else if (id === 'resume') void prepareProduction('resume')
     else if (id === 'status') void prepareProduction('status')
     else if (id === 'build') gotoBuildSource()
     else if (id === 'prepare') void prepareVersionMenu()
@@ -639,13 +613,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       moveIndex(key, productionCandidates.length)
       if (enter) void confirmProductionCandidate(index)
       else if (key.escape) loadDashboard()
-      return
-    }
-    if (phase === 'production-percentage') {
-      if (enter) confirmProductionPercentage()
-      else if (key.escape) loadDashboard()
-      else if (key.backspace || key.delete) setRolloutInput((value) => value.slice(0, -1))
-      else if (/^[0-9.]$/.test(input)) setRolloutInput((value) => value + input)
       return
     }
     if (phase === 'confirm') {
@@ -810,17 +777,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             index={index}
           />
           <Hint>Only successful exact open-promotion manifests · ↑/↓ · Enter · Esc cancels</Hint>
-        </Box>
-      )}
-      {phase === 'production-percentage' && productionPlan && (
-        <Box flexDirection="column">
-          <Text bold>
-            {productionPlan.operation === 'promote' ? 'Initial rollout' : 'Advance rollout'}
-          </Text>
-          <Text>
-            Percentage: <Text color="yellow">{rolloutInput || ' '}%</Text>
-          </Text>
-          <Hint>Type percentage 0–100 · Enter continues · Esc cancels</Hint>
         </Box>
       )}
       {plan && phase === 'confirm' && (

@@ -26,6 +26,7 @@ interface BoardState {
 interface BoardActions {
   load: () => Promise<void>
   addBoard: (data: {
+    id?: string
     name: string
     description?: string
     link?: BoardLink | null
@@ -77,6 +78,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
   },
 
   addBoard({
+    id,
     name,
     description,
     link,
@@ -86,7 +88,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     alertPresetsOnboarded,
   }) {
     const board: Board = {
-      id: generateId(),
+      id: id ?? generateId(),
       name,
       description: description ?? null,
       createdAt: Date.now(),

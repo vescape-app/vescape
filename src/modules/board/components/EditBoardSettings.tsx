@@ -10,6 +10,7 @@ import {
 } from 'phosphor-react-native'
 import type { BoardLink } from 'vescape-core'
 
+import { BoardNameField } from '@/modules/board/components/BoardNameField'
 import { BoardSettingRow } from '@/modules/board/components/BoardSettingRow'
 import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
@@ -21,7 +22,8 @@ import type { BatterySummary } from '@/modules/board/lib/boardSetup'
 
 interface EditBoardSettingsProps {
   name: string
-  description: string
+  nameSaving?: boolean
+  onSaveName: (name: string) => Promise<void> | void
   link: BoardLink | null
   linkSaving?: boolean
   keepMissingBatteryConfig: boolean
@@ -42,7 +44,8 @@ interface EditBoardSettingsProps {
 
 export function EditBoardSettings({
   name,
-  description,
+  nameSaving = false,
+  onSaveName,
   link,
   linkSaving = false,
   keepMissingBatteryConfig,
@@ -61,12 +64,12 @@ export function EditBoardSettings({
     <>
       <IconHero
         icon={LightningIcon}
-        title={name.trim() || 'Unnamed board'}
-        description={description.trim() || 'No description'}
         iconSize={48}
         iconColor={theme.palette.sky.color}
         iconWeight="duotone"
-      />
+      >
+        <BoardNameField name={name} saving={nameSaving} onSave={onSaveName} />
+      </IconHero>
 
       <SettingsCard>
         <BoardSettingRow

@@ -3,6 +3,8 @@ import type { EventSubscription } from 'expo-modules-core'
 import type {
   AppSettings,
   Board,
+  BoardCandidate,
+  BoardLink,
   CompanionPresenceBoard,
   BoardProbeProgressEvent,
   BoardProbeResult,
@@ -683,6 +685,22 @@ export const e2eFake = {
       outcome: 'resolved',
       transport: 'direct',
       candidates: [{ transport: 'direct', hasBms: false }],
+    }
+  },
+
+  finalizeBoardLink(bleId: string, candidate: BoardCandidate): BoardLink {
+    return {
+      linkVersion: 4,
+      bleId,
+      transport: candidate.transport,
+      hasBms: candidate.hasBms,
+      ...(candidate.vescFirmwareVersion != null && {
+        vescFirmwareVersion: candidate.vescFirmwareVersion,
+      }),
+      ...(candidate.refloatVersion != null && { refloatVersion: candidate.refloatVersion }),
+      ...(candidate.refloatBaseVersion != null && {
+        refloatBaseVersion: candidate.refloatBaseVersion,
+      }),
     }
   },
 

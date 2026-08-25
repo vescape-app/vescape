@@ -14,12 +14,15 @@ import { IconHero } from '@/components/settings/IconHero'
 import { DeviceRow } from '@/components/base/DeviceRow'
 import { StepTimeline, type StepState, type TimelineStep } from '@/components/base/StepTimeline'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
 import type { SparklinePoint } from '@/components/charts/Sparkline'
+import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
@@ -213,19 +216,55 @@ function TelemetryCellShowcase() {
   )
 }
 
+const CONFIG_SECTION_VALUES = {
+  freshness: 'fresh',
+  values: { l_temp_motor_start: 80, l_temp_motor_end: 90 },
+} as const
+
+function BoardConfigSectionShowcase() {
+  const [state, setState] = useState('fresh')
+
+  return (
+    <ShowcaseCard
+      name="BoardConfigSection"
+      controls={
+        <ChipRow
+          label="state"
+          options={['fresh', 'last known', 'empty']}
+          selected={state}
+          onSelect={setState}
+        />
+      }
+    >
+      <BoardConfigSection
+        title="Motor config"
+        rows={MOTOR_TEMP_CONFIG_ROWS}
+        values={
+          state === 'empty'
+            ? null
+            : { ...CONFIG_SECTION_VALUES, freshness: state === 'fresh' ? 'fresh' : 'last-known' }
+        }
+        empty="No motor config read from this board yet. Connect it to read its cutoffs."
+      />
+    </ShowcaseCard>
+  )
+}
+
 export default function BoardComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, StepTimeline, BoardWarningRow, ReplayBadge, TelemetryCell — board- and connection-flavored components."
+          description="DeviceRow, StepTimeline, BoardWarningRow, ReplayBadge, TelemetryCell, BoardConfigSection — board- and connection-flavored components."
         />
         <DeviceRowShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
         <ReplayBadgeShowcase />
         <TelemetryCellShowcase />
+        <FootpadIndicatorShowcase />
+        <BoardConfigSectionShowcase />
       </ScrollView>
     </SafeAreaView>
   )

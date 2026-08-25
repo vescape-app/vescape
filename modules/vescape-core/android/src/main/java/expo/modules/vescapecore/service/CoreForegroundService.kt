@@ -219,6 +219,11 @@ class CoreForegroundService : Service() {
             service.controller.consumePendingConfigRead()
         }
 
+        /** This Board Session's Board Config Values in bridge shape, or null when none are held. */
+        fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
+
+        fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
+
         fun setRemoteTilt(value: Int): Boolean = instance?.controller?.setRemoteTilt(value) ?: false
 
         fun lockRemoteTilt(value: Int): Boolean = instance?.controller?.lockRemoteTilt(value) ?: false

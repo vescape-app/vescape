@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 32
+internal const val TELEMETRY_DATABASE_VERSION = 36
 
 @Database(
   entities = [
@@ -32,6 +32,9 @@ internal const val TELEMETRY_DATABASE_VERSION = 32
     BoardWarningEntity::class,
     FavoriteEntity::class,
     FavoriteMediaEntity::class,
+    BoardConfigValuesEntity::class,
+    MotorConfigValuesEntity::class,
+    BoardConfigChangeNoticeEntity::class,
   ],
   version = TELEMETRY_DATABASE_VERSION,
   exportSchema = false,
@@ -578,6 +581,65 @@ abstract class TelemetryDatabase : RoomDatabase() {
      *
      * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v32_alert_repeat`
      */
+    /**
+     * Last Known Board Config Values: latest decoded Refloat config per Board + base version,
+     * restored as `lastKnown` on connect (#393).
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v33_board_config_values`
+     */
+    internal val MIGRATION_32_33 = object : Migration(32, 33) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS board_config_values (
+            board_id TEXT NOT NULL,
+            refloat_base_version TEXT NOT NULL,
+            values_json TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            PRIMARY KEY (board_id, refloat_base_version)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_board_config_values_board_id ON board_config_values(board_id)")
+      }
+    }
+
+    internal val MIGRATION_33_34 = object : Migration(33, 34) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS board_config_change_notices (board_id TEXT NOT NULL PRIMARY KEY, detected_at INTEGER NOT NULL, diffs_json TEXT NOT NULL)")
+      }
+    }
+    /**
+     * Last Known Motor Config Values: latest decoded VESC motor config per Board + MCCONF signature,
+     * restored as `lastKnown` on connect.
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v36_motor_config_values`
+     */
+    internal val MIGRATION_35_36 = object : Migration(35, 36) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS motor_config_values (
+            board_id TEXT NOT NULL,
+            mcconf_signature INTEGER NOT NULL,
+            firmware TEXT NOT NULL,
+            values_json TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            PRIMARY KEY (board_id, mcconf_signature)
+          )
+          """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_motor_config_values_board_id ON motor_config_values(board_id)")
+      }
+    }
+
+    internal val MIGRATION_34_35 = object : Migration(34, 35) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'")
+        db.execSQL("ALTER TABLE alerts ADD COLUMN config_field_id TEXT")
+        db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_offset REAL")
+        db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_max_offset REAL")
+      }
+    }
+
     internal val MIGRATION_31_32 = object : Migration(31, 32) {
       override fun migrate(db: SupportSQLiteDatabase) {
         if (!hasColumn(db, "alerts", "repeat_every_seconds")) {
@@ -648,6 +710,10 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_29_30,
             MIGRATION_30_31,
             MIGRATION_31_32,
+            MIGRATION_32_33,
+            MIGRATION_33_34,
+            MIGRATION_34_35,
+            MIGRATION_35_36,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

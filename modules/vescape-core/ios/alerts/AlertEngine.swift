@@ -41,6 +41,10 @@ internal struct AlertRule {
   let controlId: String
   let threshold: Double
   let thresholdMax: Double?
+  var thresholdKind: String = "fixed"
+  var configFieldId: String? = nil
+  var thresholdOffset: Double? = nil
+  var thresholdMaxOffset: Double? = nil
   let enabled: Bool
   let soundType: String
   let createdAt: Int64
@@ -78,6 +82,7 @@ internal func withLegalModeOverlay(
       controlId: "speed",
       threshold: warningSpeedKmh,
       thresholdMax: limitSpeedKmh,
+      thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil,
       enabled: true,
       soundType: "preset:tick",
       createdAt: 0,
@@ -266,6 +271,13 @@ internal final class AlertEngine {
 
   private var lastFiredAt: [String: Int64] = [:]
   private var armedState: [String: Bool] = [:]
+  private var configValues: [String: Any] = [:]
+  private var motorConfigValues: [String: Any] = [:]
+
+  func updateBoardConfigValues(_ values: [String: Any]) { configValues = values }
+
+  /// VESC motor config (MCCONF), the other half of what a config-relative rule may anchor to.
+  func updateMotorConfigValues(_ values: [String: Any]) { motorConfigValues = values }
 
 
   /// Forget every latch and repeat clock. Called when a new Board Session starts.
@@ -304,18 +316,19 @@ internal final class AlertEngine {
     var fired: [FiredAlert] = []
 
     for rule in rules {
+      guard let effective = effectiveThresholds(rule) else { continue }
       guard let value = valueFor(rule.controlId) else { continue }
       let compareValue = (rule.controlId == "battery" && batteryPercent != nil) ? batteryPercent! : value
       let aboveDir = alertDirectionIsAbove(rule.controlId)
-      let triggered = aboveDir ? compareValue >= rule.threshold : compareValue <= rule.threshold
+      let triggered = aboveDir ? compareValue >= effective.0 : compareValue <= effective.0
 
-      if isRangeRule(rule, aboveDir: aboveDir) {
+      if let ceiling = effective.1, aboveDir ? ceiling > effective.0 : ceiling < effective.0 {
         if !triggered { continue }
         fired.append(firedAlert(
           rule,
           value: value,
-          rangeDepth: alertRangeDepth(compareValue, threshold: rule.threshold, thresholdMax: rule.thresholdMax, aboveDir: aboveDir),
-          now: now
+          rangeDepth: alertRangeDepth(compareValue, threshold: effective.0, thresholdMax: ceiling, aboveDir: aboveDir),
+          now: now, effective: effective
         ))
         continue
       }
@@ -324,7 +337,7 @@ internal final class AlertEngine {
       // back past the threshold by this metric's re-arm margin.
       let armed = armedState[rule.id] ?? true
       if !triggered {
-        if !armed && hasRearmed(compareValue, rule: rule, aboveDir: aboveDir) {
+        if !armed && hasRearmed(compareValue, rule: rule, effectiveThreshold: effective.0, aboveDir: aboveDir) {
           armedState[rule.id] = true
           lastFiredAt.removeValue(forKey: rule.id)
         }
@@ -336,7 +349,7 @@ internal final class AlertEngine {
       }
       armedState[rule.id] = false
       lastFiredAt[rule.id] = now
-      fired.append(firedAlert(rule, value: value, rangeDepth: nil, now: now))
+      fired.append(firedAlert(rule, value: value, rangeDepth: nil, now: now, effective: effective))
     }
 
     let sorted = fired.sorted { a, b in
@@ -350,6 +363,15 @@ internal final class AlertEngine {
       return aKey > bKey
     }
     return coalesceByControl(sorted)
+  }
+
+  private func effectiveThresholds(_ rule: AlertRule) -> (Double, Double?)? {
+    guard rule.thresholdKind == "config-relative" else { return (rule.threshold, rule.thresholdMax) }
+    guard
+      let base = resolveConfigRelativeBase(rule.configFieldId, refloat: configValues, motor: motorConfigValues),
+      let offset = rule.thresholdOffset
+    else { return nil }
+    return (base + offset, rule.thresholdMaxOffset.map { base + $0 })
   }
 
   /// Keep one single-threshold announcement per metric — the most severe, which the caller has
@@ -367,13 +389,14 @@ internal final class AlertEngine {
     }
   }
 
-  private func firedAlert(_ rule: AlertRule, value: Double, rangeDepth: Double?, now: Int64) -> FiredAlert {
-    FiredAlert(
+  private func firedAlert(_ rule: AlertRule, value: Double, rangeDepth: Double?, now: Int64, effective: (Double, Double?)? = nil) -> FiredAlert {
+    let thresholds = effective ?? (rule.threshold, rule.thresholdMax)
+    return FiredAlert(
       ruleId: rule.id,
       controlId: rule.controlId,
       value: value,
-      threshold: rule.threshold,
-      thresholdMax: rule.thresholdMax,
+      threshold: thresholds.0,
+      thresholdMax: thresholds.1,
       soundType: rule.soundType,
       rangeDepth: rangeDepth,
       beepCount: rule.beepCount,
@@ -381,10 +404,11 @@ internal final class AlertEngine {
     )
   }
 
-  /// True once a fired rule's metric has travelled back past its threshold by the re-arm margin.
-  private func hasRearmed(_ compareValue: Double, rule: AlertRule, aboveDir: Bool) -> Bool {
-    let margin = alertRearmMargin(rule.controlId, rule.threshold)
-    return aboveDir ? compareValue < rule.threshold - margin : compareValue > rule.threshold + margin
+  /// True once a fired rule's metric has travelled back past its effective threshold by the re-arm margin.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `hasRearmed`
+  private func hasRearmed(_ compareValue: Double, rule: AlertRule, effectiveThreshold: Double, aboveDir: Bool) -> Bool {
+    let margin = alertRearmMargin(rule.controlId, effectiveThreshold)
+    return aboveDir ? compareValue < effectiveThreshold - margin : compareValue > effectiveThreshold + margin
   }
 
   private func alertRearmMargin(_ controlId: String, _ threshold: Double) -> Double {

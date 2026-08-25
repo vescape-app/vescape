@@ -1,17 +1,6 @@
 package expo.modules.vescapecore.warnings
 
-/**
- * Decoded Refloat config values the safety rules evaluate. A `null` field means the schema did not
- * carry it (or the raw config was too short) — the rules that need it are skipped, never guessed.
- */
-data class ConfigSafetyValues(
-  val faultAdc1: Double?,
-  val faultAdc2: Double?,
-  val tiltbackLv: Double?,
-  val tiltbackHv: Double?,
-  val tiltbackDuty: Double?,
-  val movingFaultDisabled: Boolean?,
-)
+import expo.modules.vescapecore.config.BoardConfigValues
 
 /** One config-safety finding to report through the Board Warning registry. */
 data class ConfigSafetyFinding(
@@ -75,58 +64,70 @@ object ConfigSafetyDetector {
     return major > PER_CELL_FW_MAJOR || (major == PER_CELL_FW_MAJOR && minor >= PER_CELL_FW_MINOR)
   }
 
-  fun evaluate(values: ConfigSafetyValues, seriesCount: Int?, perCell: Boolean?): ConfigSafetyReport {
+  /**
+   * Schema field ids the rules read off the Board Config Values map. A field absent from the map
+   * (missing from the schema, truncated, or unparseable) skips its rule.
+   * @parity /modules/vescape-core/ios/warnings/ConfigSafetyDetector.swift
+   */
+  const val FAULT_ADC1_ID = "fault_adc1"
+  const val FAULT_ADC2_ID = "fault_adc2"
+  const val TILTBACK_LV_ID = "tiltback_lv"
+  const val TILTBACK_HV_ID = "tiltback_hv"
+  const val TILTBACK_DUTY_ID = "tiltback_duty"
+  const val MOVING_FAULT_DISABLED_ID = "fault_moving_fault_disabled"
+
+  internal fun evaluate(values: BoardConfigValues, seriesCount: Int?, perCell: Boolean?): ConfigSafetyReport {
     val findings = mutableListOf<ConfigSafetyFinding>()
     val clean = mutableListOf<BoardWarningKind>()
 
     // footpad-disabled (critical): both ADC switch voltages 0 disables the footpad switch entirely.
-    val adc1 = values.faultAdc1
-    val adc2 = values.faultAdc2
+    val adc1 = values.number(FAULT_ADC1_ID)
+    val adc2 = values.number(FAULT_ADC2_ID)
     if (adc1 != null && adc2 != null) {
       if (adc1 == 0.0 && adc2 == 0.0) {
-        findings += finding(BoardWarningKind.FOOTPAD_DISABLED, BoardWarningSeverity.CRITICAL, "fault_adc1/fault_adc2", 0.0, 0.0)
+        findings += finding(BoardWarningKind.FOOTPAD_DISABLED, BoardWarningSeverity.CRITICAL, "$FAULT_ADC1_ID/$FAULT_ADC2_ID", 0.0, 0.0)
       } else {
         clean += BoardWarningKind.FOOTPAD_DISABLED
       }
     }
 
     // lv-pushback-low (critical): LV pushback below the safe minimum, in the firmware's voltage units.
-    val lv = values.tiltbackLv
+    val lv = values.number(TILTBACK_LV_ID)
     val lvBound = voltageBound(lv, CELL_LV_MIN_V, perCell, seriesCount)
     if (lv != null && lvBound != null) {
       if (lv < lvBound) {
-        findings += finding(BoardWarningKind.LV_PUSHBACK_LOW, BoardWarningSeverity.CRITICAL, "tiltback_lv", lv, lvBound)
+        findings += finding(BoardWarningKind.LV_PUSHBACK_LOW, BoardWarningSeverity.CRITICAL, TILTBACK_LV_ID, lv, lvBound)
       } else {
         clean += BoardWarningKind.LV_PUSHBACK_LOW
       }
     }
 
     // hv-pushback-high (warn): HV pushback above the safe maximum, in the firmware's voltage units.
-    val hv = values.tiltbackHv
+    val hv = values.number(TILTBACK_HV_ID)
     val hvBound = voltageBound(hv, CELL_HV_MAX_V, perCell, seriesCount)
     if (hv != null && hvBound != null) {
       if (hv > hvBound) {
-        findings += finding(BoardWarningKind.HV_PUSHBACK_HIGH, BoardWarningSeverity.WARN, "tiltback_hv", hv, hvBound)
+        findings += finding(BoardWarningKind.HV_PUSHBACK_HIGH, BoardWarningSeverity.WARN, TILTBACK_HV_ID, hv, hvBound)
       } else {
         clean += BoardWarningKind.HV_PUSHBACK_HIGH
       }
     }
 
     // duty-pushback-high (warn): duty pushback threshold set dangerously close to the duty limit.
-    val duty = values.tiltbackDuty
+    val duty = values.number(TILTBACK_DUTY_ID)
     if (duty != null) {
       if (duty > DUTY_MAX) {
-        findings += finding(BoardWarningKind.DUTY_PUSHBACK_HIGH, BoardWarningSeverity.WARN, "tiltback_duty", duty, DUTY_MAX)
+        findings += finding(BoardWarningKind.DUTY_PUSHBACK_HIGH, BoardWarningSeverity.WARN, TILTBACK_DUTY_ID, duty, DUTY_MAX)
       } else {
         clean += BoardWarningKind.DUTY_PUSHBACK_HIGH
       }
     }
 
     // moving-fault-disabled (warn): moving faults disabled weakens fault protection while riding.
-    val movingFault = values.movingFaultDisabled
+    val movingFault = values.bool(MOVING_FAULT_DISABLED_ID)
     if (movingFault != null) {
       if (movingFault) {
-        findings += finding(BoardWarningKind.MOVING_FAULT_DISABLED, BoardWarningSeverity.WARN, "fault_moving_fault_disabled", 1.0, 0.0)
+        findings += finding(BoardWarningKind.MOVING_FAULT_DISABLED, BoardWarningSeverity.WARN, MOVING_FAULT_DISABLED_ID, 1.0, 0.0)
       } else {
         clean += BoardWarningKind.MOVING_FAULT_DISABLED
       }

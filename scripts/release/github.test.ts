@@ -404,7 +404,6 @@ describe('release workflow dispatch', () => {
         { manifest: release, open, openPromotionRunId: 304 },
         'promote',
         requestId,
-        10,
       ),
     ).toEqual({
       ref: 'main',
@@ -417,17 +416,15 @@ describe('release workflow dispatch', () => {
         marketing_version: '0.83.1',
         phone_code: '100000042',
         wear_code: '1100000042',
-        rollout_percentage: '10',
       },
     })
     expect(() =>
       createProductionDispatchPayload(
         { manifest: release, open, openPromotionRunId: 304 },
-        'advance',
+        'advance' as never,
         requestId,
-        101,
       ),
-    ).toThrow('Rollout percentage')
+    ).toThrow('Invalid production operation')
   })
 
   test('correlates exact production run title', () => {

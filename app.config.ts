@@ -33,6 +33,8 @@ const config: ExpoConfig = {
         'Allow Vescape to connect to your board over Bluetooth for live telemetry, alerts, and ride recording.',
       NSLocationWhenInUseUsageDescription:
         'Allow Vescape to use your location for live maps, ride recording, and reconnect support while you ride.',
+      NSMotionUsageDescription:
+        'Allow Vescape to use device motion to determine your phone heading and orient the live ride map.',
       UIBackgroundModes: ['bluetooth-central', 'location', 'audio'],
       // Board Session status surface — native-driven Live Activity (peer of Android's persistent
       // foreground notification). See targets/ride-activity + plugins/withLiveActivityAttributes.

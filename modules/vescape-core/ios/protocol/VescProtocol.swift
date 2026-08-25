@@ -6,6 +6,7 @@ internal let COMM_FW_VERSION = 0
 internal let COMM_FORWARD_CAN = 34
 internal let COMM_CUSTOM_APP_DATA = 36
 internal let COMM_BMS_GET_VALUES = 96
+internal let COMM_GET_MCCONF = 14
 internal let COMM_GET_CUSTOM_CONFIG_XML = 92
 internal let COMM_GET_CUSTOM_CONFIG = 93
 internal let COMM_SET_CUSTOM_CONFIG = 95
