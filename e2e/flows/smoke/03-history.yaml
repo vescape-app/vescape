@@ -9,8 +9,14 @@ appId: ${APP_ID}
 - tapOn:
     id: history-button
 
-# Entering History opens the newest ride directly. Waiting on the metric tabs rather than the map:
-# the row only appears once the ride's samples are loaded.
+# History opens on the overview drawer. Open its newest restored ride, then wait on the metric tabs
+# rather than the map: the row only appears once the ride's samples are loaded.
+- extendedWaitUntil:
+    visible:
+      id: history-latest-ride
+    timeout: 30000
+- tapOn:
+    id: history-latest-ride
 - extendedWaitUntil:
     visible:
       id: history-metric-tab-duty

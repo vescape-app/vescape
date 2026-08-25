@@ -41,7 +41,7 @@ export function HistoryMetricTabs({
             accessibilityState={{ selected: active }}
             style={[
               styles.metricTab,
-              { width: `${100 / perRow}%` },
+              wrapped ? { width: `${100 / perRow}%` } : styles.metricTabFlex,
               !lastInRow && index < metrics.length - 1 && styles.metricTabDivider,
               !firstRow && styles.metricTabRowDivider,
               active && styles.metricTabActive,
@@ -107,6 +107,13 @@ const styles = StyleSheet.create({
   },
   metricTabsWrapped: {
     borderRadius: 14,
+  },
+  metricTabFlex: {
+    // A single row splits by flex, not by percentage: percentage widths round up per tab and the
+    // rounding error pushes the last tab onto a second line.
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
   },
   metricTab: {
     minWidth: 0,

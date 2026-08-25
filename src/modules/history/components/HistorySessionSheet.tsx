@@ -14,7 +14,8 @@ import {
   formatRideListDateTime,
   formatRideListDetails,
 } from '@/modules/history/lib/rideFormat'
-import { rideMovingWindow } from '@/modules/history/lib/sessions'
+import { isLiveRide, rideMovingWindow } from '@/modules/history/lib/sessions'
+import { useHistoryAutoRefresh } from '@/modules/history/hooks/useHistoryAutoRefresh'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 
 interface HistorySessionSheetProps {
@@ -45,6 +46,7 @@ export function HistorySessionSheet({
   onLoadMore,
 }: HistorySessionSheetProps) {
   const selectedRowRef = useRef<View>(null)
+  useHistoryAutoRefresh(visible && !favoriteMode)
   const favoritesBySessionId = useMemo(
     () => new Map(favorites.map((favorite) => [favoriteSessionId(favorite.id), favorite])),
     [favorites],
@@ -59,7 +61,11 @@ export function HistorySessionSheet({
         startMs: session.startAtMs,
         endMs: session.endAtMs,
       }
-      const dateTime = formatRideListDateTime(rideWindow.startMs, rideWindow.endMs)
+      const dateTime = formatRideListDateTime(
+        rideWindow.startMs,
+        rideWindow.endMs,
+        !favorite && isLiveRide(session, Date.now()),
+      )
       const details = formatRideListDetails(
         rideWindow.endMs - rideWindow.startMs,
         session.distanceM,

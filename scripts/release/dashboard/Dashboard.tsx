@@ -2,7 +2,7 @@ import React from 'react'
 import { Box, Text } from 'ink'
 import { Hint, Menu, Rule } from '../ui'
 import type { DashboardAction } from './actions'
-import type { ProductionRow, ReleaseState, TrackRow } from './state'
+import type { ReleaseState, TrackRow } from './state'
 
 const column = (value: string, width: number) => value.padEnd(width)
 
@@ -39,12 +39,6 @@ function TrackLine({
   )
 }
 
-function productionExtra(row: ProductionRow | null): string | undefined {
-  if (!row) return undefined
-  const rollout = row.rolloutPercentage === null ? '' : ` @ ${row.rolloutPercentage}%`
-  return `${rollout}${row.halted ? ' · HALTED' : ''}`
-}
-
 export function Dashboard({
   state,
   actions,
@@ -72,12 +66,7 @@ export function Dashboard({
       </Text>
       <TrackLine name="internal" track={tracks?.phoneInternal} row={state.internal} />
       <TrackLine name="open" track={tracks?.phoneOpen} row={state.open} />
-      <TrackLine
-        name="production"
-        track={tracks?.phoneProduction}
-        row={state.production}
-        extra={productionExtra(state.production)}
-      />
+      <TrackLine name="production" track={tracks?.phoneProduction} row={state.production} />
       <Rule />
       {state.pendingInternal > 0 && (
         <Text>

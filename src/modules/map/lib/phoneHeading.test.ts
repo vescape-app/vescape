@@ -64,22 +64,22 @@ describe('phoneHeading', () => {
 
   test('smooths compass heading across the shortest wrap-around path', () => {
     expect(smoothPhoneHeading(null, 90)).toBe(90)
-    expect(smoothPhoneHeading(350, 10)).toBeCloseTo(351.244)
-    expect(smoothPhoneHeading(10, 350)).toBeCloseTo(8.756)
+    expect(smoothPhoneHeading(350, 10)).toBeCloseTo(352.377)
+    expect(smoothPhoneHeading(10, 350)).toBeCloseTo(7.623)
   })
 
   test('uses adaptive smoothing', () => {
     expect(phoneHeadingSmoothingAlphaForTest(0, 2)).toBeLessThan(
       phoneHeadingSmoothingAlphaForTest(0, 90),
     )
-    expect(smoothPhoneHeading(0, 90)).toBe(6)
-    expect(smoothPhoneHeading(0, 90, 0.5)).toBe(3)
-    expect(phoneHeadingUpdateIntervalMs()).toBe(16)
+    expect(smoothPhoneHeading(0, 90)).toBe(12)
+    expect(smoothPhoneHeading(0, 90, 0.5)).toBe(6)
+    expect(phoneHeadingUpdateIntervalMs()).toBe(33)
   })
 
   test('suppresses stationary jitter after smoothing without blocking real movement', () => {
     expect(deadBandPhoneHeading(100, 103)).toBe(100)
-    expect(deadBandPhoneHeading(100, 104)).toBeGreaterThan(100.15)
+    expect(deadBandPhoneHeading(100, 104)).toBeGreaterThan(100.3)
     expect(deadBandPhoneHeading(359.8, 0.2)).toBe(359.8)
   })
 

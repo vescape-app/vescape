@@ -6,11 +6,13 @@
 appId: ${APP_ID}
 ---
 - tapOn:
-    id: social-drawer-trigger
+    id: history-button
 - extendedWaitUntil:
-    visible: 'Profile stats'
+    visible:
+      id: history-stats-details
     timeout: 15000
-- tapOn: 'Profile stats'
+- tapOn:
+    id: history-stats-details
 
 - extendedWaitUntil:
     visible:

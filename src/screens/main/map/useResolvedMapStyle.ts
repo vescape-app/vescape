@@ -49,17 +49,8 @@ export function useResolvedMapStyle({
   const effectiveSatelliteImagerySaturation = mode === 'telemetry' ? satelliteImagerySaturation : 0
 
   const satelliteStyleJSON = useMemo(
-    () =>
-      getSatelliteDarkMapStyle(
-        satelliteImageryOpacity,
-        true,
-        true,
-        false,
-        true,
-        satelliteImagerySaturation,
-        0.35,
-      ),
-    [satelliteImageryOpacity, satelliteImagerySaturation],
+    () => getSatelliteDarkMapStyle(true, true, false, true, 0.35),
+    [],
   )
   const satelliteImageryPaint = useMemo(
     () =>
@@ -71,9 +62,9 @@ export function useResolvedMapStyle({
   )
   const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, false), [])
 
-  const styleSignature = isSatelliteOverlay
-    ? `${selectedMapStyle.key}:${satelliteImageryOpacity}:${satelliteImagerySaturation}`
-    : `${selectedMapStyle.key}:${useCustomJSON ? 'json' : selectedMapStyle.styleURL}`
+  const styleSignature = `${selectedMapStyle.key}:${
+    useCustomJSON ? 'json' : selectedMapStyle.styleURL
+  }`
 
   return {
     styleKey: selectedMapStyle.key,

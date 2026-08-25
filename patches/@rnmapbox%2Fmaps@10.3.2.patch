@@ -1,6 +1,12 @@
 diff --git a/node_modules/@rnmapbox/maps/.bun-tag-3bd3aaf4602e417 b/.bun-tag-3bd3aaf4602e417
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@rnmapbox/maps/.bun-tag-42190af1d87f72d2 b/.bun-tag-42190af1d87f72d2
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/node_modules/@rnmapbox/maps/.bun-tag-cc37716a93542075 b/.bun-tag-cc37716a93542075
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
 index a471e13ca74a7e7b47626da77accb6fada753f65..a402b2a23fa34f5043f151ea244342ebd0af5e45 100644
 --- a/android/src/main/java/com/rnmapbox/rnmbx/components/camera/RNMBXCamera.kt
@@ -111,6 +117,60 @@ index 722903d70657a81d7f78bcff50c03ea424887b5b..7f4e012c641a90182f51b3f6f33a348c
      private fun getAnimationOptions(
          animationMode: Double,
          animationDuration: Double
+diff --git a/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt b/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt
+index 9043e025629638d25d3cef4bc4774c2cbf278b4a..33b45602d5003b061afbf2a1bb443f4f21821ce8 100644
+--- a/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt
++++ b/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt
+@@ -817,8 +817,8 @@ open class RNMBXMapView(private val mContext: Context, var mManager: RNMBXMapVie
+         val event: IEvent
+         event = when (eventType) {
+             EventTypes.REGION_WILL_CHANGE, EventTypes.REGION_DID_CHANGE, EventTypes.REGION_IS_CHANGING -> MapChangeEvent(this, eventType, makeRegionPayload(null))
+-            EventTypes.CAMERA_CHANGED -> CameraChangeEvent(this, eventType, makeCameraPayload())
+-            EventTypes.MAP_IDLE -> MapChangeEvent(this, eventType, makeCameraPayload())
++            EventTypes.CAMERA_CHANGED -> CameraChangeEvent(this, eventType, makeCameraPayload(includeBounds = false))
++            EventTypes.MAP_IDLE -> MapChangeEvent(this, eventType, makeCameraPayload(includeBounds = true))
+             else -> MapChangeEvent(this, eventType)
+         }
+         mManager.handleEvent(event)
+@@ -833,23 +833,29 @@ open class RNMBXMapView(private val mContext: Context, var mManager: RNMBXMapVie
+         return changedEvents == null || changedEvents.contains(event)
+     }
+ 
+-    private fun makeCameraPayload(): WritableMap {
++    // @parity /node_modules/@rnmapbox/maps/ios/RNMBX/RNMBXMapView.swift `buildStateObject`
++    // `bounds` costs an unprojection through gl-native and no consumer reads it off the
++    // camera-changed event, which fires per camera write. Kept on map-idle, which fires once per
++    // rest, so the settled payload keeps its published shape.
++    private fun makeCameraPayload(includeBounds: Boolean): WritableMap {
+         val position = mMap?.cameraState ?: return WritableNativeMap()
+         val properties = WritableNativeMap()
+         properties.putDouble("zoom", position.zoom)
+         properties.putDouble("heading", position.bearing)
+         properties.putDouble("pitch", position.pitch)
+         properties.putArray("center", position.center.toReadableArray())
+-        try {
+-            val bounds = mMap.coordinateBoundsForCamera(position.toCameraOptions())
++        if (includeBounds) {
++            try {
++                val bounds = mMap.coordinateBoundsForCamera(position.toCameraOptions())
+ 
+-            val boundsMap = WritableNativeMap()
+-            boundsMap.putArray("ne", bounds.northeast.toReadableArray())
+-            boundsMap.putArray("sw", bounds.southwest.toReadableArray())
++                val boundsMap = WritableNativeMap()
++                boundsMap.putArray("ne", bounds.northeast.toReadableArray())
++                boundsMap.putArray("sw", bounds.southwest.toReadableArray())
+ 
+-            properties.putMap("bounds", boundsMap)
+-        } catch (ex: Exception) {
+-            Logger.e(LOG_TAG, "An error occurred while attempting to make the region", ex)
++                properties.putMap("bounds", boundsMap)
++            } catch (ex: Exception) {
++                Logger.e(LOG_TAG, "An error occurred while attempting to make the region", ex)
++            }
+         }
+         val gestures = WritableNativeMap()
+         gestures.putBoolean("isGestureActive", wasGestureActive/*mCameraChangeTracker.isUserInteraction*/)
 diff --git a/ios/RNMBX/RNMBXCamera.swift b/ios/RNMBX/RNMBXCamera.swift
 index bc3f6321a79d21ed1294b2e23c6d661dd1b8f50d..9b7d3a42a05d66e4e05db9925cf884bb3f1f3682 100644
 --- a/ios/RNMBX/RNMBXCamera.swift
@@ -203,10 +263,70 @@ index 6599a79f947b737709bf9bab13dfc497231eb8e2..57d62a0bb6dc5b54b47d4eb36a64ac26
                    x:(double)x
                    y:(double)y
 diff --git a/ios/RNMBX/RNMBXMapView.swift b/ios/RNMBX/RNMBXMapView.swift
-index 4ffb4266e9fe1c2f5e111094ca5b758051c8b333..179b7d1a3c978a463f7a411137e762caceb324dc 100644
+index 4ffb4266e9fe1c2f5e111094ca5b758051c8b333..331bd6276010f09925e132f3c21f380d9a552177 100644
 --- a/ios/RNMBX/RNMBXMapView.swift
 +++ b/ios/RNMBX/RNMBXMapView.swift
-@@ -1557,9 +1557,11 @@ extension RNMBXMapView: GestureManagerDelegate {
+@@ -1090,7 +1090,7 @@ extension RNMBXMapView {
+         let event = RNMBXEvent(type:.regionIsChanging, payload: self.buildRegionObject())
+         self.fireEvent(event: event, callback: self.reactOnMapChange)
+       } else if self.handleMapChangedEvents.contains(.cameraChanged) {
+-        let event = RNMBXCameraChanged(type:.cameraChanged, payload: self.buildStateObject(), reactTag: self.reactTag)
++        let event = RNMBXCameraChanged(type:.cameraChanged, payload: self.buildStateObject(includeBounds: false), reactTag: self.reactTag)
+         self.eventDispatcher.send(event)
+       }
+     })
+@@ -1100,7 +1100,7 @@ extension RNMBXMapView {
+         let event = RNMBXEvent(type:.regionDidChange, payload: self.buildRegionObject());
+         self.fireEvent(event: event, callback: self.reactOnMapChange)
+       } else if self.handleMapChangedEvents.contains(.mapIdle) {
+-        let event = RNMBXEvent(type:.mapIdle, payload: self.buildStateObject());
++        let event = RNMBXEvent(type:.mapIdle, payload: self.buildStateObject(includeBounds: true));
+         self.fireEvent(event: event, callback: self.reactOnMapChange)
+       }
+ 
+@@ -1120,21 +1120,28 @@ extension RNMBXMapView {
+     callback(event.toJSON())
+   }
+ 
+-  private func buildStateObject() -> [String: Any] {
+-    let cameraOptions = CameraOptions(cameraState: mapView.cameraState)
+-    let bounds = mapView.mapboxMap.coordinateBounds(for: cameraOptions)
++  // @parity /node_modules/@rnmapbox/maps/android/src/main/java/com/rnmapbox/rnmbx/components/mapview/RNMBXMapView.kt `makeCameraPayload`
++  // `bounds` costs an unprojection through gl-native and no consumer reads it off the
++  // camera-changed event, which fires per camera write. Kept on map-idle, which fires once per
++  // rest, so the settled payload keeps its published shape.
++  private func buildStateObject(includeBounds: Bool) -> [String: Any] {
++    var properties: [String: Any] = [
++      "center": Point(mapView.cameraState.center).coordinates.toArray(),
++      "zoom" : Double(mapView.cameraState.zoom),
++      "heading": Double(mapView.cameraState.bearing),
++      "pitch": Double(mapView.cameraState.pitch),
++    ]
++    if includeBounds {
++      let cameraOptions = CameraOptions(cameraState: mapView.cameraState)
++      let bounds = mapView.mapboxMap.coordinateBounds(for: cameraOptions)
++      properties["bounds"] = [
++        "ne": bounds.northeast.toArray(),
++        "sw": bounds.southwest.toArray()
++      ]
++    }
+ 
+     return [
+-      "properties": [
+-        "center": Point(mapView.cameraState.center).coordinates.toArray(),
+-        "bounds": [
+-          "ne": bounds.northeast.toArray(),
+-          "sw": bounds.southwest.toArray()
+-        ],
+-        "zoom" : Double(mapView.cameraState.zoom),
+-        "heading": Double(mapView.cameraState.bearing),
+-        "pitch": Double(mapView.cameraState.pitch),
+-      ],
++      "properties": properties,
+       "gestures": [
+         "isGestureActive": wasGestureActive
+       ],
+@@ -1557,9 +1564,11 @@ extension RNMBXMapView: GestureManagerDelegate {
      for case let d as GestureManagerDelegate in _gestureDelegates.allObjects {
        d.gestureManager(gestureManager, didEnd: gestureType, willAnimate: willAnimate)
      }
@@ -271,6 +391,19 @@ index 5ba484344d14d55f17afa8dd11f2bc02904f8aaf..58b06579a45a1bce99d526b681573869
      fitBounds: (ne: Position, sw: Position, paddingConfig?: number | number[], animationDuration?: number) => void;
      flyTo: (centerCoordinate: Position, animationDuration?: number) => void;
      moveTo: (centerCoordinate: Position, animationDuration?: number) => void;
+diff --git a/lib/typescript/src/components/MapView.d.ts b/lib/typescript/src/components/MapView.d.ts
+index 7d4dc79ac02f1193cf763fcc2f47d4ccbfb070bb..9d74436b5621cf79e595481c7113002f6503a1f0 100644
+--- a/lib/typescript/src/components/MapView.d.ts
++++ b/lib/typescript/src/components/MapView.d.ts
+@@ -89,7 +89,7 @@ export type GestureSettings = {
+ export type MapState = {
+     properties: {
+         center: GeoJSON.Position;
+-        bounds: {
++        bounds?: {
+             ne: GeoJSON.Position;
+             sw: GeoJSON.Position;
+         };
 diff --git a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts b/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
 index 3fda8aa42ab2d96329be85791bee4dd0f8141557..791753e915793465da3c2398b025c0300d529c5f 100644
 --- a/lib/typescript/src/specs/NativeRNMBXCameraModule.d.ts
@@ -356,6 +489,20 @@ index c8e61a0d9e528bf74e869e14153e9a5be5894be7..6bfa604a4747a7029bb9fdd3649581d9
          /**
           * Set the camera position to enclose the provided bounds, with optional
           * padding and duration.
+diff --git a/src/components/MapView.tsx b/src/components/MapView.tsx
+index d7b5bf5029094bdc818a90040a6ee0ea7876c48c..ebef6586e46821df91afd3e2939d2af22cd83983 100644
+--- a/src/components/MapView.tsx
++++ b/src/components/MapView.tsx
+@@ -132,7 +132,8 @@ export type GestureSettings = {
+ export type MapState = {
+   properties: {
+     center: GeoJSON.Position;
+-    bounds: {
++    /** Only on map-idle: the camera-changed event omits it, so it is not paid per camera write. */
++    bounds?: {
+       ne: GeoJSON.Position;
+       sw: GeoJSON.Position;
+     };
 diff --git a/src/specs/NativeRNMBXCameraModule.ts b/src/specs/NativeRNMBXCameraModule.ts
 index 51e22647de0011459dee4bd160ede4fcca1f4263..142cbea411d7569f5c1e0ac422e999e4faa81b13 100644
 --- a/src/specs/NativeRNMBXCameraModule.ts

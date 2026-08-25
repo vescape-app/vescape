@@ -107,10 +107,7 @@ def play_release_state(track, code)
     end
     return nil unless release
 
-    {
-      playStatus: release.status,
-      rolloutPercentage: release.user_fraction.nil? ? nil : release.user_fraction.to_f * 100
-    }
+    { playStatus: release.status }
   ensure
     client.abort_current_edit
   end
@@ -129,19 +126,6 @@ def production_upload_options(track, code)
   }
 end
 
-def rollout_fraction
-  percentage = Float(ENV.fetch("ROLLOUT_PERCENTAGE"))
-  UI.user_error!("Rollout percentage must be greater than 0 and at most 100") unless percentage.positive? && percentage <= 100
-  percentage / 100.0
-rescue ArgumentError
-  UI.user_error!("Invalid ROLLOUT_PERCENTAGE: #{ENV['ROLLOUT_PERCENTAGE']}")
-end
-
-def rollout_upload_options(fraction)
-  return {} if fraction == 1.0
-  { rollout: fraction.to_s }
-end
-
 def manage_production_artifact(label, code, source_track, target_track)
   require_release_env("PRODUCTION_OPERATION", "PRODUCTION_RESULT_PATH")
   operation = ENV.fetch("PRODUCTION_OPERATION")
@@ -151,66 +135,20 @@ def manage_production_artifact(label, code, source_track, target_track)
     UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
     "active"
   when "promote"
-    initial_rollout = rollout_fraction
     if current
-      expected_status = initial_rollout == 1.0 ? "completed" : "inProgress"
-      expected_percentage = initial_rollout == 1.0 ? nil : initial_rollout * 100
-      percentage_matches = expected_percentage.nil? ? current[:rolloutPercentage].nil? : (current[:rolloutPercentage].to_f - expected_percentage).abs < 0.0001
-      UI.user_error!("#{label} production state does not match the requested rollout") unless current[:playStatus] == expected_status && percentage_matches
+      # Every promotion goes straight to 100%, so the only production state this repository
+      # can have produced is a completed one. Anything else was changed in the Play Console.
+      UI.user_error!("#{label} production release is #{current[:playStatus]}, not completed") unless current[:playStatus] == "completed"
       "already-production"
     else
       UI.user_error!("#{label} version code #{code} is not active on #{source_track}") unless play_release_state(source_track, code)
       upload_to_play_store(
         **production_upload_options(source_track, code),
         track_promote_to: target_track,
-        track_promote_release_status: initial_rollout == 1.0 ? "completed" : "inProgress",
-        **rollout_upload_options(initial_rollout)
+        track_promote_release_status: "completed"
       )
       "promoted"
     end
-  when "halt"
-    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
-    unless current[:playStatus] == "halted"
-      UI.user_error!("#{label} rollout is #{current[:playStatus]}, not inProgress") unless current[:playStatus] == "inProgress"
-      UI.user_error!("#{label} rollout has no staged percentage") unless current[:rolloutPercentage]
-      upload_to_play_store(
-        **production_upload_options(target_track, code),
-        release_status: "halted",
-        rollout: (current[:rolloutPercentage] / 100.0).to_s
-      )
-    end
-    "halted"
-  when "resume"
-    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
-    unless current[:playStatus] == "inProgress"
-      UI.user_error!("#{label} rollout is #{current[:playStatus]}, not halted") unless current[:playStatus] == "halted"
-      UI.user_error!("#{label} rollout has no staged percentage") unless current[:rolloutPercentage]
-      upload_to_play_store(
-        **production_upload_options(target_track, code),
-        track_promote_to: target_track,
-        track_promote_release_status: "inProgress",
-        rollout: (current[:rolloutPercentage] / 100.0).to_s
-      )
-    end
-    "resumed"
-  when "advance"
-    UI.user_error!("#{label} version code #{code} is not on #{target_track}") unless current
-    requested = rollout_fraction
-    current_fraction = current[:rolloutPercentage].to_f / 100.0
-    if current[:playStatus] == "completed" && requested == 1.0
-      # Idempotent retry after completing the rollout.
-    else
-      UI.user_error!("#{label} rollout is #{current[:playStatus]}, not inProgress") unless current[:playStatus] == "inProgress"
-      UI.user_error!("#{label} rollout cannot move backwards") if requested < current_fraction
-      if requested > current_fraction
-        upload_to_play_store(
-          **production_upload_options(target_track, code),
-          release_status: requested == 1.0 ? "completed" : "inProgress",
-          **rollout_upload_options(requested)
-        )
-      end
-    end
-    "advanced"
   else
     UI.user_error!("Invalid production operation: #{operation}")
   end
@@ -223,8 +161,7 @@ def manage_production_artifact(label, code, source_track, target_track)
       sourceTrack: source_track,
       targetTrack: target_track,
       status: result_status,
-      playStatus: state&.fetch(:playStatus),
-      rolloutPercentage: state&.fetch(:rolloutPercentage)
+      playStatus: state&.fetch(:playStatus)
     )
   )
 end
@@ -322,7 +259,7 @@ platform :android do
     end
   end
 
-  desc "Manage one exact phone production rollout"
+  desc "Promote or inspect one exact phone production release"
   lane :manage_phone_production do
     manage_production_artifact(
       "Phone",
@@ -332,7 +269,7 @@ platform :android do
     )
   end
 
-  desc "Manage one exact Wear production rollout"
+  desc "Promote or inspect one exact Wear production release"
   lane :manage_wear_production do
     manage_production_artifact(
       "Wear",

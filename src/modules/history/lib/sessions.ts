@@ -8,6 +8,12 @@ import type { RideHistorySession } from 'vescape-core'
  */
 export const DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
 
+/**
+ * A ride whose newest sample is this fresh is still being recorded; its list row ends at "now"
+ * instead of a fixed clock time.
+ */
+export const LIVE_RIDE_MAX_AGE_MS = 3 * 60_000
+
 /** Display breathing room kept on each side of the Moving Window. */
 export const RIDE_TRIM_PADDING_MS = 5_000
 
@@ -27,4 +33,28 @@ export function rideDurationMs(
 ): number {
   const window = rideMovingWindow(session)
   return window ? window.endMs - window.startMs : session.endAtMs - session.startAtMs
+}
+
+/** True while the ride is still collecting samples, so the UI can label it as recording. */
+export function isLiveRide(session: Pick<HistorySession, 'endAtMs'>, nowMs: number): boolean {
+  return nowMs - session.endAtMs <= LIVE_RIDE_MAX_AGE_MS
+}
+
+/**
+ * The same Ride after a reload. A ride being recorded keeps growing, and its id carries `endAtMs`,
+ * so identity falls back to the same board plus an overlapping span.
+ */
+export function matchRideSession(
+  sessions: HistorySession[],
+  selected: HistorySession,
+): HistorySession | null {
+  return (
+    sessions.find(
+      (session) =>
+        session.id === selected.id ||
+        (session.deviceId === selected.deviceId &&
+          session.startAtMs <= selected.endAtMs &&
+          session.endAtMs >= selected.startAtMs),
+    ) ?? null
+  )
 }

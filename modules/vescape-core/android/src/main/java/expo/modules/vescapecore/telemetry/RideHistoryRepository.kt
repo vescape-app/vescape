@@ -86,7 +86,7 @@ internal class RideHistoryRepository private constructor(private val context: Co
         val markerTo = buckets.maxOf { it.lastSampleAtMs } + TELEMETRY_BUCKET_SIZE_MS
         val markers = dao.getMarkers(markerFrom, markerTo, null)
         val grouped = groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
-        complete = if (hasOlderBuckets) grouped.dropLast(1) else grouped
+        complete = completeRideSessions(grouped, hasOlderBuckets)
       }
 
       val sorted = complete.sortedByDescending { it.startAtMs }
@@ -116,6 +116,16 @@ internal class RideHistoryRepository private constructor(private val context: Co
     fun resetForDatabaseSwap() = synchronized(this) { instance = null }
   }
 }
+
+/**
+ * Buckets arrive newest-first, so the only ride that may still grow backwards is the OLDEST one in
+ * the window. Dropping the newest instead hides the ride being recorded right now.
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `completeRideSessions`
+ */
+internal fun completeRideSessions(
+  grouped: List<RideSessionAggregate>,
+  hasOlderBuckets: Boolean,
+): List<RideSessionAggregate> = if (hasOlderBuckets) grouped.drop(1) else grouped
 
 /**
  * Native source of Ride boundaries and aggregates used by both History pages and Profile stats.
