@@ -126,7 +126,10 @@ export function MainMapScene({
       onTouchStart={onTouchStart}
     >
       <Mapbox.MapView
-        key={styleRetryNonce}
+        // A style document owns every native layer below it. Reusing the native map while
+        // swapping documents lets React update a layer after Mapbox has already removed it.
+        // Remount at that ownership boundary; useMainMapCameraEvents restores the camera.
+        key={`${mapStyle.styleSignature}:${styleRetryNonce}`}
         ref={mapViewRef}
         style={styles.map}
         styleURL={mapStyle.styleURL}
