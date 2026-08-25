@@ -2,7 +2,10 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretRightIcon, type Icon } from 'phosphor-react-native'
 
-import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import {
+  type WidgetSize,
+  useResolvedSecondaryWidgetSurface,
+} from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface LinkWidgetProps {
@@ -25,13 +28,14 @@ export function LinkWidget({
   disabled,
   onPress,
 }: LinkWidgetProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const square = size === 'square'
   const iconSize = square ? 26 : size === 'half' ? 20 : 22
 
   return (
     <Pressable
       style={({ pressed }) => [
-        styles.widget,
+        surface,
         square ? styles.widgetSquare : styles.widgetRow,
         pressed && !disabled && styles.pressed,
         disabled && styles.disabled,
@@ -53,9 +57,6 @@ export function LinkWidget({
 }
 
 const styles = StyleSheet.create({
-  widget: {
-    ...secondaryWidgetSurface,
-  },
   widgetRow: {
     flexDirection: 'row',
     alignItems: 'center',

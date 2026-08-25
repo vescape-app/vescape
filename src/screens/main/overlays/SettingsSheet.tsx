@@ -19,7 +19,7 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { LinkWidget } from '@/components/widgets/LinkWidget'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { DASH, fmtCompactCount, fmtTimeAgo, formatBytes } from '@/helpers/format'
 import { backupProgressFraction, type BackupSlot } from '@/modules/profile/lib/backupSlot'
@@ -84,6 +84,7 @@ interface SettingsSheetProps {
  * update, storage), the settings worth one tap, and one door to everything else.
  */
 export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
+  const secondarySurface = useResolvedSecondaryWidgetSurface()
   const dbSize = useDatabaseSize().bytes
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
@@ -100,7 +101,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
         <AccountPill onNavigate={onNavigate} />
       </View>
 
-      <View style={styles.strip}>
+      <View style={[styles.strip, secondarySurface]}>
         <BackupCell backup={backup} onSignIn={() => go(routes.signIn)} />
         <View style={styles.stripDivider} />
         <StripCell
@@ -279,7 +280,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   strip: {
-    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'stretch',
     paddingVertical: 14,
