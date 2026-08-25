@@ -1,0 +1,55 @@
+# Tells the Vescape server which marketing version a store now serves.
+#
+# Android does this automatically at the end of promote-production.yml. iOS has no automated
+# production moment — `fastlane ios release` ships to TestFlight and stages an App Store draft,
+# and a human releases it in App Store Connect — so iOS is recorded here by hand. This workflow
+# is also the retry path when the automatic Android push fails.
+name: Record Released App Version
+
+run-name: Released ${{ inputs.platform }} ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Store now serving this version
+        required: true
+        type: choice
+        options: [ios, android]
+      version:
+        description: Exact marketing version, e.g. 1.2.3
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: released-app-version
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: Push the Released App Version
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      # The version must already be tagged and released here: recording one the store does not
+      # serve would tell every Rider to install a build they cannot get.
+      - name: Verify the version is a released tag on main
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git fetch origin main --tags
+          git merge-base --is-ancestor "v$VERSION^{commit}" origin/main
+        env:
+          VERSION: ${{ inputs.version }}
+      - name: Tell the server this version is released
+        run: bun run scripts/release/releasedVersion.ts "$PLATFORM" "$VERSION"
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          VERSION: ${{ inputs.version }}
+          INTERNAL_API_KEY: ${{ secrets.VESCAPE_INTERNAL_API_KEY }}

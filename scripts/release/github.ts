@@ -101,7 +101,6 @@ export interface ProductionDispatchPayload {
     marketing_version: string
     phone_code: string
     wear_code: string
-    rollout_percentage: string
   }
 }
 
@@ -158,24 +157,13 @@ export function createProductionDispatchPayload(
   candidate: ProductionCandidate,
   operation: ProductionOperation,
   requestId: string,
-  rolloutPercentage?: number,
   workflowRef = 'main',
 ): ProductionDispatchPayload {
   if (!/^[0-9a-f-]{36}$/i.test(requestId)) throw new Error('Request ID must be a UUID')
-  if (!['promote', 'status', 'halt', 'resume', 'advance'].includes(operation))
+  if (!['promote', 'status'].includes(operation))
     throw new Error(`Invalid production operation "${operation}"`)
   if (!Number.isSafeInteger(candidate.openPromotionRunId) || candidate.openPromotionRunId < 1)
     throw new Error('Open-promotion run ID must be a positive integer')
-  if (operation === 'promote' || operation === 'advance') {
-    if (
-      typeof rolloutPercentage !== 'number' ||
-      !Number.isFinite(rolloutPercentage) ||
-      rolloutPercentage <= 0 ||
-      rolloutPercentage > 100
-    ) {
-      throw new Error('Rollout percentage must be greater than 0 and at most 100')
-    }
-  }
   const { manifest, open } = candidate
   if (
     open.phone.status === 'failed' ||
@@ -199,7 +187,6 @@ export function createProductionDispatchPayload(
       marketing_version: manifest.marketingVersion,
       phone_code: String(manifest.versionCodes.phone),
       wear_code: String(manifest.versionCodes.wear),
-      rollout_percentage: rolloutPercentage === undefined ? '0' : String(rolloutPercentage),
     },
   }
 }
