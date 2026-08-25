@@ -189,9 +189,16 @@ export function PrevNextSelectorShowcase() {
 
 export function SegmentedToggleShowcase() {
   const [value, setValue] = useState<'total' | 'month'>('total')
+  const [variant, setVariant] = useState<'control' | 'secondary'>('control')
 
   return (
     <ShowcaseCard name="SegmentedToggle">
+      <ChipRow
+        label="Surface"
+        options={['control', 'secondary']}
+        selected={variant}
+        onSelect={(next) => setVariant(next as 'control' | 'secondary')}
+      />
       <View style={styles.centeredPreview}>
         <SegmentedToggle
           options={[
@@ -200,6 +207,7 @@ export function SegmentedToggleShowcase() {
           ]}
           value={value}
           onChange={setValue}
+          variant={variant}
         />
       </View>
     </ShowcaseCard>

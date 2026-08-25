@@ -14,6 +14,8 @@ interface SegmentedToggleProps<T extends string> {
   onChange: (value: T) => void
   /** Tint of the selected segment. */
   accent?: string
+  /** Surface the toggle sits on. Controls default to navy; secondary cards use adaptive neutrals. */
+  variant?: 'control' | 'secondary'
   style?: StyleProp<ViewStyle>
   testID?: string
 }
@@ -27,11 +29,14 @@ export function SegmentedToggle<T extends string>({
   value,
   onChange,
   accent = theme.palette.sky.color,
+  variant = 'control',
   style,
   testID,
 }: SegmentedToggleProps<T>) {
+  const secondary = variant === 'secondary'
+
   return (
-    <View style={[styles.track, style]} testID={testID}>
+    <View style={[styles.track, secondary && styles.secondaryTrack, style]} testID={testID}>
       {options.map((option) => {
         const selected = option.value === value
         return (
@@ -47,7 +52,15 @@ export function SegmentedToggle<T extends string>({
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
           >
-            <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>
+            <Text
+              style={[
+                styles.label,
+                secondary && styles.secondaryLabel,
+                selected && styles.labelSelected,
+                selected && secondary && { color: accent },
+              ]}
+              numberOfLines={1}
+            >
               {option.label}
             </Text>
           </Pressable>
@@ -83,5 +96,12 @@ const styles = StyleSheet.create({
   },
   labelSelected: {
     color: theme.palette.slate.textPrimary,
+  },
+  secondaryTrack: {
+    backgroundColor: theme.neutral.bg,
+    borderColor: theme.neutral.border,
+  },
+  secondaryLabel: {
+    color: theme.neutral.textSecondary,
   },
 })

@@ -39,6 +39,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
           ]}
           value={scope}
           onChange={setScope}
+          variant="secondary"
         />
         {action}
       </View>
