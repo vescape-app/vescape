@@ -82,34 +82,34 @@ export function useMainMapCameraEvents({
   setCameraZoom: Dispatch<SetStateAction<number>>
   setLoadedStyleSignature: Dispatch<SetStateAction<string | null>>
 }) {
-  const styleReloadCameraRef = useRef<CameraSnapshot | null>(null)
+  const styleReloadPendingRef = useRef(false)
   const previousMapStyleKeyRef = useRef(mapStyleKey)
-  const gestureActiveRef = useRef(false)
 
   useEffect(() => {
     if (previousMapStyleKeyRef.current === mapStyleKey) return
     previousMapStyleKeyRef.current = mapStyleKey
-    styleReloadCameraRef.current = currentCameraRef.current
-  }, [currentCameraRef, mapStyleKey])
+    styleReloadPendingRef.current = true
+  }, [mapStyleKey])
 
   const handleMapLoaded = useCallback(() => {
     setLoadedStyleSignature(mapStyleSignature)
-    const styleReloadCamera = styleReloadCameraRef.current
-    styleReloadCameraRef.current = null
-    if (styleReloadCamera && gestureActiveRef.current) return
+    if (styleReloadPendingRef.current) {
+      // The native map survived this style swap. Its camera and the camera engine are already in
+      // sync; restoring the snapshot from the old remount flow briefly removed follow padding.
+      styleReloadPendingRef.current = false
+      return
+    }
     const camera =
       historyActive && historyPreview
         ? getHistoryPreviewCamera(historyPreview)
-        : (styleReloadCamera ?? getLiveFollowCamera())
+        : getLiveFollowCamera()
     const initialHeading =
       'heading' in camera && typeof camera.heading === 'number'
         ? camera.heading
         : historyActive
           ? 0
           : followHeadingDeg
-    const initialPitch = styleReloadCamera
-      ? styleReloadCamera.pitch
-      : getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
+    const initialPitch = getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
     cameraRef.current?.setCamera({
       ...camera,
       heading: initialHeading,
@@ -142,7 +142,6 @@ export function useMainMapCameraEvents({
       properties: { center: number[]; zoom: number; heading: number; pitch: number }
       gestures: { isGestureActive: boolean }
     }) => {
-      gestureActiveRef.current = state.gestures.isGestureActive
       const [longitude, latitude] = state.properties.center
       const automaticHeadingFollow =
         followGps && headingFollowMode && !state.gestures.isGestureActive
