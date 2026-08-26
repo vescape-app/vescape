@@ -78,12 +78,12 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
         </Text>
         <Pressable
           accessibilityLabel="Cancel"
-          style={[styles.pillButton, styles.iconPillButton]}
+          style={styles.cancelButton}
           android_ripple={interaction.ripple}
           onPress={pill.onPress}
           testID={pill.cancelTestID}
         >
-          <XIcon size={18} color={theme.control.text} weight="bold" />
+          <XIcon size={18} color={pill.color} weight="bold" />
         </Pressable>
       </View>
     )
@@ -112,8 +112,16 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
       <Text style={[styles.pillText, { color: pill.textColor }]} numberOfLines={1}>
         {pill.text}
       </Text>
-      <View style={[styles.pillButton, { backgroundColor: pill.buttonBg }]}>
-        <Text style={styles.pillButtonText}>{pill.buttonText}</Text>
+      <View
+        style={[
+          styles.pillButton,
+          {
+            backgroundColor: theme.alpha(pill.buttonBg, 0.12),
+            borderColor: theme.alpha(pill.buttonBg, 0.7),
+          },
+        ]}
+      >
+        <Text style={[styles.pillButtonText, { color: pill.buttonBg }]}>{pill.buttonText}</Text>
       </View>
     </Pressable>
   )
@@ -201,17 +209,19 @@ const styles = StyleSheet.create({
     height: 30,
     paddingHorizontal: 14,
     borderRadius: 15,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pillButtonText: {
-    color: theme.control.text,
     fontSize: 12,
     fontWeight: '800',
   },
-  iconPillButton: {
+  cancelButton: {
     width: 30,
-    paddingHorizontal: 0,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionPill: {
     flexDirection: 'row',
