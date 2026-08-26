@@ -1,6 +1,6 @@
 import { mock } from 'bun:test'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 interface NativeColor {
   resource_paths: string[]
@@ -81,6 +81,7 @@ for (const [qualifier, appearance] of [
       throw new Error(`${path} is stale; run bun run theme:android`)
     }
   } else {
+    mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, generated)
   }
 }
