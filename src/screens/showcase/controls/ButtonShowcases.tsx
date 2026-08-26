@@ -1,5 +1,5 @@
 import { StyleSheet, View } from 'react-native'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ArrowUpIcon,
   ArrowsClockwiseIcon,
@@ -105,7 +105,6 @@ const noop = () => undefined
 
 function actionPill(
   text: string,
-  buttonText: string,
   status: 'warning' | 'error' | 'upgrade',
   icon: Icon,
 ): FloatingStatusPillModel {
@@ -113,7 +112,6 @@ function actionPill(
     kind: 'action',
     icon,
     text,
-    buttonText,
     bg: theme.control.background,
     border: theme.status[status].border,
     textColor: theme.control.text,
@@ -123,8 +121,8 @@ function actionPill(
 }
 
 const BOARD_CONNECTION_PILLS: FloatingStatusPillModel[] = [
-  actionPill('No board added', 'Add', 'warning', PlusCircleIcon),
-  actionPill('Board not linked', 'Link', 'warning', BluetoothSlashIcon),
+  actionPill('Add a new board', 'warning', PlusCircleIcon),
+  actionPill('Link the board', 'warning', BluetoothSlashIcon),
   ...[
     'Searching…',
     'Discovering…',
@@ -141,8 +139,8 @@ const BOARD_CONNECTION_PILLS: FloatingStatusPillModel[] = [
       onPress: noop,
     }),
   ),
-  actionPill('Board link needs update', 'Re-link', 'upgrade', ArrowsClockwiseIcon),
-  actionPill('Board hardware or firmware changed', 'Re-link', 'upgrade', WarningCircleIcon),
+  actionPill('Update the board link', 'upgrade', ArrowsClockwiseIcon),
+  actionPill('Re-link the board', 'upgrade', WarningCircleIcon),
   {
     kind: 'spinner',
     icon: WarningCircleIcon,
@@ -150,8 +148,20 @@ const BOARD_CONNECTION_PILLS: FloatingStatusPillModel[] = [
     color: theme.status.error.color,
     onPress: noop,
   },
-  actionPill('Board not connected', 'Connect', 'warning', BluetoothSlashIcon),
-  actionPill('Connection failed', 'Retry', 'error', BluetoothXIcon),
+  actionPill('Connect to the board', 'warning', BluetoothSlashIcon),
+  actionPill('Retry connection', 'error', BluetoothXIcon),
+]
+
+const CONNECTION_DEMO_PILLS: FloatingStatusPillModel[] = [
+  actionPill('Connect to the board', 'warning', BluetoothSlashIcon),
+  ...['Searching…', 'Connecting…', 'Discovering…', 'Subscribing…', 'Waiting for telemetry…'].map(
+    (text): FloatingStatusPillModel => ({
+      kind: 'spinner',
+      text,
+      color: theme.palette.sky.color,
+      onPress: noop,
+    }),
+  ),
 ]
 
 export function NavigationTopBarShowcase() {
@@ -183,14 +193,30 @@ export function NavigationTopBarShowcase() {
 }
 
 export function FloatingBarShowcase() {
+  const [demoStep, setDemoStep] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDemoStep((step) => (step + 1) % CONNECTION_DEMO_PILLS.length)
+    }, 1400)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
-    <ShowcaseCard name="Board connection states">
-      <View style={styles.statusPillList}>
-        {BOARD_CONNECTION_PILLS.map((pill, index) => (
-          <FloatingStatusPill key={`${pill.text}-${index}`} pill={pill} />
-        ))}
-      </View>
-    </ShowcaseCard>
+    <>
+      <ShowcaseCard name="Animated board connection">
+        <View style={styles.connectionDemo}>
+          <FloatingStatusPill pill={CONNECTION_DEMO_PILLS[demoStep]} />
+        </View>
+      </ShowcaseCard>
+      <ShowcaseCard name="Board connection states">
+        <View style={styles.statusPillList}>
+          {BOARD_CONNECTION_PILLS.map((pill, index) => (
+            <FloatingStatusPill key={`${pill.text}-${index}`} pill={pill} />
+          ))}
+        </View>
+      </ShowcaseCard>
+    </>
   )
 }
 
@@ -283,6 +309,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingVertical: 12,
+  },
+  connectionDemo: {
+    height: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   navigationBarPreview: {
     height: 78,

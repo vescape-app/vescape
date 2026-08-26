@@ -67,7 +67,6 @@ interface ActionPill {
   kind: 'action'
   icon: Icon
   text: string
-  buttonText: string
   config: (typeof ALERT_CONFIG)[keyof typeof ALERT_CONFIG]
   onPress: () => void
 }
@@ -90,8 +89,7 @@ function getStatusPill(
     return {
       kind: 'action',
       icon: PlusCircleIcon,
-      text: 'No board added',
-      buttonText: 'Add',
+      text: 'Add a new board',
       config: ALERT_CONFIG.warning,
       onPress: () => router.push(routes.addBoard),
     }
@@ -99,8 +97,7 @@ function getStatusPill(
     return {
       kind: 'action',
       icon: BluetoothSlashIcon,
-      text: 'Board not linked',
-      buttonText: 'Link',
+      text: 'Link the board',
       config: ALERT_CONFIG.warning,
       onPress: () => router.push({ pathname: routes.addBoardScan, params: { boardId: board.id } }),
     }
@@ -169,8 +166,7 @@ function getStatusPill(
     return {
       kind: 'action',
       icon: linkWarning.severity === 'error' ? WarningCircleIcon : ArrowsClockwiseIcon,
-      text: linkWarning.text,
-      buttonText: linkWarning.buttonText,
+      text: linkWarning.severity === 'error' ? 'Re-link the board' : 'Update the board link',
       config: ALERT_CONFIG.upgrade,
       onPress: () => router.push({ pathname: routes.editBoardLink, params: { boardId: board.id } }),
     }
@@ -186,8 +182,7 @@ function getStatusPill(
     return {
       kind: 'action',
       icon: BluetoothSlashIcon,
-      text: 'Board not connected',
-      buttonText: 'Connect',
+      text: 'Connect to the board',
       config: ALERT_CONFIG.warning,
       onPress: onRetryConnect,
     }
@@ -195,8 +190,7 @@ function getStatusPill(
     return {
       kind: 'action',
       icon: BluetoothXIcon,
-      text: 'Connection failed',
-      buttonText: 'Retry',
+      text: 'Retry connection',
       config: ALERT_CONFIG.error,
       onPress: onRetryConnect,
     }
@@ -256,7 +250,6 @@ export function FloatingBar({
             kind: 'action',
             icon: pill.icon,
             text: pill.text,
-            buttonText: pill.buttonText,
             bg: pill.config.bg,
             border: pill.config.border,
             textColor: pill.config.text,
