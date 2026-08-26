@@ -53,11 +53,13 @@ appId: ${APP_ID}
 # board is out of range or powered down. Taking it here covers the link-failure UI *and* the rest of
 # the wizard, without faking a probe result: the fake is for absent hardware, never for absent data.
 #
-# The link timeline is taller than the screen, so the offline button sits below the fold and has to
-# be scrolled to — `assertVisible` means visible in the viewport, not merely present.
-- extendedWaitUntil:
-    visible:
+# The link timeline is taller than the screen, so the failure actions sit below the fold and have to
+# be scrolled to — `assertVisible` means visible in the viewport, not merely present. That goes for
+# the retry button too: waiting on it in the viewport can never pass, however long the timeout.
+- scrollUntilVisible:
+    element:
       id: add-board-link-retry
+    direction: DOWN
     timeout: 60000
 - scrollUntilVisible:
     element:
