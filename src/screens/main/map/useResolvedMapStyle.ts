@@ -42,7 +42,7 @@ export function useResolvedMapStyle({
   const isOneDark = selectedMapStyle.key === 'onedark'
   const isSatellite = selectedMapStyle.key === 'satellite'
   const isSatelliteOverlay = isSatellite && satelliteOverlayEnabled
-  const useCustomJSON = isMapy || isOneDark
+  const useCustomJSON = isMapy || isOneDark || isSatelliteOverlay
   const mapDetailsVisible = mode === 'map' || (mode === 'telemetry' && !hideTelemetryMapDetails)
 
   const effectiveSatelliteImageryOpacity =
@@ -89,7 +89,8 @@ export function useResolvedMapStyle({
       mapDetailsVisible,
       showBuildings3d: selectedMapStyle.key === 'outdoors' || selectedMapStyle.key === 'onedark',
       styleURL: useCustomJSON ? undefined : selectedMapStyle.styleURL,
-      styleJSON: isOneDark ? oneDarkStyleJSON : isMapy ? BLANK_STYLE : undefined,
+      styleJSON:
+        isOneDark || isSatelliteOverlay ? oneDarkStyleJSON : isMapy ? BLANK_STYLE : undefined,
       satelliteImageryPaint,
       satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
       styleSignature,
