@@ -77,6 +77,7 @@ export function useResolvedMapStyle({
   const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, false), [])
 
   const styleSignature = `${selectedMapStyle.key}:${useCustomJSON ? 'json' : selectedMapStyle.styleURL}`
+  const isStyleLoaded = loadedStyleSignature === styleSignature
 
   return useMemo(
     () => ({
@@ -92,14 +93,15 @@ export function useResolvedMapStyle({
       satelliteImageryPaint,
       satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
       styleSignature,
-      canUpdateExistingStyleLayers: loadedStyleSignature === styleSignature && !isMapy,
+      isStyleLoaded,
+      canUpdateExistingStyleLayers: isStyleLoaded && !isMapy,
     }),
     [
       isMapy,
       isOneDark,
       isSatellite,
       isSatelliteOverlay,
-      loadedStyleSignature,
+      isStyleLoaded,
       mapDetailsVisible,
       mode,
       oneDarkStyleJSON,

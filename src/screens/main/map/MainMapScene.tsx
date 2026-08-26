@@ -1,5 +1,5 @@
 import Mapbox, { Camera } from '@rnmapbox/maps'
-import type { ComponentProps, ComponentRef, RefObject } from 'react'
+import { Fragment, type ComponentProps, type ComponentRef, type RefObject } from 'react'
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
@@ -26,7 +26,7 @@ interface MainMapSceneProps {
   cameraRef: RefObject<Camera | null>
   mapStyle: ReturnType<typeof useResolvedMapStyle>
   rotationLocked: boolean
-  onDidFinishLoadingMap: MapViewProps['onDidFinishLoadingMap']
+  onDidFinishLoadingStyle: MapViewProps['onDidFinishLoadingStyle']
   onMapLoadingError: MapViewProps['onMapLoadingError']
   mapLoading: boolean
   mapLoadFailed: boolean
@@ -77,7 +77,7 @@ export function MainMapScene({
   cameraRef,
   mapStyle,
   rotationLocked,
-  onDidFinishLoadingMap,
+  onDidFinishLoadingStyle,
   onMapLoadingError,
   mapLoading,
   mapLoadFailed,
@@ -126,10 +126,9 @@ export function MainMapScene({
       onTouchStart={onTouchStart}
     >
       <Mapbox.MapView
-        // A style document owns every native layer below it. Reusing the native map while
-        // swapping documents lets React update a layer after Mapbox has already removed it.
-        // Remount at that ownership boundary; useMainMapCameraEvents restores the camera.
-        key={`${mapStyle.styleSignature}:${styleRetryNonce}`}
+        // Style swaps stay inside the existing native map so its camera, renderer, and tile cache
+        // survive. An explicit retry still recreates a map whose loader entered a failed state.
+        key={styleRetryNonce}
         ref={mapViewRef}
         style={styles.map}
         styleURL={mapStyle.styleURL}
@@ -142,7 +141,7 @@ export function MainMapScene({
         logoPosition={{ bottom: 8, left: 8 }}
         attributionEnabled={mapStyle.mapDetailsVisible}
         attributionPosition={{ bottom: 8, left: 92 }}
-        onDidFinishLoadingMap={onDidFinishLoadingMap}
+        onDidFinishLoadingStyle={onDidFinishLoadingStyle}
         onMapLoadingError={onMapLoadingError}
         onPress={onPress}
         onLongPress={onLongPress}
@@ -155,64 +154,70 @@ export function MainMapScene({
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
           animationMode="easeTo"
         />
-        {mapStyle.isSatelliteOverlay && (
-          <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />
+        {mapStyle.isStyleLoaded && (
+          // Native styles own their sources and layers. Mount a fresh React layer tree only after
+          // the replacement document is ready; never update nodes the previous style removed.
+          <Fragment key={mapStyle.styleSignature}>
+            {mapStyle.isSatelliteOverlay && (
+              <SatelliteImageryLayer paint={mapStyle.satelliteImageryPaint} />
+            )}
+            <MapBaseStyleLayers
+              enabled={mapStyle.canUpdateExistingStyleLayers}
+              styleKey={mapStyle.styleKey}
+              isOneDark={mapStyle.isOneDark}
+              isSatellite={mapStyle.isSatellite}
+              isSatelliteOverlay={mapStyle.isSatelliteOverlay}
+              mapDetailsVisible={mapStyle.mapDetailsVisible}
+              satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
+            />
+            <PhoneHeadingMapLayer
+              active={!historyActive && !gpsHeadingMode}
+              followCamera={phoneHeadingMode && followGps}
+              coordinate={accuracyFix}
+              onFollowHeading={onPhoneFollowHeading}
+              onHeadingChange={onPhoneHeadingChange}
+              onStatusChange={onPhoneHeadingStatusChange}
+            />
+            <MainMapLayers
+              historyActive={historyActive}
+              expandSelectedMapPoints={mode === 'map'}
+              isMapy={mapStyle.isMapy}
+              isOneDark={mapStyle.isOneDark}
+              isSatellite={mapStyle.isSatelliteOverlay}
+              showBuildings3d={mapStyle.showBuildings3d && mapStyle.canUpdateExistingStyleLayers}
+              weatherActive={weatherActive}
+              legalLimitsActive={legalLimitsActive}
+              liveTrailShape={liveTrailShape}
+              rideRouteShape={rideRouteShape}
+              accuracyFix={accuracyFix}
+              accuracyShape={accuracyShape}
+              gpsPuckBearingDeg={gpsPuckBearingDeg}
+              riders={riders}
+              rideRoute={rideRoute}
+              rideTelemetrySamples={history.telemetrySamples}
+              activeHistoryMapMetric={history.activeMapMetric}
+              rideMarkers={history.markers}
+              rideGpsSamples={history.gpsSamples}
+              mediaAssets={history.mediaAssets}
+              favoriteRanges={history.favoriteRanges}
+              mapZoom={cameraZoom}
+              historyMetricGradientsEnabled={historyMetricGradientsEnabled}
+              historyMetricHotRanges={historyMetricHotRanges}
+              directionPoint={directionPoint}
+              activeNavigationTarget={activeNavigationTarget}
+              selectedNavigationTarget={selectedNavigationTarget}
+              mapPoints={mapPointProps.points}
+              selectedMapPointId={mapPointProps.selectedId}
+              hiddenMapPointCategories={mapPointProps.hiddenCategories}
+              onToggleMapPointSelection={mapPointProps.onToggleSelection}
+              onSuppressNextMapPress={onSuppressNextMapPress}
+              onSelectMarker={onSelectMarker}
+              onOpenMedia={history.onOpenMedia}
+              onSelectLegalCountry={onSelectLegalCountry}
+              onFocusDirectionPoint={onFocusDirectionPoint}
+            />
+          </Fragment>
         )}
-        <MapBaseStyleLayers
-          enabled={mapStyle.canUpdateExistingStyleLayers}
-          styleKey={mapStyle.styleKey}
-          isOneDark={mapStyle.isOneDark}
-          isSatellite={mapStyle.isSatellite}
-          isSatelliteOverlay={mapStyle.isSatelliteOverlay}
-          mapDetailsVisible={mapStyle.mapDetailsVisible}
-          satelliteRoadLineOpacity={mapStyle.satelliteRoadLineOpacity}
-        />
-        <PhoneHeadingMapLayer
-          active={!historyActive && !gpsHeadingMode}
-          followCamera={phoneHeadingMode && followGps}
-          coordinate={accuracyFix}
-          onFollowHeading={onPhoneFollowHeading}
-          onHeadingChange={onPhoneHeadingChange}
-          onStatusChange={onPhoneHeadingStatusChange}
-        />
-        <MainMapLayers
-          historyActive={historyActive}
-          expandSelectedMapPoints={mode === 'map'}
-          isMapy={mapStyle.isMapy}
-          isOneDark={mapStyle.isOneDark}
-          isSatellite={mapStyle.isSatelliteOverlay}
-          showBuildings3d={mapStyle.showBuildings3d && mapStyle.canUpdateExistingStyleLayers}
-          weatherActive={weatherActive}
-          legalLimitsActive={legalLimitsActive}
-          liveTrailShape={liveTrailShape}
-          rideRouteShape={rideRouteShape}
-          accuracyFix={accuracyFix}
-          accuracyShape={accuracyShape}
-          gpsPuckBearingDeg={gpsPuckBearingDeg}
-          riders={riders}
-          rideRoute={rideRoute}
-          rideTelemetrySamples={history.telemetrySamples}
-          activeHistoryMapMetric={history.activeMapMetric}
-          rideMarkers={history.markers}
-          rideGpsSamples={history.gpsSamples}
-          mediaAssets={history.mediaAssets}
-          favoriteRanges={history.favoriteRanges}
-          mapZoom={cameraZoom}
-          historyMetricGradientsEnabled={historyMetricGradientsEnabled}
-          historyMetricHotRanges={historyMetricHotRanges}
-          directionPoint={directionPoint}
-          activeNavigationTarget={activeNavigationTarget}
-          selectedNavigationTarget={selectedNavigationTarget}
-          mapPoints={mapPointProps.points}
-          selectedMapPointId={mapPointProps.selectedId}
-          hiddenMapPointCategories={mapPointProps.hiddenCategories}
-          onToggleMapPointSelection={mapPointProps.onToggleSelection}
-          onSuppressNextMapPress={onSuppressNextMapPress}
-          onSelectMarker={onSelectMarker}
-          onOpenMedia={history.onOpenMedia}
-          onSelectLegalCountry={onSelectLegalCountry}
-          onFocusDirectionPoint={onFocusDirectionPoint}
-        />
       </Mapbox.MapView>
       <MainMapOverlays {...overlays} />
       {mapLoading && !mapLoadFailed && (
