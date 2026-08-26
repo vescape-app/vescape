@@ -7,6 +7,7 @@ import {
   CircleButtonShowcase,
   FloatingActionPillShowcase,
   FloatingBarShowcase,
+  NavigationTopBarShowcase,
   PrevNextSelectorShowcase,
   SegmentedToggleShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
@@ -25,6 +26,7 @@ export default function ControlsPage() {
         />
         <AlertPresetControlShowcase />
         <CircleButtonShowcase />
+        <NavigationTopBarShowcase />
         <FloatingBarShowcase />
         <FloatingActionPillShowcase />
         <PrevNextSelectorShowcase />

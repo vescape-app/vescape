@@ -1,4 +1,4 @@
-import type { Icon } from 'phosphor-react-native'
+import { XIcon, type Icon } from 'phosphor-react-native'
 import type { ReactNode } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
@@ -12,6 +12,7 @@ interface FloatingBarFrameProps {
 
 export interface FloatingStatusPillAction {
   kind: 'action'
+  icon: Icon
   text: string
   buttonText: string
   bg: string
@@ -24,6 +25,7 @@ export interface FloatingStatusPillAction {
 
 export interface FloatingStatusPillSpinner {
   kind: 'spinner'
+  icon?: Icon
   text: string
   color: string
   onPress: () => void
@@ -53,23 +55,41 @@ export function FloatingBarFrame({ bottomOffset = 16, children }: FloatingBarFra
 
 export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) {
   if (pill.kind === 'spinner') {
+    const StatusIcon = pill.icon
     return (
       <View style={[styles.pill, { borderColor: `${pill.color}55` }]} testID={pill.testID}>
-        <ActivityIndicator size="small" color={pill.color} />
+        <View
+          style={[
+            styles.statusIcon,
+            {
+              backgroundColor: theme.alpha(pill.color, 0.12),
+              borderColor: theme.alpha(pill.color, 0.7),
+            },
+          ]}
+        >
+          {StatusIcon ? (
+            <StatusIcon size={17} color={pill.color} weight="duotone" />
+          ) : (
+            <ActivityIndicator size="small" color={pill.color} />
+          )}
+        </View>
         <Text style={[styles.pillText, { color: pill.color }]} numberOfLines={1}>
           {pill.text}
         </Text>
         <Pressable
-          style={styles.pillButton}
+          accessibilityLabel="Cancel"
+          style={[styles.pillButton, styles.iconPillButton]}
           android_ripple={interaction.ripple}
           onPress={pill.onPress}
           testID={pill.cancelTestID}
         >
-          <Text style={styles.pillButtonText}>Cancel</Text>
+          <XIcon size={18} color={theme.control.text} weight="bold" />
         </Pressable>
       </View>
     )
   }
+
+  const StatusIcon = pill.icon
 
   return (
     <Pressable
@@ -78,6 +98,17 @@ export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) 
       onPress={pill.onPress}
       testID={pill.testID}
     >
+      <View
+        style={[
+          styles.statusIcon,
+          {
+            backgroundColor: theme.alpha(pill.buttonBg, 0.12),
+            borderColor: theme.alpha(pill.buttonBg, 0.7),
+          },
+        ]}
+      >
+        <StatusIcon size={17} color={pill.buttonBg} weight="duotone" />
+      </View>
       <Text style={[styles.pillText, { color: pill.textColor }]} numberOfLines={1}>
         {pill.text}
       </Text>
@@ -142,13 +173,13 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
-    paddingLeft: 14,
+    height: 38,
+    paddingLeft: 4,
     paddingRight: 4,
-    borderRadius: 22,
+    borderRadius: 19,
     borderWidth: 1,
     overflow: 'hidden',
-    gap: 10,
+    gap: 8,
     backgroundColor: theme.control.background,
     borderColor: theme.control.border,
   },
@@ -157,10 +188,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     maxWidth: 180,
   },
+  statusIcon: {
+    width: 30,
+    height: 30,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+    borderWidth: 1,
+  },
   pillButton: {
-    height: 36,
+    height: 30,
     paddingHorizontal: 14,
-    borderRadius: 18,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -168,6 +208,10 @@ const styles = StyleSheet.create({
     color: theme.control.text,
     fontSize: 12,
     fontWeight: '800',
+  },
+  iconPillButton: {
+    width: 30,
+    paddingHorizontal: 0,
   },
   actionPill: {
     flexDirection: 'row',

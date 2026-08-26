@@ -1,5 +1,15 @@
 import { router } from 'expo-router'
-import { PauseIcon, RecordIcon, StopIcon } from 'phosphor-react-native'
+import {
+  ArrowsClockwiseIcon,
+  BluetoothSlashIcon,
+  BluetoothXIcon,
+  PauseIcon,
+  PlusCircleIcon,
+  RecordIcon,
+  StopIcon,
+  WarningCircleIcon,
+  type Icon,
+} from 'phosphor-react-native'
 import { useCallback } from 'react'
 import { isReplayBoardId, type LinkIntegrity } from 'vescape-core'
 import { useShallow } from 'zustand/react/shallow'
@@ -48,12 +58,14 @@ const ALERT_CONFIG = {
 
 interface SpinnerPill {
   kind: 'spinner'
+  icon?: Icon
   text: string
   color: string
   onPress: () => void
 }
 interface ActionPill {
   kind: 'action'
+  icon: Icon
   text: string
   buttonText: string
   config: (typeof ALERT_CONFIG)[keyof typeof ALERT_CONFIG]
@@ -77,6 +89,7 @@ function getStatusPill(
   if (!board)
     return {
       kind: 'action',
+      icon: PlusCircleIcon,
       text: 'No board added',
       buttonText: 'Add',
       config: ALERT_CONFIG.warning,
@@ -85,6 +98,7 @@ function getStatusPill(
   if (!board.link)
     return {
       kind: 'action',
+      icon: BluetoothSlashIcon,
       text: 'Board not linked',
       buttonText: 'Link',
       config: ALERT_CONFIG.warning,
@@ -154,6 +168,7 @@ function getStatusPill(
   if (linkWarning)
     return {
       kind: 'action',
+      icon: linkWarning.severity === 'error' ? WarningCircleIcon : ArrowsClockwiseIcon,
       text: linkWarning.text,
       buttonText: linkWarning.buttonText,
       config: ALERT_CONFIG.upgrade,
@@ -162,6 +177,7 @@ function getStatusPill(
   if (status === 'stale')
     return {
       kind: 'spinner',
+      icon: WarningCircleIcon,
       text: 'Telemetry stale',
       color: theme.status.error.color,
       onPress: onStopScan,
@@ -169,6 +185,7 @@ function getStatusPill(
   if (status === 'idle')
     return {
       kind: 'action',
+      icon: BluetoothSlashIcon,
       text: 'Board not connected',
       buttonText: 'Connect',
       config: ALERT_CONFIG.warning,
@@ -177,6 +194,7 @@ function getStatusPill(
   if (status === 'error')
     return {
       kind: 'action',
+      icon: BluetoothXIcon,
       text: 'Connection failed',
       buttonText: 'Retry',
       config: ALERT_CONFIG.error,
@@ -226,6 +244,7 @@ export function FloatingBar({
     pill?.kind === 'spinner'
       ? {
           kind: 'spinner',
+          icon: pill.icon,
           text: pill.text,
           color: pill.color,
           onPress: pill.onPress,
@@ -235,6 +254,7 @@ export function FloatingBar({
       : pill
         ? {
             kind: 'action',
+            icon: pill.icon,
             text: pill.text,
             buttonText: pill.buttonText,
             bg: pill.config.bg,
