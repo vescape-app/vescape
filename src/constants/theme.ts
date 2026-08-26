@@ -22,7 +22,7 @@ const ReactNativeModule =
 /** Allowed opacity levels for every translucent color value. */
 export type AlphaLevel = 0 | 0.03 | 0.1 | 0.12 | 0.3 | 0.4 | 0.6 | 0.7 | 0.75 | 0.8 | 0.85 | 1
 
-const ALPHA_RESOURCE_SUFFIX: Record<AlphaLevel, string> = {
+export const ALPHA_RESOURCE_SUFFIX = {
   0: '000',
   0.03: '003',
   0.1: '010',
@@ -35,7 +35,7 @@ const ALPHA_RESOURCE_SUFFIX: Record<AlphaLevel, string> = {
   0.8: '080',
   0.85: '085',
   1: '100',
-}
+} as const satisfies Record<AlphaLevel, string>
 
 interface AdaptiveColorMetadata {
   resource: string
