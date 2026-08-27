@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
@@ -63,7 +63,7 @@ const MENU_METRICS = {
   },
 } as const
 const ANIMATION = { duration: 180 } as const
-const DEFAULT_AUTO_CLOSE_DELAY_MS = 3_000
+const DEFAULT_AUTO_CLOSE_DELAY_MS = 1_500
 const TRANSPARENT_OPTION_COLOR = theme.alpha(theme.palette.mono.black, 0)
 
 export function ExpandableCircleMenu<Key extends string>({
@@ -89,6 +89,7 @@ export function ExpandableCircleMenu<Key extends string>({
   const metrics = MENU_METRICS[size]
   const optionCount = options.length
   const onToggleRef = useRef(onToggle)
+  const [interactionTick, setInteractionTick] = useState(0)
 
   useEffect(() => {
     onToggleRef.current = onToggle
@@ -98,7 +99,15 @@ export function ExpandableCircleMenu<Key extends string>({
     if (!expanded || autoCloseDelayMs === null) return
     const timeout = setTimeout(() => onToggleRef.current(), autoCloseDelayMs)
     return () => clearTimeout(timeout)
-  }, [autoCloseDelayMs, expanded])
+  }, [autoCloseDelayMs, expanded, interactionTick])
+
+  const selectAndKeepOpen = useCallback(
+    (key: Key) => {
+      setInteractionTick((tick) => tick + 1)
+      onSelect(key)
+    },
+    [onSelect],
+  )
   const shellStyle = useAnimatedStyle(
     () => ({
       width: withTiming(getSelectorWidth(metrics, optionCount, expanded), ANIMATION),
@@ -155,7 +164,7 @@ export function ExpandableCircleMenu<Key extends string>({
                 onToggle()
                 return
               }
-              onSelect(option.key)
+              selectAndKeepOpen(option.key)
             }}
           />
         ))}
