@@ -44,12 +44,12 @@ class WarningReplayScenarioTest {
   fun sustainedSpreadFiresWarnWithWorstGroup() {
     val result = WarningReplayHarness.run(
       jsonl, configuredSeries = fixtureSeries,
-      transform = spread(window(10_000, 20_000), group = 3, deltaV = 0.15),
+      transform = spread(window(10_000, 20_000), group = 3, deltaV = 0.30),
     )
     assertTrue("fault window produced no findings", result.cellSpreadFindings.isNotEmpty())
     assertTrue(result.cellSpreadFindings.all { it.severity == BoardWarningSeverity.WARN })
     val payload = JSONObject(result.cellSpreadFindings.last().payloadJson)
-    assertTrue(payload.getDouble("peakSpread") >= 0.15)
+    assertTrue(payload.getDouble("peakSpread") >= 0.30)
     assertEquals(3, payload.getInt("worstGroup"))
     assertFalse(payload.getBoolean("charging"))
     assertFalse(result.cellSpreadSessionEndClean)
@@ -58,8 +58,8 @@ class WarningReplayScenarioTest {
 
   @Test
   fun spreadGrowingPastCriticalEscalatesAndPeakIsMonotonic() {
-    val warn = spread(window(10_000, 20_000), group = 3, deltaV = 0.15)
-    val critical = spread(window(40_000, 50_000), group = 3, deltaV = 0.30)
+    val warn = spread(window(10_000, 20_000), group = 3, deltaV = 0.30)
+    val critical = spread(window(40_000, 50_000), group = 3, deltaV = 0.60)
     val result = WarningReplayHarness.run(
       jsonl, configuredSeries = fixtureSeries,
       transform = { bms, t -> critical(warn(bms, t), t) },
@@ -74,7 +74,7 @@ class WarningReplayScenarioTest {
     )
     val peaks = result.cellSpreadFindings.map { JSONObject(it.payloadJson).getDouble("peakSpread") }
     assertTrue("peak must only rise", peaks.zipWithNext().all { (a, b) -> b >= a })
-    assertTrue(peaks.last() >= 0.30)
+    assertTrue(peaks.last() >= 0.60)
   }
 
   @Test
@@ -85,7 +85,7 @@ class WarningReplayScenarioTest {
       transform = { bms, t ->
         if (!spiked && t >= t0 + 10_000) {
           spiked = true
-          bms.copy(cellVoltages = bms.cellVoltages.mapIndexed { i, v -> if (i == 3) v + 0.3 else v })
+          bms.copy(cellVoltages = bms.cellVoltages.mapIndexed { i, v -> if (i == 3) v + 0.6 else v })
         } else {
           bms
         }
@@ -137,7 +137,7 @@ class WarningReplayScenarioTest {
   @Test
   fun chargingSpreadRecordsChargingContext() {
     val range = window(10_000, 20_000)
-    val liftGroup = spread(range, group = 3, deltaV = 0.15)
+    val liftGroup = spread(range, group = 3, deltaV = 0.30)
     val result = WarningReplayHarness.run(
       jsonl, configuredSeries = fixtureSeries,
       transform = { bms, t -> liftGroup(bms, t).let { if (t in range) it.copy(vCharge = 42.0) else it } },

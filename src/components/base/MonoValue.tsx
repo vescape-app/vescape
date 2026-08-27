@@ -1,11 +1,6 @@
 import { useMemo } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
-import {
-  useDerivedValue,
-  useSharedValue,
-  type DerivedValue,
-  type SharedValue,
-} from 'react-native-reanimated'
+import { useDerivedValue, useSharedValue, type DerivedValue } from 'react-native-reanimated'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 
 import { theme, type MonoWeight } from '@/constants/theme'
@@ -24,7 +19,7 @@ export interface MonoTextProps {
   size: number
   weight?: MonoWeight
   /** Static color, or a shared value for colors that ramp with the value. */
-  color?: string | SharedValue<string>
+  color?: string | DerivedValue<string>
   align?: MonoValueAlign
   /** Left edge of the layout box, in canvas coordinates. */
   x?: number
@@ -62,7 +57,12 @@ export function MonoText({
   height,
 }: MonoTextProps) {
   const font = useSkiaMonoFont(weight, size)
-  const rendererColor = useResolvedColor(color as string)
+  // A derived colour is already resolved for the active appearance; a static token still needs the
+  // adaptive lookup. Both hooks run every render so the hook order stays stable.
+  const staticColor = useResolvedColor(
+    typeof color === 'string' ? color : theme.palette.slate.textPrimary,
+  )
+  const rendererColor = typeof color === 'string' ? staticColor : color
 
   // Vertically center the glyph box: ascent is negative, descent positive.
   const baseline = useMemo(() => {

@@ -42,7 +42,8 @@ const STAT_VALUE_HEIGHT = Math.ceil(STAT_VALUE_FONT_SIZE * TEXT_LINE_RATIO)
 
 export interface BmsStatValue {
   text: DerivedValue<string>
-  color: string
+  /** A derived colour tracks the value it labels (already resolved for the active appearance). */
+  color: string | DerivedValue<string>
 }
 
 /**
@@ -60,7 +61,11 @@ export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width
           text={value.text}
           size={STAT_VALUE_FONT_SIZE}
           weight="800"
-          color={resolveAdaptiveColor(value.color, appearance) as string}
+          color={
+            typeof value.color === 'string'
+              ? (resolveAdaptiveColor(value.color, appearance) as string)
+              : value.color
+          }
           align="center"
           x={index * (slot + COL_GAP)}
           y={0}
