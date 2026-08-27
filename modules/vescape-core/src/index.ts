@@ -2937,8 +2937,25 @@ export async function getAlertRules(boardId: string): Promise<AlertRule[]> {
   return native.getAlertRules(boardId)
 }
 
+/**
+ * Expo's untyped-object converter rejects `null` inside a *nested* object (`Value is null,
+ * expected an Object`), so the config-relative `thresholdRule` cannot carry `thresholdMaxOffset:
+ * null` across the bridge. Native reads every offset optionally, so dropping the null key is the
+ * same value. Top-level nulls are fine — the argument is `Map<String, Any?>`.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `toAlertRuleEntity`
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `upsertAlertRule`
+ */
+function bridgeableAlertRule(rule: AlertRule): AlertRule {
+  const thresholdRule = rule.thresholdRule
+  if (!thresholdRule || thresholdRule.kind !== 'config-relative') return rule
+  const { thresholdMaxOffset, ...rest } = thresholdRule
+  if (thresholdMaxOffset != null) return rule
+  return { ...rule, thresholdRule: rest as AlertRule['thresholdRule'] }
+}
+
 export async function upsertAlertRule(rule: AlertRule): Promise<void> {
-  return native.upsertAlertRule(rule)
+  return native.upsertAlertRule(bridgeableAlertRule(rule))
 }
 
 export async function setAlertRuleEnabled(
