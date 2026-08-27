@@ -76,7 +76,18 @@ export function useResolvedMapStyle({
   )
   const oneDarkStyleJSON = useMemo(() => getOneDarkMapStyle(true, true, false), [])
 
-  const styleSignature = `${selectedMapStyle.key}:${useCustomJSON ? 'json' : selectedMapStyle.styleURL}`
+  const styleJSON =
+    isOneDark || isSatelliteOverlay ? oneDarkStyleJSON : isMapy ? BLANK_STYLE : undefined
+
+  // Signed by the style document Mapbox actually receives, not by the style key. Two keys can
+  // resolve to the same document (One Dark and the satellite overlay share it); the native map
+  // then has nothing to reload and never emits another style-loaded event, so a key-based
+  // signature would wait forever behind the loading spinner.
+  const styleSignature = styleJSON
+    ? isMapy
+      ? 'json:blank'
+      : 'json:onedark'
+    : String(selectedMapStyle.styleURL)
   const isStyleLoaded = loadedStyleSignature === styleSignature
 
   return useMemo(
@@ -89,8 +100,7 @@ export function useResolvedMapStyle({
       mapDetailsVisible,
       showBuildings3d: selectedMapStyle.key === 'outdoors' || selectedMapStyle.key === 'onedark',
       styleURL: useCustomJSON ? undefined : selectedMapStyle.styleURL,
-      styleJSON:
-        isOneDark || isSatelliteOverlay ? oneDarkStyleJSON : isMapy ? BLANK_STYLE : undefined,
+      styleJSON,
       satelliteImageryPaint,
       satelliteRoadLineOpacity: satelliteTone.roadLineOpacity * (mode === 'telemetry' ? 0.6 : 1),
       styleSignature,
@@ -105,10 +115,10 @@ export function useResolvedMapStyle({
       isStyleLoaded,
       mapDetailsVisible,
       mode,
-      oneDarkStyleJSON,
       satelliteImageryPaint,
       satelliteTone,
       selectedMapStyle,
+      styleJSON,
       styleSignature,
       useCustomJSON,
     ],
