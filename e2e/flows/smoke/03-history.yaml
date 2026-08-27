@@ -6,8 +6,19 @@
 # than specific distances, because the fixture is regenerated from real backups and its numbers move.
 appId: ${APP_ID}
 ---
-- tapOn:
-    id: history-button
+# Retried, like the map reveal: the history button sits on the main screen while the replay pushes
+# telemetry through the JS thread, and a tap that lands in a busy frame can be swallowed before the
+# drawer opens — the run then waits out its timeout on a screen that never changed. A failed attempt
+# leaves the screen where it started, so tapping again is safe.
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn:
+          id: history-button
+      - extendedWaitUntil:
+          visible:
+            id: history-drawer
+          timeout: 15000
 
 # History opens on the overview drawer. Open its newest restored ride, then wait on the metric tabs
 # rather than the map: the row only appears once the ride's samples are loaded.
