@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.90.0',
+    markdown:
+      "## New\n\n- Choose light, dark, system, or automatic sunrise and sunset themes. Maps, charts, controls, and navigation now adapt with the app.\n- Vescape now reads your board's Refloat and motor configuration during linking. Relevant pushback, cutoff, current, temperature, and footpad settings appear beside live telemetry, and Vescape reports changes made outside the app.\n- Duty, motor temperature, and controller temperature alert presets can now follow the board's own protection settings.\n- Active navigation now stays accessible in a compact sheet with remaining distance, ride time, and a quick cancel action.\n\n## Improved\n\n- Tune opens with the board's last known values while the latest configuration is being read.\n- The dashboard footpad indicator now shows both sensor zones against their real engagement voltages. The telemetry strip also fits better on smaller screens.\n- Cell voltage spread warnings now trigger at 0.20 V and become critical at 0.50 V, reducing premature warnings.\n- Group Ride discovery now finds nearby riders within 40 km.\n\n## Fixed\n\n- Fixed an iPhone crash that could occur while stopping or changing alert audio.\n- Board linking now retries interrupted integrity checks, times out cleanly when a link cannot be proven, and shows the actual reason linking was blocked.\n- Map style changes no longer leave a blank map or stuck spinner, and they preserve the camera position. Compass, pinch, and preview-pan transitions also keep the expected orientation.\n- Database restore now opens the file picker before confirmation and restores the selected backup correctly.\n",
+  },
+  {
     version: '0.89.2',
     markdown:
       '## Improved\n\n- Compass-follow mode is smoother and more reliable during long rides, with less background processing.\n- Mapy maps now use sharper, high-resolution tiles.\n\n## Fixed\n\n- Satellite imagery brightness and saturation settings now apply correctly on iOS.\n',
