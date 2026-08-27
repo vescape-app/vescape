@@ -195,19 +195,22 @@ export function FloatingActionPill({
   disabled = false,
   testID,
 }: FloatingActionPillProps) {
-  // On a filled status surface the readable tone is the status `text` token, not `color`: the
-  // surface is a pale tint on light, so a light foreground vanishes on it.
-  const iconColor = paused
-    ? theme.status.warning.text
-    : active
-      ? theme.status.error.text
-      : theme.status.error.color
+  // Resolved through the theme store rather than left as adaptive tokens: this pill floats over the
+  // map, where the native trait collection can still report the system appearance and render the
+  // wrong palette. On a filled surface the readable foreground is the status `text` token, not
+  // `color`, which is tuned for the app background.
+  const status = paused ? theme.status.warning : theme.status.error
+  const filled = active || paused
+  const accent = useResolvedColor(status.color)
+  const surface = useResolvedColor(status.bg)
+  const foreground = useResolvedColor(filled ? status.text : status.color)
+
   return (
     <Pressable
       style={[
         styles.actionPill,
-        active && styles.actionPillActive,
-        paused && styles.actionPillPaused,
+        { borderColor: accent },
+        filled && { backgroundColor: surface },
         disabled && styles.disabled,
       ]}
       android_ripple={interaction.ripple}
@@ -215,16 +218,8 @@ export function FloatingActionPill({
       onPress={onPress}
       testID={testID}
     >
-      <IconComp size={22} color={iconColor} weight="fill" />
-      <Text
-        style={[
-          styles.actionPillText,
-          active && styles.actionPillTextActive,
-          paused && styles.actionPillTextPaused,
-        ]}
-      >
-        {label}
-      </Text>
+      <IconComp size={22} color={foreground} weight="fill" />
+      <Text style={[styles.actionPillText, { color: foreground }]}>{label}</Text>
     </Pressable>
   )
 }
@@ -314,29 +309,13 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: theme.status.error.color,
     overflow: 'hidden',
     gap: 8,
   },
-  actionPillActive: {
-    backgroundColor: theme.status.error.bg,
-    borderColor: theme.status.error.color,
-  },
-  actionPillPaused: {
-    backgroundColor: theme.status.warning.bg,
-    borderColor: theme.status.warning.color,
-  },
-  actionPillTextPaused: {
-    color: theme.status.warning.text,
-  },
   actionPillText: {
-    color: theme.status.error.color,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1,
-  },
-  actionPillTextActive: {
-    color: theme.status.error.text,
   },
   disabled: {
     opacity: 0.45,
