@@ -51,7 +51,13 @@ function BaseTerrainLayers({
           tileSize={256}
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
         >
-          <RasterLayer id="center-mapy-tiles-layer" sourceID="center-mapy-tiles" style={{}} />
+          <RasterLayer
+            id="center-mapy-tiles-layer"
+            sourceID="center-mapy-tiles"
+            // Native rejects an empty style dictionary and logs `Invalid style: [:]`, so the
+            // opaque default is spelled out rather than left blank.
+            style={{ rasterOpacity: 1 }}
+          />
         </RasterSource>
       ) : null}
     </>
