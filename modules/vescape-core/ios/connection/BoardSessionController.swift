@@ -139,6 +139,8 @@ internal final class BoardSessionController: VescGattListener {
   /// Android `TELEMETRY_STALE_MS` (4s) — copied, not re-derived.
   private let telemetryStaleSeconds = 4.0
   private let linkIntegrityBmsTimeoutSeconds = 12.0
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `sendPayloadWithRetry`
+  private let sendRetryDelaySeconds = 0.12
   /// Idle delay after link trust before the one background config-safety read fires (lets telemetry settle).
   private let configSafetyReadDelaySeconds = 2.5
 
@@ -1711,8 +1713,11 @@ internal final class BoardSessionController: VescGattListener {
   private func startLinkIntegrityProbe(session: BoardSession) {
     guard session === self.session, session.isActive, session.linkIntegrity == .checking, let config else { return }
     guard session.claimLinkIntegrityProbe() else { return }
-    _ = transport.sendPayload(config.transport.frame([UInt8(COMM_FW_VERSION)]))
-    _ = transport.sendPayload(RefloatConfigProtocol.buildGetInfo(transport: config.transport))
+    // The probe is claimed once per Board Session and never re-armed, so a send the transport drops
+    // strands the link in `checking` for the whole session — commands stay blocked with no Re-link
+    // CTA to offer. Retry once, like Android.
+    sendPayloadWithRetry(config.transport.frame([UInt8(COMM_FW_VERSION)]), session: session)
+    sendPayloadWithRetry(RefloatConfigProtocol.buildGetInfo(transport: config.transport), session: session)
     if config.hasBms == true {
       DispatchQueue.main.asyncAfter(deadline: .now() + linkIntegrityBmsTimeoutSeconds) { [weak self, weak session] in
         guard let self, let session, session === self.session, session.isActive, let config = self.config else { return }
@@ -2254,6 +2259,23 @@ internal final class BoardSessionController: VescGattListener {
   private func resetIdlePause() {
     idlePauseDetector.reset()
     floorMs = effectivePollIntervalMs()
+  }
+
+  /// Send a payload, re-sending once shortly after if the transport refused it (busy GATT queue,
+  /// mid-reconnect write). Both attempts are scoped to the Board Session that asked, so a torn-down
+  /// or reconnected session never writes.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `sendPayloadWithRetry`
+  @discardableResult
+  private func sendPayloadWithRetry(_ payload: [UInt8], session: BoardSession?) -> Bool {
+    if let session, !(session === self.session && session.isActive) { return false }
+    let sent = transport.sendPayload(payload)
+    if !sent, let session {
+      DispatchQueue.main.asyncAfter(deadline: .now() + sendRetryDelaySeconds) { [weak self, weak session] in
+        guard let self, let session, session === self.session, session.isActive else { return }
+        _ = self.transport.sendPayload(payload)
+      }
+    }
+    return sent
   }
 
   private func restartPollingForConfigRead() {

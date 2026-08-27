@@ -2212,6 +2212,7 @@ private var wearAutoLaunchOnConnect = true
             remoteTiltController.decayProgress,
         )
 
+    // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `sendPayloadWithRetry`
     private fun sendPayloadWithRetry(payload: ByteArray, session: BoardSession? = boardSession): Boolean {
         if (session != null && !isCurrentBoardSession(session)) return false
         val sent = sendPayload(payload)
