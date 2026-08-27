@@ -7,7 +7,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { useColoredAction, useResolvedColor } from '@/hooks/useTheme'
+import { useColoredAction, useColoredActionForeground } from '@/hooks/useTheme'
 
 import { interaction, theme } from '@/constants/theme'
 
@@ -50,23 +50,25 @@ export function Button({
   style,
 }: ButtonProps) {
   const isDisabled = disabled || loading
-  const resolvedAccent = useResolvedColor(accent ?? accentColors[variant].border)
-  const coloredAction = useColoredAction(accent ?? accentColors[variant].border)
-  const dynamicAccent = accent
-    ? {
-        button: {
-          backgroundColor: coloredAction,
-          borderWidth: 1,
-          borderColor: resolvedAccent,
-        },
-        foreground: resolvedAccent,
+  const variantColors = accentColors[variant]
+  const isColored = accent !== undefined || variantColors.colored
+  const accentToken = accent ?? variantColors.border
+  const coloredAction = useColoredAction(accentToken)
+  const coloredBorder = useColoredActionForeground(accentToken)
+  const coloredForeground = useColoredActionForeground(accent ?? variantColors.foreground)
+  const button = isColored
+    ? { backgroundColor: coloredAction, borderWidth: 1, borderColor: coloredBorder }
+    : {
+        backgroundColor: theme.control.background,
+        borderWidth: 1,
+        borderColor: variantColors.border,
       }
-    : null
+  const foreground = isColored ? coloredForeground : variantColors.foreground
   const icon =
     IconComponent && !loading ? (
       <IconComponent
         size={size === 'sm' ? 13 : size === 'lg' ? 17 : 15}
-        color={dynamicAccent?.foreground ?? accentColors[variant].icon}
+        color={foreground}
         weight="bold"
       />
     ) : null
@@ -76,7 +78,7 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md,
-        dynamicAccent?.button ?? accentColors[variant].button(coloredAction),
+        button,
         isDisabled && styles.disabled,
         pressed && !isDisabled && { opacity: interaction.pressedOpacity },
         style,
@@ -88,10 +90,7 @@ export function Button({
       accessibilityLabel={accessibilityLabel ?? label}
     >
       {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={dynamicAccent?.foreground ?? accentColors[variant].indicator}
-        />
+        <ActivityIndicator size="small" color={foreground} />
       ) : iconPosition === 'left' ? (
         icon
       ) : null}
@@ -100,7 +99,7 @@ export function Button({
         style={[
           styles.label,
           size === 'sm' ? styles.labelSm : size === 'lg' ? styles.labelLg : styles.labelMd,
-          dynamicAccent ? { color: dynamicAccent.foreground } : accentColors[variant].text,
+          { color: isColored ? coloredForeground : variantColors.text },
         ]}
       >
         {label}
@@ -110,94 +109,58 @@ export function Button({
   )
 }
 
+/**
+ * `foreground` is the label/icon/indicator token. Colored variants sit on the navy colored-action
+ * surface, so their foreground is resolved through `useColoredActionForeground`.
+ */
 const accentColors = {
   primary: {
+    colored: false,
     border: theme.control.border,
-    icon: theme.control.icon,
-    indicator: theme.control.icon,
-    button: () => ({
-      backgroundColor: theme.control.background,
-      borderWidth: 1,
-      borderColor: theme.control.border,
-    }),
-    text: { color: theme.control.text },
+    foreground: theme.control.icon,
+    text: theme.control.text,
   },
   accent: {
+    colored: true,
     border: theme.palette.cyan.color,
-    icon: theme.palette.cyan.light,
-    indicator: theme.palette.cyan.light,
-    button: (background: string) => ({
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: theme.palette.cyan.color,
-    }),
-    text: { color: theme.palette.cyan.light },
+    foreground: theme.palette.cyan.light,
+    text: theme.palette.cyan.light,
   },
   tune: {
+    colored: true,
     border: theme.tune.color,
-    icon: theme.tune.light,
-    indicator: theme.tune.light,
-    button: (background: string) => ({
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: theme.tune.color,
-    }),
-    text: { color: theme.tune.light },
+    foreground: theme.tune.light,
+    text: theme.tune.light,
   },
   secondary: {
+    colored: false,
     border: theme.control.border,
-    icon: theme.control.textMuted,
-    indicator: theme.control.textMuted,
-    button: () => ({
-      backgroundColor: theme.control.background,
-      borderWidth: 1,
-      borderColor: theme.control.border,
-    }),
-    text: { color: theme.control.textMuted },
+    foreground: theme.control.textMuted,
+    text: theme.control.textMuted,
   },
   success: {
+    colored: true,
     border: theme.palette.green.color,
-    icon: theme.palette.green.light,
-    indicator: theme.palette.green.light,
-    button: (background: string) => ({
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: theme.palette.green.color,
-    }),
-    text: { color: theme.palette.green.light },
+    foreground: theme.palette.green.light,
+    text: theme.palette.green.light,
   },
   caution: {
+    colored: true,
     border: theme.status.caution.border,
-    icon: theme.status.caution.text,
-    indicator: theme.status.caution.text,
-    button: (background: string) => ({
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: theme.status.caution.border,
-    }),
-    text: { color: theme.status.caution.text },
+    foreground: theme.status.caution.text,
+    text: theme.status.caution.text,
   },
   destructive: {
+    colored: true,
     border: theme.palette.red.color,
-    icon: theme.palette.red.light,
-    indicator: theme.palette.red.light,
-    button: (background: string) => ({
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: theme.palette.red.color,
-    }),
-    text: { color: theme.palette.red.light },
+    foreground: theme.palette.red.light,
+    text: theme.palette.red.light,
   },
   groupRide: {
+    colored: true,
     border: theme.palette.groupRide.color,
-    icon: theme.palette.groupRide.light,
-    indicator: theme.palette.groupRide.light,
-    button: (background: string) => ({
-      backgroundColor: background,
-      borderWidth: 1,
-      borderColor: theme.palette.groupRide.color,
-    }),
-    text: { color: theme.palette.groupRide.light },
+    foreground: theme.palette.groupRide.light,
+    text: theme.palette.groupRide.light,
   },
 } as const
 

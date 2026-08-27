@@ -72,6 +72,15 @@ export function useColoredAction(accent: string): string {
   return blend(controlColors.light.background, accentColor, coloredAction.tint)
 }
 
+/**
+ * Foreground (label, icon, border) of a colored-action button. The colored-action surface is navy
+ * in both themes, so the accent must keep its dark-theme tone on light as well — the light-theme
+ * tone is tuned for a light surface and disappears against the navy wash.
+ */
+export function useColoredActionForeground(accent: string): string {
+  return resolveAdaptiveColor(accent, 'dark') as string
+}
+
 function hexToRgb(hex: string): string {
   const value = hex.replace('#', '')
   const [r, g, b] =

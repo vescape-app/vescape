@@ -195,10 +195,12 @@ export function FloatingActionPill({
   disabled = false,
   testID,
 }: FloatingActionPillProps) {
+  // On a filled status surface the readable tone is the status `text` token, not `color`: the
+  // surface is a pale tint on light, so a light foreground vanishes on it.
   const iconColor = paused
-    ? theme.status.warning.color
+    ? theme.status.warning.text
     : active
-      ? theme.control.text
+      ? theme.status.error.text
       : theme.status.error.color
   return (
     <Pressable
@@ -325,7 +327,7 @@ const styles = StyleSheet.create({
     borderColor: theme.status.warning.color,
   },
   actionPillTextPaused: {
-    color: theme.status.warning.color,
+    color: theme.status.warning.text,
   },
   actionPillText: {
     color: theme.status.error.color,
@@ -334,7 +336,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   actionPillTextActive: {
-    color: theme.control.text,
+    color: theme.status.error.text,
   },
   disabled: {
     opacity: 0.45,
