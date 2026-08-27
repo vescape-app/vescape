@@ -1,4 +1,5 @@
 import XCTest
+@testable import VescapeCore
 
 /// The fixture is a complete `COMM_GET_MCCONF` response captured from a Thor301 on
 /// 2026-08-24, and the expected values are what VESC Tool showed for that board at the same moment.
