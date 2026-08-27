@@ -46,6 +46,12 @@ const SHOWCASE_CONFIG_BASES = {
   motor: { l_temp_fet_start: 85, l_temp_motor_start: 100 },
 }
 
+/** A board with every matchable protection switched off — the match checkbox has nothing to follow. */
+const SHOWCASE_CONFIG_BASES_OFF = {
+  refloat: { tiltback_duty: 1 },
+  motor: { l_temp_fet_start: 0, l_temp_motor_start: 0 },
+}
+
 export function AlertPresetControlShowcase() {
   const [metric, setMetric] = useState<AlertPresetMetric>('speed')
   const [level, setLevel] = useState<AlertPresetLevel>('normal')
@@ -54,6 +60,7 @@ export function AlertPresetControlShowcase() {
   const [editable, setEditable] = useState(true)
   const [disabled, setDisabled] = useState(false)
   const [match, setMatch] = useState(false)
+  const [configOff, setConfigOff] = useState(false)
   const liveValue = useSharedValue<number | null>(null)
   const testRules = useMemo(
     () =>
@@ -63,7 +70,7 @@ export function AlertPresetControlShowcase() {
         boardTopSpeedKmh: 50,
         hasBatteryConfig: true,
         matchBoardConfig: { [metric]: match },
-        configBases: SHOWCASE_CONFIG_BASES,
+        configBases: configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES,
         customRules:
           level === 'custom'
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((rule) => ({
@@ -78,7 +85,7 @@ export function AlertPresetControlShowcase() {
               }))
             : [],
       }),
-    [level, match, metric],
+    [configOff, level, match, metric],
   )
 
   useEffect(() => {
@@ -111,6 +118,7 @@ export function AlertPresetControlShowcase() {
           <ToggleRow label="editable" value={editable} onToggle={setEditable} />
           <ToggleRow label="disabled" value={disabled} onToggle={setDisabled} />
           <ToggleRow label="match VESC config" value={match} onToggle={setMatch} />
+          <ToggleRow label="VESC protection off" value={configOff} onToggle={setConfigOff} />
         </>
       }
     >
@@ -123,7 +131,7 @@ export function AlertPresetControlShowcase() {
         hasBatteryConfig
         matchBoardConfig={{ [metric]: match }}
         onMatchBoardConfigChange={setMatch}
-        configBases={SHOWCASE_CONFIG_BASES}
+        configBases={configOff ? SHOWCASE_CONFIG_BASES_OFF : SHOWCASE_CONFIG_BASES}
         customAlerts={
           custom
             ? PRESET_DEMO_CUSTOM_ALERTS[metric].map((a) => ({ ...a, thresholdMax: null }))

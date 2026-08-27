@@ -31,7 +31,7 @@ import {
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
 import {
-  resolveConfigRelativeBase,
+  configRelativeBase,
   type BoardConfigBases,
 } from '@/modules/alerts/lib/configRelativeFields'
 import { theme } from '@/constants/theme'
@@ -308,8 +308,11 @@ const MATCH_SUBJECT: Partial<Record<AlertPresetMetric, string>> = {
 
 /**
  * Opt one metric's preset into following the board's own configuration. The note underneath states
- * the number being followed, because that is the whole promise of the checkbox — and says plainly
- * when there is no such number, since a ticked box with nothing behind it means a silent preset.
+ * the number being followed, because that is the whole promise of the checkbox.
+ *
+ * Where the board has no such number the checkbox is not offered as a choice at all — it is
+ * disabled and the note says why. Ticking it would only produce a preset that stays silent, and a
+ * board with duty pushback at 100% has genuinely nothing to match.
  */
 function BoardConfigMatchControl({
   metric,
@@ -323,23 +326,39 @@ function BoardConfigMatchControl({
   onChange?: (enabled: boolean) => void
 }) {
   const fieldId = ALERT_PRESET_CONFIG_MATCH[metric]?.fieldId
-  const base = fieldId == null ? null : resolveConfigRelativeBase(fieldId, configBases ?? {})
+  const base =
+    fieldId == null
+      ? { status: 'missing' as const }
+      : configRelativeBase(fieldId, configBases ?? {})
   const subject = MATCH_SUBJECT[metric] ?? 'configuration'
+  const format = PRESET_GAUGE[metric].formatMarker
+  const available = base.status === 'resolved'
+  // Ticking on needs an anchor; ticking off never does, or a rider who matched while connected
+  // would be stuck with a dormant preset the moment the board goes away.
+  const interactive = available || checked
   let note: string | null = null
-  if (checked && base != null) {
-    note = `Follows VESC ${subject} (${PRESET_GAUGE[metric].formatMarker(base)}).`
-  } else if (checked)
-    note = `VESC ${subject} is unavailable or disabled. This preset stays inactive.`
+  if (base.status === 'resolved') {
+    note = checked ? `Follows VESC ${subject} (${format(base.value)}).` : null
+  } else if (base.status === 'disabled') {
+    note = `VESC ${subject} is off (${format(base.value)}) — there is nothing to match.`
+  } else if (base.status === 'unread') {
+    note = `Connect to the board to read its ${subject} setting first.`
+  } else {
+    note = `This board's firmware does not report a ${subject} setting.`
+  }
   return (
     <View>
       <Pressable
-        style={styles.matchRow}
+        style={[styles.matchRow, !available && styles.matchRowDisabled]}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked }}
+        accessibilityState={{ checked, disabled: !interactive }}
+        disabled={!interactive}
         onPress={() => onChange?.(!checked)}
       >
-        <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-          {checked ? <CheckIcon size={13} color={theme.palette.slate.text} weight="bold" /> : null}
+        <View style={[styles.checkbox, checked && available && styles.checkboxChecked]}>
+          {checked && available ? (
+            <CheckIcon size={13} color={theme.palette.slate.text} weight="bold" />
+          ) : null}
         </View>
         <Text style={styles.matchLabel}>Match VESC board configuration</Text>
       </Pressable>
@@ -481,6 +500,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   matchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
+  matchRowDisabled: { opacity: 0.45 },
   checkbox: {
     width: 20,
     height: 20,

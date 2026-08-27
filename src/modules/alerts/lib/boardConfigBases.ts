@@ -17,7 +17,8 @@ export function boardConfigBases(
 
 /** A one-shot snapshot for callers that are not components. */
 export function readBoardConfigBases(): BoardConfigBases {
-  const refloat = useBoardConfigValuesStore.getState().values?.values
+  const refloatState = useBoardConfigValuesStore.getState()
+  const refloat = (refloatState.values ?? refloatState.lastKnown)?.values
   const motorState = useMotorConfigValuesStore.getState()
   return boardConfigBases(refloat, (motorState.values ?? motorState.lastKnown)?.values)
 }

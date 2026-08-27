@@ -36,17 +36,45 @@ export const CONFIG_RELATIVE_FIELDS: Record<string, ConfigRelativeField> = {
 export type BoardConfigBases = Partial<Record<BoardConfigSource, Record<string, number> | null>>
 
 /**
- * The field's current value in the metric's units, or `null` when it cannot anchor a rule — the
- * config was never read, the field is missing from this firmware's layout, or the board has that
- * protection switched off.
+ * Why a field can or cannot anchor a rule. `resolved` carries the value in the metric's units;
+ * `disabled` carries it too, because "the board's own limit is 100%" is the explanation a rider
+ * needs, not just the refusal.
+ */
+export type ConfigRelativeBase =
+  | { status: 'resolved'; value: number }
+  /** The config this field lives in has not been read from the board yet. */
+  | { status: 'unread' }
+  /** The config was read, but this firmware's layout has no such field. */
+  | { status: 'missing' }
+  /** The board has that protection switched off, so there is nothing to follow. */
+  | { status: 'disabled'; value: number }
+
+/**
+ * Resolve a field against the board's configs, keeping *why* it did not resolve.
  *
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/ConfigRelativeFields.kt `resolveConfigRelativeBase`
  */
-export function resolveConfigRelativeBase(fieldId: string, bases: BoardConfigBases): number | null {
+export function configRelativeBase(fieldId: string, bases: BoardConfigBases): ConfigRelativeBase {
   const field = CONFIG_RELATIVE_FIELDS[fieldId]
-  if (!field) return null
-  const raw = bases[field.source]?.[fieldId]
-  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return null
-  if (field.disabledAtOrAbove != null && raw >= field.disabledAtOrAbove) return null
-  return raw * field.scale
+  if (!field) return { status: 'missing' }
+  const config = bases[field.source]
+  if (config == null) return { status: 'unread' }
+  const raw = config[fieldId]
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return { status: 'missing' }
+  const value = raw * field.scale
+  if (raw <= 0) return { status: 'disabled', value }
+  if (field.disabledAtOrAbove != null && raw >= field.disabledAtOrAbove) {
+    return { status: 'disabled', value }
+  }
+  return { status: 'resolved', value }
+}
+
+/**
+ * The field's current value in the metric's units, or `null` when it cannot anchor a rule — the
+ * config was never read, the field is missing from this firmware's layout, or the board has that
+ * protection switched off.
+ */
+export function resolveConfigRelativeBase(fieldId: string, bases: BoardConfigBases): number | null {
+  const base = configRelativeBase(fieldId, bases)
+  return base.status === 'resolved' ? base.value : null
 }
