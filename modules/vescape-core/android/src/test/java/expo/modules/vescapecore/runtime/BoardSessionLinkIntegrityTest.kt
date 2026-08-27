@@ -64,4 +64,28 @@ class BoardSessionLinkIntegrityTest {
         missingBms.observeRefloat(complete, "Refloat 3.0.7")
         assertEquals(LinkIntegrity.Mismatched, missingBms.markBmsMissing(complete))
     }
+
+    @Test
+    fun unprovenCheckTimesOutToOutdated() {
+        val session = BoardSession(id = 1)
+        session.startLinkIntegrityCheck(complete)
+        assertEquals(LinkIntegrity.Checking, session.observeFirmware(complete, "FW 6.05"))
+
+        assertEquals(LinkIntegrity.Outdated, session.markCheckTimedOut())
+    }
+
+    @Test
+    fun checkTimeoutLeavesASettledVerdictAlone() {
+        val trusted = BoardSession(id = 1)
+        trusted.startLinkIntegrityCheck(complete)
+        trusted.observeFirmware(complete, "FW 6.05")
+        trusted.observeRefloat(complete, "Refloat 3.0.7")
+        assertEquals(LinkIntegrity.Trusted, trusted.observeBms(complete))
+        assertEquals(LinkIntegrity.Trusted, trusted.markCheckTimedOut())
+
+        val mismatched = BoardSession(id = 2)
+        mismatched.startLinkIntegrityCheck(complete)
+        assertEquals(LinkIntegrity.Mismatched, mismatched.observeFirmware(complete, "FW 6.06"))
+        assertEquals(LinkIntegrity.Mismatched, mismatched.markCheckTimedOut())
+    }
 }

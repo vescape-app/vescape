@@ -139,6 +139,10 @@ internal final class BoardSessionController: VescGattListener {
   /// Android `TELEMETRY_STALE_MS` (4s) — copied, not re-derived.
   private let telemetryStaleSeconds = 4.0
   private let linkIntegrityBmsTimeoutSeconds = 12.0
+  /// Deadline for proving the link either way. Longer than the BMS timeout so that verdict lands
+  /// first when a BMS is expected.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `LINK_INTEGRITY_CHECK_TIMEOUT_MS`
+  private let linkIntegrityCheckTimeoutSeconds = 20.0
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `sendPayloadWithRetry`
   private let sendRetryDelaySeconds = 0.12
   /// Idle delay after link trust before the one background config-safety read fires (lets telemetry settle).
@@ -1723,6 +1727,10 @@ internal final class BoardSessionController: VescGattListener {
         guard let self, let session, session === self.session, session.isActive, let config = self.config else { return }
         self.updateLinkIntegrity(session.markBmsMissing(expected: config.linkIdentity()))
       }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + linkIntegrityCheckTimeoutSeconds) { [weak self, weak session] in
+      guard let self, let session, session === self.session, session.isActive else { return }
+      self.updateLinkIntegrity(session.markCheckTimedOut())
     }
   }
 

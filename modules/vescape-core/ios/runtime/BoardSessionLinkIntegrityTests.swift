@@ -82,6 +82,28 @@ final class BoardSessionLinkIntegrityTests: XCTestCase {
     XCTAssertEqual(.mismatched, missingBms.markBmsMissing(expected: complete))
   }
 
+  func testUnprovenCheckTimesOutToOutdated() {
+    let session = BoardSession(id: 1)
+    session.startLinkIntegrityCheck(expected: complete)
+    XCTAssertEqual(.checking, session.observeFirmware(expected: complete, firmware: "FW 6.05"))
+
+    XCTAssertEqual(.outdated, session.markCheckTimedOut())
+  }
+
+  func testCheckTimeoutLeavesASettledVerdictAlone() {
+    let trusted = BoardSession(id: 1)
+    trusted.startLinkIntegrityCheck(expected: complete)
+    trusted.observeFirmware(expected: complete, firmware: "FW 6.05")
+    trusted.observeRefloat(expected: complete, refloatVersion: "Refloat 3.0.7")
+    XCTAssertEqual(.trusted, trusted.observeBms(expected: complete))
+    XCTAssertEqual(.trusted, trusted.markCheckTimedOut())
+
+    let mismatched = BoardSession(id: 2)
+    mismatched.startLinkIntegrityCheck(expected: complete)
+    XCTAssertEqual(.mismatched, mismatched.observeFirmware(expected: complete, firmware: "FW 6.06"))
+    XCTAssertEqual(.mismatched, mismatched.markCheckTimedOut())
+  }
+
   func testLegalModeEnableRequiresMatchingConnectedBoardAndTrustedLink() {
     XCTAssertEqual(
       legalModeEnableError(

@@ -31,6 +31,15 @@ final class BoardSession {
     return linkIntegrity
   }
 
+  /// The probe ran but never proved the link either way. Nothing here says the board changed, only
+  /// that trust could not be established, so this resolves to `outdated` — the state whose CTA asks
+  /// the rider to re-link. A `checking` that never ends is a dead end: commands stay blocked and no
+  /// warning offers a way out.
+  func markCheckTimedOut() -> LinkIntegrity {
+    if linkIntegrity == .checking { linkIntegrity = .outdated }
+    return linkIntegrity
+  }
+
   func claimLinkIntegrityProbe() -> Bool {
     if linkIntegrityProbeStarted { return false }
     linkIntegrityProbeStarted = true

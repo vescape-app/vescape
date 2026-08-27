@@ -1811,6 +1811,9 @@ private var wearAutoLaunchOnConnect = true
                 updateLinkIntegrity(session.markBmsMissing(config.linkIdentity()))
             }
         }
+        scheduler.postDelayedForSession(session, LINK_INTEGRITY_CHECK_TIMEOUT_MS, ::isCurrentBoardSession) {
+            updateLinkIntegrity(session.markCheckTimedOut())
+        }
     }
 
     private var lastEmittedLinkIntegrity = LinkIntegrity.Unknown
@@ -3013,6 +3016,11 @@ internal fun companionBoardIdForAddress(
 }
 
 private const val LINK_INTEGRITY_BMS_TIMEOUT_MS = 12_000L
+
+// Deadline for proving the link either way. Longer than the BMS timeout so that verdict lands first
+// when a BMS is expected.
+// @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `linkIntegrityCheckTimeoutSeconds`
+private const val LINK_INTEGRITY_CHECK_TIMEOUT_MS = 20_000L
 
 /** Idle delay after link trust before the one background config-safety read fires (lets telemetry settle). */
 private const val CONFIG_SAFETY_READ_DELAY_MS = 2_500L
