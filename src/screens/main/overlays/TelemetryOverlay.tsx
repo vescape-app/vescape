@@ -8,7 +8,6 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
@@ -25,7 +24,7 @@ import {
 import type { MainViewState } from '@/screens/main/mainViewState'
 import {
   BottomTelemetryStrip,
-  STRIP_CONTENT_HEIGHT,
+  useAboveStripBottom,
 } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { LiveHud } from '@/screens/main/overlays/LiveHud'
 import { TopBar } from '@/screens/main/overlays/TopBar'
@@ -94,7 +93,6 @@ export function TelemetryOverlay({
   activeNavigationTarget,
   onCancelNavigation,
 }: TelemetryOverlayProps) {
-  const insets = useSafeAreaInsets()
   const [revealGestureActive, setRevealGestureActive] = useState(false)
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
@@ -107,7 +105,7 @@ export function TelemetryOverlay({
     withTiming(mode === 'telemetry' ? 1 : 0, TELEMETRY_FADE_TIMING),
   )
 
-  const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
+  const aboveStripBottom = useAboveStripBottom()
   const buttonBottom = aboveStripBottom - (HISTORY_BUTTON_SIZE - RECORD_BUTTON_HEIGHT) / 2
   const legalModeActive = activeBoard?.legalMode?.enabled ?? false
   const interactive = mode === 'telemetry' && !revealGestureActive

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
@@ -15,6 +15,23 @@ import { useFootpadThreshold } from '@/modules/board/store/boardConfigValuesStor
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 
 export const STRIP_CONTENT_HEIGHT = 160
+export const STRIP_CONTENT_HEIGHT_COMPACT = 138
+const SMALL_SCREEN_HEIGHT = 700
+
+export function isSmallScreen(height: number): boolean {
+  return height < SMALL_SCREEN_HEIGHT
+}
+
+export function stripBottomSpacing(insetBottom: number, screenHeight: number): number {
+  return Math.max(insetBottom * 0.5, isSmallScreen(screenHeight) ? 4 : 8)
+}
+
+export function useAboveStripBottom(): number {
+  const insets = useSafeAreaInsets()
+  const { height } = useWindowDimensions()
+  const contentHeight = isSmallScreen(height) ? STRIP_CONTENT_HEIGHT_COMPACT : STRIP_CONTENT_HEIGHT
+  return contentHeight + stripBottomSpacing(insets.bottom, height) + 8
+}
 
 interface BottomTelemetryStripProps {
   revealProgress?: SharedValue<number>
@@ -23,6 +40,7 @@ interface BottomTelemetryStripProps {
 export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripProps) {
   useRenderRateWarning('BottomTelemetryStrip')
   const insets = useSafeAreaInsets()
+  const { height } = useWindowDimensions()
   const bleStatus = useBleStore((s) => s.status)
   const imuConnected = bleStatus === 'connected'
   // Live numbers, IMU tilt and the footpad pad read SharedValues (hot path, ~31Hz, no re-render).
@@ -38,14 +56,15 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
 
   const footpad1Threshold = useFootpadThreshold(0)
   const footpad2Threshold = useFootpadThreshold(1)
+  const compact = isSmallScreen(height)
 
   return (
     <Animated.View
-      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom * 0.5, 8) }]}
+      style={[styles.wrap, { paddingBottom: stripBottomSpacing(insets.bottom, height) }]}
       pointerEvents="box-none"
     >
       <Animated.View style={revealStyle}>
-        <View style={styles.strip}>
+        <View style={[styles.strip, compact && styles.stripCompact]}>
           <TelemetryCell
             label="Motor"
             metric={telemetry.motorTemp}
@@ -80,9 +99,13 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
           />
         </View>
 
-        <View style={styles.bottomRow}>
+        <View style={[styles.bottomRow, compact && styles.bottomRowCompact]}>
           <Pressable
-            style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
+            style={({ pressed }) => [
+              styles.sideIcon,
+              compact && styles.sideIconCompact,
+              pressed && styles.cellPressed,
+            ]}
             android_ripple={interaction.rippleBorderless}
             onPress={() => router.push(routes.controlImu)}
           >
@@ -106,9 +129,13 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               ]}
             />
           </Pressable>
-          <BatteryIndicator transparent containerStyle={styles.batteryCenter} />
+          <BatteryIndicator transparent compact={compact} containerStyle={styles.batteryCenter} />
           <Pressable
-            style={({ pressed }) => [styles.sideIcon, pressed && styles.cellPressed]}
+            style={({ pressed }) => [
+              styles.sideIcon,
+              compact && styles.sideIconCompact,
+              pressed && styles.cellPressed,
+            ]}
             android_ripple={interaction.rippleBorderless}
             onPress={() => router.push(routes.controlFootpad)}
           >
@@ -141,17 +168,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 8,
   },
+  stripCompact: {
+    paddingTop: 4,
+    paddingBottom: 0,
+  },
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 4,
   },
+  bottomRowCompact: {
+    paddingVertical: 2,
+  },
   sideIcon: {
     width: 56,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
+  },
+  sideIconCompact: {
+    paddingVertical: 8,
   },
   batteryCenter: {
     flex: 1,

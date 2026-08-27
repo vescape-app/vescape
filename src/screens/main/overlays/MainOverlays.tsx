@@ -19,7 +19,7 @@ import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMap
 import { useMainScreenStore, type MapSelector } from '@/screens/main/mainScreenStore'
 import type { MainViewState } from '@/screens/main/mainViewState'
 import { MapPointStatusBanner } from '@/modules/map-points/components/MapPointStatusBanner'
-import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStrip'
+import { useAboveStripBottom } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { TelemetryOverlay } from '@/screens/main/overlays/TelemetryOverlay'
 
 const TELEMETRY_FADE_TIMING = { duration: 260 } as const
@@ -105,7 +105,7 @@ export function MainOverlays({
     dragOpacity.value = withTiming(0, TELEMETRY_FADE_TIMING)
   }, [dragOpacity, mode, revealProgress])
 
-  const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
+  const aboveStripBottom = useAboveStripBottom()
   const mapModeTabsTop = Math.max(insets.top, 8)
   const belowMapModeTabsTop = mapModeTabsTop + 48
   const mapTargetBottom = Math.max(insets.bottom, 16) + 16
