@@ -153,9 +153,9 @@ function RootLayout() {
           >
             <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
             <Stack.Screen name={stackScreens.profileStats} options={{ title: 'Profile stats' }} />
-            {/* Clerk's native views render their own header — a second Expo header
-                would duplicate the back/dismiss layer. */}
-            <Stack.Screen name={stackScreens.signIn} options={{ headerShown: false }} />
+            {/* Clerk's own dismiss control is off (its native header carries system
+                Liquid Glass); the JS header owns back/dismiss instead. */}
+            <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
             <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
             <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
             <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
