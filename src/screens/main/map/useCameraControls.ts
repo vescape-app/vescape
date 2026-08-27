@@ -12,6 +12,10 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import {
+  getMapCameraProfileForOrientationMode,
+  getPitchForProfileZoom,
+} from '@/modules/map/lib/cameraProfiles'
+import {
   clamp,
   liveFollowKey,
   MIN_ZOOM,
@@ -220,6 +224,26 @@ export function useCameraControls({
     viewportHeight,
   ])
 
+  /**
+   * Pitch the live follow camera would sit at for a zoom. A pinch drives the camera itself, and
+   * deriving its pitch from the plain zoom profile tilts it differently than the follow profiles
+   * do — the tilt would drop under the fingers and spring back on release.
+   */
+  const getFollowPitchForZoom = useCallback(
+    (zoom: number) =>
+      getPitchForProfileZoom({
+        profile: getMapCameraProfileForOrientationMode(
+          mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode,
+        ),
+        zoom,
+        perspectiveEnabled,
+        // A pinch pins the follow zoom, and live follow drops the profile minimums once it is
+        // pinned. Matching that keeps the two in step.
+        enforceMinimums: false,
+      }),
+    [mapOrientationMode, perspectiveEnabled, phoneReady],
+  )
+
   const applyLiveFollowCamera = useCallback(() => {
     if (!cameraFix) return
     const followCamera = getLiveFollowCamera()
@@ -288,6 +312,7 @@ export function useCameraControls({
     applyLiveFollowCamera,
     dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,
+    getFollowPitchForZoom,
     getLiveFollowCamera,
     setFollowZoomLevel,
   })

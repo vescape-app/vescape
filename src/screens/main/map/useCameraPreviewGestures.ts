@@ -23,6 +23,7 @@ interface UseCameraPreviewGesturesParams {
     intent: Parameters<typeof reduceMapCameraIntent>[1],
   ) => ReturnType<typeof reduceMapCameraIntent>['effect']
   getFollowHeadingDeg: () => number
+  getFollowPitchForZoom: (zoom: number) => number
   getLiveFollowCamera: () => CameraSnapshot
   setFollowZoomLevel: (zoomLevel: number) => void
 }
@@ -35,6 +36,7 @@ export function useCameraPreviewGestures({
   applyLiveFollowCamera,
   dispatchCameraIntent,
   getFollowHeadingDeg,
+  getFollowPitchForZoom,
   getLiveFollowCamera,
   setFollowZoomLevel,
 }: UseCameraPreviewGesturesParams) {
@@ -67,6 +69,7 @@ export function useCameraPreviewGestures({
     applyLiveFollowCamera,
     cameraFix,
     getFollowHeadingDeg,
+    getFollowPitchForZoom,
     getLiveFollowCamera,
     gpsCamera,
     perspectiveEnabled,
@@ -186,11 +189,14 @@ export function useCameraPreviewGestures({
       // Drive the camera the way the reveal pan does instead of retargeting the springs. A spring
       // target trails the fingers by its own time constant, which reads as a sluggish pinch — and
       // the follow zoom it would ride on is a render behind anyway.
-      const followCamera = followingLive() ? latest.getLiveFollowCamera() : baseCamera
+      const live = followingLive()
+      const followCamera = live ? latest.getLiveFollowCamera() : baseCamera
       const previewCamera = {
         ...followCamera,
         zoomLevel,
-        pitch: getPitchForZoom(zoomLevel, latest.perspectiveEnabled),
+        pitch: live
+          ? latest.getFollowPitchForZoom(zoomLevel)
+          : getPitchForZoom(zoomLevel, latest.perspectiveEnabled),
       }
       currentCameraRef.current = previewCamera
       if (cameraFix) {
@@ -224,14 +230,17 @@ export function useCameraPreviewGestures({
     // every axis on the gesture's velocity, and a pinch that ends while still spreading would keep
     // zooming after the fingers are gone.
     engine.release()
+    const live = followingLive()
     const current = currentCameraRef.current
     if (current) {
       engine.setTarget({
         zoom: current.zoomLevel,
-        pitch: getPitchForZoom(current.zoomLevel, latest.perspectiveEnabled),
+        pitch: live
+          ? latest.getFollowPitchForZoom(current.zoomLevel)
+          : getPitchForZoom(current.zoomLevel, latest.perspectiveEnabled),
       })
     }
-    if (followingLive()) latest.applyLiveFollowCamera()
+    if (live) latest.applyLiveFollowCamera()
   }, [currentCameraRef, engine, followingLive])
 
   const restorePreviewPan = useCallback(() => {
