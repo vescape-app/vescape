@@ -128,8 +128,11 @@ export function LineChart({ chart, width, index }: LineChartProps) {
             p1={vec(0, projectY(value, chart.left.range, plot.height))}
             p2={vec(plot.width, projectY(value, chart.left.range, plot.height))}
             color={thresholdColor}
-            strokeWidth={1}
-          />
+            strokeWidth={0.5}
+            opacity={0.35}
+          >
+            <DashPathEffect intervals={[3, 5]} />
+          </Line>
         ))}
       </Group>
 
