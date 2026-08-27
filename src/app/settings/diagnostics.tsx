@@ -32,9 +32,9 @@ export default function DiagnosticsSettingsScreen() {
               <Switch
                 value={boardWarningsEnabled}
                 onValueChange={(v) => void set('boardWarningsEnabled', v)}
-                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
+                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
                 thumbColor={
-                  boardWarningsEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
+                  boardWarningsEnabled ? theme.palette.sky.color : theme.neutral.textMuted
                 }
               />
             }
@@ -55,7 +55,7 @@ export default function DiagnosticsSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

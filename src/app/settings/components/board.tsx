@@ -162,7 +162,7 @@ function ReplayBadgeShowcase() {
     <ShowcaseCard name="ReplayBadge">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <ReplayBadge />
-        <Text style={{ color: theme.palette.slate.textPrimary, fontSize: 13 }}>
+        <Text style={{ color: theme.neutral.textPrimary, fontSize: 13 }}>
           Funwheel · connection pill context
         </Text>
       </View>
@@ -271,19 +271,19 @@ export default function BoardComponentsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   telemetryRow: { flexDirection: 'row', gap: 8, alignSelf: 'stretch' },
   timelineContentDemo: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   timelineContentDemoText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },

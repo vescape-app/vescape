@@ -158,14 +158,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   loadingPressed: {
     backgroundColor: interaction.pressedBg,
   },
   loadingText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },

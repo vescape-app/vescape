@@ -11,6 +11,7 @@ import {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { TuneDial } from '@/modules/tune/components/TuneDial'
 
 type PlaybackMode = 'single' | 'geiger'
@@ -37,6 +38,7 @@ function PresetButton({
 
 /** Alert sound presets, single playback, and the Geiger simulation with its range depth. */
 export function AlertSoundProbe() {
+  const accents = useResolvedAccentColors()
   const presets = useMemo(() => getAlertSounds(), [])
   const singlePresets = useMemo(
     () => presets.filter((preset) => preset.category === 'single'),
@@ -137,9 +139,14 @@ export function AlertSoundProbe() {
         <>
           <Text style={styles.sectionTitle}>Play</Text>
           <View style={styles.card}>
-            <Pressable style={styles.playButton} onPress={handlePlaySingle}>
-              <PlayIcon size={20} color={theme.palette.sky.bg} weight="fill" />
-              <Text style={styles.playButtonText}>Play {selectedPreset?.name ?? selectedUri}</Text>
+            <Pressable
+              style={[styles.playButton, { backgroundColor: accents.sky.solid }]}
+              onPress={handlePlaySingle}
+            >
+              <PlayIcon size={20} color={accents.sky.onSolid} weight="fill" />
+              <Text style={[styles.playButtonText, { color: accents.sky.onSolid }]}>
+                Play {selectedPreset?.name ?? selectedUri}
+              </Text>
             </Pressable>
           </View>
         </>
@@ -162,15 +169,23 @@ export function AlertSoundProbe() {
             </View>
 
             <Pressable
-              style={[styles.playButton, geigerActive && styles.stopButton]}
+              style={[
+                styles.playButton,
+                { backgroundColor: geigerActive ? accents.red.solid : accents.sky.solid },
+              ]}
               onPress={handleToggleGeiger}
             >
               {geigerActive ? (
-                <StopIcon size={20} color={theme.palette.slate.textPrimary} weight="fill" />
+                <StopIcon size={20} color={accents.red.onSolid} weight="fill" />
               ) : (
-                <PlayIcon size={20} color={theme.palette.sky.bg} weight="fill" />
+                <PlayIcon size={20} color={accents.sky.onSolid} weight="fill" />
               )}
-              <Text style={[styles.playButtonText, geigerActive && styles.stopButtonText]}>
+              <Text
+                style={[
+                  styles.playButtonText,
+                  { color: geigerActive ? accents.red.onSolid : accents.sky.onSolid },
+                ]}
+              >
                 {geigerActive ? 'Stop' : 'Start Geiger'}
               </Text>
             </Pressable>
@@ -183,7 +198,7 @@ export function AlertSoundProbe() {
 
 const styles = StyleSheet.create({
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -193,10 +208,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
     padding: 14,
   },
@@ -206,9 +221,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   presetButton: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -219,15 +234,15 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.sky.bg,
   },
   presetName: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '700',
   },
   presetNameActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   presetCategory: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -238,24 +253,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
   },
   modeButton: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 10,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   modeButtonActive: {
     backgroundColor: theme.palette.sky.bg,
   },
   modeText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },
   modeTextActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   playButton: {
     backgroundColor: theme.palette.sky.color,
@@ -271,12 +286,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  stopButton: {
-    backgroundColor: theme.status.error.color,
-  },
-  stopButtonText: {
-    color: theme.palette.slate.textPrimary,
-  },
   dialSection: {
     gap: 8,
     marginBottom: 14,
@@ -287,7 +296,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dialLabel: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },

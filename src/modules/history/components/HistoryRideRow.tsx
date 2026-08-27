@@ -52,7 +52,7 @@ export const HistoryRideRow = forwardRef<View, HistoryRideRowProps>(function His
       <View style={styles.main}>
         <HistoryRideLabel title={title} subtitle={subtitle} details={details} />
       </View>
-      <CaretRightIcon size={16} color={theme.palette.slate.textDim} weight="bold" />
+      <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" />
     </Pressable>
   )
 })
@@ -61,8 +61,8 @@ const styles = StyleSheet.create({
   row: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
     paddingVertical: 10,
     paddingHorizontal: 12,
     flexDirection: 'row',

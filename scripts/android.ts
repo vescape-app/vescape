@@ -57,4 +57,8 @@ run(['bun', 'run', 'native:sync', 'android'])
 run(['bun', 'run', 'relay:reverse'])
 // `--device` takes Expo's device name (the AVD for an emulator, the model for a physical device),
 // which is exactly what listAdbDevices reports as `name`.
+// Expo run:android defaults to advertising the machine's LAN address. The dev launcher persists
+// that URL, so a later reload fails when the phone cannot reach the Mac over Wi-Fi even though
+// Expo's ADB reverse for Metro is active. Keep the launch URL on the same localhost tunnel.
+process.env.REACT_NATIVE_PACKAGER_HOSTNAME = '127.0.0.1'
 run(['bunx', 'expo', 'run:android', '--device', phone.expoName, ...args])

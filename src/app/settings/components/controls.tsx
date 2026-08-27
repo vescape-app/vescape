@@ -7,6 +7,7 @@ import {
   CircleButtonShowcase,
   FloatingActionPillShowcase,
   FloatingBarShowcase,
+  NavigationTopBarShowcase,
   PrevNextSelectorShowcase,
   SegmentedToggleShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
@@ -25,6 +26,7 @@ export default function ControlsPage() {
         />
         <AlertPresetControlShowcase />
         <CircleButtonShowcase />
+        <NavigationTopBarShowcase />
         <FloatingBarShowcase />
         <FloatingActionPillShowcase />
         <PrevNextSelectorShowcase />
@@ -37,6 +39,6 @@ export default function ControlsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
 })

@@ -12,6 +12,7 @@ import { deriveBatteryConfig, isBmsCharging, summarizeBms } from '@/modules/batt
 import { fmtTimeAgo } from '@/helpers/format'
 import { useLiveSeries } from '@/modules/board/hooks/useLiveMetric'
 import { useMinuteNow } from '@/hooks/useMinuteNow'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
@@ -34,6 +35,7 @@ function pickColor(percent: number | null): string {
 }
 
 export function BatteryIndicator({ compact, transparent, containerStyle }: BatteryIndicatorProps) {
+  const neutral = useResolvedNeutralColors()
   const router = useRouter()
   // Decimated series (native, ~1Hz). Battery is a slow signal, so the series cadence both
   // supplies the latest SoC/voltage sample and paces this component's re-render.
@@ -111,7 +113,7 @@ export function BatteryIndicator({ compact, transparent, containerStyle }: Batte
     <LinearGauge
       value={percent}
       max={100}
-      color={stale ? theme.palette.slate.textSecondary : pickColor(percent)}
+      color={stale ? neutral.textSecondary : pickColor(percent)}
       unit="%"
       alerts={alerts}
       aux={aux}

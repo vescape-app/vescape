@@ -4,6 +4,7 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { projectX, viewportFor } from '@/components/charts/line/projection'
 import type { ChartBand, ChartCamera, ChartPlotBox } from '@/components/charts/line/types'
+import { useResolvedColor } from '@/hooks/useTheme'
 
 /** A hairline, clear of the plot floor, with the next row stacked just above it. */
 const BAND_HEIGHT = 1
@@ -97,6 +98,7 @@ function BandGroupPath({
 }: BandGroupPathProps) {
   // See SeriesLayer: derived values and React Compiler memoisation do not mix.
   'use no memo'
+  const color = useResolvedColor(group.color)
   const { starts, ends } = group
   const wash = group.fill === 'plot'
   const height = wash ? plot.height : BAND_HEIGHT
@@ -116,5 +118,5 @@ function BandGroupPath({
   }, [camera, dataKey, domainEndMs, domainStartMs, ends, height, plot.width, starts, y])
 
   // A wash carries its own alpha; the hairlines are solid marks that only need to sit back a little.
-  return <Path path={path} color={group.color} opacity={wash ? 1 : BAND_OPACITY} />
+  return <Path path={path} color={color} opacity={wash ? 1 : BAND_OPACITY} />
 }

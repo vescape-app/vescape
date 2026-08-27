@@ -7,6 +7,11 @@ import { Text } from '@/components/base/Text'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
+import {
+  useResolvedAccentColors,
+  useResolvedColor,
+  useResolvedNeutralColors,
+} from '@/hooks/useTheme'
 import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
@@ -19,7 +24,6 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import {
   AlertMarker,
-  BG_ARC_COLOR,
   gaugeRampColor,
   GaugeReadout,
   GlowGradient,
@@ -73,6 +77,9 @@ function HalfArc({
   showValue = true,
 }: Required<Pick<SingleGaugeProps, 'value' | 'min' | 'max' | 'color' | 'unit'>> &
   Pick<SingleGaugeProps, 'decimals' | 'alerts' | 'hotRange' | 'showValue'>) {
+  const resolvedColor = useResolvedColor(color)
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   const { size, onLayout } = useCanvasSize()
   const scale = size.w > 0 ? size.w / HALF_VB_W : 0
   const labelFont = useSkiaFont('700', LABEL_FONT_SIZE)
@@ -86,7 +93,9 @@ function HalfArc({
   const arc = useDerivedValue(() =>
     svgPath(arcPath(HALF_ARC, normalizeFraction(value.value ?? min, min, max))),
   )
-  const arcColor = useDerivedValue(() => gaugeRampColor(value.value ?? min, color, hotRange))
+  const arcColor = useDerivedValue(() =>
+    gaugeRampColor(value.value ?? min, resolvedColor, hotRange, accents.red.color),
+  )
   const wedge = useDerivedValue(() =>
     svgPath(wedgePath(HALF_ARC, normalizeFraction(value.value ?? min, min, max))),
   )
@@ -96,7 +105,9 @@ function HalfArc({
     return radialTickPath(HALF_ARC, normalizeFraction(value.value, min, max), MARKER_INSET)
   })
 
-  const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
+  const valueColor = useDerivedValue(() =>
+    gaugeRampColor(value.value, resolvedColor, hotRange, accents.red.color),
+  )
 
   return (
     <View style={styles.halfWrap}>
@@ -107,14 +118,14 @@ function HalfArc({
               <Path path={wedge}>
                 <GlowGradient
                   arc={HALF_ARC}
-                  color={color}
+                  color={resolvedColor}
                   stops={GLOW_STOPS}
                   opacities={GLOW_OPACITIES}
                 />
               </Path>
               <Path
                 path={BG_ARC}
-                color={BG_ARC_COLOR}
+                color={neutral.border}
                 style="stroke"
                 strokeWidth={STROKE}
                 strokeCap="butt"
@@ -217,15 +228,14 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   singleWrap: {
-    backgroundColor: theme.palette.slate.surface,
-    borderRadius: 10,
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0),
     paddingHorizontal: 18,
     paddingTop: 14,
     paddingBottom: 6,
     overflow: 'hidden',
   },
   singleLabel: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.5,

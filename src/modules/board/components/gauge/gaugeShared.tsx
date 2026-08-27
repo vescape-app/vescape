@@ -12,6 +12,7 @@ import {
 import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
 import { alertBandFractions, type DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { theme, type AlphaLevel } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
@@ -25,14 +26,12 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import { textAdvanceWidth } from '../../../../helpers/skiaText'
 
-export const BG_ARC_COLOR = theme.palette.slate.border
-const GAUGE_HOT_COLOR = theme.status.error.color
-
 /** Ramp the gauge color toward the hot color across the metric's hot range. */
 export function gaugeRampColor(
   current: number | null,
   baseColor: string,
   hotRange: MetricHotRange | null | undefined,
+  hotColor: string,
 ) {
   'worklet'
   if (current == null || hotRange == null) return baseColor
@@ -40,7 +39,7 @@ export function gaugeRampColor(
   const end = Math.max(hotRange.start, hotRange.end)
   const span = end - start
   const fraction = span <= 0 ? 0 : clamp01((current - start) / span)
-  return interpolateColor(fraction, [0, 1], [baseColor, GAUGE_HOT_COLOR])
+  return interpolateColor(fraction, [0, 1], [baseColor, hotColor])
 }
 
 // ── Gradients ────────────────────────────────────────────────────────────────
@@ -67,6 +66,7 @@ const TICK_LENGHT = 2
 const TICK_WIDTH = 0.35
 
 function AlertTick({ arc, fraction }: { arc: Arc; fraction: number }) {
+  const accents = useResolvedAccentColors()
   const path = useMemo(
     () => radialTickPath(arc, fraction, TICK_LENGHT, -STROKE / 2),
     [arc, fraction],
@@ -74,7 +74,7 @@ function AlertTick({ arc, fraction }: { arc: Arc; fraction: number }) {
   return (
     <Path
       path={path}
-      color={theme.palette.yellow.color}
+      color={accents.yellow.color}
       style="stroke"
       strokeWidth={TICK_WIDTH}
       strokeCap="butt"
@@ -97,6 +97,7 @@ function AlertLabel({
   text: string
   font: SkFont
 }) {
+  const accents = useResolvedAccentColors()
   const p = polar(arc, arc.r - LABEL_INSET, fraction)
   const width = textAdvanceWidth(font, text)
   return (
@@ -105,7 +106,7 @@ function AlertLabel({
       y={p.y + LABEL_FONT_SIZE / 2}
       text={text}
       font={font}
-      color={theme.palette.yellow.text}
+      color={accents.yellow.color}
     />
   )
 }
@@ -120,6 +121,7 @@ interface AlertMarkerProps {
 }
 
 export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: AlertMarkerProps) {
+  const accents = useResolvedAccentColors()
   const thresholdFraction = normalizeFraction(alert.threshold, min, max)
   const maxFraction =
     alert.thresholdMax == null ? null : normalizeFraction(alert.thresholdMax, min, max)
@@ -139,7 +141,7 @@ export function AlertMarker({ arc, alert, min = 0, max, labelFont = null }: Aler
           <RadialGradient
             c={vec(arc.cx, arc.cy)}
             r={arc.r}
-            colors={ALERT_OPACITIES.map((o) => theme.alpha(theme.palette.yellow.color, o))}
+            colors={ALERT_OPACITIES.map((o) => theme.alpha(accents.yellow.color, o))}
             positions={ALERT_STOPS}
           />
         </Path>
@@ -192,6 +194,7 @@ export function GaugeReadout({
   valueLineHeight,
   unitSize,
 }: GaugeReadoutProps) {
+  const neutral = useResolvedNeutralColors()
   const unitFont = useSkiaFont('500', unitSize)
   const unitLineHeight = Math.ceil(unitSize * TEXT_LINE_RATIO)
   const top = box.y + (box.height - (valueLineHeight + UNIT_GAP + unitLineHeight)) / 2
@@ -223,7 +226,7 @@ export function GaugeReadout({
           y={unitOrigin.y}
           text={unit}
           font={unitFont}
-          color={theme.palette.slate.textMuted}
+          color={neutral.textMuted}
         />
       ) : null}
     </>

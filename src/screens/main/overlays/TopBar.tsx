@@ -86,7 +86,7 @@ const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
       ? theme.palette.green.color
       : bleStatus === 'error'
         ? theme.status.error.color
-        : theme.palette.slate.textSecondary
+        : theme.control.textMuted
 
   return (
     <View ref={ref} style={[styles.pill, { maxWidth }]}>
@@ -101,7 +101,7 @@ const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         <Text style={styles.boardText} numberOfLines={1}>
           {name}
         </Text>
-        <CaretDownIcon size={12} color={theme.palette.slate.textSecondary} weight="bold" />
+        <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
       </Pressable>
       <View style={styles.divider} />
       <Pressable
@@ -115,7 +115,7 @@ const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
       >
         <PencilSimpleIcon
           size={14}
-          color={activeBoard ? theme.palette.slate.textPrimary : theme.palette.slate.textMuted}
+          color={activeBoard ? theme.control.text : theme.control.textMuted}
           weight="bold"
         />
       </Pressable>
@@ -368,8 +368,8 @@ const styles = StyleSheet.create({
     minHeight: 38,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
     overflow: 'hidden',
   },
   boardButton: {
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   boardText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 13,
     fontWeight: '800',
     maxWidth: 180,
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     height: 20,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.control.divider,
   },
   plugButton: {
     width: 38,

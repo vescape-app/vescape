@@ -13,10 +13,10 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { MonoText } from '@/components/base/MonoValue'
 import { theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import { FOOTPAD_FALLBACK_THRESHOLD_V } from '@/modules/board/store/boardConfigValuesStore'
 
 const TRACK_COLOR = theme.alpha(theme.palette.slate.textDim, 0.4)
-const FILL_COLOR = theme.palette.green.text
 /** Disabled zone (`fault_adc = 0`): the rail is still drawn so the pad keeps its shape, but muted. */
 const DISABLED_COLOR = theme.alpha(theme.palette.slate.textDim, 0.12)
 
@@ -163,9 +163,10 @@ interface FootpadZoneProps {
   path: SkPath
   stroke: number
   drive: ZoneDrive
+  fillColor: string
 }
 
-function FootpadZone({ path, stroke, drive }: FootpadZoneProps) {
+function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
   return (
     <>
       <Path
@@ -185,7 +186,7 @@ function FootpadZone({ path, stroke, drive }: FootpadZoneProps) {
         strokeWidth={stroke}
         strokeCap="round"
         strokeJoin="round"
-        color={FILL_COLOR}
+        color={fillColor}
         start={0}
         end={drive.end}
       />
@@ -197,7 +198,7 @@ function FootpadZone({ path, stroke, drive }: FootpadZoneProps) {
  * The engaged zone's glow, spilling only into the pad. It is clipped to the interior so the light
  * reads as the pad lighting up under the foot, rather than as a halo around a line.
  */
-function FootpadGlow({ path, stroke, drive }: FootpadZoneProps) {
+function FootpadGlow({ path, stroke, drive, fillColor }: FootpadZoneProps) {
   return (
     <Path
       path={path}
@@ -205,7 +206,7 @@ function FootpadGlow({ path, stroke, drive }: FootpadZoneProps) {
       strokeWidth={stroke * GLOW_WIDTH_FACTOR}
       strokeCap="round"
       strokeJoin="round"
-      color={FILL_COLOR}
+      color={fillColor}
       opacity={drive.glow}
     >
       <BlurMask blur={stroke * GLOW_WIDTH_FACTOR} style="normal" />
@@ -247,6 +248,7 @@ export function FootpadIndicator({
   testID,
 }: FootpadIndicatorProps) {
   'use no memo'
+  const fillColor = useResolvedColor(theme.palette.green.text)
   const geometry = useMemo(() => buildGeometry(width), [width])
   const left = useZoneDrive(adc1, threshold1)
   const right = useZoneDrive(adc2, threshold2)
@@ -269,11 +271,31 @@ export function FootpadIndicator({
             <DashPathEffect intervals={CENTER_DASH} />
           </Path>
           <Group clip={geometry.interior}>
-            <FootpadGlow path={geometry.left} stroke={geometry.stroke} drive={left} />
-            <FootpadGlow path={geometry.right} stroke={geometry.stroke} drive={right} />
+            <FootpadGlow
+              path={geometry.left}
+              stroke={geometry.stroke}
+              drive={left}
+              fillColor={fillColor}
+            />
+            <FootpadGlow
+              path={geometry.right}
+              stroke={geometry.stroke}
+              drive={right}
+              fillColor={fillColor}
+            />
           </Group>
-          <FootpadZone path={geometry.left} stroke={geometry.stroke} drive={left} />
-          <FootpadZone path={geometry.right} stroke={geometry.stroke} drive={right} />
+          <FootpadZone
+            path={geometry.left}
+            stroke={geometry.stroke}
+            drive={left}
+            fillColor={fillColor}
+          />
+          <FootpadZone
+            path={geometry.right}
+            stroke={geometry.stroke}
+            drive={right}
+            fillColor={fillColor}
+          />
         </Group>
         {showValues ? (
           <>

@@ -50,7 +50,7 @@ export function AppBlockScreen({
           <Text style={styles.title}>Update required</Text>
           <View style={styles.versions}>
             <Text style={styles.versionFrom}>v{installedVersion}</Text>
-            <ArrowRightIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+            <ArrowRightIcon size={14} color={theme.neutral.textMuted} weight="bold" />
             <Text style={styles.versionTo}>v{latestVersion}</Text>
           </View>
         </View>
@@ -59,9 +59,9 @@ export function AppBlockScreen({
         </ScrollView>
         <Button
           label="Update Vescape"
+          variant="tune"
           icon={ArrowFatLinesUpIcon}
           onPress={onUpdate}
-          style={styles.action}
         />
       </SafeAreaView>
     </Modal>
@@ -71,7 +71,7 @@ export function AppBlockScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
     padding: 24,
     gap: 20,
   },
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     borderColor: theme.status.upgrade.border,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   versionFrom: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 14,
   },
   versionTo: {
@@ -115,8 +115,5 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     paddingBottom: 12,
-  },
-  action: {
-    backgroundColor: theme.status.upgrade.color,
   },
 })

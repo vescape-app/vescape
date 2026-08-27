@@ -36,8 +36,11 @@ import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
 import { startWeatherSync } from '@/modules/weather/store/weatherStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { theme } from '@/constants/theme'
+import { ThemeController } from '@/modules/settings/components/ThemeController'
+import { useThemeStore } from '@/hooks/useTheme'
+import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
+import { MapThemeCoordinator } from '@/screens/MapThemeCoordinator'
 
 const clerkPublishableKey = requireClerkPublishableKey()
 
@@ -60,6 +63,8 @@ initSentry()
 
 function RootLayout() {
   const insets = useSafeAreaInsets()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const resolvedNeutral = neutralColors[resolvedTheme]
   const [fontsLoaded, fontError] = useFonts({
     'Raleway-300': require('../../assets/fonts/Raleway-300.ttf'),
     'Raleway-400': require('../../assets/fonts/Raleway-400.ttf'),
@@ -131,17 +136,19 @@ function RootLayout() {
       <BoardConfigChangeNoticeModal />
       <DiagnosticErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
+          <ThemeController />
+          <MapThemeCoordinator />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: theme.palette.slate.bg },
-              headerTintColor: theme.palette.slate.textPrimary,
+              headerStyle: { backgroundColor: resolvedNeutral.bg },
+              headerTintColor: resolvedNeutral.textPrimary,
               headerTitleStyle: { fontFamily: theme.font('600'), fontSize: 14 },
               headerTitleAlign: 'center',
               headerShadowVisible: false,
               headerLeft: () => <HeaderBackButton />,
               headerLeftContainerStyle: { paddingLeft: 10 },
               headerRightContainerStyle: { paddingRight: 10 },
-              cardStyle: { backgroundColor: theme.palette.slate.bg },
+              cardStyle: { backgroundColor: resolvedNeutral.bg },
             }}
           >
             <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
@@ -159,6 +166,10 @@ function RootLayout() {
             <Stack.Screen
               name={stackScreens.settingsComponents}
               options={{ title: 'Components' }}
+            />
+            <Stack.Screen
+              name={stackScreens.settingsComponentsTheme}
+              options={{ title: 'Theme foundations' }}
             />
             <Stack.Screen
               name={stackScreens.settingsNavigationDiagnostic}
@@ -189,6 +200,7 @@ function RootLayout() {
               name={stackScreens.settingsLiveTelemetry}
               options={{ title: 'Live telemetry' }}
             />
+            <Stack.Screen name={stackScreens.settingsVisuals} options={{ title: 'Appearance' }} />
             <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
             <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
@@ -230,7 +242,7 @@ function RootLayout() {
           >
             <DevBadge />
           </View>
-          <StatusBar style="light" />
+          <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
         </GestureHandlerRootView>
       </DiagnosticErrorBoundary>
     </ClerkProvider>

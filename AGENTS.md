@@ -47,6 +47,19 @@ Do not fix local machine, shell, PATH, Java, Android SDK, Maestro, or other CLI/
 - Keep project scripts portable and free of machine-specific paths.
 - If a tool is missing from non-interactive shells, repair the shell/agent environment, not `package.json`.
 
+## Device UI Verification
+
+Never use the already-installed production/release app as evidence for local JS or TypeScript UI
+changes. `adb shell am start`, `monkey`, and deep links only launch whichever bundle is already
+installed; they do not prove that the app contains the current working tree.
+
+- Before taking a verification screenshot, confirm that the launched app is the development build
+  attached to the current Metro server and current workspace bundle.
+- If that cannot be confirmed, report that the installed build is stale and do not draw conclusions
+  about the local UI from it.
+- A release APK has its JS bundled at build time. Rebuild and reinstall it before using it to verify
+  any JS or TypeScript change.
+
 ## Architecture Discipline
 
 Keep the architecture sharp:

@@ -2,9 +2,9 @@ import type { BoardWarningSeverity } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
 
-/** Severity → theme status token. Critical uses the error palette (red); warn uses caution (yellow). */
+/** Severity → theme status token. Critical uses the error palette (red); warn uses warning (orange). */
 export function severityStatus(severity: BoardWarningSeverity) {
-  return severity === 'critical' ? theme.status.error : theme.status.caution
+  return severity === 'critical' ? theme.status.error : theme.status.warning
 }
 
 export const SEVERITY_LABEL: Record<BoardWarningSeverity, string> = {

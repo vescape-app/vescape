@@ -7,6 +7,11 @@ import type { SkFont } from '@shopify/react-native-skia'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import {
+  useResolvedAccentColors,
+  useResolvedNeutralColors,
+  useResolvedTelemetryColors,
+} from '@/hooks/useTheme'
+import {
   LEGEND_VALUE_WIDTH,
   READOUT_BASELINE,
   READOUT_HEIGHT,
@@ -39,6 +44,9 @@ export function TunePreviewHeader({
   onDisable?: () => void
   description: string
 }) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  const telemetry = useResolvedTelemetryColors()
   return (
     <View style={styles.header}>
       <View style={styles.titleBlock}>
@@ -61,7 +69,7 @@ export function TunePreviewHeader({
                   y={SPEED_BASELINE}
                   text={speedStr}
                   font={speedFont}
-                  color={theme.telemetry.speed}
+                  color={telemetry.speed}
                 />
               )}
             </Canvas>
@@ -74,10 +82,10 @@ export function TunePreviewHeader({
                 if (!enabled) onDisable()
               }}
               trackColor={{
-                false: theme.palette.slate.border,
-                true: theme.alpha(theme.tune.color, 0.6),
+                false: neutral.border,
+                true: theme.alpha(accents.purple.color, 0.6),
               }}
-              thumbColor={theme.tune.color}
+              thumbColor={accents.purple.color}
               accessibilityLabel="Disable Tune Preview"
             />
           ) : null}
@@ -93,7 +101,7 @@ export function TunePreviewHeader({
                   y={READOUT_BASELINE}
                   text={boardAngleStr}
                   font={readoutFont}
-                  color={theme.palette.sky.color}
+                  color={accents.sky.color}
                 />
               )}
             </Canvas>
@@ -108,7 +116,7 @@ export function TunePreviewHeader({
                   y={READOUT_BASELINE}
                   text={targetAngleStr}
                   font={readoutFont}
-                  color={theme.palette.purple.light}
+                  color={accents.purple.light}
                 />
               )}
             </Canvas>
@@ -123,7 +131,7 @@ export function TunePreviewHeader({
                 y={READOUT_BASELINE}
                 text={currentStr}
                 font={readoutFont}
-                color={theme.telemetry.motorCurrent}
+                color={telemetry.motorCurrent}
               />
             )}
           </Canvas>

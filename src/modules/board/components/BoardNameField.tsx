@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, TextInput } from 'react-native'
 import { PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'

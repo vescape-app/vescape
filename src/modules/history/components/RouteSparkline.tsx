@@ -3,6 +3,7 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { Canvas, Circle, Path } from '@shopify/react-native-skia'
 
 import { theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import {
   routePreviewPath,
   routePreviewProjection,
@@ -32,6 +33,9 @@ export function RouteSparkline({
   endpoints = false,
   style,
 }: RouteSparklineProps) {
+  const resolvedColor = useResolvedColor(color)
+  const startColor = useResolvedColor(theme.palette.green.color)
+  const endColor = useResolvedColor(theme.status.error.color)
   const path = useMemo(() => routePreviewPath(points, width, height), [height, points, width])
   const marks = useMemo(() => {
     if (!endpoints || points.length < 2) return null
@@ -46,20 +50,15 @@ export function RouteSparkline({
           <Path
             path={path}
             style="stroke"
-            color={color}
+            color={resolvedColor}
             strokeWidth={2}
             strokeCap="round"
             strokeJoin="round"
           />
           {marks ? (
             <>
-              <Circle
-                cx={marks.start.x}
-                cy={marks.start.y}
-                r={3}
-                color={theme.palette.green.color}
-              />
-              <Circle cx={marks.end.x} cy={marks.end.y} r={3} color={theme.status.error.color} />
+              <Circle cx={marks.start.x} cy={marks.start.y} r={3} color={startColor} />
+              <Circle cx={marks.end.x} cy={marks.end.y} r={3} color={endColor} />
             </>
           ) : null}
         </Canvas>

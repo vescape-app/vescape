@@ -90,9 +90,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
               style={[
                 styles.imuMarker,
                 {
-                  borderColor: imuConnected
-                    ? theme.palette.purple.color
-                    : theme.palette.slate.textMuted,
+                  borderColor: imuConnected ? theme.palette.purple.color : theme.neutral.textMuted,
                 },
               ]}
             />
@@ -102,7 +100,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
                 {
                   backgroundColor: imuConnected
                     ? theme.palette.purple.color
-                    : theme.palette.slate.textMuted,
+                    : theme.neutral.textMuted,
                 },
                 imuLineStyle,
               ]}

@@ -302,5 +302,5 @@ const styles = StyleSheet.create({
   stack: {
     gap: 8,
   },
-  description: { color: theme.palette.slate.textMuted, fontSize: 10, fontWeight: '600' },
+  description: { color: theme.neutral.textSecondary, fontSize: 10, fontWeight: '600' },
 })

@@ -178,7 +178,7 @@ export default function EditBoardScreen() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   container: {
     flex: 1,

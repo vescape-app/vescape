@@ -69,7 +69,7 @@ export function EdgeDrawer({
   edge = 'bottom',
   title,
   icon: IconComponent,
-  iconColor = theme.palette.slate.textSecondary,
+  iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
   initialFocusRef,
   onReachContentEnd,
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
    * fade is what conveys the drawer leaving.
    */
   drawerScrim: {
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   drawerTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '300',
   },
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 999,
-    backgroundColor: theme.alpha(theme.palette.slate.textSecondary, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.6),
     marginVertical: 3,
   },
 })

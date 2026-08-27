@@ -48,7 +48,7 @@ function DialRow({
   step,
   unit,
   previousValue,
-  accent = theme.palette.slate.textSecondary,
+  accent = theme.neutral.textSecondary,
   onValueChange,
 }: DialWidgetProps) {
   return (
@@ -76,7 +76,7 @@ function SquareDial({
   max,
   step,
   unit,
-  accent = theme.palette.slate.textSecondary,
+  accent = theme.neutral.textSecondary,
   help = '',
   onValueChange,
 }: DialWidgetProps) {
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   pressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   label: {
     fontSize: 11,
@@ -153,13 +153,13 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   readoutValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 28,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
   readoutUnit: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '800',
     marginBottom: 5,

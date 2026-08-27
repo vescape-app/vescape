@@ -11,7 +11,7 @@ import {
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import {
   getLegalLimitCountryDetail,
@@ -117,7 +117,7 @@ function DetailRow({ icon: IconComponent, title, body }: DetailRowProps) {
   return (
     <View style={styles.detailRow}>
       <View style={styles.detailIcon}>
-        <IconComponent size={16} color={theme.palette.slate.textPrimary} weight="fill" />
+        <IconComponent size={16} color={theme.neutral.textPrimary} weight="fill" />
       </View>
       <View style={styles.detailText}>
         <Text style={styles.detailTitle}>{title}</Text>
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   badge: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flex: 1,
     minHeight: 70,
     padding: 10,
@@ -166,27 +166,27 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   badgeLabel: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   badgeValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '900',
   },
   badgeCaption: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 10,
     fontWeight: '700',
     lineHeight: 13,
     textAlign: 'right',
   },
   alertRow: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   },
   alertText: {
     flex: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
     lineHeight: 17,
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailRow: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     flexDirection: 'row',
     gap: 10,
     padding: 11,
@@ -229,29 +229,29 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   detailTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '900',
   },
   detailBody: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 17,
   },
   sourceCard: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
     padding: 11,
     gap: 4,
   },
   sourceLabel: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   sourceValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
   },

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SparklineMaxBadge, type SparklinePoint } from '@/components/charts/Sparkline'
 import { theme } from '@/constants/theme'
+import { useResolvedTelemetryColors } from '@/hooks/useTheme'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
   getHistoryMetricHotRange,
@@ -48,6 +49,7 @@ export function DualGauge({
   transparent = false,
   containerStyle,
 }: DualGaugeProps) {
+  const telemetryColors = useResolvedTelemetryColors()
   const router = useRouter()
   return (
     <View
@@ -63,7 +65,7 @@ export function DualGauge({
           <View style={styles.halfPressable}>
             <SparklineMaxBadge
               points={speedSeries ?? []}
-              color={telemetry.speed.color}
+              color={telemetryColors.speed}
               fmt={telemetry.speed.formatWithUnit}
               position="left"
             />
@@ -71,7 +73,7 @@ export function DualGauge({
           <View style={styles.halfPressable}>
             <SparklineMaxBadge
               points={dutySeries ?? []}
-              color={telemetry.duty.color}
+              color={telemetryColors.duty}
               fmt={telemetry.duty.formatWithUnit}
             />
           </View>
@@ -98,8 +100,7 @@ export function DualGauge({
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: theme.palette.slate.surface,
-    borderRadius: 16,
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0),
     padding: 12,
     marginHorizontal: 4,
     marginBottom: 6,

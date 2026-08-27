@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 
@@ -37,6 +37,26 @@ export function MapControls({
   const navigationExpanded = showNavigationSelector && mapSelector === 'navigation'
   const styleExpanded = mapSelector === 'style'
   const selectorOpen = navigationExpanded || styleExpanded
+
+  // Picking a basemap or a camera mode collapses the selector shortly after: the rider saw the
+  // change land on the map, so the expanded list no longer earns its space.
+  const lastStyleKeyRef = useRef(mapStyleKey)
+  useEffect(() => {
+    const styleChanged = lastStyleKeyRef.current !== mapStyleKey
+    lastStyleKeyRef.current = mapStyleKey
+    if (!styleChanged || !styleExpanded) return
+    const timer = setTimeout(() => setMapSelector(null), 750)
+    return () => clearTimeout(timer)
+  }, [mapStyleKey, setMapSelector, styleExpanded])
+
+  const lastOrientationModeRef = useRef(mapOrientationMode)
+  useEffect(() => {
+    const orientationChanged = lastOrientationModeRef.current !== mapOrientationMode
+    lastOrientationModeRef.current = mapOrientationMode
+    if (!orientationChanged || !navigationExpanded) return
+    const timer = setTimeout(() => setMapSelector(null), 750)
+    return () => clearTimeout(timer)
+  }, [mapOrientationMode, navigationExpanded, setMapSelector])
 
   return (
     <View pointerEvents="box-none" style={styles.mapControlsLayer}>

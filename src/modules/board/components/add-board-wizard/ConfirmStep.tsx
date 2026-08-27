@@ -79,7 +79,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
         <View style={styles.divider} />
         <ConfirmRow
           icon={TextTIcon}
-          iconColor={theme.palette.yellow.color}
+          iconColor={theme.palette.orange.color}
           label="Name"
           value={wizard.name.trim() || 'Unnamed board'}
         />
@@ -88,7 +88,7 @@ export function ConfirmStep({ wizard }: { wizard: UseAddBoardWizard }) {
             <View style={styles.divider} />
             <ConfirmRow
               icon={TextTIcon}
-              iconColor={theme.palette.yellow.color}
+              iconColor={theme.palette.orange.color}
               label="Description"
               value={wizard.description.trim()}
             />
@@ -158,14 +158,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     paddingVertical: 4,
   },
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -185,17 +185,17 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
     marginLeft: 42,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   value: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },

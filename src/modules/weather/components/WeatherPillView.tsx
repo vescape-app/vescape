@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -107,12 +107,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   expandedTemp: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '700',
   },
   expandedLabel: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   sunTimeText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

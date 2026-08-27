@@ -44,7 +44,7 @@ export default function MapSettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={ImageSquareIcon}
-          description="Tune map detail and satellite overlay without changing routes or pins."
+          description="Set the satellite baseline. Active theme and daylight adapt it without changing routes or pins."
         />
 
         <SettingsSectionTitle>General</SettingsSectionTitle>
@@ -59,11 +59,11 @@ export default function MapSettingsScreen() {
                 value={hideTelemetryMapDetails}
                 onValueChange={(enabled) => void set('hideTelemetryMapDetails', enabled)}
                 trackColor={{
-                  false: theme.palette.slate.border,
+                  false: theme.neutral.border,
                   true: theme.palette.sky.border,
                 }}
                 thumbColor={
-                  hideTelemetryMapDetails ? theme.palette.sky.color : theme.palette.slate.textMuted
+                  hideTelemetryMapDetails ? theme.palette.sky.color : theme.neutral.textMuted
                 }
               />
             }
@@ -82,11 +82,11 @@ export default function MapSettingsScreen() {
                 value={satelliteOverlayEnabled}
                 onValueChange={(enabled) => void set('satelliteOverlayEnabled', enabled)}
                 trackColor={{
-                  false: theme.palette.slate.border,
+                  false: theme.neutral.border,
                   true: theme.palette.sky.border,
                 }}
                 thumbColor={
-                  satelliteOverlayEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
+                  satelliteOverlayEnabled ? theme.palette.sky.color : theme.neutral.textMuted
                 }
               />
             }
@@ -97,7 +97,7 @@ export default function MapSettingsScreen() {
                 icon={SlidersHorizontalIcon}
                 iconColor={theme.palette.cyan.color}
                 label="Home image opacity"
-                hint="Applies on the home telemetry map; Explore uses a clearer satellite overlay"
+                hint="Maximum for the home map; theme and daylight may dim it"
                 right={
                   <Stepper
                     value={satelliteOpacityPercent}
@@ -116,7 +116,7 @@ export default function MapSettingsScreen() {
                 icon={MapTrifoldIcon}
                 iconColor={theme.palette.violet.color}
                 label="Explore image opacity"
-                hint="Applies inside the full map Satellite view"
+                hint="Maximum in Explore; theme and daylight may dim it"
                 right={
                   <Stepper
                     value={satelliteMapOpacityPercent}
@@ -135,7 +135,7 @@ export default function MapSettingsScreen() {
                 icon={PaletteIcon}
                 iconColor={theme.palette.purple.color}
                 label="Satellite desaturation"
-                hint="Applies on the home telemetry map; 0% keeps the original colors"
+                hint="Base home-map value; night adaptation can desaturate further"
                 right={
                   <Stepper
                     value={satelliteDesaturationPercent}
@@ -161,7 +161,7 @@ export default function MapSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

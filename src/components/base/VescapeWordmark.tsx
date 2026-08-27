@@ -1,21 +1,26 @@
-import { Image } from 'expo-image'
-import type { StyleProp, ImageStyle } from 'react-native'
+import type { StyleProp, ViewStyle } from 'react-native'
+import { LocalSvg } from 'react-native-svg/css'
 
-// Source PNG is 1200x369; keep that ratio so callers only set a width.
-const WORDMARK = require('@/../assets/images/splashIcon.png')
-const ASPECT_RATIO = 1200 / 369
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
+
+const WORDMARK = require('@/../assets/logo/Vescape-text.svg')
+const ASPECT_RATIO = 1221 / 375
 
 interface VescapeWordmarkProps {
   width?: number
-  style?: StyleProp<ImageStyle>
+  style?: StyleProp<ViewStyle>
 }
 
 export function VescapeWordmark({ width = 220, style }: VescapeWordmarkProps) {
+  const neutral = useResolvedNeutralColors()
+
   return (
-    <Image
-      source={WORDMARK}
-      style={[{ width, height: width / ASPECT_RATIO }, style]}
-      contentFit="contain"
+    <LocalSvg
+      asset={WORDMARK}
+      width={width}
+      height={width / ASPECT_RATIO}
+      color={neutral.textPrimary}
+      style={style}
     />
   )
 }

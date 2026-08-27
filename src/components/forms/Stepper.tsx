@@ -1,8 +1,9 @@
 import { MinusIcon, PlusIcon } from 'phosphor-react-native'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { inputBase } from '@/components/forms/Input'
+import { useResolvedControlColors } from '@/hooks/useTheme'
 
 interface StepperProps {
   value: number
@@ -12,6 +13,7 @@ interface StepperProps {
   step?: number | ((value: number, direction: 1 | -1) => number)
   onChange: (nextValue: number) => void
   fullWidth?: boolean
+  style?: StyleProp<ViewStyle>
   testIDPrefix?: string
 }
 
@@ -23,8 +25,10 @@ export function Stepper({
   step = 1,
   onChange,
   fullWidth = false,
+  style,
   testIDPrefix,
 }: StepperProps) {
+  const control = useResolvedControlColors()
   const stepFor = (direction: 1 | -1) =>
     typeof step === 'function' ? step(value, direction) : step
   const decrementValue = min == null ? value - stepFor(-1) : Math.max(min, value - stepFor(-1))
@@ -33,14 +37,20 @@ export function Stepper({
   const canIncrement = max == null || value < max
 
   return (
-    <View style={styles.stepper}>
+    <View
+      style={[
+        styles.stepper,
+        { backgroundColor: control.background, borderColor: control.border },
+        style,
+      ]}
+    >
       <Pressable
         style={[styles.stepperBtn, !canDecrement && styles.stepperBtnDisabled]}
         onPress={() => onChange(decrementValue)}
         disabled={!canDecrement}
         testID={testIDPrefix ? `${testIDPrefix}-decrement` : undefined}
       >
-        <MinusIcon size={14} color={theme.palette.slate.textPrimary} weight="bold" />
+        <MinusIcon size={14} color={control.icon} weight="bold" />
       </Pressable>
       <View style={[styles.valueWrap, fullWidth && styles.fullWidthValueWrap]}>
         <Text style={styles.stepperValue}>{value}</Text>
@@ -52,7 +62,7 @@ export function Stepper({
         disabled={!canIncrement}
         testID={testIDPrefix ? `${testIDPrefix}-increment` : undefined}
       >
-        <PlusIcon size={14} color={theme.palette.slate.textPrimary} weight="bold" />
+        <PlusIcon size={14} color={control.icon} weight="bold" />
       </Pressable>
     </View>
   )
@@ -85,13 +95,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stepperValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 15,
     fontWeight: '700',
     textAlign: 'center',
   },
   stepperUnit: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 0,

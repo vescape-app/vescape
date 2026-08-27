@@ -138,10 +138,10 @@ export default function TuneHistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   empty: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 24,
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.palette.slate.surface,
+    borderBottomColor: theme.neutral.surface,
     gap: 10,
   },
   entryInfo: {
@@ -163,12 +163,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   entryDate: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   entryDetail: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   diffLine: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },

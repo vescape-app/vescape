@@ -13,7 +13,7 @@ export function NameStep({ wizard }: { wizard: UseAddBoardWizard }) {
     <WizardStepLayout
       title="Name your board"
       icon={TextTIcon}
-      color={theme.palette.yellow.color}
+      color={theme.palette.orange.color}
       footer={
         <WizardNavActions
           canContinue={Boolean(wizard.name.trim())}

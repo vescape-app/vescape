@@ -69,10 +69,11 @@ export function MapOrientationSelector({
     <ExpandableCircleMenu
       activeKey={activeMode}
       activeIcon={activeIcon}
-      activeColor={theme.palette.green.text}
-      activeBackground={theme.alpha(theme.palette.green.color, 0.12)}
+      activeColor={theme.palette.green.color}
+      activeBackground={theme.palette.slate.surfaceDeep}
       collapsedAccessibilityLabel={`Navigation: ${activeMode === 'northUp' ? 'North up' : activeMode === 'gpsHeading' ? 'GPS heading' : activeMode === 'phoneHeading' ? 'Compass' : 'Free rotate'}`}
       expanded={expanded}
+      variant="lightTabs"
       size={size}
       options={options}
       onToggle={onToggle}
@@ -86,7 +87,7 @@ function getNavigationIcon(
   activeMode: MapOrientationMode,
   iconSize: number,
 ) {
-  const color = activeMode === mode ? theme.palette.green.text : theme.palette.slate.textSecondary
+  const color = activeMode === mode ? theme.palette.green.color : theme.palette.mono.white
   if (mode === 'northUp') {
     return <ArrowUpIcon size={iconSize} color={color} weight="bold" />
   }

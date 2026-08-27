@@ -94,7 +94,7 @@ export function BoardWarningProbe() {
 
 const styles = StyleSheet.create({
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -104,15 +104,15 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   card: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
     padding: 14,
   },
   ttsHint: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     marginBottom: 10,
     lineHeight: 16,
@@ -125,9 +125,9 @@ const styles = StyleSheet.create({
   warningButton: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     paddingVertical: 12,
   },
@@ -138,12 +138,12 @@ const styles = StyleSheet.create({
     borderColor: theme.status.error.color,
   },
   warningButtonText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   warningEmpty: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 12,
     marginTop: 12,
   },
@@ -152,12 +152,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   warningRowKind: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   warningRowPayload: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     fontFamily: 'monospace',
   },

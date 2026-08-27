@@ -19,6 +19,7 @@ import {
 } from 'react-native-reanimated'
 
 import type { MainViewState } from '@/screens/main/mainViewState'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { historyBottomGradientStart } from '@/screens/main/map/mapVignetteGeometry'
 
 interface MapVignetteProps {
@@ -32,6 +33,7 @@ interface MapVignetteProps {
 }
 
 interface VignetteLayerProps {
+  color: string
   width: number
   height: number
   opacity: { value: number }
@@ -45,7 +47,6 @@ interface VignetteLayerProps {
   children?: ReactNode
 }
 
-const DARK = theme.palette.slate.surfaceDeep
 const RADIAL_POSITIONS = [0, 0.4, 0.68, 1]
 const TOP_POSITIONS = [0, 0.7, 1]
 const MAP_EDGE_POSITIONS = [0, 0.55, 1]
@@ -76,11 +77,12 @@ function mapEdgeVignetteSpace(mode: MainViewState) {
   }
 }
 
-function vignetteOpacity(level: number) {
-  return theme.alpha(DARK, level as 0 | 0.12 | 0.3 | 0.6 | 0.85)
+function vignetteOpacity(color: string, level: number) {
+  return theme.alpha(color, level as 0 | 0.12 | 0.3 | 0.6 | 0.85)
 }
 
 function VignetteLayer({
+  color,
   width,
   height,
   opacity,
@@ -106,7 +108,7 @@ function VignetteLayer({
             <RadialGradient
               c={vec(width / 2, height / 2)}
               r={radialRadius}
-              colors={radial.map(vignetteOpacity)}
+              colors={radial.map((level) => vignetteOpacity(color, level))}
               positions={RADIAL_POSITIONS}
             />
           </Rect>
@@ -116,7 +118,7 @@ function VignetteLayer({
         <LinearGradient
           start={vec(0, 0)}
           end={vec(0, height * topEnd)}
-          colors={top.map(vignetteOpacity)}
+          colors={top.map((level) => vignetteOpacity(color, level))}
           positions={topPositions}
         />
       </Rect>
@@ -125,7 +127,7 @@ function VignetteLayer({
           <LinearGradient
             start={vec(0, height)}
             end={vec(0, height * bottomStart)}
-            colors={bottom.map(vignetteOpacity)}
+            colors={bottom.map((level) => vignetteOpacity(color, level))}
             positions={bottomPositions}
           />
         </Rect>
@@ -136,10 +138,12 @@ function VignetteLayer({
 }
 
 function AnimatedHistoryBottomGradient({
+  color,
   width,
   height,
   bottomStart,
 }: {
+  color: string
   width: number
   height: number
   bottomStart: SharedValue<number>
@@ -153,7 +157,7 @@ function AnimatedHistoryBottomGradient({
       <LinearGradient
         start={vec(0, height)}
         end={gradientEnd}
-        colors={[0.85, 0.6, 0.3, 0].map(vignetteOpacity)}
+        colors={[0.85, 0.6, 0.3, 0].map((level) => vignetteOpacity(color, level))}
         positions={HISTORY_BOTTOM_POSITIONS}
       />
     </Rect>
@@ -167,6 +171,7 @@ export function MapVignette({
   visible = true,
   fadeOutProgress,
 }: MapVignetteProps) {
+  const neutral = useResolvedNeutralColors()
   const { width, height } = useWindowDimensions()
   const mapSurfaceVisible = mode === 'map' || mode === 'weather' || mode === 'legalLimits'
   const mapEdgeSpace = mapEdgeVignetteSpace(mode === 'telemetry' ? 'map' : mode)
@@ -204,6 +209,7 @@ export function MapVignette({
     <View pointerEvents="none" style={styles.wrap}>
       <Canvas style={styles.canvas}>
         <VignetteLayer
+          color={neutral.surfaceDeep}
           width={width}
           height={height}
           opacity={homeLayerOpacity}
@@ -216,6 +222,7 @@ export function MapVignette({
           bottomStart={topOnly ? undefined : 0.66}
         />
         <VignetteLayer
+          color={neutral.surfaceDeep}
           width={width}
           height={height}
           opacity={mapSurfaceLayerOpacity}
@@ -228,6 +235,7 @@ export function MapVignette({
         />
         {!topOnly ? (
           <VignetteLayer
+            color={neutral.surfaceDeep}
             width={width}
             height={height}
             opacity={historyLayerOpacity}
@@ -237,6 +245,7 @@ export function MapVignette({
             topEnd={0.24}
           >
             <AnimatedHistoryBottomGradient
+              color={neutral.surfaceDeep}
               width={width}
               height={height}
               bottomStart={historyBottomStartValue}

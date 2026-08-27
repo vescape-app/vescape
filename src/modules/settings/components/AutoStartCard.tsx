@@ -164,8 +164,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     gap: 2,
-    // Deep surface at partial opacity over the card: recessed, but not a black hole.
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    backgroundColor: theme.neutral.surface,
   },
   boardRow: {
     flexDirection: 'row',
@@ -175,7 +174,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   boardText: { flex: 1, gap: 2 },
-  boardName: { fontSize: 15, fontWeight: '600' },
+  boardName: { color: theme.neutral.textPrimary, fontSize: 15, fontWeight: '600' },
   boardNameArmed: { color: theme.palette.green.text },
-  boardBleId: { fontSize: 11, color: theme.palette.slate.textMuted },
+  boardBleId: { fontSize: 11, color: theme.neutral.textMuted },
 })

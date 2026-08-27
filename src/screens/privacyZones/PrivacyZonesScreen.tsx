@@ -17,6 +17,7 @@ import {
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { usePrivacyZoneEditor } from '@/screens/privacyZones/usePrivacyZoneEditor'
 import { ZoneNameModal } from '@/screens/privacyZones/ZoneNameModal'
@@ -30,6 +31,8 @@ export function PrivacyZonesScreen() {
   const insets = useSafeAreaInsets()
   const navigation = useNavigation()
   const editor = usePrivacyZoneEditor()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const isDark = resolvedTheme === 'dark'
 
   useLayoutEffect(() => {
     navigation.setOptions({ headerTransparent: true })
@@ -55,7 +58,8 @@ export function PrivacyZonesScreen() {
     <View style={styles.container}>
       <MapView
         style={StyleSheet.absoluteFill}
-        styleJSON={ONE_DARK_MAP_STYLE}
+        styleURL={isDark ? undefined : Mapbox.StyleURL.Outdoors}
+        styleJSON={isDark ? ONE_DARK_MAP_STYLE : undefined}
         onCameraChanged={editor.handleCameraChanged}
         onDidFinishLoadingMap={() => editor.setMapReady(true)}
         scaleBarEnabled={false}
@@ -129,7 +133,11 @@ export function PrivacyZonesScreen() {
               </PillSelectorItem>
             )
           })}
-          <PillSelectorAdd testID="privacy-zone-add-button" onPress={editor.handleAddPress} />
+          <PillSelectorAdd
+            testID="privacy-zone-add-button"
+            onPress={editor.handleAddPress}
+            style={styles.addZoneButton}
+          />
         </PillSelector>
       </View>
 
@@ -226,7 +234,7 @@ export function PrivacyZonesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   pillsFloating: {
     position: 'absolute',
@@ -234,6 +242,9 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  addZoneButton: {
+    backgroundColor: theme.control.background,
   },
   circleWrapper: {
     ...StyleSheet.absoluteFill,
@@ -257,7 +268,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   zoneLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
     textShadowColor: theme.alpha(theme.palette.mono.black, 0.85),
@@ -268,7 +279,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.6),
   },
   bottomBar: {
     position: 'absolute',

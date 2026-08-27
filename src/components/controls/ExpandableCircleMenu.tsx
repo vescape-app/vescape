@@ -2,6 +2,12 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
+import {
+  useResolvedColor,
+  useResolvedControlColors,
+  useResolvedNeutralColors,
+  useThemeStore,
+} from '@/hooks/useTheme'
 
 interface ExpandableCircleMenuOption<Key extends string> {
   key: Key
@@ -16,6 +22,7 @@ interface ExpandableCircleMenuProps<Key extends string> {
   activeBackground: string
   collapsedAccessibilityLabel: string
   expanded: boolean
+  variant?: 'control' | 'lightTabs'
   size?: ExpandableCircleMenuSize
   options: ExpandableCircleMenuOption<Key>[]
   autoCloseDelayMs?: number | null
@@ -66,12 +73,19 @@ export function ExpandableCircleMenu<Key extends string>({
   activeBackground,
   collapsedAccessibilityLabel,
   expanded,
+  variant = 'control',
   size = 'md',
   options,
   autoCloseDelayMs = DEFAULT_AUTO_CLOSE_DELAY_MS,
   onToggle,
   onSelect,
 }: ExpandableCircleMenuProps<Key>) {
+  const resolvedActiveColor = useResolvedColor(activeColor)
+  const resolvedActiveBackground = useResolvedColor(activeBackground)
+  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const useLightTabs = variant === 'lightTabs' && resolvedTheme === 'light'
   const metrics = MENU_METRICS[size]
   const optionCount = options.length
   const onToggleRef = useRef(onToggle)
@@ -108,7 +122,12 @@ export function ExpandableCircleMenu<Key extends string>({
     <Animated.View
       style={[
         styles.container,
-        { height: metrics.height, borderRadius: metrics.radius },
+        {
+          height: metrics.height,
+          borderRadius: metrics.radius,
+          backgroundColor: control.background,
+          borderColor: control.border,
+        },
         shellStyle,
       ]}
     >
@@ -125,9 +144,11 @@ export function ExpandableCircleMenu<Key extends string>({
             icon={option.icon}
             selected={activeKey === option.key}
             expanded={expanded}
-            activeColor={activeColor}
-            activeBackground={activeBackground}
-            activeBorder={theme.alpha(activeColor, 0.6)}
+            activeColor={resolvedActiveColor}
+            activeBackground={useLightTabs ? neutral.surface : resolvedActiveBackground}
+            activeBorder={theme.alpha(resolvedActiveColor, 0.6)}
+            inactiveBackground={TRANSPARENT_OPTION_COLOR}
+            inactiveBorder={TRANSPARENT_OPTION_COLOR}
             metrics={metrics}
             onPress={() => {
               if (activeKey === option.key) {
@@ -174,6 +195,8 @@ interface CircleMenuOptionButtonProps {
   activeColor: string
   activeBackground: string
   activeBorder: string
+  inactiveBackground: string
+  inactiveBorder: string
   metrics: (typeof MENU_METRICS)[ExpandableCircleMenuSize]
   onPress: () => void
 }
@@ -186,6 +209,8 @@ function CircleMenuOptionButton({
   activeColor,
   activeBackground,
   activeBorder,
+  inactiveBackground,
+  inactiveBorder,
   metrics,
   onPress,
 }: CircleMenuOptionButtonProps) {
@@ -193,12 +218,23 @@ function CircleMenuOptionButton({
     () => ({
       width: withTiming(getOptionWidth(metrics, expanded, selected), ANIMATION),
       backgroundColor: withTiming(
-        getOptionBackground(activeBackground, expanded, selected),
+        getOptionBackground(activeBackground, inactiveBackground, expanded, selected),
         ANIMATION,
       ),
-      borderColor: withTiming(getOptionBorder(activeBorder, expanded, selected), ANIMATION),
+      borderColor: withTiming(
+        getOptionBorder(activeBorder, inactiveBorder, expanded, selected),
+        ANIMATION,
+      ),
     }),
-    [activeBackground, activeBorder, expanded, metrics, selected],
+    [
+      activeBackground,
+      activeBorder,
+      expanded,
+      inactiveBackground,
+      inactiveBorder,
+      metrics,
+      selected,
+    ],
   )
   const labelStyle = useAnimatedStyle(
     () => ({
@@ -276,22 +312,32 @@ function getLabelMaxWidth(
   )
 }
 
-function getOptionBackground(activeBackground: string, expanded: boolean, selected: boolean) {
+function getOptionBackground(
+  activeBackground: string,
+  inactiveBackground: string,
+  expanded: boolean,
+  selected: boolean,
+) {
   'worklet'
-  return expanded && selected ? activeBackground : TRANSPARENT_OPTION_COLOR
+  return expanded && selected ? activeBackground : inactiveBackground
 }
 
-function getOptionBorder(activeBorder: string, expanded: boolean, selected: boolean) {
+function getOptionBorder(
+  activeBorder: string,
+  inactiveBorder: string,
+  expanded: boolean,
+  selected: boolean,
+) {
   'worklet'
-  return expanded && selected ? activeBorder : TRANSPARENT_OPTION_COLOR
+  return expanded && selected ? activeBorder : inactiveBorder
 }
 
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.control.background,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.control.border,
   },
   options: {
     position: 'absolute',

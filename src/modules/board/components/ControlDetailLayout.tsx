@@ -172,7 +172,7 @@ function AlertsHeader() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,
@@ -180,9 +180,22 @@ const styles = StyleSheet.create({
   },
   alertsSection: {
     gap: 10,
+    paddingTop: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  sectionLabel: {
+    color: theme.neutral.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   stateNote: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 14,
   },
 })

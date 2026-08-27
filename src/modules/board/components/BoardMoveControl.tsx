@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.palette.cyan.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.control.background,
   },
   buttonPressed: {
     backgroundColor: theme.palette.cyan.bg,
@@ -151,17 +151,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   strengthLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
   strengthHint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
   disabledNote: {
     marginTop: 10,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
 })

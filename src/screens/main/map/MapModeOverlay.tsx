@@ -8,6 +8,7 @@ import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { MapTargetSheetHost } from '@/modules/map-points/components/MapTargetSheetHost'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { routes } from '@/navigation/routes'
 import { FullMapControls } from '@/screens/main/map/FullMapControls'
 import { navigationActionColors } from '@/screens/main/map/navigationActionColors'
@@ -54,9 +55,16 @@ export function MapModeOverlay({
   const navigationProfile = useMapStore((s) => s.navigation?.profile ?? null)
   const navigationDistanceMeters = useMapStore((s) => s.navigation?.distanceMeters ?? 0)
   const navigationDurationSeconds = useMapStore((s) => s.navigation?.durationSeconds ?? 0)
+  const navigationComputedAtMs = useMapStore((s) => s.navigation?.computedAtMs ?? null)
+  const acceptedNavigationComputedAtMs = useMapStore((s) => s.acceptedNavigationComputedAtMs)
+  const navigationRemainingDistanceMeters = useMapStore(
+    (s) => s.routeProgress?.remainingMeters ?? null,
+  )
   const navigationComputing = useMapStore((s) => s.navigationComputing)
   const recomputeNavigation = useMapStore((s) => s.recomputeNavigation)
   const setNavigationProfile = useMapStore((s) => s.setNavigationProfile)
+  const acceptNavigation = useMapStore((s) => s.acceptNavigation)
+  const editNavigation = useMapStore((s) => s.editNavigation)
 
   const navigationTarget =
     activeNavigationTarget ??
@@ -72,7 +80,14 @@ export function MapModeOverlay({
       : null)
   const targetSheetVisible =
     selectedNavigationTarget != null || (navigationTarget != null && !addMenuOpen)
-  const navigationAction = navigationActionColors(riderColor)
+  const activeNavigationAccepted =
+    navigationComputedAtMs != null && acceptedNavigationComputedAtMs === navigationComputedAtMs
+  const accents = useResolvedAccentColors()
+  const navigationAction = navigationActionColors(
+    riderColor,
+    accents.green.light,
+    accents.green.light,
+  )
 
   const focusTargetOnMap = useCallback(
     (target: MapSelection) => {
@@ -176,8 +191,17 @@ export function MapModeOverlay({
             onBeginEdit={setEditingMapPointId}
             onEndEdit={() => setEditingMapPointId(null)}
             onNavigateSelected={() => void onNavigateSelectedTarget()}
-            onCancelNavigation={onCancelNavigation}
-            onConfirmNavigation={onExit}
+            onCancelNavigation={() => {
+              editNavigation()
+              onCancelNavigation()
+            }}
+            onConfirmNavigation={() => {
+              acceptNavigation()
+              onExit()
+            }}
+            activeNavigationAccepted={activeNavigationAccepted}
+            onEditActiveNavigation={editNavigation}
+            navigationRemainingDistanceMeters={navigationRemainingDistanceMeters}
             navigationStatus={navigationStatus}
             navigationPath={
               navigationStatus === 'ready'

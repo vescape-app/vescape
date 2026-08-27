@@ -2,8 +2,9 @@ import { StyleSheet, Switch, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface SwitchWidgetProps {
   label: string
@@ -31,15 +32,17 @@ export function SwitchWidget({
   accessibilityLabel,
 }: SwitchWidgetProps) {
   const square = size === 'square'
+  const neutral = useResolvedNeutralColors()
+  const resolvedAccent = useResolvedColor(accent)
 
   const control = (
     <Switch
       value={value}
       onValueChange={onValueChange}
       disabled={disabled}
-      trackColor={{ false: theme.palette.slate.border, true: theme.alpha(accent, 0.6) }}
-      thumbColor={value ? accent : theme.palette.slate.textMuted}
-      ios_backgroundColor={theme.palette.slate.border}
+      trackColor={{ false: neutral.border, true: theme.alpha(resolvedAccent, 0.6) }}
+      thumbColor={value ? resolvedAccent : neutral.textMuted}
+      ios_backgroundColor={neutral.border}
       accessibilityLabel={accessibilityLabel ?? label}
     />
   )
@@ -70,7 +73,7 @@ export function SwitchWidget({
 
 const styles = StyleSheet.create({
   widget: {
-    ...widgetSurface,
+    ...secondaryWidgetSurface,
   },
   widgetRow: {
     flexDirection: 'row',
@@ -93,12 +96,12 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   label: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
   hint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
   },
   squareControl: {

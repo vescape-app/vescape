@@ -1,18 +1,25 @@
-import { theme } from '@/constants/theme'
+import { accentColors, theme, type ResolvedAccentColors } from '@/constants/theme'
 import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 /** Fallback tints assigned by roster index when a Rider has not picked a color. */
-const RIDER_FALLBACK_COLORS = [
-  theme.palette.cyan.color,
-  theme.palette.green.color,
-  theme.palette.amber.color,
-  theme.palette.fuchsia.color,
-  theme.palette.sky.color,
-]
+function riderFallbackColors(accents: ResolvedAccentColors) {
+  return [
+    accents.cyan.color,
+    accents.green.color,
+    accents.amber.color,
+    accents.fuchsia.color,
+    accents.sky.color,
+  ]
+}
 
 /** Marker/trail tint for a Rider: their chosen color, a palette fallback, or muted when stale. */
-export function rosterRiderColor(rider: RosterRider, index: number): string {
+export function rosterRiderColor(
+  rider: RosterRider,
+  index: number,
+  accents: ResolvedAccentColors = accentColors.dark,
+): string {
+  const fallbackColors = riderFallbackColors(accents)
   return rider.stale
     ? theme.palette.slate.textMuted
-    : (rider.color ?? RIDER_FALLBACK_COLORS[index % RIDER_FALLBACK_COLORS.length])
+    : (rider.color ?? fallbackColors[index % fallbackColors.length])
 }

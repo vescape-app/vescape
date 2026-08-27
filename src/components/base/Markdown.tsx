@@ -271,22 +271,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 21,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
   },
   heading: {
     fontWeight: '700',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   strong: {
     fontWeight: '700',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   em: {
     fontStyle: 'italic',
   },
   strike: {
     textDecorationLine: 'line-through',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
   link: {
     color: theme.palette.sky.color,
@@ -296,12 +296,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontSize: 13,
     color: theme.palette.cyan.text,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   codeBlock: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -310,14 +310,14 @@ const styles = StyleSheet.create({
   codeLanguage: {
     fontFamily: 'monospace',
     fontSize: 10,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     textTransform: 'uppercase',
   },
   codeBlockText: {
     fontFamily: 'monospace',
     fontSize: 12,
     lineHeight: 18,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   list: {
     gap: 6,
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontSize: 14,
     lineHeight: 21,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
   listBody: {
     flex: 1,
@@ -345,22 +345,22 @@ const styles = StyleSheet.create({
   },
   rule: {
     height: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   table: {
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     overflow: 'hidden',
   },
   tableRow: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.border,
+    borderTopColor: theme.neutral.border,
   },
   tableHeaderRow: {
     borderTopWidth: 0,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   tableCell: {
     width: CELL_WIDTH,
@@ -371,21 +371,21 @@ const styles = StyleSheet.create({
   tableHeaderText: {
     fontSize: 12,
     fontWeight: '700',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   tableCellText: {
     fontSize: 13,
     fontWeight: '500',
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
   },
   image: {
     width: '100%',
     borderRadius: 8,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   imageFallback: {
     fontSize: 13,
     fontStyle: 'italic',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
 })

@@ -44,7 +44,7 @@ const SPEED_RAMP: ChartColorRamp = {
 const DUTY_BANDS: ChartColorRamp = {
   mode: 'bands',
   stops: [
-    { value: 0, color: theme.palette.slate.textMuted },
+    { value: 0, color: theme.neutral.textMuted },
     { value: 50, color: theme.palette.amber.color },
     { value: 75, color: theme.palette.red.color },
   ],
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   note: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     marginTop: 6,
   },
