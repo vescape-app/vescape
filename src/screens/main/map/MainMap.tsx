@@ -276,6 +276,7 @@ export const MainMap = memo(
 
     const {
       cameraRef,
+      controllerStateRef,
       currentCameraRef,
       engine,
       previewPanActiveRef,
@@ -392,6 +393,7 @@ export const MainMap = memo(
 
     const { handleMapLoaded, handleCameraChanged, handleMapIdle } = useMainMapCameraEvents({
       cameraRef,
+      controllerStateRef,
       currentCameraRef,
       engine,
       previewPanActiveRef,

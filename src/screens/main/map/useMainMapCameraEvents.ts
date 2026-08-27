@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
+import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
 import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import { getLiveFollowCameraProfile, getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
 import { shouldPreserveLiveFollowGesture } from '@/modules/map/lib/cameraGestureState'
@@ -18,6 +19,7 @@ import type { GpsFix } from '@/screens/main/map/cameraControlTypes'
 
 export function useMainMapCameraEvents({
   cameraRef,
+  controllerStateRef,
   currentCameraRef,
   engine,
   previewPanActiveRef,
@@ -50,6 +52,7 @@ export function useMainMapCameraEvents({
   setLoadedStyleSignature,
 }: {
   cameraRef: RefObject<Camera | null>
+  controllerStateRef: RefObject<MapCameraControllerState>
   currentCameraRef: RefObject<CameraSnapshot | null>
   engine: CameraEngine
   previewPanActiveRef: RefObject<boolean>
@@ -99,10 +102,14 @@ export function useMainMapCameraEvents({
       styleReloadPendingRef.current = false
       return
     }
+    // Whatever the controller last decided still stands; a style load is not a reason to hand the
+    // camera back to live follow when the rider is looking at the weather, a route, or a ride.
     const camera =
       historyActive && historyPreview
         ? getHistoryPreviewCamera(historyPreview)
-        : getLiveFollowCamera()
+        : controllerStateRef.current.mode.kind === 'liveFollow' || currentCameraRef.current == null
+          ? getLiveFollowCamera()
+          : currentCameraRef.current
     const initialHeading =
       'heading' in camera && typeof camera.heading === 'number'
         ? camera.heading
@@ -126,6 +133,8 @@ export function useMainMapCameraEvents({
     })
   }, [
     cameraRef,
+    controllerStateRef,
+    currentCameraRef,
     engine,
     followHeadingDeg,
     getHistoryPreviewCamera,

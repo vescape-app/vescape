@@ -22,6 +22,107 @@ describe('map camera controller', () => {
     expect(repeated.effect).toBeNull()
   })
 
+  describe('preview pan ownership', () => {
+    const anchorCamera = {
+      centerCoordinate: [19, 50] as [number, number],
+      zoomLevel: 15,
+      heading: 30,
+      pitch: 20,
+    }
+    const liveCamera = {
+      centerCoordinate: [19.1, 50.1] as [number, number],
+      zoomLevel: 16,
+      heading: 90,
+      pitch: 52,
+    }
+
+    test('a cancelled drag rides back to the mode it interrupted', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const cancelled = reduceMapCameraIntent(panning, {
+        type: 'CancelPreviewPan',
+        liveCamera,
+        anchorCamera,
+      })
+
+      expect(cancelled.state.mode).toEqual({ kind: 'liveFollow' })
+      expect(cancelled.effect?.camera).toEqual(liveCamera)
+    })
+
+    test('a cancelled drag without a fix stays on its own anchor', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const cancelled = reduceMapCameraIntent(panning, {
+        type: 'CancelPreviewPan',
+        liveCamera: null,
+        anchorCamera,
+      })
+
+      expect(cancelled.effect?.camera).toEqual(anchorCamera)
+    })
+
+    test('an intent issued mid-drag takes the camera and the cancel does nothing', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+      const weather = reduceMapCameraIntent(panning, {
+        type: 'EnterWeatherView',
+        currentCamera: null,
+        fallbackCenterCoordinate: [19, 50],
+        perspectiveEnabled: true,
+      })
+
+      const cancelled = reduceMapCameraIntent(weather.state, {
+        type: 'CancelPreviewPan',
+        liveCamera,
+        anchorCamera,
+      })
+
+      expect(weather.effect?.camera.zoomLevel).toBe(8)
+      expect(cancelled.state).toBe(weather.state)
+      expect(cancelled.effect).toBeNull()
+    })
+
+    test('manual browsing does not take the camera from a drag in progress', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const browsing = reduceMapCameraIntent(panning, { type: 'BrowseManually' })
+
+      expect(browsing.state).toBe(panning)
+    })
+
+    test('a drag that ends on the map keeps the dragged viewport', () => {
+      const panning = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'BeginPreviewPan',
+      }).state
+
+      const ended = reduceMapCameraIntent(panning, { type: 'EndPreviewPan' })
+
+      expect(ended.state.mode).toEqual({ kind: 'manualBrowse' })
+      expect(ended.effect).toBeNull()
+    })
+
+    test('ending a drag that no longer owns the camera changes nothing', () => {
+      const weather = reduceMapCameraIntent(initialMapCameraControllerState, {
+        type: 'EnterWeatherView',
+        currentCamera: null,
+        fallbackCenterCoordinate: [19, 50],
+        perspectiveEnabled: true,
+      }).state
+
+      const ended = reduceMapCameraIntent(weather, { type: 'EndPreviewPan' })
+
+      expect(ended.state).toBe(weather)
+      expect(ended.effect).toBeNull()
+    })
+  })
+
   test('routes live follow through the GPS heading profile', () => {
     const result = reduceMapCameraIntent(initialMapCameraControllerState, {
       type: 'FollowLive',

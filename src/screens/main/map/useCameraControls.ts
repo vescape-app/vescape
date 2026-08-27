@@ -283,15 +283,12 @@ export function useCameraControls({
   const previewGestures = useCameraPreviewGestures({
     cameraRefs,
     cameraFix,
-    followGps,
     gpsCamera,
-    historyActive,
     perspectiveEnabled,
     applyLiveFollowCamera,
-    enterCameraMode,
+    dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,
     getLiveFollowCamera,
-    setFollowGps,
     setFollowZoomLevel,
   })
   const intentCommands = useCameraIntentCommands({
@@ -372,6 +369,7 @@ export function useCameraControls({
 
   return {
     cameraRef,
+    controllerStateRef,
     currentCameraRef,
     engine,
     previewPanActiveRef,
