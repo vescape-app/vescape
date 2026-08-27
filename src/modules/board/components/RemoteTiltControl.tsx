@@ -18,8 +18,8 @@ export function RemoteTiltControl({
   defaultExpanded = true,
 }: RemoteTiltControlProps) {
   const {
-    boardConnected,
     canCommand,
+    blockedMessage,
     setRemoteTilt,
     releaseRemoteTilt,
     lockRemoteTilt,
@@ -38,8 +38,8 @@ export function RemoteTiltControl({
       surface={false}
     >
       <RemoteTiltBody
-        boardConnected={boardConnected}
         canCommand={canCommand}
+        blockedMessage={blockedMessage}
         setRemoteTilt={setRemoteTilt}
         releaseRemoteTilt={releaseRemoteTilt}
         lockRemoteTilt={lockRemoteTilt}
@@ -50,15 +50,15 @@ export function RemoteTiltControl({
 }
 
 function RemoteTiltBody({
-  boardConnected,
   canCommand,
+  blockedMessage,
   setRemoteTilt,
   releaseRemoteTilt,
   lockRemoteTilt,
   stopRemoteTilt,
 }: {
-  boardConnected: boolean
   canCommand: boolean
+  blockedMessage: string | null
   setRemoteTilt: (value: number) => void
   releaseRemoteTilt: (value: number, durationMs: number) => void
   lockRemoteTilt: (value: number) => void
@@ -75,7 +75,7 @@ function RemoteTiltBody({
       />
       {!canCommand ? (
         <Text style={styles.remoteTiltDisabled}>
-          {boardConnected ? 'Trusted board link required.' : 'Connect board to control tilt.'}
+          {blockedMessage ?? 'Connect board to control tilt.'}
         </Text>
       ) : null}
     </>

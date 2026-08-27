@@ -27,8 +27,8 @@ export function BoardMoveControl({
   defaultExpanded = false,
 }: BoardMoveControlProps) {
   const {
-    boardConnected,
     canCommand,
+    blockedMessage,
     strengthPercent,
     setStrengthPercent,
     moveForward,
@@ -80,9 +80,7 @@ export function BoardMoveControl({
       </View>
 
       {!canCommand ? (
-        <Text style={styles.disabledNote}>
-          {boardConnected ? 'Trusted board link required.' : 'Connect board to move it.'}
-        </Text>
+        <Text style={styles.disabledNote}>{blockedMessage ?? 'Connect board to move it.'}</Text>
       ) : null}
     </CollapsibleWidget>
   )
