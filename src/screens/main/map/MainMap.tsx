@@ -296,8 +296,6 @@ export const MainMap = memo(
       mapViewport: cameraViewport,
       mapOrientationMode,
       heading: {
-        gpsMode: headingFollowMode,
-        phoneMode: phoneHeadingMode,
         phoneReady: phoneHeadingStatus === 'ready',
         getFollowDeg: getFollowHeadingDeg,
         resetOnRecenter: mapOrientationMode !== 'freeRotate',

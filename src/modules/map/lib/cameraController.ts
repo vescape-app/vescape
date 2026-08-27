@@ -62,14 +62,6 @@ export type MapCameraIntent =
       viewportHeight?: number
     }
   | {
-      type: 'ChangeOrientationMode'
-      orientationMode: MapOrientationMode
-      gpsCamera: Pick<MapCameraSnapshot, 'centerCoordinate' | 'zoomLevel'>
-      followHeadingDeg: number
-      perspectiveEnabled: boolean
-      viewportHeight?: number
-    }
-  | {
       type: 'ChangePerspective'
       enabled: boolean
       currentCamera: MapCameraSnapshot | null
