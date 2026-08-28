@@ -14,6 +14,9 @@
 import { requireNativeModule, type EventSubscription } from 'expo-modules-core'
 
 import { e2eFake } from './e2eFake'
+import { decodeBmsSeriesFrames, type BmsSeriesFrame } from './bmsSeries'
+
+export type { BmsSeriesFrame } from './bmsSeries'
 
 // ---------------------------------------------------------------------------
 // Event payloads
@@ -499,12 +502,6 @@ export interface BmsEvent {
   canId: number | null
 }
 
-export interface BmsSeriesFrame {
-  capturedAt: number
-  cellVoltages: number[]
-  balancing: boolean[]
-}
-
 export interface BmsSeriesUpdate {
   mode: 'snapshot' | 'append'
   generation: number
@@ -729,18 +726,6 @@ export interface HistoryRange {
 const SAMPLE_COLUMN_COUNT = 25
 
 /**
- * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_FIXED_LANES`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `BMS_SERIES_FIXED_LANES`
- */
-const BMS_SERIES_FIXED_LANES = 3
-
-/**
- * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_BALANCE_LANE_BITS`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `BMS_SERIES_BALANCE_LANE_BITS`
- */
-const BMS_SERIES_BALANCE_LANE_BITS = 30
-
-/**
  * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer (25
  * lanes/sample, row-major) plus a device dictionary, instead of an array of ~25-field objects. This
  * replaces N×25 per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
@@ -822,44 +807,7 @@ interface NativeBmsSeriesEvent {
   windowMs: number
   cellCount: number
   count: number
-  columns: ArrayBuffer
-}
-
-const hasLaneBit = (bits: number, bit: number): boolean => Math.floor(bits / 2 ** bit) % 2 === 1
-
-/**
- * Decode the Live BMS Series columnar buffer from native into public domain frames.
- *
- * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `encodeBmsSeriesColumns`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `encodeBmsSeriesColumns`
- */
-function decodeBmsSeriesFrames(event: NativeBmsSeriesEvent): BmsSeriesFrame[] {
-  const { cellCount, count, columns } = event
-  if (!count || !cellCount || !columns) return []
-  const laneCount = BMS_SERIES_FIXED_LANES + cellCount
-  const lanes = new Float64Array(columns)
-  const frameCount = Math.min(count, Math.floor(lanes.length / laneCount))
-  const frames = new Array<BmsSeriesFrame>(frameCount)
-  for (let row = 0; row < frameCount; row++) {
-    const o = row * laneCount
-    const bitsLo = lanes[o + 1]
-    const bitsHi = lanes[o + 2]
-    const cellVoltages = new Array<number>(cellCount)
-    const balancing = new Array<boolean>(cellCount)
-    for (let cell = 0; cell < cellCount; cell++) {
-      cellVoltages[cell] = lanes[o + BMS_SERIES_FIXED_LANES + cell]
-      balancing[cell] =
-        cell < BMS_SERIES_BALANCE_LANE_BITS
-          ? hasLaneBit(bitsLo, cell)
-          : hasLaneBit(bitsHi, cell - BMS_SERIES_BALANCE_LANE_BITS)
-    }
-    frames[row] = {
-      capturedAt: lanes[o],
-      cellVoltages,
-      balancing,
-    }
-  }
-  return frames
+  columns: ArrayBuffer | Uint8Array
 }
 
 export interface TelemetrySummary {
