@@ -276,6 +276,22 @@ _Avoid_: Wear alarm, watch notification
 An app-detected abnormal Board condition worth the rider's attention — such as excessive cell-voltage spread, unstable telemetry readings, or a dangerous VESC/Refloat setting. Detected natively, keyed one-per-problem-kind per Board (re-detection updates the same warning rather than duplicating it), and carries a severity of warn or critical. Stored durably like automotive fault codes: it clears automatically when its detector re-evaluates with real data and the condition is gone, and the rider may clear it manually — but a still-true condition simply re-fires it. Detection logic is app-authored (unlike a rider-authored **Alert Rule**) and the finding is rider-facing (unlike a debug-facing **Diagnostic Event**).
 _Avoid_: Board alert (collides with Alert Rule), fault (reserved for VESC firmware fault codes), board issue, health event
 
+**VESC Fault Occurrence**:
+A durable Board-owned record of one activation of a VESC firmware fault code, observed live or discovered later from the controller's retained fault register, independent of Ride Recording, Ride History, Board Warnings, and Diagnostic Events.
+_Avoid_: Fault sample, Ride History fault, Board Warning, Diagnostic Event
+
+**VESC Fault Register Snapshot**:
+A lossless capture of the fault register reported by a Board's motor controller at one discovery time, retained as source evidence for VESC Fault Occurrences.
+_Avoid_: Fault occurrence, parsed fault, terminal log
+
+**VESC Fault Capture**:
+The full sequence of decoded Board samples surrounding a live VESC Fault Occurrence, retained at the Board Session's achieved telemetry rate without Ride History decimation.
+_Avoid_: Ride Recording, Telemetry Sample snapshot, Debug Recording, raw BLE trace
+
+**VESC Fault Collection**:
+A default-on App Setting that acts as a fault-specific kill switch. Turning it off stops live fault-trigger handling, terminal fault-register audits, new fault persistence, and fault-driven indicators without deleting existing fault evidence.
+_Avoid_: Board Warnings switch, fault dismissal, clear fault register
+
 **Debug Recording**:
 A developer-facing `.jsonl` capture of one Board Session — raw BLE traffic, session-state transitions, GPS fixes, and phone sensor readings the board never sees (compass heading) — plus a `meta` header describing the board it was recorded from. Recorded on-device and exportable for offline analysis or detector replay. Replaying one drives a real session through the transport seam, and the recording owns that session's position, heading and time for its whole duration. Not a **Ride Recording** (no telemetry-sample persistence, not rider-facing) and not part of **Ride History**.
 _Avoid_: session log, BLE dump, trace
@@ -428,6 +444,26 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Warning** firing for the first time in a **Board Session** also records one **Diagnostic Event**.
 - A **Board Warning** is not an **Alert Rule** (app-authored, not rider-authored) and produces no riding feedback; it is passive display only.
 - A **Board Warning** detector can be replayed offline against a **Debug Recording**'s BLE frames; a committed clean Debug Recording guards against false positives.
+- A **Board** may have zero or more **VESC Fault Occurrences** whether or not Ride Recording is enabled.
+- A **VESC Fault Occurrence** belongs to its **Board**, never to Ride History, and is not deleted or aggregated as part of telemetry history; removing that Board from active use does not delete its occurrences, captures, or register snapshots.
+- A **VESC Fault Occurrence** is firmware-authored; a **Board Warning** is app-detected, and a **Diagnostic Event** describes app-observed failures.
+- Undismissed **VESC Fault Occurrences** may drive the same Board health indicator and appear beside **Board Warnings**, but remain a separate read model and persistence model.
+- Dismissing a **VESC Fault Occurrence** only removes that individual occurrence from the Board health indicator. Its occurrence, register evidence, and capture remain durable, and a later activation of the same code begins undismissed.
+- Disabling **VESC Fault Collection** leaves existing occurrences, snapshots, and captures readable and dismissible. Re-enabling it resumes collection, and a later audit may discover faults the controller retained while collection was disabled.
+- A **VESC Fault Occurrence** observed live has an observed occurrence time; one discovered only from the controller's retained fault register has an unknown occurrence time and a separate discovery time.
+- Fault read models label those times explicitly and preserve the controller register position: a register-only occurrence is ordered by discovery time when no observed occurrence time exists, but discovery time is never presented or persisted as occurrence time.
+- A live **VESC Fault Occurrence** begins when the active VESC fault changes from none or from another code; repeated observations of the same active code remain one occurrence until the code clears or changes.
+- A direct change from one active fault code to another closes the first occurrence and opens the second. Each occurrence owns a self-contained **VESC Fault Capture**, so their capture windows may intentionally contain duplicate samples.
+- Losing the **Board Session** while a **VESC Fault Occurrence** is active does not prove that it cleared or reactivated; continuity remains unresolved until later controller evidence distinguishes another activation.
+- A **VESC Fault Register Snapshot** belongs to one **Board** and may reveal zero or more **VESC Fault Occurrences**.
+- Every successful Board link or re-link establishes a new fault-register baseline; a Board saved before fault collection existed establishes one on its first later connection. Register entries already present are retained as discarded, register-only **VESC Fault Occurrences**: linking shows a small informational summary when available and the occurrences remain visible in the Board's fault list, but they never drive the Board health indicator.
+- Consecutive identical **VESC Fault Register Snapshots** represent unchanged source evidence rather than new fault occurrences.
+- A **VESC Fault Register Snapshot** records whether the terminal response was complete. An incomplete response retains every received byte, yields occurrences only from complete fault blocks, never proves that the register was empty, and is retried at a later safe audit opportunity.
+- When a register read immediately follows a live fault trigger, its newest previously unseen entry with the same fault code enriches the open **VESC Fault Occurrence** instead of creating a duplicate. A fault code is never a global deduplication key; if the match is ambiguous, the register entry remains a separate register-discovered occurrence.
+- A live-observed **VESC Fault Occurrence** owns a **VESC Fault Capture** spanning five seconds before detection through two seconds after clearing; an occurrence discovered only from a retained register may have no such capture.
+- A **VESC Fault Capture** retains every decoded Board sample Vescape received in its capture window and is independent of Ride Recording and Ride History sampling.
+- A live fault trigger requests the retained fault register immediately without pausing telemetry polling. Terminal traffic may temporarily lower the Board Session's achieved telemetry rate; the **VESC Fault Capture** still retains every decoded sample actually received.
+- A **VESC Fault Capture** contains no **GPS Fix**; a read side may correlate a timed occurrence with existing Ride History without copying or owning its location.
 - An **Alert Rule** evaluates against live **Telemetry Samples**.
 - A **One-Shot** or **Repeating Alert Rule** announces only while fired and needs an **Alert Re-Arm** before it can announce again; a **Geiger Alert Rule** has neither, its cadence follows **Alert Range Depth**.
 - An **Alert Rule** belongs to one **Board**; the alert engine evaluates only the connected **Board**'s rules, and deleting a **Board** deletes its rules.
@@ -467,6 +503,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 
 > **Dev:** "If an Online Block applies to this app version, does the rider lose access to their Board?"
 > **Domain expert:** "No. Only Online Capabilities such as Group Ride are unavailable; local Board and ride capabilities remain available. An exceptional App Block may hide normal app UI, but it still does not end already-running Board work."
+
+> **Dev:** "If a VESC fault occurs while Ride Recording is disabled, should it disappear with Ride History?"
+> **Domain expert:** "No. A VESC Fault Occurrence belongs to the Board and remains available independently of ride recording and history."
 
 ## Flagged Ambiguities
 
