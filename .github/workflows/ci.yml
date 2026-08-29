@@ -10,7 +10,8 @@ jobs:
   # Native compiles cost minutes a JS-only change never needs: Gradle wants a JDK and the Android
   # SDK, Swift wants a macOS runner. Gate both on their own source trees so the common PR pays for
   # the JS checks alone.
-  changes:
+  native-gate:
+    name: Native gate
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       android: ${{ steps.filter.outputs.android }}
@@ -64,8 +65,8 @@ jobs:
           - run: bun run release-notes:check
 
   android:
-    needs: changes
-    if: needs.changes.outputs.android == 'true'
+    needs: native-gate
+    if: needs.native-gate.outputs.android == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
@@ -108,8 +109,8 @@ jobs:
   # escaped every PR and failed at TestFlight time. The SwiftPM package globs the same tree
   # CocoaPods ships, so the tests cannot run without compiling it.
   ios:
-    needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    needs: native-gate
+    if: needs.native-gate.outputs.ios == 'true'
     runs-on: blacksmith-6vcpu-macos-26
     steps:
       - uses: actions/checkout@v4
