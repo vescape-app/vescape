@@ -99,6 +99,7 @@ jobs:
       - name: Generate iOS project
         run: bunx expo prebuild --platform ios --no-install
         env:
+          VERSION_CODE: ${{ steps.release.outputs.build_number }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
           EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
