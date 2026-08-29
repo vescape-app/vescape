@@ -2063,9 +2063,9 @@ internal final class BoardSessionController: VescGattListener {
   private func requestFaultRegisterRead(_ reason: VescFaultRegisterReason) {
     guard VescFaultCoordinator.shared.collectionEnabled else { return }
     guard faultRegisterReader == nil else { return }
-    guard let session, let config, let boardId = config.appBoardId else { return }
+    guard let session, let config else { return }
     let now = nowMs()
-    let reader = VescFaultRegisterReader(boardId: boardId, reason: reason, startedAtMs: now)
+    let reader = VescFaultRegisterReader(boardId: config.appBoardId, reason: reason, startedAtMs: now)
     faultRegisterReader = reader
     faultAuditPolicy.onAuditStarted(now)
     _ = sendPayloadWithRetry(buildFaultsTerminalCommand(config.transport), session: session)
