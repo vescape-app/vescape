@@ -19,6 +19,7 @@ import {
   fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
+  type FixtureRunMode,
 } from './captureDriver.ts'
 import { pickDevice } from './devices.ts'
 
@@ -123,6 +124,7 @@ async function containerDir(udid: string): Promise<string | null> {
 export async function createIosDriver(
   requestedDevice: string | null,
   replay: string,
+  mode: FixtureRunMode = 'screenshots',
 ): Promise<CaptureDriver> {
   const sim = await resolveSimulator(requestedDevice)
 
@@ -133,13 +135,25 @@ export async function createIosDriver(
     deviceLabel: `${sim.name} (${sim.udid})`,
 
     async buildAndInstall() {
-      console.log('› Building the iOS screenshot Release build…')
+      console.log(`› Building the iOS ${mode} Release build…`)
       await runOrDie(['bun', 'run', 'native:sync', 'ios'])
       // A Release build with the flags baked in: no Metro, no dev-client launcher, so the app the
       // flows drive is the app the store gets.
       await runOrDie(
-        ['bunx', 'expo', 'run:ios', '--configuration', 'Release', '--device', sim.udid],
-        fixtureBuildEnv('screenshots', replay),
+        [
+          'bunx',
+          'expo',
+          'run:ios',
+          '--configuration',
+          'Release',
+          // Without `--no-bundler` Expo installs the app, opens the dev-client URL and stays
+          // attached to Metro, so the run never returns: the build looks finished and the flows
+          // never start. A Release build embeds its bundle, so nothing is left to serve.
+          '--no-bundler',
+          '--device',
+          sim.udid,
+        ],
+        fixtureBuildEnv(mode, replay),
       )
     },
 

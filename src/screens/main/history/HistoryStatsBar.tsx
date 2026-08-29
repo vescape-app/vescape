@@ -97,7 +97,9 @@ interface CompactStatProps {
 function CompactStat({ item }: CompactStatProps) {
   const IconComponent = item.icon
   return (
-    <View style={styles.compactCell} pointerEvents="none">
+    // Flows assert on the id, not the label: `compactLabel` is uppercased by `textTransform`, and
+    // iOS reports the rendered text where Android reports the source string.
+    <View testID={`history-stat-${item.key}`} style={styles.compactCell} pointerEvents="none">
       <Text style={styles.compactLabel} numberOfLines={1} adjustsFontSizeToFit>
         {item.label}
       </Text>

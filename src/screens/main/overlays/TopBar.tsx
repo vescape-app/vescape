@@ -94,7 +94,10 @@ const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         style={styles.boardButton}
         onPress={onOpenSelector}
         testID="board-selector-trigger"
-        accessibilityLabel="Board selector"
+        // The board's name, not a static label: an `accessibilityLabel` replaces the children in
+        // the iOS accessibility tree, so a fixed string hides which board is selected from both
+        // VoiceOver and the flows that assert on it.
+        accessibilityLabel={`${name}, board selector`}
       >
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         {isReplay && showDevControls && <ReplayBadge />}
