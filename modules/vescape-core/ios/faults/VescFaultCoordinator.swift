@@ -55,7 +55,8 @@ protocol VescFaultStoring {
   func getAll() -> [VescFaultOccurrence]
   /// Newest still-open live occurrence for a Board, used to rehydrate state after a restart.
   func openLive(_ boardId: String) -> VescFaultOccurrence?
-  func upsert(_ occurrence: VescFaultOccurrence)
+  /// Returns false when the write failed, so callers can keep in-memory state unresolved.
+  @discardableResult func upsert(_ occurrence: VescFaultOccurrence) -> Bool
   @discardableResult func setDismissed(_ id: String, _ dismissed: Bool) -> Bool
 }
 
@@ -123,10 +124,12 @@ final class VescFaultCoordinator {
       guard timestamp - current.lastObservedAtMs >= Self.observationWriteIntervalMs else { return }
       var updated = current
       updated.lastObservedAtMs = timestamp
+      // Persist first: a failed write must not leave memory claiming a transition the durable store
+      // never took, because the controller-level edge dedupe would never retry it.
+      guard store.upsert(updated) else { return }
       lock.lock()
       active[boardId] = updated
       lock.unlock()
-      store.upsert(updated)
       return
     }
 
@@ -136,6 +139,7 @@ final class VescFaultCoordinator {
       current.lastObservedAtMs = timestamp
       store.upsert(current)
     }
+
     let opened = VescFaultOccurrence(
       id: newId(),
       boardId: boardId,
@@ -148,10 +152,10 @@ final class VescFaultCoordinator {
       registerPosition: nil,
       dismissed: false
     )
+    guard store.upsert(opened) else { return }
     lock.lock()
     active[boardId] = opened
     lock.unlock()
-    store.upsert(opened)
     emit(boardId)
   }
 
@@ -160,13 +164,18 @@ final class VescFaultCoordinator {
     guard collectionEnabled else { return }
     hydrate(boardId)
     lock.lock()
-    let current = active.removeValue(forKey: boardId)
+    let existing = active[boardId]
     lock.unlock()
-    guard var current else { return }
+    guard var current = existing else { return }
     let timestamp = now()
     current.clearedAtMs = timestamp
     current.lastObservedAtMs = max(current.lastObservedAtMs, timestamp)
-    store.upsert(current)
+    // Persist the clear before forgetting the occurrence: if the write fails, the occurrence stays
+    // active in memory and the next clear observation retries it.
+    guard store.upsert(current) else { return }
+    lock.lock()
+    active.removeValue(forKey: boardId)
+    lock.unlock()
     emit(boardId)
   }
 

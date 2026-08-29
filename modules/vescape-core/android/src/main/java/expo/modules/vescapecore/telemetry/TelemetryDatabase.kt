@@ -668,10 +668,6 @@ abstract class TelemetryDatabase : RoomDatabase() {
             "ON vesc_fault_occurrences(board_id, discovered_at)",
         )
 
-        if (!hasColumn(db, "app_settings", "vesc_fault_collection_enabled")) {
-          db.execSQL("ALTER TABLE app_settings ADD COLUMN vesc_fault_collection_enabled INTEGER NOT NULL DEFAULT 1")
-        }
-
         db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_fault")
         if (hasColumn(db, "telemetry_frames", "fault_code")) {
           db.execSQL(

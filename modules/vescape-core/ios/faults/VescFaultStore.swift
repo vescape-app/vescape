@@ -87,20 +87,24 @@ struct VescFaultStore: VescFaultStoring {
 
   // MARK: - Writes
 
-  func upsert(_ occurrence: VescFaultOccurrence) {
-    guard let writer = resolveWriter() else { return }
-    try? writer.write { db in
+  @discardableResult
+  func upsert(_ occurrence: VescFaultOccurrence) -> Bool {
+    guard let writer = resolveWriter() else { return false }
+    do {
+      try writer.write { db in
       try db.execute(
         sql: """
           INSERT INTO vesc_fault_occurrences
             (id, board_id, code, source, occurred_at, discovered_at, last_observed_at, cleared_at,
              register_position, dismissed)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          -- Lifecycle writes deliberately leave `dismissed` alone: a heartbeat carrying a stale
+          -- in-memory snapshot must never un-dismiss what the rider just acknowledged. Dismissal
+          -- has its own statement.
           ON CONFLICT(id) DO UPDATE SET
             last_observed_at = excluded.last_observed_at,
             cleared_at = excluded.cleared_at,
-            register_position = excluded.register_position,
-            dismissed = excluded.dismissed
+            register_position = excluded.register_position
           """,
         arguments: [
           occurrence.id, occurrence.boardId, occurrence.code, occurrence.source.rawValue,
@@ -108,6 +112,10 @@ struct VescFaultStore: VescFaultStoring {
           occurrence.clearedAtMs, occurrence.registerPosition, occurrence.dismissed,
         ]
       )
+      }
+      return true
+    } catch {
+      return false
     }
   }
 

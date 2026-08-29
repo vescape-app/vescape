@@ -1399,8 +1399,13 @@ private var wearAutoLaunchOnConnect = true
             pollingLoop.onResponse()
             if (parsed.hasFault) {
                 // Refloat fault mode: a state signal with zeroed metrics, never a Telemetry Sample.
-                // It opens/extends a VESC Fault Occurrence and stops here — persisting or
-                // aggregating it would poison Ride History with a frame of zeros.
+                // It opens/extends a VESC Fault Occurrence and stops before the telemetry pipeline —
+                // persisting or aggregating it would poison Ride History with a frame of zeros. The
+                // session bookkeeping above it still runs: the board answered, so it is ready and
+                // must not be torn down as unresponsive just because it is faulting.
+                telemetryPipeline.noteResponse(parsed, sessionToken)
+                markBoardReady()
+                startLinkIntegrityProbe(sessionToken)
                 onRefloatFaultFrame(parsed.faultCode)
                 return
             }
@@ -2939,8 +2944,16 @@ private var wearAutoLaunchOnConnect = true
         connectionSoundsEnabled = settings.connectionSoundsEnabled
         // `VESC Fault Collection` is its own kill switch — deliberately not gated on
         // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
-        VescFaultCoordinator.get(service.applicationContext).collectionEnabled =
-            settings.vescFaultCollectionEnabled
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        val collectionWasEnabled = coordinator.collectionEnabled
+        coordinator.collectionEnabled = settings.vescFaultCollectionEnabled
+        if (!collectionWasEnabled && settings.vescFaultCollectionEnabled) {
+            // Transitions were dropped while disabled, so the controller's edge state is a lie.
+            // Reset it to unknown so the next frame — fault or normal — reconciles the coordinator
+            // with what the controller is actually reporting.
+            liveFaultCode = FAULT_CODE_UNKNOWN
+            lastFaultDispatchAtMs = 0L
+        }
         val warningsWereEnabled = boardWarningsEnabled
         boardWarningsEnabled = settings.boardWarningsEnabled
         // Disabled→enabled with an already-trusted link: link integrity won't transition again, so

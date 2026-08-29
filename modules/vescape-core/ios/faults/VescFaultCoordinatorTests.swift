@@ -26,9 +26,24 @@ final class VescFaultCoordinatorTests: XCTestCase {
         .max { $0.discoveredAtMs < $1.discoveredAtMs }
     }
 
-    func upsert(_ occurrence: VescFaultOccurrence) {
-      if rows[occurrence.id] == nil { order.append(occurrence.id) }
-      rows[occurrence.id] = occurrence
+    /// Set to fail every write, mirroring a dead GRDB pool.
+    var writesFail = false
+
+    @discardableResult
+    func upsert(_ occurrence: VescFaultOccurrence) -> Bool {
+      guard !writesFail else { return false }
+      if rows[occurrence.id] == nil {
+        order.append(occurrence.id)
+        rows[occurrence.id] = occurrence
+        return true
+      }
+      // Lifecycle writes never rewrite `dismissed`, matching the SQL upsert.
+      var existing = rows[occurrence.id]!
+      existing.lastObservedAtMs = occurrence.lastObservedAtMs
+      existing.clearedAtMs = occurrence.clearedAtMs
+      existing.registerPosition = occurrence.registerPosition
+      rows[occurrence.id] = existing
+      return true
     }
 
     @discardableResult
@@ -149,6 +164,21 @@ final class VescFaultCoordinatorTests: XCTestCase {
 
     coordinator.setDismissed(id: existing, dismissed: true)
     XCTAssertTrue(store.all[0].dismissed)
+  }
+
+  func testAFailedClearWriteLeavesTheOccurrenceOpenSoItCanRetry() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+
+    store.writesFail = true
+    clock = 5_000
+    coordinator.onFaultCleared(boardId: "board")
+    XCTAssertNil(store.all[0].clearedAtMs)
+
+    store.writesFail = false
+    clock = 6_000
+    coordinator.onFaultCleared(boardId: "board")
+    XCTAssertEqual(store.all[0].clearedAtMs, 6_000)
   }
 
   func testLaterActivationOfADismissedCodeIsANewUndismissedOccurrence() {

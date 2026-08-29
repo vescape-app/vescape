@@ -388,7 +388,6 @@ data class AppSettings(
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
   /** `VESC Fault Collection` master switch — independent of [boardWarningsEnabled] (#430). */
-  @ColumnInfo(name = "vesc_fault_collection_enabled")
   val vescFaultCollectionEnabled: Boolean = true,
   val companionPresenceCooldownMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,

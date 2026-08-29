@@ -27,8 +27,18 @@ class VescFaultCoordinatorTest {
       .filter { it.boardId == boardId && it.source == VescFaultSource.LIVE && it.clearedAtMs == null }
       .maxByOrNull { it.discoveredAtMs }
 
+    /** Set to fail every write, mirroring a dead Room database. */
+    var writesFail = false
+
     override suspend fun upsert(occurrence: VescFaultOccurrence) {
-      rows[occurrence.id] = occurrence
+      if (writesFail) error("store write failed")
+      val existing = rows[occurrence.id]
+      // Lifecycle writes never rewrite `dismissed`, matching the DAO's insert-or-advance.
+      rows[occurrence.id] = existing?.copy(
+        lastObservedAtMs = occurrence.lastObservedAtMs,
+        clearedAtMs = occurrence.clearedAtMs,
+        registerPosition = occurrence.registerPosition,
+      ) ?: occurrence
     }
 
     override suspend fun setDismissed(id: String, dismissed: Boolean): Boolean {
@@ -138,6 +148,21 @@ class VescFaultCoordinatorTest {
 
     coordinator.setDismissed(existing, true)
     assertTrue(faults().single().dismissed)
+  }
+
+  @Test
+  fun `a failed clear write leaves the occurrence open so it can retry`() = runBlocking {
+    coordinator.onActiveFault("board", 9)
+
+    store.writesFail = true
+    clock = 5_000
+    runCatching { coordinator.onFaultCleared("board") }
+    assertNull(faults().single().clearedAtMs)
+
+    store.writesFail = false
+    clock = 6_000
+    coordinator.onFaultCleared("board")
+    assertEquals(6_000L, faults().single().clearedAtMs)
   }
 
   @Test

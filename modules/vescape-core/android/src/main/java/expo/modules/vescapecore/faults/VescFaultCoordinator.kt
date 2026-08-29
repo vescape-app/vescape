@@ -126,8 +126,10 @@ class VescFaultCoordinator(
       // 30 Hz fault stream is not a 30 Hz write loop.
       if (timestamp - current.lastObservedAtMs < OBSERVATION_WRITE_INTERVAL_MS) return
       val updated = current.copy(lastObservedAtMs = timestamp)
-      synchronized(lock) { active[boardId] = updated }
+      // Persist first: a throwing write must not leave memory claiming a transition the durable
+      // store never took, because the controller-level edge dedupe would never retry it.
       store.upsert(updated)
+      synchronized(lock) { active[boardId] = updated }
       return
     }
     // A direct code change closes the old activation and opens a new one — two distinct faults.
@@ -144,8 +146,8 @@ class VescFaultCoordinator(
       registerPosition = null,
       dismissed = false,
     )
-    synchronized(lock) { active[boardId] = opened }
     store.upsert(opened)
+    synchronized(lock) { active[boardId] = opened }
     emit(boardId)
   }
 
@@ -153,9 +155,12 @@ class VescFaultCoordinator(
   suspend fun onFaultCleared(boardId: String) {
     if (!collectionEnabled) return
     hydrate(boardId)
-    val current = synchronized(lock) { active.remove(boardId) } ?: return
+    val current = synchronized(lock) { active[boardId] } ?: return
     val timestamp = now()
+    // Persist the clear before forgetting the occurrence: if the write throws, the occurrence stays
+    // active in memory and the next clear observation retries it.
     store.upsert(current.copy(clearedAtMs = timestamp, lastObservedAtMs = maxOf(current.lastObservedAtMs, timestamp)))
+    synchronized(lock) { active.remove(boardId) }
     emit(boardId)
   }
 

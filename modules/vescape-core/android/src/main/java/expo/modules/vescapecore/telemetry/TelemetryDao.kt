@@ -582,8 +582,31 @@ interface TelemetryDao {
   )
   suspend fun getOpenVescFault(boardId: String): VescFaultOccurrenceEntity?
 
-  @Insert(onConflict = OnConflictStrategy.REPLACE)
-  suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity)
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertVescFault(fault: VescFaultOccurrenceEntity): Long
+
+  @Query(
+    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt, " +
+      "register_position = :registerPosition WHERE id = :id",
+  )
+  suspend fun updateVescFaultLifecycle(
+    id: String,
+    lastObservedAt: Long,
+    clearedAt: Long?,
+    registerPosition: Int?,
+  )
+
+  /**
+   * Insert-or-advance. Deliberately not a `REPLACE` upsert: that rewrites `dismissed` from the
+   * caller's in-memory snapshot, so a stale heartbeat could un-dismiss what the rider just
+   * acknowledged. Dismissal has its own statement.
+   */
+  @Transaction
+  suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
+    if (insertVescFault(fault) == -1L) {
+      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs, fault.registerPosition)
+    }
+  }
 
   @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
   suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int

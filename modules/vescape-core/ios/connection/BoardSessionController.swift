@@ -711,7 +711,16 @@ internal final class BoardSessionController: VescGattListener {
     let warningsWereEnabled = boardWarningsEnabled
     // `VESC Fault Collection` is its own kill switch — deliberately not gated on
     // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
-    VescFaultCoordinator.shared.collectionEnabled = settings["vescFaultCollectionEnabled"] as? Bool ?? true
+    let collectionWasEnabled = VescFaultCoordinator.shared.collectionEnabled
+    let collectionEnabled = settings["vescFaultCollectionEnabled"] as? Bool ?? true
+    VescFaultCoordinator.shared.collectionEnabled = collectionEnabled
+    if !collectionWasEnabled, collectionEnabled {
+      // Transitions were dropped while disabled, so the controller's edge state is a lie. Reset it
+      // to unknown so the next frame — fault or normal — reconciles the coordinator with what the
+      // controller is actually reporting.
+      lastDispatchedFaultCode = faultCodeUnknown
+      lastFaultDispatchAtMs = 0
+    }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
