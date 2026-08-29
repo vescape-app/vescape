@@ -33,7 +33,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
   const dismissed = fault.dismissed
   const active = fault.clearedAtMs == null
   const title = faultTitle(fault.code)
-  const { capture, loading } = useVescFaultCapture(fault.id, expanded)
+  const { capture, loading } = useVescFaultCapture(fault.id, expanded, fault.clearedAtMs)
 
   return (
     <View

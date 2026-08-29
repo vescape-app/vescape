@@ -117,6 +117,47 @@ final class VescFaultCaptureCoordinatorTests: XCTestCase {
     XCTAssertEqual(times("occ").count, 3)
   }
 
+  func testTailCountsAsObservedEvenWhenNoSampleLandsOnTheDeadline() {
+    setWindow([])
+    coordinator.openCapture(occurrenceId: "occ", boardId: board, openedAtMs: open)
+    coordinator.closeCapture(occurrenceId: "occ", clearedAtMs: open + 1_000)
+    // Response-paced: nothing lands exactly on open+3_000, the window still saw the tail elapse.
+    feed(open + 2_960)
+    feed(open + 3_040)
+    coordinator.flush()
+
+    XCTAssertEqual(store.captures["occ"]?.endedAtMs ?? nil, open + 2_960)
+    XCTAssertEqual(store.captures["occ"]?.complete, true)
+  }
+
+  func testASampleAlreadyInsideThePreRollIsNotAppendedTwice() {
+    // The occurrence transition can trail detection, so the pre-roll snapshot may already contain
+    // samples the BLE thread offers moments later.
+    setWindow([tick(open - 100), tick(open + 50)])
+    coordinator.openCapture(occurrenceId: "occ", boardId: board, openedAtMs: open)
+    feed(open + 50)
+    feed(open + 100)
+    coordinator.flush()
+
+    XCTAssertEqual(times("occ"), [open - 100, open + 50, open + 100])
+  }
+
+  func testDisablingCollectionDropsInFlightWindowsWithoutWriting() {
+    setWindow([])
+    coordinator.openCapture(occurrenceId: "occ", boardId: board, openedAtMs: open)
+    feed(open + 100)
+    store.appendCalls = 0
+    coordinator.setCollectionEnabled(false)
+
+    // Kill switch: no further capture rows, and the stored occurrence row stays untouched.
+    XCTAssertFalse(coordinator.observeSample(boardId: board, tick(open + 200)))
+    coordinator.flush()
+    coordinator.openCapture(occurrenceId: "later", boardId: board, openedAtMs: open + 1_000)
+    XCTAssertEqual(store.appendCalls, 0)
+    XCTAssertNil(store.captures["later"])
+    XCTAssertNotNil(store.captures["occ"])
+  }
+
   func testOverlappingCapturesDuplicateSamplesAndStayIndependent() {
     setWindow([])
     coordinator.openCapture(occurrenceId: "a", boardId: board, openedAtMs: open)

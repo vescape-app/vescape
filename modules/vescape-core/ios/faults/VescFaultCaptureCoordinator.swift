@@ -154,6 +154,11 @@ final class VescFaultCaptureCoordinator {
   /// fills from live samples only.
   var recentWindow: (() -> [[String: Any?]])?
 
+  /// `VESC Fault Collection` App Setting, mirrored from `VescFaultCoordinator` by the session
+  /// controller. Turning it off is an emergency kill switch: in-flight windows are dropped and no
+  /// further capture rows are written. Already-durable captures stay readable.
+  private var collectionEnabled = true
+
   private final class Window {
     let occurrenceId: String
     let boardId: String
@@ -161,6 +166,8 @@ final class VescFaultCaptureCoordinator {
     let openedAtMs: Int64
     /// Set when the occurrence cleared: the last sample timestamp still admitted into the window.
     var tailDeadlineMs: Int64?
+    /// A sample arrived past `tailDeadlineMs`, proving the whole post-clear tail was observed.
+    var tailCrossed = false
     var sampleCount = 0
     var lastSampleAtMs: Int64?
     var finished = false
@@ -174,15 +181,14 @@ final class VescFaultCaptureCoordinator {
     }
 
     func snapshot(ended: Bool) -> VescFaultCapture {
-      let tailObserved = tailDeadlineMs.map { (lastSampleAtMs ?? Int64.min) >= $0 } ?? false
-      return VescFaultCapture(
+      VescFaultCapture(
         occurrenceId: occurrenceId,
         boardId: boardId,
         startedAtMs: startedAtMs,
         openedAtMs: openedAtMs,
         endedAtMs: ended ? (lastSampleAtMs ?? openedAtMs) : nil,
         sampleCount: sampleCount,
-        complete: ended && tailObserved
+        complete: ended && tailCrossed
       )
     }
   }
@@ -213,10 +219,17 @@ final class VescFaultCaptureCoordinator {
   /// A new occurrence opened. Copies the pre-roll out of the recent decoded window and persists it
   /// before returning, so the five seconds leading into the incident survive a process kill.
   func openCapture(occurrenceId: String, boardId: String, openedAtMs: Int64) {
+    lock.lock()
+    let enabled = collectionEnabled
+    lock.unlock()
+    guard enabled else { return }
     let startedAtMs = openedAtMs - Self.preRollMs
+    // No upper bound: the window is opened from the occurrence transition, which can trail detection
+    // by a scheduling hop. Everything the live window holds by now belongs to this capture, and
+    // `observeSample` refuses to re-add anything at or before `Window.lastSampleAtMs`.
     let prefix = (recentWindow?() ?? [])
       .compactMap(VescFaultCaptureSample.fromLiveSample)
-      .filter { $0.capturedAtMs >= startedAtMs && $0.capturedAtMs <= openedAtMs }
+      .filter { $0.capturedAtMs >= startedAtMs }
     let window = Window(
       occurrenceId: occurrenceId, boardId: boardId, startedAtMs: startedAtMs, openedAtMs: openedAtMs
     )
@@ -245,9 +258,9 @@ final class VescFaultCaptureCoordinator {
   @discardableResult
   func observeSample(boardId: String, _ map: [String: Any?]) -> Bool {
     lock.lock()
-    let empty = windows.isEmpty
+    let skip = windows.isEmpty || !collectionEnabled
     lock.unlock()
-    if empty { return false }
+    if skip { return false }
     guard let sample = VescFaultCaptureSample.fromLiveSample(map) else { return false }
     lock.lock()
     defer { lock.unlock() }
@@ -255,9 +268,13 @@ final class VescFaultCaptureCoordinator {
     for window in windows where window.boardId == boardId && !window.finished {
       if let deadline = window.tailDeadlineMs, sample.capturedAtMs > deadline {
         window.finished = true
+        window.tailCrossed = true
         needsFlush = true
         continue
       }
+      // The pre-roll already covers everything up to its snapshot, so never duplicate across the
+      // open/append seam.
+      if let last = window.lastSampleAtMs, sample.capturedAtMs <= last { continue }
       window.pending.append(sample)
       window.sampleCount += 1
       window.lastSampleAtMs = sample.capturedAtMs
@@ -287,7 +304,20 @@ final class VescFaultCaptureCoordinator {
   /// The Board Session ended. Persists what each window holds and marks it complete only if the full
   /// post-clear tail had already been observed. No clear time is invented.
   func onSessionEnded(boardId: String) {
+    let detached = detachSession(boardId: boardId)
+    persist { [store] in
+      for (capture, samples) in detached {
+        if !samples.isEmpty { store.appendSamples(capture.occurrenceId, samples) }
+        store.upsertCapture(capture)
+      }
+    }
+  }
+
+  /// Take this Board's windows out of memory synchronously, so a session that ends and immediately
+  /// reconnects the same Board cannot leak the next session's samples into the previous capture.
+  private func detachSession(boardId: String) -> [(VescFaultCapture, [VescFaultCaptureSample])] {
     lock.lock()
+    defer { lock.unlock() }
     let work: [(VescFaultCapture, [VescFaultCaptureSample])] = windows
       .filter { $0.boardId == boardId }
       .map { window in
@@ -296,13 +326,17 @@ final class VescFaultCaptureCoordinator {
         return (window.snapshot(ended: true), samples)
       }
     windows.removeAll { $0.boardId == boardId }
+    return work
+  }
+
+  /// Mirror the `VESC Fault Collection` App Setting. Turning collection off drops every in-flight
+  /// window without writing: the kill switch must stop new persistence, and stored evidence is never
+  /// deleted by it.
+  func setCollectionEnabled(_ enabled: Bool) {
+    lock.lock()
+    collectionEnabled = enabled
+    if !enabled { windows.removeAll() }
     lock.unlock()
-    persist { [store] in
-      for (capture, samples) in work {
-        if !samples.isEmpty { store.appendSamples(capture.occurrenceId, samples) }
-        store.upsertCapture(capture)
-      }
-    }
   }
 
   func capture(_ occurrenceId: String) -> VescFaultCapture? { store.getCapture(occurrenceId) }

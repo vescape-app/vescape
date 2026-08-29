@@ -127,6 +127,51 @@ class VescFaultCaptureCoordinatorTest {
   }
 
   @Test
+  fun `tail counts as observed even when no sample lands on the deadline`() = runBlocking {
+    window()
+    coordinator.openCapture("occ", BOARD, OPEN)
+    coordinator.closeCapture("occ", OPEN + 1_000)
+    // Response-paced: nothing lands exactly on OPEN+3_000, the window still saw the tail elapse.
+    feed(OPEN + 2_960)
+    feed(OPEN + 3_040)
+    coordinator.flush()
+
+    val capture = store.captures.getValue("occ")
+    assertEquals(OPEN + 2_960, capture.endedAtMs)
+    assertTrue(capture.complete)
+  }
+
+  @Test
+  fun `a sample already inside the pre-roll is not appended twice`() = runBlocking {
+    // The occurrence transition can trail detection, so the pre-roll snapshot may already contain
+    // samples the BLE thread offers moments later.
+    window(tick(OPEN - 100), tick(OPEN + 50))
+    coordinator.openCapture("occ", BOARD, OPEN)
+    feed(OPEN + 50)
+    feed(OPEN + 100)
+    coordinator.flush()
+
+    assertEquals(listOf(OPEN - 100, OPEN + 50, OPEN + 100), samplesOf("occ").map { it.capturedAtMs })
+  }
+
+  @Test
+  fun `disabling collection drops in-flight windows without writing`() = runBlocking {
+    window()
+    coordinator.openCapture("occ", BOARD, OPEN)
+    feed(OPEN + 100)
+    store.appendCalls = 0
+    coordinator.setCollectionEnabled(false)
+
+    // Kill switch: no further capture rows, and the stored occurrence row stays untouched.
+    assertFalse(coordinator.observeSample(BOARD, tick(OPEN + 200)))
+    coordinator.flush()
+    coordinator.openCapture("later", BOARD, OPEN + 1_000)
+    assertEquals(0, store.appendCalls)
+    assertFalse(store.captures.containsKey("later"))
+    assertTrue(store.captures.containsKey("occ"))
+  }
+
+  @Test
   fun `overlapping captures duplicate samples and stay independent`() = runBlocking {
     window()
     coordinator.openCapture("a", BOARD, OPEN)

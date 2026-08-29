@@ -714,6 +714,9 @@ internal final class BoardSessionController: VescGattListener {
     let collectionWasEnabled = VescFaultCoordinator.shared.collectionEnabled
     let collectionEnabled = settings["vescFaultCollectionEnabled"] as? Bool ?? true
     VescFaultCoordinator.shared.collectionEnabled = collectionEnabled
+    // The switch must stop capture persistence too, not just occurrence transitions: off drops every
+    // in-flight window without deleting stored evidence.
+    VescFaultCaptureCoordinator.shared.setCollectionEnabled(collectionEnabled)
     if !collectionWasEnabled, collectionEnabled {
       // Transitions were dropped while disabled, so the controller's edge state is a lie. Reset it
       // to unknown so the next frame — fault or normal — reconciles the coordinator with what the
@@ -2035,6 +2038,7 @@ internal final class BoardSessionController: VescGattListener {
   private func wireFaultCaptures() {
     let captures = VescFaultCaptureCoordinator.shared
     captures.recentWindow = { [weak self] in self?.liveSeries.recentSnapshot() ?? [] }
+    captures.setCollectionEnabled(VescFaultCoordinator.shared.collectionEnabled)
     VescFaultCoordinator.shared.onOccurrenceOpened = { occurrence in
       captures.openCapture(
         occurrenceId: occurrence.id,

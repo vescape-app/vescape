@@ -154,6 +154,14 @@ class VescFaultCaptureCoordinator(
   @Volatile
   var recentWindow: (() -> List<Map<String, Any?>>)? = null
 
+  /**
+   * `VESC Fault Collection` App Setting, mirrored from [VescFaultCoordinator] by the session
+   * controller. Turning it off is an emergency kill switch: in-flight windows are dropped and no
+   * further capture rows are written. Already-durable captures stay readable.
+   */
+  @Volatile
+  private var collectionEnabled = true
+
   private class Window(
     val occurrenceId: String,
     val boardId: String,
@@ -162,6 +170,8 @@ class VescFaultCaptureCoordinator(
   ) {
     /** Set when the occurrence cleared: the last sample timestamp still admitted into the window. */
     var tailDeadlineMs: Long? = null
+    /** A sample arrived past [tailDeadlineMs], proving the whole post-clear tail was observed. */
+    var tailCrossed = false
     var sampleCount = 0
     var lastSampleAtMs: Long? = null
     var finished = false
@@ -176,10 +186,14 @@ class VescFaultCaptureCoordinator(
    * before returning, so the five seconds leading into the incident survive a process kill.
    */
   suspend fun openCapture(occurrenceId: String, boardId: String, openedAtMs: Long) {
+    if (!collectionEnabled) return
     val startedAtMs = openedAtMs - PRE_ROLL_MS
+    // No upper bound: the window is opened from the occurrence transition, which can trail detection
+    // by a scheduling hop. Everything the live window holds by now belongs to this capture, and
+    // [observeSample] refuses to re-add anything at or before [Window.lastSampleAtMs].
     val prefix = (recentWindow?.invoke() ?: emptyList())
       .mapNotNull { VescFaultCaptureSample.fromLiveSample(it) }
-      .filter { it.capturedAtMs >= startedAtMs && it.capturedAtMs <= openedAtMs }
+      .filter { it.capturedAtMs >= startedAtMs }
     val window = Window(occurrenceId, boardId, startedAtMs, openedAtMs).apply {
       sampleCount = prefix.size
       lastSampleAtMs = prefix.lastOrNull()?.capturedAtMs
@@ -202,6 +216,7 @@ class VescFaultCaptureCoordinator(
    * it only touches memory: returns true when [flush] should be scheduled on a writer thread.
    */
   fun observeSample(boardId: String, map: Map<String, Any?>): Boolean {
+    if (!collectionEnabled) return false
     if (synchronized(lock) { windows.isEmpty() }) return false
     val sample = VescFaultCaptureSample.fromLiveSample(map) ?: return false
     synchronized(lock) {
@@ -211,9 +226,14 @@ class VescFaultCaptureCoordinator(
         val deadline = window.tailDeadlineMs
         if (deadline != null && sample.capturedAtMs > deadline) {
           window.finished = true
+          window.tailCrossed = true
           needsFlush = true
           continue
         }
+        // The pre-roll already covers everything up to its snapshot, so never duplicate across the
+        // open/append seam.
+        val last = window.lastSampleAtMs
+        if (last != null && sample.capturedAtMs <= last) continue
         window.pending.add(sample)
         window.sampleCount += 1
         window.lastSampleAtMs = sample.capturedAtMs
@@ -244,8 +264,15 @@ class VescFaultCaptureCoordinator(
    * The Board Session ended. Persists what each window holds and marks it complete only if the full
    * post-clear tail had already been observed. No clear time is invented.
    */
-  suspend fun onSessionEnded(boardId: String) {
-    val drained = synchronized(lock) {
+  suspend fun onSessionEnded(boardId: String) = persistDetached(detachSession(boardId))
+
+  /**
+   * Take this Board's windows out of memory synchronously. The caller must hand the result to
+   * [persistDetached]. Split from the write so a session that ends and immediately reconnects the
+   * same Board cannot leak the next session's samples into the previous session's capture.
+   */
+  fun detachSession(boardId: String): List<Pair<VescFaultCapture, List<VescFaultCaptureSample>>> =
+    synchronized(lock) {
       val work = windows.values.filter { it.boardId == boardId }.map { window ->
         val samples = window.pending.toList()
         window.pending.clear()
@@ -254,10 +281,23 @@ class VescFaultCaptureCoordinator(
       windows.values.removeAll { it.boardId == boardId }
       work
     }
-    for ((capture, samples) in drained) {
+
+  /** Durable half of [detachSession]; safe to run on a writer thread. */
+  suspend fun persistDetached(detached: List<Pair<VescFaultCapture, List<VescFaultCaptureSample>>>) {
+    for ((capture, samples) in detached) {
       if (samples.isNotEmpty()) store.appendSamples(capture.occurrenceId, samples)
       store.upsertCapture(capture)
     }
+  }
+
+  /**
+   * Mirror the `VESC Fault Collection` App Setting. Turning collection off drops every in-flight
+   * window without writing: the kill switch must stop new persistence, and stored evidence is never
+   * deleted by it.
+   */
+  fun setCollectionEnabled(enabled: Boolean) {
+    collectionEnabled = enabled
+    if (!enabled) synchronized(lock) { windows.clear() }
   }
 
   suspend fun capture(occurrenceId: String): VescFaultCapture? = store.getCapture(occurrenceId)
@@ -266,8 +306,6 @@ class VescFaultCaptureCoordinator(
 
   /** Caller must hold [lock]. */
   private fun Window.snapshot(ended: Boolean): VescFaultCapture {
-    val deadline = tailDeadlineMs
-    val tailObserved = deadline != null && (lastSampleAtMs ?: Long.MIN_VALUE) >= deadline
     return VescFaultCapture(
       occurrenceId = occurrenceId,
       boardId = boardId,
@@ -275,7 +313,7 @@ class VescFaultCaptureCoordinator(
       openedAtMs = openedAtMs,
       endedAtMs = if (ended) lastSampleAtMs ?: openedAtMs else null,
       sampleCount = sampleCount,
-      complete = ended && tailObserved,
+      complete = ended && tailCrossed,
     )
   }
 

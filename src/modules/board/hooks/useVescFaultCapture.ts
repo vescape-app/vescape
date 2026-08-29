@@ -5,10 +5,15 @@ import { getVescFaultCapture, type VescFaultCaptureDetail } from 'vescape-core'
  * Load the VESC Fault Capture for one occurrence, once it is asked for.
  *
  * A capture can hold thousands of decoded samples, so it is never part of the always-on fault
- * mirror — it is pulled on demand when the rider opens a fault. Native storage is durable truth and
- * a closed capture never changes, so there is nothing to subscribe to.
+ * mirror — it is pulled on demand when the rider opens a fault. A capture only keeps growing while
+ * its occurrence is open, so `clearedAtMs` is a dependency: when native reports the clear, the
+ * mirror updates, and the finished capture is re-read once.
  */
-export function useVescFaultCapture(occurrenceId: string, enabled: boolean) {
+export function useVescFaultCapture(
+  occurrenceId: string,
+  enabled: boolean,
+  clearedAtMs: number | null,
+) {
   const [capture, setCapture] = useState<VescFaultCaptureDetail | null>(null)
   const [loading, setLoading] = useState(enabled)
 
@@ -29,7 +34,7 @@ export function useVescFaultCapture(occurrenceId: string, enabled: boolean) {
     return () => {
       cancelled = true
     }
-  }, [occurrenceId, enabled])
+  }, [occurrenceId, enabled, clearedAtMs])
 
   return { capture, loading }
 }

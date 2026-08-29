@@ -1528,6 +1528,9 @@ private var wearAutoLaunchOnConnect = true
     private fun wireFaultCaptures() {
         val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
         captures.recentWindow = { telemetryPipeline.recentSnapshot() }
+        captures.setCollectionEnabled(
+            VescFaultCoordinator.get(service.applicationContext).collectionEnabled,
+        )
         VescFaultCoordinator.get(service.applicationContext).apply {
             onOccurrenceOpened = { occurrence ->
                 captures.openCapture(occurrence.id, occurrence.boardId, occurrence.occurredAtMs ?: occurrence.discoveredAtMs)
@@ -2384,7 +2387,10 @@ private var wearAutoLaunchOnConnect = true
         // invent a clear time the controller never reported.
         stoppedConfig?.appBoardId?.let { boardId ->
             val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
-            launchWarningWrite { captures.onSessionEnded(boardId) }
+            // Detach here, persist on the writer: reconnecting the same Board must not append the
+            // next session's samples to the previous session's capture.
+            val detached = captures.detachSession(boardId)
+            launchWarningWrite { captures.persistDetached(detached) }
         }
         telemetryPipeline.endSession()
         sessionSequence += 1
@@ -2986,6 +2992,10 @@ private var wearAutoLaunchOnConnect = true
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
         val collectionWasEnabled = coordinator.collectionEnabled
         coordinator.collectionEnabled = settings.vescFaultCollectionEnabled
+        // The switch must stop capture persistence too, not just occurrence transitions: off drops
+        // every in-flight window without deleting stored evidence.
+        VescFaultCaptureCoordinator.get(service.applicationContext)
+            .setCollectionEnabled(settings.vescFaultCollectionEnabled)
         if (!collectionWasEnabled && settings.vescFaultCollectionEnabled) {
             // Transitions were dropped while disabled, so the controller's edge state is a lie.
             // Reset it to unknown so the next frame — fault or normal — reconciles the coordinator
