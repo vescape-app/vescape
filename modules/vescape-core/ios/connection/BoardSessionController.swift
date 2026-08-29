@@ -947,6 +947,11 @@ internal final class BoardSessionController: VescGattListener {
         BoardWarningRegistry.shared.reportCleanEvaluation(boardId: previousBoardId, kind: BoardWarningKind.batteryConfigMismatch)
       }
     }
+    // A live->live connect replaces the session without passing through `endSession`; finalize any
+    // capture the previous Board Session left appending rather than leaking its window.
+    if let previousBoardId = self.config?.appBoardId {
+      VescFaultCaptureCoordinator.shared.onSessionEnded(boardId: previousBoardId)
+    }
     cellSpreadDetector.reset()
     batteryConfigMismatchDetector.reset()
     boardConfigReadScheduled = false
@@ -974,6 +979,7 @@ internal final class BoardSessionController: VescGattListener {
     let sessionSettings = appData.getSettings()
     movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: sessionSettings).movingSpeedThresholdCentiKmh
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
+    wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     recordingCoordinator.beginBoardSession(config: config)
     beginGpsSessionDiagnostics()
@@ -1083,6 +1089,11 @@ internal final class BoardSessionController: VescGattListener {
       }
     }
     recordGpsSessionSummary()
+    // Finalize any capture still appending: persist what exists, mark it incomplete, and never
+    // invent a clear time the controller never reported.
+    if let boardId = config?.appBoardId {
+      VescFaultCaptureCoordinator.shared.onSessionEnded(boardId: boardId)
+    }
     session?.invalidate()
     session = nil
     config = nil
@@ -1891,6 +1902,7 @@ internal final class BoardSessionController: VescGattListener {
 
     // Decimated ~1Hz series for sparklines + battery gauge (native downsamples the live window).
     liveSeries.add(tick)
+    observeFaultCaptureSample(tick)
 
     // Cold path: full samples batched a few times a second for history + charts. Fired alerts ride
     // the buffered sample so `onTelemetryHistory` carries them too.
@@ -2013,6 +2025,36 @@ internal final class BoardSessionController: VescGattListener {
       lastLiveTelemetryRefreshAt = now
       refreshLiveActivity()
     }
+  }
+
+  /// Point the VESC Fault Capture coordinator at this session's recent decoded window and at the
+  /// occurrence transitions that mint capture ids. Reuses `LiveSeriesEmitter.recentSnapshot` — the
+  /// same buffer behind `board.recentTelemetry` — rather than adding a second always-on pre-fault
+  /// buffer.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `wireFaultCaptures`
+  private func wireFaultCaptures() {
+    let captures = VescFaultCaptureCoordinator.shared
+    captures.recentWindow = { [weak self] in self?.liveSeries.recentSnapshot() ?? [] }
+    VescFaultCoordinator.shared.onOccurrenceOpened = { occurrence in
+      captures.openCapture(
+        occurrenceId: occurrence.id,
+        boardId: occurrence.boardId,
+        openedAtMs: occurrence.occurredAtMs ?? occurrence.discoveredAtMs
+      )
+    }
+    VescFaultCoordinator.shared.onOccurrenceClosed = { occurrenceId, clearedAtMs in
+      captures.closeCapture(occurrenceId: occurrenceId, clearedAtMs: clearedAtMs)
+    }
+  }
+
+  /// Offer one decoded sample to every open capture window. Memory-only on the BLE hot path; the
+  /// durable write only runs when a window asks for it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `observeFaultCaptureSample`
+  private func observeFaultCaptureSample(_ tick: [String: Any?]) {
+    guard let boardId = config?.appBoardId else { return }
+    let captures = VescFaultCaptureCoordinator.shared
+    guard captures.observeSample(boardId: boardId, tick) else { return }
+    captures.flush()
   }
 
   /// Refloat reported an active fault code. Independent of Ride Recording and Board Warnings: the

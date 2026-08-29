@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 37
+internal const val TELEMETRY_DATABASE_VERSION = 38
 
 @Database(
   entities = [
@@ -31,6 +31,8 @@ internal const val TELEMETRY_DATABASE_VERSION = 37
     PrivacyZoneEntity::class,
     BoardWarningEntity::class,
     VescFaultOccurrenceEntity::class,
+    VescFaultCaptureEntity::class,
+    VescFaultCaptureSampleEntity::class,
     FavoriteEntity::class,
     FavoriteMediaEntity::class,
     BoardConfigValuesEntity::class,
@@ -632,7 +634,6 @@ abstract class TelemetryDatabase : RoomDatabase() {
       }
     }
 
-
     /**
      * VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
      * History fault path.
@@ -788,6 +789,60 @@ abstract class TelemetryDatabase : RoomDatabase() {
       }
     }
 
+    /**
+     * VESC Fault Captures: the self-contained window of decoded Board samples each occurrence owns.
+     * Additive only — dedicated tables, no Ride History coupling, no GPS.
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v38_vesc_fault_captures`
+     */
+    internal val MIGRATION_37_38 = object : Migration(37, 38) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS vesc_fault_captures (
+            occurrence_id TEXT NOT NULL PRIMARY KEY,
+            board_id TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            opened_at INTEGER NOT NULL,
+            ended_at INTEGER,
+            sample_count INTEGER NOT NULL,
+            complete INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_vesc_fault_captures_board_id " +
+            "ON vesc_fault_captures(board_id)",
+        )
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS vesc_fault_capture_samples (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            occurrence_id TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            speed REAL,
+            duty_cycle REAL,
+            erpm REAL,
+            battery_voltage REAL,
+            battery_current REAL,
+            motor_current REAL,
+            temp_mosfet REAL,
+            temp_motor REAL,
+            pitch REAL,
+            roll REAL,
+            balance_pitch REAL,
+            adc1 REAL,
+            adc2 REAL,
+            state INTEGER
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at " +
+            "ON vesc_fault_capture_samples(occurrence_id, captured_at)",
+        )
+      }
+    }
+
     internal val MIGRATION_34_35 = object : Migration(34, 35) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'")
@@ -872,6 +927,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_34_35,
             MIGRATION_35_36,
             MIGRATION_36_37,
+            MIGRATION_37_38,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

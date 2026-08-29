@@ -1,9 +1,12 @@
-import { StyleSheet, View } from 'react-native'
-import { ArrowCounterClockwiseIcon, EyeSlashIcon } from 'phosphor-react-native'
+import { useState } from 'react'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { ArrowCounterClockwiseIcon, CaretDownIcon, EyeSlashIcon } from 'phosphor-react-native'
 import type { VescFaultOccurrence } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { IconButton } from '@/components/base/IconButton'
+import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
+import { useVescFaultCapture } from '@/modules/board/hooks/useVescFaultCapture'
 import { faultTitle } from '@/modules/board/lib/vescFaults'
 import { fmtTimeAgo } from '@/helpers/format'
 import { theme } from '@/constants/theme'
@@ -21,11 +24,16 @@ interface VescFaultRowProps {
  *
  * A `live` occurrence knows when it happened. A register-sourced one does not, so it says
  * "Discovered" instead of inventing a precision the controller never gave.
+ *
+ * Expanding the row pulls the occurrence's VESC Fault Capture — the decoded Board samples retained
+ * around the incident — on demand, since a capture is far too large to live in the fault mirror.
  */
 export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
+  const [expanded, setExpanded] = useState(false)
   const dismissed = fault.dismissed
   const active = fault.clearedAtMs == null
   const title = faultTitle(fault.code)
+  const { capture, loading } = useVescFaultCapture(fault.id, expanded)
 
   return (
     <View
@@ -79,6 +87,29 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
           : `Discovered ${fmtTimeAgo(fault.discoveredAtMs)} · occurrence time unknown`}
         {fault.clearedAtMs != null ? ` · cleared ${fmtTimeAgo(fault.clearedAtMs)}` : ''}
       </Text>
+
+      <Pressable
+        style={styles.expand}
+        onPress={() => setExpanded((prev) => !prev)}
+        accessibilityRole="button"
+        accessibilityLabel={`${expanded ? 'Hide' : 'Show'} telemetry capture for ${title}`}
+      >
+        <Text style={styles.expandLabel}>{expanded ? 'Hide capture' : 'Telemetry capture'}</Text>
+        <CaretDownIcon
+          size={14}
+          weight="bold"
+          color={theme.neutral.textMuted}
+          style={expanded ? styles.caretOpen : undefined}
+        />
+      </Pressable>
+
+      {expanded && (
+        <VescFaultCaptureSection
+          capture={capture}
+          loading={loading}
+          clearedAtMs={fault.clearedAtMs}
+        />
+      )}
     </View>
   )
 }
@@ -128,5 +159,22 @@ const styles = StyleSheet.create({
   detected: {
     color: theme.neutral.textMuted,
     fontSize: 12,
+  },
+  expand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  expandLabel: {
+    color: theme.neutral.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  caretOpen: {
+    transform: [{ rotate: '180deg' }],
   },
 })

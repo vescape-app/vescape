@@ -93,6 +93,17 @@ final class VescFaultCoordinator {
   /// Set by the bridge to push the full fault list for one Board to JS on every change.
   var onChange: ((String, [VescFaultOccurrence]) -> Void)?
 
+  /// VESC Fault Capture lifecycle hooks, wired by the Board Session to `VescFaultCaptureCoordinator`.
+  /// The occurrence id is the capture's foreign key, so the capture window can only be opened here —
+  /// at the exact transition that mints it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `onOccurrenceOpened`
+  var onOccurrenceOpened: ((VescFaultOccurrence) -> Void)?
+
+  /// The occurrence stopped being active (clear or a direct code change). The capture keeps appending
+  /// through its post-clear tail; this only tells it when the tail starts.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `onOccurrenceClosed`
+  var onOccurrenceClosed: ((String, Int64) -> Void)?
+
   /// `VESC Fault Collection` App Setting, mirrored here by the session controller. Off stops live
   /// trigger handling and every new write; stored occurrences stay readable and dismissible.
   /// Independent of `boardWarningsEnabled`.
@@ -138,6 +149,7 @@ final class VescFaultCoordinator {
       current.clearedAtMs = timestamp
       current.lastObservedAtMs = timestamp
       store.upsert(current)
+      onOccurrenceClosed?(current.id, timestamp)
     }
 
     let opened = VescFaultOccurrence(
@@ -156,6 +168,7 @@ final class VescFaultCoordinator {
     lock.lock()
     active[boardId] = opened
     lock.unlock()
+    onOccurrenceOpened?(opened)
     emit(boardId)
   }
 
@@ -176,6 +189,7 @@ final class VescFaultCoordinator {
     lock.lock()
     active.removeValue(forKey: boardId)
     lock.unlock()
+    onOccurrenceClosed?(current.id, timestamp)
     emit(boardId)
   }
 

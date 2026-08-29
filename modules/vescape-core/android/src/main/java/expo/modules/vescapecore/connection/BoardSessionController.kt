@@ -93,6 +93,7 @@ import expo.modules.vescapecore.protocol.parseRefloatGetAllData
 import expo.modules.vescapecore.remoteTiltWire
 import expo.modules.vescapecore.warnings.BatteryConfigMismatchDetector
 import expo.modules.vescapecore.warnings.BoardWarningKind
+import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
 import expo.modules.vescapecore.faults.VescFaultCoordinator
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
@@ -1080,6 +1081,7 @@ private var wearAutoLaunchOnConnect = true
         restoreBoardConfigValues(start.boardConfig)
         restoreMotorConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
+        wireFaultCaptures()
         // Tag telemetry frames with the CAN id resolved from the stored transport.
         telemetryPipeline.updateCanId(currentCanId)
         packetReassembler.reset()
@@ -1411,6 +1413,7 @@ private var wearAutoLaunchOnConnect = true
             }
             onRefloatNormalFrame()
             val processed = telemetryPipeline.process(parsed, sessionToken) ?: return
+            observeFaultCaptureSample(processed.eventMap)
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
             telemetry = parsed
@@ -1513,6 +1516,36 @@ private var wearAutoLaunchOnConnect = true
         val boardId = boardConfig?.appBoardId ?: return
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
         launchWarningWrite { coordinator.onFaultCleared(boardId) }
+    }
+
+    /**
+     * Point the VESC Fault Capture coordinator at this session's recent decoded window and at the
+     * occurrence transitions that mint capture ids. Reuses `TelemetryPipeline.recentSnapshot` — the
+     * same buffer behind `board.recentTelemetry` — rather than adding a second always-on pre-fault
+     * buffer.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `wireFaultCaptures`
+     */
+    private fun wireFaultCaptures() {
+        val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
+        captures.recentWindow = { telemetryPipeline.recentSnapshot() }
+        VescFaultCoordinator.get(service.applicationContext).apply {
+            onOccurrenceOpened = { occurrence ->
+                captures.openCapture(occurrence.id, occurrence.boardId, occurrence.occurredAtMs ?: occurrence.discoveredAtMs)
+            }
+            onOccurrenceClosed = { occurrenceId, clearedAtMs -> captures.closeCapture(occurrenceId, clearedAtMs) }
+        }
+    }
+
+    /**
+     * Offer one decoded sample to every open capture window. Memory-only on the BLE thread; the
+     * durable write is handed to the serialized writer only when a window asks for it.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `observeFaultCaptureSample`
+     */
+    private fun observeFaultCaptureSample(eventMap: Map<String, Any?>) {
+        val boardId = boardConfig?.appBoardId ?: return
+        val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
+        if (!captures.observeSample(boardId, eventMap)) return
+        launchWarningWrite { captures.flush() }
     }
 
     /**
@@ -2347,6 +2380,12 @@ private var wearAutoLaunchOnConnect = true
             }
         }
         bmsSeriesRing.clear()
+        // Finalize any capture still appending: persist what exists, mark it incomplete, and never
+        // invent a clear time the controller never reported.
+        stoppedConfig?.appBoardId?.let { boardId ->
+            val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
+            launchWarningWrite { captures.onSessionEnded(boardId) }
+        }
         telemetryPipeline.endSession()
         sessionSequence += 1
         boardConfig = null

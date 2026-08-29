@@ -611,6 +611,25 @@ interface TelemetryDao {
   @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
   suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int
 
+  // VESC Fault Captures — one self-contained window of decoded Board samples per occurrence. Append
+  // only, no GPS, and outside every Ride History retention/pruning path.
+  // @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift
+
+  @Upsert
+  suspend fun upsertVescFaultCapture(capture: VescFaultCaptureEntity)
+
+  @Query("SELECT * FROM vesc_fault_captures WHERE occurrence_id = :occurrenceId LIMIT 1")
+  suspend fun getVescFaultCapture(occurrenceId: String): VescFaultCaptureEntity?
+
+  @Insert
+  suspend fun insertVescFaultCaptureSamples(samples: List<VescFaultCaptureSampleEntity>)
+
+  @Query(
+    "SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = :occurrenceId " +
+      "ORDER BY captured_at ASC, id ASC",
+  )
+  suspend fun getVescFaultCaptureSamples(occurrenceId: String): List<VescFaultCaptureSampleEntity>
+
   @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
   suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
 

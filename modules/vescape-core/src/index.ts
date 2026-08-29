@@ -1490,6 +1490,69 @@ export interface VescFaultsEvent {
 }
 
 /**
+ * One decoded Board sample retained inside a VESC Fault Capture.
+ *
+ * A projection of the decoded live tick, not a Telemetry Sample: no GPS, no Ride History fields,
+ * and no dependency on Ride Recording. Every field is nullable because a firmware may simply not
+ * report it. `capturedAtMs` is the decoded packet time, so the series describes the Board Session's
+ * achieved response rate rather than a fixed cadence.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCaptureSample`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCaptureCoordinator.kt `VescFaultCaptureSample`
+ */
+export interface VescFaultCaptureSample {
+  capturedAtMs: number
+  speed: number | null
+  dutyCycle: number | null
+  erpm: number | null
+  batteryVoltage: number | null
+  batteryCurrent: number | null
+  motorCurrent: number | null
+  tempMosfet: number | null
+  tempMotor: number | null
+  pitch: number | null
+  roll: number | null
+  balancePitch: number | null
+  adc1: number | null
+  adc2: number | null
+  state: number | null
+}
+
+/**
+ * Metadata for the VESC Fault Capture one occurrence owns: the window copied from five seconds
+ * before detection through two seconds after the controller reported a clear.
+ *
+ * `complete` is false whenever the session or process ended before the post-clear tail was
+ * observed — the evidence is still valid, just truncated. Overlapping captures duplicate samples on
+ * purpose so each occurrence stays independently inspectable.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCapture`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCaptureCoordinator.kt `VescFaultCapture`
+ */
+export interface VescFaultCapture {
+  occurrenceId: string
+  boardId: string
+  /** Intended window start: detection minus the five-second pre-roll. */
+  startedAtMs: number
+  /** Detection time — the boundary between pre-roll and incident. */
+  openedAtMs: number
+  /** Timestamp of the last retained sample, or null while the capture is still appending. */
+  endedAtMs: number | null
+  sampleCount: number
+  complete: boolean
+}
+
+/**
+ * A capture and its samples, as returned by `getVescFaultCapture`. Samples are ordered oldest
+ * first.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultCapture`
+ */
+export interface VescFaultCaptureDetail extends VescFaultCapture {
+  samples: VescFaultCaptureSample[]
+}
+
+/**
  * Whether a Board Config Values object was read from the board in the current Board Session
  * (`fresh`) or restored as Last Known values on connect (`last-known`). Both render the same;
  * the distinction only gates config writes (ADR 0035).
@@ -2044,6 +2107,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
   getVescFaults(): Promise<VescFaultOccurrence[]>
   setVescFaultDismissed(id: string, dismissed: boolean): Promise<void>
+  getVescFaultCapture(occurrenceId: string): Promise<VescFaultCaptureDetail | null>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
   getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
   getMotorConfigValues(): Promise<MotorConfigValues | null>
@@ -2762,6 +2826,17 @@ export async function getVescFaults(): Promise<VescFaultOccurrence[]> {
  */
 export async function setVescFaultDismissed(id: string, dismissed: boolean): Promise<void> {
   return native.setVescFaultDismissed(id, dismissed)
+}
+
+/**
+ * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board sample
+ * retained around the incident, oldest first. Null when the occurrence has no capture — register
+ * evidence, or fault collection disabled when it opened.
+ */
+export async function getVescFaultCapture(
+  occurrenceId: string,
+): Promise<VescFaultCaptureDetail | null> {
+  return native.getVescFaultCapture(occurrenceId)
 }
 
 export async function getDatabaseSizeBytes(): Promise<number> {

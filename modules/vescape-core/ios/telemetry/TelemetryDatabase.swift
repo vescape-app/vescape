@@ -654,6 +654,13 @@ enum TelemetryDatabase {
       }
     }
 
+    /// VESC Fault Captures: the self-contained window of decoded Board samples each occurrence owns.
+    /// Additive only — dedicated tables, no Ride History coupling, no GPS.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_37_38`
+    migrator.registerMigration("v38_vesc_fault_captures") { db in
+      try VescFaultCaptureStore.createTables(db)
+    }
+
     return migrator
   }
 }

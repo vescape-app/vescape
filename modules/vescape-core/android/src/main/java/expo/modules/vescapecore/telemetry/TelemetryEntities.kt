@@ -703,3 +703,83 @@ data class VescFaultOccurrenceEntity(
   /** Rider acknowledged this occurrence: stays durable, stops driving the Board health icon. */
   val dismissed: Boolean,
 )
+
+/**
+ * Metadata for one VESC Fault Capture: the self-contained window of decoded Board samples a single
+ * VESC Fault Occurrence owns.
+ *
+ * Keyed by the occurrence id — one occurrence, at most one capture. Deliberately **not** part of
+ * Ride History: no GPS, no telemetry frames, no minute buckets, no retention pruning. Fault evidence
+ * outlives both the Board record and any recorded ride.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift `createTables`
+ */
+@Entity(
+  tableName = "vesc_fault_captures",
+  indices = [
+    Index(value = ["board_id"]),
+  ],
+)
+data class VescFaultCaptureEntity(
+  @PrimaryKey
+  @ColumnInfo(name = "occurrence_id")
+  val occurrenceId: String,
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  /** Intended window start: detection minus the five-second pre-roll. */
+  @ColumnInfo(name = "started_at")
+  val startedAtMs: Long,
+  /** Detection time — the boundary between pre-roll and incident. */
+  @ColumnInfo(name = "opened_at")
+  val openedAtMs: Long,
+  /** Timestamp of the last retained sample, or null while the capture is still appending. */
+  @ColumnInfo(name = "ended_at")
+  val endedAtMs: Long?,
+  /** Samples actually retained — the achieved Board Session rate, never a fabricated cadence. */
+  @ColumnInfo(name = "sample_count")
+  val sampleCount: Int,
+  /** True only when the full two-second post-clear tail was observed before the session ended. */
+  val complete: Boolean,
+)
+
+/**
+ * One decoded Board sample inside a VESC Fault Capture. Rows are append-only and intentionally
+ * duplicated across overlapping captures so each occurrence stays independently inspectable.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift `createTables`
+ */
+@Entity(
+  tableName = "vesc_fault_capture_samples",
+  indices = [
+    Index(value = ["occurrence_id", "captured_at"]),
+  ],
+)
+data class VescFaultCaptureSampleEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  @ColumnInfo(name = "occurrence_id")
+  val occurrenceId: String,
+  @ColumnInfo(name = "captured_at")
+  val capturedAtMs: Long,
+  val speed: Double?,
+  @ColumnInfo(name = "duty_cycle")
+  val dutyCycle: Double?,
+  val erpm: Double?,
+  @ColumnInfo(name = "battery_voltage")
+  val batteryVoltage: Double?,
+  @ColumnInfo(name = "battery_current")
+  val batteryCurrent: Double?,
+  @ColumnInfo(name = "motor_current")
+  val motorCurrent: Double?,
+  @ColumnInfo(name = "temp_mosfet")
+  val tempMosfet: Double?,
+  @ColumnInfo(name = "temp_motor")
+  val tempMotor: Double?,
+  val pitch: Double?,
+  val roll: Double?,
+  @ColumnInfo(name = "balance_pitch")
+  val balancePitch: Double?,
+  val adc1: Double?,
+  val adc2: Double?,
+  val state: Int?,
+)

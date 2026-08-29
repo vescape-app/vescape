@@ -25,6 +25,7 @@ import expo.modules.vescapecore.connection.buildSessionConfig
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
 import expo.modules.vescapecore.watch.WatchRouteMirror
+import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
 import expo.modules.vescapecore.faults.VescFaultCoordinator
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
@@ -662,6 +663,20 @@ class VescapeCoreModule : Module() {
      */
     AsyncFunction("setVescFaultDismissed") Coroutine { id: String, dismissed: Boolean ->
       VescFaultCoordinator.get(context).setDismissed(id, dismissed)
+    }
+
+    /**
+     * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board
+     * sample retained around the incident. Null when the occurrence has no capture (register-only
+     * evidence, or collection disabled at the time). Independent of Ride History — no GPS.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
+     * @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
+     */
+    AsyncFunction("getVescFaultCapture") Coroutine { occurrenceId: String ->
+      val captures = VescFaultCaptureCoordinator.get(context)
+      captures.capture(occurrenceId)?.let { capture ->
+        capture.toMap() + mapOf("samples" to captures.samples(occurrenceId).map { it.toMap() })
+      }
     }
     /**
      * This Board Session's Board Config Values, decoded map + freshness only. The write base stays

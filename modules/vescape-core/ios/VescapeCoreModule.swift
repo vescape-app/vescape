@@ -628,6 +628,22 @@ public class VescapeCoreModule: Module {
       promise.resolve(nil)
     }
 
+    /// The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board
+    /// sample retained around the incident. Nil when the occurrence has no capture (register-only
+    /// evidence, or collection disabled at the time). Independent of Ride History — no GPS.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultCapture`
+    /// @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
+    AsyncFunction("getVescFaultCapture") { (occurrenceId: String, promise: Promise) in
+      let captures = VescFaultCaptureCoordinator.shared
+      guard let capture = captures.capture(occurrenceId) else {
+        promise.resolve(nil)
+        return
+      }
+      var payload = capture.toMap()
+      payload["samples"] = captures.samples(occurrenceId).map { $0.toMap() }
+      promise.resolve(payload)
+    }
+
     AsyncFunction("clearBoardWarning") { (boardId: String, kind: String, promise: Promise) in
       BoardWarningRegistry.shared.clearWarning(boardId: boardId, kind: kind)
       promise.resolve(nil)

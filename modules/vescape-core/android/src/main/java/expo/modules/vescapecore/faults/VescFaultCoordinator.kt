@@ -108,6 +108,23 @@ class VescFaultCoordinator(
   @Volatile
   var onChange: ((boardId: String, faults: List<VescFaultOccurrence>) -> Unit)? = null
 
+  /**
+   * VESC Fault Capture lifecycle hooks, wired by the Board Session to [VescFaultCaptureCoordinator].
+   * The occurrence id is the capture's foreign key, so the capture window can only be opened here —
+   * at the exact transition that mints it.
+   * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `onOccurrenceOpened`
+   */
+  @Volatile
+  var onOccurrenceOpened: (suspend (VescFaultOccurrence) -> Unit)? = null
+
+  /**
+   * The occurrence stopped being active (clear or a direct code change). The capture keeps appending
+   * through its post-clear tail; this only tells it when the tail starts.
+   * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `onOccurrenceClosed`
+   */
+  @Volatile
+  var onOccurrenceClosed: (suspend (occurrenceId: String, clearedAtMs: Long) -> Unit)? = null
+
   private val lock = Any()
   private val active = HashMap<String, VescFaultOccurrence>()
   private val hydrated = HashSet<String>()
@@ -133,7 +150,10 @@ class VescFaultCoordinator(
       return
     }
     // A direct code change closes the old activation and opens a new one — two distinct faults.
-    if (current != null) store.upsert(current.copy(clearedAtMs = timestamp, lastObservedAtMs = timestamp))
+    if (current != null) {
+      store.upsert(current.copy(clearedAtMs = timestamp, lastObservedAtMs = timestamp))
+      onOccurrenceClosed?.invoke(current.id, timestamp)
+    }
     val opened = VescFaultOccurrence(
       id = newId(),
       boardId = boardId,
@@ -148,6 +168,7 @@ class VescFaultCoordinator(
     )
     store.upsert(opened)
     synchronized(lock) { active[boardId] = opened }
+    onOccurrenceOpened?.invoke(opened)
     emit(boardId)
   }
 
@@ -161,6 +182,7 @@ class VescFaultCoordinator(
     // active in memory and the next clear observation retries it.
     store.upsert(current.copy(clearedAtMs = timestamp, lastObservedAtMs = maxOf(current.lastObservedAtMs, timestamp)))
     synchronized(lock) { active.remove(boardId) }
+    onOccurrenceClosed?.invoke(current.id, timestamp)
     emit(boardId)
   }
 

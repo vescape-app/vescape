@@ -17,6 +17,7 @@ import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
+import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
 import type { SparklinePoint } from '@/components/charts/Sparkline'
@@ -224,6 +225,70 @@ function VescFaultRowShowcase() {
   )
 }
 
+/** A response-paced burst: ~30 Hz easing out as the controller struggles into the fault. */
+function buildCaptureSamples(openedAtMs: number) {
+  let t = openedAtMs - 5_000
+  const samples = []
+  while (t < openedAtMs + 2_500) {
+    const offset = (t - openedAtMs) / 1000
+    samples.push({
+      capturedAtMs: Math.round(t),
+      speed: Math.max(0, 24 - Math.abs(offset) * 2),
+      dutyCycle: Math.min(0.98, 0.42 + Math.max(0, -offset) * 0.09),
+      erpm: 4200,
+      batteryVoltage: 58.4 - Math.max(0, -offset) * 0.7,
+      batteryCurrent: 18 + Math.max(0, -offset) * 6,
+      motorCurrent: 41 + Math.max(0, -offset) * 9,
+      tempMosfet: 48.2,
+      tempMotor: 61.5,
+      pitch: offset < 0 ? -3.4 - offset : 12.6,
+      roll: 1.2,
+      balancePitch: -2.9,
+      adc1: 3.1,
+      adc2: 0.1,
+      state: 4,
+    })
+    t += offset < 0 ? 33 : 55
+  }
+  return samples
+}
+
+function VescFaultCaptureSectionShowcase() {
+  const [now] = useState(() => Date.now())
+  const [state, setState] = useState('complete')
+  const samples = buildCaptureSamples(now - 60_000)
+  const capture = {
+    occurrenceId: 'occ',
+    boardId: 'demo',
+    startedAtMs: now - 65_000,
+    openedAtMs: now - 60_000,
+    endedAtMs: samples[samples.length - 1].capturedAtMs,
+    sampleCount: samples.length,
+    complete: state === 'complete',
+    samples: state === 'empty' ? [] : samples,
+  }
+
+  return (
+    <ShowcaseCard
+      name="VescFaultCaptureSection"
+      controls={
+        <ChipRow
+          label="state"
+          options={['complete', 'incomplete', 'empty', 'loading']}
+          selected={state}
+          onSelect={setState}
+        />
+      }
+    >
+      <VescFaultCaptureSection
+        capture={state === 'loading' ? null : capture}
+        loading={state === 'loading'}
+        clearedAtMs={now - 58_500}
+      />
+    </ShowcaseCard>
+  )
+}
+
 function ReplayBadgeShowcase() {
   return (
     <ShowcaseCard name="ReplayBadge">
@@ -323,12 +388,13 @@ export default function BoardComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, StepTimeline, BoardWarningRow, ReplayBadge, TelemetryCell, BoardConfigSection — board- and connection-flavored components."
+          description="DeviceRow, StepTimeline, BoardWarningRow, VescFaultRow, VescFaultCaptureSection, ReplayBadge, TelemetryCell, BoardConfigSection — board- and connection-flavored components."
         />
         <DeviceRowShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
         <VescFaultRowShowcase />
+        <VescFaultCaptureSectionShowcase />
         <ReplayBadgeShowcase />
         <TelemetryCellShowcase />
         <FootpadIndicatorShowcase />
