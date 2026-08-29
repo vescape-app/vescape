@@ -31,6 +31,8 @@ struct VescFaultOccurrence {
   var clearedAtMs: Int64?
   var registerPosition: Int?
   var dismissed: Bool
+  /// Register snapshot this occurrence's controller context came from (#432), when any.
+  var registerSnapshotId: String?
 
   func toMap() -> [String: Any?] {
     [
@@ -44,6 +46,7 @@ struct VescFaultOccurrence {
       "clearedAtMs": clearedAtMs,
       "registerPosition": registerPosition,
       "dismissed": dismissed,
+      "registerSnapshotId": registerSnapshotId,
     ]
   }
 }
@@ -162,7 +165,8 @@ final class VescFaultCoordinator {
       lastObservedAtMs: timestamp,
       clearedAtMs: nil,
       registerPosition: nil,
-      dismissed: false
+      dismissed: false,
+      registerSnapshotId: nil
     )
     guard store.upsert(opened) else { return }
     lock.lock()
@@ -197,6 +201,64 @@ final class VescFaultCoordinator {
   /// occurrence: the controller never said "cleared", and inventing one would fabricate evidence.
   /// In-memory continuity is kept so the same code seen after a reconnect is the same activation.
   func onSessionLost(boardId: String) {}
+
+  /// The occurrence a register read should try to enrich: the Board's currently open live
+  /// activation. In-memory state wins over the store, because a fault opened moments ago is the
+  /// whole point of the immediate post-trigger read.
+  func openLiveOccurrence(_ boardId: String) -> VescFaultOccurrence? {
+    hydrate(boardId)
+    lock.lock()
+    let current = active[boardId]
+    lock.unlock()
+    return current ?? store.openLive(boardId)
+  }
+
+  /// Attach controller register context to an already-open live occurrence. Only ever called for the
+  /// unambiguous case decided by `VescFaultRegisterCoordinator`; this method does no matching itself.
+  func enrichFromRegister(occurrenceId: String, registerPosition: Int, snapshotId: String) {
+    guard collectionEnabled else { return }
+    guard var current = store.getAll().first(where: { $0.id == occurrenceId }) else { return }
+    current.registerPosition = registerPosition
+    current.registerSnapshotId = snapshotId
+    guard store.upsert(current) else { return }
+    lock.lock()
+    if active[current.boardId]?.id == occurrenceId { active[current.boardId] = current }
+    lock.unlock()
+    emit(current.boardId)
+  }
+
+  /// Mint an occurrence Vescape only ever learned about from the controller's register.
+  ///
+  /// `occurredAtMs` stays nil on purpose: the register carries no timestamp, and inventing one would
+  /// fabricate precision the controller never gave. Link baselines are recorded pre-dismissed so they
+  /// stay inspectable evidence without ever driving the Board health indicator.
+  @discardableResult
+  func addRegisterOccurrence(
+    boardId: String, code: Int, source: VescFaultSource, registerPosition: Int, snapshotId: String
+  ) -> VescFaultOccurrence? {
+    guard collectionEnabled else { return nil }
+    let timestamp = now()
+    let occurrence = VescFaultOccurrence(
+      id: newId(),
+      boardId: boardId,
+      code: code,
+      source: source,
+      occurredAtMs: nil,
+      discoveredAtMs: timestamp,
+      lastObservedAtMs: timestamp,
+      // The register holds faults the controller already finished reporting; there is nothing open
+      // to close later, and leaving `clearedAt` nil would render them as still active.
+      clearedAtMs: timestamp,
+      registerPosition: registerPosition,
+      dismissed: source == .baseline,
+      registerSnapshotId: snapshotId
+    )
+    guard store.upsert(occurrence) else { return nil }
+    return occurrence
+  }
+
+  /// Push the current list for a Board after a batch of register writes.
+  func emitFor(_ boardId: String) { emit(boardId) }
 
   func setDismissed(id: String, dismissed: Bool) {
     guard store.setDismissed(id, dismissed) else { return }

@@ -15,6 +15,7 @@ function fault(over: Partial<VescFaultOccurrence>): VescFaultOccurrence {
     clearedAtMs: null,
     registerPosition: null,
     dismissed: false,
+    registerSnapshotId: null,
     ...over,
   }
 }
@@ -26,6 +27,16 @@ describe('faultTitle', () => {
 
   it('falls back to the raw code for firmware this build does not know', () => {
     expect(faultTitle(247)).toBe('Fault code 247')
+  })
+
+  it('reads a register occurrence in the controller code space, not the Refloat one', () => {
+    expect(faultTitle(6, 'register')).toBe('Motor over temperature')
+    expect(faultTitle(6, 'live')).toBe('Pitch angle exceeded')
+  })
+
+  it('names a register entry whose firmware fault name this build does not know', () => {
+    expect(faultTitle(-1, 'baseline')).toBe('Unknown controller fault')
+    expect(faultTitle(247, 'baseline')).toBe('Controller fault code 247')
   })
 })
 

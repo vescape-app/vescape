@@ -12,12 +12,34 @@ internal let COMM_GET_CUSTOM_CONFIG = 93
 internal let COMM_SET_CUSTOM_CONFIG = 95
 internal let COMM_PING_CAN = 62
 internal let COMM_SET_CHUCK_DATA = 35
+
+/// Read-only terminal request. Vescape only ever sends the fixed literal `faults`; the command
+/// byte is deliberately not exposed with a caller-supplied string anywhere.
+internal let COMM_TERMINAL_CMD = 20
+
+/// Controller terminal output. Multi-frame, with no explicit completion frame.
+internal let COMM_PRINT = 21
 internal let REFLOAT_MAGIC = 101
 internal let REFLOAT_GET_INFO = 0
 internal let REFLOAT_GET_ALLDATA = 10
 internal let REFLOAT_RC_MOVE = 7
 internal let REFLOAT_REMOTE = 15
 internal let REMOTE_TILT_CENTER = 128
+
+/// The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
+/// retained in-memory fault register and mutates nothing. Keeping it a private constant behind
+/// `buildFaultsTerminalCommand` is what stops this from becoming a generic command surface.
+private let vescFaultsTerminalCommand = "faults"
+
+/// Frames the read-only `faults` terminal request for the Board Link's transport, so a CAN-forwarded
+/// Refloat Board asks the same controller the Board Link proved.
+///
+/// There is intentionally **no** string parameter: the payload is fixed.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildFaultsTerminalCommand`
+internal func buildFaultsTerminalCommand(_ transport: BoardTransport) -> [UInt8] {
+  transport.frame([UInt8(COMM_TERMINAL_CMD)] + Array(vescFaultsTerminalCommand.utf8))
+}
 
 /// Board Move input range for the Refloat 1.3+ `REMOTE` byte (`-128` is ignored by firmware).
 internal let BOARD_MOVE_INPUT_MAX = 127

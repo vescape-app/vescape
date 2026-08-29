@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 38
+internal const val TELEMETRY_DATABASE_VERSION = 39
 
 @Database(
   entities = [
@@ -33,6 +33,7 @@ internal const val TELEMETRY_DATABASE_VERSION = 38
     VescFaultOccurrenceEntity::class,
     VescFaultCaptureEntity::class,
     VescFaultCaptureSampleEntity::class,
+    VescFaultRegisterSnapshotEntity::class,
     FavoriteEntity::class,
     FavoriteMediaEntity::class,
     BoardConfigValuesEntity::class,
@@ -843,6 +844,32 @@ abstract class TelemetryDatabase : RoomDatabase() {
       }
     }
 
+    internal val MIGRATION_38_39 = object : Migration(38, 39) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS vesc_fault_register_snapshots (
+            id TEXT NOT NULL PRIMARY KEY,
+            board_id TEXT NOT NULL,
+            read_at INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL,
+            raw BLOB NOT NULL,
+            text TEXT NOT NULL,
+            entries_json TEXT
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_vesc_fault_register_snapshots_board_id_read_at " +
+            "ON vesc_fault_register_snapshots(board_id, read_at)",
+        )
+        if (!hasColumn(db, "vesc_fault_occurrences", "register_snapshot_id")) {
+          db.execSQL("ALTER TABLE vesc_fault_occurrences ADD COLUMN register_snapshot_id TEXT")
+        }
+      }
+    }
+
     internal val MIGRATION_34_35 = object : Migration(34, 35) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'")
@@ -928,6 +955,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_35_36,
             MIGRATION_36_37,
             MIGRATION_37_38,
+            MIGRATION_38_39,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

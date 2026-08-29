@@ -32,7 +32,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
   const [expanded, setExpanded] = useState(false)
   const dismissed = fault.dismissed
   const active = fault.clearedAtMs == null
-  const title = faultTitle(fault.code)
+  const title = faultTitle(fault.code, fault.source)
   const { capture, loading } = useVescFaultCapture(fault.id, expanded, fault.clearedAtMs)
 
   return (
@@ -51,7 +51,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
           <View style={styles.chips}>
             <View style={[styles.chip, { backgroundColor: theme.neutral.surfaceDeep }]}>
               <Text style={[styles.chipText, { color: theme.neutral.textMuted }]}>
-                Code {fault.code}
+                {fault.source === 'live' ? `Code ${fault.code}` : 'Controller register'}
               </Text>
             </View>
             {active && (

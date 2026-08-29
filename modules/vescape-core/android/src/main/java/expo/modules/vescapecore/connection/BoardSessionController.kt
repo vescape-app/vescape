@@ -22,7 +22,9 @@ import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
 import expo.modules.vescapecore.protocol.COMM_GET_MCCONF
+import expo.modules.vescapecore.protocol.COMM_PRINT
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
+import expo.modules.vescapecore.protocol.buildFaultsTerminalCommand
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
@@ -95,6 +97,11 @@ import expo.modules.vescapecore.warnings.BatteryConfigMismatchDetector
 import expo.modules.vescapecore.warnings.BoardWarningKind
 import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
 import expo.modules.vescapecore.faults.VescFaultCoordinator
+import expo.modules.vescapecore.faults.VescFaultAuditPolicy
+import expo.modules.vescapecore.faults.VescFaultRegisterCoordinator
+import expo.modules.vescapecore.faults.VescFaultRegisterReader
+import expo.modules.vescapecore.faults.VescFaultRegisterReason
+import expo.modules.vescapecore.faults.VescFaultRegisterRead
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import expo.modules.vescapecore.warnings.BoardWarningStore
@@ -869,6 +876,7 @@ private var wearAutoLaunchOnConnect = true
     /** Disconnect the active session from the notification Disconnect action (native-initiated). */
     fun disconnectFromNotification() {
         if (boardConfig == null) return
+        requestPreDisconnectFaultRegisterRead()
         setStatus(BoardPhase.Disconnecting)
         ManualDisconnectAutoStartGate.suppress(service.applicationContext, boardConfig?.appBoardId)
         // Always refresh: the notification stays visible after disconnect (idle + Connect), so it must
@@ -911,6 +919,7 @@ private var wearAutoLaunchOnConnect = true
     fun consumePendingStop() {
         val stop = CoreForegroundService.claimPendingStop() ?: return
         if (boardConfig != null) {
+            requestPreDisconnectFaultRegisterRead()
             setStatus(BoardPhase.Disconnecting)
             ManualDisconnectAutoStartGate.suppress(service.applicationContext, boardConfig?.appBoardId)
             // Always refresh, exactly like the notification Disconnect action: the notification
@@ -1093,6 +1102,7 @@ private var wearAutoLaunchOnConnect = true
         // so a fault that opened before a restart is closed by the first normal frame after it.
         liveFaultCode = FAULT_CODE_UNKNOWN
         lastFaultDispatchAtMs = 0L
+        faultAuditPolicy.onSessionStarted()
         beginGpsSessionDiagnostics()
         // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
         // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1345,6 +1355,7 @@ private var wearAutoLaunchOnConnect = true
             )
             COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
             COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
+            COMM_PRINT -> handlePrintPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
                 if (payload.size >= 3) {
                     when (payload[2].toInt() and 0xff) {
@@ -1357,6 +1368,7 @@ private var wearAutoLaunchOnConnect = true
                         )
                         COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
                         COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
+                        COMM_PRINT -> handlePrintPayload(payload.copyOfRange(3, payload.size))
                     }
                 }
             }
@@ -1414,6 +1426,7 @@ private var wearAutoLaunchOnConnect = true
             onRefloatNormalFrame()
             val processed = telemetryPipeline.process(parsed, sessionToken) ?: return
             observeFaultCaptureSample(processed.eventMap)
+            observeFaultAudit(parsed.speed, now)
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
             telemetry = parsed
@@ -1503,6 +1516,9 @@ private var wearAutoLaunchOnConnect = true
         lastFaultDispatchAtMs = now
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
         launchWarningWrite { coordinator.onActiveFault(boardId, code) }
+        // Ask the controller for its retained register right now: the values behind a short current
+        // spike live there and nowhere else, and they are gone once the register rolls over.
+        requestFaultRegisterRead(VescFaultRegisterReason.LIVE)
     }
 
     /**
@@ -1537,6 +1553,133 @@ private var wearAutoLaunchOnConnect = true
             }
             onOccurrenceClosed = { occurrenceId, clearedAtMs -> captures.closeCapture(occurrenceId, clearedAtMs) }
         }
+    }
+
+    // --- VESC fault register (#432) ---
+
+    /**
+     * The terminal read currently in flight, or null. At most one per Board Session: the register is
+     * a single controller-owned list, so a second concurrent read would only interleave its own
+     * `COMM_PRINT` frames into the first one's bytes.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `faultRegisterReader`
+     */
+    private var faultRegisterReader: VescFaultRegisterReader? = null
+    private var faultRegisterTickHandle: Cancellable? = null
+
+    /** Decides when a terminal read is a safe, useful thing to spend BLE bandwidth on. */
+    private val faultAuditPolicy = VescFaultAuditPolicy()
+
+    /**
+     * Ask the controller for its retained fault register.
+     *
+     * Deliberately **not** the config-read pattern: the request is enqueued straight onto the write
+     * path and the response-paced telemetry loop is never paused. Terminal frames can lower the
+     * achieved rate for a moment; a stalled poll loop would be a real defect.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `requestFaultRegisterRead`
+     */
+    private fun requestFaultRegisterRead(reason: VescFaultRegisterReason) {
+        if (!VescFaultCoordinator.get(service.applicationContext).collectionEnabled) return
+        if (faultRegisterReader != null) return
+        val session = boardSession ?: return
+        val boardId = boardConfig?.appBoardId ?: return
+        val transport = currentBoardTransport() ?: return
+        val now = nowMs()
+        val reader = VescFaultRegisterReader(boardId, reason, now)
+        faultRegisterReader = reader
+        faultAuditPolicy.onAuditStarted(now)
+        sendPayloadWithRetry(buildFaultsTerminalCommand(transport), session)
+        scheduleFaultRegisterTick(session)
+    }
+
+    /** Poll the bounded completion policy until it resolves the read one way or the other. */
+    private fun scheduleFaultRegisterTick(session: BoardSession) {
+        faultRegisterTickHandle?.cancel()
+        faultRegisterTickHandle = scheduler.postDelayedForSession(
+            session,
+            VescFaultRegisterReader.TICK_MS,
+            ::isCurrentBoardSession,
+        ) {
+            faultRegisterTickHandle = null
+            val reader = faultRegisterReader ?: return@postDelayedForSession
+            val read = reader.poll(nowMs())
+            if (read == null) {
+                scheduleFaultRegisterTick(session)
+                return@postDelayedForSession
+            }
+            faultRegisterReader = null
+            recordFaultRegisterRead(reader.boardId, read)
+        }
+    }
+
+    /**
+     * Feed one `COMM_PRINT` frame to the in-flight read. Terminal text is deliberately isolated here
+     * and never reaches telemetry parsing; without an active read the bytes are dropped, because
+     * Vescape has no other reason to be listening to the controller's console.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handlePrintPayload`
+     */
+    private fun handlePrintPayload(body: ByteArray) {
+        faultRegisterReader?.onPrintChunk(body, nowMs())
+    }
+
+    private fun recordFaultRegisterRead(boardId: String, read: VescFaultRegisterRead) {
+        val registers = VescFaultRegisterCoordinator.get(service.applicationContext)
+        launchWarningWrite { registers.record(boardId, read) }
+    }
+
+    /**
+     * A Board Session became ready. The first read of a Board that has no baseline yet — a fresh
+     * link, a re-link, or a Board saved before this feature existed — establishes one; every later
+     * connection is an ordinary audit.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `auditFaultRegisterOnConnect`
+     */
+    private fun auditFaultRegisterOnConnect() {
+        val boardId = boardConfig?.appBoardId ?: return
+        val registers = VescFaultRegisterCoordinator.get(service.applicationContext)
+        val session = boardSession ?: return
+        launchWarningWrite {
+            val reason = registers.connectReason(boardId)
+            scheduler.post {
+                if (isCurrentBoardSession(session)) requestFaultRegisterRead(reason)
+            }
+        }
+    }
+
+    /**
+     * One decoded telemetry sample: offer it to the audit policy, which finds stationary and idle
+     * opportunities. Runs on the hot path, so it only touches memory.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `observeFaultAudit`
+     */
+    private fun observeFaultAudit(speedKmh: Double, now: Long) {
+        val reason = faultAuditPolicy.observe(now, speedKmh) ?: return
+        requestFaultRegisterRead(reason)
+    }
+
+    /**
+     * An intentional disconnect is starting. Best effort by construction: teardown follows in the
+     * same turn, so this only wins when a `COMM_PRINT` frame is already on its way in. Whatever
+     * arrives is finalized by [finishFaultRegisterRead] as explicitly incomplete evidence, and a
+     * read that collected nothing is not persisted at all.
+     *
+     * The stationary audit is what actually covers this moment for a rider who stops and then
+     * disconnects; this exists so an in-flight answer is not thrown away.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `requestPreDisconnectFaultRegisterRead`
+     */
+    private fun requestPreDisconnectFaultRegisterRead() {
+        requestFaultRegisterRead(VescFaultRegisterReason.PREDISCONNECT)
+    }
+
+    /**
+     * The Board Session is going away. Persists whatever the in-flight read collected as explicitly
+     * incomplete evidence — a read the link cut short can never be promoted to complete.
+     */
+    private fun finishFaultRegisterRead() {
+        faultRegisterTickHandle?.cancel()
+        faultRegisterTickHandle = null
+        val reader = faultRegisterReader ?: return
+        faultRegisterReader = null
+        val read = reader.finishIncomplete() ?: return
+        recordFaultRegisterRead(reader.boardId, read)
     }
 
     /**
@@ -2173,6 +2316,7 @@ private var wearAutoLaunchOnConnect = true
         if (connectionSoundsEnabled) alertFeedback.playConnect()
         maybeLaunchWatchMirror()
         transitionBoardPhase(BoardPhase.Connected)
+        auditFaultRegisterOnConnect()
     }
 
     /**
@@ -2392,6 +2536,7 @@ private var wearAutoLaunchOnConnect = true
             val detached = captures.detachSession(boardId)
             launchWarningWrite { captures.persistDetached(detached) }
         }
+        finishFaultRegisterRead()
         telemetryPipeline.endSession()
         sessionSequence += 1
         boardConfig = null
@@ -2996,6 +3141,12 @@ private var wearAutoLaunchOnConnect = true
         // every in-flight window without deleting stored evidence.
         VescFaultCaptureCoordinator.get(service.applicationContext)
             .setCollectionEnabled(settings.vescFaultCollectionEnabled)
+        if (collectionWasEnabled && !settings.vescFaultCollectionEnabled) {
+            // Kill switch: drop the in-flight read without persisting. Off must mean no new writes.
+            faultRegisterTickHandle?.cancel()
+            faultRegisterTickHandle = null
+            faultRegisterReader = null
+        }
         if (!collectionWasEnabled && settings.vescFaultCollectionEnabled) {
             // Transitions were dropped while disabled, so the controller's edge state is a lie.
             // Reset it to unknown so the next frame — fault or normal — reconciles the coordinator

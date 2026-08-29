@@ -175,6 +175,7 @@ function VescFaultRowShowcase() {
       lastObservedAtMs: now - 1000,
       clearedAtMs: null,
       registerPosition: null,
+      registerSnapshotId: null,
     },
     {
       id: 'cleared',
@@ -186,6 +187,7 @@ function VescFaultRowShowcase() {
       lastObservedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
       clearedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
       registerPosition: null,
+      registerSnapshotId: null,
     },
     {
       id: 'baseline',
@@ -195,8 +197,9 @@ function VescFaultRowShowcase() {
       occurredAtMs: null,
       discoveredAtMs: now - 26 * 60 * 60 * 1000,
       lastObservedAtMs: now - 26 * 60 * 60 * 1000,
-      clearedAtMs: null,
+      clearedAtMs: now - 26 * 60 * 60 * 1000,
       registerPosition: 2,
+      registerSnapshotId: 'snapshot',
     },
   ]
   return (

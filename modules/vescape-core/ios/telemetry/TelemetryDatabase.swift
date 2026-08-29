@@ -661,6 +661,17 @@ enum TelemetryDatabase {
       try VescFaultCaptureStore.createTables(db)
     }
 
+    /// Retained controller fault-register reads, plus the occurrence back-reference to the read an
+    /// occurrence's controller context came from. Additive only: `ADD COLUMN` is safe on the SQLite
+    /// versions this app ships against, unlike `DROP COLUMN`.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_38_39`
+    migrator.registerMigration("v39_vesc_fault_register_snapshots") { db in
+      try VescFaultRegisterStore.createTables(db)
+      if try !db.columns(in: "vesc_fault_occurrences").map(\.name).contains("register_snapshot_id") {
+        try db.execute(sql: "ALTER TABLE vesc_fault_occurrences ADD COLUMN register_snapshot_id TEXT")
+      }
+    }
+
     return migrator
   }
 }

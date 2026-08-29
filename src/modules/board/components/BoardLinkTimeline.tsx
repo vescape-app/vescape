@@ -15,6 +15,7 @@ import {
   PathIcon,
   PlugsConnectedIcon,
   WarningCircleIcon,
+  WarningIcon,
 } from 'phosphor-react-native'
 import type { BoardCandidate, BoardProbeProgressEvent, BoardProbeStep } from 'vescape-core'
 
@@ -48,6 +49,7 @@ type StepKey =
   | 'session'
   | 'config'
   | 'motorConfig'
+  | 'faults'
 
 const STEP_KEYS: StepKey[] = [
   'connect',
@@ -59,6 +61,7 @@ const STEP_KEYS: StepKey[] = [
   'session',
   'config',
   'motorConfig',
+  'faults',
 ]
 
 const STEP_LABEL: Record<StepKey, string> = {
@@ -71,6 +74,7 @@ const STEP_LABEL: Record<StepKey, string> = {
   session: 'Board session',
   config: 'Refloat config',
   motorConfig: 'Motor config',
+  faults: 'Controller faults',
 }
 
 const STEP_ICON: Record<StepKey, Icon> = {
@@ -83,6 +87,7 @@ const STEP_ICON: Record<StepKey, Icon> = {
   session: PlugsConnectedIcon,
   config: LightningIcon,
   motorConfig: EngineIcon,
+  faults: WarningIcon,
 }
 
 /** What each step does — shown until a concrete result replaces it. */
@@ -96,6 +101,7 @@ const STEP_DESC: Record<StepKey, string> = {
   session: 'Connecting the way rides connect',
   config: 'Reading complete Refloat config',
   motorConfig: 'Reading VESC motor config',
+  faults: 'Reading the controller fault register',
 }
 
 /**
@@ -113,6 +119,7 @@ const STEP_REACH: Record<BoardProbeStep, number> = {
   session: 6,
   config: 7,
   'motor-config': 8,
+  faults: 9,
   completed: STEP_KEYS.length,
   failed: -1,
 }
@@ -235,8 +242,10 @@ function pickingSteps(
  */
 function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineStep[] {
   const step = progress?.step
-  const sessionDone = step === 'config' || step === 'motor-config' || step === 'completed'
-  const configDone = step === 'motor-config' || step === 'completed'
+  const sessionDone =
+    step === 'config' || step === 'motor-config' || step === 'faults' || step === 'completed'
+  const configDone = step === 'motor-config' || step === 'faults' || step === 'completed'
+  const motorConfigDone = step === 'faults' || step === 'completed'
   return [
     row(
       'session',
@@ -250,10 +259,28 @@ function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineSte
     ),
     row(
       'motorConfig',
-      step === 'completed' ? 'done' : step === 'motor-config' ? 'active' : 'pending',
-      step === 'completed' ? 'Last Known values saved' : STEP_DESC.motorConfig,
+      motorConfigDone ? 'done' : step === 'motor-config' ? 'active' : 'pending',
+      motorConfigDone ? 'Last Known values saved' : STEP_DESC.motorConfig,
+    ),
+    row(
+      'faults',
+      step === 'completed' ? 'done' : step === 'faults' ? 'active' : 'pending',
+      step === 'completed' ? baselineCaption(progress?.baselineFaultCount) : STEP_DESC.faults,
     ),
   ]
+}
+
+/**
+ * Caption for the fault-register baseline row.
+ *
+ * Informational only, and deliberately never a failure: faults the controller already held are not
+ * caused by this link, they are stored pre-dismissed, and they never drive the Board health
+ * indicator. A read that did not land simply says so rather than claiming an empty register.
+ */
+function baselineCaption(count: number | null | undefined): string {
+  if (count == null) return 'Register not read — Vescape will retry while riding'
+  if (count === 0) return 'Controller register is empty'
+  return `${count} pre-existing ${count === 1 ? 'fault' : 'faults'} — kept as history`
 }
 
 /**
@@ -261,8 +288,8 @@ function acquisitionSteps(progress: BoardProbeProgressEvent | null): TimelineSte
  * reported: every row before it got far enough to have passed.
  */
 function failedAcquisitionSteps(step: BoardProbeStep | undefined): TimelineStep[] {
-  const reachedConfig = step === 'config' || step === 'motor-config'
-  const reachedMotorConfig = step === 'motor-config'
+  const reachedConfig = step === 'config' || step === 'motor-config' || step === 'faults'
+  const reachedMotorConfig = step === 'motor-config' || step === 'faults'
   return [
     row(
       'session',
@@ -281,10 +308,14 @@ function failedAcquisitionSteps(step: BoardProbeStep | undefined): TimelineStep[
     row(
       'motorConfig',
       reachedMotorConfig ? 'failed' : 'pending',
-      reachedMotorConfig
+      step === 'motor-config'
         ? 'Could not read motor config — firmware may not be supported'
-        : STEP_DESC.motorConfig,
+        : reachedMotorConfig
+          ? 'Last Known values saved'
+          : STEP_DESC.motorConfig,
     ),
+    // The baseline read never fails a Board Link, so this row only ever reports "not reached".
+    row('faults', 'pending', STEP_DESC.faults),
   ]
 }
 

@@ -143,6 +143,7 @@ export type BoardProbeStep =
   | 'session'
   | 'config'
   | 'motor-config'
+  | 'faults'
   | 'completed'
   | 'failed'
 
@@ -156,6 +157,14 @@ export interface BoardProbeProgressEvent {
   transport?: BoardTransport
   /** CAN ids that answered the CAN scan; absent before `probing`. */
   canIds?: number[]
+  /**
+   * Faults the controller's register already held when the link was made, on the `faults` step.
+   *
+   * Informational only: these are pre-existing faults the rider's link did not cause, they are
+   * stored pre-dismissed, and they never drive the Board health indicator. Absent when the baseline
+   * read did not land — a Board Link never fails on it.
+   */
+  baselineFaultCount?: number | null
 }
 
 /**
@@ -1476,6 +1485,8 @@ export interface VescFaultOccurrence {
   clearedAtMs: number | null
   registerPosition: number | null
   dismissed: boolean
+  /** Register read this occurrence's controller context came from, when any. */
+  registerSnapshotId: string | null
 }
 
 /**
@@ -1550,6 +1561,81 @@ export interface VescFaultCapture {
  */
 export interface VescFaultCaptureDetail extends VescFaultCapture {
   samples: VescFaultCaptureSample[]
+}
+
+/**
+ * Why Vescape asked the controller for its retained fault register.
+ * @parity /modules/vescape-core/ios/faults/VescFaultRegister.swift `VescFaultRegisterReason`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultRegister.kt `VescFaultRegisterReason`
+ */
+export type VescFaultRegisterReason =
+  | 'baseline'
+  | 'connect'
+  | 'live'
+  | 'stationary'
+  | 'predisconnect'
+  | 'idle'
+
+/**
+ * How a terminal read ended. `COMM_PRINT` has no completion frame, so this is the only honest
+ * statement Vescape can make about the bytes it holds: an `incomplete` read is still evidence, but
+ * it never proves an empty register.
+ * @parity /modules/vescape-core/ios/faults/VescFaultRegister.swift `VescFaultRegisterStatus`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultRegister.kt `VescFaultRegisterStatus`
+ */
+export type VescFaultRegisterStatus = 'complete' | 'incomplete'
+
+/**
+ * One `Label : value` line of a register block, kept in print order. Labels this app version has no
+ * meaning for survive here rather than being dropped.
+ * @parity /modules/vescape-core/ios/faults/VescFaultRegister.swift `VescFaultRegisterField`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultRegister.kt `VescFaultRegisterEntry`
+ */
+export interface VescFaultRegisterField {
+  label: string
+  value: string
+}
+
+/**
+ * One parsed fault block out of the controller's register — a projection of the snapshot's raw
+ * bytes, never a replacement for them.
+ *
+ * `code` is a VESC `mc_fault_code`, a **different code space** from the Refloat fault codes carried
+ * by live occurrences, and null when the firmware named a fault this app version does not know.
+ * @parity /modules/vescape-core/ios/faults/VescFaultRegister.swift `VescFaultRegisterEntry`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultRegister.kt `VescFaultRegisterEntry`
+ */
+export interface VescFaultRegisterEntry {
+  /** Controller order, oldest printed block first. */
+  position: number
+  code: number | null
+  /** The firmware's own fault name, e.g. `FAULT_CODE_ABS_OVER_CURRENT`. Always verbatim. */
+  name: string
+  fields: VescFaultRegisterField[]
+  /** The block exactly as printed. */
+  rawBlock: string
+}
+
+/**
+ * One retained read of the controller's fault register.
+ *
+ * Native holds the exact received bytes as the authority; `text` and `entries` are projections of
+ * them. `entries` is null whenever the output could not be parsed, and empty only when the
+ * controller stated it has no faults — a partial read is never an empty register.
+ * @parity /modules/vescape-core/ios/faults/VescFaultRegister.swift `VescFaultRegisterSnapshot`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultRegister.kt `VescFaultRegisterSnapshot`
+ */
+export interface VescFaultRegisterSnapshot {
+  id: string
+  boardId: string
+  readAtMs: number
+  reason: VescFaultRegisterReason
+  status: VescFaultRegisterStatus
+  /** Size of the retained raw payload. The bytes themselves stay native. */
+  byteCount: number
+  /** Lossy display projection of the raw bytes. */
+  text: string
+  entries: VescFaultRegisterEntry[] | null
 }
 
 /**
@@ -2108,6 +2194,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   getVescFaults(): Promise<VescFaultOccurrence[]>
   setVescFaultDismissed(id: string, dismissed: boolean): Promise<void>
   getVescFaultCapture(occurrenceId: string): Promise<VescFaultCaptureDetail | null>
+  getVescFaultRegisterSnapshots(boardId: string): Promise<VescFaultRegisterSnapshot[]>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
   getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
   getMotorConfigValues(): Promise<MotorConfigValues | null>
@@ -2837,6 +2924,20 @@ export async function getVescFaultCapture(
   occurrenceId: string,
 ): Promise<VescFaultCaptureDetail | null> {
   return native.getVescFaultCapture(occurrenceId)
+}
+
+/**
+ * Retained controller fault-register reads for one Board, newest first.
+ *
+ * Raw evidence, not a derived view: an `incomplete` read is returned as such and never interpreted
+ * as an empty register.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultRegisterSnapshots`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultRegisterSnapshots`
+ */
+export async function getVescFaultRegisterSnapshots(
+  boardId: string,
+): Promise<VescFaultRegisterSnapshot[]> {
+  return native.getVescFaultRegisterSnapshots(boardId)
 }
 
 export async function getDatabaseSizeBytes(): Promise<number> {

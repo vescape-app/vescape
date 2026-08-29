@@ -644,6 +644,18 @@ public class VescapeCoreModule: Module {
       promise.resolve(payload)
     }
 
+    /// Retained controller fault-register reads for one Board, newest first.
+    ///
+    /// Raw evidence, not a derived view: an `incomplete` read is returned as such and never
+    /// interpreted as an empty register. `entries` is nil when the output could not be parsed — the
+    /// bytes are still there.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultRegisterSnapshots`
+    /// @parity /modules/vescape-core/src/index.ts `getVescFaultRegisterSnapshots`
+    AsyncFunction("getVescFaultRegisterSnapshots") { (boardId: String, promise: Promise) in
+      promise.resolve(
+        VescFaultRegisterCoordinator.shared.snapshotsForBoard(boardId).map { $0.toMap() })
+    }
+
     AsyncFunction("clearBoardWarning") { (boardId: String, kind: String, promise: Promise) in
       BoardWarningRegistry.shared.clearWarning(boardId: boardId, kind: kind)
       promise.resolve(nil)
@@ -1265,6 +1277,11 @@ public class VescapeCoreModule: Module {
     }
     let previous = BoardConfigStore.shared.load(boardId: boardId, refloatBaseVersion: baseVersion)?.capturedAtMs ?? Int64.min
     let previousMotor = MotorConfigStore.shared.loadLatest(boardId: boardId)?.capturedAtMs ?? Int64.min
+    // Every link and re-link establishes a fresh register baseline: a re-addressed controller's
+    // retained faults have nothing to do with the ones the previous link compared against. The
+    // session opened below reads it as soon as the Board is ready.
+    VescFaultRegisterCoordinator.shared.requestBaseline(boardId)
+    let previousBaseline = VescFaultRegisterCoordinator.shared.latestBaseline(boardId)?.readAtMs ?? Int64.min
     // The config read runs over a real Board Session — the same path rides use — so linking proves
     // the production connect, not just the probe's own detection client.
     sendEvent("onBoardProbeProgress", [
@@ -1285,7 +1302,7 @@ public class VescapeCoreModule: Module {
         self?.awaitProbeConfig(
           probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
           previousCapturedAt: previous, previousMotorCapturedAt: previousMotor,
-          attemptsRemaining: 120, promise: promise
+          previousBaselineAt: previousBaseline, attemptsRemaining: 120, promise: promise
         )
       },
       onError: { [weak self] code, message in
@@ -1299,7 +1316,8 @@ public class VescapeCoreModule: Module {
   private func awaitProbeConfig(
     probeId: String, boardId: String, bleId: String,
     candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
-    previousMotorCapturedAt: Int64, attemptsRemaining: Int, promise: Promise
+    previousMotorCapturedAt: Int64, previousBaselineAt: Int64, attemptsRemaining: Int,
+    promise: Promise
   ) {
     guard completedProbes[probeId] != nil else {
       coordinator.stopBoard()
@@ -1318,7 +1336,8 @@ public class VescapeCoreModule: Module {
       ])
       awaitProbeMotorConfig(
         probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
-        previousCapturedAt: previousMotorCapturedAt, attemptsRemaining: 80, promise: promise
+        previousCapturedAt: previousMotorCapturedAt, previousBaselineAt: previousBaselineAt,
+        attemptsRemaining: 80, promise: promise
       )
       return
     }
@@ -1332,7 +1351,8 @@ public class VescapeCoreModule: Module {
       self?.awaitProbeConfig(
         probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
         previousCapturedAt: previousCapturedAt, previousMotorCapturedAt: previousMotorCapturedAt,
-        attemptsRemaining: attemptsRemaining - 1, promise: promise
+        previousBaselineAt: previousBaselineAt, attemptsRemaining: attemptsRemaining - 1,
+        promise: promise
       )
     }
   }
@@ -1340,7 +1360,7 @@ public class VescapeCoreModule: Module {
   private func awaitProbeMotorConfig(
     probeId: String, boardId: String, bleId: String,
     candidate: TransportDetection.Candidate, previousCapturedAt: Int64,
-    attemptsRemaining: Int, promise: Promise
+    previousBaselineAt: Int64, attemptsRemaining: Int, promise: Promise
   ) {
     guard completedProbes[probeId] != nil else {
       coordinator.stopBoard()
@@ -1349,17 +1369,11 @@ public class VescapeCoreModule: Module {
     }
     if let values = MotorConfigStore.shared.loadLatest(boardId: boardId),
       values.capturedAtMs > previousCapturedAt {
-      // The probe stays finalizable: the rider may still switch transports, and each pick
-      // acquires config for its own candidate before the link can be saved.
-      PendingLinkConnect.arm(boardId: boardId)
-      coordinator.stopBoard()
-      promise.resolve([
-        "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
-        "hasBms": candidate.hasBms,
-        "vescFirmwareVersion": candidate.vescFirmwareVersion,
-        "refloatVersion": candidate.refloatVersion,
-        "refloatBaseVersion": candidate.refloatBaseVersion!,
-      ] as [String: Any?])
+      awaitProbeFaultBaseline(
+        probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+        previousBaselineAt: previousBaselineAt, attemptsRemaining: Self.baselineWaitAttempts,
+        promise: promise
+      )
       return
     }
     guard attemptsRemaining > 0 else {
@@ -1374,10 +1388,60 @@ public class VescapeCoreModule: Module {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
       self?.awaitProbeMotorConfig(
         probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
-        previousCapturedAt: previousCapturedAt, attemptsRemaining: attemptsRemaining - 1,
-        promise: promise
+        previousCapturedAt: previousCapturedAt, previousBaselineAt: previousBaselineAt,
+        attemptsRemaining: attemptsRemaining - 1, promise: promise
       )
     }
+  }
+
+  /// How long linking waits for the register baseline before moving on. Bounded on purpose: the
+  /// baseline is information, and a Board Link must never hang on it.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `BASELINE_WAIT_ATTEMPTS`
+  private static let baselineWaitAttempts = 24
+
+  /// Last link stage: wait briefly for the controller's fault-register baseline, then finalize.
+  ///
+  /// Informational only. A read that never lands must never fail a Board Link, so a timeout simply
+  /// reports no count and the link is saved exactly as it would have been.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardProbe`
+  private func awaitProbeFaultBaseline(
+    probeId: String, boardId: String, bleId: String,
+    candidate: TransportDetection.Candidate, previousBaselineAt: Int64, attemptsRemaining: Int,
+    promise: Promise
+  ) {
+    guard completedProbes[probeId] != nil else {
+      coordinator.stopBoard()
+      promise.reject("PROBE_CANCELLED", "Board Probe cancelled")
+      return
+    }
+    let baseline = VescFaultRegisterCoordinator.shared.latestBaseline(boardId)
+      .flatMap { $0.readAtMs > previousBaselineAt ? $0 : nil }
+    if baseline == nil, attemptsRemaining > 0 {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        self?.awaitProbeFaultBaseline(
+          probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
+          previousBaselineAt: previousBaselineAt, attemptsRemaining: attemptsRemaining - 1,
+          promise: promise
+        )
+      }
+      return
+    }
+    sendEvent("onBoardProbeProgress", [
+      "probeId": probeId, "step": "faults", "elapsedMs": 0,
+      "transport": candidate.transport.bridgeValue,
+      "baselineFaultCount": baseline?.entries?.count,
+    ] as [String: Any?])
+    // The probe stays finalizable: the rider may still switch transports, and each pick
+    // acquires config for its own candidate before the link can be saved.
+    PendingLinkConnect.arm(boardId: boardId)
+    coordinator.stopBoard()
+    promise.resolve([
+      "linkVersion": 4, "bleId": bleId, "transport": candidate.transport.bridgeValue,
+      "hasBms": candidate.hasBms,
+      "vescFirmwareVersion": candidate.vescFirmwareVersion,
+      "refloatVersion": candidate.refloatVersion,
+      "refloatBaseVersion": candidate.refloatBaseVersion!,
+    ] as [String: Any?])
   }
 
   private func probeResultToBridge(_ result: TransportDetection.Result) -> [String: Any?] {

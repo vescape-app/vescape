@@ -702,7 +702,56 @@ data class VescFaultOccurrenceEntity(
   val registerPosition: Int?,
   /** Rider acknowledged this occurrence: stays durable, stops driving the Board health icon. */
   val dismissed: Boolean,
+  /** Register read this occurrence's controller context came from (#432), when any. */
+  @ColumnInfo(name = "register_snapshot_id")
+  val registerSnapshotId: String? = null,
 )
+
+/**
+ * One retained read of the controller's in-memory `faults` register.
+ *
+ * [raw] is the authority and is stored byte-for-byte: firmware output varies, so a future parser
+ * improvement must be able to re-read the original bytes. [text] and [entriesJson] are projections,
+ * and [entriesJson] is null whenever the output could not be parsed — a parser failure costs the
+ * projection, never the evidence.
+ *
+ * [status] is `incomplete` for every read the bounded completion policy could not settle. Such a row
+ * is deliberately never parsed and never creates an occurrence: missing output is not an empty
+ * register.
+ *
+ * Like occurrences, snapshots are **not** cascaded on Board removal.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultRegisterStore.swift `createTables`
+ */
+@Entity(
+  tableName = "vesc_fault_register_snapshots",
+  indices = [
+    Index(value = ["board_id", "read_at"]),
+  ],
+)
+data class VescFaultRegisterSnapshotEntity(
+  @PrimaryKey
+  val id: String,
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  @ColumnInfo(name = "read_at")
+  val readAtMs: Long,
+  /** Why the read ran: `baseline`, `connect`, `live`, `stationary`, `predisconnect`, `idle`. */
+  val reason: String,
+  /** `complete` or `incomplete`, per the bounded completion policy. Never synthesized. */
+  val status: String,
+  /** Exact `COMM_PRINT` payload bytes in arrival order. */
+  val raw: ByteArray,
+  /** Lossy display projection of [raw]. */
+  val text: String,
+  /** JSON array of parsed blocks, or null when the output could not be parsed. */
+  @ColumnInfo(name = "entries_json")
+  val entriesJson: String?,
+) {
+  override fun equals(other: Any?): Boolean = other is VescFaultRegisterSnapshotEntity && id == other.id
+
+  override fun hashCode(): Int = id.hashCode()
+}
 
 /**
  * Metadata for one VESC Fault Capture: the self-contained window of decoded Board samples a single

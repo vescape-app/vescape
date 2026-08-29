@@ -41,7 +41,8 @@ struct VescFaultStore: VescFaultStoring {
         last_observed_at INTEGER NOT NULL,
         cleared_at INTEGER,
         register_position INTEGER,
-        dismissed INTEGER NOT NULL
+        dismissed INTEGER NOT NULL,
+        register_snapshot_id TEXT
       )
       """)
     try db.execute(sql: """
@@ -96,20 +97,22 @@ struct VescFaultStore: VescFaultStoring {
         sql: """
           INSERT INTO vesc_fault_occurrences
             (id, board_id, code, source, occurred_at, discovered_at, last_observed_at, cleared_at,
-             register_position, dismissed)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             register_position, dismissed, register_snapshot_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           -- Lifecycle writes deliberately leave `dismissed` alone: a heartbeat carrying a stale
           -- in-memory snapshot must never un-dismiss what the rider just acknowledged. Dismissal
           -- has its own statement.
           ON CONFLICT(id) DO UPDATE SET
             last_observed_at = excluded.last_observed_at,
             cleared_at = excluded.cleared_at,
-            register_position = excluded.register_position
+            register_position = excluded.register_position,
+            register_snapshot_id = COALESCE(excluded.register_snapshot_id, register_snapshot_id)
           """,
         arguments: [
           occurrence.id, occurrence.boardId, occurrence.code, occurrence.source.rawValue,
           occurrence.occurredAtMs, occurrence.discoveredAtMs, occurrence.lastObservedAtMs,
           occurrence.clearedAtMs, occurrence.registerPosition, occurrence.dismissed,
+          occurrence.registerSnapshotId,
         ]
       )
       }
@@ -147,7 +150,8 @@ struct VescFaultStore: VescFaultStoring {
       lastObservedAtMs: row["last_observed_at"] as Int64,
       clearedAtMs: row["cleared_at"] as Int64?,
       registerPosition: row["register_position"] as Int?,
-      dismissed: row["dismissed"] as Bool
+      dismissed: row["dismissed"] as Bool,
+      registerSnapshotId: row["register_snapshot_id"] as String?
     )
   }
 }

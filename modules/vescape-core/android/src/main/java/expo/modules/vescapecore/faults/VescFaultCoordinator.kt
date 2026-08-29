@@ -44,6 +44,8 @@ data class VescFaultOccurrence(
   val clearedAtMs: Long?,
   val registerPosition: Int?,
   val dismissed: Boolean,
+  /** Register snapshot this occurrence's controller context came from (#432), when any. */
+  val registerSnapshotId: String? = null,
 ) {
   fun toMap(): Map<String, Any?> = mapOf(
     "id" to id,
@@ -56,6 +58,7 @@ data class VescFaultOccurrence(
     "clearedAtMs" to clearedAtMs,
     "registerPosition" to registerPosition,
     "dismissed" to dismissed,
+    "registerSnapshotId" to registerSnapshotId,
   )
 }
 
@@ -71,6 +74,9 @@ interface VescFaultStore {
   suspend fun upsert(occurrence: VescFaultOccurrence)
   suspend fun setDismissed(id: String, dismissed: Boolean): Boolean
 }
+
+/** Result of folding one register entry into occurrence storage. */
+enum class VescFaultRegisterOutcome { ENRICHED, CREATED, SKIPPED }
 
 /**
  * Deterministic owner of VESC Fault Occurrence transitions.
@@ -193,6 +199,70 @@ class VescFaultCoordinator(
    */
   fun onSessionLost(@Suppress("UNUSED_PARAMETER") boardId: String) = Unit
 
+  /**
+   * The occurrence a register read should try to enrich: the Board's currently open live
+   * activation. In-memory state wins over the store, because a fault opened moments ago is the whole
+   * point of the immediate post-trigger read.
+   */
+  suspend fun openLiveOccurrence(boardId: String): VescFaultOccurrence? {
+    hydrate(boardId)
+    return synchronized(lock) { active[boardId] } ?: store.openLive(boardId)
+  }
+
+  /**
+   * Attach controller register context to an already-open live occurrence. Only ever called for the
+   * unambiguous case decided by [VescFaultRegisterCoordinator]; this method does no matching itself.
+   */
+  suspend fun enrichFromRegister(occurrenceId: String, registerPosition: Int, snapshotId: String) {
+    if (!collectionEnabled) return
+    val current = store.getAll().firstOrNull { it.id == occurrenceId } ?: return
+    val enriched = current.copy(registerPosition = registerPosition, registerSnapshotId = snapshotId)
+    store.upsert(enriched)
+    synchronized(lock) {
+      val live = active[current.boardId]
+      if (live != null && live.id == occurrenceId) active[current.boardId] = enriched
+    }
+    emit(current.boardId)
+  }
+
+  /**
+   * Mint an occurrence Vescape only ever learned about from the controller's register.
+   *
+   * `occurredAtMs` stays null on purpose: the register carries no timestamp, and inventing one would
+   * fabricate precision the controller never gave. Link baselines are recorded pre-dismissed so they
+   * stay inspectable evidence without ever driving the Board health indicator.
+   */
+  suspend fun addRegisterOccurrence(
+    boardId: String,
+    code: Int,
+    source: VescFaultSource,
+    registerPosition: Int,
+    snapshotId: String,
+  ): VescFaultOccurrence? {
+    if (!collectionEnabled) return null
+    val timestamp = now()
+    val occurrence = VescFaultOccurrence(
+      id = newId(),
+      boardId = boardId,
+      code = code,
+      source = source,
+      occurredAtMs = null,
+      discoveredAtMs = timestamp,
+      lastObservedAtMs = timestamp,
+      // The register holds faults the controller already finished reporting; there is nothing open
+      // to close later, and leaving `clearedAt` null would render them as still active.
+      clearedAtMs = timestamp,
+      registerPosition = registerPosition,
+      dismissed = source == VescFaultSource.BASELINE,
+      registerSnapshotId = snapshotId,
+    )
+    store.upsert(occurrence)
+    return occurrence
+  }
+
+  /** Push the current list for a Board after a batch of register writes. */
+  suspend fun emitFor(boardId: String) = emit(boardId)
+
   suspend fun setDismissed(id: String, dismissed: Boolean) {
     if (!store.setDismissed(id, dismissed)) return
     synchronized(lock) {
@@ -260,6 +330,7 @@ private fun VescFaultOccurrenceEntity.toModel(): VescFaultOccurrence = VescFault
   clearedAtMs = clearedAtMs,
   registerPosition = registerPosition,
   dismissed = dismissed,
+  registerSnapshotId = registerSnapshotId,
 )
 
 private fun VescFaultOccurrence.toEntity(): VescFaultOccurrenceEntity = VescFaultOccurrenceEntity(
@@ -273,6 +344,7 @@ private fun VescFaultOccurrence.toEntity(): VescFaultOccurrenceEntity = VescFaul
   clearedAtMs = clearedAtMs,
   registerPosition = registerPosition,
   dismissed = dismissed,
+  registerSnapshotId = registerSnapshotId,
 )
 
 /** Production [VescFaultStore] backed by the shared Room DAO. */
