@@ -581,6 +581,10 @@ final class AppDataRepository {
       // persist a malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
       value = flag
+    } else if key == "vescFaultCollectionEnabled" {
+      // Strict Bool, same reasoning as the board-warnings switch above.
+      guard let flag = rawValue as? Bool else { return }
+      value = flag
     } else if key == "boardMoveStrengthPercent" {
       guard let percent = Self.boardMoveStrengthPercent(rawValue) else { return }
       value = percent
@@ -633,6 +637,7 @@ final class AppDataRepository {
     "autoRecording": true,
     "companionPresenceEnabled": false,
     "boardWarningsEnabled": true,
+    "vescFaultCollectionEnabled": true,
     "companionPresenceCooldownMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
     // the keys exist here only so getSettings() returns the full settings shape.

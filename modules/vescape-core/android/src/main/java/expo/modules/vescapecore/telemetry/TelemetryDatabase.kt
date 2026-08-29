@@ -13,7 +13,7 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-internal const val TELEMETRY_DATABASE_VERSION = 36
+internal const val TELEMETRY_DATABASE_VERSION = 37
 
 @Database(
   entities = [
@@ -30,6 +30,7 @@ internal const val TELEMETRY_DATABASE_VERSION = 36
     DiagnosticEventEntity::class,
     PrivacyZoneEntity::class,
     BoardWarningEntity::class,
+    VescFaultOccurrenceEntity::class,
     FavoriteEntity::class,
     FavoriteMediaEntity::class,
     BoardConfigValuesEntity::class,
@@ -631,6 +632,166 @@ abstract class TelemetryDatabase : RoomDatabase() {
       }
     }
 
+
+    /**
+     * VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
+     * History fault path.
+     *
+     * Creates `vesc_fault_occurrences` and removes the legacy telemetry fault storage — the
+     * `fault_code` column and its partial index on `telemetry_frames`, and `fault_count` on
+     * `telemetry_minute_buckets`. Legacy values are dropped, not backfilled: a fault code repeated
+     * across frames was never a distinct activation, so there is nothing faithful to migrate.
+     *
+     * SQLite before 3.35 has no `DROP COLUMN`, so both tables are rebuilt by copy.
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v37_vesc_fault_occurrences`
+     */
+    internal val MIGRATION_36_37 = object : Migration(36, 37) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS vesc_fault_occurrences (
+            id TEXT NOT NULL PRIMARY KEY,
+            board_id TEXT NOT NULL,
+            code INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            occurred_at INTEGER,
+            discovered_at INTEGER NOT NULL,
+            last_observed_at INTEGER NOT NULL,
+            cleared_at INTEGER,
+            register_position INTEGER,
+            dismissed INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_vesc_fault_occurrences_board_id_discovered_at " +
+            "ON vesc_fault_occurrences(board_id, discovered_at)",
+        )
+
+        if (!hasColumn(db, "app_settings", "vesc_fault_collection_enabled")) {
+          db.execSQL("ALTER TABLE app_settings ADD COLUMN vesc_fault_collection_enabled INTEGER NOT NULL DEFAULT 1")
+        }
+
+        db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_fault")
+        if (hasColumn(db, "telemetry_frames", "fault_code")) {
+          db.execSQL(
+            """
+            CREATE TABLE telemetry_frames_new (
+              id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+              captured_at_ms INTEGER NOT NULL,
+              elapsed_realtime_ms INTEGER NOT NULL,
+              device_id TEXT,
+              device_name TEXT,
+              can_id INTEGER,
+              flags INTEGER NOT NULL,
+              changed_mask_1 INTEGER NOT NULL,
+              changed_mask_2 INTEGER NOT NULL,
+              speed_centi_kmh INTEGER,
+              battery_voltage_mv INTEGER,
+              motor_current_ma INTEGER,
+              battery_current_ma INTEGER,
+              duty_permille INTEGER,
+              pitch_centi_deg INTEGER,
+              roll_centi_deg INTEGER,
+              balance_pitch_centi_deg INTEGER,
+              balance_current_ma INTEGER,
+              erpm INTEGER,
+              state INTEGER,
+              switch_state INTEGER,
+              adc1_milli INTEGER,
+              adc2_milli INTEGER,
+              odometer_cm INTEGER,
+              temp_mosfet_deci_c INTEGER,
+              temp_motor_deci_c INTEGER,
+              latitude_e7 INTEGER,
+              longitude_e7 INTEGER,
+              gps_speed_centi_mps INTEGER,
+              bearing_centi_deg INTEGER,
+              accuracy_cm INTEGER,
+              altitude_cm INTEGER,
+              location_timestamp_ms INTEGER
+            )
+            """.trimIndent(),
+          )
+          db.execSQL(
+            """
+            INSERT INTO telemetry_frames_new
+            SELECT id, captured_at_ms, elapsed_realtime_ms, device_id, device_name, can_id, flags,
+                   changed_mask_1, changed_mask_2, speed_centi_kmh, battery_voltage_mv,
+                   motor_current_ma, battery_current_ma, duty_permille, pitch_centi_deg,
+                   roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
+                   switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c,
+                   temp_motor_deci_c, latitude_e7, longitude_e7, gps_speed_centi_mps,
+                   bearing_centi_deg, accuracy_cm, altitude_cm, location_timestamp_ms
+            FROM telemetry_frames
+            """.trimIndent(),
+          )
+          db.execSQL("DROP TABLE telemetry_frames")
+          db.execSQL("ALTER TABLE telemetry_frames_new RENAME TO telemetry_frames")
+          db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_frames_captured_at_ms ON telemetry_frames(captured_at_ms)")
+          db.execSQL(
+            "CREATE INDEX IF NOT EXISTS index_telemetry_frames_device_id_captured_at_ms " +
+              "ON telemetry_frames(device_id, captured_at_ms)",
+          )
+        }
+
+        if (hasColumn(db, "telemetry_minute_buckets", "fault_count")) {
+          db.execSQL(
+            """
+            CREATE TABLE telemetry_minute_buckets_new (
+              bucket_start_ms INTEGER NOT NULL,
+              device_id TEXT NOT NULL,
+              device_name TEXT,
+              sample_count INTEGER NOT NULL,
+              first_sample_at_ms INTEGER NOT NULL,
+              last_sample_at_ms INTEGER NOT NULL,
+              sum_abs_speed_centi_kmh INTEGER NOT NULL,
+              moving_speed_sample_count INTEGER,
+              sum_moving_abs_speed_centi_kmh INTEGER,
+              max_abs_speed_centi_kmh INTEGER NOT NULL,
+              min_battery_voltage_mv INTEGER,
+              max_motor_current_abs_ma INTEGER NOT NULL,
+              max_battery_current_abs_ma INTEGER NOT NULL,
+              battery_used_wh_milli INTEGER NOT NULL,
+              battery_regen_wh_milli INTEGER NOT NULL,
+              max_duty_abs_permille INTEGER NOT NULL,
+              first_odometer_cm INTEGER,
+              last_odometer_cm INTEGER,
+              gps_point_count INTEGER NOT NULL,
+              precise_gps_point_count INTEGER NOT NULL,
+              gps_distance_cm INTEGER NOT NULL,
+              max_gps_speed_centi_mps INTEGER,
+              max_temp_mosfet_deci_c INTEGER,
+              max_temp_motor_deci_c INTEGER,
+              first_latitude_e7 INTEGER,
+              first_longitude_e7 INTEGER,
+              first_moving_at_ms INTEGER,
+              last_moving_at_ms INTEGER,
+              PRIMARY KEY (bucket_start_ms, device_id)
+            )
+            """.trimIndent(),
+          )
+          db.execSQL(
+            """
+            INSERT INTO telemetry_minute_buckets_new
+            SELECT bucket_start_ms, device_id, device_name, sample_count, first_sample_at_ms,
+                   last_sample_at_ms, sum_abs_speed_centi_kmh, moving_speed_sample_count,
+                   sum_moving_abs_speed_centi_kmh, max_abs_speed_centi_kmh, min_battery_voltage_mv,
+                   max_motor_current_abs_ma, max_battery_current_abs_ma, battery_used_wh_milli,
+                   battery_regen_wh_milli, max_duty_abs_permille, first_odometer_cm,
+                   last_odometer_cm, gps_point_count, precise_gps_point_count, gps_distance_cm,
+                   max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
+                   first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
+            FROM telemetry_minute_buckets
+            """.trimIndent(),
+          )
+          db.execSQL("DROP TABLE telemetry_minute_buckets")
+          db.execSQL("ALTER TABLE telemetry_minute_buckets_new RENAME TO telemetry_minute_buckets")
+          db.execSQL("CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_bucket_start_ms ON telemetry_minute_buckets(bucket_start_ms)")
+        }
+      }
+    }
+
     internal val MIGRATION_34_35 = object : Migration(34, 35) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'")
@@ -714,19 +875,10 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_33_34,
             MIGRATION_34_35,
             MIGRATION_35_36,
+            MIGRATION_36_37,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {
-            override fun onCreate(db: SupportSQLiteDatabase) {
-              db.execSQL(
-                """
-                CREATE INDEX IF NOT EXISTS index_telemetry_frames_fault
-                ON telemetry_frames(captured_at_ms)
-                WHERE fault_code IS NOT NULL AND fault_code != 0
-                """.trimIndent(),
-              )
-            }
-
             override fun onOpen(db: SupportSQLiteDatabase) {
               db.execSQL("PRAGMA optimize")
             }

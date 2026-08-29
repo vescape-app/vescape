@@ -16,6 +16,7 @@ import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { EditBoardSettings } from '@/modules/board/components/EditBoardSettings'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
+import { EMPTY_FAULTS, useVescFaultsStore } from '@/modules/board/store/vescFaultsStore'
 import { useEditBoardForm } from '@/modules/board/hooks/useEditBoardForm'
 import { routes } from '@/navigation/routes'
 import { useBoardStore } from '@/modules/board/store/boardStore'
@@ -38,6 +39,8 @@ export default function EditBoardScreen() {
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const storedWarnings = useBoardWarningsStore((s) => s.warningsByBoard[boardId] ?? EMPTY_WARNINGS)
   const warnings = boardWarningsEnabled ? storedWarnings : EMPTY_WARNINGS
+  // Fault evidence stays readable with collection off; only the indicator is suppressed.
+  const faults = useVescFaultsStore((s) => s.faultsByBoard[boardId] ?? EMPTY_FAULTS)
   const warningsAnchorRef = useRef<View>(null)
   const [warningsOpen, setWarningsOpen] = useState(false)
   const [batteryModalVisible, setBatteryModalVisible] = useState(false)
@@ -144,7 +147,7 @@ export default function EditBoardScreen() {
         iconColor={theme.status.caution.color}
         onClose={() => setWarningsOpen(false)}
       >
-        <BoardWarningsSheet boardId={editingBoard.id} warnings={warnings} />
+        <BoardWarningsSheet boardId={editingBoard.id} warnings={warnings} faults={faults} />
       </EdgeDrawer>
 
       <BoardBatteryEditorModal

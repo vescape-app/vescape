@@ -363,7 +363,6 @@ class MetricSanitizerTest {
     motorCurrentMa = 0,
     batteryCurrentMa = 0,
     dutyPermille = dutyPermille,
-    hasFault = false,
     odometerCm = null,
   )
 
@@ -384,7 +383,6 @@ class MetricSanitizerTest {
     motorCurrentMa = 0,
     batteryCurrentMa = 0,
     dutyPermille = dutyPermille,
-    hasFault = false,
     odometerCm = null,
     gpsSpeedCentiMps = gpsSpeedCentiMps,
     gpsTimestampMs = gpsTimestampMs,

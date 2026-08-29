@@ -79,7 +79,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -129,6 +129,13 @@ public class VescapeCoreModule: Module {
       BoardWarningRegistry.shared.emitSnapshot()
     }
     OnStopObserving("onBoardWarnings") { self.observedEvents.remove("onBoardWarnings") }
+
+    OnStartObserving("onVescFaults") {
+      self.observedEvents.insert("onVescFaults")
+      // Late subscriber: replay the current faults for every board so JS is immediately consistent.
+      VescFaultCoordinator.shared.emitSnapshot()
+    }
+    OnStopObserving("onVescFaults") { self.observedEvents.remove("onVescFaults") }
     OnStartObserving("onBoardConfigValues") {
       self.observedEvents.insert("onBoardConfigValues")
       // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
@@ -201,6 +208,10 @@ public class VescapeCoreModule: Module {
       AppDataRepository.onDataChanged = { [weak self] scope in self?.sendAppDataChanged(scope) }
       // JS keeps a dumb mirror of the durable Board Warning registry; push the full board list on
       // every registry change (late subscribers self-heal via the snapshot above).
+      // Same full-slice mirror for VESC Fault Occurrences; separate channel, separate JS store.
+      VescFaultCoordinator.shared.onChange = { [weak self] boardId, faults in
+        self?.sendVescFaults(boardId, faults)
+      }
       BoardWarningRegistry.shared.onChange = { [weak self] boardId, warnings in
         self?.sendBoardWarnings(boardId, warnings)
       }
@@ -224,6 +235,7 @@ public class VescapeCoreModule: Module {
       self.detachFromCoordinator()
       AppDataRepository.onDataChanged = nil
       BoardWarningRegistry.shared.onChange = nil
+      VescFaultCoordinator.shared.onChange = nil
       BoardConfigStore.onNoticeChanged = nil
       self.appStatusUnsubscribe?()
       self.appStatusUnsubscribe = nil
@@ -599,6 +611,21 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("getBoardWarnings") { (promise: Promise) in
       promise.resolve(BoardWarningRegistry.shared.allWarnings().map { $0.toMap() })
+    }
+
+    /// VESC Fault Occurrences across every Board — the JS foreground catch-up pull.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaults`
+    /// @parity /modules/vescape-core/src/index.ts `getVescFaults`
+    AsyncFunction("getVescFaults") { (promise: Promise) in
+      promise.resolve(VescFaultCoordinator.shared.allFaults().map { $0.toMap() })
+    }
+
+    /// Occurrence-level dismissal. Never deletes the occurrence — the evidence outlives the badge.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setVescFaultDismissed`
+    /// @parity /modules/vescape-core/src/index.ts `setVescFaultDismissed`
+    AsyncFunction("setVescFaultDismissed") { (id: String, dismissed: Bool, promise: Promise) in
+      VescFaultCoordinator.shared.setDismissed(id: id, dismissed: dismissed)
+      promise.resolve(nil)
     }
 
     AsyncFunction("clearBoardWarning") { (boardId: String, kind: String, promise: Promise) in
@@ -1091,6 +1118,7 @@ public class VescapeCoreModule: Module {
         "socEstimateWindowSeconds",
         "telemetryPollRateHz",
         "boardWarningsEnabled",
+        "vescFaultCollectionEnabled",
       ].contains(key) {
         self.coordinator.reloadTelemetrySettings()
       }
@@ -1486,6 +1514,16 @@ public class VescapeCoreModule: Module {
   /// the next registry change self-heal it).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt
   /// @parity /modules/vescape-core/src/index.ts `BoardWarningsEvent`
+  /// Emit `onVescFaults` with the full current occurrence list for a Board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onVescFaults`
+  /// @parity /modules/vescape-core/src/index.ts `VescFaultsEvent`
+  private func sendVescFaults(_ boardId: String, _ faults: [VescFaultOccurrence]) {
+    DispatchQueue.main.async {
+      guard self.shouldEmitToFrontend("onVescFaults") else { return }
+      self.sendEvent("onVescFaults", ["boardId": boardId, "faults": faults.map { $0.toMap() }])
+    }
+  }
+
   private func sendBoardWarnings(_ boardId: String, _ warnings: [BoardWarning]) {
     DispatchQueue.main.async {
       guard self.shouldEmitToFrontend("onBoardWarnings") else { return }

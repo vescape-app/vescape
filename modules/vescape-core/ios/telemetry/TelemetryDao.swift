@@ -12,18 +12,18 @@ internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
         speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, duty_permille,
         pitch_centi_deg, roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
         switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c,
-        fault_code, latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
+        latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
         altitude_cm, location_timestamp_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
     arguments: [
       state.capturedAtMs, state.elapsedRealtimeMs, state.deviceId, state.deviceName, state.capture.canId,
-      TELEMETRY_FLAG_KEYFRAME | (t.hasFault ? TELEMETRY_FLAG_HAS_FAULT : 0) | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
+      TELEMETRY_FLAG_KEYFRAME | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
       Int.max, 1,
       telemetryCenti(t.speed), telemetryMilli(t.batteryVoltage), telemetryMilli(t.motorCurrent), telemetryMilli(t.batteryCurrent), telemetryMilli(t.dutyCycle),
       telemetryCenti(t.pitch), telemetryCenti(t.roll), telemetryCenti(t.balancePitch), telemetryMilli(t.balanceCurrent), t.erpm, t.state,
       t.switchState, telemetryMilli(t.adc1), telemetryMilli(t.adc2), t.odometer.map { Int64(($0 * 100.0).rounded()) },
-      t.tempMosfet.map { telemetryDeci($0) }, t.tempMotor.map { telemetryDeci($0) }, t.hasFault ? t.faultCode : nil,
+      t.tempMosfet.map { telemetryDeci($0) }, t.tempMotor.map { telemetryDeci($0) },
       loc.map { Int64(($0.latitude * 10_000_000.0).rounded()) },
       loc.map { Int64(($0.longitude * 10_000_000.0).rounded()) },
       loc?.speedMps.map { telemetryCenti($0) }, loc?.bearingDeg.map { telemetryCenti($0) },
@@ -40,10 +40,10 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
         max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
         max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, max_duty_abs_permille,
-        fault_count, first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
+        first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
         gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
         first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(bucket_start_ms, device_id) DO UPDATE SET
         device_name=excluded.device_name,
         sample_count=telemetry_minute_buckets.sample_count + excluded.sample_count,
@@ -58,7 +58,6 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         battery_used_wh_milli=telemetry_minute_buckets.battery_used_wh_milli + excluded.battery_used_wh_milli,
         battery_regen_wh_milli=telemetry_minute_buckets.battery_regen_wh_milli + excluded.battery_regen_wh_milli,
         max_duty_abs_permille=MAX(telemetry_minute_buckets.max_duty_abs_permille, excluded.max_duty_abs_permille),
-        fault_count=telemetry_minute_buckets.fault_count + excluded.fault_count,
         last_odometer_cm=COALESCE(excluded.last_odometer_cm, telemetry_minute_buckets.last_odometer_cm),
         gps_point_count=telemetry_minute_buckets.gps_point_count + excluded.gps_point_count,
         precise_gps_point_count=telemetry_minute_buckets.precise_gps_point_count + excluded.precise_gps_point_count,
@@ -72,7 +71,7 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
       b.bucketStartMs, b.deviceId, b.deviceName, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
       b.sumAbsSpeedCentiKmh, b.movingSpeedSampleCount, b.sumMovingAbsSpeedCentiKmh, b.maxAbsSpeedCentiKmh,
       b.minBatteryVoltageMv, b.maxMotorCurrentAbsMa, b.maxBatteryCurrentAbsMa, b.batteryUsedWhMilli,
-      b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.faultCount, b.firstOdometerCm, b.lastOdometerCm,
+      b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.firstOdometerCm, b.lastOdometerCm,
       b.gpsPointCount, b.preciseGpsPointCount, b.maxGpsSpeedCentiMps, b.maxTempMosfetDeciC,
       b.maxTempMotorDeciC, b.firstLatitudeE7, b.firstLongitudeE7, b.firstMovingAtMs, b.lastMovingAtMs,
     ]
@@ -136,7 +135,6 @@ internal func historyMap(_ row: Row, markers: [Row]) -> [String: Any?] {
     "maxMotorCurrent": Double(row["max_motor_current_abs_ma"] as Int) / 1000.0,
     "maxBatteryCurrent": Double(row["max_battery_current_abs_ma"] as Int) / 1000.0,
     "maxDuty": Double(row["max_duty_abs_permille"] as Int) / 1000.0,
-    "faultCount": row["fault_count"] as Int,
     "distanceDeltaM": distanceDeltaM,
     "gpsDistanceM": ((row["gps_distance_cm"] as Int64) > 0) ? Double(row["gps_distance_cm"] as Int64) / 100.0 : nil,
     "maxTempMosfet": (row["max_temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
@@ -177,8 +175,6 @@ internal func sampleMap(_ row: Row, batteryPercent: Double?) -> [String: Any?] {
     "odometer": (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 },
     "tempMosfet": (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
     "tempMotor": (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 },
-    "hasFault": ((row["fault_code"] as Int?) ?? 0) != 0,
-    "faultCode": row["fault_code"] as Int? ?? 0,
     "latitude": (row["latitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
     "longitude": (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
   ]
@@ -254,7 +250,6 @@ internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
     motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,
     batteryCurrentMa: row["battery_current_ma"] as Int? ?? 0,
     dutyPermille: row["duty_permille"] as Int? ?? 0,
-    hasFault: ((row["fault_code"] as Int?) ?? 0) != 0,
     odometerCm: row["odometer_cm"] as Int64?,
     tempMosfetDeciC: row["temp_mosfet_deci_c"] as Int?,
     tempMotorDeciC: row["temp_motor_deci_c"] as Int?,

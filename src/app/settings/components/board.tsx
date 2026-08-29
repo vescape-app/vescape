@@ -16,6 +16,7 @@ import { StepTimeline, type StepState, type TimelineStep } from '@/components/ba
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
+import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
 import type { SparklinePoint } from '@/components/charts/Sparkline'
@@ -157,6 +158,72 @@ function BoardWarningRowShowcase() {
   )
 }
 
+function VescFaultRowShowcase() {
+  const [now] = useState(() => Date.now())
+  const [dismissedIds, setDismissedIds] = useState<string[]>([])
+  // The three shapes a fault row has to survive: a still-active known code, a cleared unknown code,
+  // and a link-time baseline entry with no occurrence time at all.
+  const faults = [
+    {
+      id: 'active',
+      boardId: 'demo',
+      code: 9,
+      source: 'live' as const,
+      occurredAtMs: now - 45 * 1000,
+      discoveredAtMs: now - 45 * 1000,
+      lastObservedAtMs: now - 1000,
+      clearedAtMs: null,
+      registerPosition: null,
+    },
+    {
+      id: 'cleared',
+      boardId: 'demo',
+      code: 247,
+      source: 'live' as const,
+      occurredAtMs: now - 3 * 60 * 60 * 1000,
+      discoveredAtMs: now - 3 * 60 * 60 * 1000,
+      lastObservedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
+      clearedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
+      registerPosition: null,
+    },
+    {
+      id: 'baseline',
+      boardId: 'demo',
+      code: 6,
+      source: 'baseline' as const,
+      occurredAtMs: null,
+      discoveredAtMs: now - 26 * 60 * 60 * 1000,
+      lastObservedAtMs: now - 26 * 60 * 60 * 1000,
+      clearedAtMs: null,
+      registerPosition: 2,
+    },
+  ]
+  return (
+    <ShowcaseCard
+      name="VescFaultRow"
+      controls={
+        <ToggleRow
+          label="dismissed"
+          value={dismissedIds.length > 0}
+          onToggle={(next) => setDismissedIds(next ? faults.map((f) => f.id) : [])}
+        />
+      }
+    >
+      <View style={{ gap: 10 }}>
+        {faults.map((fault) => (
+          <VescFaultRow
+            key={fault.id}
+            fault={{ ...fault, dismissed: dismissedIds.includes(fault.id) }}
+            onSetDismissed={(id, value) =>
+              setDismissedIds((prev) => (value ? [...prev, id] : prev.filter((k) => k !== id)))
+            }
+          />
+        ))}
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 function ReplayBadgeShowcase() {
   return (
     <ShowcaseCard name="ReplayBadge">
@@ -261,6 +328,7 @@ export default function BoardComponentsPage() {
         <DeviceRowShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
+        <VescFaultRowShowcase />
         <ReplayBadgeShowcase />
         <TelemetryCellShowcase />
         <FootpadIndicatorShowcase />

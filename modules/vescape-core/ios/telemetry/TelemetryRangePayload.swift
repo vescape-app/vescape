@@ -108,8 +108,6 @@ internal func sampleColumns(_ rows: [Row], batteryPercents: [Double?]) -> [Strin
     appendNullableDouble(&data, (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 })
     appendNullableDouble(&data, (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 })
     appendNullableDouble(&data, (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 })
-    appendDouble(&data, ((row["fault_code"] as Int?) ?? 0) != 0 ? 1.0 : 0.0)
-    appendDouble(&data, Double((row["fault_code"] as Int?) ?? 0))
     appendNullableDouble(&data, (row["latitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 })
     appendNullableDouble(&data, (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 })
   }

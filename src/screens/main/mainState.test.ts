@@ -27,7 +27,6 @@ function session(id: string, startAtMs: number): HistorySession {
     sampleCount: 20,
     gpsPointCount: 20,
     preciseGpsPointCount: 18,
-    faultCount: 0,
     maxTempMosfet: null,
     maxTempMotor: null,
     maxDuty: 0.5,

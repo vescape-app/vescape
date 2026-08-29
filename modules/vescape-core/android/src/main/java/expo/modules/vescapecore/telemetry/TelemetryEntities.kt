@@ -9,7 +9,6 @@ import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
-const val TELEMETRY_FLAG_HAS_FAULT = 1 shl 1
 const val TELEMETRY_FLAG_HAS_LOCATION = 1 shl 2
 
 const val TELEMETRY_MASK_SPEED = 1
@@ -29,7 +28,6 @@ const val TELEMETRY_MASK_ADC2 = 1 shl 13
 const val TELEMETRY_MASK_ODOMETER = 1 shl 14
 const val TELEMETRY_MASK_TEMP_MOSFET = 1 shl 15
 const val TELEMETRY_MASK_TEMP_MOTOR = 1 shl 16
-const val TELEMETRY_MASK_FAULT_CODE = 1 shl 17
 
 const val TELEMETRY_MASK2_LOCATION = 1
 
@@ -90,8 +88,6 @@ data class TelemetryFrameEntity(
   val tempMosfetDeciC: Int?,
   @ColumnInfo(name = "temp_motor_deci_c")
   val tempMotorDeciC: Int?,
-  @ColumnInfo(name = "fault_code")
-  val faultCode: Int?,
   @ColumnInfo(name = "latitude_e7")
   val latitudeE7: Int?,
   @ColumnInfo(name = "longitude_e7")
@@ -146,8 +142,6 @@ data class TelemetryMinuteBucketEntity(
   val batteryRegenWhMilli: Long,
   @ColumnInfo(name = "max_duty_abs_permille")
   val maxDutyAbsPermille: Int,
-  @ColumnInfo(name = "fault_count")
-  val faultCount: Int,
   @ColumnInfo(name = "first_odometer_cm")
   val firstOdometerCm: Long?,
   @ColumnInfo(name = "last_odometer_cm")
@@ -393,6 +387,9 @@ data class AppSettings(
   val wearNavArrowEnabled: Boolean = false,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
+  /** `VESC Fault Collection` master switch — independent of [boardWarningsEnabled] (#430). */
+  @ColumnInfo(name = "vesc_fault_collection_enabled")
+  val vescFaultCollectionEnabled: Boolean = true,
   val companionPresenceCooldownMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,
   val autoCloseDelayMinutes: Int = 15,
@@ -657,4 +654,53 @@ data class BoardConfigChangeNoticeEntity(
   @PrimaryKey @ColumnInfo(name = "board_id") val boardId: String,
   @ColumnInfo(name = "detected_at") val detectedAt: Long,
   @ColumnInfo(name = "diffs_json") val diffsJson: String,
+)
+
+/**
+ * One durable VESC Fault Occurrence: a single activation of a controller fault code on one Board.
+ *
+ * Board-owned truth, independent of Ride Recording, Ride History, and Board Warnings. Unlike
+ * [BoardWarningEntity] this **is** a time series — the same code activating twice is two rows, so
+ * the identity is a native-minted [id], never (board, code).
+ *
+ * The shape is deliberately wider than the live path needs so register-sourced evidence (#432) fits
+ * without a second migration: [occurredAtMs] is null when the occurrence time is unknown (a register
+ * entry carries no timestamp), and [discoveredAtMs] always records when Vescape learned about it.
+ *
+ * Fault rows are **not** cascaded on Board removal — the evidence outlives the Board record.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
+ */
+@Entity(
+  tableName = "vesc_fault_occurrences",
+  indices = [
+    Index(value = ["board_id", "discovered_at"]),
+  ],
+)
+data class VescFaultOccurrenceEntity(
+  @PrimaryKey
+  val id: String,
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  /** Raw Refloat fault code. Canonical value — display mapping must tolerate unknown codes. */
+  val code: Int,
+  /** `live` (Refloat ALLDATA trigger), `register` or `baseline` (controller register, #432). */
+  val source: String,
+  /** When the activation was observed, or null when only discovery time is known. */
+  @ColumnInfo(name = "occurred_at")
+  val occurredAtMs: Long?,
+  /** When Vescape learned about the occurrence. Always known. */
+  @ColumnInfo(name = "discovered_at")
+  val discoveredAtMs: Long,
+  /** Last frame that still reported this code active. */
+  @ColumnInfo(name = "last_observed_at")
+  val lastObservedAtMs: Long,
+  /** Set when the controller reported a clear or a different code. Null = still open/unresolved. */
+  @ColumnInfo(name = "cleared_at")
+  val clearedAtMs: Long?,
+  /** Controller register position when known (#432). */
+  @ColumnInfo(name = "register_position")
+  val registerPosition: Int?,
+  /** Rider acknowledged this occurrence: stays durable, stops driving the Board health icon. */
+  val dismissed: Boolean,
 )

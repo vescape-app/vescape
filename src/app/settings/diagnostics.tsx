@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ListIcon, WarningIcon } from 'phosphor-react-native'
+import { EngineIcon, ListIcon, WarningIcon } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function DiagnosticsSettingsScreen() {
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
+  const vescFaultCollectionEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)
   const set = useSettingsStore((s) => s.set)
 
   return (
@@ -35,6 +36,22 @@ export default function DiagnosticsSettingsScreen() {
                 trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
                 thumbColor={
                   boardWarningsEnabled ? theme.palette.sky.color : theme.neutral.textMuted
+                }
+              />
+            }
+          />
+          <SettingsRow
+            icon={EngineIcon}
+            iconColor={theme.palette.amber.color}
+            label="VESC fault collection"
+            hint="Record controller faults. Off keeps existing faults readable"
+            right={
+              <Switch
+                value={vescFaultCollectionEnabled}
+                onValueChange={(v) => void set('vescFaultCollectionEnabled', v)}
+                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
+                thumbColor={
+                  vescFaultCollectionEnabled ? theme.palette.sky.color : theme.neutral.textMuted
                 }
               />
             }

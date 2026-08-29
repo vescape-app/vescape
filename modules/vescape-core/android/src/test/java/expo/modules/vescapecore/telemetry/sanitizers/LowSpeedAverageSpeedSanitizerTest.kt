@@ -74,7 +74,6 @@ class LowSpeedAverageSpeedSanitizerTest {
     motorCurrentMa = 0,
     batteryCurrentMa = 0,
     dutyPermille = 0,
-    hasFault = false,
     odometerCm = null,
   )
 }

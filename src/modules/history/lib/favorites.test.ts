@@ -81,7 +81,6 @@ function bucket(overrides: Partial<TelemetryMinuteBucket>): TelemetryMinuteBucke
     maxMotorCurrent: 30,
     maxBatteryCurrent: 20,
     maxDuty: 0.5,
-    faultCount: 0,
     distanceDeltaM: 500,
     gpsDistanceM: null,
     maxTempMosfet: 40,

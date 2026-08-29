@@ -1,0 +1,168 @@
+import XCTest
+
+@testable import VescapeCore
+
+/// VESC Fault Occurrence transition rules: one activation is one occurrence, repetition never
+/// duplicates, a clear closes, a direct code change closes and opens, session loss decides nothing,
+/// a restart mid-fault rehydrates instead of duplicating, and the collection switch stops writes
+/// without touching stored evidence.
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/faults/VescFaultCoordinatorTest.kt
+final class VescFaultCoordinatorTests: XCTestCase {
+  private final class FakeStore: VescFaultStoring {
+    var rows: [String: VescFaultOccurrence] = [:]
+    var order: [String] = []
+
+    var all: [VescFaultOccurrence] { order.compactMap { rows[$0] } }
+
+    func getForBoard(_ boardId: String) -> [VescFaultOccurrence] {
+      all.filter { $0.boardId == boardId }.sorted { $0.discoveredAtMs > $1.discoveredAtMs }
+    }
+
+    func getAll() -> [VescFaultOccurrence] { all }
+
+    func openLive(_ boardId: String) -> VescFaultOccurrence? {
+      all
+        .filter { $0.boardId == boardId && $0.source == .live && $0.clearedAtMs == nil }
+        .max { $0.discoveredAtMs < $1.discoveredAtMs }
+    }
+
+    func upsert(_ occurrence: VescFaultOccurrence) {
+      if rows[occurrence.id] == nil { order.append(occurrence.id) }
+      rows[occurrence.id] = occurrence
+    }
+
+    @discardableResult
+    func setDismissed(_ id: String, _ dismissed: Bool) -> Bool {
+      guard var row = rows[id] else { return false }
+      row.dismissed = dismissed
+      rows[id] = row
+      return true
+    }
+  }
+
+  private var store = FakeStore()
+  private var clock: Int64 = 1_000
+  private var ids = 0
+
+  override func setUp() {
+    super.setUp()
+    store = FakeStore()
+    clock = 1_000
+    ids = 0
+  }
+
+  private func makeCoordinator() -> VescFaultCoordinator {
+    VescFaultCoordinator(
+      store: store,
+      now: { self.clock },
+      newId: {
+        self.ids += 1
+        return "id-\(self.ids)"
+      }
+    )
+  }
+
+  func testOneActivationCreatesOneOccurrenceWithObservedTime() {
+    makeCoordinator().onActiveFault(boardId: "board", code: 9)
+
+    XCTAssertEqual(store.all.count, 1)
+    let fault = store.all[0]
+    XCTAssertEqual(fault.code, 9)
+    XCTAssertEqual(fault.source, .live)
+    XCTAssertEqual(fault.occurredAtMs, 1_000)
+    XCTAssertEqual(fault.discoveredAtMs, 1_000)
+    XCTAssertNil(fault.clearedAtMs)
+    XCTAssertFalse(fault.dismissed)
+  }
+
+  func testRepeatedFramesForTheSameCodeStayOneOccurrence() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+    for _ in 0..<50 {
+      clock += 30
+      coordinator.onActiveFault(boardId: "board", code: 9)
+    }
+
+    XCTAssertEqual(store.all.count, 1)
+    let fault = store.all[0]
+    // Throttled writes still track the fault: last-observed advanced past the opening time.
+    XCTAssertGreaterThan(fault.lastObservedAtMs, fault.discoveredAtMs)
+    XCTAssertNil(fault.clearedAtMs)
+  }
+
+  func testNormalFrameClosesTheOpenOccurrence() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+    clock = 5_000
+    coordinator.onFaultCleared(boardId: "board")
+
+    XCTAssertEqual(store.all[0].clearedAtMs, 5_000)
+  }
+
+  func testDirectCodeChangeClosesOldAndOpensNew() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+    clock = 4_000
+    coordinator.onActiveFault(boardId: "board", code: 6)
+
+    XCTAssertEqual(store.all.count, 2)
+    XCTAssertNotEqual(store.all[0].id, store.all[1].id)
+    XCTAssertEqual(store.all[0].clearedAtMs, 4_000)
+    XCTAssertEqual(store.all[1].code, 6)
+    XCTAssertNil(store.all[1].clearedAtMs)
+  }
+
+  func testSessionLossNeitherClearsNorReactivates() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+    coordinator.onSessionLost(boardId: "board")
+    clock = 9_000
+    // Same code observed again after the session came back: still one unresolved activation.
+    coordinator.onActiveFault(boardId: "board", code: 9)
+
+    XCTAssertEqual(store.all.count, 1)
+    XCTAssertNil(store.all[0].clearedAtMs)
+    XCTAssertEqual(store.all[0].occurredAtMs, 1_000)
+  }
+
+  func testRestartMidFaultAdoptsTheOpenOccurrence() {
+    makeCoordinator().onActiveFault(boardId: "board", code: 9)
+
+    clock = 8_000
+    makeCoordinator().onActiveFault(boardId: "board", code: 9)
+
+    XCTAssertEqual(store.all.count, 1)
+  }
+
+  func testCollectionOffStopsNewOccurrencesButKeepsEvidenceDismissible() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+    let existing = store.all[0].id
+
+    coordinator.collectionEnabled = false
+    clock = 6_000
+    coordinator.onActiveFault(boardId: "board", code: 6)
+    coordinator.onFaultCleared(boardId: "board")
+
+    XCTAssertEqual(store.all.count, 1)
+    XCTAssertNil(store.all[0].clearedAtMs)
+
+    coordinator.setDismissed(id: existing, dismissed: true)
+    XCTAssertTrue(store.all[0].dismissed)
+  }
+
+  func testLaterActivationOfADismissedCodeIsANewUndismissedOccurrence() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+    let first = store.all[0].id
+    coordinator.setDismissed(id: first, dismissed: true)
+    clock = 3_000
+    coordinator.onFaultCleared(boardId: "board")
+    clock = 7_000
+    coordinator.onActiveFault(boardId: "board", code: 9)
+
+    XCTAssertEqual(store.all.count, 2)
+    XCTAssertTrue(store.all.first { $0.id == first }!.dismissed)
+    XCTAssertFalse(store.all.first { $0.id != first }!.dismissed)
+  }
+}

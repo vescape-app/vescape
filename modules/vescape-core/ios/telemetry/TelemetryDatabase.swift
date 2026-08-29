@@ -290,7 +290,6 @@ enum TelemetryDatabase {
           odometer_cm INTEGER,
           temp_mosfet_deci_c INTEGER,
           temp_motor_deci_c INTEGER,
-          fault_code INTEGER,
           latitude_e7 INTEGER,
           longitude_e7 INTEGER,
           gps_speed_centi_mps INTEGER,
@@ -305,12 +304,6 @@ enum TelemetryDatabase {
         CREATE INDEX index_telemetry_frames_device_id_captured_at_ms
         ON telemetry_frames(device_id, captured_at_ms)
         """)
-      try db.execute(sql: """
-        CREATE INDEX index_telemetry_frames_fault
-        ON telemetry_frames(captured_at_ms)
-        WHERE fault_code IS NOT NULL AND fault_code != 0
-        """)
-
       try db.execute(sql: """
         CREATE TABLE telemetry_minute_buckets (
           bucket_start_ms INTEGER NOT NULL,
@@ -329,7 +322,6 @@ enum TelemetryDatabase {
           battery_used_wh_milli INTEGER NOT NULL,
           battery_regen_wh_milli INTEGER NOT NULL,
           max_duty_abs_permille INTEGER NOT NULL,
-          fault_count INTEGER NOT NULL,
           first_odometer_cm INTEGER,
           last_odometer_cm INTEGER,
           gps_point_count INTEGER NOT NULL,
@@ -539,6 +531,127 @@ enum TelemetryDatabase {
 
     migrator.registerMigration("v36_motor_config_values") { db in
       try MotorConfigStore.createTables(db)
+    }
+
+    /// VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
+    /// History fault path. Creates `vesc_fault_occurrences` and removes the legacy telemetry fault
+    /// storage — `telemetry_frames.fault_code` with its partial index, and
+    /// `telemetry_minute_buckets.fault_count`. Legacy values are dropped, not backfilled.
+    ///
+    /// Both tables are rebuilt by copy rather than `DROP COLUMN`, matching Android and staying
+    /// correct on SQLite builds older than 3.35.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_37`
+    migrator.registerMigration("v37_vesc_fault_occurrences") { db in
+      try VescFaultStore.createTables(db)
+      try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_fault")
+      if try db.columns(in: "telemetry_frames").map(\.name).contains("fault_code") {
+        try db.execute(sql: """
+          CREATE TABLE telemetry_frames_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            captured_at_ms INTEGER NOT NULL,
+            elapsed_realtime_ms INTEGER NOT NULL,
+            device_id TEXT,
+            device_name TEXT,
+            can_id INTEGER,
+            flags INTEGER NOT NULL,
+            changed_mask_1 INTEGER NOT NULL,
+            changed_mask_2 INTEGER NOT NULL,
+            speed_centi_kmh INTEGER,
+            battery_voltage_mv INTEGER,
+            motor_current_ma INTEGER,
+            battery_current_ma INTEGER,
+            duty_permille INTEGER,
+            pitch_centi_deg INTEGER,
+            roll_centi_deg INTEGER,
+            balance_pitch_centi_deg INTEGER,
+            balance_current_ma INTEGER,
+            erpm INTEGER,
+            state INTEGER,
+            switch_state INTEGER,
+            adc1_milli INTEGER,
+            adc2_milli INTEGER,
+            odometer_cm INTEGER,
+            temp_mosfet_deci_c INTEGER,
+            temp_motor_deci_c INTEGER,
+            latitude_e7 INTEGER,
+            longitude_e7 INTEGER,
+            gps_speed_centi_mps INTEGER,
+            bearing_centi_deg INTEGER,
+            accuracy_cm INTEGER,
+            altitude_cm INTEGER,
+            location_timestamp_ms INTEGER
+          )
+          """)
+        try db.execute(sql: """
+          INSERT INTO telemetry_frames_new
+          SELECT id, captured_at_ms, elapsed_realtime_ms, device_id, device_name, can_id, flags,
+                 changed_mask_1, changed_mask_2, speed_centi_kmh, battery_voltage_mv,
+                 motor_current_ma, battery_current_ma, duty_permille, pitch_centi_deg,
+                 roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
+                 switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c,
+                 temp_motor_deci_c, latitude_e7, longitude_e7, gps_speed_centi_mps,
+                 bearing_centi_deg, accuracy_cm, altitude_cm, location_timestamp_ms
+          FROM telemetry_frames
+          """)
+        try db.execute(sql: "DROP TABLE telemetry_frames")
+        try db.execute(sql: "ALTER TABLE telemetry_frames_new RENAME TO telemetry_frames")
+        try db.execute(sql: "CREATE INDEX index_telemetry_frames_captured_at_ms ON telemetry_frames(captured_at_ms)")
+        try db.execute(sql: """
+          CREATE INDEX index_telemetry_frames_device_id_captured_at_ms
+          ON telemetry_frames(device_id, captured_at_ms)
+          """)
+      }
+
+      if try db.columns(in: "telemetry_minute_buckets").map(\.name).contains("fault_count") {
+        try db.execute(sql: """
+          CREATE TABLE telemetry_minute_buckets_new (
+            bucket_start_ms INTEGER NOT NULL,
+            device_id TEXT NOT NULL,
+            device_name TEXT,
+            sample_count INTEGER NOT NULL,
+            first_sample_at_ms INTEGER NOT NULL,
+            last_sample_at_ms INTEGER NOT NULL,
+            sum_abs_speed_centi_kmh INTEGER NOT NULL,
+            moving_speed_sample_count INTEGER,
+            sum_moving_abs_speed_centi_kmh INTEGER,
+            max_abs_speed_centi_kmh INTEGER NOT NULL,
+            min_battery_voltage_mv INTEGER,
+            max_motor_current_abs_ma INTEGER NOT NULL,
+            max_battery_current_abs_ma INTEGER NOT NULL,
+            battery_used_wh_milli INTEGER NOT NULL,
+            battery_regen_wh_milli INTEGER NOT NULL,
+            max_duty_abs_permille INTEGER NOT NULL,
+            first_odometer_cm INTEGER,
+            last_odometer_cm INTEGER,
+            gps_point_count INTEGER NOT NULL,
+            precise_gps_point_count INTEGER NOT NULL,
+            gps_distance_cm INTEGER NOT NULL,
+            max_gps_speed_centi_mps INTEGER,
+            max_temp_mosfet_deci_c INTEGER,
+            max_temp_motor_deci_c INTEGER,
+            first_latitude_e7 INTEGER,
+            first_longitude_e7 INTEGER,
+            first_moving_at_ms INTEGER,
+            last_moving_at_ms INTEGER,
+            PRIMARY KEY (bucket_start_ms, device_id)
+          )
+          """)
+        try db.execute(sql: """
+          INSERT INTO telemetry_minute_buckets_new
+          SELECT bucket_start_ms, device_id, device_name, sample_count, first_sample_at_ms,
+                 last_sample_at_ms, sum_abs_speed_centi_kmh, moving_speed_sample_count,
+                 sum_moving_abs_speed_centi_kmh, max_abs_speed_centi_kmh, min_battery_voltage_mv,
+                 max_motor_current_abs_ma, max_battery_current_abs_ma, battery_used_wh_milli,
+                 battery_regen_wh_milli, max_duty_abs_permille, first_odometer_cm,
+                 last_odometer_cm, gps_point_count, precise_gps_point_count, gps_distance_cm,
+                 max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
+                 first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
+          FROM telemetry_minute_buckets
+          """)
+        try db.execute(sql: "DROP TABLE telemetry_minute_buckets")
+        try db.execute(sql: "ALTER TABLE telemetry_minute_buckets_new RENAME TO telemetry_minute_buckets")
+        try db.execute(sql: "CREATE INDEX index_telemetry_minute_buckets_bucket_start_ms ON telemetry_minute_buckets(bucket_start_ms)")
+      }
     }
 
     return migrator

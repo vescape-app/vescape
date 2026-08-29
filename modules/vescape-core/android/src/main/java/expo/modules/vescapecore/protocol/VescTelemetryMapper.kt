@@ -37,8 +37,6 @@ internal fun RefloatTelemetry.toCapture(session: SessionConfig, canId: Int?): Te
         deviceId = session.deviceId,
         deviceName = session.deviceName,
         canId = canId,
-        hasFault = hasFault,
-        faultCode = faultCode,
         pitch = pitch,
         roll = roll,
         balancePitch = balancePitch,

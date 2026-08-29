@@ -44,7 +44,6 @@ internal data class RideSessionAggregate(
   var maxLatitude: Double?,
   var minLongitude: Double?,
   var maxLongitude: Double?,
-  var faultCount: Int,
   val routePoints: MutableList<RideRoutePoint>,
 ) {
   val distanceM: Double?
@@ -171,7 +170,7 @@ private fun newRideAggregate(bucket: TelemetryMinuteBucketEntity, boundary: Stri
   maxTempMosfet = null, maxTempMotor = null, maxDuty = 0.0, batteryUsedWh = 0.0,
   batteryRegenWh = 0.0, firstLatitude = null, firstLongitude = null, latitudeSum = 0.0,
   longitudeSum = 0.0, coordinateCount = 0, minLatitude = null, maxLatitude = null,
-  minLongitude = null, maxLongitude = null, faultCount = 0, routePoints = mutableListOf(),
+  minLongitude = null, maxLongitude = null, routePoints = mutableListOf(),
 )
 
 private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinuteBucketEntity) {
@@ -199,7 +198,6 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
   session.maxDuty = maxOf(session.maxDuty, bucket.maxDutyAbsPermille / 1000.0)
   session.batteryUsedWh += bucket.batteryUsedWhMilli / 1000.0
   session.batteryRegenWh += bucket.batteryRegenWhMilli / 1000.0
-  session.faultCount += bucket.faultCount
   if (bucket.firstLatitudeE7 != null && bucket.firstLongitudeE7 != null) {
     val latitude = bucket.firstLatitudeE7 / 1e7
     val longitude = bucket.firstLongitudeE7 / 1e7
@@ -246,7 +244,7 @@ internal fun rideSessionMap(session: RideSessionAggregate): Map<String, Any?> {
     "centerLongitude" to if (session.coordinateCount > 0) session.longitudeSum / session.coordinateCount else null,
     "minLatitude" to session.minLatitude, "maxLatitude" to session.maxLatitude,
     "minLongitude" to session.minLongitude, "maxLongitude" to session.maxLongitude,
-    "faultCount" to session.faultCount, "boundaryBefore" to session.boundaryBefore,
+    "boundaryBefore" to session.boundaryBefore,
     "routePoints" to session.routePoints.map { mapOf("latitude" to it.latitude, "longitude" to it.longitude) },
   )
 }

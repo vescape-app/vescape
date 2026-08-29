@@ -45,7 +45,6 @@ internal struct RideSessionAggregate {
   var maxLatitude: Double?
   var minLongitude: Double?
   var maxLongitude: Double?
-  var faultCount = 0
   var routePoints: [RideRoutePoint] = []
 
   var distanceM: Double? {
@@ -181,7 +180,6 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.maxDuty = max(session.maxDuty, Double(bucket["max_duty_abs_permille"] as Int) / 1000.0)
   session.batteryUsedWh += Double(bucket["battery_used_wh_milli"] as Int64) / 1000.0
   session.batteryRegenWh += Double(bucket["battery_regen_wh_milli"] as Int64) / 1000.0
-  session.faultCount += bucket["fault_count"] as Int
   if let latE7 = bucket["first_latitude_e7"] as Int64?, let lonE7 = bucket["first_longitude_e7"] as Int64? {
     let latitude = Double(latE7) / 1e7, longitude = Double(lonE7) / 1e7
     if session.firstLatitude == nil { session.firstLatitude = latitude; session.firstLongitude = longitude }
@@ -223,7 +221,7 @@ internal func rideSessionMap(_ session: RideSessionAggregate) -> [String: Any?] 
     "centerLatitude": session.coordinateCount > 0 ? session.latitudeSum / Double(session.coordinateCount) : nil,
     "centerLongitude": session.coordinateCount > 0 ? session.longitudeSum / Double(session.coordinateCount) : nil,
     "minLatitude": session.minLatitude, "maxLatitude": session.maxLatitude, "minLongitude": session.minLongitude,
-    "maxLongitude": session.maxLongitude, "faultCount": session.faultCount, "boundaryBefore": session.boundaryBefore,
+    "maxLongitude": session.maxLongitude, "boundaryBefore": session.boundaryBefore,
     "routePoints": session.routePoints.map { ["latitude": $0.latitude, "longitude": $0.longitude] },
   ]
 }

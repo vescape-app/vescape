@@ -443,6 +443,7 @@ class AppDataRepository private constructor(private val context: Context) {
       wearNavArrowEnabled = req("wearNavArrowEnabled", false) { it as? Boolean },
       companionPresenceEnabled = req("companionPresenceEnabled", false) { it as? Boolean },
       boardWarningsEnabled = req("boardWarningsEnabled", true) { it as? Boolean },
+      vescFaultCollectionEnabled = req("vescFaultCollectionEnabled", true) { it as? Boolean },
       companionPresenceCooldownMinutes = req("companionPresenceCooldownMinutes", 60, ::validCompanionCooldownMinutes),
       autoCloseEnabled = req("autoCloseEnabled", false) { it as? Boolean },
       autoCloseDelayMinutes = req("autoCloseDelayMinutes", 15, ::validAutoCloseDelayMinutes),
@@ -522,6 +523,7 @@ class AppDataRepository private constructor(private val context: Context) {
       "wearNavArrowEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceEnabled" -> value as? Boolean ?: return@withContext
       "boardWarningsEnabled" -> value as? Boolean ?: return@withContext
+      "vescFaultCollectionEnabled" -> value as? Boolean ?: return@withContext
       "companionPresenceCooldownMinutes" ->
         validCompanionCooldownMinutes(value) ?: return@withContext
       "autoCloseEnabled" -> value as? Boolean ?: return@withContext
@@ -574,6 +576,7 @@ class AppDataRepository private constructor(private val context: Context) {
         "wearNavArrowEnabled" -> d.wearNavArrowEnabled
         "companionPresenceEnabled" -> d.companionPresenceEnabled
         "boardWarningsEnabled" -> d.boardWarningsEnabled
+        "vescFaultCollectionEnabled" -> d.vescFaultCollectionEnabled
         "companionPresenceCooldownMinutes" -> d.companionPresenceCooldownMinutes
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
@@ -954,6 +957,7 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "wearNavArrowEnabled" to wearNavArrowEnabled,
   "companionPresenceEnabled" to companionPresenceEnabled,
   "boardWarningsEnabled" to boardWarningsEnabled,
+  "vescFaultCollectionEnabled" to vescFaultCollectionEnabled,
   "companionPresenceCooldownMinutes" to companionPresenceCooldownMinutes,
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,

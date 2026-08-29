@@ -18,7 +18,6 @@ internal data class BucketTelemetryPoint(
   val motorCurrentMa: Int,
   val batteryCurrentMa: Int,
   val dutyPermille: Int,
-  val hasFault: Boolean,
   val odometerCm: Long?,
   val tempMosfetDeciC: Int? = null,
   val tempMotorDeciC: Int? = null,
@@ -86,7 +85,6 @@ private class MutableBucket(
   private var batteryUsedWhMilli = 0L
   private var batteryRegenWhMilli = 0L
   private var maxDutyAbsPermille = 0
-  private var faultCount = 0
   private var firstOdometerCm: Long? = null
   private var lastOdometerCm: Long? = null
   private var gpsPointCount = 0
@@ -122,7 +120,6 @@ private class MutableBucket(
     if (!point.excludedFromMaxDuty) {
       maxDutyAbsPermille = maxOf(maxDutyAbsPermille, abs(point.dutyPermille))
     }
-    if (point.hasFault) faultCount++
     if (firstOdometerCm == null) firstOdometerCm = point.odometerCm
     if (point.odometerCm != null) lastOdometerCm = point.odometerCm
     point.tempMosfetDeciC?.let { t -> maxTempMosfetDeciC = maxOf(maxTempMosfetDeciC ?: t, t) }
@@ -179,7 +176,6 @@ private class MutableBucket(
     batteryUsedWhMilli = batteryUsedWhMilli,
     batteryRegenWhMilli = batteryRegenWhMilli,
     maxDutyAbsPermille = maxDutyAbsPermille,
-    faultCount = faultCount,
     firstOdometerCm = firstOdometerCm,
     lastOdometerCm = lastOdometerCm,
     gpsPointCount = gpsPointCount,

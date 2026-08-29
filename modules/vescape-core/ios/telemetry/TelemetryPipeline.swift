@@ -102,7 +102,6 @@ internal struct BucketTelemetryPoint {
   let motorCurrentMa: Int
   let batteryCurrentMa: Int
   let dutyPermille: Int
-  let hasFault: Bool
   let odometerCm: Int64?
   let tempMosfetDeciC: Int?
   let tempMotorDeciC: Int?
@@ -139,7 +138,6 @@ internal struct FullTelemetryState {
       motorCurrentMa: telemetryMilli(t.motorCurrent),
       batteryCurrentMa: telemetryMilli(t.batteryCurrent),
       dutyPermille: telemetryMilli(t.dutyCycle),
-      hasFault: t.hasFault,
       odometerCm: t.odometer.map { Int64(($0 * 100.0).rounded()) },
       tempMosfetDeciC: t.tempMosfet.map { telemetryDeci($0) },
       tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) },

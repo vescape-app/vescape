@@ -80,6 +80,7 @@ const e2eSettings: AppSettings = {
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
+  vescFaultCollectionEnabled: true,
   companionPresenceCooldownMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
@@ -116,8 +117,6 @@ function makeTelemetry(): TelemetryEvent {
   const now = Date.now()
   const wobble = Math.sin(now / 1000)
   return {
-    hasFault: false,
-    faultCode: 0,
     pitch: wobble * 3,
     roll: wobble,
     balancePitch: wobble * 2,
@@ -273,7 +272,7 @@ function stopBoardSession(): void {
 // ---------------------------------------------------------------------------
 // Telemetry history fake storage
 // ---------------------------------------------------------------------------
-const SAMPLE_COLUMN_COUNT = 25
+const SAMPLE_COLUMN_COUNT = 23
 
 let nextHistorySampleId = 1
 let nextHistoryGpsId = 1
@@ -350,7 +349,6 @@ function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }
     maxLatitude: bucket.firstLatitude,
     minLongitude: bucket.firstLongitude,
     maxLongitude: bucket.firstLongitude,
-    faultCount: bucket.faultCount,
     boundaryBefore: bucket.boundaryBefore,
     routePoints:
       bucket.firstLatitude != null && bucket.firstLongitude != null
@@ -412,10 +410,8 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
     lanes[o + 18] = s.odometer ?? NaN
     lanes[o + 19] = s.tempMosfet ?? NaN
     lanes[o + 20] = s.tempMotor ?? NaN
-    lanes[o + 21] = s.hasFault ? 1 : 0
-    lanes[o + 22] = s.faultCode
-    lanes[o + 23] = s.latitude ?? NaN
-    lanes[o + 24] = s.longitude ?? NaN
+    lanes[o + 21] = s.latitude ?? NaN
+    lanes[o + 22] = s.longitude ?? NaN
   }
 
   return {
@@ -566,7 +562,6 @@ function addHistoryRide(
     maxMotorCurrent: 12,
     maxBatteryCurrent: -5,
     maxDuty: 0.25,
-    faultCount: 0,
     distanceDeltaM: ride.distanceM,
     gpsDistanceM: ride.distanceM,
     maxTempMosfet: ride.maxTempMosfet,
@@ -607,8 +602,6 @@ function addHistoryRide(
       odometer: 1234 + progress * ride.distanceM,
       tempMosfet: ride.maxTempMosfet - 2 + progress * 2,
       tempMotor: ride.maxTempMotor - 2 + progress * 2,
-      hasFault: false,
-      faultCode: 0,
       latitude: ride.startLatitude + progress * 0.01,
       longitude: ride.startLongitude + progress * 0.01,
     })

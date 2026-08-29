@@ -25,6 +25,7 @@ import expo.modules.vescapecore.connection.buildSessionConfig
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.navigation.NavigationProfile
 import expo.modules.vescapecore.watch.WatchRouteMirror
+import expo.modules.vescapecore.faults.VescFaultCoordinator
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -172,6 +173,7 @@ class VescapeCoreModule : Module() {
       "onGroupRideError",
       "onAppDataChanged",
       "onBoardWarnings",
+      "onVescFaults",
       "onBoardConfigValues",
       "onMotorConfigValues",
       "onBoardConfigChangeNotice",
@@ -235,6 +237,22 @@ class VescapeCoreModule : Module() {
       }
     }
 
+    // Same full-slice mirror for VESC Fault Occurrences; separate channel, separate JS store.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendVescFaults`
+    // @parity /modules/vescape-core/src/index.ts `VescFaultsEvent`
+    VescFaultCoordinator.get(context).onChange = { boardId, faults ->
+      if (shouldEmitToFrontend("onVescFaults")) {
+        mainHandler.post {
+          if (shouldEmitToFrontend("onVescFaults")) {
+            sendEvent(
+              "onVescFaults",
+              mapOf("boardId" to boardId, "faults" to faults.map { it.toMap() }),
+            )
+          }
+        }
+      }
+    }
+
     OnStartObserving("onDevice") { startObserving("onDevice") }
     OnStopObserving("onDevice") { stopObserving("onDevice") }
     OnStartObserving("onError") { startObserving("onError") }
@@ -280,6 +298,12 @@ class VescapeCoreModule : Module() {
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
     }
     OnStopObserving("onBoardWarnings") { stopObserving("onBoardWarnings") }
+
+    OnStartObserving("onVescFaults") {
+      startObserving("onVescFaults")
+      CoroutineScope(Dispatchers.IO).launch { VescFaultCoordinator.get(context).emitSnapshot() }
+    }
+    OnStopObserving("onVescFaults") { stopObserving("onVescFaults") }
     OnStartObserving("onBoardConfigValues") {
       startObserving("onBoardConfigValues")
       // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
@@ -353,6 +377,7 @@ class VescapeCoreModule : Module() {
       // module reachable (mirrors iOS OnDestroy nulling `onChange`). A fresh module re-attaches in
       // its own definition().
       BoardWarningRegistry.get(context).onChange = null
+      VescFaultCoordinator.get(context).onChange = null
       NavigationController.get(context).onChange = null
       NavigationController.get(context).onProgressChange = null
       appStatusUnsub?.invoke()
@@ -619,6 +644,24 @@ class VescapeCoreModule : Module() {
     }
     AsyncFunction("getBoardWarnings") Coroutine { ->
       BoardWarningRegistry.get(context).allWarnings().map { it.toMap() }
+    }
+
+    /**
+     * VESC Fault Occurrences across every Board — the JS foreground catch-up pull.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaults`
+     * @parity /modules/vescape-core/src/index.ts `getVescFaults`
+     */
+    AsyncFunction("getVescFaults") Coroutine { ->
+      VescFaultCoordinator.get(context).allFaults().map { it.toMap() }
+    }
+
+    /**
+     * Occurrence-level dismissal. Never deletes the occurrence — the evidence outlives the badge.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setVescFaultDismissed`
+     * @parity /modules/vescape-core/src/index.ts `setVescFaultDismissed`
+     */
+    AsyncFunction("setVescFaultDismissed") Coroutine { id: String, dismissed: Boolean ->
+      VescFaultCoordinator.get(context).setDismissed(id, dismissed)
     }
     /**
      * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
@@ -968,7 +1011,8 @@ key == "wearAutoLaunchOnConnect" ||
         key == "wearNavArrowEnabled" ||
         // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
         key == "riderColor" ||
-        key == "boardWarningsEnabled"
+        key == "boardWarningsEnabled" ||
+        key == "vescFaultCollectionEnabled"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }

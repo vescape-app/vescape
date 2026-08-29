@@ -31,6 +31,7 @@ const BASE: AppSettings = {
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
+  vescFaultCollectionEnabled: true,
   companionPresenceCooldownMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,

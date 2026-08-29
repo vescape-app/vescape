@@ -93,6 +93,7 @@ import expo.modules.vescapecore.protocol.parseRefloatGetAllData
 import expo.modules.vescapecore.remoteTiltWire
 import expo.modules.vescapecore.warnings.BatteryConfigMismatchDetector
 import expo.modules.vescapecore.warnings.BoardWarningKind
+import expo.modules.vescapecore.faults.VescFaultCoordinator
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import expo.modules.vescapecore.warnings.BoardWarningStore
@@ -167,6 +168,12 @@ private const val WATCH_FRAME_INTERVAL_MS = 250L
 /** Push cadence while the Mirror sits in ambient/AOD, where the wrist itself redraws about once a minute. */
 private const val WATCH_FRAME_AMBIENT_INTERVAL_MS = 5_000L
 private const val NOTIFICATION_TELEMETRY_INTERVAL_MS = 10_000L
+/** Sentinel active fault code meaning "state not yet established this Board Session". */
+private const val FAULT_CODE_UNKNOWN = -1
+
+/** How often a continuously active fault refreshes its occurrence's last-observed time. */
+private const val FAULT_OBSERVATION_INTERVAL_MS = 1_000L
+
 private const val GATT_CONNECT_TIMEOUT_MS = 6_000L
 private const val GATT_READY_TIMEOUT_MS = 6_000L
 
@@ -1080,6 +1087,10 @@ private var wearAutoLaunchOnConnect = true
         connectionCoordinator.reset()
         reconnectScheduler.cancelAndReset()
         recordingCoordinator.beginBoardSession(start.boardConfig)
+        // Unknown fault state: the first frame of the session always reaches the fault coordinator,
+        // so a fault that opened before a restart is closed by the first normal frame after it.
+        liveFaultCode = FAULT_CODE_UNKNOWN
+        lastFaultDispatchAtMs = 0L
         beginGpsSessionDiagnostics()
         // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
         // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1383,7 +1394,17 @@ private var wearAutoLaunchOnConnect = true
                 return
             }
             val sessionToken = boardSession ?: return
+            // A valid mode-69 response still paces the response-driven poll loop — the frame is a
+            // real answer, it just carries no metrics.
             pollingLoop.onResponse()
+            if (parsed.hasFault) {
+                // Refloat fault mode: a state signal with zeroed metrics, never a Telemetry Sample.
+                // It opens/extends a VESC Fault Occurrence and stops here — persisting or
+                // aggregating it would poison Ride History with a frame of zeros.
+                onRefloatFaultFrame(parsed.faultCode)
+                return
+            }
+            onRefloatNormalFrame()
             val processed = telemetryPipeline.process(parsed, sessionToken) ?: return
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
@@ -1458,6 +1479,44 @@ private var wearAutoLaunchOnConnect = true
             reportWarningFailure(site, throwable)
         }
     }
+
+    /**
+     * Refloat reported an active fault code. Independent of Ride Recording and Board Warnings: the
+     * VESC Fault Occurrence is Board-owned durable truth.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatFaultFrame`
+     */
+    private fun onRefloatFaultFrame(code: Int) {
+        val boardId = boardConfig?.appBoardId ?: return
+        val now = nowMs()
+        // Edge-triggered plus a slow heartbeat: a fault can repeat at the full poll rate, and one
+        // occurrence must not cost one durable write per frame.
+        if (liveFaultCode == code && now - lastFaultDispatchAtMs < FAULT_OBSERVATION_INTERVAL_MS) return
+        liveFaultCode = code
+        lastFaultDispatchAtMs = now
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        launchWarningWrite { coordinator.onActiveFault(boardId, code) }
+    }
+
+    /**
+     * Refloat reported a normal `ALLDATA` frame — the controller is not faulting, so any open
+     * occurrence for this Board is closed.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatNormalFrame`
+     */
+    private fun onRefloatNormalFrame() {
+        if (liveFaultCode == null) return
+        liveFaultCode = null
+        val boardId = boardConfig?.appBoardId ?: return
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        launchWarningWrite { coordinator.onFaultCleared(boardId) }
+    }
+
+    /**
+     * Last active Refloat fault code observed this Board Session, or null once cleared.
+     * [FAULT_CODE_UNKNOWN] means "not yet established", which forces one dispatch either way.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `liveFaultCode`
+     */
+    private var liveFaultCode: Int? = FAULT_CODE_UNKNOWN
+    private var lastFaultDispatchAtMs = 0L
 
     /**
      * Launch a Board Warning registry write crash-isolated by [warningWriteExceptionHandler] and
@@ -2878,6 +2937,10 @@ private var wearAutoLaunchOnConnect = true
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
+        // `VESC Fault Collection` is its own kill switch — deliberately not gated on
+        // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
+        VescFaultCoordinator.get(service.applicationContext).collectionEnabled =
+            settings.vescFaultCollectionEnabled
         val warningsWereEnabled = boardWarningsEnabled
         boardWarningsEnabled = settings.boardWarningsEnabled
         // Disabled→enabled with an already-trusted link: link integrity won't transition again, so

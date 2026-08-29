@@ -348,8 +348,6 @@ internal struct RefloatTelemetry {
   /// higher layers when GPS lands); the hot-path live tick never carries it.
   func toMap() -> [String: Any?] {
     [
-      "hasFault": hasFault,
-      "faultCode": faultCode,
       "pitch": pitch,
       "roll": roll,
       "balancePitch": balancePitch,
