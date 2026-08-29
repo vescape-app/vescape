@@ -72,9 +72,25 @@ _Avoid_: Battery Diagnostic Snapshot, BMS telemetry sample, cell voltage log, ba
 A single phone location sample used for live map position or ride recording.
 _Avoid_: Location event, GPS point
 
+**Speed Source**:
+The origin of a displayed, recorded, or evaluated riding speed: Board telemetry when available or GPS otherwise.
+_Avoid_: Speed mode, fallback flag, speed color
+
 **Ride Recording**:
-A persisted ride capture made from board telemetry samples, optionally enriched with precise GPS fixes captured at the same time as telemetry.
+A durable capture of one ride started manually or automatically, containing GPS fixes and optionally telemetry spans from Board Sessions belonging to at most one Board.
 _Avoid_: Session recording, raw recording
+
+**Ride Recording Origin**:
+The rider intent that created a Ride Recording: Manual when REC was pressed, or Board Auto when a Board connection started it.
+_Avoid_: Recording type, start source
+
+**Recording Reconnect Grace**:
+A short buffered GPS tail after an unexpected Board disconnection that is committed when the same Board reconnects and discarded when a Board Auto Ride Recording ends without reconnecting.
+_Avoid_: Disconnect timeout, GPS continuation, recording delay
+
+**Board Telemetry Span**:
+A continuous interval within a Ride Recording for which Telemetry Samples from its assigned Board are available.
+_Avoid_: Board segment, telemetry ride, connected section
 
 **Privacy Zone**:
 A user-defined geographic area where Ride Recording data is not retained.
@@ -93,7 +109,7 @@ The span of a Ride Recording from its first to its last moving Telemetry Sample 
 _Avoid_: Trim range, active range, ride duration
 
 **Idle Pause**:
-A temporary state of a Ride Recording in which sample persistence halts because the Board has produced no moving Telemetry Sample for a sustained interval, while the Board Session stays live at a reduced poll rate and auto-resumes on the next moving sample. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
+A temporary state of a Ride Recording in which sample persistence pauses after a sustained lack of movement while its Board or GPS observation remains active and automatically resumes on the next trustworthy moving sample.
 _Avoid_: Stop recording, auto-stop, sleep, parked mode
 
 **Favorite**:
