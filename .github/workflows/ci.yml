@@ -52,3 +52,48 @@ jobs:
       - name: Release Gradle file handles
         if: always()
         run: cd android && ./gradlew --stop || true
+
+  # Swift only ever compiled in the release build, so a type error in `modules/vescape-core/ios`
+  # escaped every PR and failed at TestFlight time. This is the iOS half of `test:android`: the
+  # SwiftPM package globs the same tree CocoaPods ships, so the tests cannot run without compiling
+  # it. macOS minutes are expensive, hence the path gate.
+  ios-changes:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ios:
+              - 'modules/*/ios/**'
+              - 'modules/*/Package.swift'
+              - 'scripts/test-ios.ts'
+              - 'scripts/native-sync.ts'
+              - '.github/workflows/ci.yml'
+
+  ios:
+    needs: ios-changes
+    if: needs.ios-changes.outputs.ios == 'true'
+    runs-on: blacksmith-6vcpu-macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData
+          key: spm-${{ runner.os }}-${{ hashFiles('modules/vescape-core/Package.swift') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+      - name: List available simulators
+        run: xcrun simctl list devices available
+      - run: bun run test:ios
+        env:
+          # A cold Swift build of the whole module is far past the local default.
+          IOS_TEST_TIMEOUT_MS: '1800000'
