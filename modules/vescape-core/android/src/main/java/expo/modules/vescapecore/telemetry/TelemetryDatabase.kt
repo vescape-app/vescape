@@ -636,16 +636,8 @@ abstract class TelemetryDatabase : RoomDatabase() {
     }
 
     /**
-     * VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
-     * History fault path.
-     *
-     * Creates `vesc_fault_occurrences` and removes the legacy telemetry fault storage — the
-     * `fault_code` column and its partial index on `telemetry_frames`, and `fault_count` on
-     * `telemetry_minute_buckets`. Legacy values are dropped, not backfilled: a fault code repeated
-     * across frames was never a distinct activation, so there is nothing faithful to migrate.
-     *
-     * SQLite before 3.35 has no `DROP COLUMN`, so both tables are rebuilt by copy.
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v37_vesc_fault_occurrences`
+     * One durable row per fault activation, keyed by a native-minted id.
+     * @parity /modules/vescape-core/ios/faults/VescFaultStore.swift `createTables`
      */
     private fun createVescFaultOccurrences(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -667,9 +659,76 @@ abstract class TelemetryDatabase : RoomDatabase() {
         )
     }
 
-    internal val MIGRATION_36_37 = object : Migration(36, 37) {
+    /**
+     * VESC Fault Captures: the self-contained window of decoded Board samples each occurrence owns.
+     * Additive only — dedicated tables, no Ride History coupling, no GPS.
+     * @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift `createTables`
+     */
+    private fun createVescFaultCaptures(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS vesc_fault_captures (
+            occurrence_id TEXT NOT NULL PRIMARY KEY,
+            board_id TEXT NOT NULL,
+            started_at INTEGER NOT NULL,
+            opened_at INTEGER NOT NULL,
+            sample_count INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_vesc_fault_captures_board_id " +
+            "ON vesc_fault_captures(board_id)",
+        )
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS vesc_fault_capture_samples (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            occurrence_id TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            speed REAL,
+            duty_cycle REAL,
+            erpm REAL,
+            battery_voltage REAL,
+            battery_current REAL,
+            motor_current REAL,
+            temp_mosfet REAL,
+            temp_motor REAL,
+            pitch REAL,
+            roll REAL,
+            balance_pitch REAL,
+            adc1 REAL,
+            adc2 REAL,
+            state INTEGER
+          )
+          """.trimIndent(),
+        )
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at " +
+            "ON vesc_fault_capture_samples(occurrence_id, captured_at)",
+        )
+    }
+
+    /**
+     * VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
+     * History fault path.
+     *
+     * Creates the fault tables and removes the legacy telemetry fault storage — the `fault_code`
+     * column and its partial index on `telemetry_frames`, and `fault_count` on
+     * `telemetry_minute_buckets`. Legacy values are dropped, not backfilled: a fault code repeated
+     * across frames was never a distinct activation, so there is nothing faithful to migrate.
+     *
+     * SQLite before 3.35 has no `DROP COLUMN`, so both tables are rebuilt by copy.
+     *
+     * 36 to 40 in one step: versions 37 to 39 only ever existed in development builds while the
+     * feature was being cut down, and none of their shapes shipped. A database sitting on one of
+     * them has no path here and is rebuilt by the destructive fallback.
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v40_vesc_faults`
+     */
+    internal val MIGRATION_36_40 = object : Migration(36, 40) {
       override fun migrate(db: SupportSQLiteDatabase) {
         createVescFaultOccurrences(db)
+        createVescFaultCaptures(db)
         db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_fault")
         if (hasColumn(db, "telemetry_frames", "fault_code")) {
           db.execSQL(
@@ -790,102 +849,6 @@ abstract class TelemetryDatabase : RoomDatabase() {
       }
     }
 
-    /**
-     * VESC Fault Captures: the self-contained window of decoded Board samples each occurrence owns.
-     * Additive only — dedicated tables, no Ride History coupling, no GPS.
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v38_vesc_fault_captures`
-     */
-    internal val MIGRATION_37_38 = object : Migration(37, 38) {
-      override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL(
-          """
-          CREATE TABLE IF NOT EXISTS vesc_fault_captures (
-            occurrence_id TEXT NOT NULL PRIMARY KEY,
-            board_id TEXT NOT NULL,
-            started_at INTEGER NOT NULL,
-            opened_at INTEGER NOT NULL,
-            sample_count INTEGER NOT NULL
-          )
-          """.trimIndent(),
-        )
-        db.execSQL(
-          "CREATE INDEX IF NOT EXISTS index_vesc_fault_captures_board_id " +
-            "ON vesc_fault_captures(board_id)",
-        )
-        db.execSQL(
-          """
-          CREATE TABLE IF NOT EXISTS vesc_fault_capture_samples (
-            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            occurrence_id TEXT NOT NULL,
-            captured_at INTEGER NOT NULL,
-            speed REAL,
-            duty_cycle REAL,
-            erpm REAL,
-            battery_voltage REAL,
-            battery_current REAL,
-            motor_current REAL,
-            temp_mosfet REAL,
-            temp_motor REAL,
-            pitch REAL,
-            roll REAL,
-            balance_pitch REAL,
-            adc1 REAL,
-            adc2 REAL,
-            state INTEGER
-          )
-          """.trimIndent(),
-        )
-        db.execSQL(
-          "CREATE INDEX IF NOT EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at " +
-            "ON vesc_fault_capture_samples(occurrence_id, captured_at)",
-        )
-      }
-    }
-
-    /** Preserve live evidence and unrelated app data from pre-simplification development builds.
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v40_live_faults_only`
-     */
-    private fun simplifyVescFaults(db: SupportSQLiteDatabase) {
-      val legacySource = hasColumn(db, "vesc_fault_occurrences", "source")
-      db.execSQL("ALTER TABLE vesc_fault_occurrences RENAME TO vesc_fault_occurrences_old")
-      db.execSQL("DROP INDEX IF EXISTS index_vesc_fault_occurrences_board_id_discovered_at")
-      db.execSQL("DROP INDEX IF EXISTS index_vesc_fault_occurrences_board_id_occurred_at")
-      createVescFaultOccurrences(db)
-      val liveOnly = if (legacySource) " AND source = 'live'" else ""
-      db.execSQL(
-        "INSERT INTO vesc_fault_occurrences " +
-          "SELECT id, board_id, code, occurred_at, last_observed_at, cleared_at, dismissed " +
-          "FROM vesc_fault_occurrences_old WHERE occurred_at IS NOT NULL$liveOnly",
-      )
-      db.execSQL("DROP TABLE vesc_fault_occurrences_old")
-
-      db.execSQL("ALTER TABLE vesc_fault_captures RENAME TO vesc_fault_captures_old")
-      db.execSQL("DROP INDEX IF EXISTS index_vesc_fault_captures_board_id")
-      MIGRATION_37_38.migrate(db)
-      db.execSQL(
-        "DELETE FROM vesc_fault_capture_samples WHERE NOT EXISTS (" +
-          "SELECT 1 FROM vesc_fault_captures_old c JOIN vesc_fault_occurrences o ON o.id = c.occurrence_id " +
-          "WHERE c.occurrence_id = vesc_fault_capture_samples.occurrence_id " +
-          "AND captured_at BETWEEN c.started_at AND c.opened_at)",
-      )
-      db.execSQL(
-        "INSERT INTO vesc_fault_captures " +
-          "SELECT c.occurrence_id, c.board_id, c.started_at, c.opened_at, " +
-          "(SELECT COUNT(*) FROM vesc_fault_capture_samples s WHERE s.occurrence_id = c.occurrence_id) " +
-          "FROM vesc_fault_captures_old c JOIN vesc_fault_occurrences o ON o.id = c.occurrence_id",
-      )
-      db.execSQL("DROP TABLE vesc_fault_captures_old")
-      db.execSQL("DROP TABLE IF EXISTS vesc_fault_register_snapshots")
-    }
-
-    internal val MIGRATION_38_40 = object : Migration(38, 40) {
-      override fun migrate(db: SupportSQLiteDatabase) = simplifyVescFaults(db)
-    }
-
-    internal val MIGRATION_39_40 = object : Migration(39, 40) {
-      override fun migrate(db: SupportSQLiteDatabase) = simplifyVescFaults(db)
-    }
-
     internal val MIGRATION_34_35 = object : Migration(34, 35) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'")
@@ -969,10 +932,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_33_34,
             MIGRATION_34_35,
             MIGRATION_35_36,
-            MIGRATION_36_37,
-            MIGRATION_37_38,
-            MIGRATION_38_40,
-            MIGRATION_39_40,
+            MIGRATION_36_40,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

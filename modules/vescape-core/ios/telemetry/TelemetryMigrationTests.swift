@@ -73,48 +73,33 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(applied, Set(TelemetryDatabase.migrator.migrations))
   }
 
-  func testLiveFaultMigrationPreservesLiveEvidenceAndDropsRegisterAndFutureSamples() throws {
-    try migrate(upTo: "v39_vesc_fault_register_snapshots")
+  /// The fault migration is the only one that rewrites telemetry tables, so assert both halves:
+  /// the fault tables arrive and the legacy per-frame fault storage is gone without losing frames.
+  func testFaultMigrationDropsLegacyTelemetryFaultStorageAndKeepsFrames() throws {
+    try migrate(upTo: "v36_motor_config_values")
+    // iOS is greenfield and never created the fault columns, so the rebuild branch only runs for a
+    // restored Room database. Add them by hand to arrive at the migration the way that backup does.
     try queue.write { db in
-      try db.execute(sql: "DROP TABLE vesc_fault_occurrences")
       try db.execute(sql: """
-        CREATE TABLE vesc_fault_occurrences (
-          id TEXT NOT NULL PRIMARY KEY, board_id TEXT NOT NULL, code INTEGER NOT NULL,
-          source TEXT NOT NULL, occurred_at INTEGER, discovered_at INTEGER NOT NULL,
-          last_observed_at INTEGER NOT NULL, cleared_at INTEGER, register_position INTEGER,
-          dismissed INTEGER NOT NULL, register_snapshot_id TEXT
-        );
-        CREATE INDEX index_vesc_fault_occurrences_board_id_discovered_at
-          ON vesc_fault_occurrences(board_id, discovered_at);
-        INSERT INTO vesc_fault_occurrences VALUES
-          ('live', 'board', 9, 'live', 6000, 6000, 7000, 8000, NULL, 1, NULL),
-          ('old', 'board', 4, 'baseline', NULL, 6000, 6000, NULL, 0, 1, 'snapshot');
-        ALTER TABLE vesc_fault_captures ADD COLUMN ended_at INTEGER;
-        ALTER TABLE vesc_fault_captures ADD COLUMN complete INTEGER NOT NULL DEFAULT 1;
-        INSERT INTO vesc_fault_captures VALUES ('live', 'board', 1000, 6000, 2, 7000, 1);
-        INSERT INTO vesc_fault_capture_samples (occurrence_id, captured_at, speed) VALUES
-          ('live', 5500, 25), ('live', 7000, 5);
-        CREATE TABLE vesc_fault_register_snapshots (id TEXT PRIMARY KEY);
-        INSERT INTO vesc_fault_register_snapshots VALUES ('snapshot');
+        ALTER TABLE telemetry_frames ADD COLUMN fault_code INTEGER;
+        ALTER TABLE telemetry_minute_buckets ADD COLUMN fault_count INTEGER;
+        INSERT INTO telemetry_frames (captured_at_ms, elapsed_realtime_ms, flags, changed_mask_1,
+          changed_mask_2, speed_centi_kmh, fault_code)
+        VALUES (1000, 5, 0, 0, 0, 2500, 9);
         """)
     }
-    try insertSetting("unitSystem")
 
     try migrate()
 
-    let faults = VescFaultStore(dbWriter: queue).getForBoard("board")
-    XCTAssertEqual(faults.map(\.id), ["live"])
-    XCTAssertTrue(faults[0].dismissed)
-    XCTAssertEqual(faults[0].occurredAtMs, 6000)
-    let captures = VescFaultCaptureStore(dbWriter: queue)
-    XCTAssertEqual(captures.getCapture("live")?.sampleCount, 1)
-    XCTAssertEqual(captures.getSamples("live").map(\.capturedAtMs), [5500])
-    XCTAssertFalse(try columnNames("vesc_fault_occurrences").contains("source"))
-    XCTAssertFalse(try columnNames("vesc_fault_captures").contains("complete"))
-    XCTAssertFalse(try queue.read { db in try db.tableExists("vesc_fault_register_snapshots") })
-    XCTAssertEqual(try queue.read { db in
-      try String.fetchSet(db, sql: "SELECT key FROM app_settings")
-    }, ["unitSystem"])
+    XCTAssertFalse(try columnNames("telemetry_frames").contains("fault_code"))
+    XCTAssertFalse(try columnNames("telemetry_minute_buckets").contains("fault_count"))
+    let speeds = try queue.read { db in
+      try Int.fetchAll(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames")
+    }
+    XCTAssertEqual(speeds, [2500])
+    for table in ["vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples"] {
+      XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
+    }
   }
 
   /// Tables the migrator delegates to a store's `createTables` are the easy ones to leave out of a
@@ -126,7 +111,7 @@ final class TelemetryMigrationTests: XCTestCase {
       "boards", "board_settings", "alerts", "app_settings", "telemetry_frames",
       "telemetry_minute_buckets", "telemetry_markers", "metric_exclusion_ranges",
       "diagnostic_events", "tune_profiles", "tune_history_entries", "board_warnings", "favorites",
-      "favorite_media",
+      "favorite_media", "vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples",
     ]
     for table in tables {
       XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
