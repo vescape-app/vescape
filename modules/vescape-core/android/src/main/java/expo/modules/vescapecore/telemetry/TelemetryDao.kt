@@ -368,14 +368,31 @@ interface TelemetryDao {
     clearExclusions()
   }
 
-  @Query("SELECT * FROM boards ORDER BY created_at ASC")
+  /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
+  @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")
   suspend fun getBoards(): List<BoardEntity>
 
+  /**
+   * Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
+   * that act on a Board rather than describe one check [BoardEntity.deletedAt] and refuse.
+   */
   @Query("SELECT * FROM boards WHERE id = :id LIMIT 1")
   suspend fun getBoard(id: String): BoardEntity?
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
-  suspend fun upsertBoard(board: BoardEntity)
+  suspend fun insertBoardRow(board: BoardEntity)
+
+  @Query("SELECT deleted_at FROM boards WHERE id = :id")
+  suspend fun getBoardDeletedAt(id: String): Long?
+
+  /**
+   * An existing tombstone survives the write, so an ordinary upsert can never resurrect a deleted
+   * Board — deletion is terminal (ADR 0027). Only [deleteBoardWithSettings] stamps a new one.
+   */
+  @Transaction
+  suspend fun upsertBoard(board: BoardEntity) {
+    insertBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
+  }
 
   @Query("SELECT * FROM board_settings WHERE board_id = :boardId")
   suspend fun getBoardSettings(boardId: String): List<BoardSettingEntity>
@@ -399,16 +416,21 @@ interface TelemetryDao {
   @Query("DELETE FROM board_settings WHERE board_id = :boardId")
   suspend fun deleteBoardSettings(boardId: String)
 
-  @Query("DELETE FROM boards WHERE id = :id")
-  suspend fun deleteBoard(id: String)
-
+  /**
+   * Tombstones the Board and hard-deletes its configuration. The `boards` row itself survives so
+   * Ride History can still name it (ADR 0027); deleting a Board that is already tombstoned is a
+   * no-op, so the stamp is never moved.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `deleteBoard`
+   */
   @Transaction
-  suspend fun deleteBoardWithSettings(id: String) {
+  suspend fun deleteBoardWithSettings(id: String, deletedAt: Long) {
+    val board = getBoard(id)?.takeIf { it.deletedAt == null } ?: return
     deleteBoardSettings(id)
     deleteBoardWarnings(id)
     // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
     deleteAlertRules(id)
-    deleteBoard(id)
+    insertBoardRow(board.copy(deletedAt = deletedAt))
   }
 
   @Query("SELECT * FROM alerts WHERE board_id = :boardId ORDER BY created_at ASC")

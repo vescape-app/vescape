@@ -89,6 +89,25 @@ final class TelemetryMigrationTests: XCTestCase {
     }
   }
 
+  /// Boards are tombstoned rather than deleted (ADR 0027), so Ride History keeps a resolvable Board
+  /// identity. The column is nullable and additive: an existing Board upgrades as live.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_37`
+  func testBoardsGainANullableDeletedAtColumn() throws {
+    try migrate()
+
+    XCTAssertTrue(try columnNames("boards").contains("deleted_at"))
+    try queue.write { db in
+      try db.execute(
+        sql: "INSERT INTO boards (id, name, ble_id, created_at) VALUES (?, ?, ?, ?)",
+        arguments: ["b1", "Board", "AA:BB", 1_000]
+      )
+    }
+    let deletedAt = try queue.read { db in
+      try Int64.fetchOne(db, sql: "SELECT deleted_at FROM boards WHERE id = ?", arguments: ["b1"])
+    }
+    XCTAssertNil(deletedAt)
+  }
+
   /// Alert Rules are owned by one Board: `board_id` is part of the primary key so preset ids repeat
   /// per board instead of colliding. Incremental sync keys off this shape.
   func testAlertsAreBoardOwnedAfterEveryMigration() throws {

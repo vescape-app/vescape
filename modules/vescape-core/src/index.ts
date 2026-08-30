@@ -188,6 +188,14 @@ export interface Board {
   name: string
   description: string | null
   createdAt: number
+  /**
+   * Tombstone stamp: epoch ms of the rider's delete, null/absent while the Board is alive. Deleting
+   * a Board keeps its row so Ride History can still name it (ADR 0027). Board lists never contain
+   * tombstones — only a lookup by id resolves one.
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `composeBoard`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `toMap`
+   */
+  deletedAt?: number | null
   batteryConfig: BatteryConfig | null
   /** Last Battery SoC Estimate persisted natively; survives full app kill. `undefined` before first session. */
   lastBattery?: LastBattery | null

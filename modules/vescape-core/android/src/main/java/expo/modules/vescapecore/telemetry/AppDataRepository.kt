@@ -207,8 +207,13 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
+  /**
+   * Tombstones the Board rather than removing it, so its Ride History keeps a resolvable Board
+   * identity (ADR 0027). Board-owned configuration is still hard-deleted.
+   * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `deleteBoard`
+   */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteBoardWithSettings(id)
+    dao.deleteBoardWithSettings(id, System.currentTimeMillis())
     dao.deleteBoardConfigValues(id)
     dao.deleteBoardConfigChangeNotice(id)
     notifyDataChanged(AppDataScope.BOARDS)
@@ -908,6 +913,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "name" to name,
     "description" to values["description"],
     "createdAt" to createdAt,
+    "deletedAt" to deletedAt,
     "batteryConfig" to values["batteryConfig"],
     "lastBattery" to values["lastBattery"],
     "dismissedWarnings" to values["dismissedWarnings"],

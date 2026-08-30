@@ -38,6 +38,8 @@ internal struct BoardConnectConfig {
     recordingEnabled: Bool = false
   ) -> BoardConnectConfig? {
     guard let board = appData.getBoard(boardId) else { return nil }
+    // Lookup resolves tombstones so Ride History can name them; connecting to one is refused (ADR 0027).
+    guard (board["deletedAt"] ?? nil) == nil else { return nil }
     guard let link = board["link"] as? [String: Any?] else { return nil }
     guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
     let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct

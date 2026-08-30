@@ -70,7 +70,11 @@ final class AppDataRepository {
     read([]) { db in
       let boards = try Row.fetchAll(
         db,
-        sql: "SELECT id, name, ble_id, transport, created_at FROM boards ORDER BY created_at ASC"
+        // Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027).
+        sql: """
+          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
+          WHERE deleted_at IS NULL ORDER BY created_at ASC
+        """
       )
       let settings = try Row.fetchAll(db, sql: "SELECT board_id, key, value_json FROM board_settings")
       var byBoard: [String: [(String, String)]] = [:]
@@ -82,11 +86,13 @@ final class AppDataRepository {
     }
   }
 
+  /// Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
+  /// that act on a Board rather than describe one check `deletedAt` and refuse (ADR 0027).
   func getBoard(_ id: String) -> [String: Any?]? {
     read(nil) { db in
       guard let board = try Row.fetchOne(
         db,
-        sql: "SELECT id, name, ble_id, transport, created_at FROM boards WHERE id = ? LIMIT 1",
+        sql: "SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards WHERE id = ? LIMIT 1",
         arguments: [id]
       ) else { return nil }
       let settings = try Row.fetchAll(
@@ -121,9 +127,15 @@ final class AppDataRepository {
     let updatedAt = nowMs()
 
     write { db in
+      // An existing tombstone survives the write, so an ordinary upsert can never resurrect a
+      // deleted Board — deletion is terminal (ADR 0027). Only `deleteBoard` stamps a new one.
+      let deletedAt = try Int64.fetchOne(db, sql: "SELECT deleted_at FROM boards WHERE id = ?", arguments: [id])
       try db.execute(
-        sql: "INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at) VALUES (?, ?, ?, ?, ?)",
-        arguments: [id, name, bleId, transport, createdAt]
+        sql: """
+          INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at, deleted_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        arguments: [id, name, bleId, transport, createdAt, deletedAt]
       )
       for (key, value) in settings {
         guard let value, let json = Self.encodeJson(value) else {
@@ -139,12 +151,22 @@ final class AppDataRepository {
     notifyDataChanged(.boards)
   }
 
+  /// Tombstones the Board and hard-deletes its configuration. The `boards` row itself survives so
+  /// Ride History can still name it (ADR 0027); deleting an already-tombstoned Board is a no-op, so
+  /// the stamp is never moved.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `deleteBoard`
   func deleteBoard(_ id: String) {
+    let deletedAt = nowMs()
     write { db in
+      guard try Bool.fetchOne(
+        db,
+        sql: "SELECT deleted_at IS NULL FROM boards WHERE id = ?",
+        arguments: [id]
+      ) == true else { return }
       try db.execute(sql: "DELETE FROM board_settings WHERE board_id = ?", arguments: [id])
       // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
-      try db.execute(sql: "DELETE FROM boards WHERE id = ?", arguments: [id])
+      try db.execute(sql: "UPDATE boards SET deleted_at = ? WHERE id = ?", arguments: [deletedAt, id])
     }
     BoardConfigStore.shared.clear(boardId: id)
     notifyDataChanged(.boards)
@@ -191,6 +213,7 @@ final class AppDataRepository {
       "name": row["name"] as String,
       "description": values["description"],
       "createdAt": row["created_at"] as Int64,
+      "deletedAt": row["deleted_at"] as Int64?,
       "batteryConfig": values["batteryConfig"],
       "lastBattery": values["lastBattery"],
       "dismissedWarnings": values["dismissedWarnings"],

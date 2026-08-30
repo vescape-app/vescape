@@ -541,6 +541,14 @@ enum TelemetryDatabase {
       try MotorConfigStore.createTables(db)
     }
 
+    /// Board tombstones (#428). Deleting a Board stops removing its row and stamps `deleted_at`
+    /// instead, so Ride History keeps a resolvable Board identity (ADR 0027). Additive and
+    /// nullable; existing rows stay live.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_37`
+    migrator.registerMigration("v37_board_deleted_at") { db in
+      try db.execute(sql: "ALTER TABLE boards ADD COLUMN deleted_at INTEGER")
+    }
+
     return migrator
   }
 }
