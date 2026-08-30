@@ -23,15 +23,30 @@ class VescFaultCoordinatorTest {
 
     override suspend fun getAll() = rows.values.toList()
 
-    override suspend fun openLive(boardId: String) = rows.values
-      .filter { it.boardId == boardId && it.clearedAtMs == null }
-      .maxByOrNull { it.occurredAtMs }
+    /** Set to fail the next hydration read, mirroring a transient Room read error. */
+    var openLiveFailsOnce = false
+
+    override suspend fun openLive(boardId: String): VescFaultOccurrence? {
+      if (openLiveFailsOnce) {
+        openLiveFailsOnce = false
+        error("store read failed")
+      }
+      return rows.values
+        .filter { it.boardId == boardId && it.clearedAtMs == null }
+        .maxByOrNull { it.occurredAtMs }
+    }
 
     /** Set to fail every write, mirroring a dead Room database. */
     var writesFail = false
+    /** Set to fail only the next write, so one step of a two-write transition can fail alone. */
+    var failNextWriteOnly = false
     var writes = 0
 
     override suspend fun upsert(occurrence: VescFaultOccurrence) {
+      if (failNextWriteOnly) {
+        failNextWriteOnly = false
+        error("store write failed")
+      }
       if (writesFail) error("store write failed")
       writes += 1
       val existing = rows[occurrence.id]
@@ -170,6 +185,48 @@ class VescFaultCoordinatorTest {
     }
     assertEquals(writesAfterClear, store.writes)
     assertEquals(6_000L, faults().single().clearedAtMs)
+  }
+
+  @Test
+  fun `a failed close on a code change does not open the replacement`() = runBlocking {
+    coordinator.onActiveFault("board", 9)
+
+    // Only the close of the old occurrence fails; the replacement must not be inserted while the
+    // old row stays open, because later heartbeats only know the replacement.
+    store.failNextWriteOnly = true
+    clock = 5_000
+    runCatching { coordinator.onActiveFault("board", 6) }
+
+    assertEquals(1, faults().size)
+    assertEquals(9, faults().single().code)
+    assertNull(faults().single().clearedAtMs)
+
+    // The retry closes the old occurrence and opens the new one.
+    clock = 6_000
+    coordinator.onActiveFault("board", 6)
+    val all = faults()
+    assertEquals(2, all.size)
+    assertEquals(6_000L, all.first { it.code == 9 }.clearedAtMs)
+    assertNull(all.first { it.code == 6 }.clearedAtMs)
+  }
+
+  @Test
+  fun `a failed hydration read retries instead of duplicating the open occurrence`() = runBlocking {
+    coordinator.onActiveFault("board", 9)
+
+    // Restart with an existing durable open fault, but the first hydration read fails.
+    val restarted = VescFaultCoordinator(store = store, now = { clock }, newId = { "id-${++ids}" })
+    store.openLiveFailsOnce = true
+    clock = 8_000
+    restarted.onActiveFault("board", 9)
+    assertEquals(1, faults().size)
+
+    // The next observation retries hydration and adopts the open occurrence instead of duplicating.
+    clock = 9_000
+    restarted.onActiveFault("board", 9)
+    assertEquals(1, faults().size)
+    assertEquals("id-1", faults().single().id)
+    assertEquals(9_000L, faults().single().lastObservedAtMs)
   }
 
   @Test

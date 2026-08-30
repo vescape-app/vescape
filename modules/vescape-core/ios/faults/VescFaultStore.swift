@@ -1,6 +1,11 @@
 import Foundation
 import GRDB
 
+enum VescFaultStoreError: Error {
+  /// The shared GRDB pool is not open, so the read could not be attempted at all.
+  case unavailable
+}
+
 /// DB-backed storage for VESC Fault Occurrences. Unlike Board Warnings this **is** a time series —
 /// the same code activating twice is two rows, keyed by a native-minted id, never by (board, code).
 /// Lifecycle rules live on `VescFaultCoordinator`; this struct is pure CRUD.
@@ -68,8 +73,11 @@ struct VescFaultStore: VescFaultStoring {
     } ?? []
   }
 
-  func openLive(_ boardId: String) -> VescFaultOccurrence? {
-    read("store_open_live") { db in
+  /// Unlike the list reads this one propagates failure: the coordinator must not treat an
+  /// unreadable database as proof that no fault is open, or a restart would duplicate it.
+  func openLive(_ boardId: String) throws -> VescFaultOccurrence? {
+    guard let writer = resolveWriter() else { throw VescFaultStoreError.unavailable }
+    return try writer.read { db in
       try Row.fetchOne(
         db,
         sql: """
@@ -79,7 +87,7 @@ struct VescFaultStore: VescFaultStoring {
           """,
         arguments: [boardId]
       ).map(Self.occurrence)
-    } ?? nil
+    }
   }
 
   // MARK: - Writes

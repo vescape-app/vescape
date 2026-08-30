@@ -38,11 +38,19 @@ final class VescFaultStoreTests: XCTestCase {
     XCTAssertEqual(store.getForBoard("board").map(\.id), ["new", "old"])
   }
 
-  func testOpenLiveIgnoresClearedRows() {
+  func testOpenLiveIgnoresClearedRows() throws {
     store.upsert(occurrence("cleared", occurredAtMs: 1_000, clearedAtMs: 2_000))
     store.upsert(occurrence("open", occurredAtMs: 4_000))
 
-    XCTAssertEqual(store.openLive("board")?.id, "open")
+    XCTAssertEqual(try store.openLive("board")?.id, "open")
+  }
+
+  /// An unreadable database must not look like "no open fault": the coordinator would hydrate to
+  /// empty and open a duplicate activation for a fault that is already durably open.
+  func testOpenLiveThrowsWhenThePoolIsUnavailable() {
+    let unavailable = VescFaultStore { nil }
+
+    XCTAssertThrowsError(try unavailable.openLive("board"))
   }
 
   func testDismissalPreservesTheOccurrence() {

@@ -31,7 +31,8 @@ protocol VescFaultStoring {
   func getForBoard(_ boardId: String) -> [VescFaultOccurrence]
   func getAll() -> [VescFaultOccurrence]
   /// Newest still-open live occurrence for a Board, used to rehydrate state after a restart.
-  func openLive(_ boardId: String) -> VescFaultOccurrence?
+  /// Throws when the read itself failed, so a dead database is never mistaken for "no open fault".
+  func openLive(_ boardId: String) throws -> VescFaultOccurrence?
   /// Returns false when the write failed, so callers can keep in-memory state unresolved.
   @discardableResult func upsert(_ occurrence: VescFaultOccurrence) -> Bool
   @discardableResult func setDismissed(_ id: String, _ dismissed: Bool) -> Bool
@@ -93,7 +94,7 @@ final class VescFaultCoordinator {
   /// occurrence instead of creating rows.
   func onActiveFault(boardId: String, code: Int) {
     guard collectionEnabled else { return }
-    hydrate(boardId)
+    guard hydrate(boardId) else { return }
     let timestamp = now()
     lock.lock()
     let current = active[boardId]
@@ -118,7 +119,10 @@ final class VescFaultCoordinator {
     if var current {
       current.clearedAtMs = timestamp
       current.lastObservedAtMs = timestamp
-      store.upsert(current)
+      // Close the old activation durably before opening its replacement. Otherwise a failed close
+      // leaves an orphaned open row that later clear heartbeats — which only know the replacement —
+      // can never repair.
+      guard store.upsert(current) else { return }
     }
 
     let opened = VescFaultOccurrence(
@@ -141,7 +145,7 @@ final class VescFaultCoordinator {
   /// Refloat reported normal `ALLDATA` — any open occurrence for this Board is cleared.
   func onFaultCleared(boardId: String) {
     guard collectionEnabled else { return }
-    hydrate(boardId)
+    guard hydrate(boardId) else { return }
     lock.lock()
     let existing = active[boardId]
     lock.unlock()
@@ -181,14 +185,27 @@ final class VescFaultCoordinator {
 
   /// Adopt the newest still-open live occurrence as in-memory state the first time a Board is seen.
   /// Without this, an app restart mid-fault would open a duplicate activation for the same fault.
-  private func hydrate(_ boardId: String) {
+  /// Returns false when hydration could not be established, and the caller must decide nothing:
+  /// acting on an unknown prior state would open a duplicate alongside a durable open occurrence.
+  /// A failed read leaves the Board unhydrated, so the next observation retries.
+  private func hydrate(_ boardId: String) -> Bool {
     lock.lock()
-    let isNew = hydrated.insert(boardId).inserted
+    let alreadyHydrated = hydrated.contains(boardId)
     lock.unlock()
-    guard isNew, let open = store.openLive(boardId) else { return }
+    guard !alreadyHydrated else { return true }
+
+    let open: VescFaultOccurrence?
+    do {
+      open = try store.openLive(boardId)
+    } catch {
+      return false
+    }
+
     lock.lock()
-    if active[boardId] == nil { active[boardId] = open }
+    hydrated.insert(boardId)
+    if let open, active[boardId] == nil { active[boardId] = open }
     lock.unlock()
+    return true
   }
 
   private func emit(_ boardId: String) {

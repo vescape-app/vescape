@@ -4,6 +4,7 @@ import android.content.Context
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * One VESC Fault Occurrence as it crosses the bridge and lives in the durable store.
@@ -38,7 +39,10 @@ data class VescFaultOccurrence(
 interface VescFaultStore {
   suspend fun getForBoard(boardId: String): List<VescFaultOccurrence>
   suspend fun getAll(): List<VescFaultOccurrence>
-  /** Newest still-open live occurrence for a Board, used to rehydrate state after a restart. */
+  /**
+   * Newest still-open live occurrence for a Board, used to rehydrate state after a restart.
+   * Throws when the read itself failed, so a dead database is never mistaken for "no open fault".
+   */
   suspend fun openLive(boardId: String): VescFaultOccurrence?
   suspend fun upsert(occurrence: VescFaultOccurrence)
   suspend fun setDismissed(id: String, dismissed: Boolean): Boolean
@@ -97,7 +101,7 @@ class VescFaultCoordinator(
    */
   suspend fun onActiveFault(boardId: String, code: Int) {
     if (!collectionEnabled) return
-    hydrate(boardId)
+    if (!hydrate(boardId)) return
     val timestamp = now()
     val current = synchronized(lock) { active[boardId] }
     if (current != null && current.code == code) {
@@ -133,7 +137,7 @@ class VescFaultCoordinator(
   /** Refloat reported normal `ALLDATA` — any open occurrence for this Board is cleared. */
   suspend fun onFaultCleared(boardId: String) {
     if (!collectionEnabled) return
-    hydrate(boardId)
+    if (!hydrate(boardId)) return
     val current = synchronized(lock) { active[boardId] } ?: return
     val timestamp = now()
     // Persist the clear before forgetting the occurrence: if the write throws, the occurrence stays
@@ -167,11 +171,26 @@ class VescFaultCoordinator(
   /**
    * Adopt the newest still-open live occurrence as in-memory state the first time a Board is seen.
    * Without this, an app restart mid-fault would open a duplicate activation for the same fault.
+   *
+   * Returns false when hydration could not be established, and the caller must decide nothing:
+   * acting on an unknown prior state would open a duplicate alongside a durable open occurrence.
    */
-  private suspend fun hydrate(boardId: String) {
-    synchronized(lock) { if (!hydrated.add(boardId)) return }
-    val open = store.openLive(boardId) ?: return
-    synchronized(lock) { active.putIfAbsent(boardId, open) }
+  private suspend fun hydrate(boardId: String): Boolean {
+    synchronized(lock) { if (hydrated.contains(boardId)) return true }
+    // Hydration counts as done only after a successful read: a throwing read must stay retryable,
+    // or the next observation would open a duplicate alongside the durable open occurrence.
+    val open = try {
+      store.openLive(boardId)
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (failure: Throwable) {
+      return false
+    }
+    synchronized(lock) {
+      hydrated.add(boardId)
+      if (open != null) active.putIfAbsent(boardId, open)
+    }
+    return true
   }
 
   private suspend fun emit(boardId: String) {

@@ -20,18 +20,31 @@ final class VescFaultCoordinatorTests: XCTestCase {
 
     func getAll() -> [VescFaultOccurrence] { all }
 
-    func openLive(_ boardId: String) -> VescFaultOccurrence? {
-      all
+    /// Set to fail the next hydration read, mirroring a transient GRDB read error.
+    var openLiveFailsOnce = false
+
+    func openLive(_ boardId: String) throws -> VescFaultOccurrence? {
+      if openLiveFailsOnce {
+        openLiveFailsOnce = false
+        throw FakeStoreError.readFailed
+      }
+      return all
         .filter { $0.boardId == boardId && $0.clearedAtMs == nil }
         .max { $0.occurredAtMs < $1.occurredAtMs }
     }
 
     /// Set to fail every write, mirroring a dead GRDB pool.
     var writesFail = false
+    /// Set to fail only the next write, so one step of a two-write transition can fail alone.
+    var failNextWriteOnly = false
     var writes = 0
 
     @discardableResult
     func upsert(_ occurrence: VescFaultOccurrence) -> Bool {
+      if failNextWriteOnly {
+        failNextWriteOnly = false
+        return false
+      }
       guard !writesFail else { return false }
       writes += 1
       if rows[occurrence.id] == nil {
@@ -55,6 +68,8 @@ final class VescFaultCoordinatorTests: XCTestCase {
       return true
     }
   }
+
+  private enum FakeStoreError: Error { case readFailed }
 
   private var store = FakeStore()
   private var clock: Int64 = 1_000
@@ -186,6 +201,48 @@ final class VescFaultCoordinatorTests: XCTestCase {
     }
     XCTAssertEqual(store.writes, writesAfterClear)
     XCTAssertEqual(store.all[0].clearedAtMs, 6_000)
+  }
+
+  func testAFailedCloseOnACodeChangeDoesNotOpenTheReplacement() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+
+    // Only the close of the old occurrence fails; without the guard the replacement would be
+    // inserted anyway and the still-open old row would become unrepairable.
+    store.failNextWriteOnly = true
+    clock = 5_000
+    coordinator.onActiveFault(boardId: "board", code: 6)
+
+    XCTAssertEqual(store.all.count, 1)
+    XCTAssertEqual(store.all[0].code, 9)
+    XCTAssertNil(store.all[0].clearedAtMs)
+
+    // The retry closes the old occurrence and opens the new one.
+    clock = 6_000
+    coordinator.onActiveFault(boardId: "board", code: 6)
+    XCTAssertEqual(store.all.count, 2)
+    XCTAssertEqual(store.all[0].clearedAtMs, 6_000)
+    XCTAssertEqual(store.all[1].code, 6)
+    XCTAssertNil(store.all[1].clearedAtMs)
+  }
+
+  func testAFailedHydrationReadRetriesInsteadOfDuplicatingTheOpenOccurrence() {
+    let coordinator = makeCoordinator()
+    coordinator.onActiveFault(boardId: "board", code: 9)
+
+    // Restart with an existing durable open fault, but the first hydration read fails.
+    let restarted = makeCoordinator()
+    store.openLiveFailsOnce = true
+    clock = 8_000
+    restarted.onActiveFault(boardId: "board", code: 9)
+    XCTAssertEqual(store.all.count, 1)
+
+    // The next observation retries hydration and adopts the open occurrence instead of duplicating.
+    clock = 9_000
+    restarted.onActiveFault(boardId: "board", code: 9)
+    XCTAssertEqual(store.all.count, 1)
+    XCTAssertEqual(store.all[0].id, "id-1")
+    XCTAssertEqual(store.all[0].lastObservedAtMs, 9_000)
   }
 
   func testLaterActivationOfADismissedCodeIsANewUndismissedOccurrence() {
