@@ -662,10 +662,6 @@ data class BoardConfigChangeNoticeEntity(
  * [BoardWarningEntity] this **is** a time series — the same code activating twice is two rows, so
  * the identity is a native-minted [id], never (board, code).
  *
- * The shape is deliberately wider than the live path needs so register-sourced evidence (#432) fits
- * without a second migration: [occurredAtMs] is null when the occurrence time is unknown (a register
- * entry carries no timestamp), and [discoveredAtMs] always records when Vescape learned about it.
- *
  * Fault rows are **not** cascaded on Board removal — the evidence outlives the Board record.
  *
  * @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
@@ -673,7 +669,7 @@ data class BoardConfigChangeNoticeEntity(
 @Entity(
   tableName = "vesc_fault_occurrences",
   indices = [
-    Index(value = ["board_id", "discovered_at"]),
+    Index(value = ["board_id", "occurred_at"]),
   ],
 )
 data class VescFaultOccurrenceEntity(
@@ -683,76 +679,18 @@ data class VescFaultOccurrenceEntity(
   val boardId: String,
   /** Raw Refloat fault code. Canonical value — display mapping must tolerate unknown codes. */
   val code: Int,
-  /** `live` (Refloat ALLDATA trigger), `register` or `baseline` (controller register, #432). */
-  val source: String,
-  /** When the activation was observed, or null when only discovery time is known. */
+  /** When the live activation was observed. */
   @ColumnInfo(name = "occurred_at")
-  val occurredAtMs: Long?,
-  /** When Vescape learned about the occurrence. Always known. */
-  @ColumnInfo(name = "discovered_at")
-  val discoveredAtMs: Long,
+  val occurredAtMs: Long,
   /** Last frame that still reported this code active. */
   @ColumnInfo(name = "last_observed_at")
   val lastObservedAtMs: Long,
   /** Set when the controller reported a clear or a different code. Null = still open/unresolved. */
   @ColumnInfo(name = "cleared_at")
   val clearedAtMs: Long?,
-  /** Controller register position when known (#432). */
-  @ColumnInfo(name = "register_position")
-  val registerPosition: Int?,
-  /** Rider acknowledged this occurrence: stays durable, stops driving the Board health icon. */
+  /** Rider acknowledged this occurrence: stays durable, stops driving the fault icon. */
   val dismissed: Boolean,
-  /** Register read this occurrence's controller context came from (#432), when any. */
-  @ColumnInfo(name = "register_snapshot_id")
-  val registerSnapshotId: String? = null,
 )
-
-/**
- * One retained read of the controller's in-memory `faults` register.
- *
- * [raw] is the authority and is stored byte-for-byte: firmware output varies, so a future parser
- * improvement must be able to re-read the original bytes. [text] and [entriesJson] are projections,
- * and [entriesJson] is null whenever the output could not be parsed — a parser failure costs the
- * projection, never the evidence.
- *
- * [status] is `incomplete` for every read the bounded completion policy could not settle. Such a row
- * is deliberately never parsed and never creates an occurrence: missing output is not an empty
- * register.
- *
- * Like occurrences, snapshots are **not** cascaded on Board removal.
- *
- * @parity /modules/vescape-core/ios/faults/VescFaultRegisterStore.swift `createTables`
- */
-@Entity(
-  tableName = "vesc_fault_register_snapshots",
-  indices = [
-    Index(value = ["board_id", "read_at"]),
-  ],
-)
-data class VescFaultRegisterSnapshotEntity(
-  @PrimaryKey
-  val id: String,
-  @ColumnInfo(name = "board_id")
-  val boardId: String,
-  @ColumnInfo(name = "read_at")
-  val readAtMs: Long,
-  /** Why the read ran: `baseline`, `connect`, `live`, `stationary`, `predisconnect`, `idle`. */
-  val reason: String,
-  /** `complete` or `incomplete`, per the bounded completion policy. Never synthesized. */
-  val status: String,
-  /** Exact `COMM_PRINT` payload bytes in arrival order. */
-  val raw: ByteArray,
-  /** Lossy display projection of [raw]. */
-  val text: String,
-  /** JSON array of parsed blocks, or null when the output could not be parsed. */
-  @ColumnInfo(name = "entries_json")
-  val entriesJson: String?,
-) {
-  override fun equals(other: Any?): Boolean = other is VescFaultRegisterSnapshotEntity && id == other.id
-
-  override fun hashCode(): Int = id.hashCode()
-}
-
 /**
  * Metadata for one VESC Fault Capture: the self-contained window of decoded Board samples a single
  * VESC Fault Occurrence owns.
@@ -781,14 +719,9 @@ data class VescFaultCaptureEntity(
   /** Detection time — the boundary between pre-roll and incident. */
   @ColumnInfo(name = "opened_at")
   val openedAtMs: Long,
-  /** Timestamp of the last retained sample, or null while the capture is still appending. */
-  @ColumnInfo(name = "ended_at")
-  val endedAtMs: Long?,
   /** Samples actually retained — the achieved Board Session rate, never a fabricated cadence. */
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
-  /** True only when the full two-second post-clear tail was observed before the session ended. */
-  val complete: Boolean,
 )
 
 /**

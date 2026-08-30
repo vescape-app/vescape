@@ -37,9 +37,7 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
         board_id TEXT NOT NULL,
         started_at INTEGER NOT NULL,
         opened_at INTEGER NOT NULL,
-        ended_at INTEGER,
-        sample_count INTEGER NOT NULL,
-        complete INTEGER NOT NULL
+        sample_count INTEGER NOT NULL
       )
       """)
     try db.execute(sql: """
@@ -81,16 +79,14 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
       try db.execute(
         sql: """
           INSERT INTO vesc_fault_captures
-            (occurrence_id, board_id, started_at, opened_at, ended_at, sample_count, complete)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+            (occurrence_id, board_id, started_at, opened_at, sample_count)
+          VALUES (?, ?, ?, ?, ?)
           ON CONFLICT(occurrence_id) DO UPDATE SET
-            ended_at = excluded.ended_at,
-            sample_count = excluded.sample_count,
-            complete = excluded.complete
+            sample_count = excluded.sample_count
           """,
         arguments: [
           capture.occurrenceId, capture.boardId, capture.startedAtMs, capture.openedAtMs,
-          capture.endedAtMs, capture.sampleCount, capture.complete,
+          capture.sampleCount,
         ]
       )
     }
@@ -133,9 +129,7 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
           boardId: row["board_id"] as String,
           startedAtMs: row["started_at"] as Int64,
           openedAtMs: row["opened_at"] as Int64,
-          endedAtMs: row["ended_at"] as Int64?,
-          sampleCount: row["sample_count"] as Int,
-          complete: row["complete"] as Bool
+          sampleCount: row["sample_count"] as Int
         )
       }
     } ?? nil

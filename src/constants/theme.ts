@@ -505,6 +505,7 @@ export const tune = palette.purple
 
 /** Icon accent shared by every entry point for a settings destination. */
 export const settingsIcon = {
+  battery: palette.green.color,
   account: palette.cyan.color,
   sync: palette.cyan.color,
   update: status.upgrade.color,

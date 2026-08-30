@@ -18,12 +18,12 @@ import { BoardConfigSection } from '@/modules/board/components/BoardConfigSectio
 import { BoardWarningRow } from '@/modules/board/components/BoardWarningRow'
 import { VescFaultRow } from '@/modules/board/components/VescFaultRow'
 import { VescFaultCaptureSection } from '@/modules/board/components/VescFaultCaptureSection'
-import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
 import { TelemetryCell } from '@/modules/board/components/TelemetryCell'
 import type { SparklinePoint } from '@/components/charts/Sparkline'
 import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
@@ -162,44 +162,23 @@ function BoardWarningRowShowcase() {
 function VescFaultRowShowcase() {
   const [now] = useState(() => Date.now())
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
-  // The three shapes a fault row has to survive: a still-active known code, a cleared unknown code,
-  // and a link-time baseline entry with no occurrence time at all.
+  // The two live-fault shapes: a still-active known code and a cleared unknown code.
   const faults = [
     {
       id: 'active',
       boardId: 'demo',
       code: 9,
-      source: 'live' as const,
       occurredAtMs: now - 45 * 1000,
-      discoveredAtMs: now - 45 * 1000,
       lastObservedAtMs: now - 1000,
       clearedAtMs: null,
-      registerPosition: null,
-      registerSnapshotId: null,
     },
     {
       id: 'cleared',
       boardId: 'demo',
       code: 247,
-      source: 'live' as const,
       occurredAtMs: now - 3 * 60 * 60 * 1000,
-      discoveredAtMs: now - 3 * 60 * 60 * 1000,
       lastObservedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
       clearedAtMs: now - 3 * 60 * 60 * 1000 + 4000,
-      registerPosition: null,
-      registerSnapshotId: null,
-    },
-    {
-      id: 'baseline',
-      boardId: 'demo',
-      code: 6,
-      source: 'baseline' as const,
-      occurredAtMs: null,
-      discoveredAtMs: now - 26 * 60 * 60 * 1000,
-      lastObservedAtMs: now - 26 * 60 * 60 * 1000,
-      clearedAtMs: now - 26 * 60 * 60 * 1000,
-      registerPosition: 2,
-      registerSnapshotId: 'snapshot',
     },
   ]
   return (
@@ -232,7 +211,7 @@ function VescFaultRowShowcase() {
 function buildCaptureSamples(openedAtMs: number) {
   let t = openedAtMs - 5_000
   const samples = []
-  while (t < openedAtMs + 2_500) {
+  while (t <= openedAtMs) {
     const offset = (t - openedAtMs) / 1000
     samples.push({
       capturedAtMs: Math.round(t),
@@ -244,30 +223,28 @@ function buildCaptureSamples(openedAtMs: number) {
       motorCurrent: 41 + Math.max(0, -offset) * 9,
       tempMosfet: 48.2,
       tempMotor: 61.5,
-      pitch: offset < 0 ? -3.4 - offset : 12.6,
+      pitch: -3.4 - offset,
       roll: 1.2,
       balancePitch: -2.9,
       adc1: 3.1,
       adc2: 0.1,
       state: 4,
     })
-    t += offset < 0 ? 33 : 55
+    t += 33
   }
   return samples
 }
 
 function VescFaultCaptureSectionShowcase() {
   const [now] = useState(() => Date.now())
-  const [state, setState] = useState('complete')
+  const [state, setState] = useState('captured')
   const samples = buildCaptureSamples(now - 60_000)
   const capture = {
     occurrenceId: 'occ',
     boardId: 'demo',
     startedAtMs: now - 65_000,
     openedAtMs: now - 60_000,
-    endedAtMs: samples[samples.length - 1].capturedAtMs,
     sampleCount: samples.length,
-    complete: state === 'complete',
     samples: state === 'empty' ? [] : samples,
   }
 
@@ -277,7 +254,7 @@ function VescFaultCaptureSectionShowcase() {
       controls={
         <ChipRow
           label="state"
-          options={['complete', 'incomplete', 'empty', 'loading']}
+          options={['captured', 'empty', 'loading']}
           selected={state}
           onSelect={setState}
         />
@@ -286,21 +263,7 @@ function VescFaultCaptureSectionShowcase() {
       <VescFaultCaptureSection
         capture={state === 'loading' ? null : capture}
         loading={state === 'loading'}
-        clearedAtMs={now - 58_500}
       />
-    </ShowcaseCard>
-  )
-}
-
-function ReplayBadgeShowcase() {
-  return (
-    <ShowcaseCard name="ReplayBadge">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <ReplayBadge />
-        <Text style={{ color: theme.neutral.textPrimary, fontSize: 13 }}>
-          Funwheel · connection pill context
-        </Text>
-      </View>
     </ShowcaseCard>
   )
 }
@@ -391,14 +354,14 @@ export default function BoardComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={LightningIcon}
-          description="DeviceRow, StepTimeline, BoardWarningRow, VescFaultRow, VescFaultCaptureSection, ReplayBadge, TelemetryCell, BoardConfigSection — board- and connection-flavored components."
+          description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
+        <BoardPillShowcase />
         <DeviceRowShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
         <VescFaultRowShowcase />
         <VescFaultCaptureSectionShowcase />
-        <ReplayBadgeShowcase />
         <TelemetryCellShowcase />
         <FootpadIndicatorShowcase />
         <BoardConfigSectionShowcase />

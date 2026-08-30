@@ -73,6 +73,50 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(applied, Set(TelemetryDatabase.migrator.migrations))
   }
 
+  func testLiveFaultMigrationPreservesLiveEvidenceAndDropsRegisterAndFutureSamples() throws {
+    try migrate(upTo: "v39_vesc_fault_register_snapshots")
+    try queue.write { db in
+      try db.execute(sql: "DROP TABLE vesc_fault_occurrences")
+      try db.execute(sql: """
+        CREATE TABLE vesc_fault_occurrences (
+          id TEXT NOT NULL PRIMARY KEY, board_id TEXT NOT NULL, code INTEGER NOT NULL,
+          source TEXT NOT NULL, occurred_at INTEGER, discovered_at INTEGER NOT NULL,
+          last_observed_at INTEGER NOT NULL, cleared_at INTEGER, register_position INTEGER,
+          dismissed INTEGER NOT NULL, register_snapshot_id TEXT
+        );
+        CREATE INDEX index_vesc_fault_occurrences_board_id_discovered_at
+          ON vesc_fault_occurrences(board_id, discovered_at);
+        INSERT INTO vesc_fault_occurrences VALUES
+          ('live', 'board', 9, 'live', 6000, 6000, 7000, 8000, NULL, 1, NULL),
+          ('old', 'board', 4, 'baseline', NULL, 6000, 6000, NULL, 0, 1, 'snapshot');
+        ALTER TABLE vesc_fault_captures ADD COLUMN ended_at INTEGER;
+        ALTER TABLE vesc_fault_captures ADD COLUMN complete INTEGER NOT NULL DEFAULT 1;
+        INSERT INTO vesc_fault_captures VALUES ('live', 'board', 1000, 6000, 2, 7000, 1);
+        INSERT INTO vesc_fault_capture_samples (occurrence_id, captured_at, speed) VALUES
+          ('live', 5500, 25), ('live', 7000, 5);
+        CREATE TABLE vesc_fault_register_snapshots (id TEXT PRIMARY KEY);
+        INSERT INTO vesc_fault_register_snapshots VALUES ('snapshot');
+        """)
+    }
+    try insertSetting("unitSystem")
+
+    try migrate()
+
+    let faults = VescFaultStore(dbWriter: queue).getForBoard("board")
+    XCTAssertEqual(faults.map(\.id), ["live"])
+    XCTAssertTrue(faults[0].dismissed)
+    XCTAssertEqual(faults[0].occurredAtMs, 6000)
+    let captures = VescFaultCaptureStore(dbWriter: queue)
+    XCTAssertEqual(captures.getCapture("live")?.sampleCount, 1)
+    XCTAssertEqual(captures.getSamples("live").map(\.capturedAtMs), [5500])
+    XCTAssertFalse(try columnNames("vesc_fault_occurrences").contains("source"))
+    XCTAssertFalse(try columnNames("vesc_fault_captures").contains("complete"))
+    XCTAssertFalse(try queue.read { db in try db.tableExists("vesc_fault_register_snapshots") })
+    XCTAssertEqual(try queue.read { db in
+      try String.fetchSet(db, sql: "SELECT key FROM app_settings")
+    }, ["unitSystem"])
+  }
+
   /// Tables the migrator delegates to a store's `createTables` are the easy ones to leave out of a
   /// fresh install, so assert the schema a clean upgrade actually lands on.
   func testFreshDatabaseHasEveryStoreTable() throws {

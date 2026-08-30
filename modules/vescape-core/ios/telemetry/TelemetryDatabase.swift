@@ -661,15 +661,43 @@ enum TelemetryDatabase {
       try VescFaultCaptureStore.createTables(db)
     }
 
-    /// Retained controller fault-register reads, plus the occurrence back-reference to the read an
-    /// occurrence's controller context came from. Additive only: `ADD COLUMN` is safe on the SQLite
-    /// versions this app ships against, unlike `DROP COLUMN`.
-    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_38_39`
-    migrator.registerMigration("v39_vesc_fault_register_snapshots") { db in
-      try VescFaultRegisterStore.createTables(db)
-      if try !db.columns(in: "vesc_fault_occurrences").map(\.name).contains("register_snapshot_id") {
-        try db.execute(sql: "ALTER TABLE vesc_fault_occurrences ADD COLUMN register_snapshot_id TEXT")
-      }
+    // Retain the identifier already recorded by development builds. Its old register table is
+    // removed below; new installs never need to create it.
+    migrator.registerMigration("v39_vesc_fault_register_snapshots") { _ in }
+
+    /// Preserve live evidence and unrelated app data from pre-simplification development builds.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `simplifyVescFaults`
+    migrator.registerMigration("v40_live_faults_only") { db in
+      let legacySource = try db.columns(in: "vesc_fault_occurrences").contains { $0.name == "source" }
+      try db.execute(sql: "ALTER TABLE vesc_fault_occurrences RENAME TO vesc_fault_occurrences_old")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_vesc_fault_occurrences_board_id_discovered_at")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_vesc_fault_occurrences_board_id_occurred_at")
+      try VescFaultStore.createTables(db)
+      let liveOnly = legacySource ? " AND source = 'live'" : ""
+      try db.execute(sql: """
+        INSERT INTO vesc_fault_occurrences
+        SELECT id, board_id, code, occurred_at, last_observed_at, cleared_at, dismissed
+        FROM vesc_fault_occurrences_old WHERE occurred_at IS NOT NULL\(liveOnly)
+        """)
+      try db.execute(sql: "DROP TABLE vesc_fault_occurrences_old")
+
+      try db.execute(sql: "ALTER TABLE vesc_fault_captures RENAME TO vesc_fault_captures_old")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_vesc_fault_captures_board_id")
+      try VescFaultCaptureStore.createTables(db)
+      try db.execute(sql: """
+        DELETE FROM vesc_fault_capture_samples WHERE NOT EXISTS (
+          SELECT 1 FROM vesc_fault_captures_old c JOIN vesc_fault_occurrences o ON o.id = c.occurrence_id
+          WHERE c.occurrence_id = vesc_fault_capture_samples.occurrence_id
+          AND captured_at BETWEEN c.started_at AND c.opened_at)
+        """)
+      try db.execute(sql: """
+        INSERT INTO vesc_fault_captures
+        SELECT c.occurrence_id, c.board_id, c.started_at, c.opened_at,
+          (SELECT COUNT(*) FROM vesc_fault_capture_samples s WHERE s.occurrence_id = c.occurrence_id)
+        FROM vesc_fault_captures_old c JOIN vesc_fault_occurrences o ON o.id = c.occurrence_id
+        """)
+      try db.execute(sql: "DROP TABLE vesc_fault_captures_old")
+      try db.execute(sql: "DROP TABLE IF EXISTS vesc_fault_register_snapshots")
     }
 
     return migrator

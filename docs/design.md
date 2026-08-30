@@ -150,6 +150,10 @@ Neutral row icons use `theme.neutral.textSecondary`.
 
 Use `phosphor-react-native` with `weight="duotone"` as default weight. Each icon gets a distinct accent color from `theme` — do not reuse the same color for adjacent icons.
 
+Board Warnings use `EngineIcon` everywhere. VESC faults use `WarningDiamondIcon` with
+`theme.status.caution`, the yellow status palette. The Edit Board battery entry uses
+`theme.settingsIcon.battery`, green. Yellow in these controls is reserved for warnings and alerts.
+
 Icon sizing:
 
 - `14` — inline metadata, header stats

@@ -15,15 +15,15 @@ final class VescFaultCoordinatorTests: XCTestCase {
     var all: [VescFaultOccurrence] { order.compactMap { rows[$0] } }
 
     func getForBoard(_ boardId: String) -> [VescFaultOccurrence] {
-      all.filter { $0.boardId == boardId }.sorted { $0.discoveredAtMs > $1.discoveredAtMs }
+      all.filter { $0.boardId == boardId }.sorted { $0.occurredAtMs > $1.occurredAtMs }
     }
 
     func getAll() -> [VescFaultOccurrence] { all }
 
     func openLive(_ boardId: String) -> VescFaultOccurrence? {
       all
-        .filter { $0.boardId == boardId && $0.source == .live && $0.clearedAtMs == nil }
-        .max { $0.discoveredAtMs < $1.discoveredAtMs }
+        .filter { $0.boardId == boardId && $0.clearedAtMs == nil }
+        .max { $0.occurredAtMs < $1.occurredAtMs }
     }
 
     /// Set to fail every write, mirroring a dead GRDB pool.
@@ -41,7 +41,6 @@ final class VescFaultCoordinatorTests: XCTestCase {
       var existing = rows[occurrence.id]!
       existing.lastObservedAtMs = occurrence.lastObservedAtMs
       existing.clearedAtMs = occurrence.clearedAtMs
-      existing.registerPosition = occurrence.registerPosition
       rows[occurrence.id] = existing
       return true
     }
@@ -83,9 +82,7 @@ final class VescFaultCoordinatorTests: XCTestCase {
     XCTAssertEqual(store.all.count, 1)
     let fault = store.all[0]
     XCTAssertEqual(fault.code, 9)
-    XCTAssertEqual(fault.source, .live)
     XCTAssertEqual(fault.occurredAtMs, 1_000)
-    XCTAssertEqual(fault.discoveredAtMs, 1_000)
     XCTAssertNil(fault.clearedAtMs)
     XCTAssertFalse(fault.dismissed)
   }
@@ -101,7 +98,7 @@ final class VescFaultCoordinatorTests: XCTestCase {
     XCTAssertEqual(store.all.count, 1)
     let fault = store.all[0]
     // Throttled writes still track the fault: last-observed advanced past the opening time.
-    XCTAssertGreaterThan(fault.lastObservedAtMs, fault.discoveredAtMs)
+    XCTAssertGreaterThan(fault.lastObservedAtMs, fault.occurredAtMs)
     XCTAssertNil(fault.clearedAtMs)
   }
 

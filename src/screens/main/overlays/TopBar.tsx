@@ -1,15 +1,10 @@
-import { forwardRef, useRef, useState } from 'react'
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { Text } from '@/components/base/Text'
+import { useRef, useState } from 'react'
+import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import {
   ArrowFatLinesUpIcon,
   BroadcastIcon,
   ArrowsClockwiseIcon,
-  CaretDownIcon,
   GearSixIcon,
-  PencilSimpleIcon,
-  PowerIcon,
-  RecordIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
@@ -20,12 +15,10 @@ import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
-import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
-import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
+import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
 import { routes } from '@/navigation/routes'
-import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
@@ -59,105 +52,6 @@ interface TopBarProps {
   onCancelNavigation: () => void
 }
 
-interface BoardPillProps {
-  maxWidth: number
-  activeBoardId: string | null
-  activeBoard: Board | undefined
-  bleStatus: string
-  isReplay: boolean
-  onOpenSelector: () => void
-  onDisconnect: () => void
-}
-
-/** The board identity pill: selector, edit, disconnect and the Board Warning control. */
-const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
-  { maxWidth, activeBoardId, activeBoard, bleStatus, isReplay, onOpenSelector, onDisconnect },
-  ref,
-) {
-  const canDisconnect =
-    bleStatus === 'connected' ||
-    bleStatus === 'stale' ||
-    bleStatus === 'reconnecting' ||
-    bleStatus === 'rescanning' ||
-    bleStatus === 'waiting_for_telemetry'
-  const name = activeBoard?.name ?? 'No board'
-  const statusColor =
-    bleStatus === 'connected'
-      ? theme.palette.green.color
-      : bleStatus === 'error'
-        ? theme.status.error.color
-        : theme.control.textMuted
-
-  return (
-    <View ref={ref} style={[styles.pill, { maxWidth }]}>
-      <Pressable
-        style={styles.boardButton}
-        onPress={onOpenSelector}
-        testID="board-selector-trigger"
-        accessibilityLabel="Board selector"
-      >
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        {isReplay && showDevControls && <ReplayBadge />}
-        <Text style={styles.boardText} numberOfLines={1}>
-          {name}
-        </Text>
-        <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
-      </Pressable>
-      <View style={styles.divider} />
-      <Pressable
-        style={[styles.plugButton, !activeBoard && styles.iconRoundDisabled]}
-        disabled={!activeBoard}
-        onPress={() => {
-          if (!activeBoard) return
-          router.push({ pathname: routes.editBoard, params: { boardId: activeBoard.id } })
-        }}
-        testID="board-edit-button"
-      >
-        <PencilSimpleIcon
-          size={14}
-          color={activeBoard ? theme.control.text : theme.control.textMuted}
-          weight="bold"
-        />
-      </Pressable>
-      {canDisconnect && (
-        <>
-          <View style={styles.divider} />
-          <Pressable
-            style={styles.plugButton}
-            onPress={onDisconnect}
-            testID="board-disconnect-button"
-          >
-            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
-          </Pressable>
-        </>
-      )}
-      <DebugRecordingControl />
-      {activeBoardId && <BoardWarningControl boardId={activeBoardId} />}
-    </View>
-  )
-})
-
-/** Dev-only "session is being recorded" indicator; tapping it stops the recording. */
-function DebugRecordingControl() {
-  const recording = useBleStore((s) => s.recordDebugSession)
-  const setRecording = useBleStore((s) => s.setRecordDebugSession)
-  if (!showDevControls || !recording) return null
-
-  return (
-    <>
-      <View style={styles.divider} />
-      <Pressable
-        style={styles.plugButton}
-        onPress={() => setRecording(false)}
-        testID="debug-recording-button"
-        accessibilityLabel="Debug recording active"
-      >
-        <RecordIcon size={14} color={theme.status.warning.color} weight="bold" />
-      </Pressable>
-    </>
-  )
-}
-
 export function TopBar({
   boards,
   activeBoardId,
@@ -184,6 +78,10 @@ export function TopBar({
   const routeProgress = useMapStore((s) => s.routeProgress)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
+  const connectedId = useBleStore((s) => s.connectedId)
+  // Faults belong to whichever board the live session writes under — a replay's synthetic board
+  // while it plays, the selected board otherwise.
+  const sessionBoardId = isReplay ? connectedId : activeBoardId
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
   const weather = useWeatherStore((s) => s.weather)
@@ -227,12 +125,13 @@ export function TopBar({
           <View ref={pillRef} collapsable={false}>
             <ActiveNavigationTopBar
               boardPill={
-                <BoardPill
+                <ConnectedBoardPill
                   maxWidth={boardPillMaxWidth}
                   activeBoardId={activeBoardId}
                   activeBoard={activeBoard}
                   bleStatus={bleStatus}
                   isReplay={isReplay}
+                  sessionBoardId={sessionBoardId}
                   onOpenSelector={() => setSelectorOpen(true)}
                   onDisconnect={onDisconnect}
                 />
@@ -249,13 +148,14 @@ export function TopBar({
             />
           </View>
         ) : (
-          <BoardPill
+          <ConnectedBoardPill
             ref={pillRef}
             maxWidth={boardPillMaxWidth}
             activeBoardId={activeBoardId}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
             isReplay={isReplay}
+            sessionBoardId={sessionBoardId}
             onOpenSelector={() => setSelectorOpen(true)}
             onDisconnect={onDisconnect}
           />
@@ -349,9 +249,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  iconRoundDisabled: {
-    opacity: 0.4,
-  },
   iconRight: {
     position: 'absolute',
     top: 0,
@@ -361,48 +258,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 10,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: theme.control.border,
-    backgroundColor: theme.control.background,
-    overflow: 'hidden',
-  },
-  boardButton: {
-    flexDirection: 'row',
-    flexShrink: 1,
-    alignItems: 'center',
-    gap: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
-    minHeight: 38,
-    minWidth: 0,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  boardText: {
-    color: theme.control.text,
-    fontSize: 13,
-    fontWeight: '800',
-    maxWidth: 180,
-    flexShrink: 1,
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: theme.control.divider,
-  },
-  plugButton: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 })

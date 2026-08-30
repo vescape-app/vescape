@@ -1,21 +1,5 @@
 import Foundation
 
-/// Where a VESC Fault Occurrence came from.
-///
-/// - `live`: Refloat `ALLDATA` fault mode observed during a Board Session. Occurrence time is known.
-/// - `register`: reconciled from the controller's retained `faults` register (#432). Occurrence time
-///   is unknown; only discovery time is.
-/// - `baseline`: register content already present when the Board was linked. Kept as evidence, never
-///   drives the Board health indicator.
-///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `VescFaultSource`
-/// @parity /modules/vescape-core/src/index.ts `VescFaultSource`
-enum VescFaultSource: String {
-  case live
-  case register
-  case baseline
-}
-
 /// One VESC Fault Occurrence as it crosses the bridge and lives in the durable store.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `VescFaultOccurrence`
 /// @parity /modules/vescape-core/src/index.ts `VescFaultOccurrence`
@@ -23,30 +7,20 @@ struct VescFaultOccurrence {
   let id: String
   let boardId: String
   let code: Int
-  let source: VescFaultSource
-  /// Null when the occurrence time is unknown (register-sourced evidence carries no timestamp).
-  let occurredAtMs: Int64?
-  let discoveredAtMs: Int64
+  let occurredAtMs: Int64
   var lastObservedAtMs: Int64
   var clearedAtMs: Int64?
-  var registerPosition: Int?
   var dismissed: Bool
-  /// Register snapshot this occurrence's controller context came from (#432), when any.
-  var registerSnapshotId: String?
 
   func toMap() -> [String: Any?] {
     [
       "id": id,
       "boardId": boardId,
       "code": code,
-      "source": source.rawValue,
       "occurredAtMs": occurredAtMs,
-      "discoveredAtMs": discoveredAtMs,
       "lastObservedAtMs": lastObservedAtMs,
       "clearedAtMs": clearedAtMs,
-      "registerPosition": registerPosition,
       "dismissed": dismissed,
-      "registerSnapshotId": registerSnapshotId,
     ]
   }
 }
@@ -102,11 +76,6 @@ final class VescFaultCoordinator {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `onOccurrenceOpened`
   var onOccurrenceOpened: ((VescFaultOccurrence) -> Void)?
 
-  /// The occurrence stopped being active (clear or a direct code change). The capture keeps appending
-  /// through its post-clear tail; this only tells it when the tail starts.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `onOccurrenceClosed`
-  var onOccurrenceClosed: ((String, Int64) -> Void)?
-
   /// `VESC Fault Collection` App Setting, mirrored here by the session controller. Off stops live
   /// trigger handling and every new write; stored occurrences stay readable and dismissible.
   /// Independent of `boardWarningsEnabled`.
@@ -152,21 +121,16 @@ final class VescFaultCoordinator {
       current.clearedAtMs = timestamp
       current.lastObservedAtMs = timestamp
       store.upsert(current)
-      onOccurrenceClosed?(current.id, timestamp)
     }
 
     let opened = VescFaultOccurrence(
       id: newId(),
       boardId: boardId,
       code: code,
-      source: .live,
       occurredAtMs: timestamp,
-      discoveredAtMs: timestamp,
       lastObservedAtMs: timestamp,
       clearedAtMs: nil,
-      registerPosition: nil,
-      dismissed: false,
-      registerSnapshotId: nil
+      dismissed: false
     )
     guard store.upsert(opened) else { return }
     lock.lock()
@@ -193,7 +157,6 @@ final class VescFaultCoordinator {
     lock.lock()
     active.removeValue(forKey: boardId)
     lock.unlock()
-    onOccurrenceClosed?(current.id, timestamp)
     emit(boardId)
   }
 
@@ -201,64 +164,6 @@ final class VescFaultCoordinator {
   /// occurrence: the controller never said "cleared", and inventing one would fabricate evidence.
   /// In-memory continuity is kept so the same code seen after a reconnect is the same activation.
   func onSessionLost(boardId: String) {}
-
-  /// The occurrence a register read should try to enrich: the Board's currently open live
-  /// activation. In-memory state wins over the store, because a fault opened moments ago is the
-  /// whole point of the immediate post-trigger read.
-  func openLiveOccurrence(_ boardId: String) -> VescFaultOccurrence? {
-    hydrate(boardId)
-    lock.lock()
-    let current = active[boardId]
-    lock.unlock()
-    return current ?? store.openLive(boardId)
-  }
-
-  /// Attach controller register context to an already-open live occurrence. Only ever called for the
-  /// unambiguous case decided by `VescFaultRegisterCoordinator`; this method does no matching itself.
-  func enrichFromRegister(occurrenceId: String, registerPosition: Int, snapshotId: String) {
-    guard collectionEnabled else { return }
-    guard var current = store.getAll().first(where: { $0.id == occurrenceId }) else { return }
-    current.registerPosition = registerPosition
-    current.registerSnapshotId = snapshotId
-    guard store.upsert(current) else { return }
-    lock.lock()
-    if active[current.boardId]?.id == occurrenceId { active[current.boardId] = current }
-    lock.unlock()
-    emit(current.boardId)
-  }
-
-  /// Mint an occurrence Vescape only ever learned about from the controller's register.
-  ///
-  /// `occurredAtMs` stays nil on purpose: the register carries no timestamp, and inventing one would
-  /// fabricate precision the controller never gave. Link baselines are recorded pre-dismissed so they
-  /// stay inspectable evidence without ever driving the Board health indicator.
-  @discardableResult
-  func addRegisterOccurrence(
-    boardId: String, code: Int, source: VescFaultSource, registerPosition: Int, snapshotId: String
-  ) -> VescFaultOccurrence? {
-    guard collectionEnabled else { return nil }
-    let timestamp = now()
-    let occurrence = VescFaultOccurrence(
-      id: newId(),
-      boardId: boardId,
-      code: code,
-      source: source,
-      occurredAtMs: nil,
-      discoveredAtMs: timestamp,
-      lastObservedAtMs: timestamp,
-      // The register holds faults the controller already finished reporting; there is nothing open
-      // to close later, and leaving `clearedAt` nil would render them as still active.
-      clearedAtMs: timestamp,
-      registerPosition: registerPosition,
-      dismissed: source == .baseline,
-      registerSnapshotId: snapshotId
-    )
-    guard store.upsert(occurrence) else { return nil }
-    return occurrence
-  }
-
-  /// Push the current list for a Board after a batch of register writes.
-  func emitFor(_ boardId: String) { emit(boardId) }
 
   func setDismissed(id: String, dismissed: Bool) {
     guard store.setDismissed(id, dismissed) else { return }

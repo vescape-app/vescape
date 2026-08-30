@@ -27,7 +27,6 @@ import expo.modules.vescapecore.navigation.NavigationProfile
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
 import expo.modules.vescapecore.faults.VescFaultCoordinator
-import expo.modules.vescapecore.faults.VescFaultRegisterCoordinator
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -668,8 +667,7 @@ class VescapeCoreModule : Module() {
 
     /**
      * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board
-     * sample retained around the incident. Null when the occurrence has no capture (register-only
-     * evidence, or collection disabled at the time). Independent of Ride History — no GPS.
+     * sample retained before detection. Null when no capture was saved. Independent of Ride History.
      * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
      * @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
      */
@@ -679,17 +677,18 @@ class VescapeCoreModule : Module() {
         capture.toMap() + mapOf("samples" to captures.samples(occurrenceId).map { it.toMap() })
       }
     }
-    /**
-     * Retained controller fault-register reads for one Board, newest first.
-     *
-     * Raw evidence, not a derived view: an `incomplete` read is returned as such and never
-     * interpreted as an empty register. `entries` is null when the output could not be parsed — the
-     * bytes are still there.
-     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultRegisterSnapshots`
-     * @parity /modules/vescape-core/src/index.ts `getVescFaultRegisterSnapshots`
+    /** Manual, ephemeral VESC `faults` terminal output for a connected, stopped Board.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `readVescFaultLog`
+     * @parity /modules/vescape-core/src/index.ts `readVescFaultLog`
      */
-    AsyncFunction("getVescFaultRegisterSnapshots") Coroutine { boardId: String ->
-      VescFaultRegisterCoordinator.get(context).snapshotsForBoard(boardId).map { it.toMap() }
+    AsyncFunction("readVescFaultLog") { boardId: String, promise: Promise ->
+      mainHandler.post {
+        CoreForegroundService.readVescFaultLog(
+          boardId,
+          onSuccess = { promise.resolve(it) },
+          onError = { code, message -> promise.reject(code, message, null) },
+        )
+      }
     }
     /**
      * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
@@ -1370,12 +1369,6 @@ key == "wearAutoLaunchOnConnect" ||
     // the production connect, not just the probe's own detection client.
     sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "session", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
     val appCtx = context.applicationContext
-    // Every link and re-link establishes a fresh register baseline: a re-addressed controller's
-    // retained faults have nothing to do with the ones the previous link compared against. The
-    // session opened below reads it as soon as the Board is ready.
-    val registers = VescFaultRegisterCoordinator.get(appCtx)
-    registers.requestBaseline(boardId)
-    val previousBaselineAt = registers.latestBaseline(boardId)?.readAtMs ?: Long.MIN_VALUE
     val repo = AppDataRepository.get(appCtx)
     val previousCapturedAt = repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE
     val previousMotorCapturedAt = repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE
@@ -1414,20 +1407,6 @@ key == "wearAutoLaunchOnConnect" ||
       if (!awaitUntil(80) { (repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE) > previousMotorCapturedAt }) {
         error("PROBE_MOTOR_CONFIG_TIMEOUT: VESC motor config was not acquired — this firmware may not be supported yet")
       }
-      // Informational only: a fault-register read that never lands must never fail a Board Link, so
-      // this waits briefly and then simply reports nothing.
-      awaitUntil(BASELINE_WAIT_ATTEMPTS) { (registers.latestBaseline(boardId)?.readAtMs ?: Long.MIN_VALUE) > previousBaselineAt }
-      val baseline = registers.latestBaseline(boardId)?.takeIf { it.readAtMs > previousBaselineAt }
-      sendEvent(
-        "onBoardProbeProgress",
-        mapOf(
-          "probeId" to probeId,
-          "step" to "faults",
-          "elapsedMs" to 0,
-          "transport" to BoardTransport.toBridge(transport),
-          "baselineFaultCount" to baseline?.entries?.size,
-        ),
-      )
       // The probe stays finalizable: the rider may still switch transports, and each pick
       // acquires config for its own candidate before the link can be saved.
       PendingLinkConnect.arm(boardId)
@@ -1446,12 +1425,6 @@ key == "wearAutoLaunchOnConnect" ||
       stopped.await()
     }
   }
-
-  /**
-   * How long linking waits for the register baseline before moving on. Bounded on purpose: the
-   * baseline is information, and a Board Link must never hang on it.
-   */
-  private val BASELINE_WAIT_ATTEMPTS = 24
 
   /** Poll [condition] every 250 ms up to [attempts] times; false when it never held. */
   private suspend fun awaitUntil(attempts: Int, condition: suspend () -> Boolean): Boolean {

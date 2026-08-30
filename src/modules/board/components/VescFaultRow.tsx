@@ -22,24 +22,21 @@ interface VescFaultRowProps {
  * is still active. Distinct from `BoardWarningRow` on purpose — a fault is the controller's own
  * evidence, not an app-authored finding, and it is dismissed per occurrence rather than per kind.
  *
- * A `live` occurrence knows when it happened. A register-sourced one does not, so it says
- * "Discovered" instead of inventing a precision the controller never gave.
- *
  * Expanding the row pulls the occurrence's VESC Fault Capture — the decoded Board samples retained
- * around the incident — on demand, since a capture is far too large to live in the fault mirror.
+ * before detection — on demand, keeping samples out of the always-on fault mirror.
  */
 export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
   const [expanded, setExpanded] = useState(false)
   const dismissed = fault.dismissed
   const active = fault.clearedAtMs == null
-  const title = faultTitle(fault.code, fault.source)
-  const { capture, loading } = useVescFaultCapture(fault.id, expanded, fault.clearedAtMs)
+  const title = faultTitle(fault.code)
+  const { capture, loading } = useVescFaultCapture(fault.id, expanded)
 
   return (
     <View
       style={[
         styles.card,
-        { borderColor: dismissed ? theme.neutral.border : theme.status.warning.border },
+        { borderColor: dismissed ? theme.neutral.border : theme.status.caution.border },
         dismissed && styles.cardDismissed,
       ]}
     >
@@ -51,19 +48,12 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
           <View style={styles.chips}>
             <View style={[styles.chip, { backgroundColor: theme.neutral.surfaceDeep }]}>
               <Text style={[styles.chipText, { color: theme.neutral.textMuted }]}>
-                {fault.source === 'live' ? `Code ${fault.code}` : 'Controller register'}
+                {`Code ${fault.code}`}
               </Text>
             </View>
             {active && (
-              <View style={[styles.chip, { backgroundColor: theme.status.warning.bg }]}>
-                <Text style={[styles.chipText, { color: theme.status.warning.text }]}>Active</Text>
-              </View>
-            )}
-            {fault.source === 'baseline' && (
-              <View style={[styles.chip, { backgroundColor: theme.neutral.surfaceDeep }]}>
-                <Text style={[styles.chipText, { color: theme.neutral.textMuted }]}>
-                  Pre-existing
-                </Text>
+              <View style={[styles.chip, { backgroundColor: theme.status.caution.bg }]}>
+                <Text style={[styles.chipText, { color: theme.status.caution.text }]}>Active</Text>
               </View>
             )}
             {dismissed && (
@@ -82,9 +72,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
       </View>
 
       <Text style={styles.detected}>
-        {fault.occurredAtMs != null
-          ? `Occurred ${fmtTimeAgo(fault.occurredAtMs)}`
-          : `Discovered ${fmtTimeAgo(fault.discoveredAtMs)} · occurrence time unknown`}
+        {`Occurred ${fmtTimeAgo(fault.occurredAtMs)}`}
         {fault.clearedAtMs != null ? ` · cleared ${fmtTimeAgo(fault.clearedAtMs)}` : ''}
       </Text>
 
@@ -103,13 +91,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
         />
       </Pressable>
 
-      {expanded && (
-        <VescFaultCaptureSection
-          capture={capture}
-          loading={loading}
-          clearedAtMs={fault.clearedAtMs}
-        />
-      )}
+      {expanded && <VescFaultCaptureSection capture={capture} loading={loading} />}
     </View>
   )
 }

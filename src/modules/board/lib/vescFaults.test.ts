@@ -8,14 +8,10 @@ function fault(over: Partial<VescFaultOccurrence>): VescFaultOccurrence {
     id: 'a',
     boardId: 'board',
     code: 9,
-    source: 'live',
     occurredAtMs: 1_000,
-    discoveredAtMs: 1_000,
     lastObservedAtMs: 1_000,
     clearedAtMs: null,
-    registerPosition: null,
     dismissed: false,
-    registerSnapshotId: null,
     ...over,
   }
 }
@@ -28,16 +24,6 @@ describe('faultTitle', () => {
   it('falls back to the raw code for firmware this build does not know', () => {
     expect(faultTitle(247)).toBe('Fault code 247')
   })
-
-  it('reads a register occurrence in the controller code space, not the Refloat one', () => {
-    expect(faultTitle(6, 'register')).toBe('Motor over temperature')
-    expect(faultTitle(6, 'live')).toBe('Pitch angle exceeded')
-  })
-
-  it('names a register entry whose firmware fault name this build does not know', () => {
-    expect(faultTitle(-1, 'baseline')).toBe('Unknown controller fault')
-    expect(faultTitle(247, 'baseline')).toBe('Controller fault code 247')
-  })
 })
 
 describe('indicatorFaults', () => {
@@ -47,10 +33,6 @@ describe('indicatorFaults', () => {
 
   it('drops dismissed occurrences without dropping them from history', () => {
     expect(indicatorFaults([fault({ dismissed: true })])).toEqual([])
-  })
-
-  it('never lets a link-time baseline look like a new incident', () => {
-    expect(indicatorFaults([fault({ source: 'baseline', occurredAtMs: null })])).toEqual([])
   })
 
   it('keeps a cleared occurrence until it is dismissed', () => {

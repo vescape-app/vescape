@@ -35,19 +35,15 @@ struct VescFaultStore: VescFaultStoring {
         id TEXT NOT NULL PRIMARY KEY,
         board_id TEXT NOT NULL,
         code INTEGER NOT NULL,
-        source TEXT NOT NULL,
-        occurred_at INTEGER,
-        discovered_at INTEGER NOT NULL,
+        occurred_at INTEGER NOT NULL,
         last_observed_at INTEGER NOT NULL,
         cleared_at INTEGER,
-        register_position INTEGER,
-        dismissed INTEGER NOT NULL,
-        register_snapshot_id TEXT
+        dismissed INTEGER NOT NULL
       )
       """)
     try db.execute(sql: """
-      CREATE INDEX IF NOT EXISTS index_vesc_fault_occurrences_board_id_discovered_at
-      ON vesc_fault_occurrences(board_id, discovered_at)
+      CREATE INDEX IF NOT EXISTS index_vesc_fault_occurrences_board_id_occurred_at
+      ON vesc_fault_occurrences(board_id, occurred_at)
       """)
   }
 
@@ -57,7 +53,7 @@ struct VescFaultStore: VescFaultStoring {
     read("store_get_for_board") { db in
       try Row.fetchAll(
         db,
-        sql: "SELECT * FROM vesc_fault_occurrences WHERE board_id = ? ORDER BY discovered_at DESC, rowid DESC",
+        sql: "SELECT * FROM vesc_fault_occurrences WHERE board_id = ? ORDER BY occurred_at DESC, rowid DESC",
         arguments: [boardId]
       ).map(Self.occurrence)
     } ?? []
@@ -67,7 +63,7 @@ struct VescFaultStore: VescFaultStoring {
     read("store_get_all") { db in
       try Row.fetchAll(
         db,
-        sql: "SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, discovered_at DESC, rowid DESC"
+        sql: "SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, occurred_at DESC, rowid DESC"
       ).map(Self.occurrence)
     } ?? []
   }
@@ -78,8 +74,8 @@ struct VescFaultStore: VescFaultStoring {
         db,
         sql: """
           SELECT * FROM vesc_fault_occurrences
-          WHERE board_id = ? AND source = 'live' AND cleared_at IS NULL
-          ORDER BY discovered_at DESC, rowid DESC LIMIT 1
+          WHERE board_id = ? AND cleared_at IS NULL
+          ORDER BY occurred_at DESC, rowid DESC LIMIT 1
           """,
         arguments: [boardId]
       ).map(Self.occurrence)
@@ -96,23 +92,18 @@ struct VescFaultStore: VescFaultStoring {
       try db.execute(
         sql: """
           INSERT INTO vesc_fault_occurrences
-            (id, board_id, code, source, occurred_at, discovered_at, last_observed_at, cleared_at,
-             register_position, dismissed, register_snapshot_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, board_id, code, occurred_at, last_observed_at, cleared_at, dismissed)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           -- Lifecycle writes deliberately leave `dismissed` alone: a heartbeat carrying a stale
           -- in-memory snapshot must never un-dismiss what the rider just acknowledged. Dismissal
           -- has its own statement.
           ON CONFLICT(id) DO UPDATE SET
             last_observed_at = excluded.last_observed_at,
-            cleared_at = excluded.cleared_at,
-            register_position = excluded.register_position,
-            register_snapshot_id = COALESCE(excluded.register_snapshot_id, register_snapshot_id)
+            cleared_at = excluded.cleared_at
           """,
         arguments: [
-          occurrence.id, occurrence.boardId, occurrence.code, occurrence.source.rawValue,
-          occurrence.occurredAtMs, occurrence.discoveredAtMs, occurrence.lastObservedAtMs,
-          occurrence.clearedAtMs, occurrence.registerPosition, occurrence.dismissed,
-          occurrence.registerSnapshotId,
+          occurrence.id, occurrence.boardId, occurrence.code, occurrence.occurredAtMs,
+          occurrence.lastObservedAtMs, occurrence.clearedAtMs, occurrence.dismissed,
         ]
       )
       }
@@ -144,14 +135,10 @@ struct VescFaultStore: VescFaultStoring {
       id: row["id"] as String,
       boardId: row["board_id"] as String,
       code: row["code"] as Int,
-      source: VescFaultSource(rawValue: row["source"] as String) ?? .live,
-      occurredAtMs: row["occurred_at"] as Int64?,
-      discoveredAtMs: row["discovered_at"] as Int64,
+      occurredAtMs: row["occurred_at"] as Int64,
       lastObservedAtMs: row["last_observed_at"] as Int64,
       clearedAtMs: row["cleared_at"] as Int64?,
-      registerPosition: row["register_position"] as Int?,
-      dismissed: row["dismissed"] as Bool,
-      registerSnapshotId: row["register_snapshot_id"] as String?
+      dismissed: row["dismissed"] as Bool
     )
   }
 }

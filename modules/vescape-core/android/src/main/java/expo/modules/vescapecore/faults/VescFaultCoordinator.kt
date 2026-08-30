@@ -6,28 +6,6 @@ import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
 import java.util.UUID
 
 /**
- * Where a VESC Fault Occurrence came from.
- *
- * - [LIVE]: Refloat `ALLDATA` fault mode observed during a Board Session. Occurrence time is known.
- * - [REGISTER]: reconciled from the controller's retained `faults` register (#432). Occurrence time
- *   is unknown; only discovery time is.
- * - [BASELINE]: register content already present when the Board was linked. Kept as evidence, never
- *   drives the Board health indicator.
- *
- * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `VescFaultSource`
- * @parity /modules/vescape-core/src/index.ts `VescFaultSource`
- */
-enum class VescFaultSource(val wire: String) {
-  LIVE("live"),
-  REGISTER("register"),
-  BASELINE("baseline");
-
-  companion object {
-    fun fromWire(value: String): VescFaultSource = entries.firstOrNull { it.wire == value } ?: LIVE
-  }
-}
-
-/**
  * One VESC Fault Occurrence as it crosses the bridge and lives in the durable store.
  *
  * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `VescFaultOccurrence`
@@ -37,28 +15,19 @@ data class VescFaultOccurrence(
   val id: String,
   val boardId: String,
   val code: Int,
-  val source: VescFaultSource,
-  val occurredAtMs: Long?,
-  val discoveredAtMs: Long,
+  val occurredAtMs: Long,
   val lastObservedAtMs: Long,
   val clearedAtMs: Long?,
-  val registerPosition: Int?,
   val dismissed: Boolean,
-  /** Register snapshot this occurrence's controller context came from (#432), when any. */
-  val registerSnapshotId: String? = null,
 ) {
   fun toMap(): Map<String, Any?> = mapOf(
     "id" to id,
     "boardId" to boardId,
     "code" to code,
-    "source" to source.wire,
     "occurredAtMs" to occurredAtMs,
-    "discoveredAtMs" to discoveredAtMs,
     "lastObservedAtMs" to lastObservedAtMs,
     "clearedAtMs" to clearedAtMs,
-    "registerPosition" to registerPosition,
     "dismissed" to dismissed,
-    "registerSnapshotId" to registerSnapshotId,
   )
 }
 
@@ -74,9 +43,6 @@ interface VescFaultStore {
   suspend fun upsert(occurrence: VescFaultOccurrence)
   suspend fun setDismissed(id: String, dismissed: Boolean): Boolean
 }
-
-/** Result of folding one register entry into occurrence storage. */
-enum class VescFaultRegisterOutcome { ENRICHED, CREATED, SKIPPED }
 
 /**
  * Deterministic owner of VESC Fault Occurrence transitions.
@@ -123,14 +89,6 @@ class VescFaultCoordinator(
   @Volatile
   var onOccurrenceOpened: (suspend (VescFaultOccurrence) -> Unit)? = null
 
-  /**
-   * The occurrence stopped being active (clear or a direct code change). The capture keeps appending
-   * through its post-clear tail; this only tells it when the tail starts.
-   * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `onOccurrenceClosed`
-   */
-  @Volatile
-  var onOccurrenceClosed: (suspend (occurrenceId: String, clearedAtMs: Long) -> Unit)? = null
-
   private val lock = Any()
   private val active = HashMap<String, VescFaultOccurrence>()
   private val hydrated = HashSet<String>()
@@ -158,18 +116,14 @@ class VescFaultCoordinator(
     // A direct code change closes the old activation and opens a new one — two distinct faults.
     if (current != null) {
       store.upsert(current.copy(clearedAtMs = timestamp, lastObservedAtMs = timestamp))
-      onOccurrenceClosed?.invoke(current.id, timestamp)
     }
     val opened = VescFaultOccurrence(
       id = newId(),
       boardId = boardId,
       code = code,
-      source = VescFaultSource.LIVE,
       occurredAtMs = timestamp,
-      discoveredAtMs = timestamp,
       lastObservedAtMs = timestamp,
       clearedAtMs = null,
-      registerPosition = null,
       dismissed = false,
     )
     store.upsert(opened)
@@ -188,7 +142,6 @@ class VescFaultCoordinator(
     // active in memory and the next clear observation retries it.
     store.upsert(current.copy(clearedAtMs = timestamp, lastObservedAtMs = maxOf(current.lastObservedAtMs, timestamp)))
     synchronized(lock) { active.remove(boardId) }
-    onOccurrenceClosed?.invoke(current.id, timestamp)
     emit(boardId)
   }
 
@@ -198,70 +151,6 @@ class VescFaultCoordinator(
    * In-memory continuity is kept so the same code seen after a reconnect is the same activation.
    */
   fun onSessionLost(@Suppress("UNUSED_PARAMETER") boardId: String) = Unit
-
-  /**
-   * The occurrence a register read should try to enrich: the Board's currently open live
-   * activation. In-memory state wins over the store, because a fault opened moments ago is the whole
-   * point of the immediate post-trigger read.
-   */
-  suspend fun openLiveOccurrence(boardId: String): VescFaultOccurrence? {
-    hydrate(boardId)
-    return synchronized(lock) { active[boardId] } ?: store.openLive(boardId)
-  }
-
-  /**
-   * Attach controller register context to an already-open live occurrence. Only ever called for the
-   * unambiguous case decided by [VescFaultRegisterCoordinator]; this method does no matching itself.
-   */
-  suspend fun enrichFromRegister(occurrenceId: String, registerPosition: Int, snapshotId: String) {
-    if (!collectionEnabled) return
-    val current = store.getAll().firstOrNull { it.id == occurrenceId } ?: return
-    val enriched = current.copy(registerPosition = registerPosition, registerSnapshotId = snapshotId)
-    store.upsert(enriched)
-    synchronized(lock) {
-      val live = active[current.boardId]
-      if (live != null && live.id == occurrenceId) active[current.boardId] = enriched
-    }
-    emit(current.boardId)
-  }
-
-  /**
-   * Mint an occurrence Vescape only ever learned about from the controller's register.
-   *
-   * `occurredAtMs` stays null on purpose: the register carries no timestamp, and inventing one would
-   * fabricate precision the controller never gave. Link baselines are recorded pre-dismissed so they
-   * stay inspectable evidence without ever driving the Board health indicator.
-   */
-  suspend fun addRegisterOccurrence(
-    boardId: String,
-    code: Int,
-    source: VescFaultSource,
-    registerPosition: Int,
-    snapshotId: String,
-  ): VescFaultOccurrence? {
-    if (!collectionEnabled) return null
-    val timestamp = now()
-    val occurrence = VescFaultOccurrence(
-      id = newId(),
-      boardId = boardId,
-      code = code,
-      source = source,
-      occurredAtMs = null,
-      discoveredAtMs = timestamp,
-      lastObservedAtMs = timestamp,
-      // The register holds faults the controller already finished reporting; there is nothing open
-      // to close later, and leaving `clearedAt` null would render them as still active.
-      clearedAtMs = timestamp,
-      registerPosition = registerPosition,
-      dismissed = source == VescFaultSource.BASELINE,
-      registerSnapshotId = snapshotId,
-    )
-    store.upsert(occurrence)
-    return occurrence
-  }
-
-  /** Push the current list for a Board after a batch of register writes. */
-  suspend fun emitFor(boardId: String) = emit(boardId)
 
   suspend fun setDismissed(id: String, dismissed: Boolean) {
     if (!store.setDismissed(id, dismissed)) return
@@ -323,28 +212,20 @@ private fun VescFaultOccurrenceEntity.toModel(): VescFaultOccurrence = VescFault
   id = id,
   boardId = boardId,
   code = code,
-  source = VescFaultSource.fromWire(source),
   occurredAtMs = occurredAtMs,
-  discoveredAtMs = discoveredAtMs,
   lastObservedAtMs = lastObservedAtMs,
   clearedAtMs = clearedAtMs,
-  registerPosition = registerPosition,
   dismissed = dismissed,
-  registerSnapshotId = registerSnapshotId,
 )
 
 private fun VescFaultOccurrence.toEntity(): VescFaultOccurrenceEntity = VescFaultOccurrenceEntity(
   id = id,
   boardId = boardId,
   code = code,
-  source = source.wire,
   occurredAtMs = occurredAtMs,
-  discoveredAtMs = discoveredAtMs,
   lastObservedAtMs = lastObservedAtMs,
   clearedAtMs = clearedAtMs,
-  registerPosition = registerPosition,
   dismissed = dismissed,
-  registerSnapshotId = registerSnapshotId,
 )
 
 /** Production [VescFaultStore] backed by the shared Room DAO. */

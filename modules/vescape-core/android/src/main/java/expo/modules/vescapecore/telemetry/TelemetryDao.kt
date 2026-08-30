@@ -566,19 +566,19 @@ interface TelemetryDao {
   // `deleteBoardWithSettings`: fault evidence outlives the Board record.
   // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
 
-  @Query("SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId ORDER BY discovered_at DESC, rowid DESC")
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId ORDER BY occurred_at DESC, rowid DESC")
   suspend fun getVescFaults(boardId: String): List<VescFaultOccurrenceEntity>
 
-  @Query("SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, discovered_at DESC, rowid DESC")
+  @Query("SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, occurred_at DESC, rowid DESC")
   suspend fun getAllVescFaults(): List<VescFaultOccurrenceEntity>
 
   @Query("SELECT * FROM vesc_fault_occurrences WHERE id = :id LIMIT 1")
   suspend fun getVescFault(id: String): VescFaultOccurrenceEntity?
 
-  /** Newest still-open live occurrence for a Board — rehydrates coordinator state after restart. */
+  /** Newest still-open occurrence for a Board — rehydrates coordinator state after restart. */
   @Query(
-    "SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId AND source = 'live' " +
-      "AND cleared_at IS NULL ORDER BY discovered_at DESC, rowid DESC LIMIT 1",
+    "SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId AND cleared_at IS NULL " +
+      "ORDER BY occurred_at DESC, rowid DESC LIMIT 1",
   )
   suspend fun getOpenVescFault(boardId: String): VescFaultOccurrenceEntity?
 
@@ -586,16 +586,12 @@ interface TelemetryDao {
   suspend fun insertVescFault(fault: VescFaultOccurrenceEntity): Long
 
   @Query(
-    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt, " +
-      "register_position = :registerPosition, " +
-      "register_snapshot_id = COALESCE(:registerSnapshotId, register_snapshot_id) WHERE id = :id",
+    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt WHERE id = :id",
   )
   suspend fun updateVescFaultLifecycle(
     id: String,
     lastObservedAt: Long,
     clearedAt: Long?,
-    registerPosition: Int?,
-    registerSnapshotId: String?,
   )
 
   /**
@@ -606,13 +602,7 @@ interface TelemetryDao {
   @Transaction
   suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
     if (insertVescFault(fault) == -1L) {
-      updateVescFaultLifecycle(
-        fault.id,
-        fault.lastObservedAtMs,
-        fault.clearedAtMs,
-        fault.registerPosition,
-        fault.registerSnapshotId,
-      )
+      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs)
     }
   }
 
@@ -637,32 +627,6 @@ interface TelemetryDao {
       "ORDER BY captured_at ASC, id ASC",
   )
   suspend fun getVescFaultCaptureSamples(occurrenceId: String): List<VescFaultCaptureSampleEntity>
-
-  // Retained controller register reads — see VescFaultRegisterCoordinator. Also deliberately absent
-  // from `deleteBoardWithSettings`.
-  // @parity /modules/vescape-core/ios/faults/VescFaultRegisterStore.swift
-
-  @Insert(onConflict = OnConflictStrategy.IGNORE)
-  suspend fun insertVescFaultRegisterSnapshot(snapshot: VescFaultRegisterSnapshotEntity)
-
-  @Query(
-    "SELECT * FROM vesc_fault_register_snapshots WHERE board_id = :boardId " +
-      "ORDER BY read_at DESC, rowid DESC LIMIT :limit",
-  )
-  suspend fun getVescFaultRegisterSnapshots(boardId: String, limit: Int): List<VescFaultRegisterSnapshotEntity>
-
-  @Query("SELECT * FROM vesc_fault_register_snapshots WHERE id = :id LIMIT 1")
-  suspend fun getVescFaultRegisterSnapshot(id: String): VescFaultRegisterSnapshotEntity?
-
-  /** Newest cleanly finished read — the comparison point that decides which entries are new. */
-  @Query(
-    "SELECT * FROM vesc_fault_register_snapshots WHERE board_id = :boardId AND status = 'complete' " +
-      "ORDER BY read_at DESC, rowid DESC LIMIT 1",
-  )
-  suspend fun getLatestCompleteVescFaultRegisterSnapshot(boardId: String): VescFaultRegisterSnapshotEntity?
-
-  @Query("SELECT COUNT(*) FROM vesc_fault_register_snapshots WHERE board_id = :boardId AND reason = 'baseline'")
-  suspend fun countVescFaultRegisterBaselines(boardId: String): Int
 
   @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
   suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?

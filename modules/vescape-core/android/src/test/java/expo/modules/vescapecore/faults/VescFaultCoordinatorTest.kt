@@ -19,13 +19,13 @@ class VescFaultCoordinatorTest {
     val rows = LinkedHashMap<String, VescFaultOccurrence>()
 
     override suspend fun getForBoard(boardId: String) =
-      rows.values.filter { it.boardId == boardId }.sortedByDescending { it.discoveredAtMs }
+      rows.values.filter { it.boardId == boardId }.sortedByDescending { it.occurredAtMs }
 
     override suspend fun getAll() = rows.values.toList()
 
     override suspend fun openLive(boardId: String) = rows.values
-      .filter { it.boardId == boardId && it.source == VescFaultSource.LIVE && it.clearedAtMs == null }
-      .maxByOrNull { it.discoveredAtMs }
+      .filter { it.boardId == boardId && it.clearedAtMs == null }
+      .maxByOrNull { it.occurredAtMs }
 
     /** Set to fail every write, mirroring a dead Room database. */
     var writesFail = false
@@ -37,7 +37,6 @@ class VescFaultCoordinatorTest {
       rows[occurrence.id] = existing?.copy(
         lastObservedAtMs = occurrence.lastObservedAtMs,
         clearedAtMs = occurrence.clearedAtMs,
-        registerPosition = occurrence.registerPosition,
       ) ?: occurrence
     }
 
@@ -65,9 +64,7 @@ class VescFaultCoordinatorTest {
 
     val fault = faults().single()
     assertEquals(9, fault.code)
-    assertEquals(VescFaultSource.LIVE, fault.source)
     assertEquals(1_000L, fault.occurredAtMs)
-    assertEquals(1_000L, fault.discoveredAtMs)
     assertNull(fault.clearedAtMs)
     assertTrue(!fault.dismissed)
   }
@@ -82,7 +79,7 @@ class VescFaultCoordinatorTest {
 
     val fault = faults().single()
     // Throttled writes still track the fault: last-observed advanced past the opening time.
-    assertTrue(fault.lastObservedAtMs > fault.discoveredAtMs)
+    assertTrue(fault.lastObservedAtMs > fault.occurredAtMs)
     assertNull(fault.clearedAtMs)
   }
 

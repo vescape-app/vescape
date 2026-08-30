@@ -1,25 +1,14 @@
 import { describe, expect, it } from 'bun:test'
-import type { VescFaultCapture, VescFaultCaptureSample } from 'vescape-core'
+import type { VescFaultCaptureSample } from 'vescape-core'
 
 import {
   achievedRateHz,
-  capturePhase,
   captureSpanMs,
   fmtCaptureOffset,
   samplesAroundIncident,
 } from '@/modules/board/lib/vescFaultCapture'
 
 const OPENED = 1_000_000
-
-const capture: VescFaultCapture = {
-  occurrenceId: 'occ',
-  boardId: 'board',
-  startedAtMs: OPENED - 5_000,
-  openedAtMs: OPENED,
-  endedAtMs: OPENED + 3_000,
-  sampleCount: 0,
-  complete: true,
-}
 
 function sample(atMs: number): VescFaultCaptureSample {
   return {
@@ -40,20 +29,6 @@ function sample(atMs: number): VescFaultCaptureSample {
     state: null,
   }
 }
-
-describe('capturePhase', () => {
-  it('splits pre-roll, incident, and post-clear tail on the occurrence boundaries', () => {
-    const cleared = OPENED + 1_000
-    expect(capturePhase(sample(OPENED - 1), capture, cleared)).toBe('pre')
-    expect(capturePhase(sample(OPENED), capture, cleared)).toBe('incident')
-    expect(capturePhase(sample(cleared), capture, cleared)).toBe('incident')
-    expect(capturePhase(sample(cleared + 1), capture, cleared)).toBe('tail')
-  })
-
-  it('has no tail while the occurrence is still active', () => {
-    expect(capturePhase(sample(OPENED + 9_000), capture, null)).toBe('incident')
-  })
-})
 
 describe('achievedRateHz', () => {
   it('measures the rate the samples actually arrived at, not a fixed cadence', () => {
@@ -76,22 +51,21 @@ describe('achievedRateHz', () => {
 describe('samplesAroundIncident', () => {
   it('keeps everything when the capture is small', () => {
     const samples = [OPENED - 100, OPENED, OPENED + 100].map(sample)
-    expect(samplesAroundIncident(samples, capture, 10)).toEqual({ shown: samples, omitted: 0 })
+    expect(samplesAroundIncident(samples, 10)).toEqual({ shown: samples, omitted: 0 })
   })
 
-  it('centres the window on detection', () => {
-    const samples = Array.from({ length: 100 }, (_, i) => sample(OPENED - 5_000 + i * 100))
-    const { shown, omitted } = samplesAroundIncident(samples, capture, 10)
+  it('keeps the newest samples nearest detection', () => {
+    const samples = Array.from({ length: 100 }, (_, i) => sample(OPENED - 9_900 + i * 100))
+    const { shown, omitted } = samplesAroundIncident(samples, 10)
     expect(omitted).toBe(90)
     expect(shown).toHaveLength(10)
-    // Detection sits at index 50; a 10-wide window centred there starts at 45.
-    expect(shown[0].capturedAtMs).toBe(OPENED - 500)
-    expect(shown[5].capturedAtMs).toBe(OPENED)
+    expect(shown[0].capturedAtMs).toBe(OPENED - 900)
+    expect(shown[9].capturedAtMs).toBe(OPENED)
   })
 
   it('clamps to the end when every sample precedes detection', () => {
     const samples = Array.from({ length: 20 }, (_, i) => sample(OPENED - 5_000 + i * 100))
-    const { shown } = samplesAroundIncident(samples, capture, 5)
+    const { shown } = samplesAroundIncident(samples, 5)
     expect(shown[shown.length - 1]).toBe(samples[samples.length - 1])
   })
 })

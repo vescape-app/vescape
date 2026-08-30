@@ -52,9 +52,6 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
   const completedProbeIdRef = useRef<string | null>(null)
   const runRef = useRef(0)
   const activeProbeIdRef = useRef<string | null>(null)
-  // The `faults` milestone arrives before the synthesized `completed` progress replaces it, so the
-  // informational baseline count is kept here to survive into the finished checklist.
-  const baselineFaultCountRef = useRef<number | null>(null)
 
   const runProbe = useCallback(() => {
     // A missing peripheral isn't probeable; callers handle the no-device case in
@@ -111,7 +108,6 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
       // from the probe promise (phase + candidates). Storing `completed` here
       // would flash an all-done timeline with placeholder captions for a frame
       // before the real result lands.
-      if (event.step === 'faults') baselineFaultCountRef.current = event.baselineFaultCount ?? null
       if (event.step === 'completed' || event.step === 'failed') return
       setProgress(event)
     })
@@ -142,7 +138,6 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
   const acquireConfig = useCallback(async (): Promise<void> => {
     if (!bleId || !selected || !completedProbeId) return
     const run = runRef.current
-    baselineFaultCountRef.current = null
     setProgress({
       probeId: completedProbeId,
       step: 'session',
@@ -159,7 +154,6 @@ export function useBoardLink(bleId: string | null, boardId: string): UseBoardLin
         step: 'completed',
         elapsedMs: 0,
         transport: selected.transport,
-        baselineFaultCount: baselineFaultCountRef.current,
       })
     } catch (err: unknown) {
       if (run !== runRef.current) return

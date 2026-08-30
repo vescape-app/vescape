@@ -1,25 +1,5 @@
 import type { VescFaultCapture, VescFaultCaptureSample } from 'vescape-core'
 
-/**
- * Where one capture sample sits relative to the incident it documents.
- *
- * `pre` is the five seconds copied out of the native recent live window before detection,
- * `incident` covers the activation itself, and `tail` is what arrived after the controller reported
- * a clear. A capture whose occurrence is still open has no `tail`.
- */
-export type VescFaultCapturePhase = 'pre' | 'incident' | 'tail'
-
-/** Phase of one sample. `clearedAtMs` is the occurrence's clear time, null while still active. */
-export function capturePhase(
-  sample: VescFaultCaptureSample,
-  capture: VescFaultCapture,
-  clearedAtMs: number | null,
-): VescFaultCapturePhase {
-  if (sample.capturedAtMs < capture.openedAtMs) return 'pre'
-  if (clearedAtMs != null && sample.capturedAtMs > clearedAtMs) return 'tail'
-  return 'incident'
-}
-
 /** Milliseconds from detection; negative inside the pre-roll. */
 export function captureOffsetMs(sample: VescFaultCaptureSample, capture: VescFaultCapture): number {
   return sample.capturedAtMs - capture.openedAtMs
@@ -47,21 +27,14 @@ export function achievedRateHz(samples: VescFaultCaptureSample[]): number | null
 }
 
 /**
- * The `limit` samples closest to detection, still in chronological order, plus how many were left
- * out. A long fault can retain thousands of rows; the detail view shows the incident edge rather
- * than everything.
+ * Newest `limit` pre-fault samples, still in chronological order.
  */
 export function samplesAroundIncident(
   samples: VescFaultCaptureSample[],
-  capture: VescFaultCapture,
   limit: number,
 ): { shown: VescFaultCaptureSample[]; omitted: number } {
   if (samples.length <= limit) return { shown: samples, omitted: 0 }
-  // Index of the first sample at or after detection; the window is centred there.
-  let pivot = samples.findIndex((s) => s.capturedAtMs >= capture.openedAtMs)
-  if (pivot < 0) pivot = samples.length - 1
-  const half = Math.floor(limit / 2)
-  const start = Math.min(Math.max(pivot - half, 0), samples.length - limit)
+  const start = samples.length - limit
   return { shown: samples.slice(start, start + limit), omitted: samples.length - limit }
 }
 
