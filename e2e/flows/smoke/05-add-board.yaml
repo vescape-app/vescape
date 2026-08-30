@@ -109,6 +109,9 @@ appId: ${APP_ID}
 
 # The wizard's whole point is that the board is durable afterwards. Asserting the name on the main
 # screen covers the write and the read back, which is all this flow can claim without a connection.
+# Trailing `.*` because the selector pill's `accessibilityLabel` is `<name>, board selector`: iOS
+# replaces a labelled view's children in the accessibility tree, so the name is only readable
+# through the label itself.
 - extendedWaitUntil:
-    visible: Smoke Board
-    timeout: 15000
+    visible: 'Smoke Board.*'
+    timeout: 30000

@@ -33,17 +33,23 @@ appId: ${APP_ID}
       id: history-metric-tab-duty
     timeout: 30000
 
-- assertVisible: Distance
-- assertVisible: Top Speed
+- assertVisible:
+    id: history-stat-distance
+- assertVisible:
+    id: history-stat-topSpeed
 
 # Expanding the stats panel is what computes the secondary stats — a ride that loads but cannot
 # derive them fails here and nowhere earlier.
 - tapOn:
     id: history-stats-bar
-- assertVisible: Avg Speed
-- assertVisible: Time
-- assertVisible: Ctrl Max
-- assertVisible: Motor Max
+- assertVisible:
+    id: history-stat-avgSpeed
+- assertVisible:
+    id: history-stat-rideTime
+- assertVisible:
+    id: history-stat-mosfetTemp
+- assertVisible:
+    id: history-stat-motorTemp
 
 # Optional charts: each tab re-derives a trace from the same samples. The chart's own title is
 # drawn into the Skia canvas and never reaches the view hierarchy, so the row wrapper is the only

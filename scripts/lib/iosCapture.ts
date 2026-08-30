@@ -7,7 +7,7 @@
  *
  * @parity /scripts/lib/androidCapture.ts
  */
-import { existsSync, mkdirSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { basename, join } from 'path'
 
 import { applicationId } from '../../src/config/appVariant.ts'
@@ -15,14 +15,19 @@ import {
   capture,
   CAPTURE_LOCATION,
   FIXTURE_ZIP,
+  ROOT,
   runOrDie,
   fixtureBuildEnv,
   warnMissingFixture,
   type CaptureDriver,
+  type FixtureRunMode,
 } from './captureDriver.ts'
 import { pickDevice } from './devices.ts'
 
 const OUT_DIR = 'screenshots/ios'
+const IOS_DIR = join(ROOT, 'ios')
+/** Kept out of `ios/`, which `expo prebuild` rewrites on every `native:sync`. */
+const DERIVED_DATA = join(ROOT, '.expo', 'capture-ios-build')
 
 /**
  * The 6.9" size App Store Connect requires (1320x2868). Apple downscales it to the smaller phone
@@ -123,6 +128,7 @@ async function containerDir(udid: string): Promise<string | null> {
 export async function createIosDriver(
   requestedDevice: string | null,
   replay: string,
+  mode: FixtureRunMode = 'screenshots',
 ): Promise<CaptureDriver> {
   const sim = await resolveSimulator(requestedDevice)
 
@@ -133,14 +139,56 @@ export async function createIosDriver(
     deviceLabel: `${sim.name} (${sim.udid})`,
 
     async buildAndInstall() {
-      console.log('› Building the iOS screenshot Release build…')
+      console.log(`\u203a Building the iOS ${mode} Release build\u2026`)
       await runOrDie(['bun', 'run', 'native:sync', 'ios'])
-      // A Release build with the flags baked in: no Metro, no dev-client launcher, so the app the
-      // flows drive is the app the store gets.
+
+      // `xcodebuild` rather than `expo run:ios`: Expo demands a real signing identity even for a
+      // simulator build when the app declares `associated-domains` or `applesignin`
+      // (`@expo/cli` simulatorCodeSigning), which a CI runner has no certificate for. A simulator
+      // build needs no signing at all, and neither entitlement does anything on one. The Release
+      // configuration still runs the bundle phase, so the app carries its own JS.
+      const workspace = readdirSync(IOS_DIR).find((entry) => entry.endsWith('.xcworkspace'))
+      if (!workspace) {
+        console.error('No ios/*.xcworkspace — `native:sync ios` did not generate the project.')
+        process.exit(1)
+      }
+      const scheme = basename(workspace, '.xcworkspace')
+
       await runOrDie(
-        ['bunx', 'expo', 'run:ios', '--configuration', 'Release', '--device', sim.udid],
-        fixtureBuildEnv('screenshots', replay),
+        [
+          'xcodebuild',
+          '-workspace',
+          join(IOS_DIR, workspace),
+          '-scheme',
+          scheme,
+          '-configuration',
+          'Release',
+          '-destination',
+          `id=${sim.udid}`,
+          '-derivedDataPath',
+          DERIVED_DATA,
+          'CODE_SIGNING_ALLOWED=NO',
+          // A full Xcode transcript is ~100k lines and buries the one error worth reading. `-quiet`
+          // keeps errors and warnings.
+          '-quiet',
+          'build',
+        ],
+        fixtureBuildEnv(mode, replay),
       )
+
+      const app = join(
+        DERIVED_DATA,
+        'Build',
+        'Products',
+        'Release-iphonesimulator',
+        `${scheme}.app`,
+      )
+      if (!existsSync(app)) {
+        console.error(`xcodebuild reported success but ${app} is missing.`)
+        process.exit(1)
+      }
+      console.log(`\u203a Installing ${scheme}.app on ${sim.name}`)
+      await runOrDie(['xcrun', 'simctl', 'install', sim.udid, app])
     },
 
     async requireInstalled() {

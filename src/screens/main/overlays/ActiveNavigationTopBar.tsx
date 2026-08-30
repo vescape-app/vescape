@@ -47,7 +47,11 @@ function CompactBoardPill({
   const label = compactBoardName(name, availableWidth)
   return (
     <View style={[styles.boardPill, !label && styles.boardPillDotOnly]}>
-      <Pressable accessibilityLabel="Board selector" onPress={onPress} style={styles.boardIdentity}>
+      <Pressable
+        accessibilityLabel={`${name}, board selector`}
+        onPress={onPress}
+        style={styles.boardIdentity}
+      >
         <View
           style={[
             styles.statusDot,

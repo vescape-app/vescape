@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   smoke:
-    name: Fixture session smoke run
+    name: Fixture session smoke run (Android)
     # Blacksmith x64 Linux runner: nested virtualisation is supported, so the emulator gets KVM.
     # 8 vCPU / 32 GB is sized for the release Gradle build (the long pole) sharing the box with an
     # emulator that wants ~4 GB to itself; the 160 GB disk also fits the SDK + NDK + Gradle caches.
@@ -156,5 +156,76 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: maestro-debug
+          path: ~/.maestro/tests/
+          if-no-files-found: warn
+
+  # The iOS half of the same run: same `scripts/smoke.ts`, same flow files, a Release simulator
+  # build instead of a Release APK. It is also the only place the app itself is built for iOS —
+  # `bun run test:ios` compiles the module tree, not the Pods, the config plugins or the extensions.
+  smoke-ios:
+    name: Fixture session smoke run (iOS)
+    runs-on: blacksmith-6vcpu-macos-26
+    timeout-minutes: 60
+
+    env:
+      EXPO_PUBLIC_SERVER_URL: https://api.vescape.app
+      EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: ${{ secrets.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN }}
+      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY }}
+      EXPO_PUBLIC_MAPY_API_KEY: ${{ secrets.EXPO_PUBLIC_MAPY_API_KEY }}
+      EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      # Same reason as the Android job: this build is thrown away with the simulator, so there is no
+      # release for the symbols to belong to.
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: useblacksmith/cache/restore@v5
+        id: pods-cache
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: pods-smoke-${{ runner.os }}-${{ hashFiles('bun.lock', 'app.config.ts') }}
+          restore-keys: |
+            pods-smoke-${{ runner.os }}-
+
+      - parallel:
+          - name: Install dependencies
+            run: bun install
+          - name: Install Maestro
+            run: |
+              curl -Ls https://get.maestro.mobile.dev | bash
+              echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      # `scripts/smoke.ts` owns the simulator boot, the Release build, the fixture staging and the
+      # flow order, exactly as it does locally — the workflow only names the device.
+      - name: Run smoke flows
+        run: >-
+          bun run smoke --platform ios --device 'iPhone 17'
+          ${{ inputs.flow && format('--flow {0}', inputs.flow) || '' }}
+
+      - name: Save CocoaPods cache
+        if: always() && steps.pods-cache.outputs.cache-hit != 'true'
+        uses: useblacksmith/cache/save@v5
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: ${{ steps.pods-cache.outputs.cache-primary-key }}
+
+      - name: Upload Maestro debug output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-debug-ios
           path: ~/.maestro/tests/
           if-no-files-found: warn

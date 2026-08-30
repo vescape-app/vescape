@@ -70,7 +70,7 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         onPress={onOpenSelector}
         testID="board-selector-trigger"
         accessibilityRole="button"
-        accessibilityLabel="Board selector"
+        accessibilityLabel={`${name ?? 'No board'}, board selector`}
       >
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         {replay && <ReplayBadge />}
