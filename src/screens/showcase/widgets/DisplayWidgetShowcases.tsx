@@ -1,10 +1,15 @@
-import { Pressable, StyleSheet } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { useState } from 'react'
 
 import { BroadcastIcon, GaugeIcon, JoystickIcon, MapPinIcon, XIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
-import { CollapsibleWidget } from '@/components/widgets/CollapsibleWidget'
+import { ExpandingWidget } from '@/components/widgets/ExpandingWidget'
+import {
+  useWidgetFocusHost,
+  WidgetFocusOverlay,
+  WidgetFocusProvider,
+} from '@/components/overlays/widgetFocus'
 import { Placeholder } from '@/components/base/Placeholder'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { DialWidget } from '@/modules/tune/components/DialWidget'
@@ -14,39 +19,34 @@ import { theme } from '@/constants/theme'
 import { Cell, Row, SizeLabel } from '@/screens/showcase/widgets/WidgetGrid'
 
 /** A horizontal grid row — each `Cell` child takes an equal fraction of the width. */
-export function CollapsibleWidgetShowcase() {
+export function ExpandingWidgetShowcase() {
+  const focus = useWidgetFocusHost()
   return (
-    <ShowcaseCard name="CollapsibleWidget">
-      <SizeLabel>collapsed by default</SizeLabel>
-      <CollapsibleWidget
-        icon={JoystickIcon}
-        title="Tilt"
-        description="Adjust board tilt from your phone in real time."
-        accent={theme.palette.sky.color}
-        expandedHeight={130}
-      >
-        <Placeholder
-          icon={JoystickIcon}
-          description="Expanded control content goes here."
-          style={styles.collapsiblePreview}
-        />
-      </CollapsibleWidget>
-      <SizeLabel>expanded by default</SizeLabel>
-      <CollapsibleWidget
-        icon={JoystickIcon}
-        title="Tilt"
-        description="Adjust board tilt from your phone in real time."
-        accent={theme.palette.sky.color}
-        defaultExpanded
-        expandedHeight={130}
-      >
-        <Placeholder
-          icon={JoystickIcon}
-          description="Expanded control content goes here."
-          style={styles.collapsiblePreview}
-        />
-      </CollapsibleWidget>
+    <ShowcaseCard name="ExpandingWidget">
+      <View ref={focus.rootRef} collapsable={false}>
+        <WidgetFocusProvider host={focus}>
+          <SizeLabel>tap to focus the body</SizeLabel>
+          <ExpandingWidget
+            icon={JoystickIcon}
+            title="Tilt"
+            description="Adjust board tilt from your phone in real time."
+            accent={theme.palette.sky.color}
+            body={ExpandingWidgetPreviewBody}
+          />
+        </WidgetFocusProvider>
+        <WidgetFocusOverlay host={focus} />
+      </View>
     </ShowcaseCard>
+  )
+}
+
+function ExpandingWidgetPreviewBody() {
+  return (
+    <Placeholder
+      icon={JoystickIcon}
+      description="Expanded control content goes here."
+      style={styles.collapsiblePreview}
+    />
   )
 }
 

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { Stepper } from '@/components/forms/Stepper'
-import { CollapsibleWidget } from '@/components/widgets/CollapsibleWidget'
+import { ExpandingWidget } from '@/components/widgets/ExpandingWidget'
 import { theme } from '@/constants/theme'
 import {
   BOARD_MOVE_STRENGTH_MAX_PERCENT,
@@ -12,20 +12,24 @@ import {
   useBoardMoveControl,
 } from '@/modules/board/hooks/useBoardMoveControl'
 
-interface BoardMoveControlProps {
-  collapsible?: boolean
-  defaultExpanded?: boolean
+/**
+ * Board Move: hold a direction to roll the board while it is disengaged. The focused panel also
+ * exposes the move strength, because how much push is enough depends on the board's own remote limits.
+ */
+export function BoardMoveControl() {
+  return (
+    <ExpandingWidget
+      icon={ArrowsDownUpIcon}
+      title="Move"
+      description="Hold to roll the board while you are off it."
+      accent={theme.palette.cyan.color}
+      body={BoardMoveBody}
+      surface={false}
+    />
+  )
 }
 
-/**
- * Board Move: hold a direction to roll the board while it is disengaged. Opening
- * the row also exposes the move strength, because how much push is enough
- * depends on the board's own remote limits.
- */
-export function BoardMoveControl({
-  collapsible = true,
-  defaultExpanded = false,
-}: BoardMoveControlProps) {
+function BoardMoveBody() {
   const {
     canCommand,
     blockedMessage,
@@ -37,16 +41,7 @@ export function BoardMoveControl({
   } = useBoardMoveControl()
 
   return (
-    <CollapsibleWidget
-      icon={ArrowsDownUpIcon}
-      title="Move"
-      description="Hold to roll the board while you are off it."
-      accent={theme.palette.cyan.color}
-      collapsible={collapsible}
-      defaultExpanded={defaultExpanded}
-      expandedHeight={190}
-      surface={false}
-    >
+    <>
       <View style={styles.buttons}>
         <MoveButton
           icon={CaretDownIcon}
@@ -82,7 +77,7 @@ export function BoardMoveControl({
       {!canCommand ? (
         <Text style={styles.disabledNote}>{blockedMessage ?? 'Connect board to move it.'}</Text>
       ) : null}
-    </CollapsibleWidget>
+    </>
   )
 }
 

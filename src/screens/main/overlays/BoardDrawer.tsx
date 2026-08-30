@@ -207,7 +207,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
       </View>
 
       <View style={styles.remoteTiltBox}>
-        <RemoteTiltControl collapsible defaultExpanded={false} />
+        <RemoteTiltControl />
       </View>
 
       {waitingForTrustedLink ? (
