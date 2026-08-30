@@ -29,9 +29,11 @@ class VescFaultCoordinatorTest {
 
     /** Set to fail every write, mirroring a dead Room database. */
     var writesFail = false
+    var writes = 0
 
     override suspend fun upsert(occurrence: VescFaultOccurrence) {
       if (writesFail) error("store write failed")
+      writes += 1
       val existing = rows[occurrence.id]
       // Lifecycle writes never rewrite `dismissed`, matching the DAO's insert-or-advance.
       rows[occurrence.id] = existing?.copy(
@@ -107,9 +109,8 @@ class VescFaultCoordinatorTest {
   }
 
   @Test
-  fun `session loss neither clears nor reactivates`() = runBlocking {
+  fun `a gap in observations neither clears nor reactivates`() = runBlocking {
     coordinator.onActiveFault("board", 9)
-    coordinator.onSessionLost("board")
     clock = 9_000
     // Same code observed again after the session came back: still one unresolved activation.
     coordinator.onActiveFault("board", 9)
@@ -159,6 +160,15 @@ class VescFaultCoordinatorTest {
     store.writesFail = false
     clock = 6_000
     coordinator.onFaultCleared("board")
+    assertEquals(6_000L, faults().single().clearedAtMs)
+
+    // Normal-frame heartbeats keep retrying failed clears, but never rewrite a successful clear.
+    val writesAfterClear = store.writes
+    repeat(5) {
+      clock += 1_000
+      coordinator.onFaultCleared("board")
+    }
+    assertEquals(writesAfterClear, store.writes)
     assertEquals(6_000L, faults().single().clearedAtMs)
   }
 

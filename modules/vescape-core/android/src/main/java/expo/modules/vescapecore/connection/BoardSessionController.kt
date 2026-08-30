@@ -1516,8 +1516,11 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatNormalFrame`
      */
     private fun onRefloatNormalFrame() {
-        if (liveFaultCode == null) return
+        val now = nowMs()
+        // Retry a failed durable clear at the same bounded rate as an active observation.
+        if (liveFaultCode == null && now - lastFaultDispatchAtMs < FAULT_OBSERVATION_INTERVAL_MS) return
         liveFaultCode = null
+        lastFaultDispatchAtMs = now
         val boardId = boardConfig?.appBoardId ?: return
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
         launchWarningWrite { coordinator.onFaultCleared(boardId) }

@@ -28,10 +28,12 @@ final class VescFaultCoordinatorTests: XCTestCase {
 
     /// Set to fail every write, mirroring a dead GRDB pool.
     var writesFail = false
+    var writes = 0
 
     @discardableResult
     func upsert(_ occurrence: VescFaultOccurrence) -> Bool {
       guard !writesFail else { return false }
+      writes += 1
       if rows[occurrence.id] == nil {
         order.append(occurrence.id)
         rows[occurrence.id] = occurrence
@@ -124,10 +126,9 @@ final class VescFaultCoordinatorTests: XCTestCase {
     XCTAssertNil(store.all[1].clearedAtMs)
   }
 
-  func testSessionLossNeitherClearsNorReactivates() {
+  func testGapInObservationsNeitherClearsNorReactivates() {
     let coordinator = makeCoordinator()
     coordinator.onActiveFault(boardId: "board", code: 9)
-    coordinator.onSessionLost(boardId: "board")
     clock = 9_000
     // Same code observed again after the session came back: still one unresolved activation.
     coordinator.onActiveFault(boardId: "board", code: 9)
@@ -175,6 +176,15 @@ final class VescFaultCoordinatorTests: XCTestCase {
     store.writesFail = false
     clock = 6_000
     coordinator.onFaultCleared(boardId: "board")
+    XCTAssertEqual(store.all[0].clearedAtMs, 6_000)
+
+    // Normal-frame heartbeats keep retrying failed clears, but never rewrite a successful clear.
+    let writesAfterClear = store.writes
+    for _ in 0..<5 {
+      clock += 1_000
+      coordinator.onFaultCleared(boardId: "board")
+    }
+    XCTAssertEqual(store.writes, writesAfterClear)
     XCTAssertEqual(store.all[0].clearedAtMs, 6_000)
   }
 

@@ -30,6 +30,7 @@
 - [alerts.md](./alerts.md) — telemetry alerts: storage, native evaluation, Geiger mode
 - [safety.md](./safety.md) — safety warnings & thresholds: firmware pushbacks, faults, voltage cutoffs
 - [board-warnings.md](./board-warnings.md) — Board Warnings catalog: every kind's slug, title, severity, trigger, payload, clear semantics
+- [VESC fault evidence](./adr/0037-vesc-faults-are-board-owned-evidence.md) — live occurrences, past telemetry captures, and the on-demand Controller Fault Log
 - [legal-mode-speed-limits.md](./legal-mode-speed-limits.md) — legal mode: jurisdictions and speed caps
 
 ### Performance

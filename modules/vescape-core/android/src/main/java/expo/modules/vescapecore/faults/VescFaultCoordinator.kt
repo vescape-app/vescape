@@ -81,9 +81,7 @@ class VescFaultCoordinator(
   var onChange: ((boardId: String, faults: List<VescFaultOccurrence>) -> Unit)? = null
 
   /**
-   * VESC Fault Capture lifecycle hooks, wired by the Board Session to [VescFaultCaptureCoordinator].
-   * The occurrence id is the capture's foreign key, so the capture window can only be opened here —
-   * at the exact transition that mints it.
+   * Copy the past telemetry snapshot once, after the new occurrence is persisted.
    * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `onOccurrenceOpened`
    */
   @Volatile
@@ -145,13 +143,6 @@ class VescFaultCoordinator(
     emit(boardId)
   }
 
-  /**
-   * The Board Session ended while a fault may have been active. Deliberately does not close the
-   * occurrence: the controller never said "cleared", and inventing one would fabricate evidence.
-   * In-memory continuity is kept so the same code seen after a reconnect is the same activation.
-   */
-  fun onSessionLost(@Suppress("UNUSED_PARAMETER") boardId: String) = Unit
-
   suspend fun setDismissed(id: String, dismissed: Boolean) {
     if (!store.setDismissed(id, dismissed)) return
     synchronized(lock) {
@@ -162,8 +153,6 @@ class VescFaultCoordinator(
     val boardId = store.getAll().firstOrNull { it.id == id }?.boardId ?: return
     emit(boardId)
   }
-
-  suspend fun faultsForBoard(boardId: String): List<VescFaultOccurrence> = store.getForBoard(boardId)
 
   /** Every occurrence across all Boards — the JS foreground catch-up pull. */
   suspend fun allFaults(): List<VescFaultOccurrence> = store.getAll()

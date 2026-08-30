@@ -68,7 +68,7 @@ Phases: `idle|connecting|discovering|subscribing|waiting_for_telemetry|connected
 1. BLE packet -> `TelemetryCapture` (human units)
 2. Scale to integer state (`FullTelemetryState`) for lossless storage
 3. Delta-encode against previous -> `TelemetryFrameEntity` (nulls = unchanged)
-4. Keyframe every 60s or on gap. Flags: `KEYFRAME=1, HAS_FAULT=2, HAS_LOCATION=4`
+4. Keyframe every 60s or on gap. Flags: `KEYFRAME=1, HAS_LOCATION=4`. Bit 2 is retired.
 5. Queue in-memory (max 1000 pending). Flush on 25 frames or 5s delay
 6. On flush: insert frames + upsert buckets (60s aggregates) + insert markers
 7. Gap marker auto-inserted when sample gap > 90s
@@ -109,7 +109,7 @@ Field omitted (null) when change < threshold from previous:
   sampleCount, gpsPointCount, preciseGpsPointCount,
   maxAbsSpeedKmh, maxGpsSpeedKmh?, avgSpeedKmh, avgSpeedSampleCount,
   minBatteryVoltage?, maxMotorCurrent, maxBatteryCurrent, maxDuty,
-  faultCount, distanceDeltaM?, gpsDistanceM?,
+  distanceDeltaM?, gpsDistanceM?,
   maxTempMosfet?, maxTempMotor?,
   firstLatitude?, firstLongitude?,
   boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop',
@@ -125,10 +125,47 @@ Field omitted (null) when change < threshold from previous:
   speedKmh, batteryVoltage, motorCurrent, batteryCurrent, dutyCycle,
   pitch, roll, balancePitch, balanceCurrent, erpm,
   state, switchState, adc1, adc2, odometer?,
-  tempMosfet?, tempMotor?, hasFault, faultCode,
+  tempMosfet?, tempMotor?,
   latitude?, longitude?
 }
 ```
+
+## VESC faults
+
+Native owns durable, Board-scoped live fault occurrences and their past telemetry captures.
+They are independent of Ride History and Board Warnings. Refloat fault-only responses do not
+produce telemetry samples or minute-bucket counts.
+
+| fn                                     | returns                                   | notes                                                                                                                                        |
+| -------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getVescFaults()`                      | `Promise<VescFaultOccurrence[]>`          | All Boards; JS groups the result by Board.                                                                                                   |
+| `setVescFaultDismissed(id, dismissed)` | `Promise<void>`                           | Acknowledges or restores one occurrence without deleting evidence.                                                                           |
+| `getVescFaultCapture(occurrenceId)`    | `Promise<VescFaultCaptureDetail \| null>` | Past snapshot, samples oldest first.                                                                                                         |
+| `readVescFaultLog(boardId)`            | `Promise<string>`                         | Fixed read-only `faults` command; matching Board must be connected and report a finite speed at most 1 km/h. Rejects unavailable/busy reads. |
+
+```ts
+VescFaultOccurrence = {
+  id, boardId, code, occurredAtMs, lastObservedAtMs,
+  clearedAtMs: number | null, dismissed: boolean
+}
+VescFaultCaptureDetail = {
+  occurrenceId, boardId, startedAtMs, openedAtMs, sampleCount,
+  samples: VescFaultCaptureSample[]
+}
+```
+
+Each capture copies up to five seconds from the existing native live window once, at detection.
+It has no future tail or GPS. Sample fields and nullability are defined in
+`modules/vescape-core/src/index.ts`, `VescFaultCaptureSample`.
+
+`onVescFaults` emits `{ boardId, faults: VescFaultOccurrence[] }`, a full replacement list for one
+Board. JS also pulls on startup and foreground to catch changes made while backgrounded.
+`vescFaultCollectionEnabled` defaults to true; disabling it stops new live collection and fault
+indicators, but preserves existing evidence and access to the Controller Fault Log.
+
+The fault drawer requests the Controller Fault Log once when opened. Its raw text is ephemeral;
+it never creates occurrences, warnings, baselines, or persisted register snapshots. See
+[ADR 0037](./adr/0037-vesc-faults-are-board-owned-evidence.md).
 
 ## Telemetry deletion
 
@@ -327,7 +364,7 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 ### TelemetryEvent shape (live, not history)
 
 ```ts
-{ generation?, location?, hasFault, faultCode,
+{ generation?, location?,
   pitch, roll, balancePitch, balanceCurrent,
   speed, batteryVoltage, motorCurrent, batteryCurrent, erpm, dutyCycle,
   state, stateName, switchState, adc1, adc2, odometer?, tempMosfet?, tempMotor?,

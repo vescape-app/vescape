@@ -2122,8 +2122,14 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onRefloatNormalFrame`
   private func onRefloatNormalFrame() {
     updateLiveFault(activeCode: nil)
-    guard lastDispatchedFaultCode != nil else { return }
+    let timestamp = nowMs()
+    // Retry a failed durable clear at the same bounded rate as an active observation.
+    if lastDispatchedFaultCode == nil,
+       timestamp - lastFaultDispatchAtMs < VescFaultCoordinator.observationWriteIntervalMs {
+      return
+    }
     lastDispatchedFaultCode = nil
+    lastFaultDispatchAtMs = timestamp
     guard let boardId = config?.appBoardId else { return }
     VescFaultCoordinator.shared.onFaultCleared(boardId: boardId)
   }

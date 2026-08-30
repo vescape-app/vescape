@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// DB-backed storage for VESC Fault Captures: one metadata row per occurrence plus its append-only
+/// DB-backed storage for VESC Fault Captures: one metadata row per occurrence plus its retained
 /// decoded samples. Deliberately outside Ride History — no GPS, no telemetry frames, no minute
 /// buckets, and no retention pruning ever touches these rows.
 ///

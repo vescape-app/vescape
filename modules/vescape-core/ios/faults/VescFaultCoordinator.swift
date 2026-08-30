@@ -70,9 +70,7 @@ final class VescFaultCoordinator {
   /// Set by the bridge to push the full fault list for one Board to JS on every change.
   var onChange: ((String, [VescFaultOccurrence]) -> Void)?
 
-  /// VESC Fault Capture lifecycle hooks, wired by the Board Session to `VescFaultCaptureCoordinator`.
-  /// The occurrence id is the capture's foreign key, so the capture window can only be opened here —
-  /// at the exact transition that mints it.
+  /// Copy the past telemetry snapshot once, after the new occurrence is persisted.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `onOccurrenceOpened`
   var onOccurrenceOpened: ((VescFaultOccurrence) -> Void)?
 
@@ -160,11 +158,6 @@ final class VescFaultCoordinator {
     emit(boardId)
   }
 
-  /// The Board Session ended while a fault may have been active. Deliberately does not close the
-  /// occurrence: the controller never said "cleared", and inventing one would fabricate evidence.
-  /// In-memory continuity is kept so the same code seen after a reconnect is the same activation.
-  func onSessionLost(boardId: String) {}
-
   func setDismissed(id: String, dismissed: Bool) {
     guard store.setDismissed(id, dismissed) else { return }
     lock.lock()
@@ -175,8 +168,6 @@ final class VescFaultCoordinator {
     guard let boardId = store.getAll().first(where: { $0.id == id })?.boardId else { return }
     emit(boardId)
   }
-
-  func faultsForBoard(_ boardId: String) -> [VescFaultOccurrence] { store.getForBoard(boardId) }
 
   /// Every occurrence across all Boards — the JS foreground catch-up pull.
   func allFaults() -> [VescFaultOccurrence] { store.getAll() }

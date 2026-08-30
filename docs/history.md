@@ -24,7 +24,7 @@ Main files:
 
 `telemetry_frames` stores board telemetry samples and any precise GPS fix attached to those telemetry samples. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`telemetry_minute_buckets` stores minute-level summaries used by history lists. Buckets include sample counts, GPS counts, distance, speed, fault count, and battery/current summaries.
+`telemetry_minute_buckets` stores minute-level summaries used by history lists. Buckets include sample counts, GPS counts, distance, speed, and battery/current summaries. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
 `telemetry_markers` stores ride boundaries and abnormal events. Current marker types include:
 
