@@ -18,7 +18,6 @@ internal struct TelemetryBucket {
   var maxMotorCurrentAbsMa = 0
   var maxBatteryCurrentAbsMa = 0
   var maxDutyAbsPermille = 0
-  var faultCount = 0
   var firstOdometerCm: Int64?
   var lastOdometerCm: Int64?
   var gpsPointCount = 0
@@ -50,7 +49,6 @@ internal struct TelemetryBucket {
     maxMotorCurrentAbsMa = max(maxMotorCurrentAbsMa, abs(point.motorCurrentMa))
     maxBatteryCurrentAbsMa = max(maxBatteryCurrentAbsMa, abs(point.batteryCurrentMa))
     if !point.excludedFromMaxDuty { maxDutyAbsPermille = max(maxDutyAbsPermille, abs(point.dutyPermille)) }
-    if point.hasFault { faultCount += 1 }
     if firstOdometerCm == nil { firstOdometerCm = point.odometerCm }
     if point.odometerCm != nil { lastOdometerCm = point.odometerCm }
     maxTempMosfetDeciC = telemetryMaxOptional(maxTempMosfetDeciC, point.tempMosfetDeciC)

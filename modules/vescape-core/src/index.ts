@@ -439,8 +439,6 @@ export interface TelemetryEvent {
   location?: LocationEvent | null
   metricExclusions?: Record<string, boolean>
   metricExclusionUpdates?: LiveMetricExclusionUpdate[]
-  hasFault: boolean
-  faultCode: number
   pitch: number
   roll: number
   balancePitch: number
@@ -612,7 +610,6 @@ export interface TelemetryMinuteBucket {
   maxMotorCurrent: number
   maxBatteryCurrent: number
   maxDuty: number
-  faultCount: number
   distanceDeltaM: number | null
   gpsDistanceM: number | null
   maxTempMosfet: number | null
@@ -659,8 +656,6 @@ export interface TelemetrySample {
   odometer: number | null
   tempMosfet: number | null
   tempMotor: number | null
-  hasFault: boolean
-  faultCode: number
   latitude: number | null
   longitude: number | null
 }
@@ -723,7 +718,7 @@ export interface HistoryRange {
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
  */
-const SAMPLE_COLUMN_COUNT = 25
+const SAMPLE_COLUMN_COUNT = 23
 
 /**
  * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer (25
@@ -792,10 +787,8 @@ function decodeBoardSamples(
       odometer: nullableLane(lanes[o + 18]),
       tempMosfet: nullableLane(lanes[o + 19]),
       tempMotor: nullableLane(lanes[o + 20]),
-      hasFault: lanes[o + 21] !== 0,
-      faultCode: lanes[o + 22],
-      latitude: nullableLane(lanes[o + 23]),
-      longitude: nullableLane(lanes[o + 24]),
+      latitude: nullableLane(lanes[o + 21]),
+      longitude: nullableLane(lanes[o + 22]),
     }
   }
   return samples
@@ -1015,7 +1008,6 @@ export interface RideHistorySession {
   maxLatitude: number | null
   minLongitude: number | null
   maxLongitude: number | null
-  faultCount: number
   boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
   routePoints: RideRoutePoint[]
 }
@@ -1103,6 +1095,12 @@ export interface AppSettings {
    * and reappear on re-enable. Takes effect live, no reconnect needed.
    */
   boardWarningsEnabled: boolean
+  /**
+   * `VESC Fault Collection` master switch (kill switch). Off ⇒ native stops live fault trigger
+   * handling and every new fault write, and JS hides fault-driven indicators. Stored occurrences
+   * stay readable and dismissible. Deliberately independent of `boardWarningsEnabled`.
+   */
+  vescFaultCollectionEnabled: boolean
   /**
    * Android-only: minutes to pause companion auto start after the user exits the app
    * manually, so the board reappearing doesn't immediately relaunch it. 0 = off.
@@ -1444,6 +1442,94 @@ export interface BoardWarning {
 export interface BoardWarningsEvent {
   boardId: string
   warnings: BoardWarning[]
+}
+
+/**
+ * One durable VESC Fault Occurrence: a single activation of a controller fault code on one Board.
+ *
+ * Unlike a `BoardWarning` this is a time series — the same `code` activating twice is two rows, so
+ * `id` is the identity. `code` is the canonical value; display mapping must fall back safely for
+ * codes this app version does not know.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `VescFaultOccurrence`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `VescFaultOccurrence`
+ */
+export interface VescFaultOccurrence {
+  id: string
+  boardId: string
+  code: number
+  /** When the live activation was observed. */
+  occurredAtMs: number
+  lastObservedAtMs: number
+  /** Set once the controller reported a clear or a different code. Null = still open. */
+  clearedAtMs: number | null
+  dismissed: boolean
+}
+
+/**
+ * Full current occurrence list for one Board, emitted on every change and on subscribe. Same
+ * full-slice mirror contract as `BoardWarningsEvent`, on its own channel.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendVescFaults`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onVescFaults`
+ */
+export interface VescFaultsEvent {
+  boardId: string
+  faults: VescFaultOccurrence[]
+}
+
+/**
+ * One decoded Board sample retained inside a VESC Fault Capture.
+ *
+ * A projection of the decoded live tick, not a Telemetry Sample: no GPS, no Ride History fields,
+ * and no dependency on Ride Recording. Every field is nullable because a firmware may simply not
+ * report it. `capturedAtMs` is the decoded packet time, so the series describes the Board Session's
+ * achieved response rate rather than a fixed cadence.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCaptureSample`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCaptureCoordinator.kt `VescFaultCaptureSample`
+ */
+export interface VescFaultCaptureSample {
+  capturedAtMs: number
+  speed: number | null
+  dutyCycle: number | null
+  erpm: number | null
+  batteryVoltage: number | null
+  batteryCurrent: number | null
+  motorCurrent: number | null
+  tempMosfet: number | null
+  tempMotor: number | null
+  pitch: number | null
+  roll: number | null
+  balancePitch: number | null
+  adc1: number | null
+  adc2: number | null
+  state: number | null
+}
+
+/**
+ * Metadata for telemetry copied from the native recent window when the fault was detected.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCapture`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCaptureCoordinator.kt `VescFaultCapture`
+ */
+export interface VescFaultCapture {
+  occurrenceId: string
+  boardId: string
+  /** Intended window start: detection minus the five-second pre-roll. */
+  startedAtMs: number
+  /** Detection time — the boundary between pre-roll and incident. */
+  openedAtMs: number
+  sampleCount: number
+}
+
+/**
+ * A capture and its samples, as returned by `getVescFaultCapture`. Samples are ordered oldest
+ * first.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultCapture`
+ */
+export interface VescFaultCaptureDetail extends VescFaultCapture {
+  samples: VescFaultCaptureSample[]
 }
 
 /**
@@ -1866,6 +1952,8 @@ type VescapeCoreEvents = {
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
   onBoardWarnings: (event: BoardWarningsEvent) => void
+  /** Full current VESC Fault Occurrence list for a board, on every change and on subscribe. */
+  onVescFaults: (event: VescFaultsEvent) => void
   /** Board Config Values arrived, changed, or were cleared (`values: null`). */
   onBoardConfigValues: (event: BoardConfigValuesEvent) => void
   onMotorConfigValues: (event: MotorConfigValuesEvent) => void
@@ -1997,6 +2085,10 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     payloadJson: string,
   ): Promise<void>
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
+  getVescFaults(): Promise<VescFaultOccurrence[]>
+  setVescFaultDismissed(id: string, dismissed: boolean): Promise<void>
+  getVescFaultCapture(occurrenceId: string): Promise<VescFaultCaptureDetail | null>
+  readVescFaultLog(boardId: string): Promise<string>
   getBoardConfigValues(): Promise<BoardConfigValues | null>
   getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
   getMotorConfigValues(): Promise<MotorConfigValues | null>
@@ -2704,6 +2796,37 @@ export async function devReportCleanBoardWarning(boardId: string, kind: string):
   return native.devReportCleanBoardWarning(boardId, kind)
 }
 
+/** Every VESC Fault Occurrence across all Boards, newest first per Board. */
+export async function getVescFaults(): Promise<VescFaultOccurrence[]> {
+  return native.getVescFaults()
+}
+
+/**
+ * Acknowledge (or restore) one occurrence. Dismissal is per occurrence and never deletes it — a
+ * later activation of the same code arrives as a new, undismissed occurrence.
+ */
+export async function setVescFaultDismissed(id: string, dismissed: boolean): Promise<void> {
+  return native.setVescFaultDismissed(id, dismissed)
+}
+
+/**
+ * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board sample
+ * retained before the incident, oldest first. Null when collection was disabled when it opened.
+ */
+export async function getVescFaultCapture(
+  occurrenceId: string,
+): Promise<VescFaultCaptureDetail | null> {
+  return native.getVescFaultCapture(occurrenceId)
+}
+
+/** Read official VESC `faults` terminal output on demand. Board must be connected and stopped.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `readVescFaultLog`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `readVescFaultLog`
+ */
+export async function readVescFaultLog(boardId: string): Promise<string> {
+  return native.readVescFaultLog(boardId)
+}
+
 export async function getDatabaseSizeBytes(): Promise<number> {
   return native.getDatabaseSizeBytes()
 }
@@ -3112,6 +3235,10 @@ export function addAppDataChangedListener(
   cb: (event: AppDataChangedEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onAppDataChanged', cb)
+}
+
+export function addVescFaultsListener(cb: (event: VescFaultsEvent) => void): EventSubscription {
+  return emitter.addListener('onVescFaults', cb)
 }
 
 export function addBoardWarningsListener(

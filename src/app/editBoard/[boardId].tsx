@@ -3,7 +3,7 @@ import type { View } from 'react-native'
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import { BracketsCurlyIcon, WarningIcon } from 'phosphor-react-native'
+import { BracketsCurlyIcon, EngineIcon, WarningDiamondIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { BoardBatteryEditorModal } from '@/modules/board/components/BoardBatteryEditorModal'
@@ -16,6 +16,8 @@ import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { EditBoardSettings } from '@/modules/board/components/EditBoardSettings'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
+import { VescFaultsSheet } from '@/modules/board/components/VescFaultsSheet'
+import { EMPTY_FAULTS, useVescFaultsStore } from '@/modules/board/store/vescFaultsStore'
 import { useEditBoardForm } from '@/modules/board/hooks/useEditBoardForm'
 import { routes } from '@/navigation/routes'
 import { useBoardStore } from '@/modules/board/store/boardStore'
@@ -34,12 +36,16 @@ export default function EditBoardScreen() {
   )
   const navigation = useNavigation()
   const editingBoard = boards.find((b) => b.id === boardId)
-  // Kill switch off hides the whole Board Warnings surface, matching BoardWarningControl.
+  // Kill switch off hides the whole Board Warnings surface, matching the board pill.
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const storedWarnings = useBoardWarningsStore((s) => s.warningsByBoard[boardId] ?? EMPTY_WARNINGS)
   const warnings = boardWarningsEnabled ? storedWarnings : EMPTY_WARNINGS
+  // Fault evidence stays readable with collection off; only the indicator is suppressed.
+  const faults = useVescFaultsStore((s) => s.faultsByBoard[boardId] ?? EMPTY_FAULTS)
   const warningsAnchorRef = useRef<View>(null)
   const [warningsOpen, setWarningsOpen] = useState(false)
+  const faultsAnchorRef = useRef<View>(null)
+  const [faultsOpen, setFaultsOpen] = useState(false)
   const [batteryModalVisible, setBatteryModalVisible] = useState(false)
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const [removeSaving, setRemoveSaving] = useState(false)
@@ -127,6 +133,9 @@ export default function EditBoardScreen() {
             warningCounts={warningCounts}
             warningsAnchorRef={warningsAnchorRef}
             onOpenWarnings={() => setWarningsOpen(true)}
+            faultCount={faults.length}
+            faultsAnchorRef={faultsAnchorRef}
+            onOpenFaults={() => setFaultsOpen(true)}
             onOpenBattery={() => setBatteryModalVisible(true)}
             onLink={handleLink}
             onRelink={handleRelink}
@@ -140,11 +149,27 @@ export default function EditBoardScreen() {
         visible={warningsOpen}
         triggerRef={warningsAnchorRef}
         title="Warnings"
-        icon={WarningIcon}
+        icon={EngineIcon}
         iconColor={theme.status.caution.color}
         onClose={() => setWarningsOpen(false)}
       >
         <BoardWarningsSheet boardId={editingBoard.id} warnings={warnings} />
+      </EdgeDrawer>
+
+      <EdgeDrawer
+        visible={faultsOpen}
+        triggerRef={faultsAnchorRef}
+        title="VESC faults"
+        icon={WarningDiamondIcon}
+        iconColor={theme.status.caution.color}
+        onClose={() => setFaultsOpen(false)}
+      >
+        <VescFaultsSheet
+          key={editingBoard.id}
+          boardId={editingBoard.id}
+          faults={faults}
+          visible={faultsOpen}
+        />
       </EdgeDrawer>
 
       <BoardBatteryEditorModal

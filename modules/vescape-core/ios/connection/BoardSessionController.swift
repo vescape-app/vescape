@@ -2,6 +2,11 @@ import Foundation
 import UIKit
 import UserNotifications
 
+/// Sentinel active fault code meaning "state not yet established this Board Session".
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `FAULT_CODE_UNKNOWN`
+private let faultCodeUnknown = -1
+private let manualFaultLogMaxSpeedKmh = 1.0
+
 /// Everything a runtime connect needs, resolved from the stored Board Link before the session
 /// starts. The transport is already known (ADR 0015 / #108) — connect never discovers it.
 internal struct BoardConnectConfig {
@@ -216,6 +221,11 @@ internal final class BoardSessionController: VescGattListener {
   /// activity when the shown value actually changes.
   private var liveBatteryVoltage: Double?
   private var liveFaultCode: Int?
+  /// Last active Refloat fault code dispatched to the fault coordinator this Board Session.
+  /// `faultCodeUnknown` means "not yet established", which forces one dispatch either way.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `liveFaultCode`
+  private var lastDispatchedFaultCode: Int? = faultCodeUnknown
+  private var lastFaultDispatchAtMs: Int64 = 0
   /// Rate-limit for voltage-driven Live Activity refreshes. Android updates its notification every
   /// telemetry frame; iOS must respect the ActivityKit update budget, so frequent voltage jitter is
   /// throttled while phase / percent / fault changes still refresh immediately.
@@ -700,6 +710,20 @@ internal final class BoardSessionController: VescGattListener {
     )
     movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: settings).movingSpeedThresholdCentiKmh
     let warningsWereEnabled = boardWarningsEnabled
+    // `VESC Fault Collection` is its own kill switch — deliberately not gated on
+    // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
+    let collectionWasEnabled = VescFaultCoordinator.shared.collectionEnabled
+    let collectionEnabled = settings["vescFaultCollectionEnabled"] as? Bool ?? true
+    VescFaultCoordinator.shared.collectionEnabled = collectionEnabled
+    // The switch must stop capture persistence too, without deleting stored evidence.
+    VescFaultCaptureCoordinator.shared.setCollectionEnabled(collectionEnabled)
+    if !collectionWasEnabled, collectionEnabled {
+      // Transitions were dropped while disabled, so the controller's edge state is a lie. Reset it
+      // to unknown so the next frame — fault or normal — reconciles the coordinator with what the
+      // controller is actually reporting.
+      lastDispatchedFaultCode = faultCodeUnknown
+      lastFaultDispatchAtMs = 0
+    }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
@@ -901,6 +925,8 @@ internal final class BoardSessionController: VescGattListener {
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
+    faultLogReader?.cancel()
+    faultLogReader = nil
     session?.invalidate()
     stopPolling()
     stopReconnect()
@@ -952,6 +978,8 @@ internal final class BoardSessionController: VescGattListener {
     }
     let sessionSettings = appData.getSettings()
     movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: sessionSettings).movingSpeedThresholdCentiKmh
+    VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
+    wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
     recordingCoordinator.beginBoardSession(config: config)
     beginGpsSessionDiagnostics()
@@ -1003,6 +1031,10 @@ internal final class BoardSessionController: VescGattListener {
     liveBatteryVoltage = nil
     liveFaultCode = nil
     criticalNotificationFaultCode = nil
+    // Unknown fault state: the first frame of the session always reaches the fault coordinator, so a
+    // fault that opened before a restart is closed by the first normal frame after it.
+    lastDispatchedFaultCode = faultCodeUnknown
+    lastFaultDispatchAtMs = 0
     lastLiveTelemetryRefreshAt = 0
     setPhase(.connecting)
     if let session {
@@ -1057,6 +1089,8 @@ internal final class BoardSessionController: VescGattListener {
       }
     }
     recordGpsSessionSummary()
+    faultLogReader?.cancel()
+    faultLogReader = nil
     session?.invalidate()
     session = nil
     config = nil
@@ -1440,6 +1474,10 @@ internal final class BoardSessionController: VescGattListener {
       handleMcconfPayload(Array(payload[1...]))
     case COMM_FORWARD_CAN where payload.count >= 4 && Int(payload[2]) == COMM_GET_MCCONF:
       handleMcconfPayload(Array(payload[3...]))
+    case COMM_PRINT where payload.count >= 2:
+      handlePrintPayload(Array(payload[1...]))
+    case COMM_FORWARD_CAN where payload.count >= 4 && Int(payload[2]) == COMM_PRINT:
+      handlePrintPayload(Array(payload[3...]))
     default:
       break
     }
@@ -1454,11 +1492,21 @@ internal final class BoardSessionController: VescGattListener {
       pullRateHz: measuredRateHz()
     ) else { return }
 
+    // A valid mode-69 response still paces the response-driven poll loop — the frame is a real
+    // answer, it just carries no metrics.
     onPollResponse(session: session)
     lastTelemetryAt = now
     armStaleWatchdog(session: session)
     markBoardReady()
     startLinkIntegrityProbe(session: session)
+    if telemetry.hasFault {
+      // Refloat fault mode: a state signal with zeroed metrics, never a Telemetry Sample. It
+      // opens/extends a VESC Fault Occurrence and stops here — persisting or aggregating it would
+      // poison Ride History with a frame of zeros.
+      onRefloatFaultFrame(telemetry.faultCode)
+      return
+    }
+    onRefloatNormalFrame()
     emitTelemetry(telemetry)
   }
 
@@ -1842,7 +1890,6 @@ internal final class BoardSessionController: VescGattListener {
       tick["firedAlerts"] = firedAlerts
     }
     updateLiveBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
-    updateLiveFault(telemetry)
     emit?("onLiveTick", tick)
 
     if let capture = telemetryCapture(telemetry) {
@@ -1980,14 +2027,121 @@ internal final class BoardSessionController: VescGattListener {
     }
   }
 
+  // MARK: - Manual VESC fault log
+
+  /// One user-requested terminal read at a time. Output is returned directly and never parsed,
+  /// persisted, or converted into fault occurrences.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `faultLogReader`
+  private var faultLogReader: VescFaultLogReader?
+
+  /// Read official VESC `faults` output on explicit user action. Refuse while moving because
+  /// terminal traffic competes with response-paced ride telemetry.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `readVescFaultLog`
+  func readVescFaultLog(
+    boardId: String,
+    onSuccess: @escaping (String) -> Void,
+    onError: @escaping (String, String) -> Void
+  ) {
+    guard phase == .connected, config?.appBoardId == boardId, let session, let config else {
+      onError("VESC_FAULT_LOG_BOARD_NOT_CONNECTED", "Matching Board must be connected")
+      return
+    }
+    guard let speed = latestTelemetry?.speed, abs(speed) <= manualFaultLogMaxSpeedKmh else {
+      onError("VESC_FAULT_LOG_BOARD_MOVING", "Stop the Board before reading controller fault log")
+      return
+    }
+    guard faultLogReader == nil else {
+      onError("VESC_FAULT_LOG_BUSY", "Controller fault log read already in progress")
+      return
+    }
+    let reader = VescFaultLogReader(startedAtMs: nowMs(), onSuccess: onSuccess, onError: onError)
+    faultLogReader = reader
+    _ = sendPayloadWithRetry(buildFaultsTerminalCommand(config.transport), session: session)
+    scheduleFaultLogTick(session: session)
+  }
+
+  private func scheduleFaultLogTick(session: BoardSession) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + VescFaultLogReader.tickSeconds) {
+      [weak self, weak session] in
+      guard let self, let session, session === self.session, session.isActive else { return }
+      guard let reader = self.faultLogReader else { return }
+      guard reader.poll(self.nowMs()) else {
+        self.scheduleFaultLogTick(session: session)
+        return
+      }
+      self.faultLogReader = nil
+    }
+  }
+
+  /// Feed one `COMM_PRINT` frame to the in-flight read. Terminal text is deliberately isolated here
+  /// and never reaches telemetry parsing; without an active read the bytes are dropped, because
+  /// Vescape has no other reason to be listening to the controller's console.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `handlePrintPayload`
+  private func handlePrintPayload(_ body: [UInt8]) {
+    faultLogReader?.onPrintChunk(body, atMs: nowMs())
+  }
+
+  /// Point the VESC Fault Capture coordinator at this session's recent decoded window and at the
+  /// occurrence transitions that mint capture ids. Reuses `LiveSeriesEmitter.recentSnapshot` — the
+  /// same buffer behind `board.recentTelemetry` — rather than adding a second always-on pre-fault
+  /// buffer.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `wireFaultCaptures`
+  private func wireFaultCaptures() {
+    let captures = VescFaultCaptureCoordinator.shared
+    captures.recentWindow = { [weak self] in self?.liveSeries.recentSnapshot() ?? [] }
+    captures.setCollectionEnabled(VescFaultCoordinator.shared.collectionEnabled)
+    VescFaultCoordinator.shared.onOccurrenceOpened = { occurrence in
+      captures.capturePast(
+        occurrenceId: occurrence.id,
+        boardId: occurrence.boardId,
+        openedAtMs: occurrence.occurredAtMs
+      )
+    }
+  }
+
+  /// Refloat reported an active fault code. Independent of Ride Recording and Board Warnings: the
+  /// VESC Fault Occurrence is Board-owned durable truth.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onRefloatFaultFrame`
+  private func onRefloatFaultFrame(_ code: Int) {
+    updateLiveFault(activeCode: code)
+    guard let boardId = config?.appBoardId else { return }
+    let timestamp = nowMs()
+    // Edge-triggered plus a slow heartbeat: a fault can repeat at the full poll rate, and one
+    // occurrence must not cost one durable write per frame.
+    if lastDispatchedFaultCode == code,
+       timestamp - lastFaultDispatchAtMs < VescFaultCoordinator.observationWriteIntervalMs {
+      return
+    }
+    lastDispatchedFaultCode = code
+    lastFaultDispatchAtMs = timestamp
+    VescFaultCoordinator.shared.onActiveFault(boardId: boardId, code: code)
+  }
+
+  /// Refloat reported a normal `ALLDATA` frame — the controller is not faulting, so any open
+  /// occurrence for this Board is closed.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onRefloatNormalFrame`
+  private func onRefloatNormalFrame() {
+    updateLiveFault(activeCode: nil)
+    let timestamp = nowMs()
+    // Retry a failed durable clear at the same bounded rate as an active observation.
+    if lastDispatchedFaultCode == nil,
+       timestamp - lastFaultDispatchAtMs < VescFaultCoordinator.observationWriteIntervalMs {
+      return
+    }
+    lastDispatchedFaultCode = nil
+    lastFaultDispatchAtMs = timestamp
+    guard let boardId = config?.appBoardId else { return }
+    VescFaultCoordinator.shared.onFaultCleared(boardId: boardId)
+  }
+
   /// Reflect fault state in the Live Activity on the rising/falling edge of a sustained fault.
   /// Mirrors Android surfacing faults through the persistent notification (edge-triggered, one
   /// update per state change rather than one per frame).
-  private func updateLiveFault(_ telemetry: RefloatTelemetry) {
-    if telemetry.hasFault {
-      guard liveFaultCode != telemetry.faultCode else { return }
-      liveFaultCode = telemetry.faultCode
-      presentCriticalFaultNotificationIfAllowed(faultCode: telemetry.faultCode)
+  private func updateLiveFault(activeCode: Int?) {
+    if let activeCode {
+      guard liveFaultCode != activeCode else { return }
+      liveFaultCode = activeCode
+      presentCriticalFaultNotificationIfAllowed(faultCode: activeCode)
     } else {
       guard liveFaultCode != nil else { return }
       liveFaultCode = nil

@@ -562,6 +562,72 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
+  // `deleteBoardWithSettings`: fault evidence outlives the Board record.
+  // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
+
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId ORDER BY occurred_at DESC, rowid DESC")
+  suspend fun getVescFaults(boardId: String): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, occurred_at DESC, rowid DESC")
+  suspend fun getAllVescFaults(): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE id = :id LIMIT 1")
+  suspend fun getVescFault(id: String): VescFaultOccurrenceEntity?
+
+  /** Newest still-open occurrence for a Board — rehydrates coordinator state after restart. */
+  @Query(
+    "SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId AND cleared_at IS NULL " +
+      "ORDER BY occurred_at DESC, rowid DESC LIMIT 1",
+  )
+  suspend fun getOpenVescFault(boardId: String): VescFaultOccurrenceEntity?
+
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertVescFault(fault: VescFaultOccurrenceEntity): Long
+
+  @Query(
+    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt WHERE id = :id",
+  )
+  suspend fun updateVescFaultLifecycle(
+    id: String,
+    lastObservedAt: Long,
+    clearedAt: Long?,
+  )
+
+  /**
+   * Insert-or-advance. Deliberately not a `REPLACE` upsert: that rewrites `dismissed` from the
+   * caller's in-memory snapshot, so a stale heartbeat could un-dismiss what the rider just
+   * acknowledged. Dismissal has its own statement.
+   */
+  @Transaction
+  suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
+    if (insertVescFault(fault) == -1L) {
+      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs)
+    }
+  }
+
+  @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
+  suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int
+
+  // VESC Fault Captures — one self-contained window of decoded Board samples per occurrence. Append
+  // only, no GPS, and outside every Ride History retention/pruning path.
+  // @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift
+
+  @Upsert
+  suspend fun upsertVescFaultCapture(capture: VescFaultCaptureEntity)
+
+  @Query("SELECT * FROM vesc_fault_captures WHERE occurrence_id = :occurrenceId LIMIT 1")
+  suspend fun getVescFaultCapture(occurrenceId: String): VescFaultCaptureEntity?
+
+  @Insert
+  suspend fun insertVescFaultCaptureSamples(samples: List<VescFaultCaptureSampleEntity>)
+
+  @Query(
+    "SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = :occurrenceId " +
+      "ORDER BY captured_at ASC, id ASC",
+  )
+  suspend fun getVescFaultCaptureSamples(occurrenceId: String): List<VescFaultCaptureSampleEntity>
+
   @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
   suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
 
@@ -682,7 +748,6 @@ private fun TelemetryMinuteBucketEntity.merge(next: TelemetryMinuteBucketEntity)
     batteryUsedWhMilli = batteryUsedWhMilli + next.batteryUsedWhMilli,
     batteryRegenWhMilli = batteryRegenWhMilli + next.batteryRegenWhMilli,
     maxDutyAbsPermille = maxOf(maxDutyAbsPermille, next.maxDutyAbsPermille),
-    faultCount = faultCount + next.faultCount,
     firstOdometerCm = when {
       firstOdometerCm == null -> next.firstOdometerCm
       next.firstOdometerCm == null -> firstOdometerCm

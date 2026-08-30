@@ -66,7 +66,6 @@ function sessionFromBucket(bucket: TelemetryMinuteBucket): RideHistorySession {
     maxLatitude: bucket.firstLatitude,
     minLongitude: bucket.firstLongitude,
     maxLongitude: bucket.firstLongitude,
-    faultCount: bucket.faultCount,
     boundaryBefore: bucket.boundaryBefore,
     routePoints: point,
   }
@@ -405,7 +404,6 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     maxLatitude: null,
     minLongitude: null,
     maxLongitude: null,
-    faultCount: ride.faultCount,
     routePoints: [],
     id: `${ride.deviceId}:${ride.startAtMs}:${ride.endAtMs}`,
   })

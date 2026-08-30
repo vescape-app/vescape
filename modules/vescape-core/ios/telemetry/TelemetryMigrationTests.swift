@@ -73,6 +73,35 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(applied, Set(TelemetryDatabase.migrator.migrations))
   }
 
+  /// The fault migration is the only one that rewrites telemetry tables, so assert both halves:
+  /// the fault tables arrive and the legacy per-frame fault storage is gone without losing frames.
+  func testFaultMigrationDropsLegacyTelemetryFaultStorageAndKeepsFrames() throws {
+    try migrate(upTo: "v36_motor_config_values")
+    // iOS is greenfield and never created the fault columns, so the rebuild branch only runs for a
+    // restored Room database. Add them by hand to arrive at the migration the way that backup does.
+    try queue.write { db in
+      try db.execute(sql: """
+        ALTER TABLE telemetry_frames ADD COLUMN fault_code INTEGER;
+        ALTER TABLE telemetry_minute_buckets ADD COLUMN fault_count INTEGER;
+        INSERT INTO telemetry_frames (captured_at_ms, elapsed_realtime_ms, flags, changed_mask_1,
+          changed_mask_2, speed_centi_kmh, fault_code)
+        VALUES (1000, 5, 0, 0, 0, 2500, 9);
+        """)
+    }
+
+    try migrate()
+
+    XCTAssertFalse(try columnNames("telemetry_frames").contains("fault_code"))
+    XCTAssertFalse(try columnNames("telemetry_minute_buckets").contains("fault_count"))
+    let speeds = try queue.read { db in
+      try Int.fetchAll(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames")
+    }
+    XCTAssertEqual(speeds, [2500])
+    for table in ["vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples"] {
+      XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
+    }
+  }
+
   /// Tables the migrator delegates to a store's `createTables` are the easy ones to leave out of a
   /// fresh install, so assert the schema a clean upgrade actually lands on.
   func testFreshDatabaseHasEveryStoreTable() throws {
@@ -82,7 +111,7 @@ final class TelemetryMigrationTests: XCTestCase {
       "boards", "board_settings", "alerts", "app_settings", "telemetry_frames",
       "telemetry_minute_buckets", "telemetry_markers", "metric_exclusion_ranges",
       "diagnostic_events", "tune_profiles", "tune_history_entries", "board_warnings", "favorites",
-      "favorite_media",
+      "favorite_media", "vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples",
     ]
     for table in tables {
       XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")

@@ -280,6 +280,19 @@ internal class TelemetryPipeline(
         staleHandle = null
     }
 
+    /**
+     * A valid Refloat response arrived that is not a Telemetry Sample (mode-69 fault frames carry
+     * zeroed metrics). The board is answering, so the staleness clock must advance even though
+     * nothing is captured, aggregated, or persisted.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handleTelemetry`
+     */
+    fun noteResponse(parsed: RefloatTelemetry, sessionToken: BoardSession) {
+        val currentSession = session ?: return
+        if (sessionToken !== currentSession || !sessionToken.isActive) return
+        lastTelemetryAt = parsed.lastPacketAt
+        armStaleWatchdog()
+    }
+
     fun process(parsed: RefloatTelemetry, sessionToken: BoardSession): ProcessedTelemetry? {
         val cfg = sessionConfig ?: return null
         val currentSession = session ?: return null

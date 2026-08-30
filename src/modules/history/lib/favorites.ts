@@ -106,7 +106,6 @@ export function favoriteToSession(
     maxLatitude: maxOrNull(latitudes),
     minLongitude: minOrNull(longitudes),
     maxLongitude: maxOrNull(longitudes),
-    faultCount: sum(spanned.map((block) => block.faultCount)),
     boundaryBefore: 'none',
     routePoints,
   }

@@ -121,8 +121,6 @@ export const FIXTURE_RIDE_TELEMETRY_SAMPLES: TelemetrySample[] = FIXTURE_RIDE_GP
       odometer: null,
       tempMosfet: 35 + t * 30,
       tempMotor: 40 + t * 35,
-      hasFault: false,
-      faultCode: 0,
       latitude: gps.latitude,
       longitude: gps.longitude,
     }

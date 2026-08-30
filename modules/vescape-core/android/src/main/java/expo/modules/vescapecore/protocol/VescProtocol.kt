@@ -20,12 +20,41 @@ internal const val COMM_GET_CUSTOM_CONFIG = 93
 internal const val COMM_SET_CUSTOM_CONFIG = 95
 internal const val COMM_PING_CAN = 62
 internal const val COMM_SET_CHUCK_DATA = 35
+
+/**
+ * Read-only terminal request. Vescape only ever sends the fixed literal [VESC_FAULTS_TERMINAL_COMMAND];
+ * the command byte is deliberately not exposed with a caller-supplied string anywhere.
+ */
+internal const val COMM_TERMINAL_CMD = 20
+
+/** Controller terminal output. Multi-frame, with no explicit completion frame. */
+internal const val COMM_PRINT = 21
 internal const val REFLOAT_MAGIC = 101
 internal const val REFLOAT_GET_INFO = 0
 internal const val REFLOAT_GET_ALLDATA = 10
 internal const val REFLOAT_RC_MOVE = 7
 internal const val REFLOAT_REMOTE = 15
 private const val REFLOAT_FAULT_MODE = 69
+
+/**
+ * The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
+ * retained in-memory fault register and mutates nothing. Keeping it a private constant behind
+ * [buildFaultsTerminalCommand] is what stops this from becoming a generic command surface.
+ */
+private const val VESC_FAULTS_TERMINAL_COMMAND = "faults"
+
+/**
+ * Frames the read-only `faults` terminal request for the Board Link's transport, so a CAN-forwarded
+ * Refloat Board asks the same controller the Board Link proved.
+ *
+ * There is intentionally **no** string parameter: the payload is fixed.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildFaultsTerminalCommand`
+ */
+internal fun buildFaultsTerminalCommand(transport: BoardTransport): ByteArray =
+    transport.frame(
+        byteArrayOf(COMM_TERMINAL_CMD.toByte()) + VESC_FAULTS_TERMINAL_COMMAND.toByteArray(Charsets.US_ASCII),
+    )
 
 /** Neutral position of the remote-tilt slider (0..255). */
 internal const val REMOTE_TILT_CENTER = 128

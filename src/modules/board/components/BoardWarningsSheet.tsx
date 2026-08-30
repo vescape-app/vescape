@@ -1,5 +1,5 @@
 import { StyleSheet, View } from 'react-native'
-import { ShieldCheckIcon } from 'phosphor-react-native'
+import { EngineIcon } from 'phosphor-react-native'
 import type { BoardWarning } from 'vescape-core'
 
 import { Button } from '@/components/base/Button'
@@ -27,11 +27,7 @@ export function BoardWarningsSheet({ boardId, warnings }: BoardWarningsSheetProp
   if (warnings.length === 0) {
     return (
       <View style={styles.empty}>
-        <Placeholder
-          icon={ShieldCheckIcon}
-          title="No warnings"
-          description="This board is clean."
-        />
+        <Placeholder icon={EngineIcon} title="No warnings" description="This board is clean." />
       </View>
     )
   }

@@ -84,8 +84,6 @@ class AlertEngineTest {
         adc1: Double = 0.0,
         batteryCurrent: Double = 0.0,
     ) = RefloatTelemetry(
-        hasFault = false,
-        faultCode = 0,
         pitch = pitch,
         roll = 0.0,
         balancePitch = 0.0,
@@ -103,6 +101,8 @@ class AlertEngineTest {
         odometer = null,
         tempMosfet = tempMosfet,
         tempMotor = tempMotor,
+        hasFault = false,
+        faultCode = 0,
         avgLatency = null,
         pullRateHz = null,
         lastPacketAt = 0L,

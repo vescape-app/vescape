@@ -7,7 +7,7 @@ import GRDB
 /// `TelemetryDatabase.migrator`.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `TELEMETRY_DATABASE_VERSION`
-internal let TELEMETRY_SCHEMA_VERSION = 33
+internal let TELEMETRY_SCHEMA_VERSION = 40
 
 private let MANIFEST_ENTRY = "manifest.json"
 private let DATABASE_ENTRY = "db.sqlite"

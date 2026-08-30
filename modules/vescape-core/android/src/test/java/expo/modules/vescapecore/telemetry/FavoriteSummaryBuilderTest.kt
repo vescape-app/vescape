@@ -228,7 +228,6 @@ class FavoriteSummaryBuilderTest {
       motorCurrentMa = 10_000,
       batteryCurrentMa = 5_000,
       dutyPermille = 400,
-      hasFault = false,
       odometerCm = capturedAtMs / 10,
     )
   }
@@ -255,7 +254,6 @@ class FavoriteSummaryBuilderTest {
     batteryUsedWhMilli = 1_000L,
     batteryRegenWhMilli = 0L,
     maxDutyAbsPermille = 400,
-    faultCount = 0,
     firstOdometerCm = firstOdometerCm,
     lastOdometerCm = lastOdometerCm,
     gpsPointCount = 0,

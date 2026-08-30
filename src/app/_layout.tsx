@@ -29,6 +29,7 @@ import { startBoardConfigChangeNoticeSync } from '@/modules/board/store/boardCon
 import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardConfigChangeNoticeModal'
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
+import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
@@ -94,6 +95,7 @@ function RootLayout() {
     useGroupRideStore.getState().startObserving()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
+    const stopVescFaultsSync = startVescFaultsSync()
     const stopBoardConfigValuesSync = startBoardConfigValuesSync()
     const stopMotorConfigValuesSync = startMotorConfigValuesSync()
     const stopBoardConfigChangeNoticeSync = startBoardConfigChangeNoticeSync()
@@ -107,6 +109,7 @@ function RootLayout() {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
       stopBoardWarningsSync()
+      stopVescFaultsSync()
       stopBoardConfigValuesSync()
       stopMotorConfigValuesSync()
       stopBoardConfigChangeNoticeSync()

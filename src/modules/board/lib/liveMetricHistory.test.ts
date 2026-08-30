@@ -16,8 +16,6 @@ import {
 function telemetry(overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
   return {
     generation: 1,
-    hasFault: false,
-    faultCode: 0,
     pitch: 1,
     roll: 2,
     balancePitch: 3,

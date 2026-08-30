@@ -224,6 +224,19 @@ class CoreForegroundService : Service() {
 
         fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
 
+        fun readVescFaultLog(
+            boardId: String,
+            onSuccess: (String) -> Unit,
+            onError: (String, String) -> Unit,
+        ) {
+            val service = instance
+            if (service == null) {
+                onError("VESC_FAULT_LOG_BOARD_NOT_CONNECTED", "Matching Board must be connected")
+                return
+            }
+            service.controller.readVescFaultLog(boardId, onSuccess, onError)
+        }
+
         fun setRemoteTilt(value: Int): Boolean = instance?.controller?.setRemoteTilt(value) ?: false
 
         fun lockRemoteTilt(value: Int): Boolean = instance?.controller?.lockRemoteTilt(value) ?: false

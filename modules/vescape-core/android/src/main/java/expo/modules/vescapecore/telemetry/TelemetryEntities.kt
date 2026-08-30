@@ -9,7 +9,6 @@ import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
-const val TELEMETRY_FLAG_HAS_FAULT = 1 shl 1
 const val TELEMETRY_FLAG_HAS_LOCATION = 1 shl 2
 
 const val TELEMETRY_MASK_SPEED = 1
@@ -29,7 +28,6 @@ const val TELEMETRY_MASK_ADC2 = 1 shl 13
 const val TELEMETRY_MASK_ODOMETER = 1 shl 14
 const val TELEMETRY_MASK_TEMP_MOSFET = 1 shl 15
 const val TELEMETRY_MASK_TEMP_MOTOR = 1 shl 16
-const val TELEMETRY_MASK_FAULT_CODE = 1 shl 17
 
 const val TELEMETRY_MASK2_LOCATION = 1
 
@@ -90,8 +88,6 @@ data class TelemetryFrameEntity(
   val tempMosfetDeciC: Int?,
   @ColumnInfo(name = "temp_motor_deci_c")
   val tempMotorDeciC: Int?,
-  @ColumnInfo(name = "fault_code")
-  val faultCode: Int?,
   @ColumnInfo(name = "latitude_e7")
   val latitudeE7: Int?,
   @ColumnInfo(name = "longitude_e7")
@@ -146,8 +142,6 @@ data class TelemetryMinuteBucketEntity(
   val batteryRegenWhMilli: Long,
   @ColumnInfo(name = "max_duty_abs_permille")
   val maxDutyAbsPermille: Int,
-  @ColumnInfo(name = "fault_count")
-  val faultCount: Int,
   @ColumnInfo(name = "first_odometer_cm")
   val firstOdometerCm: Long?,
   @ColumnInfo(name = "last_odometer_cm")
@@ -393,6 +387,8 @@ data class AppSettings(
   val wearNavArrowEnabled: Boolean = false,
   val companionPresenceEnabled: Boolean = false,
   val boardWarningsEnabled: Boolean = true,
+  /** `VESC Fault Collection` master switch — independent of [boardWarningsEnabled] (#430). */
+  val vescFaultCollectionEnabled: Boolean = true,
   val companionPresenceCooldownMinutes: Int = 60,
   val autoCloseEnabled: Boolean = false,
   val autoCloseDelayMinutes: Int = 15,
@@ -657,4 +653,115 @@ data class BoardConfigChangeNoticeEntity(
   @PrimaryKey @ColumnInfo(name = "board_id") val boardId: String,
   @ColumnInfo(name = "detected_at") val detectedAt: Long,
   @ColumnInfo(name = "diffs_json") val diffsJson: String,
+)
+
+/**
+ * One durable VESC Fault Occurrence: a single activation of a controller fault code on one Board.
+ *
+ * Board-owned truth, independent of Ride Recording, Ride History, and Board Warnings. Unlike
+ * [BoardWarningEntity] this **is** a time series — the same code activating twice is two rows, so
+ * the identity is a native-minted [id], never (board, code).
+ *
+ * Fault rows are **not** cascaded on Board removal — the evidence outlives the Board record.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
+ */
+@Entity(
+  tableName = "vesc_fault_occurrences",
+  indices = [
+    Index(value = ["board_id", "occurred_at"]),
+  ],
+)
+data class VescFaultOccurrenceEntity(
+  @PrimaryKey
+  val id: String,
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  /** Raw Refloat fault code. Canonical value — display mapping must tolerate unknown codes. */
+  val code: Int,
+  /** When the live activation was observed. */
+  @ColumnInfo(name = "occurred_at")
+  val occurredAtMs: Long,
+  /** Last frame that still reported this code active. */
+  @ColumnInfo(name = "last_observed_at")
+  val lastObservedAtMs: Long,
+  /** Set when the controller reported a clear or a different code. Null = still open/unresolved. */
+  @ColumnInfo(name = "cleared_at")
+  val clearedAtMs: Long?,
+  /** Rider acknowledged this occurrence: stays durable, stops driving the fault icon. */
+  val dismissed: Boolean,
+)
+/**
+ * Metadata for one VESC Fault Capture: the self-contained window of decoded Board samples a single
+ * VESC Fault Occurrence owns.
+ *
+ * Keyed by the occurrence id — one occurrence, at most one capture. Deliberately **not** part of
+ * Ride History: no GPS, no telemetry frames, no minute buckets, no retention pruning. Fault evidence
+ * outlives both the Board record and any recorded ride.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift `createTables`
+ */
+@Entity(
+  tableName = "vesc_fault_captures",
+  indices = [
+    Index(value = ["board_id"]),
+  ],
+)
+data class VescFaultCaptureEntity(
+  @PrimaryKey
+  @ColumnInfo(name = "occurrence_id")
+  val occurrenceId: String,
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
+  /** Intended window start: detection minus the five-second pre-roll. */
+  @ColumnInfo(name = "started_at")
+  val startedAtMs: Long,
+  /** Detection time — the boundary between pre-roll and incident. */
+  @ColumnInfo(name = "opened_at")
+  val openedAtMs: Long,
+  /** Samples actually retained — the achieved Board Session rate, never a fabricated cadence. */
+  @ColumnInfo(name = "sample_count")
+  val sampleCount: Int,
+)
+
+/**
+ * One decoded Board sample inside a VESC Fault Capture. Rows are append-only and intentionally
+ * duplicated across overlapping captures so each occurrence stays independently inspectable.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift `createTables`
+ */
+@Entity(
+  tableName = "vesc_fault_capture_samples",
+  indices = [
+    Index(value = ["occurrence_id", "captured_at"]),
+  ],
+)
+data class VescFaultCaptureSampleEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  @ColumnInfo(name = "occurrence_id")
+  val occurrenceId: String,
+  @ColumnInfo(name = "captured_at")
+  val capturedAtMs: Long,
+  val speed: Double?,
+  @ColumnInfo(name = "duty_cycle")
+  val dutyCycle: Double?,
+  val erpm: Double?,
+  @ColumnInfo(name = "battery_voltage")
+  val batteryVoltage: Double?,
+  @ColumnInfo(name = "battery_current")
+  val batteryCurrent: Double?,
+  @ColumnInfo(name = "motor_current")
+  val motorCurrent: Double?,
+  @ColumnInfo(name = "temp_mosfet")
+  val tempMosfet: Double?,
+  @ColumnInfo(name = "temp_motor")
+  val tempMotor: Double?,
+  val pitch: Double?,
+  val roll: Double?,
+  @ColumnInfo(name = "balance_pitch")
+  val balancePitch: Double?,
+  val adc1: Double?,
+  val adc2: Double?,
+  val state: Int?,
 )

@@ -18,7 +18,7 @@ import {
   ChartLineUpIcon,
   GaugeIcon,
   WatchIcon,
-  WarningIcon,
+  EngineIcon,
   MapTrifoldIcon,
   PaletteIcon,
 } from 'phosphor-react-native'
@@ -112,7 +112,7 @@ export default function SettingsScreen() {
             onPress={() => router.push(routes.settingsLiveTelemetry)}
           />
           <SettingsRow
-            icon={WarningIcon}
+            icon={EngineIcon}
             iconColor={theme.settingsIcon.diagnostics}
             label="Diagnostics"
             hint="Board warnings and health checks"

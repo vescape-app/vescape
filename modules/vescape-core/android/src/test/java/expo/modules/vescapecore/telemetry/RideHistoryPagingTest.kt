@@ -60,7 +60,6 @@ class RideHistoryPagingTest {
     batteryUsedWhMilli = 0L,
     batteryRegenWhMilli = 0L,
     maxDutyAbsPermille = 0,
-    faultCount = 0,
     firstOdometerCm = 0L,
     lastOdometerCm = 1_000L,
     gpsPointCount = 0,

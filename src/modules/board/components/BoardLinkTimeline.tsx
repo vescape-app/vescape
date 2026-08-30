@@ -8,7 +8,7 @@ import {
   CpuIcon,
   HandshakeIcon,
   type Icon,
-  EngineIcon,
+  GearSixIcon,
   LightningIcon,
   LinkIcon,
   MagnifyingGlassIcon,
@@ -82,7 +82,7 @@ const STEP_ICON: Record<StepKey, Icon> = {
   identity: CpuIcon,
   session: PlugsConnectedIcon,
   config: LightningIcon,
-  motorConfig: EngineIcon,
+  motorConfig: GearSixIcon,
 }
 
 /** What each step does — shown until a concrete result replaces it. */
@@ -281,9 +281,11 @@ function failedAcquisitionSteps(step: BoardProbeStep | undefined): TimelineStep[
     row(
       'motorConfig',
       reachedMotorConfig ? 'failed' : 'pending',
-      reachedMotorConfig
+      step === 'motor-config'
         ? 'Could not read motor config — firmware may not be supported'
-        : STEP_DESC.motorConfig,
+        : reachedMotorConfig
+          ? 'Last Known values saved'
+          : STEP_DESC.motorConfig,
     ),
   ]
 }

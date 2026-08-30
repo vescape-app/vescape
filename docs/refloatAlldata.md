@@ -58,7 +58,10 @@ When `payload[3] == 69` (FAULT_MODE_MARKER):
 [0x24] [101] [10] [69] [mc_fault_code]
 ```
 
-All telemetry fields are zero/null. `hasFault = true`, `faultCode` = the fault byte.
+This is a fault observation, not a telemetry sample. Native passes the fault byte to the
+Board-owned VESC Fault coordinator; it does not emit a zero-valued telemetry frame or persist
+one in Ride History. The next normal `ALLDATA` response observes a clear. See
+[ADR 0037](./adr/0037-vesc-faults-are-board-owned-evidence.md).
 
 ## float32_auto encoding
 

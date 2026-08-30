@@ -47,7 +47,7 @@ private const val MIN_PERSIST_INTERVAL_MS = 500L
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
  */
-private const val SAMPLE_COLUMN_COUNT = 25
+private const val SAMPLE_COLUMN_COUNT = 23
 
 data class TelemetryLocationCapture(
   val latitude: Double,
@@ -66,8 +66,6 @@ data class TelemetryCapture(
   val deviceId: String?,
   val deviceName: String,
   val canId: Int?,
-  val hasFault: Boolean,
-  val faultCode: Int,
   val pitch: Double,
   val roll: Double,
   val balancePitch: Double,
@@ -205,11 +203,11 @@ class TelemetryRepository private constructor(context: Context) {
       while (pendingBucketStates.size > MAX_PENDING_FRAMES) pendingBucketStates.removeFirst()
 
       // 2 Hz persistence gate for the stored detail trace only. Keep keyframes
-      // (delta-chain anchors / gaps) and fault frames; otherwise keep one frame per
+      // (delta-chain anchors / gaps); otherwise keep one frame per
       // MIN_PERSIST_INTERVAL_MS. Gated frames leave lastState/lastHistoryAtMs untouched
       // so the next persisted delta chains against the last persisted state.
       val sinceKept = lastHistoryAtMs?.let { capture.capturedAtMs - it }
-      val persist = keyframe || capture.hasFault || sinceKept == null || sinceKept >= MIN_PERSIST_INTERVAL_MS
+      val persist = keyframe || sinceKept == null || sinceKept >= MIN_PERSIST_INTERVAL_MS
       if (persist) {
         pending.addLast(PendingFrame(current.toFrame(previous, keyframe), current))
         if (gap) {
@@ -332,7 +330,6 @@ class TelemetryRepository private constructor(context: Context) {
         "maxMotorCurrent" to bucket.maxMotorCurrentAbsMa / 1000.0,
         "maxBatteryCurrent" to bucket.maxBatteryCurrentAbsMa / 1000.0,
         "maxDuty" to bucket.maxDutyAbsPermille / 1000.0,
-        "faultCount" to bucket.faultCount,
         "distanceDeltaM" to distanceM,
         "gpsDistanceM" to bucket.gpsDistanceCm.takeIf { it > 0L }?.let { it / 100.0 },
         "maxTempMosfet" to bucket.maxTempMosfetDeciC?.let { it / 10.0 },
@@ -436,8 +433,6 @@ class TelemetryRepository private constructor(context: Context) {
         .putDouble(s.odometerCm?.let { it / 100.0 } ?: Double.NaN)
         .putDouble(s.tempMosfetDeciC?.let { it / 10.0 } ?: Double.NaN)
         .putDouble(s.tempMotorDeciC?.let { it / 10.0 } ?: Double.NaN)
-        .putDouble(if (s.hasFault) 1.0 else 0.0)
-        .putDouble(s.faultCode.toDouble())
         .putDouble(s.location?.latitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
         .putDouble(s.location?.longitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
       if (overviewCursor < overviewIndices.size && overviewIndices[overviewCursor] == sampleIndex) {
@@ -1026,8 +1021,6 @@ internal data class FullTelemetryState(
   val deviceId: String?,
   val deviceName: String?,
   val canId: Int?,
-  val hasFault: Boolean,
-  val faultCode: Int,
   val speedCentiKmh: Int,
   val batteryVoltageMv: Int,
   val motorCurrentMa: Int,
@@ -1060,7 +1053,6 @@ internal data class FullTelemetryState(
     val includeLocation = keyframe || locationChanged(previous?.location, location)
     if (includeLocation) mask2 = mask2 or TELEMETRY_MASK2_LOCATION
     val flags = (if (keyframe) TELEMETRY_FLAG_KEYFRAME else 0) or
-      (if (hasFault) TELEMETRY_FLAG_HAS_FAULT else 0) or
       (if (location != null) TELEMETRY_FLAG_HAS_LOCATION else 0)
 
     return TelemetryFrameEntity(
@@ -1089,7 +1081,6 @@ internal data class FullTelemetryState(
       odometerCm = if (include(changedBy(previous?.odometerCm, odometerCm, 25), TELEMETRY_MASK_ODOMETER)) odometerCm else null,
       tempMosfetDeciC = if (include(changedBy(previous?.tempMosfetDeciC, tempMosfetDeciC, 5), TELEMETRY_MASK_TEMP_MOSFET)) tempMosfetDeciC else null,
       tempMotorDeciC = if (include(changedBy(previous?.tempMotorDeciC, tempMotorDeciC, 5), TELEMETRY_MASK_TEMP_MOTOR)) tempMotorDeciC else null,
-      faultCode = if (include(previous?.faultCode != faultCode, TELEMETRY_MASK_FAULT_CODE)) faultCode else null,
       latitudeE7 = if (includeLocation) location?.latitudeE7 else null,
       longitudeE7 = if (includeLocation) location?.longitudeE7 else null,
       gpsSpeedCentiMps = if (includeLocation) location?.gpsSpeedCentiMps else null,
@@ -1123,8 +1114,6 @@ internal data class FullTelemetryState(
     "odometer" to odometerCm?.let { it / 100.0 },
     "tempMosfet" to tempMosfetDeciC?.let { it / 10.0 },
     "tempMotor" to tempMotorDeciC?.let { it / 10.0 },
-    "hasFault" to hasFault,
-    "faultCode" to faultCode,
     "latitude" to location?.latitudeE7?.let { it / 10_000_000.0 },
     "longitude" to location?.longitudeE7?.let { it / 10_000_000.0 },
   )
@@ -1138,7 +1127,6 @@ internal data class FullTelemetryState(
     motorCurrentMa = motorCurrentMa,
     batteryCurrentMa = batteryCurrentMa,
     dutyPermille = dutyPermille,
-    hasFault = hasFault,
     odometerCm = odometerCm,
     tempMosfetDeciC = tempMosfetDeciC,
     tempMotorDeciC = tempMotorDeciC,
@@ -1154,8 +1142,6 @@ internal data class FullTelemetryState(
       deviceId = capture.deviceId,
       deviceName = capture.deviceName,
       canId = capture.canId,
-      hasFault = capture.hasFault,
-      faultCode = capture.faultCode,
       speedCentiKmh = (capture.speed * 100.0).roundToInt(),
       batteryVoltageMv = (capture.batteryVoltage * 1000.0).roundToInt(),
       motorCurrentMa = (capture.motorCurrent * 1000.0).roundToInt(),
@@ -1193,7 +1179,6 @@ internal data class FullTelemetryState(
       val switchState = pick(frame.switchState, base?.switchState) ?: return null
       val adc1 = pick(frame.adc1Milli, base?.adc1Milli) ?: return null
       val adc2 = pick(frame.adc2Milli, base?.adc2Milli) ?: return null
-      val faultCode = pick(frame.faultCode, base?.faultCode) ?: 0
       val location = if ((frame.changedMask2 and TELEMETRY_MASK2_LOCATION) != 0) {
         ScaledLocation.fromFrame(frame)
       } else {
@@ -1205,8 +1190,6 @@ internal data class FullTelemetryState(
         deviceId = frame.deviceId ?: base?.deviceId,
         deviceName = frame.deviceName ?: base?.deviceName,
         canId = frame.canId ?: base?.canId,
-        hasFault = (frame.flags and TELEMETRY_FLAG_HAS_FAULT) != 0,
-        faultCode = faultCode,
         speedCentiKmh = speed,
         batteryVoltageMv = voltage,
         motorCurrentMa = motorCurrent,

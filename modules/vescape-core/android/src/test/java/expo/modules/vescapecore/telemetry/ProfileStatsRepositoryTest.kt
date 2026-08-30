@@ -168,7 +168,6 @@ class ProfileStatsRepositoryTest {
     batteryUsedWhMilli = used,
     batteryRegenWhMilli = regen,
     maxDutyAbsPermille = 0,
-    faultCount = 0,
     firstOdometerCm = firstOdo,
     lastOdometerCm = lastOdo,
     gpsPointCount = 0,

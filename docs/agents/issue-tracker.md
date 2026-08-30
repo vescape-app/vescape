@@ -82,7 +82,7 @@ Use one or more app-area labels for filtering:
 | `area:watch`        | `[Watch]`        | Watch Mirror — live telemetry on the wrist and alert playback, Wear OS / watchOS companions                                 |
 | `area:group-ride`   | `[GroupRide]`    | Group Rides — live shared rides, Rider presence, nearby discovery, relay server, social panel                               |
 | `area:legal-mode`   | `[Legal Mode]`   | Legal Mode UI, jurisdiction speed defaults, speed-warning alerts, and legal board constraints                               |
-| `area:warnings`     | `[Warnings]`     | Board Warnings — native fault-code detection, warning registry, rider-facing warning surface                                |
+| `area:warnings`     | `[Warnings]`     | Board Warnings: app-authored condition detection, warning registry, rider-facing warnings                                   |
 | `area:diagnostics`  | `[Diagnostics]`  | Debug Recordings, replay tooling, Diagnostic Events, dev-mode debugging surfaces                                            |
 | `area:auth`         | `[Auth]`         | Clerk sessions, native Device Tokens, credential lifecycle, and endpoint caller policy                                      |
 | `area:release`      | `[Release]`      | release automation, Play tracks, versioning, release notes, and GitHub Releases                                             |

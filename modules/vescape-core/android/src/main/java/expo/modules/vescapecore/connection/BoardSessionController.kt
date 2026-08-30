@@ -22,7 +22,9 @@ import expo.modules.vescapecore.protocol.COMM_FW_VERSION
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.COMM_GET_CUSTOM_CONFIG_XML
 import expo.modules.vescapecore.protocol.COMM_GET_MCCONF
+import expo.modules.vescapecore.protocol.COMM_PRINT
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
+import expo.modules.vescapecore.protocol.buildFaultsTerminalCommand
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
@@ -93,6 +95,9 @@ import expo.modules.vescapecore.protocol.parseRefloatGetAllData
 import expo.modules.vescapecore.remoteTiltWire
 import expo.modules.vescapecore.warnings.BatteryConfigMismatchDetector
 import expo.modules.vescapecore.warnings.BoardWarningKind
+import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
+import expo.modules.vescapecore.faults.VescFaultCoordinator
+import expo.modules.vescapecore.faults.VescFaultLogReader
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import expo.modules.vescapecore.warnings.BoardWarningStore
@@ -167,6 +172,13 @@ private const val WATCH_FRAME_INTERVAL_MS = 250L
 /** Push cadence while the Mirror sits in ambient/AOD, where the wrist itself redraws about once a minute. */
 private const val WATCH_FRAME_AMBIENT_INTERVAL_MS = 5_000L
 private const val NOTIFICATION_TELEMETRY_INTERVAL_MS = 10_000L
+/** Sentinel active fault code meaning "state not yet established this Board Session". */
+private const val FAULT_CODE_UNKNOWN = -1
+
+/** How often a continuously active fault refreshes its occurrence's last-observed time. */
+private const val FAULT_OBSERVATION_INTERVAL_MS = 1_000L
+private const val MANUAL_FAULT_LOG_MAX_SPEED_KMH = 1.0
+
 private const val GATT_CONNECT_TIMEOUT_MS = 6_000L
 private const val GATT_READY_TIMEOUT_MS = 6_000L
 
@@ -1073,6 +1085,7 @@ private var wearAutoLaunchOnConnect = true
         restoreBoardConfigValues(start.boardConfig)
         restoreMotorConfigValues(start.boardConfig)
         telemetryPipeline.beginSession(session, start.boardConfig)
+        wireFaultCaptures()
         // Tag telemetry frames with the CAN id resolved from the stored transport.
         telemetryPipeline.updateCanId(currentCanId)
         packetReassembler.reset()
@@ -1080,6 +1093,10 @@ private var wearAutoLaunchOnConnect = true
         connectionCoordinator.reset()
         reconnectScheduler.cancelAndReset()
         recordingCoordinator.beginBoardSession(start.boardConfig)
+        // Unknown fault state: the first frame of the session always reaches the fault coordinator,
+        // so a fault that opened before a restart is closed by the first normal frame after it.
+        liveFaultCode = FAULT_CODE_UNKNOWN
+        lastFaultDispatchAtMs = 0L
         beginGpsSessionDiagnostics()
         // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
         // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1332,6 +1349,7 @@ private var wearAutoLaunchOnConnect = true
             )
             COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
             COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(1, payload.size))
+            COMM_PRINT -> handlePrintPayload(payload.copyOfRange(1, payload.size))
             COMM_FORWARD_CAN -> {
                 if (payload.size >= 3) {
                     when (payload[2].toInt() and 0xff) {
@@ -1344,6 +1362,7 @@ private var wearAutoLaunchOnConnect = true
                         )
                         COMM_SET_CUSTOM_CONFIG -> configController.onPayload(ConfigRWEvent.SetConfigResponseReceived(payload))
                         COMM_GET_MCCONF -> handleMcconfPayload(payload.copyOfRange(3, payload.size))
+                        COMM_PRINT -> handlePrintPayload(payload.copyOfRange(3, payload.size))
                     }
                 }
             }
@@ -1383,7 +1402,22 @@ private var wearAutoLaunchOnConnect = true
                 return
             }
             val sessionToken = boardSession ?: return
+            // A valid mode-69 response still paces the response-driven poll loop — the frame is a
+            // real answer, it just carries no metrics.
             pollingLoop.onResponse()
+            if (parsed.hasFault) {
+                // Refloat fault mode: a state signal with zeroed metrics, never a Telemetry Sample.
+                // It opens/extends a VESC Fault Occurrence and stops before the telemetry pipeline —
+                // persisting or aggregating it would poison Ride History with a frame of zeros. The
+                // session bookkeeping above it still runs: the board answered, so it is ready and
+                // must not be torn down as unresponsive just because it is faulting.
+                telemetryPipeline.noteResponse(parsed, sessionToken)
+                markBoardReady()
+                startLinkIntegrityProbe(sessionToken)
+                onRefloatFaultFrame(parsed.faultCode)
+                return
+            }
+            onRefloatNormalFrame()
             val processed = telemetryPipeline.process(parsed, sessionToken) ?: return
             markBoardReady()
             startLinkIntegrityProbe(sessionToken)
@@ -1458,6 +1492,142 @@ private var wearAutoLaunchOnConnect = true
             reportWarningFailure(site, throwable)
         }
     }
+
+    /**
+     * Refloat reported an active fault code. Independent of Ride Recording and Board Warnings: the
+     * VESC Fault Occurrence is Board-owned durable truth.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatFaultFrame`
+     */
+    private fun onRefloatFaultFrame(code: Int) {
+        val boardId = boardConfig?.appBoardId ?: return
+        val now = nowMs()
+        // Edge-triggered plus a slow heartbeat: a fault can repeat at the full poll rate, and one
+        // occurrence must not cost one durable write per frame.
+        if (liveFaultCode == code && now - lastFaultDispatchAtMs < FAULT_OBSERVATION_INTERVAL_MS) return
+        liveFaultCode = code
+        lastFaultDispatchAtMs = now
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        launchWarningWrite { coordinator.onActiveFault(boardId, code) }
+    }
+
+    /**
+     * Refloat reported a normal `ALLDATA` frame — the controller is not faulting, so any open
+     * occurrence for this Board is closed.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onRefloatNormalFrame`
+     */
+    private fun onRefloatNormalFrame() {
+        val now = nowMs()
+        // Retry a failed durable clear at the same bounded rate as an active observation.
+        if (liveFaultCode == null && now - lastFaultDispatchAtMs < FAULT_OBSERVATION_INTERVAL_MS) return
+        liveFaultCode = null
+        lastFaultDispatchAtMs = now
+        val boardId = boardConfig?.appBoardId ?: return
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        launchWarningWrite { coordinator.onFaultCleared(boardId) }
+    }
+
+    /**
+     * Point the VESC Fault Capture coordinator at this session's recent decoded window and at the
+     * occurrence transitions that mint capture ids. Reuses `TelemetryPipeline.recentSnapshot` — the
+     * same buffer behind `board.recentTelemetry` — rather than adding a second always-on pre-fault
+     * buffer.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `wireFaultCaptures`
+     */
+    private fun wireFaultCaptures() {
+        val captures = VescFaultCaptureCoordinator.get(service.applicationContext)
+        captures.recentWindow = { telemetryPipeline.recentSnapshot() }
+        captures.setCollectionEnabled(
+            VescFaultCoordinator.get(service.applicationContext).collectionEnabled,
+        )
+        VescFaultCoordinator.get(service.applicationContext).apply {
+            onOccurrenceOpened = { occurrence ->
+                captures.capturePast(occurrence.id, occurrence.boardId, occurrence.occurredAtMs)
+            }
+        }
+    }
+
+    // --- Manual VESC fault log ---
+
+    /**
+     * One user-requested terminal read at a time. Output is returned directly and never parsed,
+     * persisted, or converted into fault occurrences.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `faultLogReader`
+     */
+    private var faultLogReader: VescFaultLogReader? = null
+    private var faultLogTickHandle: Cancellable? = null
+
+    /**
+     * Read official VESC `faults` output on explicit user action. Refuse while moving because
+     * terminal traffic competes with response-paced ride telemetry.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `readVescFaultLog`
+     */
+    fun readVescFaultLog(
+        boardId: String,
+        onSuccess: (String) -> Unit,
+        onError: (String, String) -> Unit,
+    ) {
+        if (boardStatus != BoardPhase.Connected || boardConfig?.appBoardId != boardId) {
+            onError("VESC_FAULT_LOG_BOARD_NOT_CONNECTED", "Matching Board must be connected")
+            return
+        }
+        val speed = telemetry?.speed
+        if (speed == null || !speed.isFinite() || kotlin.math.abs(speed) > MANUAL_FAULT_LOG_MAX_SPEED_KMH) {
+            onError("VESC_FAULT_LOG_BOARD_MOVING", "Stop the Board before reading controller fault log")
+            return
+        }
+        if (faultLogReader != null) {
+            onError("VESC_FAULT_LOG_BUSY", "Controller fault log read already in progress")
+            return
+        }
+        val session = boardSession ?: return onError(
+            "VESC_FAULT_LOG_BOARD_NOT_CONNECTED",
+            "Matching Board must be connected",
+        )
+        val transport = currentBoardTransport() ?: return onError(
+            "VESC_FAULT_LOG_BOARD_NOT_CONNECTED",
+            "Matching Board must be connected",
+        )
+        val reader = VescFaultLogReader(nowMs(), onSuccess, onError)
+        faultLogReader = reader
+        sendPayloadWithRetry(buildFaultsTerminalCommand(transport), session)
+        scheduleFaultLogTick(session)
+    }
+
+    /** Poll the bounded completion policy until it resolves the read one way or the other. */
+    private fun scheduleFaultLogTick(session: BoardSession) {
+        faultLogTickHandle?.cancel()
+        faultLogTickHandle = scheduler.postDelayedForSession(
+            session,
+            VescFaultLogReader.TICK_MS,
+            ::isCurrentBoardSession,
+        ) {
+            faultLogTickHandle = null
+            val reader = faultLogReader ?: return@postDelayedForSession
+            if (!reader.poll(nowMs())) {
+                scheduleFaultLogTick(session)
+                return@postDelayedForSession
+            }
+            faultLogReader = null
+        }
+    }
+
+    /**
+     * Feed one `COMM_PRINT` frame to the in-flight read. Terminal text is deliberately isolated here
+     * and never reaches telemetry parsing; without an active read the bytes are dropped, because
+     * Vescape has no other reason to be listening to the controller's console.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `handlePrintPayload`
+     */
+    private fun handlePrintPayload(body: ByteArray) {
+        faultLogReader?.onPrintChunk(body, nowMs())
+    }
+
+    /**
+     * Last active Refloat fault code observed this Board Session, or null once cleared.
+     * [FAULT_CODE_UNKNOWN] means "not yet established", which forces one dispatch either way.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `liveFaultCode`
+     */
+    private var liveFaultCode: Int? = FAULT_CODE_UNKNOWN
+    private var lastFaultDispatchAtMs = 0L
 
     /**
      * Launch a Board Warning registry write crash-isolated by [warningWriteExceptionHandler] and
@@ -2283,6 +2453,10 @@ private var wearAutoLaunchOnConnect = true
             }
         }
         bmsSeriesRing.clear()
+        faultLogTickHandle?.cancel()
+        faultLogTickHandle = null
+        faultLogReader?.cancel()
+        faultLogReader = null
         telemetryPipeline.endSession()
         sessionSequence += 1
         boardConfig = null
@@ -2878,6 +3052,21 @@ private var wearAutoLaunchOnConnect = true
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L
         connectionSoundsEnabled = settings.connectionSoundsEnabled
+        // `VESC Fault Collection` is its own kill switch — deliberately not gated on
+        // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
+        val coordinator = VescFaultCoordinator.get(service.applicationContext)
+        val collectionWasEnabled = coordinator.collectionEnabled
+        coordinator.collectionEnabled = settings.vescFaultCollectionEnabled
+        // The switch must stop capture persistence too, without deleting stored evidence.
+        VescFaultCaptureCoordinator.get(service.applicationContext)
+            .setCollectionEnabled(settings.vescFaultCollectionEnabled)
+        if (!collectionWasEnabled && settings.vescFaultCollectionEnabled) {
+            // Transitions were dropped while disabled, so the controller's edge state is a lie.
+            // Reset it to unknown so the next frame — fault or normal — reconciles the coordinator
+            // with what the controller is actually reporting.
+            liveFaultCode = FAULT_CODE_UNKNOWN
+            lastFaultDispatchAtMs = 0L
+        }
         val warningsWereEnabled = boardWarningsEnabled
         boardWarningsEnabled = settings.boardWarningsEnabled
         // Disabled→enabled with an already-trusted link: link integrity won't transition again, so

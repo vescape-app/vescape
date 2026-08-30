@@ -54,8 +54,6 @@ class HistoryGpsProjectionTest {
         deviceId = "board-1",
         deviceName = "ADV2",
         canId = null,
-        hasFault = false,
-        faultCode = 0,
         speedCentiKmh = 1_000,
         batteryVoltageMv = 77_000,
         motorCurrentMa = 0,

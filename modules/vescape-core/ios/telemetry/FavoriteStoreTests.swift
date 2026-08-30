@@ -310,7 +310,6 @@ final class FavoriteStoreTests: XCTestCase {
         motorCurrentMa: 10_000,
         batteryCurrentMa: 5_000,
         dutyPermille: 400,
-        hasFault: false,
         odometerCm: (startMs + offset) / 10,
         tempMosfetDeciC: nil,
         tempMotorDeciC: nil,

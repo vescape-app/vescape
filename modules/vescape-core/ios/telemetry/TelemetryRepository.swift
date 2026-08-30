@@ -2,7 +2,6 @@ import Foundation
 import GRDB
 
 internal let TELEMETRY_FLAG_KEYFRAME = 1
-internal let TELEMETRY_FLAG_HAS_FAULT = 1 << 1
 internal let TELEMETRY_FLAG_HAS_LOCATION = 1 << 2
 internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
 internal let GAP_BOUNDARY_MS: Int64 = 90_000
@@ -16,7 +15,7 @@ internal let MAX_SAMPLE_LIMIT = 20_000
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
 /// @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
-internal let SAMPLE_COLUMN_COUNT = 25
+internal let SAMPLE_COLUMN_COUNT = 23
 
 /// GRDB writer for iOS Ride Recording telemetry. Raw Telemetry Samples are preserved; Metric
 /// Sanitizers only write exclusion ranges and bucket-derived metric values.
@@ -63,7 +62,7 @@ internal final class TelemetryRepository {
       self.pendingStates.append(state)
 
       let sinceKept = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
-      let persist = keyframe || capture.telemetry.hasFault || sinceKept == nil || (sinceKept ?? 0) >= MIN_PERSIST_INTERVAL_MS
+      let persist = keyframe || sinceKept == nil || (sinceKept ?? 0) >= MIN_PERSIST_INTERVAL_MS
       if persist {
         self.pendingPersisted.append(state)
         if gap {
