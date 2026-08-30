@@ -180,11 +180,13 @@ export function useHistoryCameraFraming({
   const rideKey = routeKey(rideRoute)
   const previewRouteKey = routeKey(previewRoute)
   const previewKey = preview?.key ?? null
+  // The panel grows as metrics open, shrinking the map; rounded so layout jitter is not a reframe.
+  const insetKey = Math.round(viewport.bottomInset ?? -1)
 
   useEffect(() => {
     if (!active || !selectionKey) return
 
-    const key = `${selectionKey}|${focusKey}|${rideKey}|${previewRouteKey}|${previewKey}`
+    const key = `${selectionKey}|${focusKey}|${rideKey}|${previewRouteKey}|${previewKey}|${insetKey}`
     if (key === framedKeyRef.current) return
     framedKeyRef.current = key
 
@@ -229,6 +231,7 @@ export function useHistoryCameraFraming({
     active,
     controllerStateRef,
     focusKey,
+    insetKey,
     previewKey,
     previewRouteKey,
     rideKey,
