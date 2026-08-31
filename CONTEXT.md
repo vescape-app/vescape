@@ -465,7 +465,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **One-Shot** or **Repeating Alert Rule** announces only while fired and needs an **Alert Re-Arm** before it can announce again; a **Geiger Alert Rule** has neither, its cadence follows **Alert Range Depth**.
 - An **Alert Rule** belongs to one **Board**; the alert engine evaluates only the connected **Board**'s rules, and deleting a **Board** deletes its rules.
 - Deleting a **Board** leaves a **Board Tombstone**: its configuration goes, its **Ride History** and **Tune Profiles** stay, and the row stays resolvable by id so history can still name it (ADR 0027).
-- **Ride History** identifies the **Board** that produced it by **Board** id, never by BLE identifier, and resolves the **Board** name by lookup rather than reading a copy stored at capture time (ADR 0028).
+- Every durable record that belongs to a **Board** identifies it by **Board** id, never by BLE identifier. The BLE address survives in exactly one place, the **Board Link**'s `ble_id`, where it is a reachability detail of that Board and not a key anything else joins on (ADR 0028).
+- **Ride History** resolves the **Board** name by lookup rather than reading a copy stored at capture time, so renaming a **Board** relabels its whole history (ADR 0028).
 - An **Alert Preset** is set per metric and produces zero or more **Alert Rules** for that metric; those rules are regenerated wholesale when its level changes and coexist with the rider's manual **Alert Rules**.
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.
 - An **Alert Message Template** belongs to one **Alert Rule**.
