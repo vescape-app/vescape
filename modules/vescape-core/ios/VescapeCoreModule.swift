@@ -79,7 +79,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -150,6 +150,12 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onMotorConfigValues") { self.observedEvents.remove("onMotorConfigValues") }
     OnStartObserving("onBoardConfigChangeNotice") { self.observedEvents.insert("onBoardConfigChangeNotice") }
     OnStopObserving("onBoardConfigChangeNotice") { self.observedEvents.remove("onBoardConfigChangeNotice") }
+    OnStartObserving("onBoardLights") {
+      self.observedEvents.insert("onBoardLights")
+      // Late subscriber: replay what the board last said, so a drawer opened mid-session is right.
+      self.sendEvent("onBoardLights", self.coordinator.lightsEventBody())
+    }
+    OnStopObserving("onBoardLights") { self.observedEvents.remove("onBoardLights") }
     OnStartObserving("onAppStatus") {
       self.observedEvents.insert("onAppStatus")
       // Late subscriber: replay the current App Status so JS is immediately consistent.

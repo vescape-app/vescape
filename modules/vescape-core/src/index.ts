@@ -1977,6 +1977,8 @@ type VescapeCoreEvents = {
   onBoardConfigValues: (event: BoardConfigValuesEvent) => void
   onMotorConfigValues: (event: MotorConfigValuesEvent) => void
   onBoardConfigChangeNotice: (event: BoardConfigChangeNoticeEvent) => void
+  /** The board's lights, as its own `LIGHTS_CONTROL` echo reported them. */
+  onBoardLights: (event: BoardLightsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
@@ -2894,12 +2896,23 @@ export async function stopRemoteTilt(): Promise<boolean> {
 }
 
 /**
- * Switch the board's lights on or off — LEDs and headlights together. Runtime only: the board
- * applies it live and stores nothing, so its own setting returns on the next power cycle. Boards
- * without LEDs ignore it, and the command is refused unless the Board Link is trusted.
+ * What the board says its lights are doing. `null` means the board has not said — no session, or no
+ * echo heard yet — and is not the same as off. Emitted on every echo, on Board Session end, and on
+ * subscribe.
  *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildLightsControlCommand`
- * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsEventBody`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `lightsEventBody`
+ */
+export interface BoardLightsEvent {
+  enabled: boolean | null
+  headlightsEnabled: boolean | null
+}
+
+/**
+ * Switch the board's lights on or off — LEDs and headlights together. Runtime only: the board
+ * applies it live and stores nothing, so its own setting returns on the next power cycle, and until
+ * then the board stops applying config changes to its lights. A board with no LEDs still accepts and
+ * echoes the command. Refused unless the Board Link is trusted.
  */
 export async function setBoardLights(enabled: boolean): Promise<boolean> {
   if (E2E_ENABLED) return true
@@ -3294,6 +3307,10 @@ export function addBoardConfigChangeNoticeListener(
   cb: (event: BoardConfigChangeNoticeEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardConfigChangeNotice', cb)
+}
+
+export function addBoardLightsListener(cb: (event: BoardLightsEvent) => void): EventSubscription {
+  return emitter.addListener('onBoardLights', cb)
 }
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {

@@ -90,8 +90,17 @@ final class VescProtocolTests: XCTestCase {
       BoardLightsState(enabled: true, headlightsEnabled: false),
       parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 1])
     )
-    // A telemetry frame must never be mistaken for the lights echo.
+    // Both bits are read independently: headlights on, lights off.
+    XCTAssertEqual(
+      BoardLightsState(enabled: false, headlightsEnabled: true),
+      parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 2])
+    )
+    // A telemetry frame must never be mistaken for the lights echo — this interception sits in front
+    // of the telemetry parser, in both the direct and the CAN-forwarded form.
     XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
+    XCTAssertNil(parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
+    // A truncated echo has no state byte to read.
+    XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20]))
   }
 
   func testBuildsShortPacketWithCrc() {

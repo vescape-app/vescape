@@ -54,8 +54,21 @@ class VescProtocolTest {
         byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 1),
       ),
     )
-    // A telemetry frame must never be mistaken for the lights echo.
+    // Both bits are read independently: headlights on, lights off.
+    assertEquals(
+      BoardLightsState(enabled = false, headlightsEnabled = true),
+      parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 2)),
+    )
+    // A telemetry frame must never be mistaken for the lights echo — this interception sits in front
+    // of the telemetry parser, in both the direct and the CAN-forwarded form.
     assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2)))
+    assertNull(
+      parseLightsControlResponse(
+        byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2),
+      ),
+    )
+    // A truncated echo has no state byte to read.
+    assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20)))
   }
 
   @Test

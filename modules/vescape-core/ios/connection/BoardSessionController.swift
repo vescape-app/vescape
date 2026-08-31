@@ -467,6 +467,17 @@ internal final class BoardSessionController: VescGattListener {
 
   func remoteTiltState() -> [String: Any?]? { nil }
 
+  /// The board's lights as its last echo reported them, or `nil` while this session has never heard
+  /// one — the board is not saying, so JS shows nothing rather than a guess.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardLights`
+  private var boardLights: BoardLightsState?
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsEventBody`
+  func lightsEventBody() -> [String: Any?] {
+    ["enabled": boardLights?.enabled, "headlightsEnabled": boardLights?.headlightsEnabled]
+  }
+
   /// Switch the board's lights on or off. Runtime only: firmware applies it live and writes no
   /// config, so the board's own setting returns on the next power cycle.
   ///
@@ -1110,6 +1121,9 @@ internal final class BoardSessionController: VescGattListener {
     boardConfigValues = nil
     motorConfigValues = nil
     motorConfigRequested = false
+    // Lights are per Board Session: what the last board's echo said means nothing for the next.
+    boardLights = nil
+    emit?("onBoardLights", lightsEventBody())
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -1472,12 +1486,10 @@ internal final class BoardSessionController: VescGattListener {
     switch Int(payload[0]) {
     case COMM_CUSTOM_APP_DATA:
       // The lights echo shares the telemetry command byte but carries no metrics.
+      // It is also the only truth about the board's lights, so it is what JS renders.
       if let lights = parseLightsControlResponse(payload) {
-        NSLog(
-          "[VescSession] board lights: enabled=%@ headlights=%@",
-          String(lights.enabled),
-          String(lights.headlightsEnabled)
-        )
+        boardLights = lights
+        emit?("onBoardLights", lightsEventBody())
         return
       }
       handleTelemetry(payload, session: session)
@@ -1486,6 +1498,13 @@ internal final class BoardSessionController: VescGattListener {
     case COMM_BMS_GET_VALUES:
       // Direct smart-BMS reply.
       handleBms(payload)
+    case COMM_FORWARD_CAN where payload.count >= 5 && Int(payload[2]) == COMM_CUSTOM_APP_DATA:
+      // Telemetry answers come back unwrapped, but the lights echo can arrive CAN-wrapped, so the
+      // switch would look ignored on a CAN-forwarded board without this.
+      if let lights = parseLightsControlResponse(payload) {
+        boardLights = lights
+        emit?("onBoardLights", lightsEventBody())
+      }
     case COMM_FORWARD_CAN where payload.count >= 3 && Int(payload[2]) == COMM_BMS_GET_VALUES:
       // CAN-forwarded smart-BMS reply (telemetry stays bare, but BMS comes wrapped).
       handleBms(Array(payload[2...]))

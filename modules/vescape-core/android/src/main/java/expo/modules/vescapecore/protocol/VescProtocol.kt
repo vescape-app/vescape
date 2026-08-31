@@ -72,9 +72,12 @@ internal data class BoardLightsState(val enabled: Boolean, val headlightsEnabled
 /**
  * Builds the Refloat lights switch: turns the LEDs and headlights on or off together. Runtime only —
  * firmware applies it live and never writes config, so a power cycle restores the board's own
- * setting.
+ * setting. The write is sticky for the rest of that power cycle: firmware marks the runtime value
+ * as overriding the configured one, so later config changes to the lights stop taking effect live.
  *
- * Boards without LEDs ignore the command; `GET_INFO` capabilities say which those are.
+ * A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
+ * runtime flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a
+ * client knows not to offer the switch at all.
  *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
  */

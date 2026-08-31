@@ -248,6 +248,9 @@ class CoreForegroundService : Service() {
 
         fun setBoardLights(enabled: Boolean): Boolean = instance?.controller?.setBoardLights(enabled) ?: false
 
+        fun lightsEventBody(): Map<String, Any?> =
+            instance?.controller?.lightsEventBody() ?: mapOf("enabled" to null, "headlightsEnabled" to null)
+
         fun startBoardMove(input: Int): Boolean = instance?.controller?.startBoardMove(input) ?: false
 
         fun stopBoardMove(): Boolean = instance?.controller?.stopBoardMove() ?: false

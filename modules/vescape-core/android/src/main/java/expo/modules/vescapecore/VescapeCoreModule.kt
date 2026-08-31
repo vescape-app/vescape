@@ -178,6 +178,7 @@ class VescapeCoreModule : Module() {
       "onBoardConfigValues",
       "onMotorConfigValues",
       "onBoardConfigChangeNotice",
+      "onBoardLights",
       "onAppStatus",
       "onNavigation",
       "onRouteProgress",
@@ -319,6 +320,12 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onMotorConfigValues") { stopObserving("onMotorConfigValues") }
     OnStartObserving("onBoardConfigChangeNotice") { startObserving("onBoardConfigChangeNotice") }
     OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
+    OnStartObserving("onBoardLights") {
+      startObserving("onBoardLights")
+      // Late subscriber: replay what the board last said, so a drawer opened mid-session is right.
+      sendEvent("onBoardLights", CoreForegroundService.lightsEventBody())
+    }
+    OnStopObserving("onBoardLights") { stopObserving("onBoardLights") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))

@@ -188,23 +188,32 @@ Footer:
 
 ### LIGHTS_CONTROL (20) — Refloat's own lights
 
-Request: `[101] [20] [mask uint32 BE] [value]`. `mask` names which switches to apply — bit 0 the
-lights as a whole, bit 1 the headlights — and `value` carries their new state in the same bit
-positions. Firmware touches only the switches the mask names, so writing `mask = 3, value = 3`
-turns both on and `value = 0` turns both off.
+Request: `[CUSTOM_APP_DATA=0x24] [101] [20] [mask uint32 BE] [value]`. `mask` names which switches
+to apply — bit 0 the lights as a whole, bit 1 the headlights — and `value` carries their new state
+in the same bit positions. Firmware touches only the switches the mask names, so writing
+`mask = 3, value = 3` turns both on and `value = 0` turns both off.
+
+Firmware discards the whole request unless the mask's **low byte** is non-zero (`mask & 0xff`); a
+mask whose set bits are all above bit 7 is a silent no-op and `value` is never even read.
 
 The board answers with `[101] [20] [headlights_enabled << 1 | enabled]`, its runtime status after
-the write. Nothing is persisted: a power cycle restores the board's configured setting.
+the write.
 
-Boards with no LEDs (`GET_INFO` capabilities bit 0 clear) ignore the command.
+Nothing is persisted, but the write is sticky for the rest of the power cycle: firmware flags the
+runtime value as overriding the configured one, and from then on stops re-applying the configured
+lights setting. So a later config write of that setting appears to do nothing until reboot.
+
+A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
+runtime flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
+knows not to offer the switch at all.
 
 ### LCM reads — Lighting controller
 
 | Command         |  ID | Returns                                                                                                                                                                          |
 | --------------- | --: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | LCM_LIGHT_INFO  |  25 | Light config: enabled, brightness, idle brightness, status brightness, lights-off-when-lifted, LCM name, payload                                                                 |
-| LCM_DEVICE_INFO |  27 | LCM hardware/firmware info                                                                                                                                                       |
 | LCM_LIGHT_CTRL  |  26 | Write for external light modules: `[brightness] [brightness_idle] [status_brightness]` (each 0–100), plus an optional LCM-specific payload tail. Ignored when no LCM is enabled. |
+| LCM_DEVICE_INFO |  27 | LCM hardware/firmware info                                                                                                                                                       |
 | LCM_GET_BATTERY |  29 | Battery info from external light module                                                                                                                                          |
 
 ### Board Move commands

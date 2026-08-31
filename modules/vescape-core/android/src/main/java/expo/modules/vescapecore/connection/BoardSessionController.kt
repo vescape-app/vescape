@@ -13,6 +13,7 @@ import expo.modules.vescapecore.location.LegalPolicyCatalog
 import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
+import expo.modules.vescapecore.protocol.BoardLightsState
 import expo.modules.vescapecore.protocol.BoardMoveGeneration
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.protocol.COMM_BMS_GET_VALUES
@@ -1393,11 +1394,10 @@ private var wearAutoLaunchOnConnect = true
         }
         parseLightsControlResponse(payload)?.let { lights ->
             // The lights echo shares the telemetry command byte but carries no metrics; parsing it as
-            // a Telemetry Sample would only produce a parse-failure diagnostic.
-            Log.i(
-                VESC_SESSION_TAG,
-                "Board lights: enabled=${lights.enabled} headlights=${lights.headlightsEnabled}",
-            )
+            // a Telemetry Sample would only produce a parse-failure diagnostic. It is also the only
+            // truth about the board's lights, so it is what JS renders.
+            boardLights = lights
+            emitEvent("onBoardLights", lightsEventBody())
             return
         }
         if ((payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA) {
@@ -2312,6 +2312,20 @@ private var wearAutoLaunchOnConnect = true
         firmwareCommandsTrusted() && remoteTiltController.stop()
 
     /**
+     * The board's lights as its last echo reported them, or `null` while this session has never
+     * heard one — the board is not saying, so JS shows nothing rather than a guess.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `boardLights`
+     */
+    private var boardLights: BoardLightsState? = null
+
+    /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `lightsEventBody` */
+    fun lightsEventBody(): Map<String, Any?> = mapOf(
+        "enabled" to boardLights?.enabled,
+        "headlightsEnabled" to boardLights?.headlightsEnabled,
+    )
+
+    /**
      * Switch the board's lights on or off. Runtime only: firmware applies it live and writes no
      * config, so the board's own setting returns on the next power cycle.
      *
@@ -2459,6 +2473,9 @@ private var wearAutoLaunchOnConnect = true
         boardConfigValues = null
         motorConfigValues = null
         motorConfigRequested = false
+        // Lights are per Board Session: what the last board's echo said means nothing for the next.
+        boardLights = null
+        emitEvent("onBoardLights", lightsEventBody())
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread

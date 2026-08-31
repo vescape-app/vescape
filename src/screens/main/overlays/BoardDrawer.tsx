@@ -15,6 +15,7 @@ import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { SwitchWidget } from '@/components/widgets/SwitchWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
+import { useBoardLights } from '@/modules/board/hooks/useBoardLights'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
@@ -73,6 +74,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
   const waitingForTrustedLink = boardConnected && !quickControlsEnabled
+  const lights = useBoardLights()
   const profilesForBoard = profilesLoadedForBoard
     ? profiles.filter(
         (profile) =>
@@ -172,21 +174,15 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
 
       <View style={styles.quickGrid}>
         <View style={styles.quickCell}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Lights, not available yet"
-            onPress={() => setUnbuiltControl({ label: 'Lights', visible: true })}
-          >
-            <SwitchWidget
-              icon={LightbulbIcon}
-              label="Lights"
-              size="half"
-              value={false}
-              onValueChange={() => {}}
-              accent={theme.palette.amber.color}
-              disabled
-            />
-          </Pressable>
+          <SwitchWidget
+            icon={LightbulbIcon}
+            label="Lights"
+            size="half"
+            value={lights.enabled ?? false}
+            onValueChange={lights.toggleLights}
+            accent={theme.palette.amber.color}
+            disabled={!quickControlsEnabled}
+          />
         </View>
         <View style={styles.quickCell}>
           <Pressable
