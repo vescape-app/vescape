@@ -503,6 +503,11 @@ export const status = {
 /** Tune Profile actions and entry points. */
 export const tune = palette.purple
 
+/** Board lights control — warm headlight accent. */
+export const light = {
+  accent: palette.amber.color,
+} as const
+
 /** Icon accent shared by every entry point for a settings destination. */
 export const settingsIcon = {
   battery: palette.green.color,
@@ -594,6 +599,7 @@ export const theme = {
   map,
   status,
   tune,
+  light,
   settingsIcon,
   alpha,
   coloredAction,

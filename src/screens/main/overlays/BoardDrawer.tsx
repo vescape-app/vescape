@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { FadersIcon, FootprintsIcon, LightbulbIcon } from 'phosphor-react-native'
+import { FadersIcon, FootprintsIcon, HeadlightsIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
 import { BoardMoveControl } from '@/modules/board/components/BoardMoveControl'
@@ -175,12 +175,12 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
       <View style={styles.quickGrid}>
         <View style={styles.quickCell}>
           <SwitchWidget
-            icon={LightbulbIcon}
+            icon={HeadlightsIcon}
             label="Lights"
             size="half"
             value={lights.enabled ?? false}
             onValueChange={lights.toggleLights}
-            accent={theme.palette.amber.color}
+            accent={theme.light.accent}
             disabled={!quickControlsEnabled}
           />
         </View>
