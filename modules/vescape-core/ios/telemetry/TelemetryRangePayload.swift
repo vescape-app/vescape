@@ -16,44 +16,55 @@ extension TelemetryRepository {
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
-    let deviceId = options["deviceId"] as? String
+    let boardId = options["boardId"] as? String
     guard let pool else { return emptyRangePayload() }
-    // Battery configs and the smoothing window are read up front (each opens its own DB read) so
-    // the estimate stays a pure computation inside the range read below.
-    let configs = batteryConfigByDevice()
+    // Markers and Metric Exclusion Ranges still key on the BLE identifier (ADR 0028), so a
+    // Board-scoped range read translates before it can filter them.
+
+    // Battery configs, board names and the smoothing window are read up front (each opens its own
+    // DB read) so the estimate stays a pure computation inside the range read below.
+    let configs = batteryConfigByBoard()
+    let boardNames = Self.boardNamesById()
     let windowMs = socWindowMs()
     return (try? pool.read { db -> [String: Any?] in
       let sampleRows = try Row.fetchAll(
         db,
         sql: """
           SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR device_id = ?)
+          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
           ORDER BY captured_at_ms ASC
           LIMIT ?
           """,
-        arguments: [fromMs, toMs, deviceId, deviceId, limit]
+        arguments: [fromMs, toMs, boardId, boardId, limit]
       )
       let markers = try Row.fetchAll(
         db,
-        sql: "SELECT * FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND (? IS NULL OR device_id = ?) ORDER BY occurred_at_ms ASC",
-        arguments: [fromMs, toMs, deviceId, deviceId]
+        sql: "SELECT * FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY occurred_at_ms ASC",
+        arguments: [fromMs, toMs, boardId, boardId]
       )
       let exclusions = try Row.fetchAll(
         db,
-        sql: "SELECT * FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ? AND (? IS NULL OR device_id = ?) ORDER BY start_ms ASC",
-        arguments: [fromMs, toMs, deviceId, deviceId]
+        sql: "SELECT * FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY start_ms ASC",
+        arguments: [fromMs, toMs, boardId, boardId]
       ).map(exclusionMap)
       let percents = self.batteryPercents(sampleRows, configs: configs, windowMs: windowMs)
       let overviewIndices = evenlySpacedIndices(sampleRows.count, limit: HISTORY_CHART_OVERVIEW_SAMPLES)
       let overviewRows = overviewIndices.map { sampleRows[$0] }
       let overviewPercents = overviewIndices.map { percents[$0] }
-      return mergeTelemetryPayload(sampleColumns(sampleRows, batteryPercents: percents), [
-        "chartColumns": sampleColumns(overviewRows, batteryPercents: overviewPercents)["boardColumns"],
-        "chartCount": overviewRows.count,
-        "gpsSamples": gpsMaps(sampleRows),
-        "markers": markers.map(markerMap),
-        "exclusions": exclusions,
-      ])
+      return mergeTelemetryPayload(
+        sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
+        [
+          "chartColumns": sampleColumns(
+            overviewRows,
+            batteryPercents: overviewPercents,
+            boardNames: boardNames
+          )["boardColumns"],
+          "chartCount": overviewRows.count,
+          "gpsSamples": gpsMaps(sampleRows, boardNames: boardNames),
+          "markers": markers.map(markerMap),
+          "exclusions": exclusions,
+        ]
+      )
     }) ?? emptyRangePayload()
   }
 }
@@ -71,20 +82,24 @@ private func evenlySpacedIndices(_ count: Int, limit: Int) -> [Int] {
 /// that answers JS calls rather than in the DAO.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `smoothedSampleColumns`
-internal func sampleColumns(_ rows: [Row], batteryPercents: [Double?]) -> [String: Any?] {
+internal func sampleColumns(
+  _ rows: [Row],
+  batteryPercents: [Double?],
+  boardNames: [String: String]
+) -> [String: Any?] {
   var data = Data(capacity: rows.count * SAMPLE_COLUMN_COUNT * MemoryLayout<Double>.size)
-  var deviceIds: [String?] = []
-  var deviceNames: [String] = []
-  var deviceIndex: [String: Int] = [:]
+  var boardIds: [String?] = []
+  var names: [String] = []
+  var boardIndex: [String: Int] = [:]
   for (i, row) in rows.enumerated() {
     let id: Int64 = row["id"]
-    let rawDeviceId = row["device_id"] as String?
-    let key = rawDeviceId ?? ""
-    let index = deviceIndex[key] ?? {
-      deviceIds.append(rawDeviceId)
-      deviceNames.append(row["device_name"] as String? ?? "VESC Board")
-      let newIndex = deviceIds.count - 1
-      deviceIndex[key] = newIndex
+    let rawBoardId = row["board_id"] as String?
+    let key = rawBoardId ?? ""
+    let index = boardIndex[key] ?? {
+      boardIds.append(rawBoardId)
+      names.append(rawBoardId.flatMap { boardNames[$0] } ?? UNKNOWN_TELEMETRY_BOARD_NAME)
+      let newIndex = boardIds.count - 1
+      boardIndex[key] = newIndex
       return newIndex
     }()
     appendDouble(&data, Double(id))
@@ -114,8 +129,8 @@ internal func sampleColumns(_ rows: [Row], batteryPercents: [Double?]) -> [Strin
   return [
     "boardColumns": (try? NativeArrayBuffer.copy(data: data)) ?? NativeArrayBuffer.allocate(size: 0),
     "boardCount": rows.count,
-    "boardDevices": deviceIds,
-    "boardDeviceNames": deviceNames,
+    "boardIds": boardIds,
+    "boardNames": names,
   ]
 }
 
@@ -123,8 +138,8 @@ internal func emptyRangePayload() -> [String: Any?] {
   [
     "boardColumns": NativeArrayBuffer.allocate(size: 0),
     "boardCount": 0,
-    "boardDevices": [] as [String?],
-    "boardDeviceNames": [] as [String],
+    "boardIds": [] as [String?],
+    "boardNames": [] as [String],
     "chartColumns": NativeArrayBuffer.allocate(size: 0),
     "chartCount": 0,
     "gpsSamples": [] as [[String: Any?]],

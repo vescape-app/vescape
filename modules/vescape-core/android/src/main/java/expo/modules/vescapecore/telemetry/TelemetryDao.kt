@@ -19,11 +19,11 @@ interface TelemetryDao {
     SELECT * FROM metric_exclusion_ranges
     WHERE start_ms <= :toMs
       AND end_ms >= :fromMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY start_ms ASC
     """,
   )
-  suspend fun getExclusions(fromMs: Long, toMs: Long, deviceId: String?): List<MetricExclusionRangeEntity>
+  suspend fun getExclusions(fromMs: Long, toMs: Long, boardId: String?): List<MetricExclusionRangeEntity>
 
   @Query("DELETE FROM metric_exclusion_ranges WHERE start_ms <= :toMs AND end_ms >= :fromMs")
   suspend fun deleteExclusionsRange(fromMs: Long, toMs: Long): Int
@@ -37,7 +37,7 @@ interface TelemetryDao {
   @Query(
     """
     SELECT * FROM metric_exclusion_ranges
-    WHERE device_id = :deviceId
+    WHERE board_id = :boardId
       AND reason = :reason
       AND end_ms >= :startMs - :mergeGapMs
     ORDER BY end_ms DESC
@@ -45,7 +45,7 @@ interface TelemetryDao {
     """,
   )
   suspend fun getMergeableExclusionRange(
-    deviceId: String,
+    boardId: String,
     reason: String,
     startMs: Long,
     mergeGapMs: Long,
@@ -88,13 +88,13 @@ interface TelemetryDao {
   @Update
   suspend fun updateBucket(bucket: TelemetryMinuteBucketEntity)
 
-  @Query("SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms = :bucketStartMs AND device_id = :deviceId LIMIT 1")
-  suspend fun getBucket(bucketStartMs: Long, deviceId: String): TelemetryMinuteBucketEntity?
+  @Query("SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId LIMIT 1")
+  suspend fun getBucket(bucketStartMs: Long, boardId: String): TelemetryMinuteBucketEntity?
 
   @Transaction
   suspend fun upsertBuckets(buckets: Collection<TelemetryMinuteBucketEntity>) {
     for (bucket in buckets) {
-      val existing = getBucket(bucket.bucketStartMs, bucket.deviceId)
+      val existing = getBucket(bucket.bucketStartMs, bucket.boardId)
       if (existing == null) {
         insertBucket(bucket)
       } else {
@@ -118,9 +118,9 @@ interface TelemetryDao {
 
   @Transaction
   suspend fun upsertExclusionRanges(exclusions: List<MetricExclusionRangeEntity>) {
-    for (exclusion in exclusions.sortedWith(compareBy({ it.deviceId }, { it.reason }, { it.startMs }))) {
+    for (exclusion in exclusions.sortedWith(compareBy({ it.boardId }, { it.reason }, { it.startMs }))) {
       val existing = getMergeableExclusionRange(
-        exclusion.deviceId,
+        exclusion.boardId,
         exclusion.reason,
         exclusion.startMs,
         METRIC_EXCLUSION_RANGE_MERGE_GAP_MS,
@@ -141,7 +141,7 @@ interface TelemetryDao {
   @Query(
     """
     SELECT * FROM telemetry_minute_buckets
-    WHERE (:deviceId IS NULL OR device_id = :deviceId)
+    WHERE (:boardId IS NULL OR board_id = :boardId)
       AND bucket_start_ms <= :beforeMs
       AND bucket_start_ms >= :fromMs
       AND bucket_start_ms <= :toMs
@@ -154,7 +154,7 @@ interface TelemetryDao {
     fromMs: Long,
     toMs: Long,
     beforeMs: Long,
-    deviceId: String?,
+    boardId: String?,
     limit: Int,
   ): List<TelemetryMinuteBucketEntity>
 
@@ -166,18 +166,18 @@ interface TelemetryDao {
     SELECT * FROM telemetry_markers
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY occurred_at_ms ASC
     """,
   )
-  suspend fun getMarkers(fromMs: Long, toMs: Long, deviceId: String?): List<TelemetryMarkerEntity>
+  suspend fun getMarkers(fromMs: Long, toMs: Long, boardId: String?): List<TelemetryMarkerEntity>
 
   @Query(
     """
     SELECT * FROM diagnostic_events
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY occurred_at_ms DESC
     LIMIT :limit
     """,
@@ -185,7 +185,7 @@ interface TelemetryDao {
   suspend fun getDiagnosticEvents(
     fromMs: Long,
     toMs: Long,
-    deviceId: String?,
+    boardId: String?,
     limit: Int,
   ): List<DiagnosticEventEntity>
 
@@ -193,7 +193,7 @@ interface TelemetryDao {
     """
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms <= :fromMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
       AND (flags & :keyframeFlag) != 0
     ORDER BY captured_at_ms DESC
     LIMIT 1
@@ -201,7 +201,7 @@ interface TelemetryDao {
   )
   suspend fun getLatestKeyframeBefore(
     fromMs: Long,
-    deviceId: String?,
+    boardId: String?,
     keyframeFlag: Int = TELEMETRY_FLAG_KEYFRAME,
   ): TelemetryFrameEntity?
 
@@ -210,30 +210,30 @@ interface TelemetryDao {
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY captured_at_ms ASC
     LIMIT :limit
     """,
   )
-  suspend fun getFrames(fromMs: Long, toMs: Long, deviceId: String?, limit: Int): List<TelemetryFrameEntity>
+  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity>
 
   @Query(
     """
-    SELECT DISTINCT device_id FROM telemetry_frames
+    SELECT DISTINCT board_id FROM telemetry_frames
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
-      AND device_id IS NOT NULL
-    ORDER BY device_id ASC
+      AND board_id IS NOT NULL
+    ORDER BY board_id ASC
     """,
   )
-  suspend fun getDeviceIdsInRange(fromMs: Long, toMs: Long): List<String>
+  suspend fun getBoardIdsInRange(fromMs: Long, toMs: Long): List<String>
 
   @Query(
     """
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
-      AND device_id = :deviceId
+      AND board_id = :boardId
     ORDER BY captured_at_ms ASC
     LIMIT 1
     """,
@@ -241,7 +241,7 @@ interface TelemetryDao {
   suspend fun getFirstFrameInRange(
     fromMs: Long,
     toMs: Long,
-    deviceId: String,
+    boardId: String,
   ): TelemetryFrameEntity?
 
   @Query("SELECT COUNT(*) FROM telemetry_frames")
@@ -284,12 +284,12 @@ interface TelemetryDao {
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
       AND (
-        (:deviceId IS NOT NULL AND device_id = :deviceId)
-        OR (:deviceId IS NULL AND device_id IS NULL)
+        (:boardId IS NOT NULL AND board_id = :boardId)
+        OR (:boardId IS NULL AND board_id IS NULL)
       )
     """,
   )
-  suspend fun deleteFramesRange(fromMs: Long, toMs: Long, deviceId: String?): Int
+  suspend fun deleteFramesRange(fromMs: Long, toMs: Long, boardId: String?): Int
 
   @Query(
     """
@@ -297,28 +297,29 @@ interface TelemetryDao {
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
       AND (
-        (:deviceId IS NOT NULL AND device_id = :deviceId)
-        OR (:deviceId IS NULL AND device_id IS NULL)
+        (:boardId IS NOT NULL AND board_id = :boardId)
+        OR (:boardId IS NULL AND board_id IS NULL)
       )
     """,
   )
-  suspend fun deleteMarkersRange(fromMs: Long, toMs: Long, deviceId: String?): Int
+  suspend fun deleteMarkersRange(fromMs: Long, toMs: Long, boardId: String?): Int
 
   @Query(
     """
     DELETE FROM telemetry_minute_buckets
     WHERE last_sample_at_ms >= :fromMs
       AND first_sample_at_ms <= :toMs
-      AND device_id = :bucketDeviceId
+      AND board_id = :bucketBoardId
     """,
   )
-  suspend fun deleteBucketsRange(fromMs: Long, toMs: Long, bucketDeviceId: String): Int
+  suspend fun deleteBucketsRange(fromMs: Long, toMs: Long, bucketBoardId: String): Int
 
+  /** Every telemetry table keys on [boardId] (ADR 0028). Null means "every Board". */
   @Transaction
-  suspend fun deleteRange(fromMs: Long, toMs: Long, deviceId: String?): Int {
-    val frames = deleteFramesRange(fromMs, toMs, deviceId)
-    deleteMarkersRange(fromMs, toMs, deviceId)
-    deleteBucketsRange(fromMs, toMs, deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID)
+  suspend fun deleteRange(fromMs: Long, toMs: Long, boardId: String?): Int {
+    val frames = deleteFramesRange(fromMs, toMs, boardId)
+    deleteMarkersRange(fromMs, toMs, boardId)
+    deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
     deleteExclusionsRange(fromMs, toMs)
     return frames
   }
@@ -393,6 +394,14 @@ interface TelemetryDao {
   suspend fun upsertBoard(board: BoardEntity) {
     insertBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
   }
+
+  /**
+   * Every Board including tombstones, for Ride History name resolution. Names are looked up on read
+   * rather than denormalized onto telemetry rows (ADR 0028), so a rename retroactively relabels the
+   * history and a deleted Board is still nameable.
+   */
+  @Query("SELECT id, name FROM boards")
+  suspend fun getBoardNames(): List<BoardNameRow>
 
   @Query("SELECT * FROM board_settings WHERE board_id = :boardId")
   suspend fun getBoardSettings(boardId: String): List<BoardSettingEntity>
@@ -751,7 +760,6 @@ interface TelemetryDao {
 
 private fun TelemetryMinuteBucketEntity.merge(next: TelemetryMinuteBucketEntity): TelemetryMinuteBucketEntity {
   return copy(
-    deviceName = next.deviceName ?: deviceName,
     sampleCount = sampleCount + next.sampleCount,
     firstSampleAtMs = minOf(firstSampleAtMs, next.firstSampleAtMs),
     lastSampleAtMs = maxOf(lastSampleAtMs, next.lastSampleAtMs),

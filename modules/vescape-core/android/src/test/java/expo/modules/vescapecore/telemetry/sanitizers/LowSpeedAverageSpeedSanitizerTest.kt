@@ -2,7 +2,7 @@ package expo.modules.vescapecore.telemetry.sanitizers
 
 import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
 import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_LOW_SPEED
-import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_DEVICE_ID
+import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,7 +52,7 @@ class LowSpeedAverageSpeedSanitizerTest {
     )
 
     assertTrue(result.excludedFromAvgSpeed)
-    assertEquals(UNKNOWN_TELEMETRY_DEVICE_ID, result.exclusions.single().deviceId)
+    assertEquals(UNKNOWN_TELEMETRY_BOARD_ID, result.exclusions.single().boardId)
     assertEquals(EXCLUSION_REASON_LOW_SPEED, result.exclusions.single().reason)
   }
 
@@ -67,8 +67,7 @@ class LowSpeedAverageSpeedSanitizerTest {
     speedCentiKmh: Int = 0,
   ) = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
-    deviceId = deviceId,
-    deviceName = "Test",
+    boardId = deviceId,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = 70_000,
     motorCurrentMa = 0,

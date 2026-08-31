@@ -78,7 +78,6 @@ export function buildHistoryMarkerMessage(selection: SelectedHistoryMarker): str
   ]
 
   if (gps.accuracyM != null) lines.push(`GPS accuracy: ${gps.accuracyM.toFixed(1)} m`)
-  if (marker.deviceName) lines.push(`Board: ${marker.deviceName}`)
   if (marker.gapMs != null) lines.push(`Gap duration: ${formatDuration(marker.gapMs)}`)
   if (marker.message) lines.push(`Message: ${marker.message}`)
 

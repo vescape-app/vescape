@@ -2,7 +2,7 @@ package expo.modules.vescapecore.telemetry.sanitizers
 
 import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
 import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_LOW_SPEED
-import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_DEVICE_ID
+import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
 import kotlin.math.abs
 
 internal class LowSpeedAverageSpeedSanitizer(
@@ -23,7 +23,7 @@ internal class LowSpeedAverageSpeedSanitizer(
       exclusions = listOf(
         MetricExclusionSample(
           capturedAtMs = point.capturedAtMs,
-          deviceId = point.deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID,
+          boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID,
           reason = EXCLUSION_REASON_LOW_SPEED,
         ),
       ),

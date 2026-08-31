@@ -11,8 +11,8 @@ internal struct RideRoutePoint {
 }
 
 internal struct RideSessionAggregate {
-  let deviceId: String
-  var deviceName: String
+  /// Owning Board (`boards.id`), empty when the buckets match no saved Board (ADR 0028).
+  let boardId: String
   var boundaryBefore: String
   var firstBucketStartMs: Int64
   var startAtMs: Int64
@@ -93,12 +93,15 @@ internal final class RideHistoryRepository {
           .filter { $0.avgSpeedSampleCount > 0 }
         complete = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
       }
+      // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
+      // relabels the whole Ride History.
+      let boardNames = TelemetryRepository.boardNamesById()
       let sorted = complete.sorted { $0.startAtMs > $1.startAtMs }
       let cutoff = sorted.indices.contains(limit - 1) ? sorted[limit - 1].firstBucketStartMs : nil
       let page = cutoff.map { value in sorted.filter { $0.firstBucketStartMs >= value } } ?? sorted
       let hasMore = hasOlderBuckets || cutoff.map { value in sorted.contains { $0.firstBucketStartMs < value } } == true
       return [
-        "sessions": page.map(rideSessionMap),
+        "sessions": page.map { rideSessionMap($0, boardNames: boardNames) },
         "hasMore": hasMore,
         "nextCursorBeforeMs": hasMore ? page.last?.firstBucketStartMs : nil,
       ]
@@ -130,15 +133,14 @@ internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) ->
   for bucket in buckets.sorted(by: { ($0["first_sample_at_ms"] as Int64) < ($1["first_sample_at_ms"] as Int64) }) {
     if (bucket["sample_count"] as Int) <= 0 { continue }
     let boundary = rideBoundaryForBucket(bucket, markers: markers)
-    let deviceId = bucket["device_id"] as String
-    let split = current == nil || current?.deviceId != deviceId ||
+    let boardId = bucket["board_id"] as String
+    let split = current == nil || current?.boardId != boardId ||
       (previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false) ||
       rideBreakBoundaries.contains(boundary)
     if split {
       if let current { sessions.append(current) }
       current = RideSessionAggregate(
-        deviceId: deviceId,
-        deviceName: (bucket["device_name"] as String?) ?? "VESC Board",
+        boardId: boardId,
         boundaryBefore: boundary,
         firstBucketStartMs: bucket["bucket_start_ms"] as Int64,
         startAtMs: bucket["first_sample_at_ms"] as Int64,
@@ -157,7 +159,7 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.firstBucketStartMs = min(session.firstBucketStartMs, bucketStart)
   session.startAtMs = min(session.startAtMs, bucket["first_sample_at_ms"] as Int64)
   session.endAtMs = max(session.endAtMs, bucket["last_sample_at_ms"] as Int64)
-  session.blockIds.append("\(session.deviceId):\(bucketStart)")
+  session.blockIds.append("\(session.boardId):\(bucketStart)")
   session.blockCount += 1
   session.sampleCount += bucket["sample_count"] as Int
   session.gpsPointCount += bucket["gps_point_count"] as Int
@@ -195,7 +197,7 @@ private func rideBoundaryForBucket(_ bucket: Row, markers: [Row]) -> String {
     let occurred = marker["occurred_at_ms"] as Int64
     return occurred >= (bucket["first_sample_at_ms"] as Int64) - 5_000 &&
       occurred <= (bucket["first_sample_at_ms"] as Int64) + 1_000 &&
-      ((marker["device_id"] as String?) ?? "") == (bucket["device_id"] as String)
+      ((marker["board_id"] as String?) ?? "") == (bucket["board_id"] as String)
   }.map { $0["type"] as String } ?? "none"
 }
 
@@ -205,11 +207,12 @@ private func rideDistanceDeltaM(_ bucket: Row) -> Double? {
 }
 
 /// @parity /modules/vescape-core/src/index.ts `RideHistorySession`
-internal func rideSessionMap(_ session: RideSessionAggregate) -> [String: Any?] {
+internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [String: String]) -> [String: Any?] {
   let average = session.avgSpeedSampleCount > 0 ? session.avgSpeedWeightedSum / Double(session.avgSpeedSampleCount) : 0
   return [
-    "id": "\(session.deviceId.isEmpty ? "unknown" : session.deviceId):\(session.startAtMs):\(session.endAtMs)",
-    "deviceId": session.deviceId.isEmpty ? nil : session.deviceId, "deviceName": session.deviceName,
+    "id": "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)",
+    "boardId": session.boardId.isEmpty ? nil : session.boardId,
+    "boardName": boardNames[session.boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "startAtMs": session.startAtMs, "endAtMs": session.endAtMs, "movingStartAtMs": session.movingStartAtMs,
     "movingEndAtMs": session.movingEndAtMs, "blockIds": session.blockIds, "blockCount": session.blockCount,
     "sampleCount": session.sampleCount, "gpsPointCount": session.gpsPointCount,

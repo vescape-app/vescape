@@ -35,7 +35,7 @@ class HistoryGpsProjectionTest {
       ),
     )
 
-    val gpsSample = samples.toGpsSampleMaps().single()
+    val gpsSample = samples.toGpsSampleMaps(mapOf("board-1" to "ADV2")).single()
     val bucketPoint = samples.toBucketLocationPoints().single()
 
     assertEquals(7L, gpsSample["id"])
@@ -51,8 +51,7 @@ class HistoryGpsProjectionTest {
       state = FullTelemetryState(
         capturedAtMs = capturedAtMs,
         elapsedRealtimeMs = capturedAtMs,
-        deviceId = "board-1",
-        deviceName = "ADV2",
+        boardId = "board-1",
         canId = null,
         speedCentiKmh = 1_000,
         batteryVoltageMv = 77_000,

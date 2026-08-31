@@ -171,7 +171,7 @@ internal final class RecordingCoordinator {
   }
 
   private func recordMarker(_ type: String, config: BoardConnectConfig, message: String? = nil) {
-    store.recordMarker(type: type, deviceId: config.bleId, deviceName: config.name, message: message)
+    store.recordMarker(type: type, boardId: config.appBoardId, message: message)
   }
 
   private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000.0) }

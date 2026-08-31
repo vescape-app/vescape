@@ -1943,7 +1943,8 @@ internal final class BoardSessionController: VescGattListener {
 
   /// Persist a connection-lifecycle Local Diagnostic Event with the base session context (device,
   /// phase, connection seq) so the iOS event log carries the same columns Android does. The store
-  /// keys `ble_id`/`board_nickname` into the `device_id`/`device_name` columns JS reads.
+  /// keys `board_id` into the `board_id` column JS reads; `ble_id` and `board_nickname` stay in the
+  /// opaque properties payload as diagnostic context, never as the row's identity.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/diagnostics/DiagnosticsRecorder.kt `recordLocalDiagnostic`
   private func recordConnectionDiagnostic(
     _ eventName: String,
@@ -2214,8 +2215,7 @@ internal final class BoardSessionController: VescGattListener {
     return TelemetryCapture(
       capturedAtMs: telemetry.lastPacketAt,
       elapsedRealtimeMs: elapsedMs(),
-      deviceId: config.bleId,
-      deviceName: config.name,
+      boardId: config.appBoardId,
       canId: canId,
       telemetry: telemetry,
       // Recorded frames refuse a stale fix (ADR 0034); live display keeps the last known one.
