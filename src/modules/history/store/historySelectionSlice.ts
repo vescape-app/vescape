@@ -15,7 +15,7 @@ function getSessionRangeOptions(session: HistorySession) {
   return {
     fromMs: session.startAtMs,
     toMs: session.endAtMs,
-    ...(session.deviceId ? { deviceId: session.deviceId } : {}),
+    ...(session.boardId ? { boardId: session.boardId } : {}),
   }
 }
 
@@ -59,7 +59,7 @@ export const createHistorySelectionSlice: SliceFactory = (set, get) => ({
       const range = await getHistoryRange({
         fromMs: block.startAtMs,
         toMs: block.endAtMs,
-        ...(block.deviceId ? { deviceId: block.deviceId } : {}),
+        ...(block.boardId ? { boardId: block.boardId } : {}),
         limit: 500,
       })
       set({

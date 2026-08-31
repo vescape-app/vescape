@@ -52,7 +52,7 @@ export function matchRideSession(
     sessions.find(
       (session) =>
         session.id === selected.id ||
-        (session.deviceId === selected.deviceId &&
+        (session.boardId === selected.boardId &&
           session.startAtMs <= selected.endAtMs &&
           session.endAtMs >= selected.startAtMs),
     ) ?? null

@@ -11,13 +11,14 @@ internal data class HistoryGpsPoint(
   val location: ScaledLocation,
   val distanceFromPreviousCm: Long?,
 ) {
-  fun toSampleMap(): Map<String, Any?> {
+  /** [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028). */
+  fun toSampleMap(boardNames: Map<String, String>): Map<String, Any?> {
     val telemetry = sample.state
     return mapOf(
       "id" to sample.id,
       "capturedAtMs" to telemetry.capturedAtMs,
-      "deviceId" to telemetry.deviceId,
-      "deviceName" to (telemetry.deviceName ?: UNKNOWN_TELEMETRY_DEVICE_NAME),
+      "boardId" to telemetry.boardId,
+      "boardName" to (telemetry.boardId?.let { boardNames[it] } ?: UNKNOWN_TELEMETRY_BOARD_NAME),
       "latitude" to location.latitudeE7 / 10_000_000.0,
       "longitude" to location.longitudeE7 / 10_000_000.0,
       "speedMps" to location.gpsSpeedCentiMps?.let { it / 100.0 },
@@ -34,8 +35,7 @@ internal data class HistoryGpsPoint(
     val telemetry = sample.state
     return BucketLocationPoint(
       capturedAtMs = telemetry.capturedAtMs,
-      deviceId = telemetry.deviceId,
-      deviceName = telemetry.deviceName,
+      boardId = telemetry.boardId,
       precise = true,
       distanceFromPreviousCm = distanceFromPreviousCm,
       gpsSpeedCentiMps = location.gpsSpeedCentiMps,
@@ -73,8 +73,9 @@ internal fun List<HistoryTelemetryState>.toHistoryGpsPoints(): List<HistoryGpsPo
   return points
 }
 
-internal fun List<HistoryTelemetryState>.toGpsSampleMaps(): List<Map<String, Any?>> =
-  toHistoryGpsPoints().map { it.toSampleMap() }
+internal fun List<HistoryTelemetryState>.toGpsSampleMaps(
+  boardNames: Map<String, String>,
+): List<Map<String, Any?>> = toHistoryGpsPoints().map { it.toSampleMap(boardNames) }
 
 internal fun List<HistoryTelemetryState>.toBucketLocationPoints(): List<BucketLocationPoint> =
   toHistoryGpsPoints().map { it.toBucketPoint() }

@@ -77,8 +77,8 @@ export function favoriteToSession(
   const longitudes = routePoints.map((point) => point.longitude).filter(isFinitePoint)
   return {
     id: favoriteSessionId(favorite.id),
-    deviceId: spanned.find((block) => block.deviceId != null)?.deviceId ?? null,
-    deviceName: favorite.boardName ?? spanned[0]?.deviceName ?? '',
+    boardId: spanned.find((block) => block.boardId != null)?.boardId ?? null,
+    boardName: favorite.boardName ?? spanned[0]?.boardName ?? '',
     startAtMs: favorite.startMs,
     endAtMs: favorite.endMs,
     // A Favorite is already a trimmed span: it is its own Moving Window, so the chart and the title

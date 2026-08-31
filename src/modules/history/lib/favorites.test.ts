@@ -68,8 +68,8 @@ function bucket(overrides: Partial<TelemetryMinuteBucket>): TelemetryMinuteBucke
     startAtMs: 1_100_000,
     endAtMs: 1_160_000,
     bucketStartMs: 1_100_000,
-    deviceId: 'ble-1',
-    deviceName: 'VESC Board',
+    boardId: 'ble-1',
+    boardName: 'VESC Board',
     sampleCount: 60,
     gpsPointCount: 10,
     preciseGpsPointCount: 8,
@@ -122,14 +122,14 @@ test('a favorite-backed session reports the pinned range and the pinned summary'
   expect(detail.blockIds).toEqual(['inside', 'tail'])
   expect(detail.minLatitude).toBe(52)
   expect(detail.maxLatitude).toBe(53)
-  expect(detail.deviceId).toBe('ble-1')
+  expect(detail.boardId).toBe('ble-1')
 })
 
 test('a favorite-backed session keeps board identity separate from its name', () => {
-  expect(favoriteToSession(favorite({ name: 'Dolina single track' }), []).deviceName).toBe(
+  expect(favoriteToSession(favorite({ name: 'Dolina single track' }), []).boardName).toBe(
     'Onewheel',
   )
-  expect(favoriteToSession(favorite({}), []).deviceName).toBe('Onewheel')
+  expect(favoriteToSession(favorite({}), []).boardName).toBe('Onewheel')
 })
 
 test('a favorite whose buckets are not loaded still yields a detail session', () => {

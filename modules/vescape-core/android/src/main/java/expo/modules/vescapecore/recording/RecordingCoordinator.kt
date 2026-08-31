@@ -112,8 +112,7 @@ internal class RecordingCoordinator(
         connectionLostMarkerAt = markerAt
         store.recordMarker(
             type = "connection_lost",
-            deviceId = config.deviceId,
-            deviceName = config.deviceName,
+            boardId = config.appBoardId,
             message = reason,
             occurredAtMs = markerAt,
         )
@@ -172,8 +171,7 @@ internal class RecordingCoordinator(
     private fun recordMarker(type: String, config: SessionConfig?, message: String? = null) {
         telemetryStore?.recordMarker(
             type,
-            config?.deviceId,
-            config?.deviceName,
+            config?.appBoardId,
             message,
         )
     }

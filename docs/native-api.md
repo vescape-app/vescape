@@ -8,7 +8,7 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 | Domain (CONTEXT.md) | Native/API name                                                 |
 | ------------------- | --------------------------------------------------------------- |
-| Board               | `device_id` in DB, `boardId` in API                             |
+| Board               | `board_id` in DB, `boardId` in API                              |
 | Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                 |
 | Ride Recording      | frames + buckets + markers in DB                                |
 | Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full) |
@@ -92,20 +92,20 @@ Field omitted (null) when change < threshold from previous:
 
 ## Telemetry queries
 
-| fn                                                    | returns                                                                    | notes                                                                                             |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `getTelemetryHistory(opts?)`                          | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
-| `getRideHistoryPage({limit?,cursorBeforeMs?})`        | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
-| `getTelemetrySamples({fromMs,toMs,deviceId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
-| `getTelemetrySummary()`                               | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
-| `getDatabaseSizeBytes()`                              | number                                                                     | File size of vescape.db                                                                           |
+| fn                                                   | returns                                                                    | notes                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `getTelemetryHistory(opts?)`                         | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
+| `getRideHistoryPage({limit?,cursorBeforeMs?})`       | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
+| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
+| `getHistoryRange({fromMs,toMs,boardId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
+| `getTelemetrySummary()`                              | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
+| `getDatabaseSizeBytes()`                             | number                                                                     | File size of vescape.db                                                                           |
 
 ### TelemetryMinuteBucket (bucket shape)
 
 ```ts
 {
-  id, startAtMs, endAtMs, bucketStartMs, deviceId, deviceName,
+  id, startAtMs, endAtMs, bucketStartMs, boardId, boardName,
   sampleCount, gpsPointCount, preciseGpsPointCount,
   maxAbsSpeedKmh, maxGpsSpeedKmh?, avgSpeedKmh, avgSpeedSampleCount,
   minBatteryVoltage?, maxMotorCurrent, maxBatteryCurrent, maxDuty,
@@ -121,7 +121,7 @@ Field omitted (null) when change < threshold from previous:
 
 ```ts
 {
-  id, capturedAtMs, deviceId, deviceName,
+  id, capturedAtMs, boardId, boardName,
   speedKmh, batteryVoltage, motorCurrent, batteryCurrent, dutyCycle,
   pitch, roll, balancePitch, balanceCurrent, erpm,
   state, switchState, adc1, adc2, odometer?,
@@ -169,11 +169,11 @@ it never creates occurrences, warnings, baselines, or persisted register snapsho
 
 ## Telemetry deletion
 
-| fn                                              | returns                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `deleteTelemetryBefore(beforeMs)`               | frames deleted count. Also deletes matching markers + buckets     |
-| `deleteTelemetryRange({fromMs,toMs,deviceId?})` | frames deleted count. Flushes pending first                       |
-| `clearTelemetryHistory()`                       | void. Wipes all frames, markers, buckets + resets in-memory state |
+| fn                                             | returns                                                           |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets     |
+| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                       |
+| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state |
 
 ## User Profile Stats
 

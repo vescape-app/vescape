@@ -53,7 +53,7 @@ class ProfileStatsRepository private constructor(private val context: Context) {
     if (buckets.isEmpty()) return emptyList()
     val fromMs = buckets.minOf { it.firstSampleAtMs } - gapMs
     val toMs = buckets.maxOf { it.lastSampleAtMs } + TELEMETRY_BUCKET_SIZE_MS
-    return dao.getMarkers(fromMs = fromMs, toMs = toMs, deviceId = null)
+    return dao.getMarkers(fromMs = fromMs, toMs = toMs, boardId = null)
   }
 
   companion object {

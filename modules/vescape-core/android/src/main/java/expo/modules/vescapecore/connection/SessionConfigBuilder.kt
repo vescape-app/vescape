@@ -24,6 +24,10 @@ internal suspend fun buildSessionConfig(
     val repo = AppDataRepository.get(context.applicationContext)
     val board = repo.getBoard(boardId)
         ?: throw IllegalArgumentException("Board not found: $boardId")
+    // Reads resolve tombstones so history can name them (ADR 0027); connecting to one is refused.
+    if (board["deletedAt"] != null) {
+        throw IllegalArgumentException("Board is deleted: $boardId")
+    }
     @Suppress("UNCHECKED_CAST")
     val link = board["link"] as? Map<String, Any?>
     val bleId = link?.get("bleId") as? String

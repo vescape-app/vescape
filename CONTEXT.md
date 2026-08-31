@@ -8,6 +8,10 @@ This context defines the shared language for the Vescape app. The app centers on
 A saved rideable device that can be connected over BLE and may expose one motor controller through CAN.
 _Avoid_: Device, controller, scooter
 
+**Board Tombstone**:
+A deleted Board's surviving row, marked by a deletion stamp. The Board leaves every Rider-facing list but stays resolvable by id, so Ride History can still name the Board that produced it. Its configuration is hard-deleted; its telemetry and Tune Profiles are not (ADR 0027).
+_Avoid_: Soft delete, archived Board
+
 **Board Link**:
 The saved, probe-confirmed reachability details for a Board, including BLE peripheral id, selected Board Transport, and capabilities or firmware facts discovered for that transport.
 _Avoid_: Pairing, connection settings, device config
@@ -460,6 +464,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - An **Alert Rule** evaluates against live **Telemetry Samples**.
 - A **One-Shot** or **Repeating Alert Rule** announces only while fired and needs an **Alert Re-Arm** before it can announce again; a **Geiger Alert Rule** has neither, its cadence follows **Alert Range Depth**.
 - An **Alert Rule** belongs to one **Board**; the alert engine evaluates only the connected **Board**'s rules, and deleting a **Board** deletes its rules.
+- Deleting a **Board** leaves a **Board Tombstone**: its configuration goes, its **Ride History** and **Tune Profiles** stay, and the row stays resolvable by id so history can still name it (ADR 0027).
+- Every durable record that belongs to a **Board** identifies it by **Board** id, never by BLE identifier. The BLE address survives in exactly one place, the **Board Link**'s `ble_id`, where it is a reachability detail of that Board and not a key anything else joins on (ADR 0028).
+- **Ride History** resolves the **Board** name by lookup rather than reading a copy stored at capture time, so renaming a **Board** relabels its whole history (ADR 0028).
 - An **Alert Preset** is set per metric and produces zero or more **Alert Rules** for that metric; those rules are regenerated wholesale when its level changes and coexist with the rider's manual **Alert Rules**.
 - A speed **Alert Preset** resolves its km/h thresholds from **Board Top Speed**; changing **Board Top Speed** regenerates the speed preset's **Alert Rules**.
 - An **Alert Message Template** belongs to one **Alert Rule**.

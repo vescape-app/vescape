@@ -3,6 +3,7 @@ import type { EventSubscription } from 'expo-modules-core'
 import type {
   AppSettings,
   Board,
+  BoardInput,
   BoardCandidate,
   BoardLink,
   CompanionPresenceBoard,
@@ -304,8 +305,8 @@ function getTelemetryHistory(options: TelemetryHistoryOptions): TelemetryMinuteB
   if (options.toMs != null) {
     buckets = buckets.filter((b) => b.startAtMs <= options.toMs!)
   }
-  if (options.deviceId != null) {
-    buckets = buckets.filter((b) => b.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    buckets = buckets.filter((b) => b.boardId === options.boardId)
   }
   if (options.cursorBeforeMs != null) {
     buckets = buckets.filter((b) => b.bucketStartMs < options.cursorBeforeMs!)
@@ -321,9 +322,9 @@ function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }
     (a, b) => b.startAtMs - a.startAtMs,
   )
   const sessions: RideHistorySession[] = buckets.map((bucket) => ({
-    id: `${bucket.deviceId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
-    deviceId: bucket.deviceId,
-    deviceName: bucket.deviceName,
+    id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
+    boardId: bucket.boardId,
+    boardName: bucket.boardName,
     startAtMs: bucket.startAtMs,
     endAtMs: bucket.endAtMs,
     movingStartAtMs: bucket.firstMovingAtMs,
@@ -367,20 +368,20 @@ function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }
 function encodeBoardSamples(samples: TelemetrySample[]): {
   boardColumns: ArrayBuffer
   boardCount: number
-  boardDevices: (string | null)[]
-  boardDeviceNames: string[]
+  boardIds: (string | null)[]
+  boardNames: string[]
 } {
   const lanes = new Float64Array(samples.length * SAMPLE_COLUMN_COUNT)
-  const boardDevices: (string | null)[] = []
-  const boardDeviceNames: string[] = []
+  const boardIds: (string | null)[] = []
+  const boardNames: string[] = []
   const deviceIndexMap = new Map<string | null, number>()
-  function deviceIndex(deviceId: string | null, deviceName: string): number {
-    const key = `${deviceId ?? ''}:${deviceName}`
+  function boardIndex(boardId: string | null, boardName: string): number {
+    const key = `${boardId ?? ''}:${boardName}`
     let index = deviceIndexMap.get(key)
     if (index == null) {
-      index = boardDevices.length
-      boardDevices.push(deviceId)
-      boardDeviceNames.push(deviceName)
+      index = boardIds.length
+      boardIds.push(boardId)
+      boardNames.push(boardName)
       deviceIndexMap.set(key, index)
     }
     return index
@@ -391,7 +392,7 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
     const o = i * SAMPLE_COLUMN_COUNT
     lanes[o + 0] = s.id
     lanes[o + 1] = s.capturedAtMs
-    lanes[o + 2] = deviceIndex(s.deviceId, s.deviceName)
+    lanes[o + 2] = boardIndex(s.boardId, s.boardName)
     lanes[o + 3] = s.speedKmh
     lanes[o + 4] = s.batteryVoltage
     lanes[o + 5] = s.batteryPercent ?? NaN
@@ -417,21 +418,21 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
   return {
     boardColumns: lanes.buffer,
     boardCount: samples.length,
-    boardDevices,
-    boardDeviceNames,
+    boardIds,
+    boardNames,
   }
 }
 
 function getHistoryRange(options: {
   fromMs: number
   toMs: number
-  deviceId?: string
+  boardId?: string
   limit?: number
 }): {
   boardColumns: ArrayBuffer
   boardCount: number
-  boardDevices: (string | null)[]
-  boardDeviceNames: string[]
+  boardIds: (string | null)[]
+  boardNames: string[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   exclusions: MetricExclusion[]
@@ -439,8 +440,8 @@ function getHistoryRange(options: {
   let samples = historySamples.filter(
     (s) => s.capturedAtMs >= options.fromMs && s.capturedAtMs <= options.toMs,
   )
-  if (options.deviceId != null) {
-    samples = samples.filter((s) => s.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    samples = samples.filter((s) => s.boardId === options.boardId)
   }
   if (options.limit != null && options.limit > 0) {
     samples = samples.slice(0, options.limit)
@@ -449,15 +450,17 @@ function getHistoryRange(options: {
   let gps = historyGps.filter(
     (g) => g.capturedAtMs >= options.fromMs && g.capturedAtMs <= options.toMs,
   )
-  if (options.deviceId != null) {
-    gps = gps.filter((g) => g.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    gps = gps.filter((g) => g.boardId === options.boardId)
   }
 
   let markers = historyMarkers.filter(
     (m) => m.occurredAtMs >= options.fromMs && m.occurredAtMs <= options.toMs,
   )
-  if (options.deviceId != null) {
-    markers = markers.filter((m) => m.deviceId === options.deviceId)
+  // Markers still key on the BLE identifier (ADR 0028); the fake models one Board per install, so
+  // the Board-scoped filter maps straight onto it.
+  if (options.boardId != null) {
+    markers = markers.filter((m) => m.boardId === options.boardId)
   }
 
   const encoded = encodeBoardSamples(samples)
@@ -493,7 +496,7 @@ interface RideSeed {
   startLongitude: number
 }
 
-function seedHistoryData(deviceId: string, deviceName: string): void {
+function seedHistoryData(boardId: string, boardName: string): void {
   clearTelemetryHistory()
   const now = Date.now()
 
@@ -529,7 +532,7 @@ function seedHistoryData(deviceId: string, deviceName: string): void {
   ]
 
   for (const ride of rides) {
-    addHistoryRide(now + ride.startOffsetMs, ride.durationMs, ride, deviceId, deviceName)
+    addHistoryRide(now + ride.startOffsetMs, ride.durationMs, ride, boardId, boardName)
   }
 }
 
@@ -537,8 +540,8 @@ function addHistoryRide(
   rideStartMs: number,
   durationMs: number,
   ride: RideSeed,
-  deviceId: string,
-  deviceName: string,
+  boardId: string,
+  boardName: string,
 ): void {
   const rideEndMs = rideStartMs + durationMs
   const sampleCount = 60
@@ -549,8 +552,8 @@ function addHistoryRide(
     startAtMs: rideStartMs,
     endAtMs: rideEndMs,
     bucketStartMs: rideStartMs,
-    deviceId,
-    deviceName,
+    boardId,
+    boardName,
     sampleCount,
     gpsPointCount,
     preciseGpsPointCount: gpsPointCount,
@@ -582,8 +585,8 @@ function addHistoryRide(
     historySamples.push({
       id: nextHistorySampleId++,
       capturedAtMs: t,
-      deviceId,
-      deviceName,
+      boardId,
+      boardName,
       speedKmh: ride.avgSpeedKmh * 0.6 + progress * (ride.maxSpeedKmh - ride.avgSpeedKmh * 0.6),
       batteryVoltage: 75.6 - progress * 1.6,
       batteryPercent: 75 - progress * 2,
@@ -612,8 +615,8 @@ function addHistoryRide(
     historyGps.push({
       id: nextHistoryGpsId++,
       capturedAtMs: rideStartMs + progress * durationMs,
-      deviceId,
-      deviceName,
+      boardId,
+      boardName,
       latitude: ride.startLatitude + progress * 0.01,
       longitude: ride.startLongitude + progress * 0.01,
       speedMps: 5 + progress * 5,
@@ -630,8 +633,7 @@ function addHistoryRide(
     id: nextHistoryMarkerId++,
     occurredAtMs: rideStartMs,
     type: 'connected',
-    deviceId,
-    deviceName,
+    boardId,
     message: null,
     gapMs: null,
   })
@@ -639,8 +641,7 @@ function addHistoryRide(
     id: nextHistoryMarkerId++,
     occurredAtMs: rideEndMs,
     type: 'disconnected',
-    deviceId,
-    deviceName,
+    boardId,
     message: null,
     gapMs: null,
   })
@@ -749,12 +750,17 @@ export const e2eFake = {
     return [...e2eBoards]
   },
 
-  upsertBoard(board: Board): void {
+  upsertBoard(board: BoardInput): void {
     const index = e2eBoards.findIndex((b) => b.id === board.id)
+    // A tombstone survives an upsert, like native — only a delete stamps one.
+    const stored: Board = {
+      ...board,
+      deletedAt: index >= 0 ? e2eBoards[index].deletedAt : null,
+    }
     if (index >= 0) {
-      e2eBoards[index] = board
+      e2eBoards[index] = stored
     } else {
-      e2eBoards.push(board)
+      e2eBoards.push(stored)
     }
   },
 
@@ -798,6 +804,7 @@ export const e2eFake = {
         name: 'E2E Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -819,6 +826,7 @@ export const e2eFake = {
         name: 'E2E History Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -841,6 +849,7 @@ export const e2eFake = {
         name: 'E2E Privacy Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',

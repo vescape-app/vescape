@@ -5,14 +5,25 @@ import kotlin.math.roundToLong
 
 // @parity /modules/vescape-core/ios/telemetry/TelemetryBucketBuilder.swift
 internal const val TELEMETRY_BUCKET_SIZE_MS = 60_000L
-internal const val UNKNOWN_TELEMETRY_DEVICE_ID = ""
-internal const val UNKNOWN_TELEMETRY_DEVICE_NAME = "VESC Board"
+
+/**
+ * Stand-in Board id for buckets whose samples match no saved Board. `board_id` is part of the
+ * bucket primary key, so unattributed rows need a value rather than null.
+ */
+internal const val UNKNOWN_TELEMETRY_BOARD_ID = ""
+internal const val UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
+
+/**
+ * Id prefix for the tombstoned Boards migration 41→42 mints for telemetry whose BLE identifier
+ * resolves to nothing. Derived from the identifier rather than random so the mint is idempotent.
+ */
+internal const val ORPHAN_BOARD_ID_PREFIX = "orphan-"
 private const val MAX_ENERGY_SAMPLE_GAP_MS = 5_000L
 
 internal data class BucketTelemetryPoint(
   val capturedAtMs: Long,
-  val deviceId: String?,
-  val deviceName: String?,
+  /** Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028). */
+  val boardId: String?,
   val speedCentiKmh: Int,
   val batteryVoltageMv: Int,
   val motorCurrentMa: Int,
@@ -31,8 +42,7 @@ internal data class BucketTelemetryPoint(
 
 internal data class BucketLocationPoint(
   val capturedAtMs: Long,
-  val deviceId: String?,
-  val deviceName: String?,
+  val boardId: String?,
   val precise: Boolean,
   val distanceFromPreviousCm: Long?,
   val gpsSpeedCentiMps: Int?,
@@ -48,17 +58,15 @@ internal fun buildTelemetryBuckets(
   val buckets = linkedMapOf<Pair<Long, String>, MutableBucket>()
   for (point in telemetryPoints) {
     val bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
-    val deviceId = point.deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID
-    val key = bucketStart to deviceId
-    val bucket = buckets.getOrPut(key) {
-      MutableBucket(bucketStart, deviceId, point.deviceName)
-    }
+    val boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID
+    val key = bucketStart to boardId
+    val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId) }
     bucket.add(point)
   }
   for (point in locationPoints) {
     val bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
-    val deviceId = point.deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID
-    val key = bucketStart to deviceId
+    val boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID
+    val key = bucketStart to boardId
     val bucket = buckets[key] ?: continue
     bucket.addLocation(point)
   }
@@ -67,8 +75,7 @@ internal fun buildTelemetryBuckets(
 
 private class MutableBucket(
   private val bucketStartMs: Long,
-  private val deviceId: String,
-  private var deviceName: String?,
+  private val boardId: String,
 ) {
   private var sampleCount = 0
   private var firstSampleAtMs = Long.MAX_VALUE
@@ -99,7 +106,6 @@ private class MutableBucket(
 
   fun add(point: BucketTelemetryPoint) {
     sampleCount++
-    if (point.deviceName != null) deviceName = point.deviceName
     firstSampleAtMs = minOf(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = maxOf(lastSampleAtMs, point.capturedAtMs)
     val absSpeed = abs(point.speedCentiKmh)
@@ -144,7 +150,6 @@ private class MutableBucket(
   fun addLocation(point: BucketLocationPoint) {
     gpsPointCount++
     if (point.precise) preciseGpsPointCount++
-    if (point.deviceName != null) deviceName = point.deviceName
     firstSampleAtMs = minOf(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = maxOf(lastSampleAtMs, point.capturedAtMs)
     if (firstLatitudeE7 == null && point.latitudeE7 != null) {
@@ -161,8 +166,7 @@ private class MutableBucket(
 
   fun toEntity(): TelemetryMinuteBucketEntity = TelemetryMinuteBucketEntity(
     bucketStartMs = bucketStartMs,
-    deviceId = deviceId,
-    deviceName = deviceName,
+    boardId = boardId,
     sampleCount = sampleCount,
     firstSampleAtMs = firstSampleAtMs,
     lastSampleAtMs = lastSampleAtMs,

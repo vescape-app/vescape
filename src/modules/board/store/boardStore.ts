@@ -92,6 +92,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
       name,
       description: description ?? null,
       createdAt: Date.now(),
+      deletedAt: null,
       batteryConfig: batteryConfig ?? DEFAULT_BATTERY_CONFIG,
       topSpeedKmh,
       alertPreset: alertPreset ?? null,

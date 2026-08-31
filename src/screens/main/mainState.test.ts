@@ -13,8 +13,8 @@ const sessions = [session('newest', 3000), session('middle', 2000), session('old
 function session(id: string, startAtMs: number): HistorySession {
   return {
     id,
-    deviceId: 'dev-1',
-    deviceName: 'ADV',
+    boardId: 'dev-1',
+    boardName: 'ADV',
     startAtMs,
     endAtMs: startAtMs + 60_000,
     movingStartAtMs: startAtMs,

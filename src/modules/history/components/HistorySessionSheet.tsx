@@ -69,7 +69,7 @@ export function HistorySessionSheet({
       const details = formatRideListDetails(
         rideWindow.endMs - rideWindow.startMs,
         session.distanceM,
-        favorite?.boardName ?? session.deviceName,
+        favorite?.boardName ?? session.boardName,
       )
       return (
         <HistoryRideRow

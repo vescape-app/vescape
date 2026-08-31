@@ -162,7 +162,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       await deleteTelemetryRange({
         fromMs: selectedSession.startAtMs,
         toMs: selectedSession.endAtMs,
-        deviceId: selectedSession.deviceId,
+        boardId: selectedSession.boardId,
       })
       const selectedIndex = sessions.findIndex((session) => session.id === selectedSession.id)
       const [blocks, page] = await Promise.all([

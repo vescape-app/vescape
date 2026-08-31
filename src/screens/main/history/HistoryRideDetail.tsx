@@ -92,7 +92,7 @@ export function HistoryRideDetail({
         endAtMs={session.endAtMs}
         movingStartAtMs={session.movingStartAtMs}
         movingEndAtMs={session.movingEndAtMs}
-        deviceName={session.deviceName}
+        boardName={session.boardName}
         navigationTitle={
           openFavorite
             ? formatFavoriteName(openFavorite.name, openFavorite.startMs, openFavorite.endMs)

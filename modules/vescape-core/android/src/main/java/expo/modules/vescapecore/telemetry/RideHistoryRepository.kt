@@ -10,8 +10,8 @@ private val RIDE_BREAK_BOUNDARIES = setOf("disconnected", "app_stop", "error")
 internal data class RideRoutePoint(val latitude: Double, val longitude: Double)
 
 internal data class RideSessionAggregate(
-  val deviceId: String,
-  var deviceName: String,
+  /** Owning Board (`boards.id`), blank when the buckets match no saved Board (ADR 0028). */
+  val boardId: String,
   var boundaryBefore: String,
   var firstBucketStartMs: Long,
   var startAtMs: Long,
@@ -88,12 +88,15 @@ internal class RideHistoryRepository private constructor(private val context: Co
         complete = completeRideSessions(grouped, hasOlderBuckets)
       }
 
+      // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
+      // relabels the whole Ride History.
+      val boardNames = dao.getBoardNames().associate { it.id to it.name }
       val sorted = complete.sortedByDescending { it.startAtMs }
       val cutoff = sorted.getOrNull(limit - 1)?.firstBucketStartMs
       val page = if (cutoff == null) sorted else sorted.filter { it.firstBucketStartMs >= cutoff }
       val hasMore = hasOlderBuckets || (cutoff != null && sorted.any { it.firstBucketStartMs < cutoff })
       mapOf(
-        "sessions" to page.map(::rideSessionMap),
+        "sessions" to page.map { rideSessionMap(it, boardNames) },
         "hasMore" to hasMore,
         "nextCursorBeforeMs" to if (hasMore) page.lastOrNull()?.firstBucketStartMs else null,
       )
@@ -142,7 +145,7 @@ internal fun groupRideSessions(
   for (bucket in buckets.sortedBy { it.firstSampleAtMs }) {
     if (bucket.sampleCount <= 0) continue
     val boundary = rideBoundaryForBucket(bucket, markers)
-    val split = current == null || current.deviceId != bucket.deviceId ||
+    val split = current == null || current.boardId != bucket.boardId ||
       (previous != null && bucket.firstSampleAtMs - previous.lastSampleAtMs > gapMs) ||
       RIDE_BREAK_BOUNDARIES.contains(boundary)
     if (split) {
@@ -157,8 +160,7 @@ internal fun groupRideSessions(
 }
 
 private fun newRideAggregate(bucket: TelemetryMinuteBucketEntity, boundary: String) = RideSessionAggregate(
-  deviceId = bucket.deviceId,
-  deviceName = bucket.deviceName ?: UNKNOWN_TELEMETRY_DEVICE_NAME,
+  boardId = bucket.boardId,
   boundaryBefore = boundary,
   firstBucketStartMs = bucket.bucketStartMs,
   startAtMs = bucket.firstSampleAtMs,
@@ -177,7 +179,7 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
   session.firstBucketStartMs = minOf(session.firstBucketStartMs, bucket.bucketStartMs)
   session.startAtMs = minOf(session.startAtMs, bucket.firstSampleAtMs)
   session.endAtMs = maxOf(session.endAtMs, bucket.lastSampleAtMs)
-  session.blockIds.add("${bucket.deviceId}:${bucket.bucketStartMs}")
+  session.blockIds.add("${bucket.boardId}:${bucket.bucketStartMs}")
   session.blockCount++
   session.sampleCount += bucket.sampleCount
   session.gpsPointCount += bucket.gpsPointCount
@@ -215,7 +217,7 @@ private fun rideBoundaryForBucket(bucket: TelemetryMinuteBucketEntity, markers: 
   markers.lastOrNull { marker ->
     marker.occurredAtMs >= bucket.firstSampleAtMs - 5_000L &&
       marker.occurredAtMs <= bucket.firstSampleAtMs + 1_000L &&
-      (marker.deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID) == bucket.deviceId
+      (marker.boardId ?: "") == bucket.boardId
   }?.type ?: "none"
 
 private fun rideDistanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
@@ -225,11 +227,12 @@ private fun rideDistanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
 }
 
 /** @parity /modules/vescape-core/src/index.ts `RideHistorySession` */
-internal fun rideSessionMap(session: RideSessionAggregate): Map<String, Any?> {
+internal fun rideSessionMap(session: RideSessionAggregate, boardNames: Map<String, String>): Map<String, Any?> {
   val avgSpeed = if (session.avgSpeedSampleCount > 0) session.avgSpeedWeightedSum / session.avgSpeedSampleCount else 0.0
   return mapOf(
-    "id" to "${session.deviceId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}",
-    "deviceId" to session.deviceId.ifBlank { null }, "deviceName" to session.deviceName,
+    "id" to "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}",
+    "boardId" to session.boardId.ifBlank { null },
+    "boardName" to (boardNames[session.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME),
     "startAtMs" to session.startAtMs, "endAtMs" to session.endAtMs,
     "movingStartAtMs" to session.movingStartAtMs, "movingEndAtMs" to session.movingEndAtMs,
     "blockIds" to session.blockIds, "blockCount" to session.blockCount,

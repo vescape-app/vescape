@@ -35,7 +35,7 @@ const val TELEMETRY_MASK2_LOCATION = 1
   tableName = "telemetry_frames",
   indices = [
     Index(value = ["captured_at_ms"]),
-    Index(value = ["device_id", "captured_at_ms"]),
+    Index(value = ["board_id", "captured_at_ms"]),
   ],
 )
 data class TelemetryFrameEntity(
@@ -45,10 +45,13 @@ data class TelemetryFrameEntity(
   val capturedAtMs: Long,
   @ColumnInfo(name = "elapsed_realtime_ms")
   val elapsedRealtimeMs: Long,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String?,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /**
+   * Owning Board (`boards.id`), or null when the samples match no saved Board. Never the BLE
+   * identifier: it is nullable, it moves when a Board is re-linked, and it is not an identity
+   * (ADR 0028). The Board name is resolved from `boards` on read, never denormalized here.
+   */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
   @ColumnInfo(name = "can_id")
   val canId: Int?,
   val flags: Int,
@@ -106,16 +109,19 @@ data class TelemetryFrameEntity(
 
 @Entity(
   tableName = "telemetry_minute_buckets",
-  primaryKeys = ["bucket_start_ms", "device_id"],
+  primaryKeys = ["bucket_start_ms", "board_id"],
   indices = [Index(value = ["bucket_start_ms"])],
 )
 data class TelemetryMinuteBucketEntity(
   @ColumnInfo(name = "bucket_start_ms")
   val bucketStartMs: Long,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /**
+   * Owning Board (`boards.id`), or [UNKNOWN_TELEMETRY_BOARD_ID] when the samples match no saved
+   * Board — the column is part of the primary key, so it cannot be null. Keyed on the Board rather
+   * than the BLE identifier (ADR 0028), which is also what the server keys this table on.
+   */
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
   @ColumnInfo(name = "first_sample_at_ms")
@@ -172,7 +178,7 @@ data class TelemetryMinuteBucketEntity(
   tableName = "telemetry_markers",
   indices = [
     Index(value = ["occurred_at_ms"]),
-    Index(value = ["device_id", "occurred_at_ms"]),
+    Index(value = ["board_id", "occurred_at_ms"]),
   ],
 )
 data class TelemetryMarkerEntity(
@@ -183,10 +189,9 @@ data class TelemetryMarkerEntity(
   @ColumnInfo(name = "elapsed_realtime_ms")
   val elapsedRealtimeMs: Long,
   val type: String,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String?,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /** Owning Board (`boards.id`); null when the Marker was written with no Board connected. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
   val message: String?,
   @ColumnInfo(name = "gap_ms")
   val gapMs: Long?,
@@ -197,7 +202,7 @@ data class TelemetryMarkerEntity(
   indices = [
     Index(value = ["occurred_at_ms"]),
     Index(value = ["event_name"]),
-    Index(value = ["device_id", "occurred_at_ms"]),
+    Index(value = ["board_id", "occurred_at_ms"]),
   ],
 )
 data class DiagnosticEventEntity(
@@ -211,10 +216,9 @@ data class DiagnosticEventEntity(
   val eventName: String,
   val operation: String?,
   val phase: String?,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String?,
-  @ColumnInfo(name = "device_name")
-  val deviceName: String?,
+  /** Owning Board (`boards.id`); null when the event was recorded with no Board connected. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
   val message: String?,
   @ColumnInfo(name = "properties_json")
   val propertiesJson: String,
@@ -234,6 +238,21 @@ data class BoardEntity(
   val bleId: String?,
   @ColumnInfo(name = "created_at")
   val createdAt: Long,
+  /**
+   * Tombstone stamp: epoch ms of the rider's delete, null while the Board is alive. A deleted Board
+   * keeps its row so Ride History can still name it; only the Board's configuration is
+   * hard-deleted (ADR-0027).
+   *
+   * Written by the delete path only — an upsert from the bridge never authors it.
+   */
+  @ColumnInfo(name = "deleted_at")
+  val deletedAt: Long? = null,
+)
+
+/** Projection for Ride History name resolution — see `TelemetryDao.getBoardNames`. */
+data class BoardNameRow(
+  val id: String,
+  val name: String,
 )
 
 @Entity(
@@ -301,14 +320,15 @@ data class AlertRuleEntity(
   tableName = "metric_exclusion_ranges",
   indices = [
     Index(value = ["start_ms", "end_ms"]),
-    Index(value = ["device_id", "start_ms", "end_ms"]),
+    Index(value = ["board_id", "start_ms", "end_ms"]),
   ],
 )
 data class MetricExclusionRangeEntity(
   @PrimaryKey(autoGenerate = true)
   val id: Long = 0,
-  @ColumnInfo(name = "device_id")
-  val deviceId: String,
+  /** Owning Board (`boards.id`). A range excludes one Board's samples, so it is never absent. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String,
   val reason: String,
   @ColumnInfo(name = "start_ms")
   val startMs: Long,
