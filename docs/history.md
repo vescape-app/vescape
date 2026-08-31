@@ -54,7 +54,7 @@ list thumbnails, so JS neither groups buckets nor scans all loaded buckets per r
 
 `historyStore.selectSession(session)` loads:
 
-- board samples from `getHistoryRange({ fromMs, toMs, deviceId, limit: 10000 })`
+- board samples from `getHistoryRange({ fromMs, toMs, boardId, limit: 10000 })`
 - GPS samples derived from telemetry samples in the same range
 - markers from same range
 

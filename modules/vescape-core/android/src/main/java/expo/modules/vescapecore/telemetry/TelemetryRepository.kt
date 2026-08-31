@@ -640,7 +640,7 @@ class TelemetryRepository private constructor(context: Context) {
     )
     dao.insertFavorite(favorite)
     favorite.toMap(
-      boards.firstOrNull { it.id == boardId }?.name,
+      boardId?.let { boardNamesById()[it] },
       favoriteRoutePoints(favorite),
     )
   }
