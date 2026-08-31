@@ -18,9 +18,6 @@ extension TelemetryRepository {
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
     guard let pool else { return emptyRangePayload() }
-    // Markers and Metric Exclusion Ranges still key on the BLE identifier (ADR 0028), so a
-    // Board-scoped range read translates before it can filter them.
-
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the range read below.
     let configs = batteryConfigByBoard()

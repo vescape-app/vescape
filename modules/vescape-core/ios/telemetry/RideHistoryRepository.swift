@@ -67,6 +67,9 @@ internal final class RideHistoryRepository {
     var beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? Int64.max
     let gapMs = rideSplitGapMs()
     guard let pool else { return ["sessions": [], "hasMore": false, "nextCursorBeforeMs": nil] }
+    // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
+    // relabels the whole Ride History. Read up front: GRDB forbids a nested `read` on the pool.
+    let boardNames = TelemetryRepository.boardNamesById()
     return (try? pool.read { db in
       var buckets: [Row] = []
       var complete: [RideSessionAggregate] = []
@@ -93,9 +96,6 @@ internal final class RideHistoryRepository {
           .filter { $0.avgSpeedSampleCount > 0 }
         complete = completeRideSessions(grouped, hasOlderBuckets: hasOlderBuckets)
       }
-      // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
-      // relabels the whole Ride History.
-      let boardNames = TelemetryRepository.boardNamesById()
       let sorted = complete.sorted { $0.startAtMs > $1.startAtMs }
       let cutoff = sorted.indices.contains(limit - 1) ? sorted[limit - 1].firstBucketStartMs : nil
       let page = cutoff.map { value in sorted.filter { $0.firstBucketStartMs >= value } } ?? sorted
