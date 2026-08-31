@@ -10,14 +10,13 @@ export function MapThemeCoordinator() {
   const mapStyleKey = useSettingsStore((state) => state.mapStyleKey)
   const setSetting = useSettingsStore((state) => state.set)
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const sessionOverride = useThemeStore((state) => state.sessionOverride)
 
   useEffect(() => {
-    if (!settingsLoaded || sessionOverride != null) return
+    if (!settingsLoaded) return
     const nextMapStyle = mapStyleForTheme(mapStyleKey, resolvedTheme)
     if (nextMapStyle === mapStyleKey) return
     void setSetting('mapStyleKey', nextMapStyle)
-  }, [mapStyleKey, resolvedTheme, sessionOverride, setSetting, settingsLoaded])
+  }, [mapStyleKey, resolvedTheme, setSetting, settingsLoaded])
 
   return null
 }

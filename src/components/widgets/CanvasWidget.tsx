@@ -5,7 +5,7 @@ import type { Icon } from 'phosphor-react-native'
 
 import {
   presentationWidgetSurface,
-  secondaryWidgetSurface,
+  useResolvedSecondaryWidgetSurface,
   type WidgetSize,
 } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
@@ -47,12 +47,13 @@ export function CanvasWidget({
 }: CanvasWidgetProps) {
   const square = size === 'square'
   const secondary = surface === 'secondary'
+  const secondarySurface = useResolvedSecondaryWidgetSurface()
 
   return (
     <View
       style={[
         styles.widget,
-        secondary && styles.secondary,
+        secondary && secondarySurface,
         square ? styles.square : { height },
         active && { borderColor: accent },
       ]}
@@ -77,9 +78,6 @@ const styles = StyleSheet.create({
     ...presentationWidgetSurface,
     padding: 16,
     gap: 10,
-  },
-  secondary: {
-    ...secondaryWidgetSurface,
   },
   square: {
     aspectRatio: 1,

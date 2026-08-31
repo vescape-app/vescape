@@ -18,7 +18,7 @@ import { scheduleOnRN } from 'react-native-worklets'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { WidgetHeader, type WidgetHeaderProps } from '@/components/widgets/widgetHeader'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 const OPEN_DURATION = 240
@@ -208,6 +208,8 @@ export function WidgetFocusOverlay({ host }: { host: WidgetFocusHost }) {
     [close, drag],
   )
 
+  const surface = useResolvedSecondaryWidgetSurface()
+
   // Dragging dims the scrim back down as it goes, so the content underneath returns with the panel.
   const scrimStyle = useAnimatedStyle(() => ({
     opacity: progress.value * (1 - Math.min(1, Math.max(0, drag.value) / DISMISS_DISTANCE) * 0.5),
@@ -237,6 +239,7 @@ export function WidgetFocusOverlay({ host }: { host: WidgetFocusHost }) {
       <Animated.View
         onLayout={measurePanel}
         style={[
+          surface,
           styles.panel,
           { top, left: request.rect.x, width: request.rect.width, maxHeight },
           panelStyle,
@@ -263,7 +266,6 @@ const styles = StyleSheet.create({
   },
   panel: {
     position: 'absolute',
-    ...secondaryWidgetSurface,
     padding: 14,
   },
   body: {

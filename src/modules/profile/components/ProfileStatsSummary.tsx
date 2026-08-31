@@ -5,7 +5,7 @@ import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { pickProfileStatItems } from '@/modules/profile/components/profileStatItems'
 import { ProfileStatsGrid } from '@/modules/profile/components/ProfileStatsGrid'
 import { useProfileStats } from '@/modules/profile/hooks/useProfileStats'
@@ -26,11 +26,16 @@ interface ProfileStatsSummaryProps {
  */
 export function ProfileStatsSummary({ active = true, action }: ProfileStatsSummaryProps) {
   const { total, monthly, selectedMonth, loading, error, empty, refresh } = useProfileStats(active)
+  const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
   const stats = scope === 'total' ? total : monthly
 
   return (
-    <View style={styles.card} testID="profile-stats-summary" accessibilityState={{ busy: loading }}>
+    <View
+      style={[surface, styles.card]}
+      testID="profile-stats-summary"
+      accessibilityState={{ busy: loading }}
+    >
       <View style={styles.head}>
         <SegmentedToggle<Scope>
           options={[
@@ -70,7 +75,6 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
 
 const styles = StyleSheet.create({
   card: {
-    ...secondaryWidgetSurface,
     padding: 14,
     gap: 12,
   },

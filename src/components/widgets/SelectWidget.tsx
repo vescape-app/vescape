@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { CaretDownIcon, type Icon } from 'phosphor-react-native'
 
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface SelectWidgetProps {
@@ -39,6 +39,7 @@ export function SelectWidget({
   onPress,
   onSelectPress,
 }: SelectWidgetProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const selectTextColor = selectAccent ?? theme.control.text
   const selectControlColor = selectAccent ?? theme.control.textMuted
   const valuePillStyle =
@@ -52,6 +53,7 @@ export function SelectWidget({
   return (
     <Pressable
       style={({ pressed }) => [
+        surface,
         styles.widget,
         pressed && !disabled && styles.pressed,
         disabled && styles.disabled,
@@ -102,7 +104,6 @@ export function SelectWidget({
 
 const styles = StyleSheet.create({
   widget: {
-    ...secondaryWidgetSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,

@@ -17,7 +17,6 @@ import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle
 import { theme } from '@/constants/theme'
 import type { ThemeMode } from '@/modules/settings/lib/themeMode'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { useThemeStore } from '@/hooks/useTheme'
 
 const THEME_OPTIONS: {
   mode: ThemeMode
@@ -67,7 +66,6 @@ function SelectionIndicator({ selected }: { selected: boolean }) {
 export function VisualsSettingsScreen() {
   const mode = useSettingsStore((state) => state.themeMode)
   const setSetting = useSettingsStore((state) => state.set)
-  const setSessionOverride = useThemeStore((state) => state.setSessionOverride)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -88,7 +86,6 @@ export function VisualsSettingsScreen() {
               hint={option.hint}
               right={<SelectionIndicator selected={mode === option.mode} />}
               onPress={() => {
-                setSessionOverride(null)
                 void setSetting('themeMode', option.mode)
               }}
             />

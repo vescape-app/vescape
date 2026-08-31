@@ -17,7 +17,7 @@ import {
 import { Text } from '@/components/base/Text'
 import { isDevelopmentApp } from '@/config/appVariant'
 import { showDevControls } from '@/config/env'
-import { theme } from '@/constants/theme'
+import { accentColors, theme } from '@/constants/theme'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { routes } from '@/navigation/routes'
 
@@ -188,20 +188,23 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
   },
+  // Dev-only chrome that floats over the map, so it takes one fixed appearance rather than the
+  // adaptive warning tokens: those resolve fill and text against different configurations on
+  // Android and left pale text on a pale fill.
   badge: {
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderWidth: 1,
-    borderColor: theme.status.warning.color,
+    borderColor: accentColors.dark.orange.color,
     borderRadius: 999,
-    backgroundColor: theme.status.warning.bg,
+    backgroundColor: accentColors.dark.orange.solid,
   },
   hitArea: {
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
   text: {
-    color: theme.status.warning.text,
+    color: accentColors.dark.orange.onSolid,
     fontSize: 8,
     lineHeight: 10,
     fontWeight: '800',

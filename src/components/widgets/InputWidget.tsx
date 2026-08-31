@@ -5,7 +5,10 @@ import { CheckIcon, PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Input } from '@/components/forms/Input'
 import { TextPromptModal } from '@/components/modals/TextPromptModal'
-import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import {
+  useResolvedSecondaryWidgetSurface,
+  type WidgetSize,
+} from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface InputWidgetProps {
@@ -41,6 +44,7 @@ function RowInput({
   editingContent,
   commitOnBlur = true,
 }: InputWidgetProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -55,7 +59,7 @@ function RowInput({
   }
 
   return (
-    <View style={[styles.widget, editing ? styles.widgetEditing : styles.widgetRow]}>
+    <View style={[surface, editing ? styles.widgetEditing : styles.widgetRow]}>
       <View style={styles.headerRow}>
         {leading}
         <View style={styles.content}>
@@ -111,12 +115,13 @@ function SquareInput({
   accessibilityLabel,
   leading,
 }: InputWidgetProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const [open, setOpen] = useState(false)
 
   return (
     <>
       <Pressable
-        style={({ pressed }) => [styles.widget, styles.widgetSquare, pressed && styles.pressed]}
+        style={({ pressed }) => [surface, styles.widgetSquare, pressed && styles.pressed]}
         onPress={() => setOpen(true)}
         accessibilityLabel={accessibilityLabel ?? `Edit ${label}`}
       >
@@ -145,9 +150,6 @@ function SquareInput({
 }
 
 const styles = StyleSheet.create({
-  widget: {
-    ...secondaryWidgetSurface,
-  },
   widgetRow: {
     padding: 16,
   },

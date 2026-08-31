@@ -14,17 +14,13 @@ import {
 interface ThemeState {
   resolvedTheme: ResolvedTheme
   outdoorLight: number
-  sessionOverride: ResolvedTheme | null
   setResolution: (resolvedTheme: ResolvedTheme, outdoorLight: number) => void
-  setSessionOverride: (sessionOverride: ResolvedTheme | null) => void
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
   resolvedTheme: 'dark',
   outdoorLight: 0,
-  sessionOverride: null,
   setResolution: (resolvedTheme, outdoorLight) => set({ resolvedTheme, outdoorLight }),
-  setSessionOverride: (sessionOverride) => set({ sessionOverride }),
 }))
 
 /** String colors for renderers such as Skia/Reanimated that cannot resolve native ColorValue. */

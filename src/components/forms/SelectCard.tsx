@@ -5,7 +5,7 @@ import { CaretDownIcon, CheckIcon, type Icon as PhosphorIcon } from 'phosphor-re
 import { interaction, theme } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
 import type { SelectOption } from '@/components/forms/Select'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 
 const MAX_DROPDOWN_HEIGHT = 280
 
@@ -38,6 +38,7 @@ export function SelectCard<T extends string = string>({
 
   const selectedOption = options.find((o) => o.value === value)
 
+  const surface = useResolvedSecondaryWidgetSurface()
   const handleSelect = useCallback(
     (optionValue: T) => {
       onChange(optionValue)
@@ -47,7 +48,7 @@ export function SelectCard<T extends string = string>({
   )
 
   return (
-    <View style={[styles.container, style]}>
+    <View style={[surface, styles.container, style]}>
       <Pressable
         ref={triggerRef}
         style={({ pressed }) => [
@@ -113,7 +114,6 @@ export function SelectCard<T extends string = string>({
 
 const styles = StyleSheet.create({
   container: {
-    ...secondaryWidgetSurface,
     gap: 4,
     borderRadius: 10,
     padding: 12,
