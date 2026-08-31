@@ -548,7 +548,8 @@ enum TelemetryDatabase {
     migrator.registerMigration("v40_vesc_faults") { db in
       try VescFaultStore.createTables(db)
       try VescFaultCaptureStore.createTables(db)
-          if try db.columns(in: "telemetry_frames").map(\.name).contains("fault_code") {
+      try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_fault")
+      if try db.columns(in: "telemetry_frames").map(\.name).contains("fault_code") {
         try db.execute(sql: """
           CREATE TABLE telemetry_frames_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -672,8 +673,7 @@ enum TelemetryDatabase {
     // Telemetry keys on the Board id (#280, ADR 0028). `telemetry_frames` and
     // `telemetry_minute_buckets` gain `board_id` and lose `device_id` (the BLE identifier) and
     // `device_name` (the Board name denormalized at capture time); Ride History resolves the name
-    // by looking the Board up instead. Markers, diagnostic events and metric exclusion ranges are
-    // deliberately untouched — that is what crosses the wire for them.
+    // by looking the Board up instead.
     //
     // Both tables are rebuilt rather than altered: the bucket primary key moves to
     // `(bucket_start_ms, board_id)`, and the rebuild is what drops the two retired columns.
@@ -882,9 +882,7 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
 }
 
 /// The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is a
-/// table rebuild, not an `ALTER`. It was added to this table earlier in
-/// the same release, so the copy has to carry them across explicitly or every bucket silently
-/// resets its Sync Cursor position.
+/// table rebuild, not an `ALTER`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildBucketsOnBoardId`
 private func rebuildBucketsOnBoardId(_ db: Database) throws {
   let columns = """

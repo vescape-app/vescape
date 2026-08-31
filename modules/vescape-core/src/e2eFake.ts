@@ -457,8 +457,6 @@ function getHistoryRange(options: {
   let markers = historyMarkers.filter(
     (m) => m.occurredAtMs >= options.fromMs && m.occurredAtMs <= options.toMs,
   )
-  // Markers still key on the BLE identifier (ADR 0028); the fake models one Board per install, so
-  // the Board-scoped filter maps straight onto it.
   if (options.boardId != null) {
     markers = markers.filter((m) => m.boardId === options.boardId)
   }

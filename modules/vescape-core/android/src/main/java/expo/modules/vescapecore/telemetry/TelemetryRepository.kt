@@ -289,8 +289,10 @@ class TelemetryRepository private constructor(context: Context) {
     val boardNames = boardNamesById()
     buckets.map { bucket ->
       val marker = markers.lastOrNull {
+        // An all-Boards read leaves the marker query unscoped, so the bucket has to claim its own.
         it.occurredAtMs >= bucket.firstSampleAtMs - 5_000L &&
-          it.occurredAtMs <= bucket.firstSampleAtMs + 1_000L
+          it.occurredAtMs <= bucket.firstSampleAtMs + 1_000L &&
+          (it.boardId ?: "") == bucket.boardId
       }
       val avgAbsSpeed = if (bucket.sampleCount > 0) {
         bucket.sumAbsSpeedCentiKmh.toDouble() / bucket.sampleCount / 100.0
@@ -389,10 +391,10 @@ class TelemetryRepository private constructor(context: Context) {
   private suspend fun smoothedSampleColumns(
     samples: List<HistoryTelemetryState>,
     configs: Map<String, Map<String, Any?>>,
+    boardNames: Map<String, String>,
   ): Map<String, Any?> {
     val windowMs = AppDataRepository.get(appContext).getTypedSettings().socEstimateWindowSeconds * 1000L
     val windows = HashMap<String?, SocMedianWindow>()
-    val boardNames = boardNamesById()
     val boardIds = ArrayList<String?>()
     val names = ArrayList<String>()
     val boardIndex = HashMap<String?, Int>()
@@ -528,8 +530,9 @@ class TelemetryRepository private constructor(context: Context) {
     val query = SampleQueryOptions.from(options)
     val samples = getSampleStates(query.fromMs, query.toMs, query.boardId, query.limit)
     val configs = batteryConfigByBoard()
-    smoothedSampleColumns(samples, configs) + mapOf(
-      "gpsSamples" to samples.toGpsSampleMaps(boardNamesById()),
+    val boardNames = boardNamesById()
+    smoothedSampleColumns(samples, configs, boardNames) + mapOf(
+      "gpsSamples" to samples.toGpsSampleMaps(boardNames),
       "markers" to dao.getMarkers(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
       "exclusions" to dao.getExclusions(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
     )

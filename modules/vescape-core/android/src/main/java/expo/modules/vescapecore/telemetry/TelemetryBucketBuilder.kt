@@ -9,6 +9,8 @@ internal const val TELEMETRY_BUCKET_SIZE_MS = 60_000L
 /**
  * Stand-in Board id for buckets whose samples match no saved Board. `board_id` is part of the
  * bucket primary key, so unattributed rows need a value rather than null.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `UNKNOWN_TELEMETRY_BOARD_ID`
  */
 internal const val UNKNOWN_TELEMETRY_BOARD_ID = ""
 internal const val UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
@@ -16,6 +18,8 @@ internal const val UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
 /**
  * Id prefix for the tombstoned Boards migration 41→42 mints for telemetry whose BLE identifier
  * resolves to nothing. Derived from the identifier rather than random so the mint is idempotent.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `ORPHAN_BOARD_ID_PREFIX`
  */
 internal const val ORPHAN_BOARD_ID_PREFIX = "orphan-"
 private const val MAX_ENERGY_SAMPLE_GAP_MS = 5_000L

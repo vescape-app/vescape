@@ -2154,7 +2154,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
   clearTelemetryHistory(): Promise<void>
   getBoards(): Promise<Board[]>
-  upsertBoard(board: Board): Promise<void>
+  upsertBoard(board: BoardInput): Promise<void>
   deleteBoard(id: string): Promise<void>
   getAlertRules(boardId: string): Promise<AlertRule[]>
   upsertAlertRule(rule: AlertRule): Promise<void>
@@ -3011,7 +3011,7 @@ export async function getBoards(): Promise<Board[]> {
   return native.getBoards()
 }
 
-export async function upsertBoard(board: Board): Promise<void> {
+export async function upsertBoard(board: BoardInput): Promise<void> {
   if (E2E_ENABLED) {
     e2eFake.upsertBoard(board)
     return

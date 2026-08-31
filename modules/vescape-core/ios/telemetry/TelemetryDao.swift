@@ -106,8 +106,11 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
     ?? (sampleCount > 0 ? Double(row["sum_abs_speed_centi_kmh"] as Int64) / Double(sampleCount) / 100.0 : 0.0)
   let marker = markers.last { marker in
     let occurredAtMs = marker["occurred_at_ms"] as Int64
+    // An all-Boards read leaves the marker query unscoped, so the bucket has to claim its own.
+    let markerBoard = marker["board_id"] as String? ?? ""
     return occurredAtMs >= (row["first_sample_at_ms"] as Int64) - 5_000 &&
-      occurredAtMs <= (row["first_sample_at_ms"] as Int64) + 1_000
+      occurredAtMs <= (row["first_sample_at_ms"] as Int64) + 1_000 &&
+      markerBoard == (row["board_id"] as String)
   }
   let distanceDeltaM: Double? = {
     guard let first = row["first_odometer_cm"] as Int64?, let last = row["last_odometer_cm"] as Int64? else { return nil }

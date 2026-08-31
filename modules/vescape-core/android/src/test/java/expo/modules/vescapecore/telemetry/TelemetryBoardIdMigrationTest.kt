@@ -10,7 +10,7 @@ import java.io.File
 import java.lang.reflect.Proxy
 
 /**
- * Telemetry keys on the Board id (#280, ADR 0028). Schema 34→35 adds `board_id` to
+ * Telemetry keys on the Board id (#280, ADR 0028). Schema 41→42 adds `board_id` to
  * `telemetry_frames` and `telemetry_minute_buckets`, backfills it by matching `boards.ble_id`,
  * mints a tombstoned Board for every identifier that resolves to nothing, moves the bucket primary
  * key onto the new column, and drops `device_id` and `device_name` from both tables.

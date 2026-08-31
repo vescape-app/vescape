@@ -523,20 +523,6 @@ abstract class TelemetryDatabase : RoomDatabase() {
     }
 
     /**
-     * Telemetry keys on the Board id (#280, ADR 0028). `telemetry_frames` and
-     * `telemetry_minute_buckets` gain `board_id` and lose `device_id` (the BLE identifier) and
-     * `device_name` (the Board name denormalized at capture time); Ride History resolves the name
-     * by looking the Board up instead. Markers, diagnostic events and metric exclusion ranges are
-     * deliberately untouched — that is what crosses the wire for them.
-     *
-     * Both tables are rebuilt rather than altered: the bucket primary key moves to
-     * `(bucket_start_ms, board_id)`, and dropping a column in place needs a SQLite newer than the
-     * oldest supported device ships. The rebuild is a full copy, so it is the expensive step of
-     * this upgrade on a phone with a long Ride History.
-     *
-     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v42_telemetry_board_id`
-     */
-    /**
      * Scratch table holding migration 41→42's one and only BLE identifier → Board decision. Temp,
      * so it belongs to the connection and never reaches the schema Room validates.
      *
@@ -546,7 +532,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
 
     /**
      * Every table migration 41→42 moves off the BLE identifier, with the time column its rows are
-     * ordered by. All six are minted for and rebuilt together: a Board minted from one table's
+     * ordered by. All five are minted for and rebuilt together: a Board minted from one table's
      * identifiers has to exist before any other table resolves the same identifier, or the two
      * disagree about who owns the history — the defect this migration exists to remove.
      *
@@ -560,6 +546,19 @@ abstract class TelemetryDatabase : RoomDatabase() {
       "metric_exclusion_ranges" to "start_ms",
     )
 
+    /**
+     * Telemetry keys on the Board id (#280, ADR 0028). `telemetry_frames` and
+     * `telemetry_minute_buckets` gain `board_id` and lose `device_id` (the BLE identifier) and
+     * `device_name` (the Board name denormalized at capture time); Ride History resolves the name
+     * by looking the Board up instead.
+     *
+     * Both tables are rebuilt rather than altered: the bucket primary key moves to
+     * `(bucket_start_ms, board_id)`, and dropping a column in place needs a SQLite newer than the
+     * oldest supported device ships. The rebuild is a full copy, so it is the expensive step of
+     * this upgrade on a phone with a long Ride History.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v42_telemetry_board_id`
+     */
     internal val MIGRATION_41_42 = object : Migration(41, 42) {
       override fun migrate(db: SupportSQLiteDatabase) {
         mintOrphanBoards(db)
@@ -584,6 +583,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
      * Rider-facing list, and a null `ble_id` stops it from ever capturing a future re-link. The id
      * is derived from the identifier rather than random so re-running the migration is a no-op.
      */
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `mintOrphanBoards` */
     private fun mintOrphanBoards(db: SupportSQLiteDatabase) {
       val now = System.currentTimeMillis()
       for ((name, timeColumn) in TELEMETRY_TABLES_KEYED_ON_DEVICE_ID) {
@@ -677,6 +677,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
       END
       """.trimIndent()
 
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildFramesOnBoardId` */
     private fun rebuildFramesOnBoardId(db: SupportSQLiteDatabase) {
       val columns =
         "captured_at_ms, elapsed_realtime_ms, can_id, flags, changed_mask_1, changed_mask_2, " +
@@ -748,6 +749,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
      * The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is
      * a table rebuild, not an `ALTER`.
      */
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildBucketsOnBoardId` */
     private fun rebuildBucketsOnBoardId(db: SupportSQLiteDatabase) {
       val columns =
         "bucket_start_ms, sample_count, first_sample_at_ms, last_sample_at_ms, " +
@@ -1204,7 +1206,8 @@ abstract class TelemetryDatabase : RoomDatabase() {
       override fun migrate(db: SupportSQLiteDatabase) {
         createVescFaultOccurrences(db)
         createVescFaultCaptures(db)
-          if (hasColumn(db, "telemetry_frames", "fault_code")) {
+        db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_fault")
+        if (hasColumn(db, "telemetry_frames", "fault_code")) {
           db.execSQL(
             """
             CREATE TABLE telemetry_frames_new (
