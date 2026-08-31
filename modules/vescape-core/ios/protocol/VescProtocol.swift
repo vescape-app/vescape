@@ -25,6 +25,13 @@ internal let REFLOAT_GET_ALLDATA = 10
 internal let REFLOAT_RC_MOVE = 7
 internal let REFLOAT_REMOTE = 15
 internal let REFLOAT_LIGHTS_CONTROL = 20
+
+/// `LIGHTS_CONTROL` on Refloat 1.1 and older, where it still lived in the unstable range the enum
+/// documents as "commands above 200 can change protocol at any time". Refloat 1.2.0 promoted it to
+/// `REFLOAT_LIGHTS_CONTROL` and widened the mask, so the two ids are two different wire formats.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REFLOAT_LIGHTS_CONTROL_LEGACY`
+internal let REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 internal let REMOTE_TILT_CENTER = 128
 
 /// The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
@@ -55,29 +62,82 @@ internal struct BoardLightsState: Equatable {
   let headlightsEnabled: Bool
 }
 
-/// Builds the Refloat lights switch: turns the LEDs and headlights on or off together. Runtime only —
-/// firmware applies it live and never writes config, so a power cycle restores the board's own
-/// setting. The write is sticky for the rest of that power cycle: firmware marks the runtime value
-/// as overriding the configured one, so later config changes to the lights stop taking effect live.
+/// Refloat config field ids for the two light switches. Config is what firmware applies on boot, so
+/// these are where the lights stand before anything overrides them — and on `.legacy` they are also
+/// what the switch itself writes.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REFLOAT_FIELD_LEDS_ON`
+internal let REFLOAT_FIELD_LEDS_ON = "leds.on"
+internal let REFLOAT_FIELD_HEADLIGHTS_ON = "leds.headlights_on"
+
+/// Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
+/// widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
+/// wrong generation answers nothing at all, which is indistinguishable from a dead link.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `BoardLightsGeneration`
+internal enum BoardLightsGeneration {
+  /// Refloat 1.0–1.1: command 202, one mask byte, writing straight to the stored config.
+  case legacy
+
+  /// Refloat 1.2+: command 20, `uint32` mask, writing a runtime override.
+  case current
+
+  /// Resolves the generation from a normalized Refloat base version such as `"1.2.0"`. Unknown or
+  /// unparseable versions fall back to `.current`: a wrong guess only means the board ignores the
+  /// command, matching `BoardMoveGeneration.forBaseVersion`.
+  static func forBaseVersion(_ baseVersion: String?) -> BoardLightsGeneration {
+    let parts = baseVersion?.split(separator: ".") ?? []
+    guard let major = parts.first.flatMap({ Int($0) }) else { return .current }
+    let minor = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+    return (major > 1 || (major == 1 && minor >= 2)) ? .current : .legacy
+  }
+}
+
+/// Builds the Refloat lights switch: turns the LEDs and headlights on or off together.
+///
+/// On `.current` the write is runtime only — firmware applies it live and never writes config, so a
+/// power cycle restores the board's own setting. It is sticky for the rest of that power cycle:
+/// firmware marks the runtime value as overriding the configured one, so later config changes to the
+/// lights stop taking effect live. On `.legacy` there is no runtime layer; firmware assigns the
+/// in-memory config directly, so the switch reads back as the board's configured value until
+/// something saves or restores config.
 ///
 /// A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
-/// runtime flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a
-/// client knows not to offer the switch at all.
+/// flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
+/// knows not to offer the switch at all.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildLightsControlCommand`
-internal func buildLightsControlCommand(transport: BoardTransport, enabled: Bool) -> [UInt8] {
+internal func buildLightsControlCommand(
+  transport: BoardTransport,
+  generation: BoardLightsGeneration,
+  enabled: Bool
+) -> [UInt8] {
   let value = enabled ? LIGHTS_CONTROL_MASK : 0
-  return transport.frame([
-    UInt8(COMM_CUSTOM_APP_DATA),
-    UInt8(REFLOAT_MAGIC),
-    UInt8(REFLOAT_LIGHTS_CONTROL),
-    // mask, uint32 big-endian
-    0,
-    0,
-    0,
-    UInt8(LIGHTS_CONTROL_MASK),
-    UInt8(value),
-  ])
+  let payload: [UInt8]
+  switch generation {
+  case .current:
+    payload = [
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_LIGHTS_CONTROL),
+      // mask, uint32 big-endian
+      0,
+      0,
+      0,
+      UInt8(LIGHTS_CONTROL_MASK),
+      UInt8(value),
+    ]
+  case .legacy:
+    payload = [
+      UInt8(COMM_CUSTOM_APP_DATA),
+      UInt8(REFLOAT_MAGIC),
+      UInt8(REFLOAT_LIGHTS_CONTROL_LEGACY),
+      // mask, a single byte before Refloat 1.2.0
+      UInt8(LIGHTS_CONTROL_MASK),
+      UInt8(value),
+    ]
+  }
+  return transport.frame(payload)
 }
 
 /// Decodes the board's `LIGHTS_CONTROL` echo, the authoritative answer to what the switch did.
@@ -95,7 +155,8 @@ internal func parseLightsControlResponse(_ payload: [UInt8]) -> BoardLightsState
   }
   guard body.count >= 4,
     Int(body[1]) == REFLOAT_MAGIC,
-    Int(body[2]) == REFLOAT_LIGHTS_CONTROL
+    // Both generations echo the same status byte under their own command id.
+    Int(body[2]) == REFLOAT_LIGHTS_CONTROL || Int(body[2]) == REFLOAT_LIGHTS_CONTROL_LEGACY
   else { return nil }
   return BoardLightsState(enabled: body[3] & 0x1 != 0, headlightsEnabled: body[3] & 0x2 != 0)
 }

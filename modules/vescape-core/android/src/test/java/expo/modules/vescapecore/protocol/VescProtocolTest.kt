@@ -33,13 +33,36 @@ class VescProtocolTest {
     // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 3),
-      buildLightsControlCommand(BoardTransport.Direct, enabled = true),
+      buildLightsControlCommand(BoardTransport.Direct, BoardLightsGeneration.Current, enabled = true),
     )
     // The mask still names both switches when turning them off, so the value clears both.
     assertArrayEquals(
       byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 0),
-      buildLightsControlCommand(BoardTransport.Can(7), enabled = false),
+      buildLightsControlCommand(BoardTransport.Can(7), BoardLightsGeneration.Current, enabled = false),
     )
+  }
+
+  @Test
+  fun buildsLegacyLightsControlCommandForRefloat11() {
+    // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 3),
+      buildLightsControlCommand(BoardTransport.Direct, BoardLightsGeneration.Legacy, enabled = true),
+    )
+    assertArrayEquals(
+      byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 0),
+      buildLightsControlCommand(BoardTransport.Can(7), BoardLightsGeneration.Legacy, enabled = false),
+    )
+  }
+
+  @Test
+  fun resolvesLightsGenerationAtTheRefloat12Boundary() {
+    // 1.2.0 is where the command moved out of the unstable 200+ range.
+    assertEquals(BoardLightsGeneration.Legacy, BoardLightsGeneration.forBaseVersion("1.1.2"))
+    assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion("1.2.0"))
+    assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion("2.0.0"))
+    // An unreadable version guesses Current: the board ignores a command it does not know.
+    assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion(null))
   }
 
   @Test
@@ -66,6 +89,11 @@ class VescProtocolTest {
       parseLightsControlResponse(
         byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2),
       ),
+    )
+    // The legacy echo carries the same status byte under command 202.
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3)),
     )
     // A truncated echo has no state byte to read.
     assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20)))

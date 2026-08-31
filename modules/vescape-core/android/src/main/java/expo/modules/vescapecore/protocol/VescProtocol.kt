@@ -35,6 +35,15 @@ internal const val REFLOAT_GET_ALLDATA = 10
 internal const val REFLOAT_RC_MOVE = 7
 internal const val REFLOAT_REMOTE = 15
 internal const val REFLOAT_LIGHTS_CONTROL = 20
+
+/**
+ * `LIGHTS_CONTROL` on Refloat 1.1 and older, where it still lived in the unstable range the enum
+ * documents as "commands above 200 can change protocol at any time". Refloat 1.2.0 promoted it
+ * to [REFLOAT_LIGHTS_CONTROL] and widened the mask, so the two ids are two different wire formats.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REFLOAT_LIGHTS_CONTROL_LEGACY`
+ */
+internal const val REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 private const val REFLOAT_FAULT_MODE = 69
 
 /**
@@ -70,21 +79,68 @@ private const val LIGHTS_CONTROL_MASK = 0x3
 internal data class BoardLightsState(val enabled: Boolean, val headlightsEnabled: Boolean)
 
 /**
- * Builds the Refloat lights switch: turns the LEDs and headlights on or off together. Runtime only —
- * firmware applies it live and never writes config, so a power cycle restores the board's own
- * setting. The write is sticky for the rest of that power cycle: firmware marks the runtime value
- * as overriding the configured one, so later config changes to the lights stop taking effect live.
+ * Refloat config field ids for the two light switches. Config is what firmware applies on boot, so
+ * these are where the lights stand before anything overrides them — and on
+ * [BoardLightsGeneration.Legacy] they are also what the switch itself writes.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REFLOAT_FIELD_LEDS_ON`
+ */
+internal const val REFLOAT_FIELD_LEDS_ON = "leds.on"
+internal const val REFLOAT_FIELD_HEADLIGHTS_ON = "leds.headlights_on"
+
+/**
+ * Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
+ * widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
+ * wrong generation answers nothing at all, which is indistinguishable from a dead link.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `BoardLightsGeneration`
+ */
+internal enum class BoardLightsGeneration {
+    /** Refloat 1.0–1.1: command 202, one mask byte, writing straight to the stored config. */
+    Legacy,
+
+    /** Refloat 1.2+: command 20, `uint32` mask, writing a runtime override. */
+    Current;
+
+    companion object {
+        /**
+         * Resolves the generation from a normalized Refloat base version such as `"1.2.0"`.
+         * Unknown or unparseable versions fall back to [Current]: a wrong guess only means the
+         * board ignores the command, matching [BoardMoveGeneration.forBaseVersion].
+         */
+        fun forBaseVersion(baseVersion: String?): BoardLightsGeneration {
+            val parts = baseVersion?.split('.') ?: return Current
+            val major = parts.getOrNull(0)?.toIntOrNull() ?: return Current
+            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            return if (major > 1 || (major == 1 && minor >= 2)) Current else Legacy
+        }
+    }
+}
+
+/**
+ * Builds the Refloat lights switch: turns the LEDs and headlights on or off together.
+ *
+ * On [BoardLightsGeneration.Current] the write is runtime only — firmware applies it live and never
+ * writes config, so a power cycle restores the board's own setting. It is sticky for the rest of
+ * that power cycle: firmware marks the runtime value as overriding the configured one, so later
+ * config changes to the lights stop taking effect live. On [BoardLightsGeneration.Legacy] there is
+ * no runtime layer; firmware assigns the in-memory config directly, so the switch reads back as the
+ * board's configured value until something saves or restores config.
  *
  * A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
- * runtime flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a
- * client knows not to offer the switch at all.
+ * flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
+ * knows not to offer the switch at all.
  *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
  */
-internal fun buildLightsControlCommand(transport: BoardTransport, enabled: Boolean): ByteArray {
+internal fun buildLightsControlCommand(
+    transport: BoardTransport,
+    generation: BoardLightsGeneration,
+    enabled: Boolean,
+): ByteArray {
     val value = if (enabled) LIGHTS_CONTROL_MASK else 0
-    return transport.frame(
-        byteArrayOf(
+    val payload = when (generation) {
+        BoardLightsGeneration.Current -> byteArrayOf(
             COMM_CUSTOM_APP_DATA.toByte(),
             REFLOAT_MAGIC.toByte(),
             REFLOAT_LIGHTS_CONTROL.toByte(),
@@ -94,8 +150,18 @@ internal fun buildLightsControlCommand(transport: BoardTransport, enabled: Boole
             0,
             LIGHTS_CONTROL_MASK.toByte(),
             value.toByte(),
-        ),
-    )
+        )
+
+        BoardLightsGeneration.Legacy -> byteArrayOf(
+            COMM_CUSTOM_APP_DATA.toByte(),
+            REFLOAT_MAGIC.toByte(),
+            REFLOAT_LIGHTS_CONTROL_LEGACY.toByte(),
+            // mask, a single byte before Refloat 1.2.0
+            LIGHTS_CONTROL_MASK.toByte(),
+            value.toByte(),
+        )
+    }
+    return transport.frame(payload)
 }
 
 /**
@@ -112,7 +178,9 @@ internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
     }
     if (body.size < 4) return null
     if ((body[1].toInt() and 0xff) != REFLOAT_MAGIC) return null
-    if ((body[2].toInt() and 0xff) != REFLOAT_LIGHTS_CONTROL) return null
+    val command = body[2].toInt() and 0xff
+    // Both generations echo the same status byte under their own command id.
+    if (command != REFLOAT_LIGHTS_CONTROL && command != REFLOAT_LIGHTS_CONTROL_LEGACY) return null
     val bits = body[3].toInt() and 0xff
     return BoardLightsState(enabled = bits and 0x1 != 0, headlightsEnabled = bits and 0x2 != 0)
 }

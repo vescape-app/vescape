@@ -186,26 +186,44 @@ Footer:
 
 `REALTIME_DATA_IDS` returns the string field names for all items so clients can discover the schema dynamically without hardcoding the field order.
 
-### LIGHTS_CONTROL (20) — Refloat's own lights
+### LIGHTS_CONTROL — Refloat's own lights
 
-Request: `[CUSTOM_APP_DATA=0x24] [101] [20] [mask uint32 BE] [value]`. `mask` names which switches
-to apply — bit 0 the lights as a whole, bit 1 the headlights — and `value` carries their new state
-in the same bit positions. Firmware touches only the switches the mask names, so writing
-`mask = 3, value = 3` turns both on and `value = 0` turns both off.
+**The command id and payload changed in Refloat 1.2.0.** It started life in the range the firmware
+enum itself marks as _"commands above 200 are unstable and can change protocol at any time"_, and
+1.2.0 promoted it. Firmware drops an unknown command id in silence, so sending the wrong generation
+gets no reply at all — indistinguishable from a dead link. Verified on hardware: a 1.1 board ignores
+id 20 completely and answers id 202 immediately.
 
-Firmware discards the whole request unless the mask's **low byte** is non-zero (`mask & 0xff`); a
-mask whose set bits are all above bit 7 is a silent no-op and `value` is never even read.
+|                    | Refloat ≤ 1.1                                       | Refloat ≥ 1.2                        |
+| ------------------ | --------------------------------------------------- | ------------------------------------ |
+| Command id         | `202`                                               | `20`                                 |
+| `mask`             | one byte                                            | `uint32` big-endian                  |
+| Minimum arg length | 2                                                   | 5                                    |
+| What it writes     | the stored config (`leds.on`, `leds.headlights_on`) | a runtime override, config untouched |
 
-The board answers with `[101] [20] [headlights_enabled << 1 | enabled]`, its runtime status after
-the write.
+Request: `[CUSTOM_APP_DATA=0x24] [101] [id] [mask] [value]`. `mask` names which switches to apply —
+bit 0 the lights as a whole, bit 1 the headlights — and `value` carries their new state in the same
+bit positions. Firmware touches only the switches the mask names, so writing `mask = 3, value = 3`
+turns both on and `value = 0` turns both off.
 
-Nothing is persisted, but the write is sticky for the rest of the power cycle: firmware flags the
-runtime value as overriding the configured one, and from then on stops re-applying the configured
-lights setting. So a later config write of that setting appears to do nothing until reboot.
+On 1.2+ firmware discards the whole request unless the mask's **low byte** is non-zero
+(`mask & 0xff`); a mask whose set bits are all above bit 7 is a silent no-op and `value` is never
+even read. On ≤1.1 the single mask byte just has to be non-zero.
 
-A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
-runtime flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
-knows not to offer the switch at all.
+Both generations answer with `[101] [id] [headlights_enabled << 1 | enabled]`, the status after the
+write, under their own command id.
+
+**Where the state lives differs, and it matters for clients.** On 1.2+ nothing is persisted, but the
+write is sticky for the rest of the power cycle: firmware flags the runtime value as overriding the
+configured one, and from then on stops re-applying the configured lights setting, so a later config
+write of that setting appears to do nothing until reboot. On ≤1.1 there is no runtime layer at all —
+the command assigns the config fields directly, which means the lights survive as long as that config
+does, a config read reports them faithfully, and a client's own change-detection will see its own
+write as an external config edit unless it rebases its baseline.
+
+A board with its LEDs configured off still accepts the command and echoes back `enabled` — the flag
+flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client knows not to
+offer the switch at all.
 
 ### LCM reads — Lighting controller
 

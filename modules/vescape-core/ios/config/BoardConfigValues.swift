@@ -103,6 +103,20 @@ struct BoardConfigValues {
     )
   }
 
+  /// The same values with `values` replaced. Swift has no `copy`, and the only caller rebases the
+  /// config-change baseline after a runtime command mutated a field on the board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+  func withValues(_ values: [String: Any]) -> BoardConfigValues {
+    BoardConfigValues(
+      boardId: boardId,
+      refloatBaseVersion: refloatBaseVersion,
+      capturedAtMs: capturedAtMs,
+      freshness: freshness,
+      values: values,
+      writeBase: writeBase
+    )
+  }
+
   /// Rebuild a cached object. Always `lastKnown` and always without a write base.
   static func lastKnown(
     boardId: String?,

@@ -13,6 +13,9 @@ import expo.modules.vescapecore.location.LegalPolicyCatalog
 import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
+import expo.modules.vescapecore.protocol.BoardLightsGeneration
+import expo.modules.vescapecore.protocol.REFLOAT_FIELD_HEADLIGHTS_ON
+import expo.modules.vescapecore.protocol.REFLOAT_FIELD_LEDS_ON
 import expo.modules.vescapecore.protocol.BoardLightsState
 import expo.modules.vescapecore.protocol.BoardMoveGeneration
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
@@ -1396,8 +1399,7 @@ private var wearAutoLaunchOnConnect = true
             // The lights echo shares the telemetry command byte but carries no metrics; parsing it as
             // a Telemetry Sample would only produce a parse-failure diagnostic. It is also the only
             // truth about the board's lights, so it is what JS renders.
-            boardLights = lights
-            emitEvent("onBoardLights", lightsEventBody())
+            onBoardLightsEcho(lights)
             return
         }
         if ((payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA) {
@@ -1735,6 +1737,7 @@ private var wearAutoLaunchOnConnect = true
         if (values.boardId != boardConfig?.appBoardId) return
         if (lastEmittedLinkIntegrity != LinkIntegrity.Trusted) return
         boardConfigValues = values
+        syncBoardLightsFromConfig(values)
         alertCoordinator.updateBoardConfigValues(values.values)
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch {
@@ -1768,6 +1771,7 @@ private var wearAutoLaunchOnConnect = true
                 if (lastEmittedLinkIntegrity == LinkIntegrity.Mismatched) return@post
                 if (boardConfigValues != null) return@post
                 boardConfigValues = restored
+                syncBoardLightsFromConfig(restored)
                 alertCoordinator.updateBoardConfigValues(restored.values)
             }
         }
@@ -2334,7 +2338,68 @@ private var wearAutoLaunchOnConnect = true
     fun setBoardLights(enabled: Boolean): Boolean {
         if (!firmwareCommandsTrusted()) return false
         val transport = currentBoardTransport() ?: return false
-        return sendPayloadWithRetry(buildLightsControlCommand(transport, enabled))
+        return sendPayloadWithRetry(buildLightsControlCommand(transport, lightsGeneration(), enabled))
+    }
+
+    private fun lightsGeneration(): BoardLightsGeneration =
+        BoardLightsGeneration.forBaseVersion(boardConfig?.refloatBaseVersion)
+
+    /**
+     * Take the board's lights echo as this session's truth, and on
+     * [BoardLightsGeneration.Legacy] teach the config-change baseline about it.
+     *
+     * Refloat 1.1 and older have no runtime layer: the switch assigns the stored config, so the next
+     * fresh read legitimately differs from the cached baseline. Without this the rider's own tap
+     * comes back at them as "changed outside Vescape". Only the diff baseline is updated — never
+     * [boardConfigValues], whose raw bytes still describe what the board actually sent and must stay
+     * a faithful write base (ADR 0035).
+     */
+    private fun onBoardLightsEcho(lights: BoardLightsState) {
+        boardLights = lights
+        emitEvent("onBoardLights", lightsEventBody())
+        if (lightsGeneration() != BoardLightsGeneration.Legacy) return
+        val values = boardConfigValues ?: return
+        val rebased = values.copy(
+            values = values.values +
+                listOfNotNull(
+                    lightsFieldEntry(values, REFLOAT_FIELD_LEDS_ON, lights.enabled),
+                    lightsFieldEntry(values, REFLOAT_FIELD_HEADLIGHTS_ON, lights.headlightsEnabled),
+                ),
+        )
+        val repo = AppDataRepository.get(service.applicationContext)
+        CoreForegroundService.appDataScope.launch { repo.saveBoardConfigValues(rebased) }
+    }
+
+    /**
+     * The rebased baseline entry for one lights field, in the same runtime type the decoder produced
+     * for it. Refloat declares both fields as `type 5`, so they decode as numbers, not booleans, and
+     * a rebase that wrote a Kotlin `Boolean` would diff against every later read on type alone.
+     * Absent from the schema means absent from the baseline: inventing a key would itself be a diff.
+     */
+    private fun lightsFieldEntry(values: BoardConfigValues, id: String, enabled: Boolean): Pair<String, Any>? =
+        when (values.values[id]) {
+            is Boolean -> id to enabled
+            is Double -> id to if (enabled) 1.0 else 0.0
+            else -> null
+        }
+
+    /** One lights field as a flag, reading either representation the schema may have decoded. */
+    private fun lightsFlag(values: BoardConfigValues, id: String): Boolean? =
+        values.bool(id) ?: values.number(id)?.let { it != 0.0 }
+
+    /**
+     * Seed the lights from config, which is what firmware applies until something overrides it. On
+     * [BoardLightsGeneration.Legacy] config stays the truth for the whole session, because the
+     * switch writes it directly. On 1.2+ a runtime override detaches the two for the rest of the
+     * power cycle, so config only speaks until this session's first echo.
+     */
+    private fun syncBoardLightsFromConfig(values: BoardConfigValues) {
+        if (lightsGeneration() == BoardLightsGeneration.Current && boardLights != null) return
+        val enabled = lightsFlag(values, REFLOAT_FIELD_LEDS_ON) ?: return
+        val lights = BoardLightsState(enabled, lightsFlag(values, REFLOAT_FIELD_HEADLIGHTS_ON) ?: false)
+        if (lights == boardLights) return
+        boardLights = lights
+        emitEvent("onBoardLights", lightsEventBody())
     }
 
     fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
@@ -3251,8 +3316,12 @@ private const val LINK_INTEGRITY_BMS_TIMEOUT_MS = 12_000L
 // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `linkIntegrityCheckTimeoutSeconds`
 private const val LINK_INTEGRITY_CHECK_TIMEOUT_MS = 20_000L
 
-/** Idle delay after link trust before the one background config-safety read fires (lets telemetry settle). */
-private const val CONFIG_SAFETY_READ_DELAY_MS = 2_500L
+/**
+ * Idle delay after link trust before the one background config-safety read fires. Only long enough
+ * to let the connect burst clear: the read plus its multi-packet schema transfer is what the rider
+ * waits on, and a config-change notice has to reach them before they ride off.
+ */
+private const val CONFIG_SAFETY_READ_DELAY_MS = 400L
 
 private fun SessionConfig.linkIdentity(): LinkIdentity =
     LinkIdentity(
