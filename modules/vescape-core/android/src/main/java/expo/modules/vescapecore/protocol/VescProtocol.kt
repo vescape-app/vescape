@@ -34,6 +34,7 @@ internal const val REFLOAT_GET_INFO = 0
 internal const val REFLOAT_GET_ALLDATA = 10
 internal const val REFLOAT_RC_MOVE = 7
 internal const val REFLOAT_REMOTE = 15
+internal const val REFLOAT_LIGHTS_CONTROL = 20
 private const val REFLOAT_FAULT_MODE = 69
 
 /**
@@ -55,6 +56,63 @@ internal fun buildFaultsTerminalCommand(transport: BoardTransport): ByteArray =
     transport.frame(
         byteArrayOf(COMM_TERMINAL_CMD.toByte()) + VESC_FAULTS_TERMINAL_COMMAND.toByteArray(Charsets.US_ASCII),
     )
+
+/**
+ * Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
+ * headlights. Firmware only applies the bits the mask names, so writing both is what makes this an
+ * all-or-nothing switch rather than a partial edit of whatever the board had.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `LIGHTS_CONTROL_MASK`
+ */
+private const val LIGHTS_CONTROL_MASK = 0x3
+
+/** Board lights as the board reports them back on its `LIGHTS_CONTROL` echo. */
+internal data class BoardLightsState(val enabled: Boolean, val headlightsEnabled: Boolean)
+
+/**
+ * Builds the Refloat lights switch: turns the LEDs and headlights on or off together. Runtime only —
+ * firmware applies it live and never writes config, so a power cycle restores the board's own
+ * setting.
+ *
+ * Boards without LEDs ignore the command; `GET_INFO` capabilities say which those are.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
+ */
+internal fun buildLightsControlCommand(transport: BoardTransport, enabled: Boolean): ByteArray {
+    val value = if (enabled) LIGHTS_CONTROL_MASK else 0
+    return transport.frame(
+        byteArrayOf(
+            COMM_CUSTOM_APP_DATA.toByte(),
+            REFLOAT_MAGIC.toByte(),
+            REFLOAT_LIGHTS_CONTROL.toByte(),
+            // mask, uint32 big-endian
+            0,
+            0,
+            0,
+            LIGHTS_CONTROL_MASK.toByte(),
+            value.toByte(),
+        ),
+    )
+}
+
+/**
+ * Decodes the board's `LIGHTS_CONTROL` echo, the authoritative answer to what the switch did.
+ * Returns `null` for any payload that is not one, including the CAN-forwarded form.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `parseLightsControlResponse`
+ */
+internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
+    val body = when {
+        payload.size >= 4 && (payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA -> payload
+        payload.size >= 6 && (payload[0].toInt() and 0xff) == COMM_FORWARD_CAN -> payload.copyOfRange(2, payload.size)
+        else -> return null
+    }
+    if (body.size < 4) return null
+    if ((body[1].toInt() and 0xff) != REFLOAT_MAGIC) return null
+    if ((body[2].toInt() and 0xff) != REFLOAT_LIGHTS_CONTROL) return null
+    val bits = body[3].toInt() and 0xff
+    return BoardLightsState(enabled = bits and 0x1 != 0, headlightsEnabled = bits and 0x2 != 0)
+}
 
 /** Neutral position of the remote-tilt slider (0..255). */
 internal const val REMOTE_TILT_CENTER = 128

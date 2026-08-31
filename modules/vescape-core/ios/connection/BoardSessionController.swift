@@ -467,6 +467,16 @@ internal final class BoardSessionController: VescGattListener {
 
   func remoteTiltState() -> [String: Any?]? { nil }
 
+  /// Switch the board's lights on or off. Runtime only: firmware applies it live and writes no
+  /// config, so the board's own setting returns on the next power cycle.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setBoardLights`
+  func setBoardLights(enabled: Bool) -> Bool {
+    guard firmwareCommandsTrusted(), let config else { return false }
+    let transport = config.transport ?? .direct
+    return sendPayloadWithRetry(buildLightsControlCommand(transport: transport, enabled: enabled), session: session)
+  }
+
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startBoardMove`
   func startBoardMove(input: Int) -> Bool {
     boardMoveController.hold(input)
@@ -1461,6 +1471,15 @@ internal final class BoardSessionController: VescGattListener {
     guard !payload.isEmpty else { return }
     switch Int(payload[0]) {
     case COMM_CUSTOM_APP_DATA:
+      // The lights echo shares the telemetry command byte but carries no metrics.
+      if let lights = parseLightsControlResponse(payload) {
+        NSLog(
+          "[VescSession] board lights: enabled=%@ headlights=%@",
+          String(lights.enabled),
+          String(lights.headlightsEnabled)
+        )
+        return
+      }
       handleTelemetry(payload, session: session)
     case COMM_FW_VERSION:
       handleFwVersion(payload)

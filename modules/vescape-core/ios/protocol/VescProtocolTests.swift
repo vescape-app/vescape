@@ -68,6 +68,32 @@ final class VescProtocolTests: XCTestCase {
     XCTAssertEqual("FW 6.05 · VESC · Refl", parseFwVersion(payload: payload))
   }
 
+  func testBuildsLightsControlCommandForBothSwitches() {
+    // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 3],
+      buildLightsControlCommand(transport: .direct, enabled: true)
+    )
+    // The mask still names both switches when turning them off, so the value clears both.
+    XCTAssertEqual(
+      [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 0],
+      buildLightsControlCommand(transport: .can(7), enabled: false)
+    )
+  }
+
+  func testParsesLightsControlEcho() {
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: true),
+      parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 3])
+    )
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: false),
+      parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 1])
+    )
+    // A telemetry frame must never be mistaken for the lights echo.
+    XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
+  }
+
   func testBuildsShortPacketWithCrc() {
     let payload = [UInt8(COMM_CUSTOM_APP_DATA), UInt8(REFLOAT_MAGIC), UInt8(REFLOAT_GET_ALLDATA), 2]
 

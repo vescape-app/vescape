@@ -24,6 +24,7 @@ internal let REFLOAT_GET_INFO = 0
 internal let REFLOAT_GET_ALLDATA = 10
 internal let REFLOAT_RC_MOVE = 7
 internal let REFLOAT_REMOTE = 15
+internal let REFLOAT_LIGHTS_CONTROL = 20
 internal let REMOTE_TILT_CENTER = 128
 
 /// The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
@@ -39,6 +40,61 @@ private let vescFaultsTerminalCommand = "faults"
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildFaultsTerminalCommand`
 internal func buildFaultsTerminalCommand(_ transport: BoardTransport) -> [UInt8] {
   transport.frame([UInt8(COMM_TERMINAL_CMD)] + Array(vescFaultsTerminalCommand.utf8))
+}
+
+/// Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
+/// headlights. Firmware only applies the bits the mask names, so writing both is what makes this an
+/// all-or-nothing switch rather than a partial edit of whatever the board had.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `LIGHTS_CONTROL_MASK`
+private let LIGHTS_CONTROL_MASK = 0x3
+
+/// Board lights as the board reports them back on its `LIGHTS_CONTROL` echo.
+internal struct BoardLightsState: Equatable {
+  let enabled: Bool
+  let headlightsEnabled: Bool
+}
+
+/// Builds the Refloat lights switch: turns the LEDs and headlights on or off together. Runtime only —
+/// firmware applies it live and never writes config, so a power cycle restores the board's own
+/// setting.
+///
+/// Boards without LEDs ignore the command; `GET_INFO` capabilities say which those are.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildLightsControlCommand`
+internal func buildLightsControlCommand(transport: BoardTransport, enabled: Bool) -> [UInt8] {
+  let value = enabled ? LIGHTS_CONTROL_MASK : 0
+  return transport.frame([
+    UInt8(COMM_CUSTOM_APP_DATA),
+    UInt8(REFLOAT_MAGIC),
+    UInt8(REFLOAT_LIGHTS_CONTROL),
+    // mask, uint32 big-endian
+    0,
+    0,
+    0,
+    UInt8(LIGHTS_CONTROL_MASK),
+    UInt8(value),
+  ])
+}
+
+/// Decodes the board's `LIGHTS_CONTROL` echo, the authoritative answer to what the switch did.
+/// Returns `nil` for any payload that is not one, including the CAN-forwarded form.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `parseLightsControlResponse`
+internal func parseLightsControlResponse(_ payload: [UInt8]) -> BoardLightsState? {
+  let body: [UInt8]
+  if payload.count >= 4, Int(payload[0]) == COMM_CUSTOM_APP_DATA {
+    body = payload
+  } else if payload.count >= 6, Int(payload[0]) == COMM_FORWARD_CAN {
+    body = Array(payload[2...])
+  } else {
+    return nil
+  }
+  guard body.count >= 4,
+    Int(body[1]) == REFLOAT_MAGIC,
+    Int(body[2]) == REFLOAT_LIGHTS_CONTROL
+  else { return nil }
+  return BoardLightsState(enabled: body[3] & 0x1 != 0, headlightsEnabled: body[3] & 0x2 != 0)
 }
 
 /// Board Move input range for the Refloat 1.3+ `REMOTE` byte (`-128` is ignored by firmware).

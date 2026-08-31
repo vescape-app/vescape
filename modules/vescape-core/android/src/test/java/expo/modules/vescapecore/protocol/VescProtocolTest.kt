@@ -29,6 +29,36 @@ class VescProtocolTest {
   }
 
   @Test
+  fun buildsLightsControlCommandForBothSwitches() {
+    // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 3),
+      buildLightsControlCommand(BoardTransport.Direct, enabled = true),
+    )
+    // The mask still names both switches when turning them off, so the value clears both.
+    assertArrayEquals(
+      byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 0),
+      buildLightsControlCommand(BoardTransport.Can(7), enabled = false),
+    )
+  }
+
+  @Test
+  fun parsesLightsControlEcho() {
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 3)),
+    )
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = false),
+      parseLightsControlResponse(
+        byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 1),
+      ),
+    )
+    // A telemetry frame must never be mistaken for the lights echo.
+    assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2)))
+  }
+
+  @Test
   fun buildsBoardMoveRemoteCommandForRefloat13() {
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 15, -25),

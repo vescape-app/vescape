@@ -186,13 +186,26 @@ Footer:
 
 `REALTIME_DATA_IDS` returns the string field names for all items so clients can discover the schema dynamically without hardcoding the field order.
 
+### LIGHTS_CONTROL (20) — Refloat's own lights
+
+Request: `[101] [20] [mask uint32 BE] [value]`. `mask` names which switches to apply — bit 0 the
+lights as a whole, bit 1 the headlights — and `value` carries their new state in the same bit
+positions. Firmware touches only the switches the mask names, so writing `mask = 3, value = 3`
+turns both on and `value = 0` turns both off.
+
+The board answers with `[101] [20] [headlights_enabled << 1 | enabled]`, its runtime status after
+the write. Nothing is persisted: a power cycle restores the board's configured setting.
+
+Boards with no LEDs (`GET_INFO` capabilities bit 0 clear) ignore the command.
+
 ### LCM reads — Lighting controller
 
-| Command         |  ID | Returns                                                                                                          |
-| --------------- | --: | ---------------------------------------------------------------------------------------------------------------- |
-| LCM_LIGHT_INFO  |  25 | Light config: enabled, brightness, idle brightness, status brightness, lights-off-when-lifted, LCM name, payload |
-| LCM_DEVICE_INFO |  27 | LCM hardware/firmware info                                                                                       |
-| LCM_GET_BATTERY |  29 | Battery info from external light module                                                                          |
+| Command         |  ID | Returns                                                                                                                                                                          |
+| --------------- | --: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| LCM_LIGHT_INFO  |  25 | Light config: enabled, brightness, idle brightness, status brightness, lights-off-when-lifted, LCM name, payload                                                                 |
+| LCM_DEVICE_INFO |  27 | LCM hardware/firmware info                                                                                                                                                       |
+| LCM_LIGHT_CTRL  |  26 | Write for external light modules: `[brightness] [brightness_idle] [status_brightness]` (each 0–100), plus an optional LCM-specific payload tail. Ignored when no LCM is enabled. |
+| LCM_GET_BATTERY |  29 | Battery info from external light module                                                                                                                                          |
 
 ### Board Move commands
 

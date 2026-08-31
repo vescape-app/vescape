@@ -2122,6 +2122,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
   stopRemoteTilt(): Promise<boolean>
+  setBoardLights(enabled: boolean): Promise<boolean>
   startBoardMove(input: number): Promise<boolean>
   stopBoardMove(): Promise<boolean>
   getTuneProfiles(boardId: string, refloatBaseVersion?: string | null): Promise<TuneProfile[]>
@@ -2890,6 +2891,19 @@ export async function releaseRemoteTilt(value: number, durationMs: number): Prom
 export async function stopRemoteTilt(): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.stopRemoteTilt()
+}
+
+/**
+ * Switch the board's lights on or off — LEDs and headlights together. Runtime only: the board
+ * applies it live and stores nothing, so its own setting returns on the next power cycle. Boards
+ * without LEDs ignore it, and the command is refused unless the Board Link is trusted.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `buildLightsControlCommand`
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
+ */
+export async function setBoardLights(enabled: boolean): Promise<boolean> {
+  if (E2E_ENABLED) return true
+  return native.setBoardLights(enabled)
 }
 
 /**

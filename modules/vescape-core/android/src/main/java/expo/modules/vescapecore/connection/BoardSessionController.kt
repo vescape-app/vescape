@@ -25,6 +25,7 @@ import expo.modules.vescapecore.protocol.COMM_GET_MCCONF
 import expo.modules.vescapecore.protocol.COMM_PRINT
 import expo.modules.vescapecore.protocol.COMM_SET_CUSTOM_CONFIG
 import expo.modules.vescapecore.protocol.buildFaultsTerminalCommand
+import expo.modules.vescapecore.protocol.buildLightsControlCommand
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
@@ -91,6 +92,7 @@ import expo.modules.vescapecore.telemetry.encodeBmsSeriesColumns
 import expo.modules.vescapecore.service.foregroundServiceTypeForConnectedDevicePromotion
 import expo.modules.vescapecore.protocol.parseBmsValues
 import expo.modules.vescapecore.protocol.parseFwVersion
+import expo.modules.vescapecore.protocol.parseLightsControlResponse
 import expo.modules.vescapecore.protocol.parseRefloatGetAllData
 import expo.modules.vescapecore.remoteTiltWire
 import expo.modules.vescapecore.warnings.BatteryConfigMismatchDetector
@@ -1389,6 +1391,15 @@ private var wearAutoLaunchOnConnect = true
             configController.onPayload(ConfigRWEvent.InfoPayloadReceived(payload))
             return
         }
+        parseLightsControlResponse(payload)?.let { lights ->
+            // The lights echo shares the telemetry command byte but carries no metrics; parsing it as
+            // a Telemetry Sample would only produce a parse-failure diagnostic.
+            Log.i(
+                VESC_SESSION_TAG,
+                "Board lights: enabled=${lights.enabled} headlights=${lights.headlightsEnabled}",
+            )
+            return
+        }
         if ((payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA) {
             val now = nowMs()
             val parsed = parseRefloatGetAllData(
@@ -2299,6 +2310,18 @@ private var wearAutoLaunchOnConnect = true
 
     fun stopRemoteTilt(): Boolean =
         firmwareCommandsTrusted() && remoteTiltController.stop()
+
+    /**
+     * Switch the board's lights on or off. Runtime only: firmware applies it live and writes no
+     * config, so the board's own setting returns on the next power cycle.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setBoardLights`
+     */
+    fun setBoardLights(enabled: Boolean): Boolean {
+        if (!firmwareCommandsTrusted()) return false
+        val transport = currentBoardTransport() ?: return false
+        return sendPayloadWithRetry(buildLightsControlCommand(transport, enabled))
+    }
 
     fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
 
