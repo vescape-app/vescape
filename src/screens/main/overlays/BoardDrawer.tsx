@@ -13,7 +13,7 @@ import {
 } from '@/modules/tune/components/TuneProfileMetadataModal'
 import { SelectWidget } from '@/components/widgets/SelectWidget'
 import { SwitchWidget } from '@/components/widgets/SwitchWidget'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
@@ -111,6 +111,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
     })
   }
 
+  const surface = useResolvedSecondaryWidgetSurface()
   const activeName =
     activeBoardId == null
       ? 'No board'
@@ -206,7 +207,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         </View>
       </View>
 
-      <View style={styles.remoteTiltBox}>
+      <View style={[surface, styles.remoteTiltBox]}>
         <RemoteTiltControl />
       </View>
 
@@ -214,11 +215,11 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         <Text style={styles.quickDisabledNote}>Quick controls waiting for trusted board link.</Text>
       ) : null}
 
-      <View style={styles.remoteTiltBox}>
+      <View style={[surface, styles.remoteTiltBox]}>
         <BoardMoveControl />
       </View>
 
-      <View style={styles.legalGroup}>
+      <View style={[surface, styles.legalGroup]}>
         <View style={styles.legalRow}>
           <LegalModeWidget
             value={legalModeEnabled}
@@ -270,7 +271,6 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   remoteTiltBox: {
-    ...secondaryWidgetSurface,
     padding: 14,
   },
   quickDisabledNote: {
@@ -288,7 +288,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   legalGroup: {
-    ...secondaryWidgetSurface,
     width: '100%',
     overflow: 'hidden',
   },

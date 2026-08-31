@@ -4,7 +4,7 @@ import { CaretRightIcon } from 'phosphor-react-native'
 
 import { useWidgetFocus } from '@/components/overlays/widgetFocus'
 import { WidgetHeader, type WidgetHeaderProps } from '@/components/widgets/widgetHeader'
-import { secondaryWidgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface ExpandingWidgetProps extends WidgetHeaderProps {
@@ -22,6 +22,7 @@ interface ExpandingWidgetProps extends WidgetHeaderProps {
  * gesture — so the expanded state lives in the focus layer, above a scrim, until it is dismissed.
  */
 export function ExpandingWidget({ body, surface = true, ...header }: ExpandingWidgetProps) {
+  const surfaceStyle = useResolvedSecondaryWidgetSurface()
   const id = useId()
   const rowRef = useRef<View>(null)
   const focus = useWidgetFocus()
@@ -31,7 +32,7 @@ export function ExpandingWidget({ body, surface = true, ...header }: ExpandingWi
     <View
       ref={rowRef}
       collapsable={false}
-      style={[surface && styles.widget, focused && styles.lifted]}
+      style={[surface && [surfaceStyle, styles.widget], focused && styles.lifted]}
     >
       <Pressable
         onPress={() => focus.open(id, rowRef, header, body)}
@@ -48,7 +49,6 @@ export function ExpandingWidget({ body, surface = true, ...header }: ExpandingWi
 
 const styles = StyleSheet.create({
   widget: {
-    ...secondaryWidgetSurface,
     padding: 14,
   },
   /** The row keeps its space in the layout while the panel stands in for it. */

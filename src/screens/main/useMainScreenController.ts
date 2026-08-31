@@ -20,7 +20,6 @@ import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
 import { themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
-import { useThemeStore } from '@/hooks/useTheme'
 
 interface UseMainScreenControllerArgs {
   mapRef: RefObject<MainMapHandle | null>
@@ -74,7 +73,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   const hideTelemetryMapDetails = useSettingsStore((s) => s.hideTelemetryMapDetails)
   const mapOrientationMode = useSettingsStore((s) => s.mapOrientationMode)
   const setSetting = useSettingsStore((s) => s.set)
-  const setSessionThemeOverride = useThemeStore((s) => s.setSessionOverride)
   const {
     blocks,
     sessions,
@@ -260,10 +258,13 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
 
   const setMapStyleKey = useCallback(
     (key: typeof mapStyleKey) => {
-      setSessionThemeOverride(themeOverrideForMapStyle(key))
+      // A basemap with an explicit appearance is the rider picking a theme, so it persists as one.
+      // Satellite has no opinion and leaves the configured mode alone.
+      const override = themeOverrideForMapStyle(key)
+      if (override) void setSetting('themeMode', override)
       void setSetting('mapStyleKey', key)
     },
-    [setSessionThemeOverride, setSetting],
+    [setSetting],
   )
 
   const setMapOrientationMode = useCallback(

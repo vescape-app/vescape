@@ -79,15 +79,12 @@ export function resolveThemeMode({
   systemTheme,
   date,
   coordinate,
-  sessionOverride,
 }: {
   mode: ThemeMode
   systemTheme: ResolvedTheme | null | undefined
   date: Date
   coordinate?: ThemeCoordinate | null
-  sessionOverride?: ResolvedTheme | null
 }): ResolvedTheme {
-  if (sessionOverride) return sessionOverride
   if (mode === 'light' || mode === 'dark') return mode
   if (mode === 'sun' && isUsableThemeCoordinate(coordinate)) {
     return solarElevationDegrees(date, coordinate) >= SUNRISE_ELEVATION_DEGREES ? 'light' : 'dark'

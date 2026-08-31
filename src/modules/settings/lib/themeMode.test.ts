@@ -59,13 +59,12 @@ describe('resolveThemeMode', () => {
     ).toBe('light')
   })
 
-  test('session map override wins without changing the durable mode', () => {
+  test('an explicit mode outranks the system appearance', () => {
     expect(
       resolveThemeMode({
-        mode: 'system',
+        mode: 'dark',
         systemTheme: 'light',
         date: new Date('2026-07-31T10:00:00Z'),
-        sessionOverride: 'dark',
       }),
     ).toBe('dark')
   })

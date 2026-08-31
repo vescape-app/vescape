@@ -16,7 +16,6 @@ export function ThemeController() {
   const mode = useSettingsStore((state) => state.themeMode)
   const latitude = useSettingsStore((state) => state.lastGpsLatitude)
   const longitude = useSettingsStore((state) => state.lastGpsLongitude)
-  const sessionOverride = useThemeStore((state) => state.sessionOverride)
   const setResolution = useThemeStore((state) => state.setResolution)
   const [now, setNow] = useState(() => new Date())
   const coordinate = useMemo(
@@ -35,7 +34,6 @@ export function ThemeController() {
     systemTheme: systemTheme === 'light' || systemTheme === 'dark' ? systemTheme : null,
     date: now,
     coordinate,
-    sessionOverride,
   })
   const outdoorLight = isUsableThemeCoordinate(coordinate)
     ? outdoorLightProgress(now, coordinate)
@@ -43,8 +41,7 @@ export function ThemeController() {
       ? 1
       : 0
   const followsSystem =
-    sessionOverride == null &&
-    (mode === 'system' || (mode === 'sun' && !isUsableThemeCoordinate(coordinate)))
+    mode === 'system' || (mode === 'sun' && !isUsableThemeCoordinate(coordinate))
 
   useEffect(() => {
     setResolution(resolvedTheme, outdoorLight)

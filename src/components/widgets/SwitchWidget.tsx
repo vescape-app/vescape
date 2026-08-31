@@ -2,7 +2,10 @@ import { StyleSheet, Switch, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 
-import { secondaryWidgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import {
+  useResolvedSecondaryWidgetSurface,
+  type WidgetSize,
+} from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
@@ -33,6 +36,7 @@ export function SwitchWidget({
 }: SwitchWidgetProps) {
   const square = size === 'square'
   const neutral = useResolvedNeutralColors()
+  const surface = useResolvedSecondaryWidgetSurface()
   const resolvedAccent = useResolvedColor(accent)
 
   const control = (
@@ -49,7 +53,7 @@ export function SwitchWidget({
 
   if (square) {
     return (
-      <View style={[styles.widget, styles.widgetSquare, disabled && styles.disabled]}>
+      <View style={[surface, styles.widgetSquare, disabled && styles.disabled]}>
         {IconComponent ? <IconComponent size={26} color={accent} weight="duotone" /> : null}
         <Text style={styles.label} numberOfLines={2}>
           {label}
@@ -60,7 +64,7 @@ export function SwitchWidget({
   }
 
   return (
-    <View style={[styles.widget, styles.widgetRow, disabled && styles.disabled]}>
+    <View style={[surface, styles.widgetRow, disabled && styles.disabled]}>
       {IconComponent ? <IconComponent size={22} color={accent} weight="duotone" /> : null}
       <View style={styles.text}>
         <Text style={styles.label}>{label}</Text>
@@ -72,9 +76,6 @@ export function SwitchWidget({
 }
 
 const styles = StyleSheet.create({
-  widget: {
-    ...secondaryWidgetSurface,
-  },
   widgetRow: {
     flexDirection: 'row',
     alignItems: 'center',
