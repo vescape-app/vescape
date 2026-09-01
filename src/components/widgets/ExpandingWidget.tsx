@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react'
+import { useRef } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { CaretRightIcon } from 'phosphor-react-native'
 
@@ -23,19 +23,13 @@ interface ExpandingWidgetProps extends WidgetHeaderProps {
  */
 export function ExpandingWidget({ body, surface = true, ...header }: ExpandingWidgetProps) {
   const surfaceStyle = useResolvedSecondaryWidgetSurface()
-  const id = useId()
   const rowRef = useRef<View>(null)
   const focus = useWidgetFocus()
-  const focused = focus.focusedId === id
 
   return (
-    <View
-      ref={rowRef}
-      collapsable={false}
-      style={[surface && [surfaceStyle, styles.widget], focused && styles.lifted]}
-    >
+    <View ref={rowRef} collapsable={false} style={surface && [surfaceStyle, styles.widget]}>
       <Pressable
-        onPress={() => focus.open(id, rowRef, header, body)}
+        onPress={() => focus.open(rowRef, header, body)}
         style={({ pressed }) => [styles.header, pressed && styles.headerPressed]}
         accessibilityRole="button"
         accessibilityLabel={header.title}
@@ -50,10 +44,6 @@ export function ExpandingWidget({ body, surface = true, ...header }: ExpandingWi
 const styles = StyleSheet.create({
   widget: {
     padding: 14,
-  },
-  /** The row keeps its space in the layout while the panel stands in for it. */
-  lifted: {
-    opacity: 0,
   },
   header: {
     flexDirection: 'row',

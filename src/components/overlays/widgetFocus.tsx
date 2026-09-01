@@ -34,20 +34,17 @@ interface FocusRect {
 }
 
 interface FocusRequest {
-  id: string
   rect: FocusRect
   header: WidgetHeaderProps
   Body: React.ComponentType
 }
 
 interface WidgetFocusController {
-  focusedId: string | null
   /**
    * Lift a widget out of the scrolling content into the focus layer. The body is a component
    * rather than an element so the panel owns its own state instead of replaying a stale snapshot.
    */
   open: (
-    id: string,
     ref: React.RefObject<View | null>,
     header: WidgetHeaderProps,
     Body: React.ComponentType,
@@ -84,13 +81,13 @@ export function useWidgetFocusHost(): WidgetFocusHost {
   const [request, setRequest] = useState<FocusRequest | null>(null)
   const [closing, setClosing] = useState(false)
 
-  const open = useCallback<WidgetFocusController['open']>((id, ref, header, Body) => {
+  const open = useCallback<WidgetFocusController['open']>((ref, header, Body) => {
     const root = rootRef.current
     const widget = ref.current
     if (!root || !widget) return
     widget.measureLayout(root, (x, y, width, height) => {
       setClosing(false)
-      setRequest({ id, rect: { x, y, width, height }, header, Body })
+      setRequest({ rect: { x, y, width, height }, header, Body })
     })
   }, [])
 
@@ -101,10 +98,7 @@ export function useWidgetFocusHost(): WidgetFocusHost {
     setRequest(null)
   }, [])
 
-  const controller = useMemo<WidgetFocusController>(
-    () => ({ focusedId: request && !closing ? request.id : null, open, close }),
-    [close, closing, open, request],
-  )
+  const controller = useMemo<WidgetFocusController>(() => ({ open, close }), [close, open])
 
   return { rootRef, controller, active: request != null, request, closing, finish }
 }
