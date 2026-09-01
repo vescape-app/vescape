@@ -1839,6 +1839,9 @@ private var wearAutoLaunchOnConnect = true
             for (kind in report.cleanKinds) {
                 registry.reportCleanEvaluation(boardId, kind)
             }
+            for (wire in BoardWarningKind.RETIRED_WIRE) {
+                registry.reportCleanEvaluation(boardId, wire)
+            }
         }
     }
 

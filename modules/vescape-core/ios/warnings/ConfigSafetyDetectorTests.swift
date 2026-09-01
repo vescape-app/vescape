@@ -12,8 +12,7 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     faultAdc2: Double? = 2.0,
     tiltbackLv: Double? = 45.0,
     tiltbackHv: Double? = 64.5,
-    tiltbackDuty: Double? = 0.80,
-    movingFaultDisabled: Bool? = false
+    tiltbackDuty: Double? = 0.80
   ) -> BoardConfigValues {
     var map: [String: Any] = [:]
     map[ConfigSafetyDetector.faultAdc1Id] = faultAdc1
@@ -21,7 +20,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     map[ConfigSafetyDetector.tiltbackLvId] = tiltbackLv
     map[ConfigSafetyDetector.tiltbackHvId] = tiltbackHv
     map[ConfigSafetyDetector.tiltbackDutyId] = tiltbackDuty
-    map[ConfigSafetyDetector.movingFaultDisabledId] = movingFaultDisabled
     return BoardConfigValues(
       boardId: "board",
       refloatBaseVersion: "2.0",
@@ -72,7 +70,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
         .lvPushbackLow,
         .hvPushbackHigh,
         .dutyPushbackHigh,
-        .movingFaultDisabled,
       ]
     )
   }
@@ -174,7 +171,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     XCTAssertFalse(report.cleanKinds.contains(.lvPushbackLow))
     XCTAssertFalse(report.cleanKinds.contains(.hvPushbackHigh))
     XCTAssertTrue(report.cleanKinds.contains(.dutyPushbackHigh))
-    XCTAssertTrue(report.cleanKinds.contains(.movingFaultDisabled))
   }
 
   func testDutyPushbackHighFiresOverLimit() {
@@ -182,28 +178,5 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     let f = finding(report, .dutyPushbackHigh)
     XCTAssertEqual(f?.severity, .warn)
     assertPayload(f, param: "tiltback_duty", value: 0.9, bound: 0.85)
-  }
-
-  func testMovingFaultDisabledFiresWhenOn() {
-    let report = ConfigSafetyDetector.evaluate(values(movingFaultDisabled: true), seriesCount: 15, perCell: false)
-    let f = finding(report, .movingFaultDisabled)
-    XCTAssertEqual(f?.severity, .warn)
-    assertPayload(f, param: "fault_moving_fault_disabled", value: 1.0, bound: 0.0)
-  }
-
-  /// Refloat declares the field as a numeric config param, so a real board decodes it to `1.0`, never
-  /// to `true`. Reading it as a bool skipped the rule on every board — the warning could not fire.
-  func testMovingFaultDisabledFiresForTheNumericValueRealBoardsDecodeTo() throws {
-    let values = BoardConfigValues(
-      boardId: "board",
-      refloatBaseVersion: "2.0",
-      capturedAtMs: 0,
-      freshness: .fresh,
-      values: [ConfigSafetyDetector.movingFaultDisabledId: 1.0],
-      writeBase: nil
-    )
-    let report = ConfigSafetyDetector.evaluate(values, seriesCount: 15, perCell: false)
-    let finding = try XCTUnwrap(report.findings.first { $0.kind == .movingFaultDisabled })
-    XCTAssertEqual(finding.severity, .warn)
   }
 }

@@ -17,7 +17,6 @@ import Foundation
 enum BoardConfigFlagField: String, CaseIterable {
   case ledsOn = "leds.on"
   case headlightsOn = "leds.headlights_on"
-  case movingFaultDisabled = "fault_moving_fault_disabled"
 
   var id: String { rawValue }
 }

@@ -23,7 +23,6 @@ class ConfigSafetyDetectorTest {
     tiltbackLv: Double? = 45.0,
     tiltbackHv: Double? = 64.5,
     tiltbackDuty: Double? = 0.80,
-    movingFaultDisabled: Boolean? = false,
   ): BoardConfigValues {
     val map = mutableMapOf<String, Any>()
     faultAdc1?.let { map[ConfigSafetyDetector.FAULT_ADC1_ID] = it }
@@ -31,7 +30,6 @@ class ConfigSafetyDetectorTest {
     tiltbackLv?.let { map[ConfigSafetyDetector.TILTBACK_LV_ID] = it }
     tiltbackHv?.let { map[ConfigSafetyDetector.TILTBACK_HV_ID] = it }
     tiltbackDuty?.let { map[ConfigSafetyDetector.TILTBACK_DUTY_ID] = it }
-    movingFaultDisabled?.let { map[ConfigSafetyDetector.MOVING_FAULT_DISABLED_ID] = it }
     return BoardConfigValues(
       boardId = "board",
       refloatBaseVersion = "2.0",
@@ -77,7 +75,6 @@ class ConfigSafetyDetectorTest {
         BoardWarningKind.LV_PUSHBACK_LOW,
         BoardWarningKind.HV_PUSHBACK_HIGH,
         BoardWarningKind.DUTY_PUSHBACK_HIGH,
-        BoardWarningKind.MOVING_FAULT_DISABLED,
       ),
       report.cleanKinds.toSet(),
     )
@@ -195,7 +192,6 @@ class ConfigSafetyDetectorTest {
     assertTrue(!report.cleanKinds.contains(BoardWarningKind.HV_PUSHBACK_HIGH))
     // The firmware-agnostic rules still evaluate.
     assertTrue(report.cleanKinds.contains(BoardWarningKind.DUTY_PUSHBACK_HIGH))
-    assertTrue(report.cleanKinds.contains(BoardWarningKind.MOVING_FAULT_DISABLED))
   }
 
   @Test
@@ -204,32 +200,5 @@ class ConfigSafetyDetectorTest {
     val finding = report.finding(BoardWarningKind.DUTY_PUSHBACK_HIGH)!!
     assertEquals(BoardWarningSeverity.WARN, finding.severity)
     finding.assertPayload("tiltback_duty", 0.9, 0.85)
-  }
-
-  @Test
-  fun movingFaultDisabledFiresWhenOn() {
-    val report = ConfigSafetyDetector.evaluate(values(movingFaultDisabled = true), seriesCount = 15, perCell = false)
-    val finding = report.finding(BoardWarningKind.MOVING_FAULT_DISABLED)!!
-    assertEquals(BoardWarningSeverity.WARN, finding.severity)
-    finding.assertPayload("fault_moving_fault_disabled", 1.0, 0.0)
-  }
-
-  /**
-   * Refloat declares the field as a numeric config param, so a real board decodes it to `1.0`, never
-   * to `true`. Reading it as a bool skipped the rule on every board — the warning could not fire.
-   */
-  @Test
-  fun movingFaultDisabledFiresForTheNumericValueRealBoardsDecodeTo() {
-    val map = mapOf<String, Any>(ConfigSafetyDetector.MOVING_FAULT_DISABLED_ID to 1.0)
-    val values = BoardConfigValues(
-      boardId = "board",
-      refloatBaseVersion = "2.0",
-      capturedAtMs = 0,
-      freshness = BoardConfigFreshness.FRESH,
-      values = map,
-      writeBase = null,
-    )
-    val report = ConfigSafetyDetector.evaluate(values, seriesCount = 15, perCell = false)
-    assertEquals(BoardWarningSeverity.WARN, report.finding(BoardWarningKind.MOVING_FAULT_DISABLED)!!.severity)
   }
 }

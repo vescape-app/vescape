@@ -19,7 +19,6 @@ package expo.modules.vescapecore.config
 internal enum class BoardConfigFlagField(val id: String) {
   LEDS_ON("leds.on"),
   HEADLIGHTS_ON("leds.headlights_on"),
-  MOVING_FAULT_DISABLED("fault_moving_fault_disabled"),
 }
 
 /**

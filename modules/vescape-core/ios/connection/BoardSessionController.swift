@@ -1735,6 +1735,9 @@ internal final class BoardSessionController: VescGattListener {
     for kind in report.cleanKinds {
       BoardWarningRegistry.shared.reportCleanEvaluation(boardId: boardId, kind: kind)
     }
+    for wire in BoardWarningKind.retiredWire {
+      BoardWarningRegistry.shared.reportCleanEvaluation(boardId: boardId, kind: wire)
+    }
   }
 
   /// Manual clear from JS: reset the matching telemetry detector's dedupe so a still-true condition

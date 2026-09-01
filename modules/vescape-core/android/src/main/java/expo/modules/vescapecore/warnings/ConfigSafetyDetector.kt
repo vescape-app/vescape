@@ -77,7 +77,6 @@ object ConfigSafetyDetector {
   val TILTBACK_LV_ID = BoardConfigNumberField.TILTBACK_LV.id
   val TILTBACK_HV_ID = BoardConfigNumberField.TILTBACK_HV.id
   val TILTBACK_DUTY_ID = BoardConfigNumberField.TILTBACK_DUTY.id
-  val MOVING_FAULT_DISABLED_ID = BoardConfigFlagField.MOVING_FAULT_DISABLED.id
 
   internal fun evaluate(values: BoardConfigValues, seriesCount: Int?, perCell: Boolean?): ConfigSafetyReport {
     val findings = mutableListOf<ConfigSafetyFinding>()
@@ -123,16 +122,6 @@ object ConfigSafetyDetector {
         findings += finding(BoardWarningKind.DUTY_PUSHBACK_HIGH, BoardWarningSeverity.WARN, TILTBACK_DUTY_ID, duty, DUTY_MAX)
       } else {
         clean += BoardWarningKind.DUTY_PUSHBACK_HIGH
-      }
-    }
-
-    // moving-fault-disabled (warn): moving faults disabled weakens fault protection while riding.
-    val movingFault = values.flag(BoardConfigFlagField.MOVING_FAULT_DISABLED)
-    if (movingFault != null) {
-      if (movingFault) {
-        findings += finding(BoardWarningKind.MOVING_FAULT_DISABLED, BoardWarningSeverity.WARN, MOVING_FAULT_DISABLED_ID, 1.0, 0.0)
-      } else {
-        clean += BoardWarningKind.MOVING_FAULT_DISABLED
       }
     }
 

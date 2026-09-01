@@ -63,7 +63,6 @@ enum ConfigSafetyDetector {
   static let tiltbackLvId = BoardConfigNumberField.tiltbackLv.id
   static let tiltbackHvId = BoardConfigNumberField.tiltbackHv.id
   static let tiltbackDutyId = BoardConfigNumberField.tiltbackDuty.id
-  static let movingFaultDisabledId = BoardConfigFlagField.movingFaultDisabled.id
 
   static func evaluate(_ values: BoardConfigValues, seriesCount: Int?, perCell: Bool?) -> ConfigSafetyReport {
     var findings: [ConfigSafetyFinding] = []
@@ -102,15 +101,6 @@ enum ConfigSafetyDetector {
         findings.append(finding(.dutyPushbackHigh, .warn, tiltbackDutyId, duty, dutyMax))
       } else {
         clean.append(.dutyPushbackHigh)
-      }
-    }
-
-    // moving-fault-disabled (warn): moving faults disabled weakens fault protection while riding.
-    if let movingFault = values.flag(.movingFaultDisabled) {
-      if movingFault {
-        findings.append(finding(.movingFaultDisabled, .warn, movingFaultDisabledId, 1.0, 0.0))
-      } else {
-        clean.append(.movingFaultDisabled)
       }
     }
 

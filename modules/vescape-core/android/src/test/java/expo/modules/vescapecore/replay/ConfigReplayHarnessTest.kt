@@ -33,9 +33,7 @@ class ConfigReplayHarnessTest {
     assertEquals(62.0, values.number("tiltback_lv")!!, 1e-9)
     assertEquals(86.0, values.number("tiltback_hv")!!, 1e-9)
     assertEquals(1.0, values.number("tiltback_duty")!!, 1e-9)
-    // Schema does not carry the moving-fault flag -> the rule is skipped, never guessed.
-    // The schema types this id as a number, so it is not a Boolean the rule can read: the rule stays
-    // skipped rather than guessing from a numeric value.
+    // Refloat types its on/off params as numbers, so a flag id is never decoded as a Boolean.
     assertNull(values.bool("fault_moving_fault_disabled"))
     // The read retains its own write base and is fresh; the decoded map spans the whole schema, not
     // just the curated tune groups.

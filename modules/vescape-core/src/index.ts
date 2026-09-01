@@ -1433,7 +1433,6 @@ export type BoardWarningKind =
   | 'lv-pushback-low'
   | 'hv-pushback-high'
   | 'duty-pushback-high'
-  | 'moving-fault-disabled'
 
 /**
  * One durable Board Warning — an app-detected abnormal Board condition, keyed one-per-problem-kind
