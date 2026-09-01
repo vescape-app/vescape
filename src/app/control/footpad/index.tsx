@@ -11,7 +11,7 @@ import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { useLiveMetric, liveSelectors } from '@/modules/board/hooks/useLiveMetric'
-import { useFootpadThreshold } from '@/modules/board/store/boardConfigValuesStore'
+import { useFootpadThreshold, usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 
 const adc1 = telemetry.footpadAdc1
@@ -32,6 +32,7 @@ export default function FootpadScreen() {
   const adc2Data = useLiveMetric(liveSelectors.footpadAdc2)
   const adc1Threshold = useFootpadThreshold(0)
   const adc2Threshold = useFootpadThreshold(1)
+  const posiSensor = usePosiSensor()
   const windowMs = useLiveWindowMs()
 
   // Both sensors in one stack: a footpad is read by comparing them, and one gesture over the
@@ -75,6 +76,7 @@ export default function FootpadScreen() {
           <FootpadIndicator
             adc1={liveTelemetryRuntime.values.adc1}
             adc2={liveTelemetryRuntime.values.adc2}
+            posi={posiSensor}
             threshold1={adc1Threshold}
             threshold2={adc2Threshold}
             width={132}

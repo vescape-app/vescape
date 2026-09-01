@@ -166,6 +166,11 @@ interface FootpadZoneProps {
   fillColor: string
 }
 
+interface FootpadGlowProps extends FootpadZoneProps {
+  /** Opacity to draw at — the zone's own, or the shared one under Posi. */
+  glow: SharedValue<number>
+}
+
 function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
   return (
     <>
@@ -198,7 +203,7 @@ function FootpadZone({ path, stroke, drive, fillColor }: FootpadZoneProps) {
  * The engaged zone's glow, spilling only into the pad. It is clipped to the interior so the light
  * reads as the pad lighting up under the foot, rather than as a halo around a line.
  */
-function FootpadGlow({ path, stroke, drive, fillColor }: FootpadZoneProps) {
+function FootpadGlow({ path, stroke, glow, fillColor }: FootpadGlowProps) {
   return (
     <Path
       path={path}
@@ -207,7 +212,7 @@ function FootpadGlow({ path, stroke, drive, fillColor }: FootpadZoneProps) {
       strokeCap="round"
       strokeJoin="round"
       color={fillColor}
-      opacity={drive.glow}
+      opacity={glow}
     >
       <BlurMask blur={stroke * GLOW_WIDTH_FACTOR} style="normal" />
     </Path>
@@ -225,6 +230,13 @@ export interface FootpadIndicatorProps {
   width?: number
   /** Draw each zone's live voltage beside its rail. Only legible at detail size. */
   showValues?: boolean
+  /**
+   * `fault_is_dual_switch` — Refloat's "Treat Both Sensors as One (Posi)". The firmware reads the
+   * two sensors as one zone, so either one engaging engages the pad; both rails then glow together,
+   * which is the whole difference the rider needs to see. The rails still fill from their own ADC,
+   * because the sensors do read differently even when the board stops caring.
+   */
+  posi?: boolean
   style?: ViewStyle
   testID?: string
 }
@@ -244,17 +256,23 @@ export function FootpadIndicator({
   threshold2,
   width = 26,
   showValues = false,
+  posi = false,
   style,
   testID,
 }: FootpadIndicatorProps) {
   'use no memo'
   const fillColor = useResolvedColor(theme.palette.green.text)
   const geometry = useMemo(() => buildGeometry(width), [width])
-  const left = useZoneDrive(adc1, threshold1)
-  const right = useZoneDrive(adc2, threshold2)
+  // Zone 2 sits under the left edge of the pad and zone 1 under the right, the opposite of reading
+  // order. The pad is drawn the way the rider looks down at it, so the rails follow the hardware.
+  const left = useZoneDrive(adc2, threshold2)
+  const right = useZoneDrive(adc1, threshold1)
+  const sharedGlow = useDerivedValue<number>(() => Math.max(left.glow.value, right.glow.value))
+  const leftGlow = posi ? sharedGlow : left.glow
+  const rightGlow = posi ? sharedGlow : right.glow
   const gutter = showValues ? VALUE_SIZE * VALUE_GUTTER_CHARS : 0
-  const leftText = useVoltsText(adc1)
-  const rightText = useVoltsText(adc2)
+  const leftText = useVoltsText(adc2)
+  const rightText = useVoltsText(adc1)
 
   return (
     <View style={style} testID={testID}>
@@ -275,12 +293,14 @@ export function FootpadIndicator({
               path={geometry.left}
               stroke={geometry.stroke}
               drive={left}
+              glow={leftGlow}
               fillColor={fillColor}
             />
             <FootpadGlow
               path={geometry.right}
               stroke={geometry.stroke}
               drive={right}
+              glow={rightGlow}
               fillColor={fillColor}
             />
           </Group>

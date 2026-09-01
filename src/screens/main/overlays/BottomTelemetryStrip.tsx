@@ -11,7 +11,7 @@ import { routes } from '@/navigation/routes'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
-import { useFootpadThreshold } from '@/modules/board/store/boardConfigValuesStore'
+import { useFootpadThreshold, usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { FootpadIndicator } from '@/modules/board/components/FootpadIndicator'
 
 export const STRIP_CONTENT_HEIGHT = 160
@@ -56,6 +56,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
 
   const footpad1Threshold = useFootpadThreshold(0)
   const footpad2Threshold = useFootpadThreshold(1)
+  const posiSensor = usePosiSensor()
   const compact = isSmallScreen(height)
 
   return (
@@ -142,6 +143,7 @@ export function BottomTelemetryStrip({ revealProgress }: BottomTelemetryStripPro
             <FootpadIndicator
               adc1={tick.adc1}
               adc2={tick.adc2}
+              posi={posiSensor}
               threshold1={footpad1Threshold}
               threshold2={footpad2Threshold}
               testID="telemetry-footpad-indicator"

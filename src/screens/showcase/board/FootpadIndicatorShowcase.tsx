@@ -25,6 +25,7 @@ export function FootpadIndicatorShowcase() {
   const [size, setSize] = useState('detail')
   const [threshold2, setThreshold2] = useState('0.8')
   const [live, setLive] = useState(true)
+  const [posi, setPosi] = useState(false)
   const adc1 = useSharedValue<number | null>(null)
   const adc2 = useSharedValue<number | null>(null)
 
@@ -69,6 +70,7 @@ export function FootpadIndicatorShowcase() {
             onSelect={setThreshold2}
           />
           <ToggleRow label="live sweep" value={live} onToggle={setLive} />
+          <ToggleRow label="posi (both sensors as one)" value={posi} onToggle={setPosi} />
         </>
       }
     >
@@ -76,6 +78,7 @@ export function FootpadIndicatorShowcase() {
         <FootpadIndicator
           adc1={adc1}
           adc2={adc2}
+          posi={posi}
           threshold1={0.8}
           threshold2={THRESHOLDS[threshold2] ?? null}
           width={WIDTHS[size] ?? 132}
