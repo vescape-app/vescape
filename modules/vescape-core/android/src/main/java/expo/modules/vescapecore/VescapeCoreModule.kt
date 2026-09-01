@@ -787,8 +787,8 @@ class VescapeCoreModule : Module() {
     AsyncFunction("stopRemoteTilt") {
       CoreForegroundService.stopRemoteTilt()
     }
-    AsyncFunction("setBoardLights") { enabled: Boolean ->
-      CoreForegroundService.setBoardLights(enabled)
+    AsyncFunction("setBoardLights") { enabled: Boolean, headlightsEnabled: Boolean ->
+      CoreForegroundService.setBoardLights(enabled, headlightsEnabled)
     }
     AsyncFunction("startBoardMove") { input: Int ->
       CoreForegroundService.startBoardMove(input)

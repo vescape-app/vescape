@@ -2334,15 +2334,19 @@ private var wearAutoLaunchOnConnect = true
     )
 
     /**
-     * Switch the board's lights on or off. Runtime only: firmware applies it live and writes no
-     * config, so the board's own setting returns on the next power cycle.
+     * State the board's lights: the LEDs and the headlights, each on or off. Both switches are
+     * always written, so a caller changing one must pass the other's current value. Runtime only:
+     * firmware applies it live and writes no config, so the board's own setting returns on the next
+     * power cycle.
      *
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `setBoardLights`
      */
-    fun setBoardLights(enabled: Boolean): Boolean {
+    fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean {
         if (!firmwareCommandsTrusted()) return false
         val transport = currentBoardTransport() ?: return false
-        return sendPayloadWithRetry(buildLightsControlCommand(transport, lightsGeneration(), enabled))
+        return sendPayloadWithRetry(
+            buildLightsControlCommand(transport, lightsGeneration(), enabled, headlightsEnabled),
+        )
     }
 
     private fun lightsGeneration(): BoardLightsGeneration =

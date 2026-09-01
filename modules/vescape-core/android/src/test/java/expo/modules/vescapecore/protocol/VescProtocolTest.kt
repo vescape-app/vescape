@@ -33,12 +33,41 @@ class VescProtocolTest {
     // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 3),
-      buildLightsControlCommand(BoardTransport.Direct, BoardLightsGeneration.Current, enabled = true),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Current,
+        enabled = true,
+        headlightsEnabled = true,
+      ),
     )
     // The mask still names both switches when turning them off, so the value clears both.
     assertArrayEquals(
       byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 0),
-      buildLightsControlCommand(BoardTransport.Can(7), BoardLightsGeneration.Current, enabled = false),
+      buildLightsControlCommand(
+        BoardTransport.Can(7),
+        BoardLightsGeneration.Current,
+        enabled = false,
+        headlightsEnabled = false,
+      ),
+    )
+    // The two switches are independent: the mask names both, the value states each one.
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 1),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Current,
+        enabled = true,
+        headlightsEnabled = false,
+      ),
+    )
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 2),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Current,
+        enabled = false,
+        headlightsEnabled = true,
+      ),
     )
   }
 
@@ -47,11 +76,21 @@ class VescProtocolTest {
     // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 3),
-      buildLightsControlCommand(BoardTransport.Direct, BoardLightsGeneration.Legacy, enabled = true),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Legacy,
+        enabled = true,
+        headlightsEnabled = true,
+      ),
     )
     assertArrayEquals(
       byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 0),
-      buildLightsControlCommand(BoardTransport.Can(7), BoardLightsGeneration.Legacy, enabled = false),
+      buildLightsControlCommand(
+        BoardTransport.Can(7),
+        BoardLightsGeneration.Legacy,
+        enabled = false,
+        headlightsEnabled = false,
+      ),
     )
   }
 

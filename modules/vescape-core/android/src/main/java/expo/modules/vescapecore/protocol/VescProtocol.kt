@@ -68,8 +68,8 @@ internal fun buildFaultsTerminalCommand(transport: BoardTransport): ByteArray =
 
 /**
  * Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
- * headlights. Firmware only applies the bits the mask names, so writing both is what makes this an
- * all-or-nothing switch rather than a partial edit of whatever the board had.
+ * headlights. Firmware only applies the bits the mask names; both are always named so a write states
+ * the complete light state rather than editing one switch against whatever the board had.
  *
  * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `LIGHTS_CONTROL_MASK`
  */
@@ -108,7 +108,7 @@ internal enum class BoardLightsGeneration {
 }
 
 /**
- * Builds the Refloat lights switch: turns the LEDs and headlights on or off together.
+ * Builds the Refloat lights switch: states the LEDs and the headlights, each on or off.
  *
  * On [BoardLightsGeneration.Current] the write is runtime only — firmware applies it live and never
  * writes config, so a power cycle restores the board's own setting. It is sticky for the rest of
@@ -127,8 +127,9 @@ internal fun buildLightsControlCommand(
     transport: BoardTransport,
     generation: BoardLightsGeneration,
     enabled: Boolean,
+    headlightsEnabled: Boolean,
 ): ByteArray {
-    val value = if (enabled) LIGHTS_CONTROL_MASK else 0
+    val value = (if (enabled) 0x1 else 0) or (if (headlightsEnabled) 0x2 else 0)
     val payload = when (generation) {
         BoardLightsGeneration.Current -> byteArrayOf(
             COMM_CUSTOM_APP_DATA.toByte(),

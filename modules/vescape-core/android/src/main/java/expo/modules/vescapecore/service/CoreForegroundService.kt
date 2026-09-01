@@ -246,7 +246,8 @@ class CoreForegroundService : Service() {
 
         fun stopRemoteTilt(): Boolean = instance?.controller?.stopRemoteTilt() ?: false
 
-        fun setBoardLights(enabled: Boolean): Boolean = instance?.controller?.setBoardLights(enabled) ?: false
+        fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean =
+            instance?.controller?.setBoardLights(enabled, headlightsEnabled) ?: false
 
         fun lightsEventBody(): Map<String, Any?> =
             instance?.controller?.lightsEventBody() ?: mapOf("enabled" to null, "headlightsEnabled" to null)

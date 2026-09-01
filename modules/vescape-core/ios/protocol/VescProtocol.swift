@@ -50,8 +50,8 @@ internal func buildFaultsTerminalCommand(_ transport: BoardTransport) -> [UInt8]
 }
 
 /// Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
-/// headlights. Firmware only applies the bits the mask names, so writing both is what makes this an
-/// all-or-nothing switch rather than a partial edit of whatever the board had.
+/// headlights. Firmware only applies the bits the mask names; both are always named so a write states
+/// the complete light state rather than editing one switch against whatever the board had.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `LIGHTS_CONTROL_MASK`
 private let LIGHTS_CONTROL_MASK = 0x3
@@ -85,7 +85,7 @@ internal enum BoardLightsGeneration {
   }
 }
 
-/// Builds the Refloat lights switch: turns the LEDs and headlights on or off together.
+/// Builds the Refloat lights switch: states the LEDs and the headlights, each on or off.
 ///
 /// On `.current` the write is runtime only — firmware applies it live and never writes config, so a
 /// power cycle restores the board's own setting. It is sticky for the rest of that power cycle:
@@ -102,9 +102,10 @@ internal enum BoardLightsGeneration {
 internal func buildLightsControlCommand(
   transport: BoardTransport,
   generation: BoardLightsGeneration,
-  enabled: Bool
+  enabled: Bool,
+  headlightsEnabled: Bool
 ) -> [UInt8] {
-  let value = enabled ? LIGHTS_CONTROL_MASK : 0
+  let value = (enabled ? 0x1 : 0) | (headlightsEnabled ? 0x2 : 0)
   let payload: [UInt8]
   switch generation {
   case .current:

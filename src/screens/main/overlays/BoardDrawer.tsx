@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { FadersIcon, FootprintsIcon, HeadlightsIcon } from 'phosphor-react-native'
+import { FadersIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
+import { BoardLightsControl } from '@/modules/board/components/BoardLightsControl'
 import { BoardMoveControl } from '@/modules/board/components/BoardMoveControl'
 import { RemoteTiltControl } from '@/modules/board/components/RemoteTiltControl'
 import { InfoModal } from '@/components/modals/InfoModal'
@@ -12,10 +13,8 @@ import {
   tuneProfileIconComponent,
 } from '@/modules/tune/components/TuneProfileMetadataModal'
 import { SelectWidget } from '@/components/widgets/SelectWidget'
-import { SwitchWidget } from '@/components/widgets/SwitchWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
-import { useBoardLights } from '@/modules/board/hooks/useBoardLights'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
@@ -28,14 +27,6 @@ import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 
-/**
- * Unknown is not off: until the board reports its lights there is nothing to toggle, and an enabled
- * switch reading "off" invites a tap that would fight the board's real state.
- */
-function lightsSwitchDisabled(quickControlsEnabled: boolean, enabled: boolean | null): boolean {
-  return !quickControlsEnabled || enabled == null
-}
-
 interface TuneDrawerProps {
   onNavigate: () => void
   onOpenLegalLimits: () => void
@@ -44,10 +35,8 @@ interface TuneDrawerProps {
 export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   const [tuneSelectOpen, setTuneSelectOpen] = useState(false)
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
-  // The label outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
-  // the exit animation, so clearing the name on dismiss would blank the card as it fades.
-  const [unbuiltControl, setUnbuiltControl] = useState({ label: '', visible: false })
-  // Same reason as `unbuiltControl`: the message has to survive the card's exit animation.
+  // The message outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
+  // the exit animation, so clearing it on dismiss would blank the card as it fades.
   const [legalModeError, setLegalModeError] = useState({ message: '', visible: false })
   const activeBoardId = useBoardStore((state) => state.activeBoardId)
   const tuneCompatibility = useBoardStore(
@@ -82,7 +71,6 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
   const waitingForTrustedLink = boardConnected && !quickControlsEnabled
-  const lights = useBoardLights()
   const profilesForBoard = profilesLoadedForBoard
     ? profiles.filter(
         (profile) =>
@@ -180,36 +168,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         </ScrollView>
       ) : null}
 
-      <View style={styles.quickGrid}>
-        <View style={styles.quickCell}>
-          <SwitchWidget
-            icon={HeadlightsIcon}
-            label="Lights"
-            size="half"
-            value={lights.enabled ?? false}
-            onValueChange={lights.toggleLights}
-            accent={theme.light.accent}
-            disabled={lightsSwitchDisabled(quickControlsEnabled, lights.enabled)}
-          />
-        </View>
-        <View style={styles.quickCell}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Posi, not available yet"
-            onPress={() => setUnbuiltControl({ label: 'Posi', visible: true })}
-          >
-            <SwitchWidget
-              icon={FootprintsIcon}
-              label="Posi"
-              size="half"
-              value={false}
-              onValueChange={() => {}}
-              accent={theme.palette.green.color}
-              disabled
-            />
-          </Pressable>
-        </View>
-      </View>
+      <BoardLightsControl enabled={quickControlsEnabled} />
 
       <View style={[surface, styles.remoteTiltBox]}>
         <RemoteTiltControl />
@@ -248,13 +207,6 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         onDismiss={() => setLegalWarningOpen(false)}
       />
       <InfoModal
-        visible={unbuiltControl.visible}
-        title={`${unbuiltControl.label} not ready yet`}
-        message={`${unbuiltControl.label} is not wired to the board yet — the switch is here so the layout is final. It will start working in a later update.`}
-        dismissLabel="Close"
-        onDismiss={() => setUnbuiltControl((current) => ({ ...current, visible: false }))}
-      />
-      <InfoModal
         visible={legalModeError.visible}
         title="Legal Mode unavailable"
         message={legalModeError.message}
@@ -281,15 +233,6 @@ const styles = StyleSheet.create({
     color: theme.neutral.textDim,
     fontSize: 12,
     fontWeight: '600',
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  quickCell: {
-    width: '48%',
-    flexGrow: 1,
   },
   legalGroup: {
     width: '100%',

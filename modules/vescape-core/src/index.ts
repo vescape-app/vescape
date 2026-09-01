@@ -2231,7 +2231,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
   stopRemoteTilt(): Promise<boolean>
-  setBoardLights(enabled: boolean): Promise<boolean>
+  setBoardLights(enabled: boolean, headlightsEnabled: boolean): Promise<boolean>
   startBoardMove(input: number): Promise<boolean>
   stopBoardMove(): Promise<boolean>
   getTuneProfiles(boardId: string, refloatBaseVersion?: string | null): Promise<TuneProfile[]>
@@ -3016,14 +3016,19 @@ export interface BoardLightsEvent {
 }
 
 /**
- * Switch the board's lights on or off — LEDs and headlights together. Runtime only: the board
- * applies it live and stores nothing, so its own setting returns on the next power cycle, and until
- * then the board stops applying config changes to its lights. A board with no LEDs still accepts and
- * echoes the command. Refused unless the Board Link is trusted.
+ * State the board's lights: the LEDs and the headlights, each on or off. Both switches are written
+ * every time, so changing one means passing the other's current value — the board is told the whole
+ * light state, never a partial edit. Runtime only: the board applies it live and stores nothing, so
+ * its own setting returns on the next power cycle, and until then the board stops applying config
+ * changes to its lights. A board with no LEDs still accepts and echoes the command. Refused unless
+ * the Board Link is trusted.
  */
-export async function setBoardLights(enabled: boolean): Promise<boolean> {
+export async function setBoardLights(
+  enabled: boolean,
+  headlightsEnabled: boolean,
+): Promise<boolean> {
   if (E2E_ENABLED) return true
-  return native.setBoardLights(enabled)
+  return native.setBoardLights(enabled, headlightsEnabled)
 }
 
 /**

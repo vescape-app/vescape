@@ -72,12 +72,25 @@ final class VescProtocolTests: XCTestCase {
     // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
     XCTAssertEqual(
       [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 3],
-      buildLightsControlCommand(transport: .direct, generation: .current, enabled: true)
+      buildLightsControlCommand(
+        transport: .direct, generation: .current, enabled: true, headlightsEnabled: true)
     )
     // The mask still names both switches when turning them off, so the value clears both.
     XCTAssertEqual(
       [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 0],
-      buildLightsControlCommand(transport: .can(7), generation: .current, enabled: false)
+      buildLightsControlCommand(
+        transport: .can(7), generation: .current, enabled: false, headlightsEnabled: false)
+    )
+    // The two switches are independent: the mask names both, the value states each one.
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 1],
+      buildLightsControlCommand(
+        transport: .direct, generation: .current, enabled: true, headlightsEnabled: false)
+    )
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 2],
+      buildLightsControlCommand(
+        transport: .direct, generation: .current, enabled: false, headlightsEnabled: true)
     )
   }
 
@@ -85,11 +98,13 @@ final class VescProtocolTests: XCTestCase {
     // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
     XCTAssertEqual(
       [UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3, 3],
-      buildLightsControlCommand(transport: .direct, generation: .legacy, enabled: true)
+      buildLightsControlCommand(
+        transport: .direct, generation: .legacy, enabled: true, headlightsEnabled: true)
     )
     XCTAssertEqual(
       [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3, 0],
-      buildLightsControlCommand(transport: .can(7), generation: .legacy, enabled: false)
+      buildLightsControlCommand(
+        transport: .can(7), generation: .legacy, enabled: false, headlightsEnabled: false)
     )
   }
 

@@ -535,16 +535,23 @@ internal final class BoardSessionController: VescGattListener {
     emit?("onBoardLights", lightsEventBody())
   }
 
-  /// Switch the board's lights on or off. Runtime only: firmware applies it live and writes no
-  /// config, so the board's own setting returns on the next power cycle.
+  /// State the board's lights: the LEDs and the headlights, each on or off. Both switches are always
+  /// written, so a caller changing one must pass the other's current value. Runtime only: firmware
+  /// applies it live and writes no config, so the board's own setting returns on the next power
+  /// cycle.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setBoardLights`
-  func setBoardLights(enabled: Bool) -> Bool {
+  func setBoardLights(enabled: Bool, headlightsEnabled: Bool) -> Bool {
     guard firmwareCommandsTrusted(), let config else { return false }
     let transport = config.transport ?? .direct
     let generation = BoardLightsGeneration.forBaseVersion(config.refloatBaseVersion)
     return sendPayloadWithRetry(
-      buildLightsControlCommand(transport: transport, generation: generation, enabled: enabled),
+      buildLightsControlCommand(
+        transport: transport,
+        generation: generation,
+        enabled: enabled,
+        headlightsEnabled: headlightsEnabled
+      ),
       session: session
     )
   }

@@ -775,8 +775,8 @@ public class VescapeCoreModule: Module {
       false
     }
 
-    AsyncFunction("setBoardLights") { (enabled: Bool) -> Bool in
-      self.coordinator.setBoardLights(enabled: enabled)
+    AsyncFunction("setBoardLights") { (enabled: Bool, headlightsEnabled: Bool) -> Bool in
+      self.coordinator.setBoardLights(enabled: enabled, headlightsEnabled: headlightsEnabled)
     }
 
     AsyncFunction("startBoardMove") { (input: Int) -> Bool in
