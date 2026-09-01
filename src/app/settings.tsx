@@ -21,6 +21,7 @@ import {
   EngineIcon,
   MapTrifoldIcon,
   PaletteIcon,
+  CpuIcon,
 } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
@@ -145,6 +146,18 @@ export default function SettingsScreen() {
                 label="Watch"
                 hint="Auto open and telemetry push rate"
                 onPress={() => router.push(routes.settingsWatch)}
+              />
+            </SettingsCard>
+
+            <SettingsSectionTitle>Hardware</SettingsSectionTitle>
+
+            <SettingsCard>
+              <SettingsRow
+                icon={CpuIcon}
+                iconColor={theme.palette.cyan.color}
+                label="Hardware"
+                hint="Connect to a Vescape hardware board over Bluetooth"
+                onPress={() => router.push(routes.settingsHardware)}
               />
             </SettingsCard>
           </>
