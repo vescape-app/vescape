@@ -21,7 +21,7 @@ import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
 /**
  * Whether an unprompted scan may connect to what it finds.
  *
- * There is one hardware board, so hunting for it by hand every time is ceremony. Pressing
+ * There is one Vescape sensor module, so hunting for it by hand every time is ceremony. Pressing
  * Disconnect turns this off: the rider asked to be off the board, and a scan that reconnects a
  * second later would be fighting them. Pressing Scan asks for it again.
  */

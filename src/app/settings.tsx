@@ -137,7 +137,7 @@ export default function SettingsScreen() {
 
         {Platform.OS === 'android' && (
           <>
-            <SettingsSectionTitle>Watch</SettingsSectionTitle>
+            <SettingsSectionTitle>Hardware</SettingsSectionTitle>
 
             <SettingsCard>
               <SettingsRow
@@ -147,17 +147,12 @@ export default function SettingsScreen() {
                 hint="Auto open and telemetry push rate"
                 onPress={() => router.push(routes.settingsWatch)}
               />
-            </SettingsCard>
-
-            <SettingsSectionTitle>Hardware</SettingsSectionTitle>
-
-            <SettingsCard>
               <SettingsRow
                 icon={CpuIcon}
                 iconColor={theme.palette.cyan.color}
-                label="Hardware"
-                hint="Connect to a Vescape hardware board over Bluetooth"
-                onPress={() => router.push(routes.settingsHardware)}
+                label="Sensors"
+                hint="Connect Vescape sensors and controls over Bluetooth"
+                onPress={() => router.push(routes.settingsSensors)}
               />
             </SettingsCard>
           </>

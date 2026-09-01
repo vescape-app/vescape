@@ -51,7 +51,7 @@ const PHASE_COLOR = {
  * Rates the board can be retuned to from here. The board clamps anything it cannot hold, and the
  * Link rows below say what it actually delivered, so these are requests rather than settings.
  */
-const RATE_PRESETS = [1, 5, 10, 20, 50] as const
+const RATE_PRESETS = [1, 5, 10, 20, 30] as const
 
 const LINE_PREFIX = { rx: '<', tx: '>', error: '!' } as const
 
@@ -62,10 +62,11 @@ const LINE_COLOR = {
 } as const
 
 /**
- * Hardware Link console for the ESP32-S3 running the `vescape-hardware` firmware. Android-only for
- * now; the settings row that leads here is hidden on iOS.
+ * Hardware Link console for the ESP32-S3 running the `vescape-hardware` firmware — Vescape's own
+ * sensors and controls, not the board. Android-only for now; the settings row that leads here is
+ * hidden on iOS.
  */
-export default function HardwareSettingsScreen() {
+export default function SensorsSettingsScreen() {
   const link = useHardwareLink()
   const permissions = usePermissions()
   const [draft, setDraft] = useState('')
@@ -116,7 +117,7 @@ export default function HardwareSettingsScreen() {
         <IconHero
           icon={CpuIcon}
           iconColor={theme.palette.cyan.color}
-          description="Connect to a Vescape hardware board over Bluetooth and talk to it directly."
+          description="Connect Vescape sensors and controls over Bluetooth and talk to them directly."
         />
 
         <SettingsCard separatorInset={0}>

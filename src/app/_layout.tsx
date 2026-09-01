@@ -206,7 +206,7 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.settingsVisuals} options={{ title: 'Appearance' }} />
             <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
-            <Stack.Screen name={stackScreens.settingsHardware} options={{ title: 'Hardware' }} />
+            <Stack.Screen name={stackScreens.settingsSensors} options={{ title: 'Sensors' }} />
             <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
             <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
             <Stack.Screen name={stackScreens.settingsDatabase} options={{ title: 'Database' }} />
