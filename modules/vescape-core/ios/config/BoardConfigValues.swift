@@ -57,9 +57,50 @@ struct BoardConfigValues {
     return double.isFinite ? double : nil
   }
 
+  /// One of the number fields Vescape operates on. The typed twin of `number(_:)`, so a rule cannot
+  /// name a field the fixture corpus has never seen.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `number`
+  func number(_ field: BoardConfigNumberField) -> Double? {
+    number(field.id)
+  }
+
   /// A bool field, or nil when the field is absent.
   func bool(_ id: String) -> Bool? {
     values[id] as? Bool
+  }
+
+  /// One of the flag fields Vescape operates on, read through whichever representation the schema
+  /// produced for it. Refloat spells these as numeric params, so `bool(_:)` alone would answer nil on
+  /// every real board — see `BoardConfigFlagField`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `flag`
+  func flag(_ field: BoardConfigFlagField) -> Bool? {
+    if let flag = values[field.id] as? Bool { return flag }
+    guard let number = number(field.id) else { return nil }
+    return number != 0
+  }
+
+  /// The same values with one flag field set, spelled in the type the board's schema declares for it.
+  /// The schema is asked first and the currently decoded value is only a fallback for `lastKnown`
+  /// rows, which carry no write base to ask.
+  ///
+  /// Returns nil when neither source knows the field: inventing a key would itself register as a
+  /// config change, which is the exact bug this accessor exists to prevent.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `withFlag`
+  func withFlag(_ field: BoardConfigFlagField, _ enabled: Bool) -> BoardConfigValues? {
+    let schemaType = writeBase?.schema.fields.first { $0.id == field.id }?.type
+    let type: RefloatConfigValueType
+    if let schemaType {
+      type = schemaType
+    } else if values[field.id] is Bool {
+      type = .bool
+    } else if values[field.id] is Double {
+      type = .int8
+    } else {
+      return nil
+    }
+    var next = values
+    next[field.id] = encodeFlag(type, enabled)
+    return withValues(next)
   }
 
   /// The JS-facing shape: decoded fields plus freshness, and nothing else. The write base never
@@ -100,6 +141,20 @@ struct BoardConfigValues {
       freshness: .lastKnown,
       values: values,
       writeBase: nil
+    )
+  }
+
+  /// The same values with `values` replaced. Swift has no `copy`, and the only caller rebases the
+  /// config-change baseline after a runtime command mutated a field on the board.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+  func withValues(_ values: [String: Any]) -> BoardConfigValues {
+    BoardConfigValues(
+      boardId: boardId,
+      refloatBaseVersion: refloatBaseVersion,
+      capturedAtMs: capturedAtMs,
+      freshness: freshness,
+      values: values,
+      writeBase: writeBase
     )
   }
 

@@ -88,6 +88,19 @@ function configNumber(values: BoardConfigValues | null, id: string): number | nu
 }
 
 /**
+ * Whether the Board treats both footpad sensors as one zone — Refloat's "Treat Both Sensors as One
+ * (Posi)". Reads the Last Known copy too, so the badge survives the Board being off.
+ *
+ * Refloat declares its on/off params as numeric config values, so this is a number in the decoded
+ * map, never a bool.
+ */
+export function usePosiSensor(): boolean {
+  const values = useBoardConfigFields()
+  const raw = values?.values.fault_is_dual_switch
+  return typeof raw === 'number' ? raw !== 0 : raw === true
+}
+
+/**
  * The footpad engagement threshold for one zone, in ADC volts.
  *
  * `null` means no config is available — callers fall back to {@link FOOTPAD_FALLBACK_THRESHOLD_V}.

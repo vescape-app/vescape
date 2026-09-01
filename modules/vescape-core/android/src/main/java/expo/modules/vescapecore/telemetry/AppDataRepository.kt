@@ -271,6 +271,26 @@ class AppDataRepository private constructor(private val context: Context) {
     )
   }
 
+  /**
+   * Teach the config-change baseline about fields a runtime command changed on the board, merging
+   * into whatever the stored row holds now rather than replacing it with the caller's snapshot.
+   *
+   * `capturedAt` is deliberately untouched: the row still describes the read it came from, it just
+   * accounts for a change Vescape itself made since.
+   * @parity /modules/vescape-core/ios/config/BoardConfigStore.swift `patch`
+   */
+  internal suspend fun patchBoardConfigValues(
+    boardId: String,
+    refloatBaseVersion: String,
+    patch: Map<String, Any>,
+  ): Unit = withContext(Dispatchers.IO) {
+    if (boardId.isBlank() || refloatBaseVersion.isBlank() || patch.isEmpty()) return@withContext
+    dao.patchBoardConfigValues(boardId, refloatBaseVersion) { row ->
+      val stored = BoardConfigValues.lastKnown(boardId, refloatBaseVersion, row.capturedAt, row.valuesJson)
+      row.copy(valuesJson = stored.copy(values = stored.values + patch).valuesJson())
+    }
+  }
+
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null

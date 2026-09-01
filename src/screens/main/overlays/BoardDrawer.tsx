@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { FadersIcon, FootprintsIcon, LightbulbIcon } from 'phosphor-react-native'
+import { FadersIcon, FootprintsIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
+import { BoardLightsControl } from '@/modules/board/components/BoardLightsControl'
 import { BoardMoveControl } from '@/modules/board/components/BoardMoveControl'
 import { RemoteTiltControl } from '@/modules/board/components/RemoteTiltControl'
 import { InfoModal } from '@/components/modals/InfoModal'
@@ -12,7 +13,6 @@ import {
   tuneProfileIconComponent,
 } from '@/modules/tune/components/TuneProfileMetadataModal'
 import { SelectWidget } from '@/components/widgets/SelectWidget'
-import { SwitchWidget } from '@/components/widgets/SwitchWidget'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
 import { legalPolicyFromReference } from '@/modules/legal/lib/legalMode'
@@ -22,6 +22,7 @@ import { TuneProfilePill } from '@/screens/main/overlays/TuneProfilePill'
 import { LegalMapWidget, LegalModeWidget } from '@/screens/main/overlays/TuneDrawerLegalWidgets'
 import { errorMessage } from '@/helpers/error'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -35,10 +36,8 @@ interface TuneDrawerProps {
 export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) {
   const [tuneSelectOpen, setTuneSelectOpen] = useState(false)
   const [legalWarningOpen, setLegalWarningOpen] = useState(false)
-  // The label outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
-  // the exit animation, so clearing the name on dismiss would blank the card as it fades.
-  const [unbuiltControl, setUnbuiltControl] = useState({ label: '', visible: false })
-  // Same reason as `unbuiltControl`: the message has to survive the card's exit animation.
+  // The message outlives `visible` on purpose: `FadeCardModal` keeps rendering its children through
+  // the exit animation, so clearing it on dismiss would blank the card as it fades.
   const [legalModeError, setLegalModeError] = useState({ message: '', visible: false })
   const activeBoardId = useBoardStore((state) => state.activeBoardId)
   const tuneCompatibility = useBoardStore(
@@ -69,6 +68,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
     activeBoardId != null &&
     profileBoardId === activeBoardId &&
     profileCompatibility === tuneCompatibility
+  const posiSensor = usePosiSensor()
   const boardConnected = useBleStore((state) => state.status === 'connected')
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
@@ -133,6 +133,8 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
       <SelectWidget
         icon={FadersIcon}
         selectIcon={SelectIcon}
+        badgeIcon={posiSensor ? FootprintsIcon : undefined}
+        badgeAccent={theme.palette.green.color}
         label="Tune"
         value={activeName}
         description="Pick how your board should feel."
@@ -170,42 +172,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         </ScrollView>
       ) : null}
 
-      <View style={styles.quickGrid}>
-        <View style={styles.quickCell}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Lights, not available yet"
-            onPress={() => setUnbuiltControl({ label: 'Lights', visible: true })}
-          >
-            <SwitchWidget
-              icon={LightbulbIcon}
-              label="Lights"
-              size="half"
-              value={false}
-              onValueChange={() => {}}
-              accent={theme.palette.amber.color}
-              disabled
-            />
-          </Pressable>
-        </View>
-        <View style={styles.quickCell}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Posi, not available yet"
-            onPress={() => setUnbuiltControl({ label: 'Posi', visible: true })}
-          >
-            <SwitchWidget
-              icon={FootprintsIcon}
-              label="Posi"
-              size="half"
-              value={false}
-              onValueChange={() => {}}
-              accent={theme.palette.green.color}
-              disabled
-            />
-          </Pressable>
-        </View>
-      </View>
+      <BoardLightsControl enabled={quickControlsEnabled} />
 
       <View style={[surface, styles.remoteTiltBox]}>
         <RemoteTiltControl />
@@ -244,13 +211,6 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
         onDismiss={() => setLegalWarningOpen(false)}
       />
       <InfoModal
-        visible={unbuiltControl.visible}
-        title={`${unbuiltControl.label} not ready yet`}
-        message={`${unbuiltControl.label} is not wired to the board yet — the switch is here so the layout is final. It will start working in a later update.`}
-        dismissLabel="Close"
-        onDismiss={() => setUnbuiltControl((current) => ({ ...current, visible: false }))}
-      />
-      <InfoModal
         visible={legalModeError.visible}
         title="Legal Mode unavailable"
         message={legalModeError.message}
@@ -277,15 +237,6 @@ const styles = StyleSheet.create({
     color: theme.neutral.textDim,
     fontSize: 12,
     fontWeight: '600',
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  quickCell: {
-    width: '48%',
-    flexGrow: 1,
   },
   legalGroup: {
     width: '100%',

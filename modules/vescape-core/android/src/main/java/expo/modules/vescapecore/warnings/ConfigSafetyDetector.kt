@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.warnings
 
+import expo.modules.vescapecore.config.BoardConfigFlagField
+import expo.modules.vescapecore.config.BoardConfigNumberField
 import expo.modules.vescapecore.config.BoardConfigValues
 
 /** One config-safety finding to report through the Board Warning registry. */
@@ -65,24 +67,25 @@ object ConfigSafetyDetector {
   }
 
   /**
-   * Schema field ids the rules read off the Board Config Values map. A field absent from the map
-   * (missing from the schema, truncated, or unparseable) skips its rule.
+   * Schema field ids the rules read off the Board Config Values map, named through the typed field
+   * sets so no rule can reach for an id the fixture corpus has not resolved. A field absent from the
+   * map (missing from the schema, truncated, or unparseable) skips its rule.
    * @parity /modules/vescape-core/ios/warnings/ConfigSafetyDetector.swift
    */
-  const val FAULT_ADC1_ID = "fault_adc1"
-  const val FAULT_ADC2_ID = "fault_adc2"
-  const val TILTBACK_LV_ID = "tiltback_lv"
-  const val TILTBACK_HV_ID = "tiltback_hv"
-  const val TILTBACK_DUTY_ID = "tiltback_duty"
-  const val MOVING_FAULT_DISABLED_ID = "fault_moving_fault_disabled"
+  val FAULT_ADC1_ID = BoardConfigNumberField.FAULT_ADC1.id
+  val FAULT_ADC2_ID = BoardConfigNumberField.FAULT_ADC2.id
+  val TILTBACK_LV_ID = BoardConfigNumberField.TILTBACK_LV.id
+  val TILTBACK_HV_ID = BoardConfigNumberField.TILTBACK_HV.id
+  val TILTBACK_DUTY_ID = BoardConfigNumberField.TILTBACK_DUTY.id
+  val MOVING_FAULT_DISABLED_ID = BoardConfigFlagField.MOVING_FAULT_DISABLED.id
 
   internal fun evaluate(values: BoardConfigValues, seriesCount: Int?, perCell: Boolean?): ConfigSafetyReport {
     val findings = mutableListOf<ConfigSafetyFinding>()
     val clean = mutableListOf<BoardWarningKind>()
 
     // footpad-disabled (critical): both ADC switch voltages 0 disables the footpad switch entirely.
-    val adc1 = values.number(FAULT_ADC1_ID)
-    val adc2 = values.number(FAULT_ADC2_ID)
+    val adc1 = values.number(BoardConfigNumberField.FAULT_ADC1)
+    val adc2 = values.number(BoardConfigNumberField.FAULT_ADC2)
     if (adc1 != null && adc2 != null) {
       if (adc1 == 0.0 && adc2 == 0.0) {
         findings += finding(BoardWarningKind.FOOTPAD_DISABLED, BoardWarningSeverity.CRITICAL, "$FAULT_ADC1_ID/$FAULT_ADC2_ID", 0.0, 0.0)
@@ -92,7 +95,7 @@ object ConfigSafetyDetector {
     }
 
     // lv-pushback-low (critical): LV pushback below the safe minimum, in the firmware's voltage units.
-    val lv = values.number(TILTBACK_LV_ID)
+    val lv = values.number(BoardConfigNumberField.TILTBACK_LV)
     val lvBound = voltageBound(lv, CELL_LV_MIN_V, perCell, seriesCount)
     if (lv != null && lvBound != null) {
       if (lv < lvBound) {
@@ -103,7 +106,7 @@ object ConfigSafetyDetector {
     }
 
     // hv-pushback-high (warn): HV pushback above the safe maximum, in the firmware's voltage units.
-    val hv = values.number(TILTBACK_HV_ID)
+    val hv = values.number(BoardConfigNumberField.TILTBACK_HV)
     val hvBound = voltageBound(hv, CELL_HV_MAX_V, perCell, seriesCount)
     if (hv != null && hvBound != null) {
       if (hv > hvBound) {
@@ -114,7 +117,7 @@ object ConfigSafetyDetector {
     }
 
     // duty-pushback-high (warn): duty pushback threshold set dangerously close to the duty limit.
-    val duty = values.number(TILTBACK_DUTY_ID)
+    val duty = values.number(BoardConfigNumberField.TILTBACK_DUTY)
     if (duty != null) {
       if (duty > DUTY_MAX) {
         findings += finding(BoardWarningKind.DUTY_PUSHBACK_HIGH, BoardWarningSeverity.WARN, TILTBACK_DUTY_ID, duty, DUTY_MAX)
@@ -124,7 +127,7 @@ object ConfigSafetyDetector {
     }
 
     // moving-fault-disabled (warn): moving faults disabled weakens fault protection while riding.
-    val movingFault = values.bool(MOVING_FAULT_DISABLED_ID)
+    val movingFault = values.flag(BoardConfigFlagField.MOVING_FAULT_DISABLED)
     if (movingFault != null) {
       if (movingFault) {
         findings += finding(BoardWarningKind.MOVING_FAULT_DISABLED, BoardWarningSeverity.WARN, MOVING_FAULT_DISABLED_ID, 1.0, 0.0)

@@ -152,8 +152,10 @@ internal final class BoardSessionController: VescGattListener {
   private let linkIntegrityCheckTimeoutSeconds = 20.0
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `sendPayloadWithRetry`
   private let sendRetryDelaySeconds = 0.12
-  /// Idle delay after link trust before the one background config-safety read fires (lets telemetry settle).
-  private let configSafetyReadDelaySeconds = 2.5
+  /// Idle delay after link trust before the one background config-safety read fires. Only long
+  /// enough to let the connect burst clear: the read plus its multi-packet schema transfer is what
+  /// the rider waits on, and a config-change notice has to reach them before they ride off.
+  private let configSafetyReadDelaySeconds = 0.4
 
   // MARK: Board session state
 
@@ -466,6 +468,93 @@ internal final class BoardSessionController: VescGattListener {
   // MARK: - Live-state snapshot
 
   func remoteTiltState() -> [String: Any?]? { nil }
+
+  /// The board's lights as its last echo reported them, or `nil` while this session has never heard
+  /// one — the board is not saying, so JS shows nothing rather than a guess.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardLights`
+  private var boardLights: BoardLightsState?
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsEventBody`
+  func lightsEventBody() -> [String: Any?] {
+    ["enabled": boardLights?.enabled, "headlightsEnabled": boardLights?.headlightsEnabled]
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsGeneration`
+  private func lightsGeneration() -> BoardLightsGeneration {
+    BoardLightsGeneration.forBaseVersion(config?.refloatBaseVersion)
+  }
+
+  /// Take the board's lights echo as this session's truth, and on `.legacy` teach the config-change
+  /// baseline about it.
+  ///
+  /// Refloat 1.1 and older have no runtime layer: the switch assigns the stored config, so the next
+  /// fresh read legitimately differs from the cached baseline. Without this the rider's own tap comes
+  /// back at them as "changed outside Vescape". Only the diff baseline is updated — never
+  /// `boardConfigValues`, whose raw bytes still describe what the board actually sent and must stay a
+  /// faithful write base (ADR 0035).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onBoardLightsEcho`
+  private func onBoardLightsEcho(_ lights: BoardLightsState) {
+    boardLights = lights
+    emit?("onBoardLights", lightsEventBody())
+    guard lightsGeneration() == .legacy, let values = boardConfigValues else { return }
+    guard
+      let boardId = values.boardId, let baseVersion = values.refloatBaseVersion,
+      let rebased = values.withFlag(.ledsOn, lights.enabled)?
+        .withFlag(.headlightsOn, lights.headlightsEnabled)
+    else { return }
+    // Only the two light fields are patched into the stored row. Writing the whole snapshot back
+    // would race a fresh read that landed since it was taken and reinstate its stale values as the
+    // comparison base.
+    let patch = rebased.values.filter {
+      $0.key == BoardConfigFlagField.ledsOn.id || $0.key == BoardConfigFlagField.headlightsOn.id
+    }
+    BoardConfigStore.shared.patch(
+      boardId: boardId,
+      refloatBaseVersion: baseVersion,
+      values: patch
+    )
+  }
+
+  /// Seed the lights from config, which is what firmware applies until something overrides it. On
+  /// `.legacy` config stays the truth for the whole session, because the switch writes it directly.
+  /// On 1.2+ a runtime override detaches the two for the rest of the power cycle, so config only
+  /// speaks until this session's first echo.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `syncBoardLightsFromConfig`
+  private func syncBoardLightsFromConfig(_ values: BoardConfigValues) {
+    if lightsGeneration() == .current, boardLights != nil { return }
+    guard let enabled = values.flag(.ledsOn) else { return }
+    let lights = BoardLightsState(
+      enabled: enabled,
+      headlightsEnabled: values.flag(.headlightsOn) ?? false
+    )
+    guard lights != boardLights else { return }
+    boardLights = lights
+    emit?("onBoardLights", lightsEventBody())
+  }
+
+  /// State the board's lights: the LEDs and the headlights, each on or off. Both switches are always
+  /// written, so a caller changing one must pass the other's current value. Runtime only: firmware
+  /// applies it live and writes no config, so the board's own setting returns on the next power
+  /// cycle.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setBoardLights`
+  func setBoardLights(enabled: Bool, headlightsEnabled: Bool) -> Bool {
+    guard firmwareCommandsTrusted(), let config else { return false }
+    let transport = config.transport ?? .direct
+    let generation = BoardLightsGeneration.forBaseVersion(config.refloatBaseVersion)
+    return sendPayloadWithRetry(
+      buildLightsControlCommand(
+        transport: transport,
+        generation: generation,
+        enabled: enabled,
+        headlightsEnabled: headlightsEnabled
+      ),
+      session: session
+    )
+  }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startBoardMove`
   func startBoardMove(input: Int) -> Bool {
@@ -964,6 +1053,7 @@ internal final class BoardSessionController: VescGattListener {
     // Something to show before the fresh read lands: the cache for this Board + Refloat base
     // version, restored as `lastKnown` (never a write base — see #396).
     boardConfigValues = restoredBoardConfigValues(config)
+    if let restored = boardConfigValues { syncBoardLightsFromConfig(restored) }
     // No scope key to match on: the board's MCCONF signature is unknown until it answers, so the
     // latest row is restored optimistically and replaced when this session's own read lands.
     motorConfigValues = MotorConfigStore.shared.loadLatest(boardId: config.appBoardId)
@@ -1100,6 +1190,9 @@ internal final class BoardSessionController: VescGattListener {
     boardConfigValues = nil
     motorConfigValues = nil
     motorConfigRequested = false
+    // Lights are per Board Session: what the last board's echo said means nothing for the next.
+    boardLights = nil
+    emit?("onBoardLights", lightsEventBody())
     recordingCoordinator.finishBoardSession(
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
@@ -1315,6 +1408,11 @@ internal final class BoardSessionController: VescGattListener {
     // were off the link another central could have written. The values stay displayable, they just
     // stop backing a write until the post-trust read makes them fresh again (ADR 0035).
     boardConfigValues = boardConfigValues?.demotedToProvisional()
+    // Lights stop being known across the drop: the board may reboot while off the link, which clears
+    // its runtime override and hands authority back to config. Keeping the old echo would leave the
+    // switch showing pre-reboot state that nothing ever corrects.
+    boardLights = nil
+    emit?("onBoardLights", lightsEventBody())
     // Re-arm the post-trust read so the relinked session gets fresh values back.
     boardConfigReadScheduled = false
     // Same reasoning as the Refloat demote above.
@@ -1461,12 +1559,24 @@ internal final class BoardSessionController: VescGattListener {
     guard !payload.isEmpty else { return }
     switch Int(payload[0]) {
     case COMM_CUSTOM_APP_DATA:
+      // The lights echo shares the telemetry command byte but carries no metrics.
+      // It is also the only truth about the board's lights, so it is what JS renders.
+      if let lights = parseLightsControlResponse(payload) {
+        onBoardLightsEcho(lights)
+        return
+      }
       handleTelemetry(payload, session: session)
     case COMM_FW_VERSION:
       handleFwVersion(payload)
     case COMM_BMS_GET_VALUES:
       // Direct smart-BMS reply.
       handleBms(payload)
+    case COMM_FORWARD_CAN where payload.count >= 5 && Int(payload[2]) == COMM_CUSTOM_APP_DATA:
+      // Telemetry answers come back unwrapped, but the lights echo can arrive CAN-wrapped, so the
+      // switch would look ignored on a CAN-forwarded board without this.
+      if let lights = parseLightsControlResponse(payload) {
+        onBoardLightsEcho(lights)
+      }
     case COMM_FORWARD_CAN where payload.count >= 3 && Int(payload[2]) == COMM_BMS_GET_VALUES:
       // CAN-forwarded smart-BMS reply (telemetry stays bare, but BMS comes wrapped).
       handleBms(Array(payload[2...]))
@@ -1581,6 +1691,7 @@ internal final class BoardSessionController: VescGattListener {
     // describe a board this session no longer owns, so they must not repopulate what was cleared.
     guard values.boardId == config?.appBoardId, linkIntegrity == .trusted else { return }
     boardConfigValues = values
+    syncBoardLightsFromConfig(values)
     alertCoordinator.updateBoardConfigValues(values.values)
     if origin == .freshRead { BoardConfigStore.shared.saveFresh(values) }
     else { BoardConfigStore.shared.save(values) }

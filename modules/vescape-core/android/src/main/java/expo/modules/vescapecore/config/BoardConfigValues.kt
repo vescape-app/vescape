@@ -61,8 +61,49 @@ internal data class BoardConfigValues(
    */
   fun number(id: String): Double? = (values[id] as? Double)?.takeIf { it.isFinite() }
 
+  /**
+   * One of the number fields Vescape operates on. The typed twin of [number], so a rule cannot name a
+   * field the fixture corpus has never seen.
+   *
+   * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `number`
+   */
+  fun number(field: BoardConfigNumberField): Double? = number(field.id)
+
   /** A bool field, or null when the field is absent. */
   fun bool(id: String): Boolean? = values[id] as? Boolean
+
+  /**
+   * One of the flag fields Vescape operates on, read through whichever representation the schema
+   * produced for it. Refloat spells these as numeric params, so [bool] alone would answer null on
+   * every real board — see [BoardConfigFlagField].
+   *
+   * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `flag`
+   */
+  fun flag(field: BoardConfigFlagField): Boolean? = when (val value = values[field.id]) {
+    is Boolean -> value
+    is Double -> value.isFinite().takeIf { it }?.let { value != 0.0 }
+    else -> null
+  }
+
+  /**
+   * The same values with one flag field set, spelled in the type the board's schema declares for it.
+   * The schema is asked first and the currently decoded value is only a fallback for
+   * [BoardConfigFreshness.LAST_KNOWN] rows, which carry no write base to ask.
+   *
+   * Returns null when neither source knows the field: inventing a key would itself register as a
+   * config change, which is the exact bug this accessor exists to prevent.
+   *
+   * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `withFlag`
+   */
+  fun withFlag(field: BoardConfigFlagField, enabled: Boolean): BoardConfigValues? {
+    val schemaType = writeBase?.schema?.fields?.firstOrNull { it.id == field.id }?.type
+    val type = schemaType ?: when (values[field.id]) {
+      is Boolean -> RefloatConfigValueType.BOOL
+      is Double -> RefloatConfigValueType.INT8
+      else -> return null
+    }
+    return copy(values = values + (field.id to encodeFlag(type, enabled)))
+  }
 
   /**
    * The JS-facing shape: decoded fields plus freshness, and nothing else. The write base never

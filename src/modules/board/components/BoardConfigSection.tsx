@@ -6,19 +6,53 @@ import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useBoardConfigFields } from '@/modules/board/store/boardConfigValuesStore'
+import type { BoardConfigFieldId } from 'vescape-core'
 
 /** A decoded config value, or `undefined` when the schema does not carry the field. */
 export type BoardConfigValue = number | boolean | undefined
 
-export interface BoardConfigRow {
-  /** Refloat schema field id, e.g. `fault_adc1`. */
-  id: string
+/**
+ * VESC motor config (MCCONF) field ids these screens name. A separate union from
+ * {@link BoardConfigFieldId} because MCCONF is a different schema entirely: VESC serves a bare blob
+ * decoded against a signature, Refloat serves its own XML (ADR 0036).
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/McconfLayouts.kt
+ * @parity /modules/vescape-core/ios/config/McconfLayouts.swift
+ */
+export type MotorConfigFieldId =
+  | 'l_abs_current_max'
+  | 'l_battery_cut_end'
+  | 'l_battery_cut_start'
+  | 'l_current_max'
+  | 'l_current_min'
+  | 'l_in_current_max'
+  | 'l_in_current_min'
+  | 'l_max_duty'
+  | 'l_max_erpm'
+  | 'l_max_vin'
+  | 'l_min_erpm'
+  | 'l_min_vin'
+  | 'l_temp_fet_end'
+  | 'l_temp_fet_start'
+  | 'l_temp_motor_end'
+  | 'l_temp_motor_start'
+
+/** One readout row over a config map, keyed by whichever schema's ids the screen reads. */
+export interface ConfigRow<Id extends string> {
+  /**
+   * Schema field id, typed against the named set so a mistyped id is a compile error rather than a
+   * row that renders an em dash forever.
+   */
+  id: Id
   /** Rider-facing name. Refloat's own wording is often terse; say what it does instead. */
   label: string
   format: (value: BoardConfigValue) => string
   /** One line under the row for a value that changes how the board behaves. */
   note?: (value: BoardConfigValue) => string | null
 }
+
+export type BoardConfigRow = ConfigRow<BoardConfigFieldId>
+export type MotorConfigRow = ConfigRow<MotorConfigFieldId>
 
 const MISSING = '—'
 
@@ -95,7 +129,8 @@ export function BoardConfigSection({
   empty = 'No config read from this board yet. Connect it to read its setup.',
 }: {
   title?: string
-  rows: BoardConfigRow[]
+  /** Any schema's rows: the section only reads `values[row.id]`, it never names a field itself. */
+  rows: ConfigRow<string>[]
   /** Defaults to this Board's Refloat config. */
   values?: BoardConfigSectionValues | null
   empty?: string

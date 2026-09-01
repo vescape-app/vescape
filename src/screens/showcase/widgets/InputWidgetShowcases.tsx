@@ -7,6 +7,7 @@ import {
   BroadcastIcon,
   ChartLineUpIcon,
   FadersIcon,
+  FootprintsIcon,
   GaugeIcon,
   MapPinIcon,
 } from 'phosphor-react-native'
@@ -136,6 +137,8 @@ export function SelectWidgetShowcase() {
         <SelectWidget
           icon={FadersIcon}
           selectIcon={GaugeIcon}
+          badgeIcon={FootprintsIcon}
+          badgeAccent={theme.palette.green.color}
           label="Tunes"
           value={value}
           description="Pick how your board should feel."

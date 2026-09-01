@@ -29,6 +29,116 @@ class VescProtocolTest {
   }
 
   @Test
+  fun buildsLightsControlCommandForBothSwitches() {
+    // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 3),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Current,
+        enabled = true,
+        headlightsEnabled = true,
+      ),
+    )
+    // The mask still names both switches when turning them off, so the value clears both.
+    assertArrayEquals(
+      byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 0),
+      buildLightsControlCommand(
+        BoardTransport.Can(7),
+        BoardLightsGeneration.Current,
+        enabled = false,
+        headlightsEnabled = false,
+      ),
+    )
+    // The two switches are independent: the mask names both, the value states each one.
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 1),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Current,
+        enabled = true,
+        headlightsEnabled = false,
+      ),
+    )
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 0, 0, 0, 3, 2),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Current,
+        enabled = false,
+        headlightsEnabled = true,
+      ),
+    )
+  }
+
+  @Test
+  fun buildsLegacyLightsControlCommandForRefloat11() {
+    // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
+    assertArrayEquals(
+      byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 3),
+      buildLightsControlCommand(
+        BoardTransport.Direct,
+        BoardLightsGeneration.Legacy,
+        enabled = true,
+        headlightsEnabled = true,
+      ),
+    )
+    assertArrayEquals(
+      byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3, 0),
+      buildLightsControlCommand(
+        BoardTransport.Can(7),
+        BoardLightsGeneration.Legacy,
+        enabled = false,
+        headlightsEnabled = false,
+      ),
+    )
+  }
+
+  @Test
+  fun resolvesLightsGenerationAtTheRefloat12Boundary() {
+    // 1.2.0 is where the command moved out of the unstable 200+ range.
+    assertEquals(BoardLightsGeneration.Legacy, BoardLightsGeneration.forBaseVersion("1.1.2"))
+    assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion("1.2.0"))
+    assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion("2.0.0"))
+    // An unreadable version guesses Current: the board ignores a command it does not know.
+    assertEquals(BoardLightsGeneration.Current, BoardLightsGeneration.forBaseVersion(null))
+  }
+
+  @Test
+  fun parsesLightsControlEcho() {
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 3)),
+    )
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = false),
+      parseLightsControlResponse(
+        byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 1),
+      ),
+    )
+    // Both bits are read independently: headlights on, lights off.
+    assertEquals(
+      BoardLightsState(enabled = false, headlightsEnabled = true),
+      parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20, 2)),
+    )
+    // A telemetry frame must never be mistaken for the lights echo — this interception sits in front
+    // of the telemetry parser, in both the direct and the CAN-forwarded form.
+    assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2)))
+    assertNull(
+      parseLightsControlResponse(
+        byteArrayOf(COMM_FORWARD_CAN.toByte(), 7, COMM_CUSTOM_APP_DATA.toByte(), 101, 10, 2),
+      ),
+    )
+    // The legacy echo carries the same status byte under command 202.
+    assertEquals(
+      BoardLightsState(enabled = true, headlightsEnabled = true),
+      parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 202.toByte(), 3)),
+    )
+    // A truncated echo has no state byte to read.
+    assertNull(parseLightsControlResponse(byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 20)))
+  }
+
+  @Test
   fun buildsBoardMoveRemoteCommandForRefloat13() {
     assertArrayEquals(
       byteArrayOf(COMM_CUSTOM_APP_DATA.toByte(), 101, 15, -25),

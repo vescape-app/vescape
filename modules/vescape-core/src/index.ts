@@ -1570,6 +1570,113 @@ export type BoardConfigFreshness = 'fresh' | 'last-known'
  * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigValues`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
  */
+/**
+ * Every Refloat config field id this app names — the ones Tune edits, the ones the `/control/<metric>`
+ * screens read out, and the ones native rules evaluate.
+ *
+ * Not the whole schema: a board carries roughly 170 fields and the rest are decoded and displayed by
+ * id without ever being written down here. This union exists so that a *named* id is checked. A typo
+ * in a row definition used to render an em dash forever, which is a bug that looks like data.
+ *
+ * The ids are the board's, not ours: they are validated against the real `settings.xml` of every
+ * supported firmware by `boardConfigFieldIds.test.ts`, using the same fixture corpus the native field
+ * sets are tested with.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigFields.kt
+ * @parity /modules/vescape-core/ios/config/BoardConfigFields.swift
+ */
+export type BoardConfigFieldId =
+  | 'atr_amps_accel_ratio'
+  | 'atr_amps_decel_ratio'
+  | 'atr_angle_limit'
+  | 'atr_filter'
+  | 'atr_off_speed'
+  | 'atr_on_speed'
+  | 'atr_response_boost'
+  | 'atr_speed_boost'
+  | 'atr_strength_down'
+  | 'atr_strength_up'
+  | 'atr_threshold_down'
+  | 'atr_threshold_up'
+  | 'atr_transition_boost'
+  | 'booster_current'
+  | 'brake_current'
+  | 'braketilt_lingering'
+  | 'braketilt_strength'
+  | 'brkbooster_current'
+  | 'enable_quickstop'
+  | 'fault_adc1'
+  | 'fault_adc2'
+  | 'fault_adc_half_erpm'
+  | 'fault_darkride_enabled'
+  | 'fault_delay_pitch'
+  | 'fault_delay_roll'
+  | 'fault_delay_switch_full'
+  | 'fault_delay_switch_half'
+  | 'fault_is_dual_switch'
+  | 'fault_moving_fault_disabled'
+  | 'fault_pitch'
+  | 'fault_reversestop_enabled'
+  | 'fault_roll'
+  | 'is_dutybeep_enabled'
+  | 'ki'
+  | 'ki_limit'
+  | 'kp'
+  | 'kp2'
+  | 'kp2_brake'
+  | 'kp_brake'
+  | 'mahony_kp'
+  | 'mahony_kp_roll'
+  | 'startup_click_current'
+  | 'startup_dirtylandings_enabled'
+  | 'startup_pitch_tolerance'
+  | 'startup_pushstart_enabled'
+  | 'startup_roll_tolerance'
+  | 'startup_simplestart_enabled'
+  | 'startup_speed'
+  | 'tiltback_constant'
+  | 'tiltback_constant_erpm'
+  | 'tiltback_duty'
+  | 'tiltback_duty_angle'
+  | 'tiltback_duty_speed'
+  | 'tiltback_hv'
+  | 'tiltback_hv_angle'
+  | 'tiltback_hv_speed'
+  | 'tiltback_lv'
+  | 'tiltback_lv_angle'
+  | 'tiltback_lv_speed'
+  | 'tiltback_return_speed'
+  | 'tiltback_variable'
+  | 'tiltback_variable_erpm'
+  | 'tiltback_variable_max'
+  | 'torquetilt_angle_limit'
+  | 'torquetilt_off_speed'
+  | 'torquetilt_on_speed'
+  | 'torquetilt_start_current'
+  | 'torquetilt_strength'
+  | 'torquetilt_strength_regen'
+  | 'turntilt_angle_limit'
+  | 'turntilt_erpm_boost'
+  | 'turntilt_erpm_boost_end'
+  | 'turntilt_speed'
+  | 'turntilt_start_angle'
+  | 'turntilt_start_erpm'
+  | 'turntilt_strength'
+  | 'turntilt_yaw_aggregate'
+
+/**
+ * The decoded config map. Known ids are typed and optional — a field the schema does not carry, or
+ * that failed to decode, is **absent** rather than guessed, so every read is `| undefined` on purpose.
+ * Any other id stays readable through the index signature: the board always carries more fields than
+ * this app names.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigValues`
+ */
+export type BoardConfigFieldValues = {
+  [K in BoardConfigFieldId]?: number | boolean
+} & Record<string, number | boolean | undefined>
+
 export interface BoardConfigValues {
   boardId: string | null
   /** Refloat base version the values were decoded against — Tune Compatibility scope (ADR 0022). */
@@ -1577,7 +1684,7 @@ export interface BoardConfigValues {
   capturedAtMs: number
   freshness: BoardConfigFreshness
   /** Decoded fields keyed by schema field id, each in its real type. */
-  values: Record<string, number | boolean>
+  values: BoardConfigFieldValues
 }
 
 /**
@@ -1977,6 +2084,8 @@ type VescapeCoreEvents = {
   onBoardConfigValues: (event: BoardConfigValuesEvent) => void
   onMotorConfigValues: (event: MotorConfigValuesEvent) => void
   onBoardConfigChangeNotice: (event: BoardConfigChangeNoticeEvent) => void
+  /** The board's lights, as its own `LIGHTS_CONTROL` echo reported them. */
+  onBoardLights: (event: BoardLightsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
@@ -2122,6 +2231,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
   stopRemoteTilt(): Promise<boolean>
+  setBoardLights(enabled: boolean, headlightsEnabled: boolean): Promise<boolean>
   startBoardMove(input: number): Promise<boolean>
   stopBoardMove(): Promise<boolean>
   getTuneProfiles(boardId: string, refloatBaseVersion?: string | null): Promise<TuneProfile[]>
@@ -2893,6 +3003,35 @@ export async function stopRemoteTilt(): Promise<boolean> {
 }
 
 /**
+ * What the board says its lights are doing. `null` means the board has not said — no session, or no
+ * echo heard yet — and is not the same as off. Emitted on every echo, on Board Session end, and on
+ * subscribe.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsEventBody`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `lightsEventBody`
+ */
+export interface BoardLightsEvent {
+  enabled: boolean | null
+  headlightsEnabled: boolean | null
+}
+
+/**
+ * State the board's lights: the LEDs and the headlights, each on or off. Both switches are written
+ * every time, so changing one means passing the other's current value — the board is told the whole
+ * light state, never a partial edit. Runtime only: the board applies it live and stores nothing, so
+ * its own setting returns on the next power cycle, and until then the board stops applying config
+ * changes to its lights. A board with no LEDs still accepts and echoes the command. Refused unless
+ * the Board Link is trusted.
+ */
+export async function setBoardLights(
+  enabled: boolean,
+  headlightsEnabled: boolean,
+): Promise<boolean> {
+  if (E2E_ENABLED) return true
+  return native.setBoardLights(enabled, headlightsEnabled)
+}
+
+/**
  * Hold a Board Move input until {@link stopBoardMove}. `input` is `-127..127`:
  * positive moves the board forward, negative backward, `0` stops. Unlike Remote
  * Tilt this drives motor output, and the firmware honours it only while the
@@ -3280,6 +3419,10 @@ export function addBoardConfigChangeNoticeListener(
   cb: (event: BoardConfigChangeNoticeEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardConfigChangeNotice', cb)
+}
+
+export function addBoardLightsListener(cb: (event: BoardLightsEvent) => void): EventSubscription {
+  return emitter.addListener('onBoardLights', cb)
 }
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {

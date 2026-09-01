@@ -1,6 +1,6 @@
 import {
   BoardConfigSection,
-  type BoardConfigRow,
+  type MotorConfigRow,
 } from '@/modules/board/components/BoardConfigSection'
 import { useMotorConfigFields } from '@/modules/board/store/motorConfigValuesStore'
 
@@ -11,7 +11,7 @@ import { useMotorConfigFields } from '@/modules/board/store/motorConfigValuesSto
  * screen showing motor config wants the same source, the same heading and the same empty state, so
  * they say it once here rather than each repeating the wiring.
  */
-export function MotorConfigSection({ rows }: { rows: BoardConfigRow[] }) {
+export function MotorConfigSection({ rows }: { rows: MotorConfigRow[] }) {
   const values = useMotorConfigFields()
   return (
     <BoardConfigSection

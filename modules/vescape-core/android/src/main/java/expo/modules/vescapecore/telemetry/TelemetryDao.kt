@@ -712,6 +712,24 @@ interface TelemetryDao {
     return notice
   }
 
+  /**
+   * Patch a few fields of the stored baseline in one transaction, leaving every other field and the
+   * row's `capturedAt` alone.
+   *
+   * A runtime command that mutates config on the board has to teach the baseline about it, but it
+   * holds a snapshot taken when the session read ran — writing that whole snapshot back would undo a
+   * fresh read that landed in between and resurrect its stale values as the comparison base.
+   */
+  @Transaction
+  suspend fun patchBoardConfigValues(
+    boardId: String,
+    refloatBaseVersion: String,
+    patch: (BoardConfigValuesEntity) -> BoardConfigValuesEntity,
+  ) {
+    val row = getBoardConfigValues(boardId, refloatBaseVersion) ?: return
+    upsertBoardConfigValues(patch(row))
+  }
+
   // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
   // inside the range is never touched here.
   // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift
