@@ -8,6 +8,9 @@ import { theme } from '@/constants/theme'
 interface SelectWidgetProps {
   icon: Icon
   selectIcon?: Icon
+  /** Status marker shown next to the value pill — an icon alone, no label, no press target. */
+  badgeIcon?: Icon
+  badgeAccent?: string
   label: string
   value: string
   description?: string
@@ -26,6 +29,8 @@ interface SelectWidgetProps {
 export function SelectWidget({
   icon: IconComponent,
   selectIcon: SelectIconComponent,
+  badgeIcon: BadgeIconComponent,
+  badgeAccent = theme.control.textMuted,
   label,
   value,
   description,
@@ -75,6 +80,9 @@ export function SelectWidget({
             </Text>
           ) : null}
         </View>
+        {BadgeIconComponent ? (
+          <BadgeIconComponent size={20} color={badgeAccent} weight="duotone" />
+        ) : null}
         {showSelect ? (
           <Pressable
             style={[styles.valuePill, valuePillStyle]}

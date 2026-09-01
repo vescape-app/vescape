@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
-import { FadersIcon } from 'phosphor-react-native'
+import { FadersIcon, FootprintsIcon } from 'phosphor-react-native'
 import { router } from 'expo-router'
 
 import { BoardLightsControl } from '@/modules/board/components/BoardLightsControl'
@@ -22,6 +22,7 @@ import { TuneProfilePill } from '@/screens/main/overlays/TuneProfilePill'
 import { LegalMapWidget, LegalModeWidget } from '@/screens/main/overlays/TuneDrawerLegalWidgets'
 import { errorMessage } from '@/helpers/error'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { usePosiSensor } from '@/modules/board/store/boardConfigValuesStore'
 import { useBoardStore } from '@/modules/board/store/boardStore'
 import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -67,6 +68,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
     activeBoardId != null &&
     profileBoardId === activeBoardId &&
     profileCompatibility === tuneCompatibility
+  const posiSensor = usePosiSensor()
   const boardConnected = useBleStore((state) => state.status === 'connected')
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const quickControlsEnabled = boardConnected && canRunFirmwareCommand(linkIntegrity)
@@ -131,6 +133,8 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
       <SelectWidget
         icon={FadersIcon}
         selectIcon={SelectIcon}
+        badgeIcon={posiSensor ? FootprintsIcon : undefined}
+        badgeAccent={theme.palette.green.color}
         label="Tune"
         value={activeName}
         description="Pick how your board should feel."
