@@ -7,6 +7,9 @@ import type { SensorFrame } from '@/modules/hardware/lib/parseSensorFrame'
 /** Lines kept from the device. Old ones fall off the end; this is a debug console, not a log. */
 const MAX_LINES = 200
 
+/** Frames kept for the charts. One a second, so this is the last few minutes. */
+const MAX_FRAMES = 300
+
 export interface HardwareLine {
   text: string
   atMs: number
@@ -22,8 +25,8 @@ interface HardwareState {
   /** Devices seen in the current scan, newest RSSI wins, keyed by address. */
   devices: HardwareDeviceEvent[]
   lines: HardwareLine[]
-  /** Latest sensor frame from the board, or null while nothing has arrived on this link. */
-  frame: SensorFrame | null
+  /** Sensor frames from the board, oldest first. Empty until the first one arrives. */
+  frames: SensorFrame[]
   applyState: (state: HardwareStateEvent) => void
   addDevice: (device: HardwareDeviceEvent) => void
   clearDevices: () => void
@@ -43,7 +46,7 @@ export const useHardwareStore = create<HardwareState>((set) => ({
   error: null,
   devices: [],
   lines: [],
-  frame: null,
+  frames: [],
   applyState: (state) =>
     set((prev) => ({
       phase: state.phase,
@@ -52,7 +55,7 @@ export const useHardwareStore = create<HardwareState>((set) => ({
       error: state.error,
       // Readings belong to a live link. Keeping them past a drop shows a stale temperature as
       // if the board were still reporting it.
-      frame: state.phase === 'connected' ? prev.frame : null,
+      frames: state.phase === 'connected' ? prev.frames : [],
     })),
   addDevice: (device) =>
     set((prev) => {
@@ -62,5 +65,5 @@ export const useHardwareStore = create<HardwareState>((set) => ({
   clearDevices: () => set({ devices: [] }),
   addLine: (line) => set((prev) => ({ lines: [line, ...prev.lines].slice(0, MAX_LINES) })),
   clearLines: () => set({ lines: [] }),
-  applyFrame: (frame) => set({ frame }),
+  applyFrame: (frame) => set((prev) => ({ frames: [...prev.frames, frame].slice(-MAX_FRAMES) })),
 }))

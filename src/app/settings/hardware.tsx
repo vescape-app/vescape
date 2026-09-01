@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useShallow } from 'zustand/react/shallow'
@@ -9,11 +9,14 @@ import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
 import { DeviceRow } from '@/components/base/DeviceRow'
 import { Input } from '@/components/forms/Input'
+import { ChartStack } from '@/components/charts/line/ChartStack'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
 import { useHardwareLink } from '@/modules/hardware/hooks/useHardwareLink'
+import { buildSensorCharts } from '@/modules/hardware/lib/sensorCharts'
+import { describeReadings } from '@/modules/hardware/lib/sensorReadings'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
 
 const PHASE_LABEL = {
@@ -32,18 +35,6 @@ const PHASE_COLOR = {
   error: theme.status.error.color,
 } as const
 
-/**
- * Presentation for the keys the firmware sends today. Anything unknown still renders, with its
- * raw key and value, so a newly wired sensor is visible before the app knows its name.
- */
-const READING_LABEL: Record<string, { label: string; format: (value: number) => string }> = {
-  distanceMm: { label: 'Distance (ToF)', format: (v) => `${Math.round(v)} mm` },
-  rangeCm: { label: 'Range (ultrasonic)', format: (v) => `${v.toFixed(1)} cm` },
-  tempC: { label: 'Chip temperature', format: (v) => `${v.toFixed(1)} °C` },
-  heapKb: { label: 'Free heap', format: (v) => `${Math.round(v)} kB` },
-  upMs: { label: 'Uptime', format: (v) => `${Math.floor(v / 1000)} s` },
-}
-
 const LINE_PREFIX = { rx: '<', tx: '>', error: '!' } as const
 
 const LINE_COLOR = {
@@ -60,10 +51,10 @@ export default function HardwareSettingsScreen() {
   const link = useHardwareLink()
   const permissions = usePermissions()
   const [draft, setDraft] = useState('')
-  const { phase, deviceName, deviceId, error, devices, lines, frame } = useHardwareStore(
+  const { phase, deviceName, deviceId, error, devices, lines, frames } = useHardwareStore(
     useShallow((s) => ({
       phase: s.phase,
-      frame: s.frame,
+      frames: s.frames,
       deviceName: s.deviceName,
       deviceId: s.deviceId,
       error: s.error,
@@ -71,6 +62,9 @@ export default function HardwareSettingsScreen() {
       lines: s.lines,
     })),
   )
+
+  const readings = useMemo(() => describeReadings(frames), [frames])
+  const charts = useMemo(() => buildSensorCharts(frames), [frames])
 
   const connected = phase === 'connected'
   const scanning = phase === 'scanning'
@@ -135,21 +129,32 @@ export default function HardwareSettingsScreen() {
           </>
         ) : null}
 
-        {frame ? (
+        {readings.length > 0 ? (
           <>
             <SettingsSectionTitle>Readings</SettingsSectionTitle>
             <SettingsCard separatorInset={16}>
-              {Object.entries(frame.values).map(([key, value]) => {
-                const reading = READING_LABEL[key]
-                return (
-                  <View key={key} style={styles.reading}>
-                    <Text style={styles.readingLabel}>{reading?.label ?? key}</Text>
-                    <Text style={styles.readingValue}>
-                      {reading ? reading.format(value) : String(value)}
-                    </Text>
-                  </View>
-                )
-              })}
+              {readings.map((reading) => (
+                <View key={reading.key} style={styles.reading}>
+                  <Text style={styles.readingLabel}>{reading.label}</Text>
+                  <Text style={styles.readingValue}>{reading.text}</Text>
+                </View>
+              ))}
+            </SettingsCard>
+          </>
+        ) : null}
+
+        {charts.length > 0 ? (
+          <>
+            <SettingsSectionTitle>History</SettingsSectionTitle>
+            <SettingsCard separatorInset={0}>
+              <ChartStack
+                charts={charts}
+                dataKey={deviceId ?? 'hardware'}
+                follow
+                timeMode="relative"
+                showHead
+                containerStyle={styles.charts}
+              />
             </SettingsCard>
           </>
         ) : null}
@@ -228,6 +233,10 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+  },
+  charts: {
+    paddingVertical: 12,
+    paddingRight: 12,
   },
   reading: {
     flexDirection: 'row',
