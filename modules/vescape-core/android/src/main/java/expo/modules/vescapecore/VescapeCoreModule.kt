@@ -187,6 +187,8 @@ class VescapeCoreModule : Module() {
       "onHardwareDevice",
       "onHardwareState",
       "onHardwareMessage",
+      "onHardwareSensor",
+      "onHardwareSeries",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers

@@ -4,6 +4,8 @@ import { Platform } from 'react-native'
 import {
   addHardwareDeviceListener,
   addHardwareMessageListener,
+  addHardwareSensorListener,
+  addHardwareSeriesListener,
   addHardwareStateListener,
   getHardwareState,
   hardwareConnect,
@@ -13,8 +15,7 @@ import {
   hardwareStopScan,
 } from 'vescape-core'
 
-import { parseSensorFrame } from '@/modules/hardware/lib/parseSensorFrame'
-import { appendFrame } from '@/modules/hardware/lib/sensorLog'
+import { applySensor, applySeries } from '@/modules/hardware/lib/sensorRuntime'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
 
 /**
@@ -57,19 +58,18 @@ export function useHardwareLink(): {
         if (autoConnect && useHardwareStore.getState().phase === 'scanning')
           hardwareConnect(event.id)
       }),
-      // Sensor frames arrive up to fifty times a second, batched by native. They go to the sensor
-      // log, which is not React state, rather than the console, which would otherwise scroll away
-      // every reply the board sends within a frame of it arriving.
+      // Console text only: native keeps sensor frames out of here, or fifty a second would
+      // scroll away every reply the board sends within a frame of it arriving.
       addHardwareMessageListener((event) => {
-        for (const message of event.messages) {
-          const frame = parseSensorFrame(message.text, message.atMs)
-          if (frame) appendFrame(frame)
-          else
-            useHardwareStore
-              .getState()
-              .addLine({ text: message.text, atMs: message.atMs, direction: 'rx' })
-        }
+        for (const message of event.messages)
+          useHardwareStore
+            .getState()
+            .addLine({ text: message.text, atMs: message.atMs, direction: 'rx' })
       }),
+      // Readings and charts, both already made by native. These write shared values and a
+      // snapshot; neither goes through Zustand.
+      addHardwareSensorListener(applySensor),
+      addHardwareSeriesListener(applySeries),
     ]
     if (autoConnect && getHardwareState().phase === 'idle') {
       useHardwareStore.getState().clearDevices()

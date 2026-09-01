@@ -45,6 +45,14 @@ private const val WRITE_TIMEOUT_MS = 5_000L
 private const val MESSAGE_FLUSH_MS = 100L
 
 /**
+ * How often the decimated chart series crosses into JS.
+ *
+ * Four redraws a second reads as continuous on a scrolling chart, and it decouples the drawing
+ * cost from a link that can push fifty frames a second.
+ */
+private const val SERIES_FLUSH_MS = 250L
+
+/**
  * Standalone link to a Vescape hardware device (ESP32-S3 running the `vescape-hardware` firmware).
  * Deliberately separate from the board session: this is a raw Nordic UART pipe with no VESC packet
  * framing, no reconnect state machine, and no recording.
@@ -72,6 +80,8 @@ object HardwareLink {
     private var writeTimeout: Runnable? = null
     private val pendingMessages = mutableListOf<Map<String, Any?>>()
     private var flushScheduled = false
+    private val sensors = SensorLog()
+    private var seriesScheduled = false
 
     fun state(): Map<String, Any?> = mapOf(
         "phase" to phase,
@@ -312,17 +322,67 @@ object HardwareLink {
         }
     }
 
+    /**
+     * Turns a batch of notifications into what the screen actually shows: sensor frames go to the
+     * log and leave as numbers, anything else is console text. Frames never reach the console —
+     * fifty a second would scroll away every reply the board sends within a frame of it arriving.
+     */
     private fun flushMessages() {
         flushScheduled = false
         if (pendingMessages.isEmpty()) return
         val batch = pendingMessages.toList()
         pendingMessages.clear()
-        emit?.invoke("onHardwareMessage", mapOf("messages" to batch))
+
+        var frames = 0
+        val lines = batch.filter { message ->
+            val text = message["text"] as? String ?: return@filter false
+            val atMs = (message["atMs"] as? Double)?.toLong() ?: 0L
+            if (sensors.append(text, atMs)) {
+                frames += 1
+                false
+            } else {
+                true
+            }
+        }
+        if (lines.isNotEmpty()) emit?.invoke("onHardwareMessage", mapOf("messages" to lines))
+        if (frames == 0) return
+
+        val rate = sensors.rate()
+        emit?.invoke(
+            "onHardwareSensor",
+            mapOf(
+                "keys" to sensors.keys(),
+                "values" to sensors.live(),
+                "hz" to rate.hz,
+                "dropped" to rate.dropped,
+                "readMs" to rate.readMs,
+            ),
+        )
+        if (!seriesScheduled) {
+            seriesScheduled = true
+            handler.postDelayed(::flushSeries, SERIES_FLUSH_MS)
+        }
+    }
+
+    private fun flushSeries() {
+        seriesScheduled = false
+        emit?.invoke(
+            "onHardwareSeries",
+            mapOf(
+                "series" to sensors.series().map {
+                    mapOf("key" to it.key, "points" to it.points, "min" to it.min, "max" to it.max)
+                },
+            ),
+        )
     }
 
     private fun clearGatt() {
         completeWrite(false, -1, "Link closed before the write was acknowledged")
         flushMessages()
+        // The history belongs to the link that gathered it: keeping it across a reconnect would
+        // draw one board's readings against another's clock.
+        sensors.clear()
+        emit?.invoke("onHardwareSeries", mapOf("series" to emptyList<Any>()))
         txChar = null
         val g = gatt ?: return
         gatt = null

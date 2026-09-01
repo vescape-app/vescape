@@ -1,64 +1,16 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { SensorFrame } from './parseSensorFrame'
 import { buildSensorCharts } from './sensorCharts'
 
-const KEYS = ['distanceMm', 'rangeCm', 'tempC', 'heapKb', 'upMs']
-
-const frames: SensorFrame[] = [
-  { atMs: 1, values: { distanceMm: 100, rangeCm: 12 } },
-  { atMs: 2, values: { rangeCm: 13 } },
-  { atMs: 3, values: { distanceMm: 200, rangeCm: 14 } },
-]
-
 describe('buildSensorCharts', () => {
-  it('charts distances only, on a fixed range', () => {
-    const charts = buildSensorCharts(
-      [...frames, { atMs: 4, values: { tempC: 40, heapKb: 200, upMs: 4000, rangeCm: 15 } }],
-      KEYS,
-    )
+  it('unpacks the flat native series and keeps its scale and order', () => {
+    const charts = buildSensorCharts([
+      { key: 'distanceMm', points: [1, 10, 2, 40], min: 0, max: 40 },
+      { key: 'rangeCm', points: [1, 12, 2, 14], min: 0, max: 40 },
+    ])
     expect(charts.map((c) => c.key)).toEqual(['distanceMm', 'rangeCm'])
+    expect(charts[0]?.series[0]?.data).toEqual({ ts: [1, 2], vs: [10, 40] })
     expect(charts[0]?.left.range).toEqual({ min: 0, max: 40 })
-  })
-
-  it('holds a rangeless sensor at its ceiling so both rows share one head', () => {
-    const tof = buildSensorCharts(frames, KEYS)[0]
-    expect(tof?.series[0]?.data.ts).toEqual([1, 2, 3])
-    expect(tof?.series[0]?.data.vs).toEqual([10, 40, 20])
-  })
-
-  it('keeps the given row order when a sensor drops out and comes back', () => {
-    // The ranger answers first, goes quiet, and returns. Row order is the link's, not the window's.
-    const charts = buildSensorCharts(
-      [
-        { atMs: 1, values: { rangeCm: 12 } },
-        { atMs: 2, values: { distanceMm: 100 } },
-        { atMs: 3, values: { distanceMm: 120, rangeCm: 14 } },
-      ],
-      KEYS,
-    )
-    expect(charts.map((c) => c.key)).toEqual(['distanceMm', 'rangeCm'])
-  })
-
-  it('keeps a row for a sensor that answered before the window opened', () => {
-    const charts = buildSensorCharts(
-      [
-        { atMs: 10, values: { distanceMm: 100 } },
-        { atMs: 11, values: { distanceMm: 120 } },
-      ],
-      KEYS,
-      new Map([['rangeCm', 1]]),
-    )
-    const ranger = charts.find((c) => c.key === 'rangeCm')
-    // Quiet for the whole window, so it rides its ceiling instead of taking its row away.
-    expect(ranger?.series[0]?.data.vs).toEqual([40, 40])
-  })
-
-  it('does not invent samples before a sensor first answers', () => {
-    const charts = buildSensorCharts([{ atMs: 0, values: { rangeCm: 12 } }, ...frames], KEYS)
-    const tof = charts.find((c) => c.key === 'distanceMm')
-    // Nothing at atMs 0, when the ToF had not reported yet; the ceiling only fills gaps after.
-    expect(tof?.series[0]?.data.ts).toEqual([1, 2, 3])
-    expect(tof?.series[0]?.data.vs).toEqual([10, 40, 20])
+    expect(charts[0]?.label).toBe('Distance (ToF) (cm)')
   })
 })

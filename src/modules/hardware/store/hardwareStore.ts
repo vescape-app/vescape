@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import type { HardwareDeviceEvent, HardwarePhase, HardwareStateEvent } from 'vescape-core'
 
-import { clearFrames } from '@/modules/hardware/lib/sensorLog'
+import { resetSensors } from '@/modules/hardware/lib/sensorRuntime'
 
 /** Lines kept from the device. Old ones fall off the end; this is a debug console, not a log. */
 const MAX_LINES = 200
@@ -42,9 +42,9 @@ export const useHardwareStore = create<HardwareState>((set) => ({
   lines: [],
   applyState: (state) => {
     // Readings belong to a live link. Keeping them past a drop shows a stale temperature as if
-    // the board were still reporting it. The frames themselves live outside this store, see
-    // `sensorLog`: fifty a second is not something React should be told about.
-    if (state.phase !== 'connected') clearFrames()
+    // the board were still reporting it. The readings themselves live outside this store, in
+    // `sensorRuntime`: fifty frames a second is not something React should be told about.
+    if (state.phase !== 'connected') resetSensors()
     set({
       phase: state.phase,
       deviceId: state.deviceId,

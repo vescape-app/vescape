@@ -16,7 +16,7 @@ import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
 import { LiveNumber } from '@/modules/hardware/components/LiveNumber'
 import { useHardwareLink } from '@/modules/hardware/hooks/useHardwareLink'
-import { useChartVersion, useSensorKeys } from '@/modules/hardware/hooks/useSensorHistory'
+import { useSensorVersion } from '@/modules/hardware/hooks/useSensors'
 import { buildSensorCharts } from '@/modules/hardware/lib/sensorCharts'
 import { describeReadings } from '@/modules/hardware/lib/sensorReadings'
 import {
@@ -24,9 +24,9 @@ import {
   linkHz,
   linkReadMs,
   liveValue,
-  readFirstSeen,
-  readFrames,
-} from '@/modules/hardware/lib/sensorLog'
+  readSensorKeys,
+  readSensorSeries,
+} from '@/modules/hardware/lib/sensorRuntime'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
 
 const PHASE_LABEL = {
@@ -67,8 +67,7 @@ export default function HardwareSettingsScreen() {
   const link = useHardwareLink()
   const permissions = usePermissions()
   const [draft, setDraft] = useState('')
-  const keys = useSensorKeys()
-  const chartVersion = useChartVersion()
+  const sensorVersion = useSensorVersion()
   const { phase, deviceName, deviceId, error, devices, lines } = useHardwareStore(
     useShallow((s) => ({
       phase: s.phase,
@@ -80,13 +79,12 @@ export default function HardwareSettingsScreen() {
     })),
   )
 
-  const readings = useMemo(() => describeReadings(keys), [keys])
-  // Rebuilt on the chart's own tick, not on every frame the board sends.
+  // Both rebuilt when native publishes, which is four times a second at most, whatever rate the
+  // board is running at.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const charts = useMemo(
-    () => buildSensorCharts(readFrames(), keys, readFirstSeen()),
-    [chartVersion, keys],
-  )
+  const readings = useMemo(() => describeReadings(readSensorKeys()), [sensorVersion])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const charts = useMemo(() => buildSensorCharts(readSensorSeries()), [sensorVersion])
 
   const connected = phase === 'connected'
   const scanning = phase === 'scanning'

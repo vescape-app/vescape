@@ -2087,6 +2087,42 @@ export interface HardwareMessageEvent {
 }
 
 /**
+ * The board's live readings, already parsed, scaled and clamped natively — the link can push
+ * fifty frames a second, and doing that work in JS starves the JS thread before any of it is
+ * drawn. `values` is parallel to `keys`, in the order the board first sent each key; NaN is a
+ * sensor with nothing to say.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/hardware/SensorLog.kt `live`
+ */
+export interface HardwareSensorEvent {
+  keys: string[]
+  values: number[]
+  /** Frames per second actually delivered, or null until there are two frames to time. */
+  hz: number | null
+  /** Frames the board numbered but the app never received, inside the rate window. */
+  dropped: number
+  /** What the board's newest frame cost to gather, the floor under any requested rate. */
+  readMs: number | null
+}
+
+/**
+ * One chart row, decimated natively to the window the screen draws.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/hardware/SensorLog.kt `SensorSeries`
+ */
+export interface HardwareSeries {
+  key: string
+  /** Flat `[ts0, v0, ts1, v1, ...]`, in display units. */
+  points: number[]
+  min: number
+  max: number
+}
+
+export interface HardwareSeriesEvent {
+  series: HardwareSeries[]
+}
+
+/**
  * Event names must match the native `Events(...)` declarations exactly — a name only listed here
  * yields a listener that never fires.
  *
@@ -2146,6 +2182,10 @@ type VescapeCoreEvents = {
   onHardwareState: (event: HardwareStateEvent) => void
   /** Lines the hardware device sent over Nordic UART, batched (Android only). */
   onHardwareMessage: (event: HardwareMessageEvent) => void
+  /** Live sensor readings, ~10x a second (Android only). */
+  onHardwareSensor: (event: HardwareSensorEvent) => void
+  /** Decimated sensor history for the charts, ~4x a second (Android only). */
+  onHardwareSeries: (event: HardwareSeriesEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -3684,4 +3724,16 @@ export function addHardwareMessageListener(
   cb: (event: HardwareMessageEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onHardwareMessage', cb)
+}
+
+export function addHardwareSensorListener(
+  cb: (event: HardwareSensorEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareSensor', cb)
+}
+
+export function addHardwareSeriesListener(
+  cb: (event: HardwareSeriesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareSeries', cb)
 }
