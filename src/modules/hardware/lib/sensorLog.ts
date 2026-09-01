@@ -35,6 +35,9 @@ const live = new Map<string, SharedValue<number>>()
 let keys: string[] = []
 let keysVersion = 0
 
+/** When each key first carried a value, so a chart knows how far back it may draw. */
+const firstSeen = new Map<string, number>()
+
 export const linkHz = makeMutable(Number.NaN)
 export const linkDropped = makeMutable(Number.NaN)
 export const linkReadMs = makeMutable(Number.NaN)
@@ -60,6 +63,7 @@ export function appendFrame(frame: SensorFrame): void {
   for (const key of Object.keys(frame.values)) {
     if (!keys.includes(key)) {
       keys = [...keys, key]
+      firstSeen.set(key, frame.atMs)
       keysVersion += 1
     }
   }
@@ -76,6 +80,7 @@ export function appendFrame(frame: SensorFrame): void {
 export function clearFrames(): void {
   frames.length = 0
   keys = []
+  firstSeen.clear()
   version += 1
   keysVersion += 1
   for (const value of live.values()) value.value = Number.NaN
@@ -98,4 +103,8 @@ export function readKeys(): readonly string[] {
 
 export function keySetVersion(): number {
   return keysVersion
+}
+
+export function readFirstSeen(): ReadonlyMap<string, number> {
+  return firstSeen
 }

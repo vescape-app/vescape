@@ -19,15 +19,24 @@ const MAX_POINTS = 400
 /**
  * One chart row per reading, sharing the stack's camera and time axis.
  *
+ * `keys` fixes the row order and must be the same list the readings rows use — the log's
+ * first-seen order for the whole link. Deriving it from the frames on screen instead reorders the
+ * stack whenever a sensor drops out and comes back, because it is then "first seen" last.
+ *
  * A key missing from a frame is a gap in that series, not a zero: the ToF drops out when nothing
  * is in range, and drawing that as a floor would read as an object right against the sensor.
+ *
+ * `firstSeen` is when each key first carried a value. A ranged sensor that has answered before the
+ * window opened rides its ceiling across the whole window rather than losing its row: a sensor
+ * with nothing in reach still has something to say, and a row that comes and goes moves every
+ * other row on the screen.
  */
-export function buildSensorCharts(frames: readonly SensorFrame[]): ChartSpec[] {
+export function buildSensorCharts(
+  frames: readonly SensorFrame[],
+  keys: readonly string[],
+  firstSeen: ReadonlyMap<string, number> = new Map(),
+): ChartSpec[] {
   const stride = Math.max(1, Math.ceil(frames.length / MAX_POINTS))
-  const keys: string[] = []
-  for (const frame of frames) {
-    for (const key of Object.keys(frame.values)) if (!keys.includes(key)) keys.push(key)
-  }
 
   const charts: ChartSpec[] = []
   for (const key of keys) {
@@ -38,7 +47,9 @@ export function buildSensorCharts(frames: readonly SensorFrame[]): ChartSpec[] {
     const vs: number[] = []
     let min = Infinity
     let max = -Infinity
-    let started = false
+    // Answered before this window opened, so the ceiling may fill from its very first frame.
+    const since = firstSeen.get(key)
+    let started = since != null && since <= (frames[0]?.atMs ?? Infinity)
     for (let index = 0; index < frames.length; index++) {
       const frame = frames[index]
       if (frame == null) continue

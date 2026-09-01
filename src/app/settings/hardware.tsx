@@ -24,6 +24,7 @@ import {
   linkHz,
   linkReadMs,
   liveValue,
+  readFirstSeen,
   readFrames,
 } from '@/modules/hardware/lib/sensorLog'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
@@ -82,7 +83,10 @@ export default function HardwareSettingsScreen() {
   const readings = useMemo(() => describeReadings(keys), [keys])
   // Rebuilt on the chart's own tick, not on every frame the board sends.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const charts = useMemo(() => buildSensorCharts(readFrames()), [chartVersion])
+  const charts = useMemo(
+    () => buildSensorCharts(readFrames(), keys, readFirstSeen()),
+    [chartVersion, keys],
+  )
 
   const connected = phase === 'connected'
   const scanning = phase === 'scanning'
