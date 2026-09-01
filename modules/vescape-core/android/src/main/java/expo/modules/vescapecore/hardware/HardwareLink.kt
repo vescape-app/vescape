@@ -35,6 +35,16 @@ private const val REQUESTED_MTU = 517
 private const val WRITE_TIMEOUT_MS = 5_000L
 
 /**
+ * How long notifications are gathered before one batch crosses into JS.
+ *
+ * The board can push fifty frames a second, and one JS callback per notification is enough to
+ * starve the JS thread on its own — timers stop firing and the UI stops answering touches long
+ * before any of that data is drawn. Buffering here costs a tenth of a second of latency and keeps
+ * every frame: nothing is dropped, it just arrives in groups.
+ */
+private const val MESSAGE_FLUSH_MS = 100L
+
+/**
  * Standalone link to a Vescape hardware device (ESP32-S3 running the `vescape-hardware` firmware).
  * Deliberately separate from the board session: this is a raw Nordic UART pipe with no VESC packet
  * framing, no reconnect state machine, and no recording.
@@ -60,6 +70,8 @@ object HardwareLink {
     private var txChar: BluetoothGattCharacteristic? = null
     private var pendingWrite: ((Boolean, Int, String?) -> Unit)? = null
     private var writeTimeout: Runnable? = null
+    private val pendingMessages = mutableListOf<Map<String, Any?>>()
+    private var flushScheduled = false
 
     fun state(): Map<String, Any?> = mapOf(
         "phase" to phase,
@@ -122,6 +134,10 @@ object HardwareLink {
     }
 
     fun connect(context: Context, id: String) {
+        // Claimed before the scan is stopped: `stopScan` publishes an idle phase when it ends a
+        // scan, and a listener that re-scans on idle would then race this connect and leave the
+        // link reporting "scanning" while it is connected.
+        phase = "connecting"
         stopScan()
         clearGatt()
         val adapter = bluetoothManager(context)?.adapter ?: run {
@@ -284,16 +300,29 @@ object HardwareLink {
     private fun deliver(g: BluetoothGatt, uuid: UUID, value: ByteArray) {
         if (g !== gatt || uuid != NUS_RX_UUID) return
         val text = String(value, Charsets.UTF_8)
+        // Stamped here rather than at flush time, so batching never distorts the arrival times a
+        // consumer measures the link's rate from.
+        val atMs = System.currentTimeMillis().toDouble()
         handler.post {
-            emit?.invoke(
-                "onHardwareMessage",
-                mapOf("text" to text, "atMs" to System.currentTimeMillis().toDouble()),
-            )
+            pendingMessages.add(mapOf("text" to text, "atMs" to atMs))
+            if (!flushScheduled) {
+                flushScheduled = true
+                handler.postDelayed(::flushMessages, MESSAGE_FLUSH_MS)
+            }
         }
+    }
+
+    private fun flushMessages() {
+        flushScheduled = false
+        if (pendingMessages.isEmpty()) return
+        val batch = pendingMessages.toList()
+        pendingMessages.clear()
+        emit?.invoke("onHardwareMessage", mapOf("messages" to batch))
     }
 
     private fun clearGatt() {
         completeWrite(false, -1, "Link closed before the write was acknowledged")
+        flushMessages()
         txChar = null
         val g = gatt ?: return
         gatt = null

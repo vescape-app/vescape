@@ -26,14 +26,8 @@ describe('describeReading', () => {
 })
 
 describe('describeReadings', () => {
-  it('holds a row for a sensor that stopped answering', () => {
-    const rows = describeReadings([
-      { atMs: 1, values: { tempC: 40, distanceMm: 100 } },
-      { atMs: 2, values: { tempC: 41 } },
-    ])
-    expect(rows.map((r) => [r.key, r.text])).toEqual([
-      ['tempC', '41.0 °C'],
-      ['distanceMm', '40.0 cm'],
-    ])
+  it('drops the link bookkeeping the board sends for itself', () => {
+    const rows = describeReadings(['seq', 'tempC', 'readMs', 'distanceMm'])
+    expect(rows.map((r) => r.key)).toEqual(['tempC', 'distanceMm'])
   })
 })

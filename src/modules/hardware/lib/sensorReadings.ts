@@ -1,7 +1,5 @@
 import { theme } from '@/constants/theme'
 
-import type { SensorFrame } from '@/modules/hardware/lib/parseSensorFrame'
-
 /** How one frame key is shown. Keys with no entry fall back to raw value and key name. */
 interface ReadingSpec {
   label: string
@@ -15,6 +13,11 @@ interface ReadingSpec {
    * chip health is a number to glance at, not a line worth the height on this screen.
    */
   chart?: false
+  /**
+   * Keep this key out of the rows entirely. Link bookkeeping the board sends so the app can
+   * measure the connection is reported in the Link section, not as a sensor reading.
+   */
+  hidden?: true
   /**
    * Display range, in display units. Values are clamped into it and the chart axis is fixed to
    * it, so a distance row keeps one scale instead of rescaling itself around whatever noise the
@@ -56,6 +59,22 @@ const READINGS: Record<string, ReadingSpec> = {
     color: theme.palette.green.color,
     chart: false,
   },
+  seq: {
+    label: 'Frame',
+    unit: '',
+    decimals: 0,
+    color: theme.neutral.textMuted,
+    chart: false,
+    hidden: true,
+  },
+  readMs: {
+    label: 'Sensor read',
+    unit: 'ms',
+    decimals: 0,
+    color: theme.neutral.textMuted,
+    chart: false,
+    hidden: true,
+  },
   upMs: {
     label: 'Uptime',
     unit: 's',
@@ -82,21 +101,30 @@ export interface Reading {
   value: number | null
   text: string
   chart: boolean
+  hidden: boolean
   range?: { min: number; max: number }
+}
+
+/**
+ * A raw frame value in display units, clamped to the key's range. Separate from
+ * {@link describeReading} because the charts call it once per sample: at 50 frames a second an
+ * object and a formatted string per point is the difference between a smooth chart and a stutter.
+ */
+export function readingValue(key: string, raw: number | null): number | null {
+  const spec = READINGS[key] ?? UNKNOWN
+  if (raw == null) {
+    // A ranged sensor reading nothing means nothing is within its reach, which is the ceiling.
+    // Same value the chart draws, so the row and the line cannot disagree.
+    return spec.range ? spec.range.max : null
+  }
+  const converted = spec.toDisplay ? spec.toDisplay(raw) : raw
+  return spec.range ? Math.min(Math.max(converted, spec.range.min), spec.range.max) : converted
 }
 
 /** Everything a frame key needs to be rendered, whether or not the app knows the key. */
 export function describeReading(key: string, raw: number | null): Reading {
   const spec = READINGS[key] ?? { ...UNKNOWN, label: key }
-  let value: number | null = null
-  if (raw != null) {
-    const converted = spec.toDisplay ? spec.toDisplay(raw) : raw
-    value = spec.range ? Math.min(Math.max(converted, spec.range.min), spec.range.max) : converted
-  } else if (spec.range) {
-    // A ranged sensor reading nothing means nothing is within its reach, which is the ceiling.
-    // Same value the chart draws, so the row and the line cannot disagree.
-    value = spec.range.max
-  }
+  const value = readingValue(key, raw)
   const number = value == null ? '-' : value.toFixed(spec.decimals)
   return {
     key,
@@ -107,22 +135,19 @@ export function describeReading(key: string, raw: number | null): Reading {
     value,
     text: value != null && spec.unit ? `${number} ${spec.unit}` : number,
     chart: spec.chart !== false,
+    hidden: spec.hidden === true,
     range: spec.range,
   }
 }
 
 /**
- * One row per key seen on this link, in the order the board first sent them.
+ * One row per key, in the order given, minus the link bookkeeping the board sends for itself.
  *
- * Rows are held even once a sensor stops answering: the ToF drops out whenever nothing is in
- * range, and letting the row go makes everything below it jump. A ranged sensor shows its ceiling
- * then, anything else shows `-`.
+ * Rows carry no value: the numbers arrive far faster than React should render, so a row is the
+ * label and the shape, and the value behind it is a shared value the UI thread writes. Rows are
+ * kept even once a sensor stops answering, since the ToF drops out whenever nothing is in range
+ * and letting the row go makes everything below it jump.
  */
-export function describeReadings(frames: SensorFrame[]): Reading[] {
-  const keys: string[] = []
-  for (const frame of frames) {
-    for (const key of Object.keys(frame.values)) if (!keys.includes(key)) keys.push(key)
-  }
-  const latest = frames.at(-1)
-  return keys.map((key) => describeReading(key, latest?.values[key] ?? null))
+export function describeReadings(keys: readonly string[]): Reading[] {
+  return keys.map((key) => describeReading(key, null)).filter((reading) => !reading.hidden)
 }

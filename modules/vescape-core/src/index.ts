@@ -2069,10 +2069,21 @@ export interface HardwareWriteResult {
   detail: string | null
 }
 
-export interface HardwareMessageEvent {
+export interface HardwareMessage {
   /** UTF-8 decoded notification payload from the device. */
   text: string
   atMs: number
+}
+
+/**
+ * Notifications received since the last delivery, oldest first.
+ *
+ * Batched rather than one event per notification: the board can push fifty a second, and a JS
+ * callback each is enough to starve the JS thread before any of it is drawn. Every notification
+ * is here, with its own arrival time.
+ */
+export interface HardwareMessageEvent {
+  messages: HardwareMessage[]
 }
 
 /**
@@ -2133,7 +2144,7 @@ type VescapeCoreEvents = {
   onHardwareDevice: (event: HardwareDeviceEvent) => void
   /** Hardware Link phase changed (Android only). */
   onHardwareState: (event: HardwareStateEvent) => void
-  /** A line the hardware device sent over Nordic UART (Android only). */
+  /** Lines the hardware device sent over Nordic UART, batched (Android only). */
   onHardwareMessage: (event: HardwareMessageEvent) => void
 }
 

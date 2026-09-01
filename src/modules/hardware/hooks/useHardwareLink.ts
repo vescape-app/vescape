@@ -14,11 +14,23 @@ import {
 } from 'vescape-core'
 
 import { parseSensorFrame } from '@/modules/hardware/lib/parseSensorFrame'
+import { appendFrame } from '@/modules/hardware/lib/sensorLog'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
+
+/**
+ * Whether an unprompted scan may connect to what it finds.
+ *
+ * There is one hardware board, so hunting for it by hand every time is ceremony. Pressing
+ * Disconnect turns this off: the rider asked to be off the board, and a scan that reconnects a
+ * second later would be fighting them. Pressing Scan asks for it again.
+ */
+let autoConnect = true
 
 /**
  * Subscribes the Hardware Link mirror for as long as the caller is mounted, and returns the
  * commands. Android-only: on iOS every command is a no-op and the phase stays `idle`.
+ *
+ * Connects to the first `Vescape-HW` board it sees, unless the rider disconnected on purpose.
  */
 export function useHardwareLink(): {
   scan: () => void
@@ -32,17 +44,37 @@ export function useHardwareLink(): {
     const store = useHardwareStore.getState()
     store.applyState(getHardwareState())
     const subs = [
-      addHardwareStateListener((event) => useHardwareStore.getState().applyState(event)),
-      addHardwareDeviceListener((event) => useHardwareStore.getState().addDevice(event)),
-      // Sensor frames arrive once a second. They go to the readings card, not the console, which
-      // would otherwise scroll away every reply the board sends.
+      addHardwareStateListener((event) => {
+        useHardwareStore.getState().applyState(event)
+        // A board that drops out — out of range, powered down — is found again on its own. A
+        // deliberate disconnect cleared `autoConnect`, so this cannot fight the rider.
+        if (autoConnect && (event.phase === 'idle' || event.phase === 'error')) hardwareStartScan()
+      }),
+      addHardwareDeviceListener((event) => {
+        useHardwareStore.getState().addDevice(event)
+        // First board seen wins. Native filters the scan by name, so anything reported here is
+        // one; a second board is a case to solve when there is one to test against.
+        if (autoConnect && useHardwareStore.getState().phase === 'scanning')
+          hardwareConnect(event.id)
+      }),
+      // Sensor frames arrive up to fifty times a second, batched by native. They go to the sensor
+      // log, which is not React state, rather than the console, which would otherwise scroll away
+      // every reply the board sends within a frame of it arriving.
       addHardwareMessageListener((event) => {
-        const state = useHardwareStore.getState()
-        const frame = parseSensorFrame(event.text, event.atMs)
-        if (frame) state.applyFrame(frame)
-        else state.addLine({ text: event.text, atMs: event.atMs, direction: 'rx' })
+        for (const message of event.messages) {
+          const frame = parseSensorFrame(message.text, message.atMs)
+          if (frame) appendFrame(frame)
+          else
+            useHardwareStore
+              .getState()
+              .addLine({ text: message.text, atMs: message.atMs, direction: 'rx' })
+        }
       }),
     ]
+    if (autoConnect && getHardwareState().phase === 'idle') {
+      useHardwareStore.getState().clearDevices()
+      hardwareStartScan()
+    }
     return () => {
       for (const sub of subs) sub.remove()
       hardwareStopScan()
@@ -51,6 +83,7 @@ export function useHardwareLink(): {
 
   const scan = useCallback(() => {
     if (Platform.OS !== 'android') return
+    autoConnect = true
     useHardwareStore.getState().clearDevices()
     hardwareStartScan()
   }, [])
@@ -67,6 +100,7 @@ export function useHardwareLink(): {
 
   const disconnect = useCallback(() => {
     if (Platform.OS !== 'android') return
+    autoConnect = false
     hardwareDisconnect()
   }, [])
 

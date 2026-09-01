@@ -14,9 +14,18 @@ import { IconHero } from '@/components/settings/IconHero'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
+import { LiveNumber } from '@/modules/hardware/components/LiveNumber'
 import { useHardwareLink } from '@/modules/hardware/hooks/useHardwareLink'
+import { useChartVersion, useSensorKeys } from '@/modules/hardware/hooks/useSensorHistory'
 import { buildSensorCharts } from '@/modules/hardware/lib/sensorCharts'
 import { describeReadings } from '@/modules/hardware/lib/sensorReadings'
+import {
+  linkDropped,
+  linkHz,
+  linkReadMs,
+  liveValue,
+  readFrames,
+} from '@/modules/hardware/lib/sensorLog'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
 
 const PHASE_LABEL = {
@@ -35,6 +44,12 @@ const PHASE_COLOR = {
   error: theme.status.error.color,
 } as const
 
+/**
+ * Rates the board can be retuned to from here. The board clamps anything it cannot hold, and the
+ * Link rows below say what it actually delivered, so these are requests rather than settings.
+ */
+const RATE_PRESETS = [1, 5, 10, 20, 50] as const
+
 const LINE_PREFIX = { rx: '<', tx: '>', error: '!' } as const
 
 const LINE_COLOR = {
@@ -51,10 +66,11 @@ export default function HardwareSettingsScreen() {
   const link = useHardwareLink()
   const permissions = usePermissions()
   const [draft, setDraft] = useState('')
-  const { phase, deviceName, deviceId, error, devices, lines, frames } = useHardwareStore(
+  const keys = useSensorKeys()
+  const chartVersion = useChartVersion()
+  const { phase, deviceName, deviceId, error, devices, lines } = useHardwareStore(
     useShallow((s) => ({
       phase: s.phase,
-      frames: s.frames,
       deviceName: s.deviceName,
       deviceId: s.deviceId,
       error: s.error,
@@ -63,8 +79,10 @@ export default function HardwareSettingsScreen() {
     })),
   )
 
-  const readings = useMemo(() => describeReadings(frames), [frames])
-  const charts = useMemo(() => buildSensorCharts(frames), [frames])
+  const readings = useMemo(() => describeReadings(keys), [keys])
+  // Rebuilt on the chart's own tick, not on every frame the board sends.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const charts = useMemo(() => buildSensorCharts(readFrames()), [chartVersion])
 
   const connected = phase === 'connected'
   const scanning = phase === 'scanning'
@@ -129,6 +147,37 @@ export default function HardwareSettingsScreen() {
           </>
         ) : null}
 
+        {connected ? (
+          <>
+            <SettingsSectionTitle>Link</SettingsSectionTitle>
+            <SettingsCard separatorInset={16}>
+              <View style={styles.reading}>
+                <Text style={styles.readingLabel}>Delivered</Text>
+                <LiveNumber value={linkHz} decimals={1} unit="Hz" />
+              </View>
+              <View style={styles.reading}>
+                <Text style={styles.readingLabel}>Dropped</Text>
+                <LiveNumber value={linkDropped} decimals={0} />
+              </View>
+              <View style={styles.reading}>
+                <Text style={styles.readingLabel}>Sensor read</Text>
+                <LiveNumber value={linkReadMs} decimals={0} unit="ms" />
+              </View>
+            </SettingsCard>
+            <View style={styles.actions}>
+              {RATE_PRESETS.map((hz) => (
+                <Button
+                  key={hz}
+                  label={`${hz} Hz`}
+                  variant="secondary"
+                  onPress={() => void link.send(`rate ${hz}`)}
+                  style={styles.action}
+                />
+              ))}
+            </View>
+          </>
+        ) : null}
+
         {readings.length > 0 ? (
           <>
             <SettingsSectionTitle>Readings</SettingsSectionTitle>
@@ -136,7 +185,11 @@ export default function HardwareSettingsScreen() {
               {readings.map((reading) => (
                 <View key={reading.key} style={styles.reading}>
                   <Text style={styles.readingLabel}>{reading.label}</Text>
-                  <Text style={styles.readingValue}>{reading.text}</Text>
+                  <LiveNumber
+                    value={liveValue(reading.key)}
+                    decimals={reading.decimals}
+                    unit={reading.unit}
+                  />
                 </View>
               ))}
             </SettingsCard>
@@ -249,11 +302,6 @@ const styles = StyleSheet.create({
   readingLabel: {
     fontSize: 15,
     color: theme.neutral.textMuted,
-  },
-  readingValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.neutral.textPrimary,
   },
   line: {
     paddingHorizontal: 16,
