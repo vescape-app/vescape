@@ -213,4 +213,23 @@ class ConfigSafetyDetectorTest {
     assertEquals(BoardWarningSeverity.WARN, finding.severity)
     finding.assertPayload("fault_moving_fault_disabled", 1.0, 0.0)
   }
+
+  /**
+   * Refloat declares the field as a numeric config param, so a real board decodes it to `1.0`, never
+   * to `true`. Reading it as a bool skipped the rule on every board — the warning could not fire.
+   */
+  @Test
+  fun movingFaultDisabledFiresForTheNumericValueRealBoardsDecodeTo() {
+    val map = mapOf<String, Any>(ConfigSafetyDetector.MOVING_FAULT_DISABLED_ID to 1.0)
+    val values = BoardConfigValues(
+      boardId = "board",
+      refloatBaseVersion = "2.0",
+      capturedAtMs = 0,
+      freshness = BoardConfigFreshness.FRESH,
+      values = map,
+      writeBase = null,
+    )
+    val report = ConfigSafetyDetector.evaluate(values, seriesCount = 15, perCell = false)
+    assertEquals(BoardWarningSeverity.WARN, report.finding(BoardWarningKind.MOVING_FAULT_DISABLED)!!.severity)
+  }
 }

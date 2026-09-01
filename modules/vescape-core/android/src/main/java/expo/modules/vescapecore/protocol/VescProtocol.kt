@@ -79,16 +79,6 @@ private const val LIGHTS_CONTROL_MASK = 0x3
 internal data class BoardLightsState(val enabled: Boolean, val headlightsEnabled: Boolean)
 
 /**
- * Refloat config field ids for the two light switches. Config is what firmware applies on boot, so
- * these are where the lights stand before anything overrides them — and on
- * [BoardLightsGeneration.Legacy] they are also what the switch itself writes.
- *
- * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REFLOAT_FIELD_LEDS_ON`
- */
-internal const val REFLOAT_FIELD_LEDS_ON = "leds.on"
-internal const val REFLOAT_FIELD_HEADLIGHTS_ON = "leds.headlights_on"
-
-/**
  * Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
  * widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
  * wrong generation answers nothing at all, which is indistinguishable from a dead link.

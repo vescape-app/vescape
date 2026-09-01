@@ -190,4 +190,20 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     XCTAssertEqual(f?.severity, .warn)
     assertPayload(f, param: "fault_moving_fault_disabled", value: 1.0, bound: 0.0)
   }
+
+  /// Refloat declares the field as a numeric config param, so a real board decodes it to `1.0`, never
+  /// to `true`. Reading it as a bool skipped the rule on every board — the warning could not fire.
+  func testMovingFaultDisabledFiresForTheNumericValueRealBoardsDecodeTo() throws {
+    let values = BoardConfigValues(
+      boardId: "board",
+      refloatBaseVersion: "2.0",
+      capturedAtMs: 0,
+      freshness: .fresh,
+      values: [ConfigSafetyDetector.movingFaultDisabledId: 1.0],
+      writeBase: nil
+    )
+    let report = ConfigSafetyDetector.evaluate(values, seriesCount: 15, perCell: false)
+    let finding = try XCTUnwrap(report.findings.first { $0.kind == .movingFaultDisabled })
+    XCTAssertEqual(finding.severity, .warn)
+  }
 }

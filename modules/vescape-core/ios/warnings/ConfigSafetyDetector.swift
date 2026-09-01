@@ -54,22 +54,23 @@ enum ConfigSafetyDetector {
     return major > perCellFwMajor || (major == perCellFwMajor && minor >= perCellFwMinor)
   }
 
-  /// Schema field ids the rules read off the Board Config Values map. A field absent from the map
-  /// (missing from the schema, truncated, or unparseable) skips its rule.
+  /// Schema field ids the rules read off the Board Config Values map, named through the typed field
+  /// sets so no rule can reach for an id the fixture corpus has not resolved. A field absent from the
+  /// map (missing from the schema, truncated, or unparseable) skips its rule.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/warnings/ConfigSafetyDetector.kt
-  static let faultAdc1Id = "fault_adc1"
-  static let faultAdc2Id = "fault_adc2"
-  static let tiltbackLvId = "tiltback_lv"
-  static let tiltbackHvId = "tiltback_hv"
-  static let tiltbackDutyId = "tiltback_duty"
-  static let movingFaultDisabledId = "fault_moving_fault_disabled"
+  static let faultAdc1Id = BoardConfigNumberField.faultAdc1.id
+  static let faultAdc2Id = BoardConfigNumberField.faultAdc2.id
+  static let tiltbackLvId = BoardConfigNumberField.tiltbackLv.id
+  static let tiltbackHvId = BoardConfigNumberField.tiltbackHv.id
+  static let tiltbackDutyId = BoardConfigNumberField.tiltbackDuty.id
+  static let movingFaultDisabledId = BoardConfigFlagField.movingFaultDisabled.id
 
   static func evaluate(_ values: BoardConfigValues, seriesCount: Int?, perCell: Bool?) -> ConfigSafetyReport {
     var findings: [ConfigSafetyFinding] = []
     var clean: [BoardWarningKind] = []
 
     // footpad-disabled (critical): both ADC switch voltages 0 disables the footpad switch entirely.
-    if let adc1 = values.number(faultAdc1Id), let adc2 = values.number(faultAdc2Id) {
+    if let adc1 = values.number(BoardConfigNumberField.faultAdc1), let adc2 = values.number(BoardConfigNumberField.faultAdc2) {
       if adc1 == 0.0, adc2 == 0.0 {
         findings.append(finding(.footpadDisabled, .critical, "\(faultAdc1Id)/\(faultAdc2Id)", 0.0, 0.0))
       } else {
@@ -78,7 +79,7 @@ enum ConfigSafetyDetector {
     }
 
     // lv-pushback-low (critical): LV pushback below the safe minimum, in the firmware's voltage units.
-    if let lv = values.number(tiltbackLvId), let bound = voltageBound(lv, cellLvMinV, perCell, seriesCount) {
+    if let lv = values.number(BoardConfigNumberField.tiltbackLv), let bound = voltageBound(lv, cellLvMinV, perCell, seriesCount) {
       if lv < bound {
         findings.append(finding(.lvPushbackLow, .critical, tiltbackLvId, lv, bound))
       } else {
@@ -87,7 +88,7 @@ enum ConfigSafetyDetector {
     }
 
     // hv-pushback-high (warn): HV pushback above the safe maximum, in the firmware's voltage units.
-    if let hv = values.number(tiltbackHvId), let bound = voltageBound(hv, cellHvMaxV, perCell, seriesCount) {
+    if let hv = values.number(BoardConfigNumberField.tiltbackHv), let bound = voltageBound(hv, cellHvMaxV, perCell, seriesCount) {
       if hv > bound {
         findings.append(finding(.hvPushbackHigh, .warn, tiltbackHvId, hv, bound))
       } else {
@@ -96,7 +97,7 @@ enum ConfigSafetyDetector {
     }
 
     // duty-pushback-high (warn): duty pushback threshold set dangerously close to the duty limit.
-    if let duty = values.number(tiltbackDutyId) {
+    if let duty = values.number(BoardConfigNumberField.tiltbackDuty) {
       if duty > dutyMax {
         findings.append(finding(.dutyPushbackHigh, .warn, tiltbackDutyId, duty, dutyMax))
       } else {
@@ -105,7 +106,7 @@ enum ConfigSafetyDetector {
     }
 
     // moving-fault-disabled (warn): moving faults disabled weakens fault protection while riding.
-    if let movingFault = values.bool(movingFaultDisabledId) {
+    if let movingFault = values.flag(.movingFaultDisabled) {
       if movingFault {
         findings.append(finding(.movingFaultDisabled, .warn, movingFaultDisabledId, 1.0, 0.0))
       } else {

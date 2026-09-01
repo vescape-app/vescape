@@ -62,14 +62,6 @@ internal struct BoardLightsState: Equatable {
   let headlightsEnabled: Bool
 }
 
-/// Refloat config field ids for the two light switches. Config is what firmware applies on boot, so
-/// these are where the lights stand before anything overrides them — and on `.legacy` they are also
-/// what the switch itself writes.
-///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescProtocol.kt `REFLOAT_FIELD_LEDS_ON`
-internal let REFLOAT_FIELD_LEDS_ON = "leds.on"
-internal let REFLOAT_FIELD_HEADLIGHTS_ON = "leds.headlights_on"
-
 /// Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
 /// widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
 /// wrong generation answers nothing at all, which is indistinguishable from a dead link.

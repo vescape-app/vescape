@@ -14,8 +14,6 @@ import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
 import expo.modules.vescapecore.protocol.BoardLightsGeneration
-import expo.modules.vescapecore.protocol.REFLOAT_FIELD_HEADLIGHTS_ON
-import expo.modules.vescapecore.protocol.REFLOAT_FIELD_LEDS_ON
 import expo.modules.vescapecore.protocol.BoardLightsState
 import expo.modules.vescapecore.protocol.BoardMoveGeneration
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
@@ -34,6 +32,7 @@ import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.config.ConfigConnectionSnapshot
 import expo.modules.vescapecore.config.ConfigRWController
 import expo.modules.vescapecore.config.ConfigRWControllerPort
+import expo.modules.vescapecore.config.BoardConfigFlagField
 import expo.modules.vescapecore.config.BoardConfigOperationOrigin
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
@@ -2359,33 +2358,13 @@ private var wearAutoLaunchOnConnect = true
         emitEvent("onBoardLights", lightsEventBody())
         if (lightsGeneration() != BoardLightsGeneration.Legacy) return
         val values = boardConfigValues ?: return
-        val rebased = values.copy(
-            values = values.values +
-                listOfNotNull(
-                    lightsFieldEntry(values, REFLOAT_FIELD_LEDS_ON, lights.enabled),
-                    lightsFieldEntry(values, REFLOAT_FIELD_HEADLIGHTS_ON, lights.headlightsEnabled),
-                ),
-        )
+        val rebased = values
+            .withFlag(BoardConfigFlagField.LEDS_ON, lights.enabled)
+            ?.withFlag(BoardConfigFlagField.HEADLIGHTS_ON, lights.headlightsEnabled)
+            ?: return
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch { repo.saveBoardConfigValues(rebased) }
     }
-
-    /**
-     * The rebased baseline entry for one lights field, in the same runtime type the decoder produced
-     * for it. Refloat declares both fields as `type 5`, so they decode as numbers, not booleans, and
-     * a rebase that wrote a Kotlin `Boolean` would diff against every later read on type alone.
-     * Absent from the schema means absent from the baseline: inventing a key would itself be a diff.
-     */
-    private fun lightsFieldEntry(values: BoardConfigValues, id: String, enabled: Boolean): Pair<String, Any>? =
-        when (values.values[id]) {
-            is Boolean -> id to enabled
-            is Double -> id to if (enabled) 1.0 else 0.0
-            else -> null
-        }
-
-    /** One lights field as a flag, reading either representation the schema may have decoded. */
-    private fun lightsFlag(values: BoardConfigValues, id: String): Boolean? =
-        values.bool(id) ?: values.number(id)?.let { it != 0.0 }
 
     /**
      * Seed the lights from config, which is what firmware applies until something overrides it. On
@@ -2395,8 +2374,8 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun syncBoardLightsFromConfig(values: BoardConfigValues) {
         if (lightsGeneration() == BoardLightsGeneration.Current && boardLights != null) return
-        val enabled = lightsFlag(values, REFLOAT_FIELD_LEDS_ON) ?: return
-        val lights = BoardLightsState(enabled, lightsFlag(values, REFLOAT_FIELD_HEADLIGHTS_ON) ?: false)
+        val enabled = values.flag(BoardConfigFlagField.LEDS_ON) ?: return
+        val lights = BoardLightsState(enabled, values.flag(BoardConfigFlagField.HEADLIGHTS_ON) ?: false)
         if (lights == boardLights) return
         boardLights = lights
         emitEvent("onBoardLights", lightsEventBody())

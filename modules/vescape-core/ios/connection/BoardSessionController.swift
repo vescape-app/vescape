@@ -499,32 +499,11 @@ internal final class BoardSessionController: VescGattListener {
     boardLights = lights
     emit?("onBoardLights", lightsEventBody())
     guard lightsGeneration() == .legacy, let values = boardConfigValues else { return }
-    var rebasedValues = values.values
-    setLightsField(&rebasedValues, REFLOAT_FIELD_LEDS_ON, lights.enabled)
-    setLightsField(&rebasedValues, REFLOAT_FIELD_HEADLIGHTS_ON, lights.headlightsEnabled)
-    BoardConfigStore.shared.save(values.withValues(rebasedValues))
-  }
-
-  /// Rebase one lights field in the same runtime type the decoder produced for it. Refloat declares
-  /// both fields as `type 5`, so they decode as numbers, not booleans, and a rebase that wrote a
-  /// `Bool` would diff against every later read on type alone. A field the schema does not carry is
-  /// left alone: inventing a key would itself be a diff.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsFieldEntry`
-  private func setLightsField(_ values: inout [String: Any], _ id: String, _ enabled: Bool) {
-    guard let current = values[id] else { return }
-    if current is Bool {
-      values[id] = enabled
-    } else if current is Double {
-      values[id] = enabled ? 1.0 : 0.0
-    }
-  }
-
-  /// One lights field as a flag, reading either representation the schema may have decoded.
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsFlag`
-  private func lightsFlag(_ values: BoardConfigValues, _ id: String) -> Bool? {
-    if let flag = values.bool(id) { return flag }
-    guard let number = values.number(id) else { return nil }
-    return number != 0
+    guard
+      let rebased = values.withFlag(.ledsOn, lights.enabled)?
+        .withFlag(.headlightsOn, lights.headlightsEnabled)
+    else { return }
+    BoardConfigStore.shared.save(rebased)
   }
 
   /// Seed the lights from config, which is what firmware applies until something overrides it. On
@@ -535,10 +514,10 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `syncBoardLightsFromConfig`
   private func syncBoardLightsFromConfig(_ values: BoardConfigValues) {
     if lightsGeneration() == .current, boardLights != nil { return }
-    guard let enabled = lightsFlag(values, REFLOAT_FIELD_LEDS_ON) else { return }
+    guard let enabled = values.flag(.ledsOn) else { return }
     let lights = BoardLightsState(
       enabled: enabled,
-      headlightsEnabled: lightsFlag(values, REFLOAT_FIELD_HEADLIGHTS_ON) ?? false
+      headlightsEnabled: values.flag(.headlightsOn) ?? false
     )
     guard lights != boardLights else { return }
     boardLights = lights

@@ -17,7 +17,9 @@ export interface TuneBoardValues {
 
 /** Curated app tune groups filled from a flat field map, dropping fields the map has no value for. */
 export function groupsFromFieldValues(
-  fields: Record<string, TuneProfileFieldValue> | null,
+  // An absent field is expressible on purpose: decoded config omits anything the schema does not
+  // carry, and `isDisplayableFieldValue` is what decides whether a value can be shown.
+  fields: Record<string, TuneProfileFieldValue | undefined> | null,
 ): RefloatConfigGroup[] {
   if (!fields) return []
   return APP_TUNE_GROUPS.map((group) => ({

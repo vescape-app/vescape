@@ -1,3 +1,5 @@
+import type { BoardConfigFieldValues } from 'vescape-core'
+
 import type { BoardConfigBases } from '@/modules/alerts/lib/configRelativeFields'
 import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
 import { useMotorConfigValuesStore } from '@/modules/board/store/motorConfigValuesStore'
@@ -9,7 +11,7 @@ import { useMotorConfigValuesStore } from '@/modules/board/store/motorConfigValu
  * preset store, which regenerates rules outside React. They must agree, so the shaping lives here.
  */
 export function boardConfigBases(
-  refloat: Record<string, number | boolean> | undefined,
+  refloat: BoardConfigFieldValues | undefined,
   motor: Record<string, number> | undefined,
 ): BoardConfigBases {
   return { refloat: numbersOnly(refloat), motor: motor ?? null }
@@ -24,9 +26,7 @@ export function readBoardConfigBases(): BoardConfigBases {
 }
 
 /** Refloat carries booleans too; a config-relative anchor is only ever a number. */
-function numbersOnly(
-  values: Record<string, number | boolean> | undefined,
-): Record<string, number> | null {
+function numbersOnly(values: BoardConfigFieldValues | undefined): Record<string, number> | null {
   if (!values) return null
   return Object.fromEntries(
     Object.entries(values).filter(([, value]) => typeof value === 'number'),
