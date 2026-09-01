@@ -13,6 +13,7 @@ import {
   hardwareStopScan,
 } from 'vescape-core'
 
+import { parseSensorFrame } from '@/modules/hardware/lib/parseSensorFrame'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
 
 /**
@@ -33,11 +34,14 @@ export function useHardwareLink(): {
     const subs = [
       addHardwareStateListener((event) => useHardwareStore.getState().applyState(event)),
       addHardwareDeviceListener((event) => useHardwareStore.getState().addDevice(event)),
-      addHardwareMessageListener((event) =>
-        useHardwareStore
-          .getState()
-          .addLine({ text: event.text, atMs: event.atMs, direction: 'rx' }),
-      ),
+      // Sensor frames arrive once a second. They go to the readings card, not the console, which
+      // would otherwise scroll away every reply the board sends.
+      addHardwareMessageListener((event) => {
+        const state = useHardwareStore.getState()
+        const frame = parseSensorFrame(event.text, event.atMs)
+        if (frame) state.applyFrame(frame)
+        else state.addLine({ text: event.text, atMs: event.atMs, direction: 'rx' })
+      }),
     ]
     return () => {
       for (const sub of subs) sub.remove()

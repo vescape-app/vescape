@@ -32,6 +32,16 @@ const PHASE_COLOR = {
   error: theme.status.error.color,
 } as const
 
+/**
+ * Presentation for the keys the firmware sends today. Anything unknown still renders, with its
+ * raw key and value, so a newly wired sensor is visible before the app knows its name.
+ */
+const READING_LABEL: Record<string, { label: string; format: (value: number) => string }> = {
+  tempC: { label: 'Chip temperature', format: (v) => `${v.toFixed(1)} °C` },
+  heapKb: { label: 'Free heap', format: (v) => `${Math.round(v)} kB` },
+  upMs: { label: 'Uptime', format: (v) => `${Math.floor(v / 1000)} s` },
+}
+
 const LINE_PREFIX = { rx: '<', tx: '>', error: '!' } as const
 
 const LINE_COLOR = {
@@ -48,9 +58,10 @@ export default function HardwareSettingsScreen() {
   const link = useHardwareLink()
   const permissions = usePermissions()
   const [draft, setDraft] = useState('')
-  const { phase, deviceName, deviceId, error, devices, lines } = useHardwareStore(
+  const { phase, deviceName, deviceId, error, devices, lines, frame } = useHardwareStore(
     useShallow((s) => ({
       phase: s.phase,
+      frame: s.frame,
       deviceName: s.deviceName,
       deviceId: s.deviceId,
       error: s.error,
@@ -119,6 +130,25 @@ export default function HardwareSettingsScreen() {
                 onPress={() => link.connect(device.id)}
               />
             ))}
+          </>
+        ) : null}
+
+        {frame ? (
+          <>
+            <SettingsSectionTitle>Readings</SettingsSectionTitle>
+            <SettingsCard separatorInset={16}>
+              {Object.entries(frame.values).map(([key, value]) => {
+                const reading = READING_LABEL[key]
+                return (
+                  <View key={key} style={styles.reading}>
+                    <Text style={styles.readingLabel}>{reading?.label ?? key}</Text>
+                    <Text style={styles.readingValue}>
+                      {reading ? reading.format(value) : String(value)}
+                    </Text>
+                  </View>
+                )
+              })}
+            </SettingsCard>
           </>
         ) : null}
 
@@ -196,6 +226,23 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+  },
+  reading: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  readingLabel: {
+    fontSize: 15,
+    color: theme.neutral.textMuted,
+  },
+  readingValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.neutral.textPrimary,
   },
   line: {
     paddingHorizontal: 16,
