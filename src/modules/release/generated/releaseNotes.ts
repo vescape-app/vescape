@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.91.1',
+    markdown:
+      '## Improved\n\n- The event log now gives clearer details when GPS updates stop, lose signal, recover, or fail because of permissions or provider errors.\n\n## Fixed\n\n- Fixed a crash that could occur when live ride and battery readouts used adaptive theme colors.\n',
+  },
+  {
     version: '0.91.0',
     markdown:
       '## New\n\n- Vescape now records VESC controller faults for each Board, with telemetry from up to five seconds before detection through two seconds after the fault clears. Review or dismiss each occurrence and read the controller fault log while the Board is connected and stopped.\n- Control board lights and the headlight independently from the Board drawer on compatible Refloat firmware.\n\n## Improved\n\n- Ride History now stays tied to the Board instead of its BLE address. Renaming a Board relabels past rides, while deleting a Board keeps its Ride History and Tune Profiles.\n- Expandable controls now open in a focused panel without shifting the drawer. Tap or drag the backdrop to close it.\n\n## Fixed\n\n- Vescape no longer warns that "Disable Moving Faults" is unsafe, since riders may deliberately use it with unreliable footpad sensors.\n- Live BMS cell-voltage and balancing trends now decode correctly.\n- The footpad indicator now matches the Board\'s physical left and right sensor zones, and both rails glow when either sensor engages in Posi mode.\n- Map light and dark changes now persist, and widget borders use the correct theme colors on iOS.\n',
