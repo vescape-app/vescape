@@ -500,10 +500,21 @@ internal final class BoardSessionController: VescGattListener {
     emit?("onBoardLights", lightsEventBody())
     guard lightsGeneration() == .legacy, let values = boardConfigValues else { return }
     guard
+      let boardId = values.boardId, let baseVersion = values.refloatBaseVersion,
       let rebased = values.withFlag(.ledsOn, lights.enabled)?
         .withFlag(.headlightsOn, lights.headlightsEnabled)
     else { return }
-    BoardConfigStore.shared.save(rebased)
+    // Only the two light fields are patched into the stored row. Writing the whole snapshot back
+    // would race a fresh read that landed since it was taken and reinstate its stale values as the
+    // comparison base.
+    let patch = rebased.values.filter {
+      $0.key == BoardConfigFlagField.ledsOn.id || $0.key == BoardConfigFlagField.headlightsOn.id
+    }
+    BoardConfigStore.shared.patch(
+      boardId: boardId,
+      refloatBaseVersion: baseVersion,
+      values: patch
+    )
   }
 
   /// Seed the lights from config, which is what firmware applies until something overrides it. On
@@ -1390,6 +1401,11 @@ internal final class BoardSessionController: VescGattListener {
     // were off the link another central could have written. The values stay displayable, they just
     // stop backing a write until the post-trust read makes them fresh again (ADR 0035).
     boardConfigValues = boardConfigValues?.demotedToProvisional()
+    // Lights stop being known across the drop: the board may reboot while off the link, which clears
+    // its runtime override and hands authority back to config. Keeping the old echo would leave the
+    // switch showing pre-reboot state that nothing ever corrects.
+    boardLights = nil
+    emit?("onBoardLights", lightsEventBody())
     // Re-arm the post-trust read so the relinked session gets fresh values back.
     boardConfigReadScheduled = false
     // Same reasoning as the Refloat demote above.

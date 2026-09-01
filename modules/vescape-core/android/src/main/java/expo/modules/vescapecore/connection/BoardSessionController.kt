@@ -521,6 +521,11 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // displayable, they just stop backing a write until the post-trust read makes them fresh
             // again (ADR 0035).
             boardConfigValues = boardConfigValues?.demotedToProvisional()
+            // Lights stop being known across the drop: the board may reboot while off the link,
+            // which clears its runtime override and hands authority back to config. Keeping the old
+            // echo would leave the switch showing pre-reboot state that nothing ever corrects.
+            boardLights = null
+            emitEvent("onBoardLights", lightsEventBody())
             // Re-arm the post-trust read so the relinked session gets fresh values back.
             boardConfigReadScheduled = false
             // Same reasoning as the Refloat demote above: the disconnected window is where another
@@ -2358,12 +2363,20 @@ private var wearAutoLaunchOnConnect = true
         emitEvent("onBoardLights", lightsEventBody())
         if (lightsGeneration() != BoardLightsGeneration.Legacy) return
         val values = boardConfigValues ?: return
+        val boardId = values.boardId ?: return
+        val baseVersion = values.refloatBaseVersion ?: return
         val rebased = values
             .withFlag(BoardConfigFlagField.LEDS_ON, lights.enabled)
             ?.withFlag(BoardConfigFlagField.HEADLIGHTS_ON, lights.headlightsEnabled)
             ?: return
+        // Only the two light fields are patched into the stored row. Writing the whole snapshot back
+        // would race a fresh read that landed since it was taken and reinstate its stale values as
+        // the comparison base.
+        val patch = rebased.values.filterKeys {
+            it == BoardConfigFlagField.LEDS_ON.id || it == BoardConfigFlagField.HEADLIGHTS_ON.id
+        }
         val repo = AppDataRepository.get(service.applicationContext)
-        CoreForegroundService.appDataScope.launch { repo.saveBoardConfigValues(rebased) }
+        CoreForegroundService.appDataScope.launch { repo.patchBoardConfigValues(boardId, baseVersion, patch) }
     }
 
     /**

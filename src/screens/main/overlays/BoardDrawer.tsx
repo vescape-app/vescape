@@ -28,6 +28,14 @@ import { useLegalModeStore } from '@/modules/legal/store/legalModeStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 
+/**
+ * Unknown is not off: until the board reports its lights there is nothing to toggle, and an enabled
+ * switch reading "off" invites a tap that would fight the board's real state.
+ */
+function lightsSwitchDisabled(quickControlsEnabled: boolean, enabled: boolean | null): boolean {
+  return !quickControlsEnabled || enabled == null
+}
+
 interface TuneDrawerProps {
   onNavigate: () => void
   onOpenLegalLimits: () => void
@@ -181,7 +189,7 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
             value={lights.enabled ?? false}
             onValueChange={lights.toggleLights}
             accent={theme.light.accent}
-            disabled={!quickControlsEnabled}
+            disabled={lightsSwitchDisabled(quickControlsEnabled, lights.enabled)}
           />
         </View>
         <View style={styles.quickCell}>

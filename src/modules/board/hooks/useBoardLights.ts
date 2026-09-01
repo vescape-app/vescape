@@ -18,6 +18,10 @@ export function useBoardLights() {
   return {
     /** `null` while the board has not reported its lights. */
     enabled,
-    toggleLights: () => void setBoardLights(!(enabled ?? false)),
+    /** No-op while the board's state is unknown: there is nothing to toggle away from yet. */
+    toggleLights: () => {
+      if (enabled == null) return
+      void setBoardLights(!enabled)
+    },
   }
 }

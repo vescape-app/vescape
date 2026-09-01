@@ -165,6 +165,39 @@ struct BoardConfigStore {
     }
   }
 
+  /// Teach the config-change baseline about fields a runtime command changed on the board, merging
+  /// into whatever the stored row holds now rather than replacing it with the caller's snapshot.
+  ///
+  /// `captured_at` is deliberately untouched: the row still describes the read it came from, it just
+  /// accounts for a change Vescape itself made since.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `patchBoardConfigValues`
+  func patch(boardId: String, refloatBaseVersion: String, values patch: [String: Any]) {
+    guard !boardId.isEmpty, !refloatBaseVersion.isEmpty, !patch.isEmpty, let writer = resolveWriter()
+    else { return }
+    try? writer.write { db in
+      let row = try Row.fetchOne(
+        db,
+        sql:
+          "SELECT values_json FROM board_config_values WHERE board_id = ? AND refloat_base_version = ?",
+        arguments: [boardId, refloatBaseVersion]
+      )
+      guard let json: String = row?["values_json"] else { return }
+      let stored = BoardConfigValues.lastKnown(
+        boardId: boardId,
+        refloatBaseVersion: refloatBaseVersion,
+        capturedAtMs: 0,
+        valuesJson: json
+      )
+      var merged = stored.values
+      for (id, value) in patch { merged[id] = value }
+      try db.execute(
+        sql:
+          "UPDATE board_config_values SET values_json = ? WHERE board_id = ? AND refloat_base_version = ?",
+        arguments: [stored.withValues(merged).valuesJson(), boardId, refloatBaseVersion]
+      )
+    }
+  }
+
   /// Fresh trusted-session read: compare against Last Known, then replace notice + baseline in one
   /// transaction. No previous row means Board Probe/first-link baseline, never a notice.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveFreshBoardConfigValues`
