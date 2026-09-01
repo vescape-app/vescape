@@ -1,11 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-  type LayoutChangeEvent,
-} from 'react-native'
+import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   Easing,
@@ -203,9 +197,26 @@ export function WidgetFocusOverlay({ host }: { host: WidgetFocusHost }) {
             scheduleOnRN(close)
             return
           }
-          drag.value = withSpring(0, { damping: 18, stiffness: 220 })
+          // Critically damped: an aborted drag should settle back, not bounce around the handle.
+          drag.value = withSpring(0, { damping: 30, stiffness: 220 })
         }),
     [close, drag],
+  )
+
+  /**
+   * The scrim answers the same drag as the handle. Aiming for a 5pt grabber is a precision task the
+   * panel has no reason to demand: anywhere outside it is empty space, and a drag there means the
+   * same thing as a drag on the handle. A tap still closes, so the two race rather than nest.
+   */
+  const scrimGesture = useMemo(
+    () =>
+      Gesture.Race(
+        dragGesture,
+        Gesture.Tap().onEnd((_event, success) => {
+          if (success) scheduleOnRN(close)
+        }),
+      ),
+    [close, dragGesture],
   )
 
   const surface = useResolvedSecondaryWidgetSurface()
@@ -228,14 +239,13 @@ export function WidgetFocusOverlay({ host }: { host: WidgetFocusHost }) {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, scrimStyle]}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={host.controller.close}
+      <GestureDetector gesture={scrimGesture}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.scrim, scrimStyle]}
           accessibilityRole="button"
           accessibilityLabel={`Close ${header.title}`}
         />
-      </Animated.View>
+      </GestureDetector>
       <Animated.View
         onLayout={measurePanel}
         style={[
