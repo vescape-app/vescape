@@ -31,6 +31,8 @@ const GOOD_EVENTS = new Set([
   'board_probe_transport_confirmed',
   'gatt_connected',
   'gatt_ready',
+  'gps_fix_recovered',
+  'gps_updates_started',
   'reconnect_scan_found',
   'telemetry_polling_started',
   'watch_mirror_present',
@@ -44,12 +46,15 @@ const INFO_EVENTS = new Set([
   'board_probe_started',
   'board_probe_transport_finished',
   'board_probe_transport_probe_started',
+  'gps_session_summary',
 ])
 
 const WARNING_EVENTS = new Set([
   'board_probe_cancelled',
   'board_probe_connect_retry',
   'board_probe_disconnected_mid_detection',
+  'gps_fix_stale',
+  'gps_updates_stopped',
   'watch_mirror_absent',
   'watch_mirror_launch_skipped',
 ])
@@ -59,6 +64,8 @@ const BAD_EVENTS = new Set([
   'ble_disconnected_unexpectedly',
   'board_probe_failed',
   'config_decode_failed',
+  'gps_provider_error',
+  'gps_start_denied',
   'profile_push_failed',
   'board_ready_timeout',
   'reconnect_scan_failed',

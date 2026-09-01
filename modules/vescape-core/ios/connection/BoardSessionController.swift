@@ -1094,7 +1094,7 @@ internal final class BoardSessionController: VescGattListener {
     if replayTransport == nil {
       _ = gpsMonitor.start()
     } else if gpsMonitor.active {
-      gpsMonitor.stop()
+      gpsMonitor.stop(reason: "replay_owns_position")
     }
     // Fresh rule set for this session's alert engine — only the connected Board's enabled rules
     // (mirrors Android loadAlertRules on connect).
@@ -1197,7 +1197,7 @@ internal final class BoardSessionController: VescGattListener {
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
     )
-    gpsMonitor.stop()
+    gpsMonitor.stop(reason: "board_session_ended")
     stopPolling()
     stopReconnect()
     configController.onSessionTerminated(error ?? "Board session ended", connection: fallbackConfigRWConnection())
@@ -1353,7 +1353,7 @@ internal final class BoardSessionController: VescGattListener {
     session = nil
     config = nil
     recordingCoordinator.failSession()
-    gpsMonitor.stop()
+    gpsMonitor.stop(reason: "board_session_failed")
     stopPolling()
     stopReconnect()
     configController.onSessionTerminated(message, connection: fallbackConfigRWConnection())

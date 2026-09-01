@@ -407,6 +407,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             context = service,
             looper = Looper.getMainLooper(),
             onLocation = ::onLocationUpdated,
+            record = ::captureDiagnostic,
         )
     }
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groupRideObserver` */
@@ -2787,7 +2788,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun stopLocationUpdates() {
-        gpsMonitor.stop()
+        gpsMonitor.stop(reason = "replay_owns_position")
     }
 
     fun setTelemetryRecordingEnabled(enabled: Boolean) {
