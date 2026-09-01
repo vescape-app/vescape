@@ -1,6 +1,11 @@
 import { useMemo } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
-import { useDerivedValue, useSharedValue, type DerivedValue } from 'react-native-reanimated'
+import {
+  isSharedValue,
+  useDerivedValue,
+  useSharedValue,
+  type DerivedValue,
+} from 'react-native-reanimated'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 
 import { theme, type MonoWeight } from '@/constants/theme'
@@ -59,10 +64,12 @@ export function MonoText({
   const font = useSkiaMonoFont(weight, size)
   // A derived colour is already resolved for the active appearance; a static token still needs the
   // adaptive lookup. Both hooks run every render so the hook order stays stable.
+  // Adaptive tokens are native color objects, not strings, so the split is on "is it a shared
+  // value" — a `typeof === 'string'` test sends them to Skia raw, which crashes on paint.
   const staticColor = useResolvedColor(
-    typeof color === 'string' ? color : theme.palette.slate.textPrimary,
+    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as string),
   )
-  const rendererColor = typeof color === 'string' ? staticColor : color
+  const rendererColor = isSharedValue<string>(color) ? color : staticColor
 
   // Vertically center the glyph box: ascent is negative, descent positive.
   const baseline = useMemo(() => {

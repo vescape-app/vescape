@@ -1,6 +1,6 @@
 import { Canvas, Circle, RoundedRect } from '@shopify/react-native-skia'
 import { useMemo } from 'react'
-import { useDerivedValue, type DerivedValue } from 'react-native-reanimated'
+import { isSharedValue, useDerivedValue, type DerivedValue } from 'react-native-reanimated'
 
 import { MonoText, TEXT_LINE_RATIO } from '@/components/base/MonoValue'
 import { accentColors, resolveAdaptiveColor, theme } from '@/constants/theme'
@@ -62,9 +62,9 @@ export function BmsStatValues({ values, width }: { values: BmsStatValue[]; width
           size={STAT_VALUE_FONT_SIZE}
           weight="800"
           color={
-            typeof value.color === 'string'
-              ? (resolveAdaptiveColor(value.color, appearance) as string)
-              : value.color
+            isSharedValue<string>(value.color)
+              ? value.color
+              : (resolveAdaptiveColor(value.color, appearance) as string)
           }
           align="center"
           x={index * (slot + COL_GAP)}
