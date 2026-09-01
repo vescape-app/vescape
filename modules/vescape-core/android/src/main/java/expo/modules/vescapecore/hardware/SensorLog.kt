@@ -90,6 +90,21 @@ internal class SensorLog(
     }
 
     /**
+     * The display range per key, as `[min0, max0, min1, max1, ...]` parallel to the rows, NaN
+     * where a reading has no fixed range. A row needs it to draw a value as a proportion rather
+     * than a number, and the range is part of the reading contract, not the screen's to guess.
+     */
+    fun ranges(): DoubleArray {
+        val out = DoubleArray(keyOrder.size * 2)
+        for (index in keyOrder.indices) {
+            val spec = readingSpec(keyOrder[index])
+            out[index * 2] = spec.min ?: Double.NaN
+            out[index * 2 + 1] = spec.max ?: Double.NaN
+        }
+        return out
+    }
+
+    /**
      * The board stamps every frame with `seq`, so a rate below the requested one can be told apart
      * from notifications the phone dropped: a slow board keeps its sequence intact, a saturated
      * link skips numbers.

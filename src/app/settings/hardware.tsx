@@ -15,6 +15,7 @@ import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
 import { LiveNumber } from '@/modules/hardware/components/LiveNumber'
+import { SensorBar } from '@/modules/hardware/components/SensorBar'
 import { useHardwareLink } from '@/modules/hardware/hooks/useHardwareLink'
 import { useSensorVersion } from '@/modules/hardware/hooks/useSensors'
 import { buildSensorCharts } from '@/modules/hardware/lib/sensorCharts'
@@ -25,6 +26,7 @@ import {
   linkReadMs,
   liveValue,
   readSensorKeys,
+  readSensorRange,
   readSensorSeries,
 } from '@/modules/hardware/lib/sensorRuntime'
 import { useHardwareStore } from '@/modules/hardware/store/hardwareStore'
@@ -82,7 +84,14 @@ export default function HardwareSettingsScreen() {
   // Both rebuilt when native publishes, which is four times a second at most, whatever rate the
   // board is running at.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const readings = useMemo(() => describeReadings(readSensorKeys()), [sensorVersion])
+  const readings = useMemo(
+    () =>
+      describeReadings(readSensorKeys()).map((reading) => ({
+        ...reading,
+        range: readSensorRange(reading.key),
+      })),
+    [sensorVersion],
+  )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const charts = useMemo(() => buildSensorCharts(readSensorSeries()), [sensorVersion])
 
@@ -185,13 +194,23 @@ export default function HardwareSettingsScreen() {
             <SettingsSectionTitle>Readings</SettingsSectionTitle>
             <SettingsCard separatorInset={16}>
               {readings.map((reading) => (
-                <View key={reading.key} style={styles.reading}>
-                  <Text style={styles.readingLabel}>{reading.label}</Text>
-                  <LiveNumber
-                    value={liveValue(reading.key)}
-                    decimals={reading.decimals}
-                    unit={reading.unit}
-                  />
+                <View key={reading.key} style={styles.readingCell}>
+                  <View style={styles.readingRow}>
+                    <Text style={styles.readingLabel}>{reading.label}</Text>
+                    <LiveNumber
+                      value={liveValue(reading.key)}
+                      decimals={reading.decimals}
+                      unit={reading.unit}
+                    />
+                  </View>
+                  {/* A ranged sensor gets a bar: these numbers move faster than they read. */}
+                  {reading.range ? (
+                    <SensorBar
+                      value={liveValue(reading.key)}
+                      range={reading.range}
+                      color={reading.color}
+                    />
+                  ) : null}
                 </View>
               ))}
             </SettingsCard>
@@ -292,6 +311,17 @@ const styles = StyleSheet.create({
   charts: {
     paddingVertical: 12,
     paddingRight: 12,
+  },
+  readingCell: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  readingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
   },
   reading: {
     flexDirection: 'row',

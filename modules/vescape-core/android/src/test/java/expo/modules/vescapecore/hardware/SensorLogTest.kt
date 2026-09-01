@@ -37,6 +37,13 @@ class SensorLogTest {
     }
 
     @Test
+    fun `reports a range only for the readings that have one`() {
+        val log = SensorLog()
+        log.append("""{"distanceMm":100,"tempC":40}""", 1_000L)
+        assertEquals(listOf(0.0, 40.0, Double.NaN, Double.NaN), log.ranges().toList())
+    }
+
+    @Test
     fun `holds a ranged sensor at its ceiling but invents no history before it answered`() {
         val log = SensorLog()
         log.append("""{"rangeCm":12}""", 1_000L)

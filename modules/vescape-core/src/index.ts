@@ -2097,6 +2097,8 @@ export interface HardwareMessageEvent {
 export interface HardwareSensorEvent {
   keys: string[]
   values: number[]
+  /** Flat `[min0, max0, ...]` parallel to `keys`, NaN where the reading has no fixed range. */
+  ranges: number[]
   /** Frames per second actually delivered, or null until there are two frames to time. */
   hz: number | null
   /** Frames the board numbered but the app never received, inside the rate window. */

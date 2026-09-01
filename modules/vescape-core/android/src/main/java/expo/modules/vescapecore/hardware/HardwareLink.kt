@@ -353,6 +353,7 @@ object HardwareLink {
             mapOf(
                 "keys" to sensors.keys(),
                 "values" to sensors.live(),
+                "ranges" to sensors.ranges(),
                 "hz" to rate.hz,
                 "dropped" to rate.dropped,
                 "readMs" to rate.readMs,

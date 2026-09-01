@@ -20,7 +20,13 @@ export const linkHz = makeMutable(Number.NaN)
 export const linkDropped = makeMutable(Number.NaN)
 export const linkReadMs = makeMutable(Number.NaN)
 
+export interface ReadingRange {
+  min: number
+  max: number
+}
+
 let keys: readonly string[] = []
+let ranges = new Map<string, ReadingRange>()
 let series: readonly HardwareSeries[] = []
 let version = 0
 
@@ -49,6 +55,14 @@ export function applySensor(event: HardwareSensorEvent): void {
   // in, not fifty times a second.
   if (!sameKeys(keys, event.keys)) {
     keys = event.keys
+    ranges = new Map(
+      event.keys.flatMap((key, index) => {
+        const min = event.ranges[index * 2]
+        const max = event.ranges[index * 2 + 1]
+        if (min == null || max == null || Number.isNaN(min) || Number.isNaN(max)) return []
+        return [[key, { min, max }] as const]
+      }),
+    )
     publish()
   }
 }
@@ -60,6 +74,7 @@ export function applySeries(event: HardwareSeriesEvent): void {
 
 export function resetSensors(): void {
   keys = []
+  ranges = new Map()
   series = []
   for (const value of live.values()) value.value = Number.NaN
   linkHz.value = Number.NaN
@@ -79,6 +94,11 @@ export function sensorVersion(): number {
 
 export function readSensorKeys(): readonly string[] {
   return keys
+}
+
+/** The range a key is drawn against, or undefined when it has none to fill a bar with. */
+export function readSensorRange(key: string): ReadingRange | undefined {
+  return ranges.get(key)
 }
 
 export function readSensorSeries(): readonly HardwareSeries[] {
