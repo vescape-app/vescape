@@ -37,6 +37,8 @@ const PHASE_COLOR = {
  * raw key and value, so a newly wired sensor is visible before the app knows its name.
  */
 const READING_LABEL: Record<string, { label: string; format: (value: number) => string }> = {
+  distanceMm: { label: 'Distance (ToF)', format: (v) => `${Math.round(v)} mm` },
+  rangeCm: { label: 'Range (ultrasonic)', format: (v) => `${v.toFixed(1)} cm` },
   tempC: { label: 'Chip temperature', format: (v) => `${v.toFixed(1)} °C` },
   heapKb: { label: 'Free heap', format: (v) => `${Math.round(v)} kB` },
   upMs: { label: 'Uptime', format: (v) => `${Math.floor(v / 1000)} s` },
