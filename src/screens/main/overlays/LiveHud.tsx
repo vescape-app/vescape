@@ -1,10 +1,12 @@
 import { StyleSheet } from 'react-native'
+import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
 import { DualGaugeIndicator } from '@/modules/board/components/DualGaugeIndicator'
 import { GpsStatusPill } from '@/modules/board/components/GpsStatusPill'
 import { useGpsStatusBadge } from '@/modules/board/hooks/useGpsStatusBadge'
+import { routes } from '@/navigation/routes'
 
 interface LiveHudProps {
   revealProgress?: SharedValue<number>
@@ -24,8 +26,19 @@ export function LiveHud({ revealProgress }: LiveHudProps) {
       pointerEvents="box-none"
     >
       <Animated.View style={revealStyle}>
-        <DualGaugeIndicator compact transparent />
-        {gpsBadge ? <GpsStatusPill badge={gpsBadge} style={styles.gpsBadge} /> : null}
+        <DualGaugeIndicator
+          compact
+          transparent
+          footer={
+            gpsBadge ? (
+              <GpsStatusPill
+                badge={gpsBadge}
+                // The badge says what is wrong; Navigation diagnostics says why.
+                onPress={() => router.push(routes.settingsNavigationDiagnostic)}
+              />
+            ) : null
+          }
+        />
       </Animated.View>
     </Animated.View>
   )
@@ -38,8 +51,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 10,
-  },
-  gpsBadge: {
-    marginTop: 6,
   },
 })

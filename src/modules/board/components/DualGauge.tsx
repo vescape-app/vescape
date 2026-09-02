@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
@@ -29,6 +30,8 @@ interface DualGaugeProps {
   compact?: boolean
   transparent?: boolean
   containerStyle?: StyleProp<ViewStyle>
+  /** Hangs off the bottom of the arcs — status that qualifies what the gauges are reading. */
+  footer?: ReactNode
 }
 
 // Quarter-arc geometry. Left arc sweeps π → π/2, right arc sweeps 0 → π/2,
@@ -48,6 +51,7 @@ export function DualGauge({
   compact = false,
   transparent = false,
   containerStyle,
+  footer,
 }: DualGaugeProps) {
   const telemetryColors = useResolvedTelemetryColors()
   const router = useRouter()
@@ -90,6 +94,7 @@ export function DualGauge({
           speedSeries={speedSeries ?? []}
           dutySeries={dutySeries ?? []}
           windowMs={windowMs}
+          footer={footer}
           onPressSpeed={() => router.push(routes.controlSpeed)}
           onPressDuty={() => router.push(routes.controlDuty)}
         />

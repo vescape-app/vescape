@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 
 import { DualGauge } from '@/modules/board/components/DualGauge'
@@ -16,12 +16,15 @@ interface DualGaugeIndicatorProps {
   compact?: boolean
   transparent?: boolean
   containerStyle?: StyleProp<ViewStyle>
+  /** Hangs off the bottom of the arcs — status that qualifies what the gauges are reading. */
+  footer?: ReactNode
 }
 
 export function DualGaugeIndicator({
   compact,
   transparent,
   containerStyle,
+  footer,
 }: DualGaugeIndicatorProps) {
   // Full-scale follows the active Board's Top Speed, same as the speed detail gauge — otherwise
   // a 30 km/h board's alert markers sit in a different place on each screen.
@@ -78,6 +81,7 @@ export function DualGaugeIndicator({
       compact={compact}
       transparent={transparent}
       containerStyle={containerStyle}
+      footer={footer}
     />
   )
 }

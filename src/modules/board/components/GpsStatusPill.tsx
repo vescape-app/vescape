@@ -1,5 +1,5 @@
 import { GpsFixIcon, GpsSlashIcon } from 'phosphor-react-native'
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -17,20 +17,42 @@ import type { GpsStatusBadge } from '@/modules/board/lib/gpsStatusBadge'
 export function GpsStatusPill({
   badge,
   style,
+  onPress,
 }: {
   badge: GpsStatusBadge
   style?: StyleProp<ViewStyle>
+  /** Given a handler the pill becomes the way in to whatever explains the state it is reporting. */
+  onPress?: () => void
 }) {
   const Icon = badge.kind === 'off' || badge.kind === 'blocked' ? GpsSlashIcon : GpsFixIcon
+  const content = (
+    <>
+      <Icon size={13} color={theme.neutral.textMuted} weight="bold" />
+      <Text style={styles.label} numberOfLines={1}>
+        {badge.label}
+      </Text>
+    </>
+  )
+
+  if (!onPress) {
+    return (
+      <View pointerEvents="none" style={[styles.row, style]}>
+        <View style={styles.pill}>{content}</View>
+      </View>
+    )
+  }
 
   return (
-    <View pointerEvents="none" style={[styles.row, style]}>
-      <View style={styles.pill}>
-        <Icon size={13} color={theme.neutral.textMuted} weight="bold" />
-        <Text style={styles.label} numberOfLines={1}>
-          {badge.label}
-        </Text>
-      </View>
+    <View pointerEvents="box-none" style={[styles.row, style]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={badge.label}
+        hitSlop={8}
+        onPress={onPress}
+        style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
+      >
+        {content}
+      </Pressable>
     </View>
   )
 }
@@ -49,6 +71,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.neutral.border,
     backgroundColor: theme.alpha(theme.neutral.bg, 0.85),
+  },
+  pillPressed: {
+    opacity: 0.6,
   },
   label: {
     fontFamily: theme.font('600'),

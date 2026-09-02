@@ -1,7 +1,12 @@
 import { ScrollView, StyleSheet, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { EngineIcon, ListIcon, WarningDiamondIcon } from 'phosphor-react-native'
+import {
+  EngineIcon,
+  ListIcon,
+  NavigationArrowIcon,
+  WarningDiamondIcon,
+} from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
@@ -20,7 +25,7 @@ export default function DiagnosticsSettingsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={EngineIcon}
-          description="Board health checks that watch telemetry and flag problems while you ride."
+          description="Board health checks that watch telemetry and flag problems while you ride, plus live GPS and heading evidence."
         />
 
         <SettingsCard>
@@ -62,6 +67,13 @@ export default function DiagnosticsSettingsScreen() {
             label="Event log"
             hint="Browse locally persisted diagnostic events"
             onPress={() => router.push(routes.settingsDiagnosticEvents)}
+          />
+          <SettingsRow
+            icon={NavigationArrowIcon}
+            iconColor={theme.palette.sky.color}
+            label="Navigation diagnostics"
+            hint="Live map heading, GPS, and fallback evidence"
+            onPress={() => router.push(routes.settingsNavigationDiagnostic)}
           />
         </SettingsCard>
       </ScrollView>

@@ -59,7 +59,7 @@ export function GpsStatusPillShowcase() {
     >
       <View style={styles.stage}>
         {badge ? (
-          <GpsStatusPill badge={badge} />
+          <GpsStatusPill badge={badge} onPress={() => {}} />
         ) : (
           <Text style={styles.healthy}>Healthy GPS — no badge</Text>
         )}
