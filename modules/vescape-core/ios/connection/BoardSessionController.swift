@@ -184,10 +184,19 @@ internal final class BoardSessionController: VescGattListener {
   private let batteryConfigMismatchDetector = BatteryConfigMismatchDetector()
   /// True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only.
   private var bmsSeriesFocused = false
-  private lazy var lastGpsPersistence = LastGpsLocationPersistence(appData: appData)
   private let appData: AppDataRepository
   private lazy var recordingCoordinator = RecordingCoordinator(appData: appData)
   private lazy var configController = ConfigRWController()
+  private lazy var locationTracker = LocationTracker(
+    recentWindowMs: { [weak self] in Int64(max(1, self?.config?.liveHistoryLimitMinutes ?? 5)) * 60_000 },
+    recordLocation: { [weak self] in self?.recordingCoordinator.recordLocation($0) },
+    navigationFix: { location in
+      NavigationController.shared.onFix(
+        latitude: location.latitude, longitude: location.longitude, speedMps: location.speedMps
+      )
+    },
+    persistLocation: LastGpsLocationPersistence(appData: appData).onLocationUpdated
+  )
   private lazy var gpsMonitor = GpsMonitor(
     onLocation: { [weak self] location in self?.onLocationUpdated(location) },
     onAuthorizationResolved: { [weak self] in self?.onStateChanged?() }
@@ -236,10 +245,6 @@ internal final class BoardSessionController: VescGattListener {
   /// throttled while phase / percent / fault changes still refresh immediately.
   private var lastLiveTelemetryRefreshAt: Int64 = 0
   private let liveTelemetryRefreshMinMs: Int64 = 1000
-  private var latestLocation: TelemetryLocationCapture?
-  private var latestPreciseLocation: TelemetryLocationCapture?
-  private let courseDeriver = GpsCourseDeriver()
-  private var recentLocations: [[String: Any?]] = []
   /// True when a replay parked a live GPS monitor that was already running. The replay borrowed
   /// position for its lifetime; its teardown hands it back.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
@@ -586,8 +591,8 @@ internal final class BoardSessionController: VescGattListener {
   /// Live State GPS phase (`idle | starting | active | error`), owned by the monitor.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsPhase`
   func gpsPhase() -> String { gpsMonitor.phase.rawValue }
-  func gpsLatestLocation() -> [String: Any?]? { latestLocation?.map }
-  func gpsLatestPreciseLocation() -> [String: Any?]? { latestPreciseLocation?.map }
+  func gpsLatestLocation() -> [String: Any?]? { locationTracker.latestLocation?.map }
+  func gpsLatestPreciseLocation() -> [String: Any?]? { locationTracker.latestPreciseLocation?.map }
   /// Where the rider is, for callers that need a position rather than a *good* position —
   /// Navigation being the one that matters. Freshness beats accuracy here: a weak indoor fix from a
   /// second ago is the right place to start a path from, while the last precise fix can be
@@ -595,10 +600,10 @@ internal final class BoardSessionController: VescGattListener {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `riderPosition`
   func riderPosition() -> (latitude: Double, longitude: Double)? {
-    guard let location = latestLocation ?? latestPreciseLocation else { return nil }
+    guard let location = locationTracker.riderPosition else { return nil }
     return (location.latitude, location.longitude)
   }
-  func gpsRecentLocations() -> [[String: Any?]] { recentLocations }
+  func gpsRecentLocations() -> [[String: Any?]] { locationTracker.recentLocations }
   /// Recent raw-tick window for JS live-chart rehydrate. Backed by the live-series buffer.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `recentSnapshot`
   func recentTelemetry() -> [[String: Any?]] { liveSeries.recentSnapshot() }
@@ -670,7 +675,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
-    guard let location = latestPreciseLocation ?? latestLocation else { return nil }
+    guard let location = locationTracker.latestPreciseLocation ?? locationTracker.latestLocation else { return nil }
     // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
     // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
     if isInsidePrivacyZone(location) { return nil }
@@ -845,7 +850,7 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.setWindowMinutes(liveHistoryLimit)
     socWindow.windowMs = Int64(AppDataRepository.intValue(settings["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
     recordingCoordinator.applySettings(settings)
-    pruneRecentLocations(now: nowMs())
+    locationTracker.pruneRecentLocations(now: nowMs())
   }
 
   /// Play a preset once for UI preview, or speak a `tts:` template. Mirrors Android
@@ -2004,7 +2009,7 @@ internal final class BoardSessionController: VescGattListener {
     persistLastBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
     tick["generation"] = connectionSeq
     tick["remoteTilt"] = nil
-    if let latestPreciseLocation {
+    if let latestPreciseLocation = locationTracker.latestPreciseLocation {
       tick["location"] = latestPreciseLocation.map
     }
 
@@ -2347,7 +2352,7 @@ internal final class BoardSessionController: VescGattListener {
       telemetry: telemetry,
       // Recorded frames refuse a stale fix (ADR 0034); live display keeps the last known one.
       location: telemetryLocationFreshEnoughToRecord(
-        latestPreciseLocation,
+        locationTracker.latestPreciseLocation,
         capturedAtMs: telemetry.lastPacketAt
       )
     )
@@ -2387,10 +2392,7 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopCurrentBoardSession`
   private func releaseGpsFromSession(wasReplay: Bool) {
     guard wasReplay else { return }
-    latestLocation = nil
-    latestPreciseLocation = nil
-    courseDeriver.reset()
-    recentLocations.removeAll(keepingCapacity: true)
+    locationTracker.clearReplayLocations()
     if gpsSuppressedByReplay {
       gpsSuppressedByReplay = false
       startLocationUpdates()
@@ -2399,51 +2401,12 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
-    var location = incoming
-    recordGpsFix(location)
-    // Approximate fixes never feed the course: they are metres of noise apart and would spin a
-    // derived bearing, and they are not what the map's GPS heading mode follows either.
-    if location.precise {
-      let course = courseDeriver.derive(
-        latitude: location.latitude,
-        longitude: location.longitude,
-        speedMps: location.speedMps,
-        bearingDeg: location.bearingDeg,
-        timestamp: location.timestamp
-      )
-      location.courseDeg = course?.bearingDeg
-      location.courseSourceTimestamp = course?.sourceTimestamp
-    }
-    recordingCoordinator.recordLocation(location)
-    latestLocation = location
-    // Every fix moves Route Progress, approximate ones included: the same rule as `riderPosition`,
-    // where freshness beats accuracy. The bearing comes off the path rather than off the fix, so a
-    // noisy position cannot spin it.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/LocationTracker.kt `onLocationUpdated`
-    NavigationController.shared.onFix(
-      latitude: location.latitude,
-      longitude: location.longitude,
-      speedMps: location.speedMps
-    )
-    if location.precise {
-      latestPreciseLocation = location
-      lastGpsPersistence.onLocationUpdated(location)
-      recentLocations.append(location.map)
-      pruneRecentLocations(now: location.timestamp)
-    }
+    recordGpsFix(incoming)
+    let location = locationTracker.onLocationUpdated(incoming)
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
     emit?("onLocation", location.map)
-  }
-
-  private func pruneRecentLocations(now: Int64) {
-    let windowMs = Int64(max(1, config?.liveHistoryLimitMinutes ?? 5)) * 60_000
-    let oldest = now - windowMs
-    recentLocations.removeAll { row in
-      guard let timestamp = (row["timestamp"] ?? nil) as? NSNumber else { return false }
-      return timestamp.int64Value < oldest
-    }
   }
 
   /// One low-volume Local Diagnostic Event per Board Session. No coordinates leave the GPS path.
