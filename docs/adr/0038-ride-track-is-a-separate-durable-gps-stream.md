@@ -66,6 +66,20 @@ a telemetry row.
 
 Ride Track persistence follows the Ride Recording state: Idle Pause pauses both streams, and resumption enables both together. Enabled Privacy Zones use the existing reported-coordinate geometry, without expansion by GPS accuracy. Keeping poor fixes does not override either gate.
 
+Privacy Zones keep the current drop-on-write behavior for this release. Reuse existing reader gap checks without adding continuity flags, segment identities, privacy markers, or new privacy-specific gap detection. Short filtered spans retain the existing continuity limitations. Recording inside zones, sharing prevention/warnings, and Group Ride invisibility belong to a future Privacy Zone rework, outside #452. See the interim scope in ADR-0009.
+
+## Recording identity and history boundaries
+
+New Ride Recordings have a durable identity and explicit start/end boundaries, independent of their Board Sessions and sample arrival. `board_id` remains Board attribution; it does not distinguish two recordings of the same Board. Both streams and their precomputed summaries must remain attributable to the recording that captured them.
+
+One new recording produces at most one history entry, subject to the existing movement visibility rule. Unexpected disconnect, Idle Pause, process interruption, and even an hour with neither telemetry nor GPS do not split an open recording. Reconnection and supported restoration recover the same recording identity. Explicit Stop Recording or Disconnect ends it; starting again creates a separate recording even within the same minute. Minute aggregation must not merge those recordings.
+
+Gap-based grouping was rejected for new recordings because it can split a capture the Rider never stopped. `rideSplitGapMinutes` applies only to legacy history without durable recording boundaries. Migration preserves that existing grouping behavior rather than inventing old recording identities from sparse samples. The setting's UI must explain its legacy-only scope.
+
+Missing samples remain missing. When movement is evidenced before and after a gap in the same recording, the gap remains inside the Moving Window and counts toward Time. This does not imply uninterrupted capture, interpolate either stream, or change Board-based distance and speed statistics.
+
+#448 owns the durable identity/boundary storage contract and stream attribution, #449 reads that contract for grouping and precomputed summaries, and #450 preserves or ends it through recording lifecycle transitions. Agree this shared contract before implementing the storage migration; the three issues still ship together in #452.
+
 ## History distance
 
 Ride History Distance remains board-odometer-based. A longer Ride Track does not switch Distance to GPS or add GPS-derived distance to the odometer result. The route and the Distance metric can therefore cover different spans when telemetry is unavailable.
@@ -81,6 +95,10 @@ Average and top speed remain board-telemetry-based. Preserve their existing aggr
 ## Disconnect intent
 
 Unexpected Board connection loss allows the active Ride Recording to continue on GPS. An explicit rider Disconnect ends Ride Recording, as does an explicit Stop Recording. Continuing across connection loss does not override a rider's stop intent.
+
+An explicit Connect request for a different Board ends the previous Board Session and Ride Recording immediately, including when the previous Board is disconnected and reconnecting. A failed connection to the new Board does not reopen the old recording. Merely browsing or selecting another Board does not end it. Once the new Board connects, a new recording may start under the existing automatic/manual recording rules; GPS captured between the two recordings is not backfilled into either.
+
+Admitted writes for the old recording are flushed with their original Board and recording identities. Late callbacks, reconnect attempts, or restoration for the old Board cannot revive that recording or contribute samples to the new one. Each Board change creates a separate capture boundary, even within one minute. Independent live GPS consumers keep their existing lifetimes.
 
 While connected, the Board controls Idle Pause, even when the phone moves. Unexpected disconnection continues GPS recording without GPS-based Idle Pause; it remains active until the rider explicitly stops it.
 

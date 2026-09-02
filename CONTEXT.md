@@ -77,7 +77,7 @@ A single phone location sample used for live map position or ride recording.
 _Avoid_: Location event, GPS point
 
 **Ride Recording**:
-A persisted ride capture. It is created by a connected **Board**, continues through unexpected **Board Link** loss until the Rider stops it, and carries that Board's **Telemetry Samples**; it also carries a **Ride Track** whenever the phone has GPS during the ride. The two streams are recorded independently on their own clocks and joined by time when read.
+A single persisted capture of one **Board**'s ride, begun while that Board is connected and retaining its identity through data gaps until explicitly ended, with independent **Telemetry Samples** and an optional **Ride Track**.
 _Avoid_: Session recording, raw recording
 
 **Ride Track**:
@@ -399,6 +399,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Session** uses the stored **Board Link** and is not established for a Board without one.
 - A **Board Probe** can resolve a **Board Transport** before a **Board** is created.
 - A **Board Session** owns one live BLE connection to a **Board**; only Telemetry Samples received during the active session count toward live state and Ride Recording.
+- A **Ride Recording** belongs to exactly one **Board**; explicitly attempting to connect a different Board ends the previous **Board Session** and **Ride Recording**, even if the new connection fails.
 - A **Board** produces **Telemetry Samples** while connected.
 - **Telemetry Stale** describes missing live data and is distinct from a **Stale Board Link**.
 - A **Board Session** may produce a **Live BMS Series** when its **Board Link** includes BMS capability; native retains it continuously in the recent live-telemetry window (`liveHistoryLimit`) but pushes it across the bridge to JS only while the battery-detail view is focused. It is ephemeral, never persisted, and never written to **Ride Recording**. The cell **spread** scalar shown in main telemetry is not the series: it derives from the latest smart-BMS frame on the `onBms` pipe (~4Hz, always flowing), separate from the 30Hz telemetry frame.
@@ -425,8 +426,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A weather view uses a **Map Camera Profile** rather than a direct zoom change; it keeps the current map center while applying a weather overview zoom and low or flat pitch.
 - A **Map Camera Controller** uses **App Settings** such as map style, **Map Orientation Mode**, and perspective mode, but those settings remain durable preferences outside the controller.
 - A **Privacy Zone** limits what **Ride Recording** data is retained without changing **Live State**.
-- A **Ride Recording** becomes part of **Ride History**.
+- A **Ride Recording** with explicit recording boundaries contributes at most one entry to **Ride History**; data gaps do not split it, and a new recording after an explicit stop is a separate entry.
 - A **Moving Window** belongs to one **Ride Recording** and spans movement evidenced by **Telemetry Samples** or **Ride Track**; a Ride Recording without one is excluded from **Ride History**.
+- A gap in both streams remains inside the **Moving Window**, and counts toward Time, when movement is evidenced on both sides within the same **Ride Recording**.
 - A **Ride History Marker** belongs to **Ride History** and may explain where a **Ride Recording** lost or regained board data.
 - An **Idle Pause** belongs to one **Ride Recording**, begins after a sustained absence of moving **Telemetry Samples**, keeps the **Board Session** live at a reduced poll rate, and produces a **Ride History Marker**; its sample gap stays inside the **Moving Window** (and counts toward ride time) when it occurs between two moving spans.
 - A **Favorite** is a durable time range over **Ride History**; its telemetry is pinned against deletion, and a deleted ride leaves its favorited sub-ranges intact.

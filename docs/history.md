@@ -78,7 +78,7 @@ For each selected-ride Media History read:
 
 A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart. Explicit `gap` markers and ride-boundary markers (`disconnected`, `app_stop`, or `error`) always split spans. Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it.
 
-No valid nearby recording-backed GPS fix means no map pin. This excludes media captured during unsupported route spans, including GPS outages and Privacy Zone or Ride History gaps. Media cannot match into or across a gap even when a fix on its other side is within `30_000ms`.
+No valid nearby recording-backed GPS fix means no map pin. Media cannot match into or across a gap detected by the span rules above, even when a fix on its other side is within `30_000ms`. Privacy Zone filtering stores no explicit break: a short filtered span below the time-gap threshold may still be treated as continuous. The Ride Track work in #448, #449, and #450 retains this limitation and does not introduce privacy-specific continuity metadata. See [ADR-0009](./adr/0009-privacy-zones-drop-ride-recording-samples.md).
 
 Matching is recomputed from current photo-library access and selected Ride History data whenever Media History is read for a selected ride. Results may live in memory for that active read only; changing ride, disabling Media History, changing permission, or refreshing discards them.
 
@@ -93,14 +93,24 @@ Permission states should expose the relevant OS action for changing access. Asse
 
 See ADR 0014 for the ownership and matching decision.
 
-## Session Grouping
+## Ride grouping
+
+### Accepted Ride Track behavior, pending #448, #449, and #450
+
+New recordings use durable recording identity and explicit boundaries. An open recording remains one history entry through BLE loss, Idle Pause, and gaps in both streams, regardless of their duration. Explicit stop followed by a new start produces separate recordings even within one minute. The movement visibility rule still applies. An internal gap between two movement observations counts toward Time without implying capture during that gap.
+
+An explicit connection attempt to a different Board ends the previous recording immediately. A recording started after the new Board connects is a separate capture under that Board, even within the same minute; a failed connection does not reopen the previous recording. Browsing or selecting another Board alone does not end capture.
+
+The `rideSplitGapMinutes` setting applies only to legacy history without durable recording boundaries. Migration preserves the existing legacy grouping behavior; it must not infer old recording identities. See [ADR-0038](./adr/0038-ride-track-is-a-separate-durable-gps-stream.md).
+
+### Current implementation and retained legacy grouping
 
 `RideHistoryRepository` groups minute buckets oldest-first inside one database snapshot. The same
 native grouping implementation feeds both Ride History pages and Profile Stats.
 
 Session breaks happen when:
 
-- device id changes
+- Board id changes
 - gap between adjacent buckets exceeds the rider's `rideSplitGapMinutes` setting (default 30)
 - bucket `boundaryBefore` is one of `disconnected`, `app_stop`, or `error`
 
