@@ -31,6 +31,7 @@ import {
   type BmsSeriesFrame,
   type BmsSeriesUpdate,
   type RemoteTiltState,
+  isReplayBoardId,
 } from 'vescape-core'
 
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
@@ -221,6 +222,9 @@ function cleanupBleStoreModule(): void {
   settingsUnsubscribe = null
 }
 
+/** Board id of the replay session the last live state described, or `null` when it was live. */
+let lastReplayBoardId: string | null = null
+
 function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   const isBoardConnected = state.board.phase === 'connected'
   const hasRecentTelemetry = isBoardConnected && state.board.recentTelemetry.length > 0
@@ -234,6 +238,18 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
   // connects faster than its first frame) leaves the runtime on the previous generation, so every
   // later tick is discarded and the gauges read "—" while the store-fed sparklines keep updating.
   liveTelemetryRuntime.syncConnectionSeq(state.board.connectionSeq)
+
+  // A replay's recorded fixes ride the same path live ones do (ADR 0024), so ending one has to drop
+  // them from the JS mirror as well: native clears its own buffers in the replay teardown, but the
+  // store retains GPS across a disconnect by design, and would re-publish the recorded track and
+  // then draw a jump-line from it to the first real fix.
+  // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `releaseGpsFromSession`
+  const replayBoardId = isReplayBoardId(state.board.connectedBoardId)
+    ? state.board.connectedBoardId
+    : null
+  const replayEnded = lastReplayBoardId != null && replayBoardId == null
+  lastReplayBoardId = replayBoardId
+  if (replayEnded) liveTelemetryRuntime.reset()
 
   if (isBoardConnected) {
     live = shouldSeedLiveState

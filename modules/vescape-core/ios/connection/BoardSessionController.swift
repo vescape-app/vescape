@@ -335,7 +335,14 @@ internal final class BoardSessionController: VescGattListener {
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
+    // A replay that is *replaced* never reaches the session teardown: `ReplayTransport.disconnect()`
+    // only cancels its schedule and fires no listener callback, so `endSession`/`fail` never run.
+    // Hand position back here, or the outgoing replay's fixes leak into the session replacing it and
+    // the parked live monitor is never re-armed.
+    let replacedReplay = replayTransport != nil
     replayTransport?.disconnect()
+    replayTransport = nil
+    releaseGpsFromSession(wasReplay: replacedReplay)
     // Starting a replay while a live board is connected: tear the live GATT link down first, or
     // its callbacks keep feeding real frames into the replay session. A live→live connect needs
     // no such step — `gatt.connect` clears its own previous peripheral.
@@ -2371,7 +2378,10 @@ internal final class BoardSessionController: VescGattListener {
   /// parked is handed back. Must run after `replayTransport` is cleared — `startLocationUpdates`
   /// refuses to arm while a replay is installed.
   ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
+  /// Android's peer teardown re-arms the monitor the same way but keeps its replay fixes, so the
+  /// recorded track survives there; see the `TODO(android parity)` at its re-arm site.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopCurrentBoardSession`
   private func releaseGpsFromSession(wasReplay: Bool) {
     guard wasReplay else { return }
     latestLocation = nil
@@ -2382,6 +2392,7 @@ internal final class BoardSessionController: VescGattListener {
       gpsSuppressedByReplay = false
       startLocationUpdates()
     }
+    onStateChanged?()
   }
 
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {

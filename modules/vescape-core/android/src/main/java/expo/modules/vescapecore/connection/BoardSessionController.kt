@@ -453,11 +453,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
 
     /**
      * True while a replay has parked a GPS monitor that was already running when it started, so the
-     * live monitor can be re-armed when the replay ends. iOS needs no such flag: it stops the GPS
-     * monitor on every session end, replay or not.
+     * live monitor can be re-armed when the replay ends. GPS monitoring outlives a Board Session on
+     * both platforms, so iOS mirrors this flag one for one.
      *
-     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginSession`
-     * @platform-diff Android keeps GPS monitoring alive across sessions; iOS does not.
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `gpsSuppressedByReplay`
      */
     private var gpsSuppressedByReplay = false
 
@@ -2567,6 +2566,10 @@ private var wearAutoLaunchOnConnect = true
         boardConfig = null
         boardError = null
         // The replay released position; hand it back to the live monitor it displaced.
+        // TODO(android parity): the replay's recorded fixes are left in `locationTracker`, so the
+        // live map inherits the recorded track until the next fix. iOS drops them here — see
+        // `releaseGpsFromSession` in the peer.
+        // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `releaseGpsFromSession`
         if (gpsSuppressedByReplay) {
             gpsSuppressedByReplay = false
             startLocationUpdates()

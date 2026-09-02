@@ -19,9 +19,9 @@ internal struct GpsCourse: Equatable {
 /// Feed precise fixes only, in time order. Stateful, one instance per location source.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsCourseDeriver.kt `GpsCourseDeriver`
-/// @platform-diff `reset()` is iOS-only: `BoardSessionController` clears its latest fixes on
-/// disconnect and drops the deriver's state with them. Android's `LocationTracker` outlives every
-/// session and keeps both.
+/// @platform-diff `reset()` is iOS-only: `BoardSessionController` drops the replay's fixes when a
+/// replay session ends and clears the deriver with them, so a recorded course cannot bend the first
+/// live one. Android's `LocationTracker` outlives every session and keeps both.
 /// @parity /modules/vescape-core/src/index.ts `LocationEvent`
 internal final class GpsCourseDeriver {
   /// Below roughly a walking pace the reported bearing is receiver noise.
