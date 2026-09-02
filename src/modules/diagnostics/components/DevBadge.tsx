@@ -7,7 +7,6 @@ import {
   CameraRotateIcon,
   EyeSlashIcon,
   ListBulletsIcon,
-  NavigationArrowIcon,
   RecordIcon,
   SwatchesIcon,
   ToolboxIcon,
@@ -36,12 +35,6 @@ const DEV_PAGE_SHORTCUTS = [
     route: routes.settingsDebugRecordings,
     icon: RecordIcon,
     iconColor: theme.status.warning.color,
-  },
-  {
-    label: 'Navigation diagnostics',
-    route: routes.settingsNavigationDiagnostic,
-    icon: NavigationArrowIcon,
-    iconColor: theme.palette.sky.color,
   },
   {
     label: 'Camera playground',

@@ -59,15 +59,39 @@ internal class GpsMonitor(
         }
     }
 
+    /**
+     * True once location updates are actually requested, so the reported phase can tell a retained
+     * manager apart from flowing fixes.
+     *
+     * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `updatesStarted`
+     */
+    private var armed = false
+    private var lastError: String? = null
+
     val active: Boolean
         get() = locationManager != null
+
+    val updatesStarted: Boolean
+        get() = armed
+
+    val error: String?
+        get() = lastError
+
+    /**
+     * Live State phase. `active` means updates are running, not merely that a manager is retained.
+     *
+     * @parity /modules/vescape-core/ios/location/GpsMonitor.swift `phase`
+     */
+    val phase: GpsPhase
+        get() = GpsPhase.resolve(retained = active, updatesStarted = armed, error = lastError)
 
     fun start(): String? {
         val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         if (!hasFine) {
             recordAuthorizationRefusal()
-            return "Location permission not granted"
+            lastError = "Location permission not granted"
+            return lastError
         }
 
         val lm = (context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager) ?: return null
@@ -92,6 +116,7 @@ internal class GpsMonitor(
             val message = e.message ?: "Location updates failed"
             Log.w(VESC_SESSION_TAG, "Location updates failed: ${e.message}")
             recordGpsEvent("gps_provider_error", message)
+            lastError = message
             return message
         }
         arm()
@@ -113,12 +138,18 @@ internal class GpsMonitor(
         } catch (_: Exception) {
         }
         locationManager = null
+        armed = false
+        // A stopped monitor is idle, not failed.
+        // @parity /modules/vescape-core/ios/location/GpsMonitor.swift `stop`
+        lastError = null
         armedAtMs = null
         firstFixReported = false
         staleReported = false
     }
 
     private fun arm() {
+        lastError = null
+        armed = true
         armedAtMs = nowMs()
         firstFixReported = false
         staleReported = false
@@ -156,7 +187,7 @@ internal class GpsMonitor(
      * position and nothing in the log says why. Reported once per silent stretch.
      */
     private fun checkStaleFix() {
-        if (!active || staleReported) return
+        if (!armed || staleReported) return
         val since = lastFixAtMs ?: armedAtMs ?: return
         val age = nowMs() - since
         if (age < GPS_STALE_FIX_TIMEOUT_MS) return

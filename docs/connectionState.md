@@ -61,13 +61,26 @@ type LiveState = {
 
 ## Runtime split
 
-Android native has separate live runtimes:
+Native has separate live runtimes:
 
 - board runtime: BLE GATT, VESC polling, telemetry, reconnect, board recording
 - GPS runtime: location listener, latest fix, recent fixes, map data
 - scan runtime: BLE scanner owned by the Expo module bridge
 
 Board connect/disconnect must not clear GPS fixes. GPS is app-level map data.
+On iOS, `GpsMonitor` owns the location manager and `LocationTracker` owns fix state, course
+derivation and the recent-fix window. `BoardSessionController` reads the tracker and wires its
+consumers. Replay teardown alone clears recorded fixes and restores the parked live monitor.
+
+### GPS phase
+
+Native decides the phase; JS renders it and never derives one from a boolean.
+
+- `idle` — no location manager is held.
+- `starting` — a manager is held but updates are not running: the iOS permission dialog is open, or
+  the Android foreground service that arms the monitor is still starting.
+- `active` — location updates were actually requested and fixes can arrive.
+- `error` — the monitor refused or failed. Always carries the same string as `gps.error`.
 
 ## JS role
 

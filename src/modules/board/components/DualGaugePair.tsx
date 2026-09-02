@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 import { Canvas, Group, Path } from '@shopify/react-native-skia'
@@ -177,6 +177,8 @@ interface GaugePairProps {
   speedSeries: SparklinePoint[]
   dutySeries: SparklinePoint[]
   windowMs?: number
+  /** Rendered against the bottom of the arcs, inside the space the gauge box leaves below them. */
+  footer?: ReactNode
   onPressSpeed: () => void
   onPressDuty: () => void
 }
@@ -193,6 +195,7 @@ export function GaugePair({
   speedSeries,
   dutySeries,
   windowMs,
+  footer,
   onPressSpeed,
   onPressDuty,
 }: GaugePairProps) {
@@ -238,6 +241,10 @@ export function GaugePair({
   )
   // Bowls the readouts are centered in, in canvas pixels. They used to be
   // percentage-positioned overlay views; the numbers match those percentages.
+  // Where the drawn gauges actually end. The box is a fixed aspect ratio and the arcs stop at
+  // their centre line, so everything below this — the touch row's floor, the footer slot — has to
+  // be placed against this line rather than against the box.
+  const arcBottom = SPARKLINE_TOP + SPARKLINE_HEIGHT + gaugeHeight * ARC_BOTTOM_RATIO
   const bowlTop = SPARKLINE_HEIGHT + SPARKLINE_TOP + gaugeHeight * 0.1
   const bowl = {
     y: bowlTop,
@@ -292,12 +299,7 @@ export function GaugePair({
           />
         </Canvas>
       ) : null}
-      <View
-        style={[
-          styles.gaugeTouchRow,
-          { height: SPARKLINE_TOP + SPARKLINE_HEIGHT + gaugeHeight * ARC_BOTTOM_RATIO },
-        ]}
-      >
+      <View style={[styles.gaugeTouchRow, { height: arcBottom }]}>
         <Pressable
           style={styles.halfPressable}
           testID="gauge-speed"
@@ -311,6 +313,11 @@ export function GaugePair({
           android_ripple={interaction.ripple}
         />
       </View>
+      {footer ? (
+        <View pointerEvents="box-none" style={[styles.footer, { top: arcBottom }]}>
+          {footer}
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -318,6 +325,7 @@ export function GaugePair({
 const styles = StyleSheet.create({
   gaugePair: { width: '100%', aspectRatio: 1.4, position: 'relative' },
   gaugeTouchRow: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', gap: 32 },
+  footer: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   halfPressable: {
     flex: 1,
     overflow: 'visible',

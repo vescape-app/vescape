@@ -624,6 +624,7 @@ class AppDataRepository private constructor(private val context: Context) {
     notifyDataChanged(AppDataScope.SETTINGS)
   }
 
+  // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `updateLastGpsLocation`
   suspend fun updateLastGpsLocation(latitude: Double, longitude: Double): Unit = withContext(Dispatchers.IO) {
     val now = System.currentTimeMillis()
     dao.upsertAppSetting(AppSettingEntity("lastGpsLatitude", encodeSettingJson(latitude), now))

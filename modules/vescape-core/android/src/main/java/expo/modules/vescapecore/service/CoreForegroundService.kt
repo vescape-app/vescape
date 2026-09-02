@@ -466,7 +466,11 @@ class CoreForegroundService : Service() {
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(
-                    "phase" to "idle",
+                    // A GPS start claimed before the service exists is arming, not idle: the
+                    // monitor that will report `active` is created with the service.
+                    // @platform-diff Android defers GPS arming to the foreground service; iOS has
+                    // no serviceless window, its monitor reports `starting` itself.
+                    "phase" to if (pendingGpsStart) "starting" else "idle",
                     "latestFix" to null,
                     "latestApproximateFix" to null,
                     "latestPreciseFix" to null,
