@@ -16,6 +16,7 @@ import {
   buildRiderPoints,
   buildRiderTargetPoints,
 } from '@/screens/main/map/trackedMapPoints'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 /**
  * Grid the offscreen indicators are tracked on: about a metre.
@@ -54,6 +55,7 @@ export function useLiveMapModel({
   activeNavigationTarget: MapSelection | null
   directionPoint: DirectionPoint | null
 }) {
+  const accents = useResolvedAccentColors()
   const [initialApproximateFix, setInitialApproximateFix] = useState<LocationEvent | null>(null)
   const gpsFix = liveLocations.at(-1) ?? null
   const gpsPresentation = useMemo(
@@ -97,8 +99,11 @@ export function useLiveMapModel({
   const riderColor = useRiderStore((state) => state.riderColor)
   const riderFocusRows = useGroupRideStore((state) => state.rosterRows)
   const mapRiders = useMemo(() => riderFocusRows.filter((row) => !row.isSelf), [riderFocusRows])
-  const riderTargetPoints = useMemo(() => buildRiderTargetPoints(mapRiders), [mapRiders])
-  const riderPoints = useMemo(() => buildRiderPoints(mapRiders), [mapRiders])
+  const riderTargetPoints = useMemo(
+    () => buildRiderTargetPoints(mapRiders, accents),
+    [accents, mapRiders],
+  )
+  const riderPoints = useMemo(() => buildRiderPoints(mapRiders, accents), [accents, mapRiders])
   const activeNavigationPoint = useMemo(
     () =>
       buildActiveNavigationPoint({
@@ -106,22 +111,24 @@ export function useLiveMapModel({
         directionPoint,
         mapPoints,
         riderColor,
+        accents,
       }),
-    [activeNavigationTarget, directionPoint, mapPoints, riderColor],
+    [accents, activeNavigationTarget, directionPoint, mapPoints, riderColor],
   )
   const trackedMapPoints = useMemo(
     () => [
-      ...buildGpsTrackedPoint(offscreenMapGpsCoordinate, riderColor),
+      ...buildGpsTrackedPoint(offscreenMapGpsCoordinate, riderColor, accents),
       ...(activeNavigationPoint ? [activeNavigationPoint] : []),
       ...(selectedMapPoint &&
       activeNavigationPoint?.id !== `navigation-map-point-${selectedMapPoint.id}`
-        ? [buildMapPointTrackedPoint(selectedMapPoint, `map-point-${selectedMapPoint.id}`)]
+        ? [buildMapPointTrackedPoint(selectedMapPoint, `map-point-${selectedMapPoint.id}`, accents)]
         : []),
       ...riderTargetPoints,
       ...riderPoints,
     ],
     [
       activeNavigationPoint,
+      accents,
       offscreenMapGpsCoordinate,
       riderColor,
       riderPoints,

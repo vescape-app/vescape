@@ -73,6 +73,35 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(applied, Set(TelemetryDatabase.migrator.migrations))
   }
 
+  /// The fault migration is the only one that rewrites telemetry tables, so assert both halves:
+  /// the fault tables arrive and the legacy per-frame fault storage is gone without losing frames.
+  func testFaultMigrationDropsLegacyTelemetryFaultStorageAndKeepsFrames() throws {
+    try migrate(upTo: "v36_motor_config_values")
+    // iOS is greenfield and never created the fault columns, so the rebuild branch only runs for a
+    // restored Room database. Add them by hand to arrive at the migration the way that backup does.
+    try queue.write { db in
+      try db.execute(sql: """
+        ALTER TABLE telemetry_frames ADD COLUMN fault_code INTEGER;
+        ALTER TABLE telemetry_minute_buckets ADD COLUMN fault_count INTEGER;
+        INSERT INTO telemetry_frames (captured_at_ms, elapsed_realtime_ms, flags, changed_mask_1,
+          changed_mask_2, speed_centi_kmh, fault_code)
+        VALUES (1000, 5, 0, 0, 0, 2500, 9);
+        """)
+    }
+
+    try migrate()
+
+    XCTAssertFalse(try columnNames("telemetry_frames").contains("fault_code"))
+    XCTAssertFalse(try columnNames("telemetry_minute_buckets").contains("fault_count"))
+    let speeds = try queue.read { db in
+      try Int.fetchAll(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames")
+    }
+    XCTAssertEqual(speeds, [2500])
+    for table in ["vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples"] {
+      XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
+    }
+  }
+
   /// Tables the migrator delegates to a store's `createTables` are the easy ones to leave out of a
   /// fresh install, so assert the schema a clean upgrade actually lands on.
   func testFreshDatabaseHasEveryStoreTable() throws {
@@ -82,7 +111,7 @@ final class TelemetryMigrationTests: XCTestCase {
       "boards", "board_settings", "alerts", "app_settings", "telemetry_frames",
       "telemetry_minute_buckets", "telemetry_markers", "metric_exclusion_ranges",
       "diagnostic_events", "tune_profiles", "tune_history_entries", "board_warnings", "favorites",
-      "favorite_media",
+      "favorite_media", "vesc_fault_occurrences", "vesc_fault_captures", "vesc_fault_capture_samples",
     ]
     for table in tables {
       XCTAssertTrue(try queue.read { db in try db.tableExists(table) }, "\(table) is missing")
@@ -236,16 +265,16 @@ final class TelemetryMigrationTests: XCTestCase {
 
   // MARK: - Telemetry keys on the Board id (#280, ADR 0028)
 
-  /// The last migration before `v35_telemetry_board_id`. Stopping here leaves both telemetry tables
-  /// in their `device_id` shape, with `updated_at` and `sync_seq` already on the buckets.
-  private static let beforeBoardId = "v34_board_deleted_at"
+  /// The last migration before `v42_telemetry_board_id`. Stopping here leaves both telemetry tables
+  /// in their `device_id` shape.
+  private static let beforeBoardId = "v41_board_deleted_at"
 
   private func insertBoard(id: String, name: String, bleId: String?) throws {
     try queue.write { db in
       try db.execute(
         sql: """
-          INSERT INTO boards (id, name, ble_id, created_at, updated_at, sync_seq)
-          VALUES (?, ?, ?, 1000, 1000, 1)
+          INSERT INTO boards (id, name, ble_id, created_at)
+          VALUES (?, ?, ?, 1000)
           """,
         arguments: [id, name, bleId]
       )
@@ -269,9 +298,7 @@ final class TelemetryMigrationTests: XCTestCase {
     deviceId: String,
     deviceName: String?,
     bucketStartMs: Int64,
-    sampleCount: Int = 1,
-    updatedAt: Int64 = 7_000,
-    syncSeq: Int64 = 42
+    sampleCount: Int = 1
   ) throws {
     try queue.write { db in
       try db.execute(
@@ -280,13 +307,12 @@ final class TelemetryMigrationTests: XCTestCase {
             bucket_start_ms, device_id, device_name, sample_count, first_sample_at_ms,
             last_sample_at_ms, sum_abs_speed_centi_kmh, max_abs_speed_centi_kmh,
             max_motor_current_abs_ma, max_battery_current_abs_ma, battery_used_wh_milli,
-            battery_regen_wh_milli, max_duty_abs_permille, fault_count, gps_point_count,
-            precise_gps_point_count, gps_distance_cm, updated_at, sync_seq
-          ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?, ?)
+            battery_regen_wh_milli, max_duty_abs_permille, gps_point_count,
+            precise_gps_point_count, gps_distance_cm
+          ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
           """,
         arguments: [
           bucketStartMs, deviceId, deviceName, sampleCount, bucketStartMs, bucketStartMs + 500,
-          updatedAt, syncSeq,
         ]
       )
     }
@@ -459,8 +485,6 @@ final class TelemetryMigrationTests: XCTestCase {
     XCTAssertEqual(minted["name"] as String, "Old Board")
     XCTAssertNotNil(minted["deleted_at"] as Int64?, "a minted Board is not tombstoned")
     XCTAssertNil(minted["ble_id"] as String?, "a minted Board carries a Board Link")
-    // Every write has to upload, and every existing row is already above zero.
-    XCTAssertGreaterThan(minted["sync_seq"] as Int64, 0)
   }
 
   /// A minted Board is invisible to the Rider: `getBoards()` filters tombstones (ADR 0027), so the
@@ -492,19 +516,11 @@ final class TelemetryMigrationTests: XCTestCase {
 
   // MARK: Bucket rebuild
 
-  /// The primary key move is a table rebuild. `updated_at` and `sync_seq` landed on this table
-  /// earlier in the same release, so a copy that forgets them silently resets every bucket's Sync
-  /// Cursor position and the rows stop uploading.
-  func testTheBucketRebuildMovesThePrimaryKeyAndPreservesUpdatedAtAndSyncSeq() throws {
+  /// The primary key move is a table rebuild, and the retired columns go with it.
+  func testTheBucketRebuildMovesThePrimaryKey() throws {
     try migrate(upTo: Self.beforeBoardId)
     try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
-    try insertLegacyBucket(
-      deviceId: "ble-a",
-      deviceName: "ADV",
-      bucketStartMs: 60_000,
-      updatedAt: 7_777,
-      syncSeq: 99
-    )
+    try insertLegacyBucket(deviceId: "ble-a", deviceName: "ADV", bucketStartMs: 60_000)
 
     try migrate()
 
@@ -512,11 +528,9 @@ final class TelemetryMigrationTests: XCTestCase {
       try queue.read { db in try db.primaryKey("telemetry_minute_buckets").columns },
       ["bucket_start_ms", "board_id"]
     )
-    let row = try XCTUnwrap(try queue.read { db in
-      try Row.fetchOne(db, sql: "SELECT * FROM telemetry_minute_buckets")
-    })
-    XCTAssertEqual(row["updated_at"] as Int64, 7_777)
-    XCTAssertEqual(row["sync_seq"] as Int64, 99)
+    let columns = try columnNames("telemetry_minute_buckets")
+    XCTAssertFalse(columns.contains("device_id"))
+    XCTAssertFalse(columns.contains("device_name"))
   }
 
 }

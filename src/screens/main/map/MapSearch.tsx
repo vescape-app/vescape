@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useMapSearch } from '@/modules/map/hooks/useMapSearch'
 import type { MapSearchResult } from '@/modules/map/lib/search'
 import { getPlaceCategoryIcon } from '@/modules/map-points/constants/mapPointIcons'
@@ -26,6 +27,7 @@ function MapSearchSheet({
   onClose: () => void
   onSelectResult: (result: MapSearchResult) => void
 }) {
+  const neutral = useResolvedNeutralColors()
   const {
     searchQuery,
     searchResults,
@@ -54,8 +56,16 @@ function MapSearchSheet({
     <>
       <MapVignette mode="map" idPrefix="search-map-vignette" topOnly />
       <View style={[styles.sheet, { top }]}>
-        <View style={styles.bar}>
-          <MagnifyingGlassIcon size={22} color={theme.palette.slate.textSecondary} weight="bold" />
+        <View
+          style={[
+            styles.bar,
+            {
+              backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+              borderColor: theme.alpha(neutral.textSecondary, 0.3),
+            },
+          ]}
+        >
+          <MagnifyingGlassIcon size={22} color={neutral.textSecondary} weight="bold" />
           <TextInput
             autoFocus
             selectTextOnFocus
@@ -63,9 +73,9 @@ function MapSearchSheet({
             onChangeText={handleSearchQueryChange}
             onSubmitEditing={() => void handleSubmit()}
             placeholder="Address or place"
-            placeholderTextColor={theme.palette.slate.textMuted}
+            placeholderTextColor={neutral.textMuted}
             returnKeyType="search"
-            style={styles.input}
+            style={[styles.input, { color: neutral.textPrimary }]}
           />
           <Pressable
             accessibilityLabel="Close search"
@@ -73,11 +83,19 @@ function MapSearchSheet({
             onPress={onClose}
             style={({ pressed }) => [styles.close, pressed && styles.pressed]}
           >
-            <XIcon size={22} color={theme.palette.slate.textSecondary} weight="bold" />
+            <XIcon size={22} color={neutral.textSecondary} weight="bold" />
           </Pressable>
         </View>
         {showResultPanel ? (
-          <View style={styles.results}>
+          <View
+            style={[
+              styles.results,
+              {
+                backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+                borderColor: theme.alpha(neutral.textSecondary, 0.3),
+              },
+            ]}
+          >
             {searchLoading ? (
               <View style={styles.statusRow}>
                 <ActivityIndicator size="small" color={theme.palette.sky.color} />
@@ -101,7 +119,7 @@ function MapSearchSheet({
                 style={({ pressed }) => [styles.result, pressed && styles.pressed]}
                 onPress={() => onSelectResult(result)}
               >
-                <View style={styles.resultIcon}>
+                <View style={[styles.resultIcon, { backgroundColor: neutral.surfaceDeep }]}>
                   <MapSearchResultIcon category={result.category} />
                 </View>
                 <View style={styles.resultText}>
@@ -112,7 +130,14 @@ function MapSearchSheet({
                     {result.subtitle}
                   </Text>
                 </View>
-                {index < searchResults.length - 1 ? <View style={styles.resultBorder} /> : null}
+                {index < searchResults.length - 1 ? (
+                  <View
+                    style={[
+                      styles.resultBorder,
+                      { backgroundColor: theme.alpha(neutral.textSecondary, 0.3) },
+                    ]}
+                  />
+                ) : null}
               </Pressable>
             ))}
           </View>
@@ -163,8 +188,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 12,
     zIndex: 44,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   sheet: {
     position: 'absolute',
@@ -177,8 +200,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -188,7 +209,6 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textPrimary,
     fontSize: 15,
     fontWeight: '700',
     paddingVertical: 10,
@@ -206,8 +226,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   statusRow: {
     minHeight: 48,
@@ -217,7 +235,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   statusText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -243,19 +261,18 @@ const styles = StyleSheet.create({
     borderColor: theme.palette.green.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
   },
   resultText: {
     flex: 1,
     minWidth: 0,
   },
   resultTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '800',
   },
   resultSubtitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
@@ -266,6 +283,5 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 1,
-    backgroundColor: theme.alpha(theme.palette.slate.light, 0.3),
   },
 })

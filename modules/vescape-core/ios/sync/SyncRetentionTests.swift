@@ -44,9 +44,9 @@ final class SyncRetentionTests: XCTestCase {
             (bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms,
              sum_abs_speed_centi_kmh, max_abs_speed_centi_kmh, max_motor_current_abs_ma,
              max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli,
-             max_duty_abs_permille, fault_count, gps_point_count, precise_gps_point_count,
+             max_duty_abs_permille, gps_point_count, precise_gps_point_count,
              gps_distance_cm, updated_at, sync_seq)
-          VALUES (?, 'board-1', 1, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?, ?)
+          VALUES (?, 'board-1', 1, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ?, ?)
           """,
         arguments: [startMs, startMs, startMs, startMs, syncSeq]
       )

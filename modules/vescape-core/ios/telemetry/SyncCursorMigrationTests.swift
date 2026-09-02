@@ -2,9 +2,9 @@ import XCTest
 import GRDB
 @testable import VescapeCore
 
-/// Incremental-sync cursors: the `v32_sync_cursors` migration adds `updated_at` to `boards`,
+/// Incremental-sync cursors: the `v43_sync_cursors` migration adds `updated_at` to `boards`,
 /// `alerts` and `telemetry_minute_buckets`, backfills it from each table's best evidence of last
-/// change, and indexes it. `v33_sync_seq` then splits the two jobs that column was doing — `sync_seq`
+/// change, and indexes it. `v44_sync_seq` then splits the two jobs that column was doing — `sync_seq`
 /// carries the Sync Cursor, `updated_at` stays the last-write-wins timestamp. Every write path has to
 /// move both.
 ///
@@ -82,9 +82,9 @@ final class SyncCursorMigrationTests: XCTestCase {
             sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
             max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
             max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli,
-            max_duty_abs_permille, fault_count, first_odometer_cm, last_odometer_cm,
+            max_duty_abs_permille, first_odometer_cm, last_odometer_cm,
             gps_point_count, precise_gps_point_count, gps_distance_cm, max_gps_speed_centi_mps
-          ) VALUES (?, ?, NULL, 1, ?, ?, 0, 0, 0, 0, NULL, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, NULL)
+          ) VALUES (?, ?, NULL, 1, ?, ?, 0, 0, 0, 0, NULL, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, NULL)
           """,
         arguments: [60_000, "board-1", 60_000, 3_000]
       )
@@ -337,7 +337,7 @@ final class SyncCursorMigrationTests: XCTestCase {
   func testRemainingMutableTablesCarryACursorAndItsIndex() throws {
     try migrateToLatest()
 
-    for table in syncSeqTablesV36 {
+    for table in syncSeqTablesV44 {
       XCTAssertTrue(try columnNames(table).contains("sync_seq"), "\(table) is missing sync_seq")
       XCTAssertTrue(
         try indexNames(table).contains("index_\(table)_sync_seq"),
@@ -360,7 +360,7 @@ final class SyncCursorMigrationTests: XCTestCase {
   }
 
   func testMigrationBackfillsRemainingTablesWithDistinctPositions() throws {
-    try TelemetryDatabase.migrator.migrate(queue, upTo: "v35_telemetry_board_id")
+    try TelemetryDatabase.migrator.migrate(queue, upTo: "v42_telemetry_board_id")
     try queue.write { db in
       for (index, id) in ["zone-1", "zone-2", "zone-3"].enumerated() {
         try db.execute(
@@ -432,7 +432,7 @@ final class SyncCursorMigrationTests: XCTestCase {
   /// The backfill numbers every existing row from `rowid`, which would hand a phone-local key a
   /// position and ship it exactly once on the first upload after upgrade.
   func testMigrationStripsCursorsFromPhoneLocalSettings() throws {
-    try TelemetryDatabase.migrator.migrate(queue, upTo: "v35_telemetry_board_id")
+    try TelemetryDatabase.migrator.migrate(queue, upTo: "v42_telemetry_board_id")
     try queue.write { db in
       for key in ["riderName", "liveHistoryLimit"] {
         try db.execute(

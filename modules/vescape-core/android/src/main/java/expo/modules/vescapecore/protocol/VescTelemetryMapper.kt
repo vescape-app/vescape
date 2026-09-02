@@ -36,8 +36,6 @@ internal fun RefloatTelemetry.toCapture(session: SessionConfig, canId: Int?): Te
         elapsedRealtimeMs = SystemClock.elapsedRealtime(),
         boardId = session.appBoardId,
         canId = canId,
-        hasFault = hasFault,
-        faultCode = faultCode,
         pitch = pitch,
         roll = roll,
         balancePitch = balancePitch,

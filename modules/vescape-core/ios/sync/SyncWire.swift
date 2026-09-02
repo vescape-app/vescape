@@ -198,7 +198,10 @@ enum SyncWire {
     try writer.int64("odometerCm", row["odometer_cm"])
     try writer.int32("tempMosfetDeciC", row["temp_mosfet_deci_c"])
     try writer.int32("tempMotorDeciC", row["temp_motor_deci_c"])
-    try writer.int32("faultCode", row["fault_code"])
+    // The server still declares the field, but a Telemetry Sample stopped carrying a fault code
+    // when VESC faults became Board-owned evidence in their own tables (ADR-0037). Those tables
+    // are not in SyncTable yet, so the honest value is an explicit null.
+    try writer.int32("faultCode", nil)
     try writer.int32("latitudeE7", row["latitude_e7"])
     try writer.int32("longitudeE7", row["longitude_e7"])
     try writer.int32("gpsSpeedCentiMps", row["gps_speed_centi_mps"])
@@ -227,7 +230,10 @@ enum SyncWire {
     try writer.int64("batteryUsedWhMilli", row["battery_used_wh_milli"])
     try writer.int64("batteryRegenWhMilli", row["battery_regen_wh_milli"])
     try writer.int32("maxDutyAbsPermille", row["max_duty_abs_permille"])
-    try writer.count("faultCount", row["fault_count"])
+    // The server still declares the field, but a minute bucket stopped counting faults when VESC
+    // faults became Board-owned evidence in their own tables (ADR-0037). Those tables are not in
+    // SyncTable yet, so the honest value is an explicit null rather than a stale zero.
+    try writer.count("faultCount", nil)
     try writer.int64("firstOdometerCm", row["first_odometer_cm"])
     try writer.int64("lastOdometerCm", row["last_odometer_cm"])
     try writer.count("gpsPointCount", row["gps_point_count"])

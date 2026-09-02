@@ -34,6 +34,7 @@ function favorite(overrides: Partial<Favorite>): Favorite {
     avgSpeedKmh: 0,
     maxSpeedKmh: 0,
     batteryUsedWh: 0,
+    routePoints: [],
     ...overrides,
   }
 }
@@ -80,7 +81,6 @@ function bucket(overrides: Partial<TelemetryMinuteBucket>): TelemetryMinuteBucke
     maxMotorCurrent: 30,
     maxBatteryCurrent: 20,
     maxDuty: 0.5,
-    faultCount: 0,
     distanceDeltaM: 500,
     gpsDistanceM: null,
     maxTempMosfet: 40,
@@ -133,10 +133,15 @@ test('a favorite-backed session keeps board identity separate from its name', ()
 })
 
 test('a favorite whose buckets are not loaded still yields a detail session', () => {
-  const detail = favoriteToSession(favorite({ sampleCount: 90 }), [])
+  const routePoints = [
+    { latitude: 52, longitude: 21 },
+    { latitude: 52.1, longitude: 21.1 },
+  ]
+  const detail = favoriteToSession(favorite({ sampleCount: 90, routePoints }), [])
 
   expect(detail.blockIds).toEqual([])
-  expect(detail.centerLatitude).toBeNull()
+  expect(detail.routePoints).toEqual(routePoints)
+  expect(detail.centerLatitude).toBe(52.05)
   expect(detail.sampleCount).toBe(90)
 })
 

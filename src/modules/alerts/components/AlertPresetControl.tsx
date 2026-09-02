@@ -6,6 +6,7 @@ import {
   SpeakerHighIcon,
   StopIcon,
   TrashIcon,
+  CheckIcon,
 } from 'phosphor-react-native'
 import type { AlertTestRule } from 'vescape-core'
 import Animated, {
@@ -22,12 +23,19 @@ import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import {
-  ALERT_PRESET_ACTIVE_LEVELS,
-  generateAlertPresetRules,
+  ALERT_PRESET_CONFIG_MATCH,
+  describeAlertPreset,
+  resolvedAlertPresetRules,
+  supportsBoardConfigMatch,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
+import {
+  configRelativeBase,
+  type BoardConfigBases,
+} from '@/modules/alerts/lib/configRelativeFields'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 
 /**
@@ -43,7 +51,6 @@ import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
  */
 
 interface PresetGaugeDescriptor {
-  title: string
   color: string
   /** Readout unit shown under the live value. */
   unit: string
@@ -61,7 +68,6 @@ const round = (value: number) => Math.round(value)
 // Battery is percent-scaled here (its thresholds are SoC %), unlike the voltage telemetry metric.
 const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
   battery: {
-    title: 'Battery',
     color: telemetry.battVoltage.color,
     unit: '%',
     decimals: 0,
@@ -70,7 +76,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}%`,
   },
   speed: {
-    title: 'Speed',
     color: telemetry.speed.color,
     unit: 'km/h',
     decimals: 0,
@@ -79,7 +84,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)} km/h`,
   },
   duty: {
-    title: 'Duty',
     color: telemetry.duty.color,
     unit: '%',
     decimals: 0,
@@ -88,7 +92,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}%`,
   },
   'motor-temp': {
-    title: 'Motor Temp',
     color: telemetry.motorTemp.color,
     unit: '°C',
     decimals: 0,
@@ -97,7 +100,6 @@ const PRESET_GAUGE: Record<AlertPresetMetric, PresetGaugeDescriptor> = {
     formatMarker: (v) => `${round(v)}°`,
   },
   'controller-temp': {
-    title: 'Controller Temp',
     color: telemetry.controllerTemp.color,
     unit: '°C',
     decimals: 0,
@@ -127,6 +129,11 @@ interface AlertPresetControlProps {
   boardTopSpeedKmh?: number | null
   /** Whether the active board has a valid battery config (battery markers need one). */
   hasBatteryConfig?: boolean
+  /** Metrics whose preset follows the board's own configuration. */
+  matchBoardConfig?: Partial<Record<AlertPresetMetric, boolean>>
+  onMatchBoardConfigChange?: (enabled: boolean) => void
+  /** The board's decoded configs, for resolving what a matched preset lands on right now. */
+  configBases?: BoardConfigBases
   /** Custom (non-preset) alert markers layered onto the same gauge alongside the preset markers. */
   customAlerts?: DualGaugeAlert[]
   /** History hot-range gradient for the gauge arc (kept in sync with the detail gauge). */
@@ -151,6 +158,9 @@ export function AlertPresetControl({
   liveValue,
   boardTopSpeedKmh,
   hasBatteryConfig,
+  matchBoardConfig,
+  onMatchBoardConfigChange,
+  configBases,
   customAlerts,
   hotRange,
   disabled,
@@ -166,9 +176,13 @@ export function AlertPresetControl({
       : gauge.defaultMax
 
   const alerts = useMemo<DualGaugeAlert[]>(() => {
-    const specs = generateAlertPresetRules(metric, level, {
+    // Dormant config-relative specs are already filtered out: a preset waiting on a config the
+    // board has not supplied has no number to draw, and a placeholder would draw at zero.
+    const specs = resolvedAlertPresetRules(metric, level, {
       boardTopSpeedKmh,
       hasBatteryConfig,
+      matchBoardConfig,
+      configBases,
     })
     // Preset markers come straight from the pure generator (instant + atomic as the slider
     // moves, no store round-trip flicker); custom markers layer on top from the caller.
@@ -193,7 +207,16 @@ export function AlertPresetControl({
           (alert.thresholdMax == null ? undefined : gauge.formatMarker(alert.thresholdMax)),
       })),
     ]
-  }, [metric, level, boardTopSpeedKmh, hasBatteryConfig, gauge, customAlerts])
+  }, [
+    metric,
+    level,
+    boardTopSpeedKmh,
+    hasBatteryConfig,
+    matchBoardConfig,
+    configBases,
+    gauge,
+    customAlerts,
+  ])
 
   // A stable null placeholder so the gauge always has a SharedValue; the needle is hidden offline.
   const placeholder = useSharedValue<number | null>(null)
@@ -209,6 +232,13 @@ export function AlertPresetControl({
     slowForMessages: metric === 'motor-temp' || metric === 'controller-temp',
   })
   const gaugeValue = alertTest.running ? alertTest.value : liveValue
+  // Says what this level actually sounds like — the ramp is otherwise learned by riding it.
+  const description = describeAlertPreset(metric, level, {
+    boardTopSpeedKmh,
+    hasBatteryConfig,
+    matchBoardConfig,
+    configBases,
+  })
 
   return (
     <View style={styles.container}>
@@ -219,30 +249,39 @@ export function AlertPresetControl({
         color={gauge.color}
         unit={gauge.unit}
         decimals={gauge.decimals}
-        label={gauge.title.toUpperCase()}
-        headerRight={
-          <Button
-            label={alertTest.running ? 'Stop test' : 'Run test'}
-            icon={alertTest.running ? StopIcon : SpeakerHighIcon}
-            variant="secondary"
-            size="sm"
-            disabled={disabled || !alertTest.canRun}
-            onPress={alertTest.running ? alertTest.stop : alertTest.start}
-            testID={`alert-test-${metric}`}
-            style={styles.testButton}
-          />
-        }
         alerts={alerts}
         hotRange={hotRange}
         showValue={gaugeValue != null}
         containerStyle={styles.gauge}
       />
-      {controlsHeader}
+      {/* The test drives the alerts, so it sits with the Alerts heading rather than the gauge. */}
+      <View style={styles.headerRow}>
+        {controlsHeader}
+        <Button
+          label={alertTest.running ? 'Stop' : 'Preview'}
+          icon={alertTest.running ? StopIcon : SpeakerHighIcon}
+          variant="caution"
+          size="sm"
+          disabled={disabled || !alertTest.canRun}
+          onPress={alertTest.running ? alertTest.stop : alertTest.start}
+          testID={`alert-test-${metric}`}
+          style={styles.testButton}
+        />
+      </View>
+      {description ? <Text style={styles.description}>{description}</Text> : null}
+      {supportsBoardConfigMatch(metric) && !isCustom ? (
+        <BoardConfigMatchControl
+          metric={metric}
+          checked={matchBoardConfig?.[metric] === true}
+          configBases={configBases}
+          onChange={onMatchBoardConfigChange}
+        />
+      ) : null}
       <View style={styles.levelRow}>
         {isCustom ? (
           <CustomLabel />
         ) : (
-          <LevelSlider value={level} onChange={onLevelChange} disabled={disabled} />
+          <LevelSlider metric={metric} value={level} onChange={onLevelChange} disabled={disabled} />
         )}
         {editAction && !disabled ? (
           <IconButton
@@ -258,6 +297,77 @@ export function AlertPresetControl({
 }
 
 /**
+ * Per-metric wording for the match note. The board's setting has a different name on every metric,
+ * and "follows the board" alone does not tell a rider *which* number moved.
+ */
+const MATCH_SUBJECT: Partial<Record<AlertPresetMetric, string>> = {
+  duty: 'duty pushback',
+  'motor-temp': 'motor temperature limiting',
+  'controller-temp': 'controller temperature limiting',
+}
+
+/**
+ * Opt one metric's preset into following the board's own configuration. The note underneath states
+ * the number being followed, because that is the whole promise of the checkbox.
+ *
+ * Where the board has no such number the checkbox is not offered as a choice at all — it is
+ * disabled and the note says why. Ticking it would only produce a preset that stays silent, and a
+ * board with duty pushback at 100% has genuinely nothing to match.
+ */
+function BoardConfigMatchControl({
+  metric,
+  checked,
+  configBases,
+  onChange,
+}: {
+  metric: AlertPresetMetric
+  checked: boolean
+  configBases?: BoardConfigBases
+  onChange?: (enabled: boolean) => void
+}) {
+  const fieldId = ALERT_PRESET_CONFIG_MATCH[metric]?.fieldId
+  const base =
+    fieldId == null
+      ? { status: 'missing' as const }
+      : configRelativeBase(fieldId, configBases ?? {})
+  const subject = MATCH_SUBJECT[metric] ?? 'configuration'
+  const format = PRESET_GAUGE[metric].formatMarker
+  const available = base.status === 'resolved'
+  // Ticking on needs an anchor; ticking off never does, or a rider who matched while connected
+  // would be stuck with a dormant preset the moment the board goes away.
+  const interactive = available || checked
+  let note: string | null = null
+  if (base.status === 'resolved') {
+    note = checked ? `Follows VESC ${subject} (${format(base.value)}).` : null
+  } else if (base.status === 'disabled') {
+    note = `VESC ${subject} is off (${format(base.value)}) — there is nothing to match.`
+  } else if (base.status === 'unread') {
+    note = `Connect to the board to read its ${subject} setting first.`
+  } else {
+    note = `This board's firmware does not report a ${subject} setting.`
+  }
+  return (
+    <View>
+      <Pressable
+        style={[styles.matchRow, !available && styles.matchRowDisabled]}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked, disabled: !interactive }}
+        disabled={!interactive}
+        onPress={() => onChange?.(!checked)}
+      >
+        <View style={[styles.checkbox, checked && available && styles.checkboxChecked]}>
+          {checked && available ? (
+            <CheckIcon size={13} color={theme.palette.slate.text} weight="bold" />
+          ) : null}
+        </View>
+        <Text style={styles.matchLabel}>Match VESC board configuration</Text>
+      </Pressable>
+      {note ? <Text style={styles.matchNote}>{note}</Text> : null}
+    </View>
+  )
+}
+
+/**
  * Stands in for the level slider once the rider owns the metric's rules — there is no level.
  * Deliberately flat and unfilled: it is a status label, and anything pill-shaped in this row
  * reads as a button the rider then taps to no effect.
@@ -265,7 +375,7 @@ export function AlertPresetControl({
 function CustomLabel() {
   return (
     <View style={styles.customLabel}>
-      <SlidersHorizontalIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+      <SlidersHorizontalIcon size={14} color={theme.neutral.textMuted} weight="bold" />
       <Text style={styles.customLabelText}>Custom alerts</Text>
     </View>
   )
@@ -277,36 +387,39 @@ interface LevelTone {
   color: string
 }
 
-const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string; tone: LevelTone }[] = [
-  {
-    id: 'off',
-    label: 'Off',
-    tone: {
-      bg: theme.palette.slate.surface,
-      border: theme.palette.slate.border,
-      color: theme.palette.slate.textSecondary,
-    },
-  },
-  // Cautiousness ramp, not an alarm ramp: careful (blue) → balanced (green) → risky (yellow).
-  // Green marks the recommended default; orange and red stay reserved for real alerts, so
-  // `minimal` must not borrow either — it is a choice, never a fault.
-  { id: 'safe', label: 'Safe', tone: theme.palette.blue },
-  { id: 'normal', label: 'Normal', tone: theme.palette.green },
-  { id: 'minimal', label: 'Minimal', tone: theme.palette.yellow },
+const LEVEL_OPTIONS: { id: AlertPresetLevel; label: string }[] = [
+  { id: 'off', label: 'Off' },
+  // Rising cautiousness left to right, so the row reads as one ramp out of `off`: risky (yellow)
+  // → balanced (green) → careful (blue). Green marks the recommended default; orange and red stay
+  // reserved for real alerts, so `minimal` must not borrow either — it is a choice, never a fault.
+  { id: 'minimal', label: 'Minimal' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'safe', label: 'Safe' },
 ]
 
-const ALL_LEVELS: AlertPresetLevel[] = ['off', ...ALERT_PRESET_ACTIVE_LEVELS]
+/** The row's own order — the preset levels themselves have no ranking. */
+const ALL_LEVELS: AlertPresetLevel[] = LEVEL_OPTIONS.map((option) => option.id)
 const SLIDER_ANIMATION = { duration: 180 } as const
 
 interface LevelSliderProps {
+  metric: AlertPresetMetric
   value: AlertPresetLevel
   onChange: (level: AlertPresetLevel) => void
   disabled?: boolean
 }
 
-function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
+function LevelSlider({ metric, value, onChange, disabled }: LevelSliderProps) {
+  const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const tones: Record<AlertPresetLevel, LevelTone> = {
+    off: { bg: neutral.surface, border: neutral.border, color: neutral.textSecondary },
+    safe: accents.blue,
+    normal: accents.green,
+    minimal: accents.yellow,
+    custom: { bg: neutral.surface, border: neutral.border, color: neutral.textMuted },
+  }
   const activeIndex = Math.max(0, ALL_LEVELS.indexOf(value))
-  const tone = LEVEL_OPTIONS[activeIndex]!.tone
+  const tone = tones[value]
   const progress = useSharedValue(activeIndex)
 
   useEffect(() => {
@@ -334,20 +447,22 @@ function LevelSlider({ value, onChange, disabled }: LevelSliderProps) {
       </Animated.View>
       {LEVEL_OPTIONS.map((option) => {
         const active = option.id === value
+        const optionTone = tones[option.id]
         return (
           <Pressable
             key={option.id}
+            testID={`alert-level-${metric}-${option.id}`}
             style={styles.sliderSegment}
             accessibilityRole="button"
             accessibilityState={{ selected: active, disabled }}
-            accessibilityLabel={option.label}
+            accessibilityLabel={active ? `${option.label}, selected` : option.label}
             disabled={disabled}
             onPress={() => onChange(option.id)}
           >
             <Text
               style={[
                 styles.sliderLabel,
-                { color: active ? option.tone.color : theme.palette.slate.textMuted },
+                { color: active ? optionTone.color : theme.neutral.textMuted },
               ]}
               numberOfLines={1}
             >
@@ -368,11 +483,39 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  description: {
+    color: theme.palette.slate.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
   levelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  matchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34 },
+  matchRowDisabled: { opacity: 0.45 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: theme.palette.slate.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: theme.palette.blue.bg,
+    borderColor: theme.palette.blue.border,
+  },
+  matchLabel: { color: theme.palette.slate.text, fontSize: 14, fontWeight: '600' },
+  matchNote: { color: theme.palette.slate.textMuted, fontSize: 12, lineHeight: 17, marginLeft: 28 },
   testButton: {
     height: 28,
     paddingHorizontal: 10,
@@ -386,7 +529,7 @@ const styles = StyleSheet.create({
     height: 38,
   },
   customLabelText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -395,7 +538,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 38,
     borderRadius: 19,
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
     position: 'relative',

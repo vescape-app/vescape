@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   message: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,

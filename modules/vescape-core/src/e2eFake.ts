@@ -4,6 +4,8 @@ import type {
   AppSettings,
   Board,
   BoardInput,
+  BoardCandidate,
+  BoardLink,
   CompanionPresenceBoard,
   BoardProbeProgressEvent,
   BoardProbeResult,
@@ -14,6 +16,8 @@ import type {
   LiveStateEvent,
   MetricExclusion,
   PrivacyZone,
+  RideHistoryPage,
+  RideHistorySession,
   TelemetryEvent,
   TelemetryHistoryEvent,
   TelemetryHistoryOptions,
@@ -62,6 +66,7 @@ const e2eSettings: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 3,
   freeSpinStationaryBoardCapKmh: 1,
   rideSplitGapMinutes: 30,
+  themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
   satelliteImageryOpacity: 0.2,
@@ -76,6 +81,7 @@ const e2eSettings: AppSettings = {
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
+  vescFaultCollectionEnabled: true,
   companionPresenceCooldownMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
@@ -115,8 +121,6 @@ function makeTelemetry(): TelemetryEvent {
   const now = Date.now()
   const wobble = Math.sin(now / 1000)
   return {
-    hasFault: false,
-    faultCode: 0,
     pitch: wobble * 3,
     roll: wobble,
     balancePitch: wobble * 2,
@@ -272,7 +276,7 @@ function stopBoardSession(): void {
 // ---------------------------------------------------------------------------
 // Telemetry history fake storage
 // ---------------------------------------------------------------------------
-const SAMPLE_COLUMN_COUNT = 25
+const SAMPLE_COLUMN_COUNT = 23
 
 let nextHistorySampleId = 1
 let nextHistoryGpsId = 1
@@ -314,6 +318,54 @@ function getTelemetryHistory(options: TelemetryHistoryOptions): TelemetryMinuteB
     buckets = buckets.slice(0, options.limit)
   }
   return buckets
+}
+
+function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): RideHistoryPage {
+  const buckets = getTelemetryHistory({ cursorBeforeMs: options.cursorBeforeMs }).sort(
+    (a, b) => b.startAtMs - a.startAtMs,
+  )
+  const sessions: RideHistorySession[] = buckets.map((bucket) => ({
+    id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
+    boardId: bucket.boardId,
+    boardName: bucket.boardName,
+    startAtMs: bucket.startAtMs,
+    endAtMs: bucket.endAtMs,
+    movingStartAtMs: bucket.firstMovingAtMs,
+    movingEndAtMs: bucket.lastMovingAtMs,
+    blockIds: [bucket.id],
+    blockCount: 1,
+    sampleCount: bucket.sampleCount,
+    gpsPointCount: bucket.gpsPointCount,
+    preciseGpsPointCount: bucket.preciseGpsPointCount,
+    distanceM: bucket.distanceDeltaM ?? bucket.gpsDistanceM,
+    maxSpeedKmh: bucket.maxAbsSpeedKmh,
+    avgSpeedKmh: bucket.avgSpeedKmh,
+    maxTempMosfet: bucket.maxTempMosfet,
+    maxTempMotor: bucket.maxTempMotor,
+    maxDuty: bucket.maxDuty,
+    batteryUsedWh: bucket.batteryUsedWh,
+    batteryRegenWh: bucket.batteryRegenWh,
+    firstLatitude: bucket.firstLatitude,
+    firstLongitude: bucket.firstLongitude,
+    centerLatitude: bucket.firstLatitude,
+    centerLongitude: bucket.firstLongitude,
+    minLatitude: bucket.firstLatitude,
+    maxLatitude: bucket.firstLatitude,
+    minLongitude: bucket.firstLongitude,
+    maxLongitude: bucket.firstLongitude,
+    boundaryBefore: bucket.boundaryBefore,
+    routePoints:
+      bucket.firstLatitude != null && bucket.firstLongitude != null
+        ? [{ latitude: bucket.firstLatitude, longitude: bucket.firstLongitude }]
+        : [],
+  }))
+  const limit = Math.max(1, options.limit ?? 10)
+  const page = sessions.slice(0, limit)
+  return {
+    sessions: page,
+    hasMore: sessions.length > page.length,
+    nextCursorBeforeMs: sessions.length > page.length ? (page.at(-1)?.startAtMs ?? null) : null,
+  }
 }
 
 function encodeBoardSamples(samples: TelemetrySample[]): {
@@ -362,10 +414,8 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
     lanes[o + 18] = s.odometer ?? NaN
     lanes[o + 19] = s.tempMosfet ?? NaN
     lanes[o + 20] = s.tempMotor ?? NaN
-    lanes[o + 21] = s.hasFault ? 1 : 0
-    lanes[o + 22] = s.faultCode
-    lanes[o + 23] = s.latitude ?? NaN
-    lanes[o + 24] = s.longitude ?? NaN
+    lanes[o + 21] = s.latitude ?? NaN
+    lanes[o + 22] = s.longitude ?? NaN
   }
 
   return {
@@ -410,8 +460,6 @@ function getHistoryRange(options: {
   let markers = historyMarkers.filter(
     (m) => m.occurredAtMs >= options.fromMs && m.occurredAtMs <= options.toMs,
   )
-  // Markers still key on the BLE identifier (ADR 0028); the fake models one Board per install, so
-  // the Board-scoped filter maps straight onto it.
   if (options.boardId != null) {
     markers = markers.filter((m) => m.boardId === options.boardId)
   }
@@ -518,7 +566,6 @@ function addHistoryRide(
     maxMotorCurrent: 12,
     maxBatteryCurrent: -5,
     maxDuty: 0.25,
-    faultCount: 0,
     distanceDeltaM: ride.distanceM,
     gpsDistanceM: ride.distanceM,
     maxTempMosfet: ride.maxTempMosfet,
@@ -559,8 +606,6 @@ function addHistoryRide(
       odometer: 1234 + progress * ride.distanceM,
       tempMosfet: ride.maxTempMosfet - 2 + progress * 2,
       tempMotor: ride.maxTempMotor - 2 + progress * 2,
-      hasFault: false,
-      faultCode: 0,
       latitude: ride.startLatitude + progress * 0.01,
       longitude: ride.startLongitude + progress * 0.01,
     })
@@ -635,6 +680,22 @@ export const e2eFake = {
       outcome: 'resolved',
       transport: 'direct',
       candidates: [{ transport: 'direct', hasBms: false }],
+    }
+  },
+
+  finalizeBoardLink(bleId: string, candidate: BoardCandidate): BoardLink {
+    return {
+      linkVersion: 4,
+      bleId,
+      transport: candidate.transport,
+      hasBms: candidate.hasBms,
+      ...(candidate.vescFirmwareVersion != null && {
+        vescFirmwareVersion: candidate.vescFirmwareVersion,
+      }),
+      ...(candidate.refloatVersion != null && { refloatVersion: candidate.refloatVersion }),
+      ...(candidate.refloatBaseVersion != null && {
+        refloatBaseVersion: candidate.refloatBaseVersion,
+      }),
     }
   },
 
@@ -828,6 +889,8 @@ export const e2eFake = {
   },
 
   getTelemetryHistory,
+
+  getRideHistoryPage,
 
   getHistoryRange,
 

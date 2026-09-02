@@ -8,8 +8,8 @@ import type { SparklinePoint } from '@/components/charts/Sparkline'
 import { buildSparklinePaths, SparklineLayer } from '@/components/charts/SparklineLayer'
 import { useCanvasSize } from '@/hooks/useCanvasSize'
 import { DASH } from '@/helpers/format'
-import { interaction, type AlphaLevel } from '@/constants/theme'
-import { telemetry } from '@/modules/board/constants/telemetry'
+import { interaction, theme, type AlphaLevel } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedTelemetryColors } from '@/hooks/useTheme'
 import type { MetricHotRange } from '@/modules/history/lib/metricColorScale'
 import {
   arcPath,
@@ -22,7 +22,6 @@ import {
 } from '@/modules/board/components/gauge/arcGeometry'
 import {
   AlertMarker,
-  BG_ARC_COLOR,
   gaugeRampColor,
   GaugeReadout,
   GlowGradient,
@@ -86,13 +85,16 @@ function QuarterArcLayer({
   hotRange,
   transform,
 }: QuarterArcLayerProps) {
+  const accents = useResolvedAccentColors()
   const isLeft = side === 'left'
   const arc = isLeft ? LEFT_ARC : RIGHT_ARC
 
   const arcPathValue = useDerivedValue(() =>
     svgPath(arcPath(arc, clamp01((value.value ?? 0) / max))),
   )
-  const arcColor = useDerivedValue(() => gaugeRampColor(value.value ?? 0, color, hotRange))
+  const arcColor = useDerivedValue(() =>
+    gaugeRampColor(value.value ?? 0, color, hotRange, accents.red.color),
+  )
   const wedgePathValue = useDerivedValue(() =>
     svgPath(wedgePath(arc, clamp01((value.value ?? 0) / max))),
   )
@@ -110,7 +112,7 @@ function QuarterArcLayer({
       {/* Static background arc */}
       <Path
         path={isLeft ? BG_ARC_LEFT : BG_ARC_RIGHT}
-        color={BG_ARC_COLOR}
+        color={theme.palette.slate.border}
         style="stroke"
         strokeWidth={STROKE}
         strokeCap="butt"
@@ -142,11 +144,14 @@ function GaugeValueLayer({
   unit,
   box,
 }: Omit<QuarterArcProps, 'side' | 'max'> & { box: GaugeReadoutBox }) {
+  const accents = useResolvedAccentColors()
   const valueText = useDerivedValue(() => {
     const current = value.value
     return current != null ? Math.round(current).toString() : DASH
   })
-  const valueColor = useDerivedValue(() => gaugeRampColor(value.value, color, hotRange))
+  const valueColor = useDerivedValue(() =>
+    gaugeRampColor(value.value, color, hotRange, accents.red.color),
+  )
   return (
     <GaugeReadout
       text={valueText}
@@ -191,6 +196,7 @@ export function GaugePair({
   onPressSpeed,
   onPressDuty,
 }: GaugePairProps) {
+  const telemetryColors = useResolvedTelemetryColors()
   const { size, onLayout } = useCanvasSize()
   const cellWidth = Math.max(0, (size.w - SPARKLINE_GAP) / 2)
   const scale = cellWidth / VB_CROP_W
@@ -243,18 +249,18 @@ export function GaugePair({
       {scale > 0 ? (
         <Canvas style={styles.svg}>
           <Group transform={[{ translateY: SPARKLINE_TOP }]}>
-            <SparklineLayer paths={sparklinePaths[0]} color={telemetry.speed.color} showMax />
+            <SparklineLayer paths={sparklinePaths[0]} color={telemetryColors.speed} showMax />
           </Group>
           <Group
             transform={[{ translateX: cellWidth + SPARKLINE_GAP }, { translateY: SPARKLINE_TOP }]}
           >
-            <SparklineLayer paths={sparklinePaths[1]} color={telemetry.duty.color} showMax />
+            <SparklineLayer paths={sparklinePaths[1]} color={telemetryColors.duty} showMax />
           </Group>
           <QuarterArcLayer
             side="left"
             value={speedValue}
             max={speedMax}
-            color={telemetry.speed.color}
+            color={telemetryColors.speed}
             unit="km/h"
             alerts={speedAlerts}
             hotRange={speedHotRange}
@@ -264,7 +270,7 @@ export function GaugePair({
             side="right"
             value={dutyValue}
             max={dutyMax}
-            color={telemetry.duty.color}
+            color={telemetryColors.duty}
             unit="%"
             alerts={dutyAlerts}
             hotRange={dutyHotRange}
@@ -272,14 +278,14 @@ export function GaugePair({
           />
           <GaugeValueLayer
             value={speedValue}
-            color={telemetry.speed.color}
+            color={telemetryColors.speed}
             unit="km/h"
             hotRange={speedHotRange}
             box={{ ...bowl, x: size.w * 0.05 }}
           />
           <GaugeValueLayer
             value={dutyValue}
-            color={telemetry.duty.color}
+            color={telemetryColors.duty}
             unit="%"
             hotRange={dutyHotRange}
             box={{ ...bowl, x: size.w * 0.55 }}

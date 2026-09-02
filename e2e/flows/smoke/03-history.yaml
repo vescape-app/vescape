@@ -6,38 +6,72 @@
 # than specific distances, because the fixture is regenerated from real backups and its numbers move.
 appId: ${APP_ID}
 ---
-- tapOn:
-    id: history-button
+# Retried, like the map reveal: the history button sits on the main screen while the replay pushes
+# telemetry through the JS thread, and a tap that lands in a busy frame can be swallowed before the
+# drawer opens — the run then waits out its timeout on a screen that never changed. A failed attempt
+# leaves the screen where it started, so tapping again is safe.
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn:
+          id: history-button
+      - extendedWaitUntil:
+          visible:
+            id: history-drawer
+          timeout: 15000
 
-# Entering History opens the newest ride directly. Waiting on the metric tabs rather than the map:
-# the row only appears once the ride's samples are loaded.
+# History opens on the overview drawer. Open its newest restored ride, then wait on the metric tabs
+# rather than the map: the row only appears once the ride's samples are loaded.
+- extendedWaitUntil:
+    visible:
+      id: history-latest-ride
+    timeout: 30000
+- tapOn:
+    id: history-latest-ride
 - extendedWaitUntil:
     visible:
       id: history-metric-tab-duty
     timeout: 30000
 
-- assertVisible: Distance
-- assertVisible: Top Speed
+- assertVisible:
+    id: history-stat-distance
+- assertVisible:
+    id: history-stat-topSpeed
 
 # Expanding the stats panel is what computes the secondary stats — a ride that loads but cannot
 # derive them fails here and nowhere earlier.
 - tapOn:
     id: history-stats-bar
-- assertVisible: Avg Speed
-- assertVisible: Time
-- assertVisible: Ctrl Max
-- assertVisible: Motor Max
+- assertVisible:
+    id: history-stat-avgSpeed
+- assertVisible:
+    id: history-stat-rideTime
+- assertVisible:
+    id: history-stat-mosfetTemp
+- assertVisible:
+    id: history-stat-motorTemp
 
-# Optional charts: each tab re-derives a trace from the same samples.
+# Optional charts: each tab re-derives a trace from the same samples. The chart's own title is
+# drawn into the Skia canvas and never reaches the view hierarchy, so the row wrapper is the only
+# thing a flow can assert — and it only mounts for a metric whose trace derived.
 - tapOn:
     id: history-metric-tab-duty
 - extendedWaitUntil:
-    visible: 'Duty Cycle'
+    visible:
+      id: chart-row-duty
     timeout: 10000
 - tapOn:
     id: history-metric-tab-tempMotor
+- extendedWaitUntil:
+    visible:
+      id: chart-row-tempMotor
+    timeout: 10000
 - tapOn:
     id: history-metric-tab-tempController
+- extendedWaitUntil:
+    visible:
+      id: chart-row-tempController
+    timeout: 10000
 
 # The ride list is the only way to reach an older ride, and it reads a different query than the
 # detail screen does.

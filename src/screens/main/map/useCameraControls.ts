@@ -12,6 +12,10 @@ import {
 } from '@/modules/map/lib/cameraController'
 import { createCameraEngine, type EngineCamera } from '@/modules/map/lib/cameraEngine/engine'
 import {
+  getMapCameraProfileForOrientationMode,
+  getPitchForProfileZoom,
+} from '@/modules/map/lib/cameraProfiles'
+import {
   clamp,
   liveFollowKey,
   MIN_ZOOM,
@@ -40,7 +44,7 @@ export function useCameraControls({
   onHeadingChange,
   onPerspectiveChange,
 }: UseCameraControlsParams) {
-  const { getFollowDeg, gpsMode, phoneMode, phoneReady, resetOnRecenter } = heading
+  const { getFollowDeg, phoneReady, resetOnRecenter } = heading
   const {
     active: historyActive,
     preview: historyPreview,
@@ -55,7 +59,7 @@ export function useCameraControls({
   const lastFollowKeyRef = useRef<string | null>(null)
   const followZoomLevelRef = useRef<number | null>(null)
   const previewPanActiveRef = useRef(false)
-  const previousGpsHeadingModeRef = useRef(gpsMode && !phoneMode)
+  const previousOrientationModeRef = useRef(mapOrientationMode)
   const recenterLiveRef = useRef<
     ((options?: { resetPadding?: boolean; animationDuration?: number }) => void) | null
   >(null)
@@ -220,6 +224,26 @@ export function useCameraControls({
     viewportHeight,
   ])
 
+  /**
+   * Pitch the live follow camera would sit at for a zoom. A pinch drives the camera itself, and
+   * deriving its pitch from the plain zoom profile tilts it differently than the follow profiles
+   * do — the tilt would drop under the fingers and spring back on release.
+   */
+  const getFollowPitchForZoom = useCallback(
+    (zoom: number) =>
+      getPitchForProfileZoom({
+        profile: getMapCameraProfileForOrientationMode(
+          mapOrientationMode === 'phoneHeading' && !phoneReady ? 'freeRotate' : mapOrientationMode,
+        ),
+        zoom,
+        perspectiveEnabled,
+        // A pinch pins the follow zoom, and live follow drops the profile minimums once it is
+        // pinned. Matching that keeps the two in step.
+        enforceMinimums: false,
+      }),
+    [mapOrientationMode, perspectiveEnabled, phoneReady],
+  )
+
   const applyLiveFollowCamera = useCallback(() => {
     if (!cameraFix) return
     const followCamera = getLiveFollowCamera()
@@ -283,15 +307,13 @@ export function useCameraControls({
   const previewGestures = useCameraPreviewGestures({
     cameraRefs,
     cameraFix,
-    followGps,
     gpsCamera,
-    historyActive,
     perspectiveEnabled,
     applyLiveFollowCamera,
-    enterCameraMode,
+    dispatchCameraIntent,
     getFollowHeadingDeg: getFollowDeg,
+    getFollowPitchForZoom,
     getLiveFollowCamera,
-    setFollowGps,
     setFollowZoomLevel,
   })
   const intentCommands = useCameraIntentCommands({
@@ -341,27 +363,38 @@ export function useCameraControls({
     previewGestures.previewPanActiveRef,
   ])
 
+  // Every orientation change has to reach the camera, not only the ones that enter or leave GPS
+  // heading. Compass drives the heading straight into the engine, so switching away from it leaves
+  // the last compass bearing on the map until something else writes a heading.
   useEffect(() => {
-    const actualGpsHeadingMode = gpsMode && !phoneMode
-    const wasGpsHeadingMode = previousGpsHeadingModeRef.current
-    previousGpsHeadingModeRef.current = actualGpsHeadingMode
-    if (historyActive) return
+    const previousMode = previousOrientationModeRef.current
+    previousOrientationModeRef.current = mapOrientationMode
+    if (historyActive || previousMode === mapOrientationMode) return
 
-    if (!actualGpsHeadingMode && wasGpsHeadingMode) {
-      followZoomLevelRef.current = null
-      lastFollowKeyRef.current = null
-      const frame = requestAnimationFrame(() => recenterLiveRef.current?.({ resetPadding: true }))
+    if (controllerStateRef.current.mode.kind !== 'liveFollow') {
+      // A rider browsing the map keeps their viewport; only the fixed-heading mode has an answer
+      // that does not depend on where the GPS puck is.
+      if (mapOrientationMode !== 'northUp') return
+      engine.setTarget({ heading: 0 })
+      onHeadingChange(0)
+      return
+    }
+
+    if (mapOrientationMode === 'gpsHeading') {
+      const frame = requestAnimationFrame(() =>
+        recenterLiveRef.current?.({ resetPadding: true, animationDuration: 0 }),
+      )
       return () => cancelAnimationFrame(frame)
     }
-    if (!actualGpsHeadingMode) return
-    const frame = requestAnimationFrame(() =>
-      recenterLiveRef.current?.({ resetPadding: true, animationDuration: 0 }),
-    )
+    followZoomLevelRef.current = null
+    lastFollowKeyRef.current = null
+    const frame = requestAnimationFrame(() => recenterLiveRef.current?.({ resetPadding: true }))
     return () => cancelAnimationFrame(frame)
-  }, [gpsMode, historyActive, phoneMode])
+  }, [engine, historyActive, mapOrientationMode, onHeadingChange])
 
   return {
     cameraRef,
+    controllerStateRef,
     currentCameraRef,
     engine,
     previewPanActiveRef,

@@ -1,5 +1,11 @@
-import { createContext, useContext } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  View,
+  type FlatList,
+  type ListRenderItem,
+} from 'react-native'
 import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
 import Reanimated from 'react-native-reanimated'
 import type { Icon } from 'phosphor-react-native'
@@ -7,13 +13,23 @@ import type { Icon } from 'phosphor-react-native'
 import { Text } from '@/components/base/Text'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
 import { useEdgeDrawerDismissal } from '@/components/overlays/useEdgeDrawerDismissal'
+import {
+  useWidgetFocusHost,
+  WidgetFocusOverlay,
+  WidgetFocusProvider,
+} from '@/components/overlays/widgetFocus'
 import { theme } from '@/constants/theme'
 
-const EdgeDrawerScrollContext = createContext<(() => void) | null>(null)
-
-/** Lets content deep inside a drawer scroll the drawer back to its open edge. */
-export function useEdgeDrawerScrollToOpenEdge() {
-  return useContext(EdgeDrawerScrollContext)
+interface EdgeDrawerVirtualizedContent {
+  data: readonly unknown[]
+  renderItem: ListRenderItem<unknown>
+  keyExtractor: (item: unknown, index: number) => string
+  empty?: React.ReactElement | null
+  footer?: React.ReactElement | null
+  separator?: React.ComponentType
+  onEndReached?: () => void
+  onEndReachedThreshold?: number
+  testID?: string
 }
 
 interface EdgeDrawerProps {
@@ -33,7 +49,9 @@ interface EdgeDrawerProps {
   /** Called after scrolling settles near the end of the drawer content. */
   onReachContentEnd?: () => void
   backdropTestID?: string
-  children: React.ReactNode
+  children?: React.ReactNode
+  /** Dedicated FlatList path for long/unknown content; avoids nesting virtualization in a ScrollView. */
+  virtualizedContent?: EdgeDrawerVirtualizedContent
 }
 
 /**
@@ -48,12 +66,13 @@ export function EdgeDrawer({
   edge = 'bottom',
   title,
   icon: IconComponent,
-  iconColor = theme.palette.slate.textSecondary,
+  iconColor = theme.neutral.textSecondary,
   autoScrollOnContentExpand = false,
   initialFocusRef,
   onReachContentEnd,
   backdropTestID,
   children,
+  virtualizedContent,
 }: EdgeDrawerProps) {
   const {
     mounted,
@@ -66,7 +85,6 @@ export function EdgeDrawer({
     edgePadding,
     close,
     startOpen,
-    scrollToOpenEdge,
     scrollHandler,
     handleContentSizeChange,
     handleScrollEnd,
@@ -82,11 +100,45 @@ export function EdgeDrawer({
     onReachContentEnd,
   })
 
+  const focus = useWidgetFocusHost()
+
   if (!mounted) return null
 
   const emptyDismissArea = (
     <Pressable style={{ height: dismissAreaHeight }} onPress={close} accessible={false} />
   )
+
+  const drawerTitle = title ? (
+    <Pressable
+      style={styles.drawerHeader}
+      onPress={close}
+      accessibilityRole="button"
+      accessibilityLabel={`Close ${title}`}
+    >
+      {IconComponent ? <IconComponent size={28} color={iconColor} weight="duotone" /> : null}
+      <Text style={styles.drawerTitle}>{title}</Text>
+    </Pressable>
+  ) : null
+
+  const listHeader = virtualizedContent ? (
+    <>
+      {!opensFromTop ? emptyDismissArea : null}
+      <View style={[styles.listChrome, opensFromTop && { paddingTop: edgePadding }]}>
+        {!opensFromTop ? <View style={styles.grabber} /> : null}
+        {drawerTitle}
+      </View>
+    </>
+  ) : null
+
+  const listFooter = virtualizedContent ? (
+    <>
+      {virtualizedContent.footer}
+      <View style={[styles.listChrome, opensFromTop ? undefined : { paddingBottom: edgePadding }]}>
+        {opensFromTop ? <View style={styles.grabber} /> : null}
+      </View>
+      {opensFromTop ? emptyDismissArea : null}
+    </>
+  ) : null
 
   return (
     <Modal
@@ -96,7 +148,7 @@ export function EdgeDrawer({
       statusBarTranslucent
       navigationBarTranslucent
       presentationStyle="overFullScreen"
-      onRequestClose={close}
+      onRequestClose={focus.active ? focus.controller.close : close}
       onShow={startOpen}
     >
       <GestureHandlerRootView style={styles.modalGestureRoot}>
@@ -106,50 +158,72 @@ export function EdgeDrawer({
           </Reanimated.View>
         </View>
         <Reanimated.View style={[styles.drawer, presenceStyle]}>
-          <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
-            <GestureDetector gesture={nativeScrollGesture}>
-              <Reanimated.ScrollView
-                ref={scrollRef}
-                onContentSizeChange={handleContentSizeChange}
-                onScroll={scrollHandler}
-                onScrollEndDrag={handleScrollEndDrag}
-                onMomentumScrollEnd={handleScrollEnd}
-                scrollEnabled={!closing}
-                scrollEventThrottle={16}
-                showsVerticalScrollIndicator={false}
-                bounces={false}
-                overScrollMode="never"
-              >
-                {!opensFromTop ? emptyDismissArea : null}
-                <View
-                  style={[
-                    styles.drawerBody,
-                    opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
-                  ]}
-                >
-                  {!opensFromTop ? <View style={styles.grabber} /> : null}
-                  {title ? (
-                    <Pressable
-                      style={styles.drawerHeader}
-                      onPress={close}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Close ${title}`}
+          <View ref={focus.rootRef} collapsable={false} style={styles.focusRoot}>
+            <NativeScrollGestureContext.Provider value={nativeScrollGesture}>
+              <GestureDetector gesture={nativeScrollGesture}>
+                {virtualizedContent ? (
+                  <Reanimated.FlatList
+                    ref={scrollRef as React.RefObject<FlatList<unknown>>}
+                    data={virtualizedContent.data as unknown[]}
+                    renderItem={virtualizedContent.renderItem}
+                    keyExtractor={virtualizedContent.keyExtractor}
+                    ListHeaderComponent={listHeader}
+                    ListEmptyComponent={virtualizedContent.empty}
+                    ListFooterComponent={listFooter}
+                    ItemSeparatorComponent={virtualizedContent.separator}
+                    contentContainerStyle={styles.virtualizedContent}
+                    onEndReached={virtualizedContent.onEndReached}
+                    onEndReachedThreshold={virtualizedContent.onEndReachedThreshold ?? 0.6}
+                    onContentSizeChange={handleContentSizeChange}
+                    onScroll={scrollHandler}
+                    onScrollEndDrag={handleScrollEndDrag}
+                    onMomentumScrollEnd={handleScrollEnd}
+                    scrollEnabled={!closing && !focus.active}
+                    scrollEventThrottle={16}
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                    overScrollMode="never"
+                    testID={virtualizedContent.testID}
+                    initialNumToRender={8}
+                    maxToRenderPerBatch={8}
+                    windowSize={7}
+                  />
+                ) : (
+                  <Reanimated.ScrollView
+                    ref={
+                      scrollRef as React.RefObject<React.ComponentRef<typeof Reanimated.ScrollView>>
+                    }
+                    onContentSizeChange={handleContentSizeChange}
+                    onScroll={scrollHandler}
+                    onScrollEndDrag={handleScrollEndDrag}
+                    onMomentumScrollEnd={handleScrollEnd}
+                    scrollEnabled={!closing && !focus.active}
+                    scrollEventThrottle={16}
+                    showsVerticalScrollIndicator={false}
+                    bounces={false}
+                    overScrollMode="never"
+                  >
+                    {!opensFromTop ? emptyDismissArea : null}
+                    <View
+                      style={[
+                        styles.drawerBody,
+                        opensFromTop ? { paddingTop: edgePadding } : { paddingBottom: edgePadding },
+                      ]}
                     >
-                      {IconComponent ? (
-                        <IconComponent size={28} color={iconColor} weight="duotone" />
-                      ) : null}
-                      <Text style={styles.drawerTitle}>{title}</Text>
-                    </Pressable>
-                  ) : null}
-                  <EdgeDrawerScrollContext.Provider value={scrollToOpenEdge}>
-                    <View style={styles.drawerContent}>{children}</View>
-                  </EdgeDrawerScrollContext.Provider>
-                  {opensFromTop ? <View style={styles.grabber} /> : null}
-                </View>
-                {opensFromTop ? emptyDismissArea : null}
-              </Reanimated.ScrollView>
-            </GestureDetector>
-          </NativeScrollGestureContext.Provider>
+                      {!opensFromTop ? <View style={styles.grabber} /> : null}
+                      {drawerTitle}
+                      <WidgetFocusProvider host={focus}>
+                        <View style={styles.drawerContent}>{children}</View>
+                      </WidgetFocusProvider>
+                      {opensFromTop ? <View style={styles.grabber} /> : null}
+                    </View>
+                    {opensFromTop ? emptyDismissArea : null}
+                  </Reanimated.ScrollView>
+                )}
+              </GestureDetector>
+            </NativeScrollGestureContext.Provider>
+            <WidgetFocusOverlay host={focus} />
+          </View>
         </Reanimated.View>
       </GestureHandlerRootView>
     </Modal>
@@ -167,17 +241,27 @@ const styles = StyleSheet.create({
   modalGestureRoot: {
     flex: 1,
   },
+  focusRoot: {
+    flex: 1,
+  },
   /**
    * A flat translucent scrim rather than a vignette gradient. The gradient was there to fake a panel
    * edge, but its falloff never lined up with where the drawer actually ended, and the dismissal
    * fade is what conveys the drawer leaving.
    */
   drawerScrim: {
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   drawerBody: {
     paddingHorizontal: 12,
     gap: 10,
+  },
+  listChrome: {
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+  virtualizedContent: {
+    paddingHorizontal: 12,
   },
   drawerHeader: {
     minHeight: 56,
@@ -188,7 +272,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   drawerTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '300',
   },
@@ -200,7 +284,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 999,
-    backgroundColor: theme.alpha(theme.palette.slate.textSecondary, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.textSecondary, 0.6),
     marginVertical: 3,
   },
 })

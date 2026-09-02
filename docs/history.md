@@ -13,17 +13,18 @@ Native owns durable history truth.
 Main files:
 
 - Native repository: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt`
+- Native Ride paging: `modules/vescape-core/{android,ios}/telemetry/RideHistoryRepository.*`
 - Native DAO: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt`
 - Native tables: `modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt`
 - JS store: `src/modules/history/store/historyStore.ts`
-- Session grouping: `src/history/sessions.ts`
+- Ride rendering types/helpers: `src/modules/history/lib/sessions.ts`
 - Map rendering: `src/screens/main/MainMap.tsx`
 
 ## Persisted Data
 
 `telemetry_frames` stores board telemetry samples and any precise GPS fix attached to those telemetry samples. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`telemetry_minute_buckets` stores minute-level summaries used by history lists. Buckets include sample counts, GPS counts, distance, speed, fault count, and battery/current summaries.
+`telemetry_minute_buckets` stores minute-level summaries used by history lists. Buckets include sample counts, GPS counts, distance, speed, and battery/current summaries. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
 `telemetry_markers` stores ride boundaries and abnormal events. Current marker types include:
 
@@ -44,12 +45,16 @@ Standalone GPS may update live map state but should not create a Ride Recording.
 `historyStore.loadInitial()` loads:
 
 - summary from `getTelemetrySummary()`
-- latest minute buckets from `getTelemetryHistory({ limit: 100 })`
-- grouped sessions from `groupHistorySessions(blocks)`
+- latest live-detail buckets from `getTelemetryHistory({ limit: 100 })`
+- ten complete rides from `getRideHistoryPage({ limit: 10 })`
+
+Older pages use native's opaque `nextCursorBeforeMs`. A page boundary is always before a complete
+Ride, never through an arbitrary minute bucket. Native also returns stable coarse route points for
+list thumbnails, so JS neither groups buckets nor scans all loaded buckets per row.
 
 `historyStore.selectSession(session)` loads:
 
-- board samples from `getHistoryRange({ fromMs, toMs, deviceId, limit: 10000 })`
+- board samples from `getHistoryRange({ fromMs, toMs, boardId, limit: 10000 })`
 - GPS samples derived from telemetry samples in the same range
 - markers from same range
 
@@ -90,12 +95,13 @@ See ADR 0014 for the ownership and matching decision.
 
 ## Session Grouping
 
-`groupHistorySessions(...)` groups minute buckets oldest-first.
+`RideHistoryRepository` groups minute buckets oldest-first inside one database snapshot. The same
+native grouping implementation feeds both Ride History pages and Profile Stats.
 
 Session breaks happen when:
 
 - device id changes
-- gap between adjacent buckets is more than `10 minutes`
+- gap between adjacent buckets exceeds the rider's `rideSplitGapMinutes` setting (default 30)
 - bucket `boundaryBefore` is one of `disconnected`, `app_stop`, or `error`
 
 Important limitation: grouping only sees `boundaryBefore` attached near bucket start. A marker inside a minute bucket does not necessarily split a session.

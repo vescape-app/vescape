@@ -58,7 +58,7 @@ export function HapticsProbe() {
 
 const styles = StyleSheet.create({
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -68,10 +68,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   plainCard: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   controlGroup: {
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -96,12 +96,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '600',
   },
   rowHint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
   hapticGrid: {
@@ -110,15 +110,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   hapticButton: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   hapticButtonText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },

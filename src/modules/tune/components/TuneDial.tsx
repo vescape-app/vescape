@@ -7,6 +7,7 @@ import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 import { Text } from '@/components/base/Text'
 import { NativeScrollGestureContext } from '@/components/gestures/NativeScrollGestureContext'
 import { theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import { useSkiaFont } from '@/hooks/useSkiaFont'
 import { computeTuneDialLayout } from '@/modules/tune/components/tuneDialPhysics'
 import {
@@ -50,6 +51,7 @@ export function TuneDial({
   onValueChange,
 }: TuneDialProps) {
   'use no memo'
+  const resolvedColor = useResolvedColor(color)
   const nativeScrollGesture = use(NativeScrollGestureContext)
   const range = max - min
   const layout = useMemo(() => computeTuneDialLayout(min, max, step), [min, max, step])
@@ -94,7 +96,7 @@ export function TuneDial({
                 min={min}
                 step={step}
                 decimals={decimals}
-                color={color}
+                color={resolvedColor}
                 indicatorGlow={indicatorGlow}
                 previousValue={previousValue}
                 valueToOffset={valueToOffset}
@@ -104,7 +106,7 @@ export function TuneDial({
           </Animated.View>
         </GestureDetector>
         <View
-          style={[styles.indicatorTop, { backgroundColor: color, shadowColor: color }]}
+          style={[styles.indicatorTop, { backgroundColor: resolvedColor }]}
           pointerEvents="none"
         />
         <View style={styles.valueBadgeAnchor} pointerEvents="none">
@@ -115,7 +117,7 @@ export function TuneDial({
                 y={BADGE_BASELINE}
                 text={badgeText}
                 font={badgeFont}
-                color={color}
+                color={resolvedColor}
               />
             )}
           </Canvas>
@@ -154,10 +156,6 @@ const styles = StyleSheet.create({
     height: RULER_LABEL_BAND_TOP - CURRENT_VALUE_TOP,
     marginLeft: -MARKER_LINE_WIDTH / 2,
     borderRadius: 2,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
-    elevation: 4,
   },
   valueBadgeAnchor: {
     position: 'absolute',
@@ -178,7 +176,7 @@ const styles = StyleSheet.create({
     left: '50%',
     marginLeft: 7,
     bottom: 3,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '800',
     lineHeight: 10,

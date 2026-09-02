@@ -219,6 +219,24 @@ class CoreForegroundService : Service() {
             service.controller.consumePendingConfigRead()
         }
 
+        /** This Board Session's Board Config Values in bridge shape, or null when none are held. */
+        fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
+
+        fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
+
+        fun readVescFaultLog(
+            boardId: String,
+            onSuccess: (String) -> Unit,
+            onError: (String, String) -> Unit,
+        ) {
+            val service = instance
+            if (service == null) {
+                onError("VESC_FAULT_LOG_BOARD_NOT_CONNECTED", "Matching Board must be connected")
+                return
+            }
+            service.controller.readVescFaultLog(boardId, onSuccess, onError)
+        }
+
         fun setRemoteTilt(value: Int): Boolean = instance?.controller?.setRemoteTilt(value) ?: false
 
         fun lockRemoteTilt(value: Int): Boolean = instance?.controller?.lockRemoteTilt(value) ?: false
@@ -227,6 +245,12 @@ class CoreForegroundService : Service() {
             instance?.controller?.releaseRemoteTilt(value, durationMs) ?: false
 
         fun stopRemoteTilt(): Boolean = instance?.controller?.stopRemoteTilt() ?: false
+
+        fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean =
+            instance?.controller?.setBoardLights(enabled, headlightsEnabled) ?: false
+
+        fun lightsEventBody(): Map<String, Any?> =
+            instance?.controller?.lightsEventBody() ?: mapOf("enabled" to null, "headlightsEnabled" to null)
 
         fun startBoardMove(input: Int): Boolean = instance?.controller?.startBoardMove(input) ?: false
 
@@ -346,16 +370,6 @@ class CoreForegroundService : Service() {
             riderColor: String?,
         ) {
             instance?.controller?.updateGroupRideIdentity(riderId, riderName, riderColor)
-        }
-
-        /**
-         * Offer a compass reading to whatever Debug Recording is running. No service, no session or
-         * no active recorder means it is simply dropped — JS pushes these unconditionally while the
-         * map's heading layer is live, and native is the one that knows whether anything is
-         * recording.
-         */
-        fun recordPhoneHeading(context: Context, headingDeg: Double) {
-            instance?.controller?.recordPhoneHeading(headingDeg)
         }
 
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {

@@ -135,11 +135,11 @@ export default function FormsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
-  previewHint: { color: theme.palette.slate.textDim, fontSize: 12, fontStyle: 'italic' },
+  previewHint: { color: theme.neutral.textDim, fontSize: 12, fontStyle: 'italic' },
   dropdownItem: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     paddingVertical: 4,

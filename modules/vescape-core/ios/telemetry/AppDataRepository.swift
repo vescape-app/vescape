@@ -171,8 +171,9 @@ final class AppDataRepository {
       ("batteryConfig", Self.normalizeBatteryConfig(board["batteryConfig"] ?? nil)),
       ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
-      ("alertPreset", Self.normalizeAlertPreset(board["alertPreset"] ?? nil)),
+      ("alertPreset", Self.normalizeMetricBag(board["alertPreset"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
+      ("matchBoardConfig", Self.normalizeMetricBag(board["matchBoardConfig"] ?? nil)),
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
@@ -255,6 +256,7 @@ final class AppDataRepository {
         arguments: [tombstonedAt, tombstonedAt, try nextSyncSeq(db, syncSeqBoards), id]
       )
     }
+    BoardConfigStore.shared.clear(boardId: id)
     notifyDataChanged(.boards)
   }
 
@@ -302,6 +304,7 @@ final class AppDataRepository {
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPreset": values["alertPreset"],
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
+      "matchBoardConfig": values["matchBoardConfig"] ?? nil,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
       "updatedAt": row["updated_at"] as Int64,
@@ -329,9 +332,11 @@ final class AppDataRepository {
     case "topSpeedKmh":
       return topSpeedKmh(raw)
     case "alertPreset":
-      return normalizeAlertPreset(raw)
+      return normalizeMetricBag(raw)
     case "alertPresetsOnboarded":
       return raw as? Bool
+    case "matchBoardConfig":
+      return normalizeMetricBag(raw)
     case "legalMode":
       return normalizeLegalMode(raw)
     default:
@@ -339,10 +344,11 @@ final class AppDataRepository {
     }
   }
 
-  /// Durable Alert Preset per-metric level selection bag. JS owns behavior; native persists it as an
-  /// opaque object. Non-object/empty payloads normalize away (row removed).
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeAlertPreset`
-  private static func normalizeAlertPreset(_ raw: Any?) -> [String: Any]? {
+  /// A durable per-metric Alert Preset bag — the level selection, and which metrics match the
+  /// board's own configuration. JS owns behavior; native persists each as an opaque object.
+  /// Non-object/empty payloads normalize away (row removed).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeMetricBag`
+  private static func normalizeMetricBag(_ raw: Any?) -> [String: Any]? {
     guard let map = raw as? [String: Any], !map.isEmpty else { return nil }
     return map
   }
@@ -385,6 +391,10 @@ final class AppDataRepository {
           "controlId": row["control_id"] as String,
           "threshold": row["threshold"] as Double,
           "thresholdMax": row["threshold_max"] as Double?,
+          "thresholdRule": (row["threshold_kind"] as String? == "config-relative") ? [
+            "kind": "config-relative", "fieldId": row["config_field_id"] as String?,
+            "thresholdOffset": row["threshold_offset"] as Double?, "thresholdMaxOffset": row["threshold_max_offset"] as Double?
+          ] : ["kind": "fixed"],
           "enabled": (row["enabled"] as Int64) != 0,
           "soundType": row["sound_type"] as String,
           "createdAt": row["created_at"] as Int64,
@@ -414,6 +424,10 @@ final class AppDataRepository {
           controlId: row["control_id"] as String,
           threshold: row["threshold"] as Double,
           thresholdMax: row["threshold_max"] as Double?,
+          thresholdKind: row["threshold_kind"] as String? ?? "fixed",
+          configFieldId: row["config_field_id"] as String?,
+          thresholdOffset: row["threshold_offset"] as Double?,
+          thresholdMaxOffset: row["threshold_max_offset"] as Double?,
           enabled: (row["enabled"] as Int64) != 0,
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
@@ -443,6 +457,11 @@ final class AppDataRepository {
     // Native stamps the last-write-wins timestamp rather than trusting the bridge value: it must come
     // from the device clock that already writes `created_at` and must move on every upsert.
     let updatedAt = nowMs()
+    let thresholdRule = rule["thresholdRule"] as? [String: Any]
+    let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
+    let configFieldId = thresholdRule?["fieldId"] as? String
+    let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
+    let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
     write { db in
       // See `upsertBoard` for why the ratchet reads the old value instead of folding it on conflict.
       let previous = try Int64.fetchOne(
@@ -452,12 +471,13 @@ final class AppDataRepository {
       )
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, updated_at, sync_seq)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, updated_at, sync_seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
         arguments: [
           boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt,
-          repeatEverySeconds, beepCount, source,
+          repeatEverySeconds, beepCount, source, thresholdKind, configFieldId, thresholdOffset,
+          thresholdMaxOffset,
           ratchetUpdatedAt(previous, updatedAt), try nextSyncSeq(db, syncSeqAlerts),
         ]
       )
@@ -724,9 +744,16 @@ final class AppDataRepository {
       // malformed value that reads back truthy.
       guard let flag = rawValue as? Bool else { return }
       value = flag
+    } else if key == "themeMode" {
+      guard let mode = Self.themeMode(rawValue) else { return }
+      value = mode
     } else if key == "boardWarningsEnabled" {
       // Strict Bool (Android rejects non-Boolean too): the board-warnings kill switch must never
       // persist a malformed value that reads back truthy.
+      guard let flag = rawValue as? Bool else { return }
+      value = flag
+    } else if key == "vescFaultCollectionEnabled" {
+      // Strict Bool, same reasoning as the board-warnings switch above.
       guard let flag = rawValue as? Bool else { return }
       value = flag
     } else if key == "boardMoveStrengthPercent" {
@@ -847,6 +874,7 @@ final class AppDataRepository {
     "autoRecording": true,
     "companionPresenceEnabled": false,
     "boardWarningsEnabled": true,
+    "vescFaultCollectionEnabled": true,
     "companionPresenceCooldownMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
     // the keys exist here only so getSettings() returns the full settings shape.
@@ -871,6 +899,7 @@ final class AppDataRepository {
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
+    "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
     "satelliteMapImageryOpacity": 1.0,
@@ -894,6 +923,7 @@ final class AppDataRepository {
     var normalized = settings
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
+    normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =
@@ -967,6 +997,11 @@ final class AppDataRepository {
   static func satelliteImagerySaturation(_ value: Any?) -> Double? {
     guard let saturation = doubleValue(value), saturation.isFinite else { return nil }
     return min(1, max(-1, saturation))
+  }
+
+  static func themeMode(_ value: Any?) -> String? {
+    guard let mode = value as? String else { return nil }
+    return ["system", "light", "dark", "sun"].contains(mode) ? mode : nil
   }
 
   static func liveHistoryLimitMinutes(_ value: Any?) -> Int? {

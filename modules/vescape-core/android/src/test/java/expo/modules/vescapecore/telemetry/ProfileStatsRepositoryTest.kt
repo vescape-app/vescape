@@ -120,6 +120,22 @@ class ProfileStatsRepositoryTest {
     assertEquals(2, tightened["rideCount"])
   }
 
+  @Test
+  fun rideAggregateOwnsStableRoutePreviewPoints() {
+    val start = 1_714_521_600_000L
+    val sessions = groupRideSessions(
+      buckets = listOf(
+        bucket(start, start + 60_000L, 0L, 1_000L, latitudeE7 = 520_000_000, longitudeE7 = 180_000_000),
+        bucket(start + 60_001L, start + 120_000L, 1_000L, 2_000L, latitudeE7 = 521_000_000, longitudeE7 = 181_000_000),
+      ),
+      markers = emptyList(),
+      gapMs = DEFAULT_RIDE_SPLIT_GAP_MINUTES * 60_000L,
+    )
+
+    assertEquals(1, sessions.size)
+    assertEquals(listOf(RideRoutePoint(52.0, 18.0), RideRoutePoint(52.1, 18.1)), sessions.single().routePoints)
+  }
+
   private fun bucket(
     start: Long,
     end: Long,
@@ -133,6 +149,8 @@ class ProfileStatsRepositoryTest {
     regen: Long = 0L,
     firstMoving: Long? = null,
     lastMoving: Long? = null,
+    latitudeE7: Int? = null,
+    longitudeE7: Int? = null,
   ) = TelemetryMinuteBucketEntity(
     bucketStartMs = start - (start % TELEMETRY_BUCKET_SIZE_MS),
     boardId = "board-1",
@@ -149,7 +167,6 @@ class ProfileStatsRepositoryTest {
     batteryUsedWhMilli = used,
     batteryRegenWhMilli = regen,
     maxDutyAbsPermille = 0,
-    faultCount = 0,
     firstOdometerCm = firstOdo,
     lastOdometerCm = lastOdo,
     gpsPointCount = 0,
@@ -159,5 +176,7 @@ class ProfileStatsRepositoryTest {
     firstMovingAtMs = firstMoving,
     lastMovingAtMs = lastMoving,
     updatedAt = end,
+    firstLatitudeE7 = latitudeE7,
+    firstLongitudeE7 = longitudeE7,
   )
 }

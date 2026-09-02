@@ -8,13 +8,13 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { theme } from '@/constants/theme'
 import { FloatingBar } from '@/modules/board/components/FloatingBar'
 import type { Board } from '@/modules/board/store/boardStore'
+import type { HistorySession } from '@/modules/history/store/historyStore'
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
 import { MapRevealGesture } from '@/screens/main/map/MapRevealGesture'
 import {
@@ -24,11 +24,12 @@ import {
 import type { MainViewState } from '@/screens/main/mainViewState'
 import {
   BottomTelemetryStrip,
-  STRIP_CONTENT_HEIGHT,
+  useAboveStripBottom,
 } from '@/screens/main/overlays/BottomTelemetryStrip'
 import { LiveHud } from '@/screens/main/overlays/LiveHud'
 import { TopBar } from '@/screens/main/overlays/TopBar'
-import { TuneDrawer } from '@/screens/main/overlays/TuneDrawer'
+import { BoardDrawer } from '@/screens/main/overlays/BoardDrawer'
+import { HistoryDrawer } from '@/screens/main/overlays/HistoryDrawer'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 
 const RECORD_BUTTON_HEIGHT = 48
@@ -52,9 +53,12 @@ interface TelemetryOverlayProps {
   onStopScan: () => void
   onRetryConnect: () => void
   onEnterMapFocus: () => void
+  /** Undoes an accidental reveal when the drag turns out to be a pinch. */
+  onCancelMapFocus: () => void
   onEnterWeather: () => void
   onEnterLegalLimits: () => void
-  onEnterHistory: () => void
+  onOpenHistoryRide: (session: HistorySession) => void
+  onOpenHistoryFavorite: (favoriteId: string, session: HistorySession) => void
   onOffscreenIndicatorPress: (indicator: OffscreenMapIndicatorState) => void
   activeNavigationTarget: MapSelection | null
   onCancelNavigation: () => void
@@ -80,16 +84,19 @@ export function TelemetryOverlay({
   onStopScan,
   onRetryConnect,
   onEnterMapFocus,
+  onCancelMapFocus,
   onEnterWeather,
   onEnterLegalLimits,
-  onEnterHistory,
+  onOpenHistoryRide,
+  onOpenHistoryFavorite,
   onOffscreenIndicatorPress,
   activeNavigationTarget,
   onCancelNavigation,
 }: TelemetryOverlayProps) {
-  const insets = useSafeAreaInsets()
   const [revealGestureActive, setRevealGestureActive] = useState(false)
   const [tuneDrawerOpen, setTuneDrawerOpen] = useState(false)
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const historyButtonRef = useRef<View>(null)
   const revealCommittedRef = useRef(false)
   const tuneButtonRef = useRef<View>(null)
   // Derived, not effect-driven: the fade follows `mode` from the first evaluation on, so a Fast
@@ -98,7 +105,7 @@ export function TelemetryOverlay({
     withTiming(mode === 'telemetry' ? 1 : 0, TELEMETRY_FADE_TIMING),
   )
 
-  const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
+  const aboveStripBottom = useAboveStripBottom()
   const buttonBottom = aboveStripBottom - (HISTORY_BUTTON_SIZE - RECORD_BUTTON_HEIGHT) / 2
   const legalModeActive = activeBoard?.legalMode?.enabled ?? false
   const interactive = mode === 'telemetry' && !revealGestureActive
@@ -144,6 +151,13 @@ export function TelemetryOverlay({
     onEnterMapFocus()
   }, [onEnterMapFocus])
 
+  const handleRevealCancel = useCallback(() => {
+    if (!revealCommittedRef.current) return
+    revealCommittedRef.current = false
+    mapRef.current?.restorePreviewPan()
+    onCancelMapFocus()
+  }, [mapRef, onCancelMapFocus])
+
   const handleRevealFinish = useCallback(
     (revealed: boolean) => {
       const actuallyRevealed = revealed || revealCommittedRef.current || mode === 'map'
@@ -164,81 +178,93 @@ export function TelemetryOverlay({
 
   return (
     <>
-      {mode === 'telemetry' || revealGestureActive ? (
-        <MapRevealGesture
-          progress={revealProgress}
-          dragOpacity={dragOpacity}
-          onPanStart={handleRevealPanStart}
-          onPan={handleRevealPan}
-          onZoomStart={handleRevealZoomStart}
-          onZoom={handleRevealZoom}
-          onZoomEnd={handleRevealZoomEnd}
-          onReveal={handleReveal}
-          onFinish={handleRevealFinish}
-        />
-      ) : null}
-
-      <Animated.View
-        pointerEvents={interactive ? 'box-none' : 'none'}
-        style={[styles.telemetryInterface, interfaceFadeStyle]}
+      <MapRevealGesture
+        enabled={mode === 'telemetry' || revealGestureActive}
+        progress={revealProgress}
+        dragOpacity={dragOpacity}
+        onPanStart={handleRevealPanStart}
+        onPan={handleRevealPan}
+        onZoomStart={handleRevealZoomStart}
+        onZoom={handleRevealZoom}
+        onZoomEnd={handleRevealZoomEnd}
+        onReveal={handleReveal}
+        onRevealCancel={handleRevealCancel}
+        onFinish={handleRevealFinish}
       >
-        <LiveHud revealProgress={revealProgress} />
-        <BottomTelemetryStrip revealProgress={revealProgress} />
-        <TopBar
-          boards={boards}
-          activeBoardId={activeBoardId}
-          activeBoard={activeBoard}
-          bleStatus={bleStatus}
-          onSelectBoard={onSelectBoard}
-          onAddBoard={onAddBoard}
-          onDisconnect={onStopScan}
-          onWeatherPress={onEnterWeather}
-          activeNavigationTarget={activeNavigationTarget}
-          onNavigationPress={onEnterMapFocus}
-          onCancelNavigation={onCancelNavigation}
-        />
-        <FloatingBar
-          bleStatus={bleStatus}
-          activeBoard={activeBoard}
-          onStopScan={onStopScan}
-          onRetryConnect={onRetryConnect}
-          bottomOffset={aboveStripBottom}
-        />
-        <IconButton
-          icon={ClockCounterClockwiseIcon}
-          size="lg"
-          onPress={onEnterHistory}
-          testID="history-button"
-          style={[styles.historyButton, { bottom: buttonBottom }]}
-        />
-        <View
-          ref={tuneButtonRef}
-          collapsable={false}
-          style={[styles.tuneButton, { bottom: buttonBottom }]}
+        <Animated.View
+          pointerEvents={interactive ? 'box-none' : 'none'}
+          style={[styles.telemetryInterface, interfaceFadeStyle]}
         >
-          <IconButton
-            icon={legalModeActive ? SirenIcon : SlidersHorizontalIcon}
-            size="lg"
-            accent={legalModeActive ? theme.status.error.color : undefined}
-            onPress={() => setTuneDrawerOpen(true)}
+          <LiveHud revealProgress={revealProgress} />
+          <BottomTelemetryStrip revealProgress={revealProgress} />
+          <TopBar
+            boards={boards}
+            activeBoardId={activeBoardId}
+            activeBoard={activeBoard}
+            bleStatus={bleStatus}
+            onSelectBoard={onSelectBoard}
+            onAddBoard={onAddBoard}
+            onDisconnect={onStopScan}
+            onWeatherPress={onEnterWeather}
+            activeNavigationTarget={activeNavigationTarget}
+            onNavigationPress={onEnterMapFocus}
+            onCancelNavigation={onCancelNavigation}
           />
-        </View>
-        <EdgeDrawer
-          visible={tuneDrawerOpen}
-          triggerRef={tuneButtonRef}
-          title="Board Settings"
-          icon={SlidersHorizontalIcon}
-          onClose={() => setTuneDrawerOpen(false)}
-        >
-          <TuneDrawer
-            onNavigate={() => setTuneDrawerOpen(false)}
-            onOpenLegalLimits={() => {
-              setTuneDrawerOpen(false)
-              onEnterLegalLimits()
-            }}
+          <FloatingBar
+            bleStatus={bleStatus}
+            activeBoard={activeBoard}
+            onStopScan={onStopScan}
+            onRetryConnect={onRetryConnect}
+            bottomOffset={aboveStripBottom}
           />
-        </EdgeDrawer>
-      </Animated.View>
+          <View
+            ref={historyButtonRef}
+            collapsable={false}
+            style={[styles.historyButton, { bottom: buttonBottom }]}
+          >
+            <IconButton
+              icon={ClockCounterClockwiseIcon}
+              size="lg"
+              onPress={() => setHistoryDrawerOpen(true)}
+              testID="history-button"
+            />
+          </View>
+          <HistoryDrawer
+            visible={historyDrawerOpen}
+            triggerRef={historyButtonRef}
+            onClose={() => setHistoryDrawerOpen(false)}
+            onOpenRide={onOpenHistoryRide}
+            onOpenFavorite={onOpenHistoryFavorite}
+          />
+          <View
+            ref={tuneButtonRef}
+            collapsable={false}
+            style={[styles.tuneButton, { bottom: buttonBottom }]}
+          >
+            <IconButton
+              icon={legalModeActive ? SirenIcon : SlidersHorizontalIcon}
+              size="lg"
+              accent={legalModeActive ? theme.status.error.color : undefined}
+              onPress={() => setTuneDrawerOpen(true)}
+            />
+          </View>
+          <EdgeDrawer
+            visible={tuneDrawerOpen}
+            triggerRef={tuneButtonRef}
+            title="Board"
+            icon={SlidersHorizontalIcon}
+            onClose={() => setTuneDrawerOpen(false)}
+          >
+            <BoardDrawer
+              onNavigate={() => setTuneDrawerOpen(false)}
+              onOpenLegalLimits={() => {
+                setTuneDrawerOpen(false)
+                onEnterLegalLimits()
+              }}
+            />
+          </EdgeDrawer>
+        </Animated.View>
+      </MapRevealGesture>
 
       <View pointerEvents={interactive ? 'box-none' : 'none'} style={styles.offscreenIndicators}>
         {mode === 'telemetry'

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { IconButton } from '@/components/base/IconButton'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useColoredAction, useResolvedAccentColors } from '@/hooks/useTheme'
 import {
   MapPointDetails,
   MapTargetActionRow,
@@ -37,6 +38,7 @@ export function MapTargetSelectBody({
   onDismiss?: () => void
   onFocusTarget?: () => void
 }) {
+  const accents = useResolvedAccentColors()
   const point = target.type === 'mapPoint' ? target.point : null
 
   return (
@@ -45,7 +47,7 @@ export function MapTargetSelectBody({
       bottom={bottom}
       header={<MapTargetReadHeader target={target} />}
       fallbackColor={action.color}
-      fallbackTextColor={action.textColor}
+      fallbackTextColor={action.color}
       onDismiss={onDismiss}
       onFocusTarget={onFocusTarget}
     >
@@ -61,7 +63,7 @@ export function MapTargetSelectBody({
               pressed && mapSheetStyles.mapTargetNavigatePressed,
             ]}
           >
-            <PencilSimpleIcon size={18} color={theme.palette.slate.textPrimary} weight="bold" />
+            <PencilSimpleIcon size={18} color={theme.neutral.textPrimary} weight="bold" />
             <Text style={[mapSheetStyles.mapTargetNavigateText, styles.editText]}>Edit</Text>
           </Pressable>
         ) : null}
@@ -74,7 +76,7 @@ export function MapTargetSelectBody({
             icon={PlusIcon}
             size="md"
             onPress={onAddFeature}
-            accent={theme.palette.cyan.text}
+            accent={accents.cyan.light}
             accessibilityLabel="Add map feature here"
           />
         ) : null}
@@ -91,6 +93,9 @@ function MapPointVoteButtons({
   onVote: (id: string, reaction: 'up' | 'down' | null) => boolean
 }) {
   const reaction = point.myReaction
+  // Active vote buttons wear the two-layer colored surface of their colour.
+  const upSurface = useColoredAction(theme.palette.cyan.color)
+  const downSurface = useColoredAction(theme.palette.red.color)
   return (
     <View style={styles.voteGroup}>
       <Pressable
@@ -99,13 +104,16 @@ function MapPointVoteButtons({
         onPress={() => onVote(point.id, reaction === 'up' ? null : 'up')}
         style={({ pressed }) => [
           styles.voteButton,
-          reaction === 'up' && styles.upButtonActive,
+          reaction === 'up' && {
+            borderColor: theme.palette.cyan.color,
+            backgroundColor: upSurface,
+          },
           pressed && mapSheetStyles.mapTargetNavigatePressed,
         ]}
       >
         <ThumbsUpIcon
           size={18}
-          color={reaction === 'up' ? theme.palette.cyan.text : theme.palette.slate.textPrimary}
+          color={reaction === 'up' ? theme.palette.cyan.light : theme.neutral.textPrimary}
           weight={reaction === 'up' ? 'fill' : 'bold'}
         />
       </Pressable>
@@ -115,13 +123,16 @@ function MapPointVoteButtons({
         onPress={() => onVote(point.id, reaction === 'down' ? null : 'down')}
         style={({ pressed }) => [
           styles.voteButton,
-          reaction === 'down' && styles.downButtonActive,
+          reaction === 'down' && {
+            borderColor: theme.palette.red.color,
+            backgroundColor: downSurface,
+          },
           pressed && mapSheetStyles.mapTargetNavigatePressed,
         ]}
       >
         <ThumbsDownIcon
           size={18}
-          color={reaction === 'down' ? theme.status.error.text : theme.palette.slate.textPrimary}
+          color={reaction === 'down' ? theme.palette.red.light : theme.neutral.textPrimary}
           weight={reaction === 'down' ? 'fill' : 'bold'}
         />
       </Pressable>
@@ -130,10 +141,6 @@ function MapPointVoteButtons({
 }
 
 const styles = StyleSheet.create({
-  downButtonActive: {
-    borderColor: theme.status.error.border,
-    backgroundColor: theme.status.error.bg,
-  },
   editButton: {
     minWidth: 88,
     height: 46,
@@ -145,14 +152,10 @@ const styles = StyleSheet.create({
     gap: 7,
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.75),
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.75),
   },
   editText: {
-    color: theme.palette.slate.textPrimary,
-  },
-  upButtonActive: {
-    borderColor: theme.palette.cyan.border,
-    backgroundColor: theme.palette.cyan.bg,
+    color: theme.neutral.textPrimary,
   },
   voteButton: {
     width: 46,
@@ -164,7 +167,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.75),
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.75),
   },
   voteGroup: {
     flexDirection: 'row',

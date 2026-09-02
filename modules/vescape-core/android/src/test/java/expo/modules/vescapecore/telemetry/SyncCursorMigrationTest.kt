@@ -56,7 +56,7 @@ class SyncCursorMigrationTest {
     }
   } as Cursor
 
-  private fun migrationSql(): List<String> = migrationSql(TelemetryDatabase.MIGRATION_31_32)
+  private fun migrationSql(): List<String> = migrationSql(TelemetryDatabase.MIGRATION_42_43)
 
   private fun daoSource(): String =
     File("src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt").readText()
@@ -98,13 +98,13 @@ class SyncCursorMigrationTest {
 
   @Test
   fun migrationsTargetTheCurrentSchemaVersion() {
-    assertEquals(39, TELEMETRY_DATABASE_VERSION)
-    assertEquals(31, TelemetryDatabase.MIGRATION_31_32.startVersion)
-    assertEquals(32, TelemetryDatabase.MIGRATION_31_32.endVersion)
-    assertEquals(32, TelemetryDatabase.MIGRATION_32_33.startVersion)
-    assertEquals(33, TelemetryDatabase.MIGRATION_32_33.endVersion)
-    assertEquals(35, TelemetryDatabase.MIGRATION_35_36.startVersion)
-    assertEquals(36, TelemetryDatabase.MIGRATION_35_36.endVersion)
+    assertEquals(47, TELEMETRY_DATABASE_VERSION)
+    assertEquals(42, TelemetryDatabase.MIGRATION_42_43.startVersion)
+    assertEquals(43, TelemetryDatabase.MIGRATION_42_43.endVersion)
+    assertEquals(43, TelemetryDatabase.MIGRATION_43_44.startVersion)
+    assertEquals(44, TelemetryDatabase.MIGRATION_43_44.endVersion)
+    assertEquals(44, TelemetryDatabase.MIGRATION_44_45.startVersion)
+    assertEquals(45, TelemetryDatabase.MIGRATION_44_45.endVersion)
   }
 
   /**
@@ -139,13 +139,13 @@ class SyncCursorMigrationTest {
    */
   @Test
   fun syncSeqMigrationAddsColumnIndexAndCounterToEverySyncedTable() {
-    val sql = migrationSql(TelemetryDatabase.MIGRATION_32_33)
+    val sql = migrationSql(TelemetryDatabase.MIGRATION_43_44)
 
     assertTrue(
       "missing sync_sequences table",
       sql.any { it.contains("CREATE TABLE IF NOT EXISTS sync_sequences") },
     )
-    for (table in SYNC_SEQ_TABLES_V33) {
+    for (table in SYNC_SEQ_TABLES_V43) {
       assertTrue(
         "missing sync_seq column on $table",
         sql.any { it == "ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0" },
@@ -167,9 +167,9 @@ class SyncCursorMigrationTest {
    */
   @Test
   fun syncSeqMigrationBackfillsExistingRowsBeforeSeedingTheCounter() {
-    val sql = migrationSql(TelemetryDatabase.MIGRATION_32_33)
+    val sql = migrationSql(TelemetryDatabase.MIGRATION_43_44)
 
-    for (table in SYNC_SEQ_TABLES_V33) {
+    for (table in SYNC_SEQ_TABLES_V43) {
       val backfilled = sql.indexOf("UPDATE $table SET sync_seq = rowid")
       val seeded = sql.indexOfFirst {
         it.contains("INSERT OR REPLACE INTO sync_sequences") && it.contains("'$table'")
@@ -203,13 +203,13 @@ class SyncCursorMigrationTest {
   // MARK: The six remaining mutable tables (#281)
 
   private fun remainingTablesSql(): List<String> =
-    migrationSql(TelemetryDatabase.MIGRATION_35_36)
+    migrationSql(TelemetryDatabase.MIGRATION_44_45)
 
   @Test
   fun remainingTablesGainColumnIndexAndCounter() {
     val sql = remainingTablesSql()
 
-    for (table in SYNC_SEQ_TABLES_V36) {
+    for (table in SYNC_SEQ_TABLES_V44) {
       assertTrue(
         "missing sync_seq column on $table",
         sql.any { it == "ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0" },
@@ -247,7 +247,7 @@ class SyncCursorMigrationTest {
    */
   @Test
   fun remainingTablesMigrationIsGuardedForReRun() {
-    val guarded = TelemetryDatabase.MIGRATION_35_36
+    val guarded = TelemetryDatabase.MIGRATION_44_45
     val sql = migrationSql(guarded)
 
     // `migrationSql` answers every column probe with an empty cursor, i.e. "column absent", so this

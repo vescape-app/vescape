@@ -1,6 +1,10 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { buildReleaseNotes, validateReleaseMarkdown } from '../release-notes/bundler'
+import {
+  buildReleaseNotes,
+  GENERATED_RELEASE_NOTES_PATH,
+  validateReleaseMarkdown,
+} from '../release-notes/bundler'
 import { resolveEditorCommand } from '../release-notes/editor'
 import { selectPrompt } from '../release-notes/prompt'
 
@@ -74,7 +78,7 @@ export function assertReleasePreparationStatus({
     (bump) => bumpMarketingVersion(baseVersion, bump) === workingVersion,
   )
   const notesPath = releaseNotesPath(workingVersion)
-  const expected = new Set(['package.json', notesPath])
+  const expected = new Set(['package.json', notesPath, GENERATED_RELEASE_NOTES_PATH])
   const isExactDraft =
     isNextVersion &&
     changedPaths.includes('package.json') &&
@@ -223,7 +227,7 @@ export async function prepareReleaseCandidate(
 
   const status = await checked('git', ['status', '--porcelain'], 'Cannot inspect release changes')
   const changedPaths = parsePorcelainPaths(status)
-  const expected = new Set(['package.json', notesPath])
+  const expected = new Set(['package.json', notesPath, GENERATED_RELEASE_NOTES_PATH])
   const unexpected = changedPaths.filter((path) => !expected.has(path))
   if (unexpected.length > 0) {
     throw new Error(`Unexpected release changes: ${unexpected.join(', ')}`)
@@ -234,6 +238,9 @@ export async function prepareReleaseCandidate(
 
   const pathsToStage = ['package.json']
   if (changedPaths.includes(notesPath)) pathsToStage.push(notesPath)
+  if (changedPaths.includes(GENERATED_RELEASE_NOTES_PATH)) {
+    pathsToStage.push(GENERATED_RELEASE_NOTES_PATH)
+  }
   await checked('git', ['add', ...pathsToStage], 'Cannot stage release candidate')
   await checked(
     'git',

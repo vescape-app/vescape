@@ -174,7 +174,10 @@ object SyncWire {
     .int64("odometerCm", row.odometerCm)
     .int32("tempMosfetDeciC", row.tempMosfetDeciC)
     .int32("tempMotorDeciC", row.tempMotorDeciC)
-    .int32("faultCode", row.faultCode)
+    // The server still declares the field, but a Telemetry Sample stopped carrying a fault code
+    // when VESC faults became Board-owned evidence in their own tables (ADR-0037). Those tables
+    // are not in SyncTable yet, so the honest value is an explicit null.
+    .int32("faultCode", null)
     .int32("latitudeE7", row.latitudeE7)
     .int32("longitudeE7", row.longitudeE7)
     .int32("gpsSpeedCentiMps", row.gpsSpeedCentiMps)
@@ -202,7 +205,10 @@ object SyncWire {
       .int64("batteryUsedWhMilli", row.batteryUsedWhMilli)
       .int64("batteryRegenWhMilli", row.batteryRegenWhMilli)
       .int32("maxDutyAbsPermille", row.maxDutyAbsPermille)
-      .count("faultCount", row.faultCount)
+      // The server still declares the field, but a minute bucket stopped counting faults when
+      // VESC faults became Board-owned evidence in their own tables (ADR-0037). Those tables are
+      // not in SyncTable yet, so the honest value is an explicit null rather than a stale zero.
+      .count("faultCount", null)
       .int64("firstOdometerCm", row.firstOdometerCm)
       .int64("lastOdometerCm", row.lastOdometerCm)
       .count("gpsPointCount", row.gpsPointCount)

@@ -8,7 +8,7 @@ import {
   CheckCircleIcon,
   DatabaseIcon,
   GaugeIcon,
-  MapPinIcon,
+  HouseIcon,
   WatchIcon,
   WrenchIcon,
   type Icon,
@@ -19,7 +19,7 @@ import { Button } from '@/components/base/Button'
 import { Text } from '@/components/base/Text'
 import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { LinkWidget } from '@/components/widgets/LinkWidget'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { AccountPill } from '@/modules/profile/components/AccountPill'
 import { DASH, fmtCompactCount, fmtTimeAgo, formatBytes } from '@/helpers/format'
 import {
@@ -69,7 +69,7 @@ const SHORTCUTS: Shortcut[] = [
     androidOnly: true,
   },
   {
-    icon: MapPinIcon,
+    icon: HouseIcon,
     accent: theme.settingsIcon.privacyZones,
     label: 'Privacy zones',
     hint: 'Skip recording near saved places',
@@ -88,6 +88,7 @@ interface SettingsSheetProps {
  * update, storage), the settings worth one tap, and one door to everything else.
  */
 export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
+  const secondarySurface = useResolvedSecondaryWidgetSurface()
   const dbSize = useDatabaseSize().bytes
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
@@ -104,7 +105,7 @@ export function SettingsSheet({ backup, onNavigate }: SettingsSheetProps) {
         <AccountPill onNavigate={onNavigate} />
       </View>
 
-      <View style={styles.strip}>
+      <View style={[styles.strip, secondarySurface]}>
         <BackupCell
           backup={backup}
           onSignIn={() => go(routes.signIn)}
@@ -320,7 +321,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   strip: {
-    ...widgetSurface,
     flexDirection: 'row',
     alignItems: 'stretch',
     paddingVertical: 14,
@@ -334,15 +334,15 @@ const styles = StyleSheet.create({
   },
   stripDivider: {
     width: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   stripValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   stripLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

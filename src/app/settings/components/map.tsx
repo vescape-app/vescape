@@ -13,7 +13,10 @@ import { MapStyleSwitch } from '@/modules/map/components/MapStyleSwitch'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { BLANK_STYLE, MAP_STYLES, type MapStyleKey } from '@/modules/map/constants/mapStyles'
-import { getSatelliteDarkMapStyle } from '@/modules/map/constants/satelliteDarkMapStyle'
+import {
+  getSatelliteDarkMapStyle,
+  getSatelliteImageryPaint,
+} from '@/modules/map/constants/satelliteDarkMapStyle'
 import { ONE_DARK_MAP_STYLE } from '@/modules/map/constants/oneDarkMapStyle'
 import { theme } from '@/constants/theme'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
@@ -37,6 +40,7 @@ import {
   FIXTURE_RIDERS,
 } from '@/screens/showcase/mapShowcaseFixtures'
 import { MainMapLayers, HistoryMapLayers } from '@/screens/main/map/MainMapLayers'
+import { SatelliteImageryLayer } from '@/screens/main/map/SatelliteImageryLayer'
 import { DASH } from '@/helpers/format'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
@@ -110,6 +114,7 @@ export default function MapComponentsShowcase() {
           }}
           animationMode="none"
         />
+        {isSatellite && <SatelliteImageryLayer paint={getSatelliteImageryPaint()} />}
         {/* historyActive=false renders buildings/raster/weather + live pins/GPS puck/riders */}
         <MainMapLayers
           historyActive={false}

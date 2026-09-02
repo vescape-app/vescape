@@ -12,18 +12,18 @@ internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
         speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, duty_permille,
         pitch_centi_deg, roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
         switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c,
-        fault_code, latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
+        latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
         altitude_cm, location_timestamp_ms
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
     arguments: [
       state.capturedAtMs, state.elapsedRealtimeMs, state.boardId, state.capture.canId,
-      TELEMETRY_FLAG_KEYFRAME | (t.hasFault ? TELEMETRY_FLAG_HAS_FAULT : 0) | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
+      TELEMETRY_FLAG_KEYFRAME | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
       Int.max, 1,
       telemetryCenti(t.speed), telemetryMilli(t.batteryVoltage), telemetryMilli(t.motorCurrent), telemetryMilli(t.batteryCurrent), telemetryMilli(t.dutyCycle),
       telemetryCenti(t.pitch), telemetryCenti(t.roll), telemetryCenti(t.balancePitch), telemetryMilli(t.balanceCurrent), t.erpm, t.state,
       t.switchState, telemetryMilli(t.adc1), telemetryMilli(t.adc2), t.odometer.map { Int64(($0 * 100.0).rounded()) },
-      t.tempMosfet.map { telemetryDeci($0) }, t.tempMotor.map { telemetryDeci($0) }, t.hasFault ? t.faultCode : nil,
+      t.tempMosfet.map { telemetryDeci($0) }, t.tempMotor.map { telemetryDeci($0) },
       loc.map { Int64(($0.latitude * 10_000_000.0).rounded()) },
       loc.map { Int64(($0.longitude * 10_000_000.0).rounded()) },
       loc?.speedMps.map { telemetryCenti($0) }, loc?.bearingDeg.map { telemetryCenti($0) },
@@ -43,13 +43,13 @@ internal let syncSeqPrivacyZones = "privacy_zones"
 internal let syncSeqTuneProfiles = "tune_profiles"
 internal let syncSeqFavorites = "favorites"
 
-/// The three tables the `v33_sync_seq` migration gave a `sync_seq`, frozen at the set that existed
+/// The three tables the `v44_sync_seq` migration gave a `sync_seq`, frozen at the set that existed
 /// then. A migration iterates the tables it actually shipped with, never the current
 /// [syncSeqTables] — growing that list must not retroactively change an older migration step.
-internal let syncSeqTablesV33 = [syncSeqBoards, syncSeqAlerts, syncSeqMinuteBuckets]
+internal let syncSeqTablesV43 = [syncSeqBoards, syncSeqAlerts, syncSeqMinuteBuckets]
 
-/// The six remaining mutable tables, given a `sync_seq` by `v36_sync_seq_remaining` (#281).
-internal let syncSeqTablesV36 = [
+/// The six remaining mutable tables, given a `sync_seq` by `v45_sync_seq_remaining` (#281).
+internal let syncSeqTablesV44 = [
   syncSeqAppSettings,
   syncSeqBoardSettings,
   syncSeqBoardWarnings,
@@ -61,7 +61,7 @@ internal let syncSeqTablesV36 = [
 /// Every table carrying a `sync_seq`. Append-only tables are deliberately absent: they declare
 /// `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
 /// key already *is* their cursor.
-internal let syncSeqTables = syncSeqTablesV33 + syncSeqTablesV36
+internal let syncSeqTables = syncSeqTablesV43 + syncSeqTablesV44
 
 /// The Sync Cursor counter table. Idempotent, and called both from the migration that introduced it
 /// and from the store-level `createTables` seams tests build their schema from — a table whose write
@@ -153,11 +153,11 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket, now: Int64 = te
         sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
         max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
         max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, max_duty_abs_permille,
-        fault_count, first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
+        first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
         gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
         first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms, updated_at,
         sync_seq
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(bucket_start_ms, board_id) DO UPDATE SET
         sample_count=telemetry_minute_buckets.sample_count + excluded.sample_count,
         last_sample_at_ms=MAX(telemetry_minute_buckets.last_sample_at_ms, excluded.last_sample_at_ms),
@@ -171,7 +171,6 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket, now: Int64 = te
         battery_used_wh_milli=telemetry_minute_buckets.battery_used_wh_milli + excluded.battery_used_wh_milli,
         battery_regen_wh_milli=telemetry_minute_buckets.battery_regen_wh_milli + excluded.battery_regen_wh_milli,
         max_duty_abs_permille=MAX(telemetry_minute_buckets.max_duty_abs_permille, excluded.max_duty_abs_permille),
-        fault_count=telemetry_minute_buckets.fault_count + excluded.fault_count,
         last_odometer_cm=COALESCE(excluded.last_odometer_cm, telemetry_minute_buckets.last_odometer_cm),
         gps_point_count=telemetry_minute_buckets.gps_point_count + excluded.gps_point_count,
         precise_gps_point_count=telemetry_minute_buckets.precise_gps_point_count + excluded.precise_gps_point_count,
@@ -187,7 +186,7 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket, now: Int64 = te
       b.bucketStartMs, b.boardId, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
       b.sumAbsSpeedCentiKmh, b.movingSpeedSampleCount, b.sumMovingAbsSpeedCentiKmh, b.maxAbsSpeedCentiKmh,
       b.minBatteryVoltageMv, b.maxMotorCurrentAbsMa, b.maxBatteryCurrentAbsMa, b.batteryUsedWhMilli,
-      b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.faultCount, b.firstOdometerCm, b.lastOdometerCm,
+      b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.firstOdometerCm, b.lastOdometerCm,
       b.gpsPointCount, b.preciseGpsPointCount, b.maxGpsSpeedCentiMps, b.maxTempMosfetDeciC,
       b.maxTempMotorDeciC, b.firstLatitudeE7, b.firstLongitudeE7, b.firstMovingAtMs, b.lastMovingAtMs, now,
       syncSeq,
@@ -224,8 +223,11 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
     ?? (sampleCount > 0 ? Double(row["sum_abs_speed_centi_kmh"] as Int64) / Double(sampleCount) / 100.0 : 0.0)
   let marker = markers.last { marker in
     let occurredAtMs = marker["occurred_at_ms"] as Int64
+    // An all-Boards read leaves the marker query unscoped, so the bucket has to claim its own.
+    let markerBoard = marker["board_id"] as String? ?? ""
     return occurredAtMs >= (row["first_sample_at_ms"] as Int64) - 5_000 &&
-      occurredAtMs <= (row["first_sample_at_ms"] as Int64) + 1_000
+      occurredAtMs <= (row["first_sample_at_ms"] as Int64) + 1_000 &&
+      markerBoard == (row["board_id"] as String)
   }
   let distanceDeltaM: Double? = {
     guard let first = row["first_odometer_cm"] as Int64?, let last = row["last_odometer_cm"] as Int64? else { return nil }
@@ -249,7 +251,6 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
     "maxMotorCurrent": Double(row["max_motor_current_abs_ma"] as Int) / 1000.0,
     "maxBatteryCurrent": Double(row["max_battery_current_abs_ma"] as Int) / 1000.0,
     "maxDuty": Double(row["max_duty_abs_permille"] as Int) / 1000.0,
-    "faultCount": row["fault_count"] as Int,
     "distanceDeltaM": distanceDeltaM,
     "gpsDistanceM": ((row["gps_distance_cm"] as Int64) > 0) ? Double(row["gps_distance_cm"] as Int64) / 100.0 : nil,
     "maxTempMosfet": (row["max_temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
@@ -290,8 +291,6 @@ internal func sampleMap(_ row: Row, batteryPercent: Double?, boardNames: [String
     "odometer": (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 },
     "tempMosfet": (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
     "tempMotor": (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 },
-    "hasFault": ((row["fault_code"] as Int?) ?? 0) != 0,
-    "faultCode": row["fault_code"] as Int? ?? 0,
     "latitude": (row["latitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
     "longitude": (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
   ]
@@ -365,7 +364,6 @@ internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
     motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,
     batteryCurrentMa: row["battery_current_ma"] as Int? ?? 0,
     dutyPermille: row["duty_permille"] as Int? ?? 0,
-    hasFault: ((row["fault_code"] as Int?) ?? 0) != 0,
     odometerCm: row["odometer_cm"] as Int64?,
     tempMosfetDeciC: row["temp_mosfet_deci_c"] as Int?,
     tempMotorDeciC: row["temp_motor_deci_c"] as Int?,

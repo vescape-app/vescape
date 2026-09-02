@@ -1,7 +1,8 @@
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
+import { isSharedValue, useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { MonoValue, type MonoValueProps } from '@/components/base/MonoValue'
 import { theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import { DASH } from '@/helpers/format'
 
 interface TickTextProps extends Omit<MonoValueProps, 'text'> {
@@ -40,10 +41,17 @@ export function TickText({
     return unit ? `${n}${unit}` : n
   })
 
+  // Adaptive tokens are native color objects; resolve them here so the worklet only ever hands
+  // Skia a plain color string.
+  const animatedColor = isSharedValue<string>(color) ? color : null
+  const staticColor = useResolvedColor(
+    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as string),
+  )
+  const resolvedEmptyColor = useResolvedColor(emptyColor)
   const tickColor = useDerivedValue(() => {
     const v = value.value
-    if (v == null || !Number.isFinite(v)) return emptyColor
-    return typeof color === 'string' ? color : color.value
+    if (v == null || !Number.isFinite(v)) return resolvedEmptyColor
+    return animatedColor ? animatedColor.value : staticColor
   })
 
   return <MonoValue text={text} color={tickColor} {...monoProps} />

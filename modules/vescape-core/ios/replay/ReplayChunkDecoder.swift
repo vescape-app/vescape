@@ -20,16 +20,6 @@ internal struct ReplayLocation {
   let altitudeM: Double?
 }
 
-/// One recorded compass reading, replayed in place of the phone's own magnetometer. The phone that
-/// plays a recording back is usually lying still on a desk, so without these the heading cone and
-/// Compass follow have nothing real to read.
-///
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/replay/ReplayChunkDecoder.kt `ReplayHeading`
-internal struct ReplayHeading {
-  let t: Int64
-  let headingDeg: Double
-}
-
 /// Pure decode core for Debug Recording replay (ADR 0024): turns a `.jsonl` Debug Recording into the
 /// byte stream and decoded frames the session stack originally saw. Shared by the unit replay
 /// harness (test source) and the dev-mode ReplayTransport. `ble-chunk` lines with
@@ -75,20 +65,6 @@ internal enum ReplayChunkDecoder {
         accuracyM: (json["accuracyM"] as? NSNumber)?.doubleValue,
         altitudeM: (json["altitudeM"] as? NSNumber)?.doubleValue
       )
-    }
-  }
-
-  /// Recorded compass readings in file order with their recorded time offsets.
-  static func headings(_ jsonl: String) -> [ReplayHeading] {
-    jsonl.split(separator: "\n").compactMap { line in
-      guard
-        let data = line.data(using: .utf8),
-        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-        json["kind"] as? String == "phone-heading",
-        let t = (json["t"] as? NSNumber)?.int64Value,
-        let headingDeg = (json["headingDeg"] as? NSNumber)?.doubleValue
-      else { return nil }
-      return ReplayHeading(t: t, headingDeg: headingDeg)
     }
   }
 

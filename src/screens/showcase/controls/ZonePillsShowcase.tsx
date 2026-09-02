@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   BriefcaseIcon,
   CameraIcon,
+  ChatTextIcon,
   CloudSunIcon,
   FadersIcon,
   GaugeIcon,
@@ -14,10 +15,12 @@ import {
   MapTrifoldIcon,
   NavigationArrowIcon,
   PencilSimpleIcon,
+  RadioactiveIcon,
   SpeedometerIcon,
   SlidersHorizontalIcon,
   TrashIcon,
   WrenchIcon,
+  WaveformIcon,
 } from 'phosphor-react-native'
 
 import {
@@ -35,6 +38,7 @@ export function ZonePillsShowcase() {
   const [selectedId, setSelectedId] = useState('home')
   const [wideSelectedId, setWideSelectedId] = useState('trail')
   const [regularScrollId, setRegularScrollId] = useState('home')
+  const [fullLabelTabId, setFullLabelTabId] = useState('geiger')
   const [tunePresetId, setTunePresetId] = useState('street')
   const [mapModeId, setMapModeId] = useState('legalLimits')
   const iconOptions = [
@@ -154,14 +158,13 @@ export function ZonePillsShowcase() {
         <View style={styles.selectorVariant}>
           <Text style={styles.selectorCaption}>regular labels, six items, horizontal scroll</Text>
           <View style={styles.narrowPreviewWide}>
-            <PillSelector activeId={regularScrollId}>
+            <PillSelector activeId={regularScrollId} showFullLabel>
               {regularScrollOptions.map((option) => (
                 <PillSelectorItem
                   key={option.id}
                   id={option.id}
                   label={option.label}
                   icon={option.icon}
-                  labelBehavior="always"
                   color={option.color}
                   onPress={() => setRegularScrollId(option.id)}
                 />
@@ -169,6 +172,43 @@ export function ZonePillsShowcase() {
               <PillSelectorAdd onPress={() => undefined} />
             </PillSelector>
           </View>
+        </View>
+
+        <View style={styles.selectorVariant}>
+          <Text style={styles.selectorCaption}>light tabs, all labels always visible</Text>
+          <PillSelector
+            activeId={fullLabelTabId}
+            contained
+            fitContent
+            showFullLabel
+            variant="lightTabs"
+            style={styles.mapModeTabsPreview}
+          >
+            <PillSelectorItem
+              id="alert"
+              label="Alert"
+              icon={WaveformIcon}
+              color={theme.palette.green}
+              activeWidth={96}
+              onPress={() => setFullLabelTabId('alert')}
+            />
+            <PillSelectorItem
+              id="geiger"
+              label="Geiger"
+              icon={RadioactiveIcon}
+              color={theme.palette.orange}
+              activeWidth={96}
+              onPress={() => setFullLabelTabId('geiger')}
+            />
+            <PillSelectorItem
+              id="message"
+              label="Message"
+              icon={ChatTextIcon}
+              color={theme.palette.cyan}
+              activeWidth={96}
+              onPress={() => setFullLabelTabId('message')}
+            />
+          </PillSelector>
         </View>
 
         <View style={styles.selectorVariant}>
@@ -241,7 +281,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   selectorCaption: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',

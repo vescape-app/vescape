@@ -31,12 +31,8 @@ import {
 import { ChartTimeAxis } from '@/components/charts/line/ChartTimeAxis'
 import { LineChart } from '@/components/charts/line/LineChart'
 import { SCRUB_FONT_SIZE, useScrubReadout } from '@/components/charts/line/ScrubLayer'
-import {
-  compactBands,
-  compactCharts,
-  prepareStack,
-  toScrubTargets,
-} from '@/components/charts/line/stackData'
+import { toScrubTargets } from '@/components/charts/line/scrubTargets'
+import { compactBands, compactCharts, prepareStack } from '@/components/charts/line/stackData'
 import { useChartCamera } from '@/components/charts/line/useChartCamera'
 import { useChartGestures } from '@/components/charts/line/useChartGestures'
 import { toChartMs, toRealMs, type ChartTimeline } from '@/components/charts/line/timeline'
@@ -313,6 +309,7 @@ export function ChartStack({
               {prepared.charts.map((chart, index) => (
                 <ChartRow
                   key={chart.key}
+                  chartKey={chart.key}
                   visible={!visibleChartKeys || visibleChartKeys.has(chart.key)}
                   fadeIn={animateChartChanges && addedChartKeys.has(chart.key)}
                 >
@@ -329,19 +326,25 @@ export function ChartStack({
 }
 
 interface ChartRowProps {
+  /** Anchors the row for E2E: a Skia chart draws its own title, so nothing else is assertable. */
+  chartKey: string
   visible: boolean
   fadeIn: boolean
   children: React.ReactNode
 }
 
-function ChartRow({ visible, fadeIn, children }: ChartRowProps) {
+function ChartRow({ chartKey, visible, fadeIn, children }: ChartRowProps) {
   const opacity = useSharedValue(fadeIn ? 0 : visible ? 1 : 0)
   useEffect(() => {
     opacity.value = withTiming(visible ? 1 : 0, { duration: CHART_CHANGE_FADE_MS })
   }, [opacity, visible])
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }))
 
-  return <Animated.View style={style}>{children}</Animated.View>
+  return (
+    <Animated.View testID={`chart-row-${chartKey}`} style={style}>
+      {children}
+    </Animated.View>
+  )
 }
 
 const styles = StyleSheet.create({

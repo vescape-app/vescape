@@ -30,7 +30,7 @@ const DEV_PAGE_SHORTCUTS = [
     hint: 'Capture and export raw BLE sessions',
     route: routes.settingsDebugRecordings,
     icon: RecordIcon,
-    iconColor: theme.palette.red.color,
+    iconColor: theme.status.warning.color,
   },
   {
     label: 'Navigation diagnostics',
@@ -83,7 +83,7 @@ export default function DevSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

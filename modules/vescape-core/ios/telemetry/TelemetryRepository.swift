@@ -2,7 +2,6 @@ import Foundation
 import GRDB
 
 internal let TELEMETRY_FLAG_KEYFRAME = 1
-internal let TELEMETRY_FLAG_HAS_FAULT = 1 << 1
 internal let TELEMETRY_FLAG_HAS_LOCATION = 1 << 2
 internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
 internal let GAP_BOUNDARY_MS: Int64 = 90_000
@@ -16,7 +15,7 @@ internal let MAX_SAMPLE_LIMIT = 20_000
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
 /// @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
-internal let SAMPLE_COLUMN_COUNT = 25
+internal let SAMPLE_COLUMN_COUNT = 23
 
 /// GRDB writer for iOS Ride Recording telemetry. Raw Telemetry Samples are preserved; Metric
 /// Sanitizers only write exclusion ranges and bucket-derived metric values.
@@ -63,7 +62,7 @@ internal final class TelemetryRepository {
       self.pendingStates.append(state)
 
       let sinceKept = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
-      let persist = keyframe || capture.telemetry.hasFault || sinceKept == nil || (sinceKept ?? 0) >= MIN_PERSIST_INTERVAL_MS
+      let persist = keyframe || sinceKept == nil || (sinceKept ?? 0) >= MIN_PERSIST_INTERVAL_MS
       if persist {
         self.pendingPersisted.append(state)
         if gap {
@@ -242,8 +241,36 @@ internal final class TelemetryRepository {
     FavoriteMediaStore.shared.reconcileAll()
     let boardNames = Self.boardNamesById()
     return FavoriteStore.shared.list().map { favorite in
-      favorite.toMap(boardName: favorite.boardId.flatMap { boardNames[$0] })
+      favorite.toMap(
+        boardName: favorite.boardId.flatMap { boardNames[$0] },
+        routePoints: favoriteRoutePoints(favorite)
+      )
     }
+  }
+
+  /// Coarse native route projection for Favorite cards, independent of JS history pagination.
+  private func favoriteRoutePoints(_ favorite: Favorite) -> [[String: Double]] {
+    guard let pool else { return [] }
+    let fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
+    return (try? pool.read { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+          SELECT first_latitude_e7, first_longitude_e7
+          FROM telemetry_minute_buckets
+          WHERE bucket_start_ms >= ? AND bucket_start_ms <= ?
+            AND first_sample_at_ms <= ? AND last_sample_at_ms >= ?
+            AND first_latitude_e7 IS NOT NULL AND first_longitude_e7 IS NOT NULL
+          ORDER BY bucket_start_ms ASC
+          """,
+        arguments: [fromBucketMs, favorite.endMs, favorite.endMs, favorite.startMs]
+      ).map { row in
+        [
+          "latitude": Double(row["first_latitude_e7"] as Int64) / 1e7,
+          "longitude": Double(row["first_longitude_e7"] as Int64) / 1e7,
+        ]
+      }
+    }) ?? []
   }
 
   /// Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
@@ -284,19 +311,10 @@ internal final class TelemetryRepository {
     )
     guard FavoriteStore.shared.insert(favorite) else { return nil }
     SyncCoordinator.shared.notifyRiderEdit()
-    return favorite.toMap(boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] })
-  }
-
-  /// The BLE identifier a Board currently claims. Markers, diagnostic events and Metric Exclusion
-  /// Ranges still key on it, so a Board-scoped query has to translate. A Board re-linked since the
-  /// ride no longer resolves its older markers — accepted: they are low-cardinality display rows,
-  /// not the sample stream (ADR 0028).
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `bleIdForBoard`
-  internal static func bleId(forBoardId boardId: String?) -> String? {
-    guard let boardId, let pool = TelemetryDatabase.pool else { return nil }
-    return try? pool.read { db in
-      try String.fetchOne(db, sql: "SELECT ble_id FROM boards WHERE id = ? LIMIT 1", arguments: [boardId])
-    }
+    return favorite.toMap(
+      boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] },
+      routePoints: favoriteRoutePoints(favorite)
+    )
   }
 
   /// `boards.id` -> Board name, tombstones included: Ride History still has to name a Board the
@@ -359,7 +377,10 @@ internal final class TelemetryRepository {
     )
     guard let stored = FavoriteStore.shared.update(updated) else { return nil }
     SyncCoordinator.shared.notifyRiderEdit()
-    return stored.toMap(boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] })
+    return stored.toMap(
+      boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] },
+      routePoints: favoriteRoutePoints(stored)
+    )
   }
 
   /// Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).

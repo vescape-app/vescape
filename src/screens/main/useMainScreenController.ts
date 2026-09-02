@@ -19,6 +19,7 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
+import { themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
 
 interface UseMainScreenControllerArgs {
   mapRef: RefObject<MainMapHandle | null>
@@ -84,7 +85,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     loading: historyLoading,
     hasMore: historyHasMore,
     error: historyError,
-    loadInitial,
     loadMore,
     selectSession,
     removeSelectedSession,
@@ -101,7 +101,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       loading: s.loading,
       hasMore: s.hasMore,
       error: s.error,
-      loadInitial: s.loadInitial,
       loadMore: s.loadMore,
       selectSession: s.selectSession,
       removeSelectedSession: s.removeSelectedSession,
@@ -204,6 +203,12 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     mapRef.current?.recenterLive()
   }, [enterTelemetry, mapRef])
 
+  // An accidental reveal undone mid-pinch: back to telemetry without touching the camera, which
+  // the pinch is still driving.
+  const cancelMapFocus = useCallback(() => {
+    enterTelemetry()
+  }, [enterTelemetry])
+
   const enterWeatherMode = useCallback(() => {
     enterWeather()
     mapRef.current?.focusWeather()
@@ -229,7 +234,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     enterHistory,
     enterTelemetry,
     historyFavorites,
-    loadInitial,
     selectSession,
     removeSelectedSession,
     setHistorySheetVisible,
@@ -237,11 +241,11 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   })
   const {
     exitHistory,
-    enterHistoryMode,
     selectPreviousRide,
     selectNextRide,
     removeSession,
     selectRide,
+    selectFavoriteRide,
   } = historyNavigation
 
   const handleMapFocus = useCallback(() => {
@@ -254,6 +258,10 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
 
   const setMapStyleKey = useCallback(
     (key: typeof mapStyleKey) => {
+      // A basemap with an explicit appearance is the rider picking a theme, so it persists as one.
+      // Satellite has no opinion and leaves the configured mode alone.
+      const override = themeOverrideForMapStyle(key)
+      if (override) void setSetting('themeMode', override)
       void setSetting('mapStyleKey', key)
     },
     [setSetting],
@@ -375,10 +383,10 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     loadMoreHistory: loadMore,
     selectPreviousRide,
     selectNextRide,
-    enterHistoryMode,
     exitHistory,
     removeSession,
     selectRide,
+    selectFavoriteRide,
     weatherActive,
     enterWeatherMode,
     exitWeatherMode,
@@ -386,6 +394,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     exitLegalLimitsMode,
     handleMapFocus,
     exitMapFocus,
+    cancelMapFocus,
     activeHistoryMapMetric,
     setActiveHistoryMapMetric,
   }

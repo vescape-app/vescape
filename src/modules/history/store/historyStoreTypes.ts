@@ -12,7 +12,6 @@ import type { HistorySession } from '@/modules/history/lib/sessions'
 export interface HistoryState {
   blocks: TelemetryMinuteBucket[]
   sessions: HistorySession[]
-  liveBlocks: TelemetryMinuteBucket[]
   selectedBlock: TelemetryMinuteBucket | null
   selectedSession: HistorySession | null
   samples: TelemetrySample[]
@@ -22,8 +21,6 @@ export interface HistoryState {
   sessionGpsSamples: HistoryGpsSample[]
   sessionMarkers: HistoryMarker[]
   sessionExclusions: MetricExclusion[]
-  liveSamples: TelemetrySample[]
-  liveGpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   summary: TelemetrySummary | null
   loading: boolean
@@ -32,12 +29,13 @@ export interface HistoryState {
   sessionTruncated: boolean
   error: string | undefined
   hasMore: boolean
+  nextCursorBeforeMs: number | null
 }
 
 export interface HistoryActions {
   loadInitial: () => Promise<void>
   loadMore: () => Promise<void>
-  refreshLive: () => Promise<void>
+  refreshRecent: () => Promise<void>
   selectBlock: (block: TelemetryMinuteBucket | null) => Promise<void>
   selectSession: (session: HistorySession | null) => Promise<void>
   refreshSummary: () => Promise<void>
@@ -51,7 +49,6 @@ export type HistoryStore = HistoryState & HistoryActions
 export const INITIAL_HISTORY_STATE: HistoryState = {
   blocks: [],
   sessions: [],
-  liveBlocks: [],
   selectedBlock: null,
   selectedSession: null,
   samples: [],
@@ -61,8 +58,6 @@ export const INITIAL_HISTORY_STATE: HistoryState = {
   sessionGpsSamples: [],
   sessionMarkers: [],
   sessionExclusions: [],
-  liveSamples: [],
-  liveGpsSamples: [],
   markers: [],
   summary: null,
   loading: false,
@@ -71,4 +66,5 @@ export const INITIAL_HISTORY_STATE: HistoryState = {
   sessionTruncated: false,
   error: undefined,
   hasMore: true,
+  nextCursorBeforeMs: null,
 }

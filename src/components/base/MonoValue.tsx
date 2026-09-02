@@ -1,16 +1,17 @@
 import { useMemo } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 import {
+  isSharedValue,
   useDerivedValue,
   useSharedValue,
   type DerivedValue,
-  type SharedValue,
 } from 'react-native-reanimated'
 import { Canvas, Text as SkiaText } from '@shopify/react-native-skia'
 
 import { theme, type MonoWeight } from '@/constants/theme'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { textAdvanceWidth } from '../../helpers/skiaText'
+import { useResolvedColor } from '@/hooks/useTheme'
 
 export type MonoValueAlign = 'left' | 'center' | 'right'
 
@@ -23,7 +24,7 @@ export interface MonoTextProps {
   size: number
   weight?: MonoWeight
   /** Static color, or a shared value for colors that ramp with the value. */
-  color?: string | SharedValue<string>
+  color?: string | DerivedValue<string>
   align?: MonoValueAlign
   /** Left edge of the layout box, in canvas coordinates. */
   x?: number
@@ -61,6 +62,14 @@ export function MonoText({
   height,
 }: MonoTextProps) {
   const font = useSkiaMonoFont(weight, size)
+  // A derived colour is already resolved for the active appearance; a static token still needs the
+  // adaptive lookup. Both hooks run every render so the hook order stays stable.
+  // Adaptive tokens are native color objects, not strings, so the split is on "is it a shared
+  // value" — a `typeof === 'string'` test sends them to Skia raw, which crashes on paint.
+  const staticColor = useResolvedColor(
+    isSharedValue<string>(color) ? theme.palette.slate.textPrimary : (color as string),
+  )
+  const rendererColor = isSharedValue<string>(color) ? color : staticColor
 
   // Vertically center the glyph box: ascent is negative, descent positive.
   const baseline = useMemo(() => {
@@ -77,7 +86,7 @@ export function MonoText({
   })
 
   if (!font) return null
-  return <SkiaText x={textX} y={baseline} text={text} font={font} color={color} />
+  return <SkiaText x={textX} y={baseline} text={text} font={font} color={rendererColor} />
 }
 
 export interface MonoValueProps extends Omit<MonoTextProps, 'x' | 'y' | 'width' | 'height'> {

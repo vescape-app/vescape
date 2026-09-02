@@ -70,9 +70,7 @@ function StepRow({
             style={[
               styles.connector,
               {
-                backgroundColor: connectorDone
-                  ? theme.palette.green.color
-                  : theme.palette.slate.border,
+                backgroundColor: connectorDone ? theme.palette.green.color : theme.neutral.border,
               },
             ]}
           />
@@ -114,8 +112,8 @@ const GLYPH_COLOR: Record<StepState, string> = {
   done: theme.palette.green.color,
   active: theme.status.upgrade.color,
   failed: theme.status.error.color,
-  pending: theme.palette.slate.border,
-  absent: theme.palette.slate.border,
+  pending: theme.neutral.border,
+  absent: theme.neutral.border,
 }
 
 const styles = StyleSheet.create({
@@ -153,15 +151,15 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   rowLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
   rowLabelDim: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
   rowCaption: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '500',
     fontVariant: ['tabular-nums'],

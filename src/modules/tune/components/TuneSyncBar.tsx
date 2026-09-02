@@ -93,7 +93,7 @@ export function TuneSyncBar({
           borderColor: theme.palette.sky.border,
           textColor: theme.palette.sky.text,
           accentColor: theme.palette.sky.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: 'Reading board config...',
           detail: null,
           icon: <ActivityIndicator size="small" color={theme.palette.sky.color} />,
@@ -104,7 +104,7 @@ export function TuneSyncBar({
           borderColor: theme.status.warning.border,
           textColor: theme.status.warning.text,
           accentColor: theme.status.warning.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: 'Board config not read',
           detail: s.configError,
           icon: <WarningCircleIcon size={16} color={theme.status.warning.color} weight="bold" />,
@@ -113,11 +113,7 @@ export function TuneSyncBar({
               label: 'Retry',
               primary: true,
               icon: (
-                <ArrowsClockwiseIcon
-                  size={12}
-                  color={theme.palette.slate.surfaceDeep}
-                  weight="bold"
-                />
+                <ArrowsClockwiseIcon size={12} color={theme.neutral.surfaceDeep} weight="bold" />
               ),
               onPress: onRetryConfig,
             },
@@ -125,8 +121,8 @@ export function TuneSyncBar({
         }
       case 'up_to_date':
         return {
-          borderColor: theme.palette.slate.border,
-          textColor: theme.palette.slate.textMuted,
+          borderColor: theme.neutral.border,
+          textColor: theme.neutral.textMuted,
           accentColor: theme.palette.green.color,
           accentTextColor: theme.palette.green.bg,
           text: 'Your board is up to date',
@@ -139,7 +135,7 @@ export function TuneSyncBar({
           borderColor: theme.status.warning.border,
           textColor: theme.status.warning.text,
           accentColor: theme.status.warning.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: 'Connect to board to sync',
           detail: null,
           icon: <BluetoothSlashIcon size={16} color={theme.status.warning.color} weight="bold" />,
@@ -148,9 +144,9 @@ export function TuneSyncBar({
       case 'save_later':
         return {
           borderColor: theme.palette.sky.border,
-          textColor: theme.palette.slate.textPrimary,
+          textColor: theme.neutral.textPrimary,
           accentColor: theme.palette.sky.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: `${s.dirtyCount} unsaved field${s.dirtyCount === 1 ? '' : 's'}`,
           detail: s.configError ? `Board config not read: ${s.configError}` : null,
           icon: <CloudArrowUpIcon size={16} color={theme.palette.sky.color} weight="bold" />,
@@ -162,7 +158,7 @@ export function TuneSyncBar({
                   icon: (
                     <ArrowsClockwiseIcon
                       size={12}
-                      color={theme.palette.slate.textSecondary}
+                      color={theme.neutral.textSecondary}
                       weight="bold"
                     />
                   ),
@@ -171,9 +167,7 @@ export function TuneSyncBar({
                 {
                   label: 'Save',
                   primary: true,
-                  icon: (
-                    <CheckIcon size={12} color={theme.palette.slate.surfaceDeep} weight="bold" />
-                  ),
+                  icon: <CheckIcon size={12} color={theme.neutral.surfaceDeep} weight="bold" />,
                   onPress: onSave,
                 },
               ]
@@ -184,7 +178,7 @@ export function TuneSyncBar({
                   icon: (
                     <ArrowCounterClockwiseIcon
                       size={12}
-                      color={theme.palette.slate.textSecondary}
+                      color={theme.neutral.textSecondary}
                       weight="bold"
                     />
                   ),
@@ -193,9 +187,7 @@ export function TuneSyncBar({
                 {
                   label: 'Save',
                   primary: true,
-                  icon: (
-                    <CheckIcon size={12} color={theme.palette.slate.surfaceDeep} weight="bold" />
-                  ),
+                  icon: <CheckIcon size={12} color={theme.neutral.surfaceDeep} weight="bold" />,
                   onPress: onSave,
                 },
               ],
@@ -203,9 +195,9 @@ export function TuneSyncBar({
       case 'save_and_sync':
         return {
           borderColor: theme.palette.sky.border,
-          textColor: theme.palette.slate.textPrimary,
+          textColor: theme.neutral.textPrimary,
           accentColor: theme.palette.sky.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: `${s.dirtyCount} unsaved field${s.dirtyCount === 1 ? '' : 's'}`,
           detail: null,
           icon: <ArrowsClockwiseIcon size={16} color={theme.palette.sky.color} weight="bold" />,
@@ -225,7 +217,7 @@ export function TuneSyncBar({
             {
               label: 'Save & sync',
               primary: true,
-              icon: <CheckIcon size={12} color={theme.palette.slate.surfaceDeep} weight="bold" />,
+              icon: <CheckIcon size={12} color={theme.neutral.surfaceDeep} weight="bold" />,
               onPress: onSaveAndSync,
             },
           ],
@@ -235,7 +227,7 @@ export function TuneSyncBar({
           borderColor: theme.palette.sky.border,
           textColor: theme.palette.sky.text,
           accentColor: theme.palette.sky.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: `${s.diffCount} field${s.diffCount === 1 ? '' : 's'} differ from board`,
           detail: null,
           icon: <ArrowsClockwiseIcon size={16} color={theme.palette.sky.color} weight="bold" />,
@@ -244,20 +236,14 @@ export function TuneSyncBar({
               label: 'Update tune',
               primary: false,
               icon: (
-                <DownloadSimpleIcon
-                  size={12}
-                  color={theme.palette.slate.textSecondary}
-                  weight="bold"
-                />
+                <DownloadSimpleIcon size={12} color={theme.neutral.textSecondary} weight="bold" />
               ),
               onPress: onUpdateTune,
             },
             {
               label: 'Send to board',
               primary: true,
-              icon: (
-                <UploadSimpleIcon size={12} color={theme.palette.slate.surfaceDeep} weight="bold" />
-              ),
+              icon: <UploadSimpleIcon size={12} color={theme.neutral.surfaceDeep} weight="bold" />,
               onPress: onSync,
             },
           ],
@@ -267,7 +253,7 @@ export function TuneSyncBar({
           borderColor: theme.palette.sky.border,
           textColor: theme.palette.sky.text,
           accentColor: theme.palette.sky.color,
-          accentTextColor: theme.palette.slate.surfaceDeep,
+          accentTextColor: theme.neutral.surfaceDeep,
           text: 'Saving...',
           detail: null,
           icon: <ActivityIndicator size="small" color={theme.palette.sky.color} />,
@@ -307,12 +293,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     gap: 8,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    shadowColor: theme.palette.mono.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 10,
+    backgroundColor: theme.control.background,
   },
   left: {
     flexDirection: 'row',
@@ -331,7 +312,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   detailText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -352,11 +333,11 @@ const styles = StyleSheet.create({
   },
   actionBtnSecondary: {
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   actionText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '800',
   },

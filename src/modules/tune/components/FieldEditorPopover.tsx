@@ -143,7 +143,7 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
               <Text style={styles.panelTitle}>Linked fields</Text>
               <CaretDownIcon
                 size={16}
-                color={theme.palette.slate.textMuted}
+                color={theme.neutral.textMuted}
                 weight="bold"
                 style={{ transform: [{ rotate: linkedExpanded ? '180deg' : '0deg' }] }}
               />
@@ -210,7 +210,7 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
             <Text style={styles.panelTitle}>Setting details</Text>
             <CaretDownIcon
               size={16}
-              color={theme.palette.slate.textMuted}
+              color={theme.neutral.textMuted}
               weight="bold"
               style={{ transform: [{ rotate: detailsExpanded ? '180deg' : '0deg' }] }}
             />
@@ -248,6 +248,7 @@ function FieldEditorPopoverInner({ target, onCancel, onApply }: FieldEditorPopov
           <Button
             label="Apply"
             icon={CheckIcon}
+            accent={target.color}
             style={styles.actionButton}
             onPress={applyEditor}
           />
@@ -267,11 +268,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderCurve: 'continuous',
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surface,
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.neutral.surface,
   },
   panelTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -283,7 +284,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   dialBoundText: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 8,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
@@ -298,12 +299,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   fieldId: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
   dataValue: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
@@ -315,19 +316,19 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dataLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
   description: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 15,
     fontWeight: '500',
     lineHeight: 20,
     textAlign: 'center',
   },
   help: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },
@@ -345,7 +346,7 @@ const styles = StyleSheet.create({
     width: '48.8%',
   },
   linkedLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 9,
     fontWeight: '800',
     lineHeight: 11,
@@ -360,7 +361,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   linkedUnit: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 8,
     fontWeight: '700',
     lineHeight: 9,

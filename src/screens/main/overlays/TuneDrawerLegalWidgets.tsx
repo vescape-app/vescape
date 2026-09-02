@@ -3,6 +3,7 @@ import { SirenIcon, SpeedometerIcon, WarningCircleIcon } from 'phosphor-react-na
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface LegalModeWidgetProps {
   value: boolean
@@ -19,6 +20,9 @@ export function LegalModeWidget({
   onValueChange,
   onWarningPress,
 }: LegalModeWidgetProps) {
+  const neutral = useResolvedNeutralColors()
+  const errorColor = useResolvedColor(theme.status.error.color)
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -61,11 +65,11 @@ export function LegalModeWidget({
         value={value}
         onValueChange={onValueChange}
         trackColor={{
-          false: theme.palette.slate.border,
-          true: theme.alpha(theme.status.error.color, 0.6),
+          false: neutral.border,
+          true: theme.alpha(errorColor, 0.6),
         }}
-        thumbColor={value ? theme.status.error.color : theme.palette.slate.textMuted}
-        ios_backgroundColor={theme.palette.slate.border}
+        thumbColor={value ? errorColor : neutral.textMuted}
+        ios_backgroundColor={neutral.border}
         accessibilityLabel="Legal Mode"
       />
     </Pressable>
@@ -112,7 +116,7 @@ const styles = StyleSheet.create({
     borderColor: theme.status.error.border,
   },
   legalModeWidgetPressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   legalModeTitleRow: {
     flexDirection: 'row',
@@ -120,7 +124,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   legalModeLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -130,7 +134,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   legalModeDescription: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -140,7 +144,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
     borderColor: theme.status.error.border,
   },
@@ -157,10 +161,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   legalMapWidgetPressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   legalMapLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -170,7 +174,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   legalMapDescription: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '700',
   },

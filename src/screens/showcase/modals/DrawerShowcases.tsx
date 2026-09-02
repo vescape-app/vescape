@@ -134,6 +134,51 @@ export function EdgeDrawerLongContentShowcase() {
   )
 }
 
+const VIRTUALIZED_ROWS = Array.from({ length: 100 }, (_, index) => ({
+  id: `virtualized-${index}`,
+  label: `Virtualized row ${index + 1}`,
+}))
+
+export function EdgeDrawerVirtualizedShowcase() {
+  const triggerRef = useTriggerRef()
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <ShowcaseCard
+      name="EdgeDrawer — virtualized list"
+      controls={
+        <View ref={triggerRef} collapsable={false} style={styles.trigger}>
+          <OpenButton label="Open 100 rows" onPress={() => setVisible(true)} />
+        </View>
+      }
+    >
+      <Text style={styles.previewHint}>FlatList path for long lists and early pagination.</Text>
+      <EdgeDrawer
+        visible={visible}
+        triggerRef={triggerRef}
+        title="Virtualized rows"
+        onClose={() => setVisible(false)}
+        virtualizedContent={{
+          data: VIRTUALIZED_ROWS,
+          keyExtractor: (item) => (item as (typeof VIRTUALIZED_ROWS)[number]).id,
+          renderItem: ({ item }) => (
+            <View style={styles.tile}>
+              <Text style={styles.tileText}>
+                {(item as (typeof VIRTUALIZED_ROWS)[number]).label}
+              </Text>
+            </View>
+          ),
+          separator: VirtualizedRowSeparator,
+        }}
+      />
+    </ShowcaseCard>
+  )
+}
+
+function VirtualizedRowSeparator() {
+  return <View style={styles.virtualizedSeparator} />
+}
+
 export function EdgeDrawerInitialFocusShowcase() {
   const triggerRef = useTriggerRef()
   const focusedRowRef = useRef<View>(null)
@@ -243,33 +288,34 @@ export function FloatingSheetShowcase() {
 const styles = StyleSheet.create({
   article: { gap: 28, paddingHorizontal: 10, paddingBottom: 24 },
   articleBody: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 15,
     lineHeight: 24,
   },
   articleLead: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     lineHeight: 27,
     fontWeight: '600',
   },
   articleSection: { gap: 8 },
   articleTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '700',
   },
   focusList: { gap: 8 },
   focusedTile: { borderColor: theme.palette.sky.color },
-  previewHint: { color: theme.palette.slate.textDim, fontSize: 12, fontStyle: 'italic' },
+  previewHint: { color: theme.neutral.textDim, fontSize: 12, fontStyle: 'italic' },
   tile: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.surfaceDeep,
+    borderColor: theme.neutral.border,
     borderWidth: 1,
     borderRadius: 14,
     padding: 16,
   },
-  tileText: { color: theme.palette.slate.textSecondary, fontSize: 14 },
+  tileText: { color: theme.neutral.textSecondary, fontSize: 14 },
   trigger: { alignSelf: 'flex-start' },
+  virtualizedSeparator: { height: 8 },
 })

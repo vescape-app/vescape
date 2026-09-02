@@ -53,9 +53,9 @@ export function findSessionFavorite(
  * chart, map route and stats bar — instead of a parallel implementation.
  *
  * The pinned summary wins over anything derivable from buckets: it was computed from raw samples at
- * creation and is exact for a range that cuts a bucket in half. Only what the row cannot carry
- * (geography, the buckets to read, the recording device) is derived from the overlapping buckets.
- * Favorite identity stays separate from the recording device so each can be presented consistently.
+ * creation and is exact for a range that cuts a bucket in half. Native also projects the route
+ * from the pinned range, so the card never depends on whichever History page JS currently holds.
+ * Remaining telemetry detail comes from overlapping buckets when the Favorite is opened.
  */
 export function favoriteToSession(
   favorite: Favorite,
@@ -64,8 +64,17 @@ export function favoriteToSession(
   const spanned = blocks
     .filter((block) => block.startAtMs <= favorite.endMs && block.endAtMs >= favorite.startMs)
     .sort((a, b) => a.startAtMs - b.startAtMs)
-  const latitudes = spanned.map((block) => block.firstLatitude).filter(isFinitePoint)
-  const longitudes = spanned.map((block) => block.firstLongitude).filter(isFinitePoint)
+  const routePoints =
+    favorite.routePoints.length > 0
+      ? favorite.routePoints
+      : spanned
+          .filter((block) => block.firstLatitude != null && block.firstLongitude != null)
+          .map((block) => ({
+            latitude: block.firstLatitude!,
+            longitude: block.firstLongitude!,
+          }))
+  const latitudes = routePoints.map((point) => point.latitude).filter(isFinitePoint)
+  const longitudes = routePoints.map((point) => point.longitude).filter(isFinitePoint)
   return {
     id: favoriteSessionId(favorite.id),
     boardId: spanned.find((block) => block.boardId != null)?.boardId ?? null,
@@ -97,8 +106,8 @@ export function favoriteToSession(
     maxLatitude: maxOrNull(latitudes),
     minLongitude: minOrNull(longitudes),
     maxLongitude: maxOrNull(longitudes),
-    faultCount: sum(spanned.map((block) => block.faultCount)),
     boundaryBefore: 'none',
+    routePoints,
   }
 }
 

@@ -2,6 +2,8 @@ import { ArrowClockwiseIcon, CheckIcon, NavigationArrowIcon, XIcon } from 'phosp
 import type { MapPoint, MapPointPatch, NavigationProfile, NavigationStatus } from 'vescape-core'
 
 import { theme } from '@/constants/theme'
+import { useColoredAction, useResolvedAccentColors } from '@/hooks/useTheme'
+import { ActiveNavigationSheet } from '@/modules/map-points/components/ActiveNavigationSheet'
 import { MapTargetSheet } from '@/modules/map-points/components/MapTargetSheet'
 import { NavigationProfileSelector } from '@/modules/map/components/NavigationProfileSelector'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
@@ -24,6 +26,11 @@ interface MapTargetSheetHostProps {
   onCancelNavigation: () => void
   /** The rider accepting the drawn path: the map steps aside and the ride view takes over. */
   onConfirmNavigation: () => void
+  /** The rider already accepted this path and returned to the map. */
+  activeNavigationAccepted: boolean
+  /** Reopens the full path/profile chooser from the compact active state. */
+  onEditActiveNavigation: () => void
+  navigationRemainingDistanceMeters: number | null
   /** How the path to the active target ended up. `null` while there is no Navigation at all. */
   navigationStatus: NavigationStatus | null
   /** How far the drawn path runs and how long it takes. `null` while no path is drawn. */
@@ -68,6 +75,9 @@ export function MapTargetSheetHost({
   onNavigateSelected,
   onCancelNavigation,
   onConfirmNavigation,
+  activeNavigationAccepted,
+  onEditActiveNavigation,
+  navigationRemainingDistanceMeters,
   navigationStatus,
   navigationPath,
   navigationComputing,
@@ -82,11 +92,14 @@ export function MapTargetSheetHost({
   onFocusTarget,
   requireAccount,
 }: MapTargetSheetHostProps) {
+  const accents = useResolvedAccentColors()
+  const confirmSurface = useColoredAction(actionColor)
+  const cancelSurface = useColoredAction(accents.red.light)
   const actionColors = {
     color: actionColor,
-    textColor: actionTextColor,
+    textColor: actionColor,
     borderColor: actionColor,
-    bgColor: theme.alpha(actionColor, 0.12),
+    bgColor: confirmSurface,
   }
 
   if (selectedTarget) {
@@ -107,6 +120,8 @@ export function MapTargetSheetHost({
           Icon: NavigationArrowIcon,
           onPress: onNavigateSelected,
         }}
+        targetColor={actionColor}
+        targetTextColor={actionTextColor}
         onAddFeature={isMapPoint ? undefined : onAddFeature}
         onEdit={
           ownedByMe
@@ -140,8 +155,29 @@ export function MapTargetSheetHost({
 
   if (!activeTarget || activeTargetSuppressed) return null
 
+  if (activeNavigationAccepted) {
+    return (
+      <ActiveNavigationSheet
+        target={activeTarget}
+        bottom={bottom}
+        remainingDistanceMeters={navigationRemainingDistanceMeters}
+        durationSeconds={navigationPath?.durationSeconds ?? 0}
+        targetColor={actionColor}
+        targetTextColor={actionTextColor}
+        accentColor={accents.purple.light}
+        cancelColor={accents.red.light}
+        cancelBackgroundColor={cancelSurface}
+        onOpen={onEditActiveNavigation}
+        onCancel={onCancelNavigation}
+      />
+    )
+  }
+
   const cancelAction = {
-    ...NAVIGATION_ACTION_COLORS.cancel,
+    color: accents.red.light,
+    textColor: accents.red.light,
+    borderColor: accents.red.light,
+    bgColor: cancelSurface,
     label: 'Cancel',
     accessibilityLabel: 'Cancel navigation',
     Icon: XIcon,
@@ -197,21 +233,15 @@ export function MapTargetSheetHost({
 
 /**
  * The side actions read as different decisions from the confirm, so they leave the target's colour
- * to it: asking again is neutral work (slate), dropping the Navigation is destructive (red).
- * Emphasis is border and text on a dark tinted pill — never a bright fill; see `docs/design.md`.
+ * to it: asking again is neutral work (muted), dropping the Navigation is destructive (red).
+ * Both sit on the dark control surface with an accent border/icon, never a bright tinted fill.
  */
 const NAVIGATION_ACTION_COLORS = {
   recompute: {
-    color: theme.palette.slate.color,
-    textColor: theme.palette.slate.textSecondary,
-    borderColor: theme.palette.slate.border,
-    bgColor: theme.alpha(theme.palette.slate.color, 0.12),
-  },
-  cancel: {
-    color: theme.palette.red.color,
-    textColor: theme.palette.red.text,
-    borderColor: theme.alpha(theme.palette.red.color, 0.4),
-    bgColor: theme.alpha(theme.palette.red.color, 0.1),
+    color: theme.control.textMuted,
+    textColor: theme.control.textMuted,
+    borderColor: theme.control.border,
+    bgColor: theme.alpha(theme.control.background, 0.85),
   },
 } as const
 

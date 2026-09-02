@@ -1165,6 +1165,144 @@ interface TelemetryDao {
     return removed
   }
 
+  // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
+  // `deleteBoardWithSettings`: fault evidence outlives the Board record.
+  // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
+
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId ORDER BY occurred_at DESC, rowid DESC")
+  suspend fun getVescFaults(boardId: String): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, occurred_at DESC, rowid DESC")
+  suspend fun getAllVescFaults(): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE id = :id LIMIT 1")
+  suspend fun getVescFault(id: String): VescFaultOccurrenceEntity?
+
+  /** Newest still-open occurrence for a Board — rehydrates coordinator state after restart. */
+  @Query(
+    "SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId AND cleared_at IS NULL " +
+      "ORDER BY occurred_at DESC, rowid DESC LIMIT 1",
+  )
+  suspend fun getOpenVescFault(boardId: String): VescFaultOccurrenceEntity?
+
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertVescFault(fault: VescFaultOccurrenceEntity): Long
+
+  @Query(
+    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt WHERE id = :id",
+  )
+  suspend fun updateVescFaultLifecycle(
+    id: String,
+    lastObservedAt: Long,
+    clearedAt: Long?,
+  )
+
+  /**
+   * Insert-or-advance. Deliberately not a `REPLACE` upsert: that rewrites `dismissed` from the
+   * caller's in-memory snapshot, so a stale heartbeat could un-dismiss what the rider just
+   * acknowledged. Dismissal has its own statement.
+   */
+  @Transaction
+  suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
+    if (insertVescFault(fault) == -1L) {
+      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs)
+    }
+  }
+
+  @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
+  suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int
+
+  // VESC Fault Captures — one self-contained window of decoded Board samples per occurrence. Append
+  // only, no GPS, and outside every Ride History retention/pruning path.
+  // @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift
+
+  @Upsert
+  suspend fun upsertVescFaultCapture(capture: VescFaultCaptureEntity)
+
+  @Query("SELECT * FROM vesc_fault_captures WHERE occurrence_id = :occurrenceId LIMIT 1")
+  suspend fun getVescFaultCapture(occurrenceId: String): VescFaultCaptureEntity?
+
+  @Insert
+  suspend fun insertVescFaultCaptureSamples(samples: List<VescFaultCaptureSampleEntity>)
+
+  @Query(
+    "SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = :occurrenceId " +
+      "ORDER BY captured_at ASC, id ASC",
+  )
+  suspend fun getVescFaultCaptureSamples(occurrenceId: String): List<VescFaultCaptureSampleEntity>
+
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
+  suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
+
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestBoardConfigValues(boardId: String): BoardConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigValues(values: BoardConfigValuesEntity)
+
+  @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigValues(boardId: String)
+
+  @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertMotorConfigValues(values: MotorConfigValuesEntity)
+
+  @Query("DELETE FROM motor_config_values WHERE board_id = :boardId")
+  suspend fun deleteMotorConfigValues(boardId: String)
+
+  /**
+   * Same baseline-then-notice transaction as [replaceBaselineAndNotice], for motor config. Both
+   * configs write into one notice row per Board: a rider does not care which subsystem a setting
+   * lives in, only that their board changed while Vescape was away.
+   */
+  @Transaction
+  suspend fun replaceMotorBaselineAndNotice(
+    values: MotorConfigValuesEntity,
+    buildNotice: (MotorConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?,
+  ): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getLatestMotorConfigValues(values.boardId), getBoardConfigChangeNotice(values.boardId))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertMotorConfigValues(values)
+    return notice
+  }
+
+  @Query("SELECT * FROM board_config_change_notices WHERE board_id = :boardId LIMIT 1")
+  suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNoticeEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigChangeNotice(notice: BoardConfigChangeNoticeEntity)
+
+  @Query("DELETE FROM board_config_change_notices WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigChangeNotice(boardId: String)
+
+  @Transaction
+  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertBoardConfigValues(values)
+    return notice
+  }
+
+  /**
+   * Patch a few fields of the stored baseline in one transaction, leaving every other field and the
+   * row's `capturedAt` alone.
+   *
+   * A runtime command that mutates config on the board has to teach the baseline about it, but it
+   * holds a snapshot taken when the session read ran — writing that whole snapshot back would undo a
+   * fresh read that landed in between and resurrect its stale values as the comparison base.
+   */
+  @Transaction
+  suspend fun patchBoardConfigValues(
+    boardId: String,
+    refloatBaseVersion: String,
+    patch: (BoardConfigValuesEntity) -> BoardConfigValuesEntity,
+  ) {
+    val row = getBoardConfigValues(boardId, refloatBaseVersion) ?: return
+    upsertBoardConfigValues(patch(row))
+  }
+
   // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
   // inside the range is never touched here.
   // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift
@@ -1255,7 +1393,6 @@ private fun TelemetryMinuteBucketEntity.merge(next: TelemetryMinuteBucketEntity)
     batteryUsedWhMilli = batteryUsedWhMilli + next.batteryUsedWhMilli,
     batteryRegenWhMilli = batteryRegenWhMilli + next.batteryRegenWhMilli,
     maxDutyAbsPermille = maxOf(maxDutyAbsPermille, next.maxDutyAbsPermille),
-    faultCount = faultCount + next.faultCount,
     firstOdometerCm = when {
       firstOdometerCm == null -> next.firstOdometerCm
       next.firstOdometerCm == null -> firstOdometerCm

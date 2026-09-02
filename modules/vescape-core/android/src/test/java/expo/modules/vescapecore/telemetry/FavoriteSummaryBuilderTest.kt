@@ -85,7 +85,11 @@ class FavoriteSummaryBuilderTest {
 
   @Test
   fun favoriteEntityMapsToRiderUnitsAcrossTheBridge() {
-    val map = favorite(distanceCm = 250_000L).toMap(boardName = "Onewheel")
+    val routePoints = listOf(mapOf("latitude" to 52.0, "longitude" to 21.0))
+    val map = favorite(distanceCm = 250_000L).toMap(
+      boardName = "Onewheel",
+      routePoints = routePoints,
+    )
 
     assertEquals("board-uuid-1", map["boardId"])
     // Board name is resolved on read, never snapshotted, so renames propagate to old favorites.
@@ -94,6 +98,7 @@ class FavoriteSummaryBuilderTest {
     assertEquals(15.0, map["avgSpeedKmh"])
     assertEquals(30.0, map["maxSpeedKmh"])
     assertEquals(12.5, map["batteryUsedWh"])
+    assertEquals(routePoints, map["routePoints"])
   }
 
   /**
@@ -222,7 +227,6 @@ class FavoriteSummaryBuilderTest {
       motorCurrentMa = 10_000,
       batteryCurrentMa = 5_000,
       dutyPermille = 400,
-      hasFault = false,
       odometerCm = capturedAtMs / 10,
     )
   }
@@ -248,7 +252,6 @@ class FavoriteSummaryBuilderTest {
     batteryUsedWhMilli = 1_000L,
     batteryRegenWhMilli = 0L,
     maxDutyAbsPermille = 400,
-    faultCount = 0,
     firstOdometerCm = firstOdometerCm,
     lastOdometerCm = lastOdometerCm,
     gpsPointCount = 0,

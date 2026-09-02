@@ -16,3 +16,10 @@ internal func isPreciseGpsFix(accuracyM: Double?) -> Bool {
   guard let accuracyM else { return false }
   return accuracyM <= MAX_RECORDING_ACCURACY_M
 }
+
+/// How long an armed monitor may go without a fix before `gps_fix_stale` is recorded. Long enough
+/// that a normal cold start (or a tunnel) does not spam the log, short enough that a dead monitor
+/// is visible within one stop at a light.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPrecision.kt `GPS_STALE_FIX_TIMEOUT_MS`
+internal let GPS_STALE_FIX_TIMEOUT_S = 30.0

@@ -3,10 +3,11 @@ import { useState, type ComponentType } from 'react'
 import type { NavigationProfile } from 'vescape-core'
 
 import {
-  MapOptionSelector,
-  type MapOptionSelectorSize,
-} from '@/components/controls/MapOptionSelector'
+  ExpandableCircleMenu,
+  type ExpandableCircleMenuSize,
+} from '@/components/controls/ExpandableCircleMenu'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 
 /**
  * Which kind of ways the path may follow, switched inline while looking at it. Deliberately not a
@@ -26,11 +27,12 @@ export function NavigationProfileSelector({
   onSelect,
 }: {
   activeProfile: NavigationProfile
-  size?: MapOptionSelectorSize
+  size?: ExpandableCircleMenuSize
   /** Show all profiles side by side instead of collapsing to the active one. */
   open?: boolean
   onSelect: (profile: NavigationProfile) => void
 }) {
+  const accents = useResolvedAccentColors()
   const [expanded, setExpanded] = useState(false)
   const iconSize = size === 'sm' ? 18 : 21
   const optionIconSize = size === 'sm' ? 17 : 20
@@ -41,7 +43,7 @@ export function NavigationProfileSelector({
     icon: (
       <Icon
         size={optionIconSize}
-        color={activeProfile === key ? ACTIVE_COLOR : theme.palette.slate.textSecondary}
+        color={activeProfile === key ? accents.green.color : theme.palette.slate.textSecondary}
         weight="bold"
       />
     ),
@@ -49,13 +51,15 @@ export function NavigationProfileSelector({
   const ActiveIcon = profileOption(activeProfile).Icon
 
   return (
-    <MapOptionSelector
+    <ExpandableCircleMenu
       activeKey={activeProfile}
       activeIcon={<ActiveIcon size={iconSize} color={theme.palette.mono.white} weight="bold" />}
-      activeColor={ACTIVE_COLOR}
-      activeBackground={theme.alpha(theme.palette.green.color, 0.12)}
+      activeColor={accents.green.color}
+      activeBackground={theme.palette.slate.surfaceDeep}
       collapsedAccessibilityLabel={`Path follows: ${profileOption(activeProfile).label}`}
       expanded={open || expanded}
+      variant="lightTabs"
+      autoCloseDelayMs={open ? null : undefined}
       size={size}
       options={options}
       onToggle={() => {
@@ -69,8 +73,6 @@ export function NavigationProfileSelector({
     />
   )
 }
-
-const ACTIVE_COLOR = theme.palette.green.text
 
 /**
  * Rider-facing names for the profiles. They say what the path follows rather than how the rider

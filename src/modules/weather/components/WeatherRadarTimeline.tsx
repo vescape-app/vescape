@@ -17,12 +17,15 @@ import { IconButton } from '@/components/base/IconButton'
 import { MonoValue } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
+  findClosestRainViewerFrameIndex,
   formatRainViewerFrameTime,
   useRainViewerRadarStore,
 } from '@/modules/weather/store/rainViewerRadarStore'
 
 const FRAME_INTERVAL_MS = 450
+const INITIAL_FRAME_OFFSET_SECONDS = 30 * 60
 const TIME_FONT_SIZE = 12
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
@@ -75,12 +78,14 @@ function createRadarScrubGesture({
 }
 
 export function WeatherRadarTimeline() {
+  const neutral = useResolvedNeutralColors()
   const frames = useRainViewerRadarStore((state) => state.frames)
   const loading = useRainViewerRadarStore((state) => state.loading)
   const fetchRadar = useRainViewerRadarStore((state) => state.fetch)
   const [playing, setPlaying] = useState(true)
   const frameCountRef = useRef(0)
   const frameIndexRef = useRef(0)
+  const initialFrameSelectedRef = useRef(false)
   const labelsRef = useRef<string[]>([])
   const instantFrameIndexRef = useRef<number | null>(null)
   const frameCount = useSharedValue(0)
@@ -98,7 +103,17 @@ export function WeatherRadarTimeline() {
     frameCount.value = frames.length
     labelsRef.current = frames.map((frame) => formatRainViewerFrameTime(frame.time))
 
-    const selectedFrameIndex = useRainViewerRadarStore.getState().selectedFrameIndex
+    let selectedFrameIndex = useRainViewerRadarStore.getState().selectedFrameIndex
+    if (!initialFrameSelectedRef.current && frames.length > 0) {
+      selectedFrameIndex = findClosestRainViewerFrameIndex(
+        frames,
+        Date.now() / 1_000 - INITIAL_FRAME_OFFSET_SECONDS,
+      )
+      initialFrameSelectedRef.current = true
+      instantFrameIndexRef.current = selectedFrameIndex
+      useRainViewerRadarStore.getState().setFrameIndex(selectedFrameIndex, 'auto')
+    }
+
     frameIndexRef.current = Math.max(0, Math.min(frames.length - 1, selectedFrameIndex))
     progress.value = frames.length <= 1 ? 1 : frameIndexRef.current / (frames.length - 1)
     frameLabel.value = labelsRef.current[frameIndexRef.current] ?? 'Radar'
@@ -176,7 +191,9 @@ export function WeatherRadarTimeline() {
   }))
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[styles.container, { backgroundColor: neutral.surface, borderColor: neutral.border }]}
+    >
       <IconButton
         icon={playing ? PauseIcon : PlayIcon}
         size="sm"
@@ -186,8 +203,16 @@ export function WeatherRadarTimeline() {
       />
       <View style={styles.timeline}>
         <View style={styles.timelineHeader}>
-          <MonoValue text={frameLabel} size={TIME_FONT_SIZE} weight="800" style={styles.timeText} />
-          <Text style={styles.rangeText}>{frameWindowLabel}</Text>
+          <MonoValue
+            text={frameLabel}
+            size={TIME_FONT_SIZE}
+            weight="800"
+            color={neutral.textPrimary}
+            style={styles.timeText}
+          />
+          <Text style={[styles.rangeText, { color: neutral.textSecondary }]}>
+            {frameWindowLabel}
+          </Text>
         </View>
         <GestureDetector gesture={scrubGesture}>
           <Animated.View
@@ -209,8 +234,6 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
-    borderColor: theme.alpha(theme.palette.slate.textSecondary, 0.3),
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row',
@@ -233,7 +256,6 @@ const styles = StyleSheet.create({
     width: 64,
   },
   rangeText: {
-    color: theme.palette.slate.textSecondary,
     fontSize: 11,
     fontWeight: '700',
   },

@@ -17,8 +17,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = -2_500,
           batteryCurrentMa = 1_200,
           dutyPermille = -300,
-          hasFault = false,
-          odometerCm = 10_000L,
+            odometerCm = 10_000L,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 130_000L,
@@ -28,7 +27,6 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 3_500,
           batteryCurrentMa = -1_400,
           dutyPermille = 350,
-          hasFault = true,
           odometerCm = 10_420L,
         ),
       ),
@@ -55,7 +53,6 @@ class TelemetryBucketBuilderTest {
     assertEquals(2, buckets.sampleCount)
     assertEquals(2, buckets.gpsPointCount)
     assertEquals(1, buckets.preciseGpsPointCount)
-    assertEquals(1, buckets.faultCount)
     assertEquals(2_800L, buckets.sumAbsSpeedCentiKmh)
     assertEquals(2, buckets.movingSpeedSampleCount)
     assertEquals(2_800L, buckets.sumMovingAbsSpeedCentiKmh)
@@ -102,8 +99,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 70_000L,
@@ -113,8 +109,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 10_000L,
@@ -124,8 +119,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
       ),
       locationPoints = emptyList(),
@@ -148,8 +142,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = true,
         ),
         BucketTelemetryPoint(
@@ -160,8 +153,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = false,
         ),
         BucketTelemetryPoint(
@@ -172,8 +164,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = false,
         ),
       ),
@@ -199,8 +190,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = true,
         ),
       ),
@@ -224,8 +214,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 10_000,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = 0L,
+            odometerCm = 0L,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 3_600L,
@@ -235,8 +224,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = -5_000,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = 10L,
+            odometerCm = 10L,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 7_200L,
@@ -246,8 +234,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = 20L,
+            odometerCm = 20L,
         ),
       ),
       locationPoints = emptyList(),
@@ -269,8 +256,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 900,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromMaxSpeed = true,
           excludedFromMaxDuty = true,
         ),
@@ -282,8 +268,7 @@ class TelemetryBucketBuilderTest {
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 400,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
       ),
       locationPoints = emptyList(),

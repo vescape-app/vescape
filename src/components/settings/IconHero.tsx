@@ -23,7 +23,7 @@ export function IconHero({
   description,
   children,
   iconSize = 64,
-  iconColor = theme.palette.slate.textMuted,
+  iconColor = theme.neutral.textMuted,
   iconWeight = 'thin',
 }: IconHeroProps) {
   return (
@@ -49,13 +49,13 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
   },
   description: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',

@@ -90,6 +90,12 @@ class SyncActionLogTest {
     "clearAll",
     "deleteFavoriteMedia",
     "deleteOrphanFavoriteMedia",
+    // Board-owned decode caches. Absent from SyncTable, so they never upload and there is
+    // nothing on the server to remove — the Board's own action already says its
+    // configuration is gone.
+    "deleteBoardConfigValues",
+    "deleteMotorConfigValues",
+    "deleteBoardConfigChangeNotice",
     // Transport state, pruned only behind the accepted-action cursor.
     "deleteSyncActionsThrough",
     "pruneUploadedSyncActions",
@@ -179,7 +185,7 @@ class SyncActionLogTest {
   /** The log is append-only and keyed on its own cursor; no trigger writes it. */
   @Test
   fun `migration creates the log keyed on an autoincrement cursor`() {
-    val sql = migrationSql(TelemetryDatabase.MIGRATION_36_37).joinToString("\n")
+    val sql = migrationSql(TelemetryDatabase.MIGRATION_45_46).joinToString("\n")
     assertTrue(sql, sql.contains("CREATE TABLE IF NOT EXISTS sync_actions"))
     assertTrue(sql, sql.contains("id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL"))
     assertTrue(sql, sql.contains("deleted_at INTEGER NOT NULL"))
@@ -189,7 +195,7 @@ class SyncActionLogTest {
   /** Additive and guarded, so re-running the migration is a no-op rather than a duplicate table. */
   @Test
   fun `migration is additive and re-runnable`() {
-    val sql = migrationSql(TelemetryDatabase.MIGRATION_36_37)
+    val sql = migrationSql(TelemetryDatabase.MIGRATION_45_46)
     assertTrue(sql.isNotEmpty())
     for (statement in sql) {
       assertTrue("not guarded: $statement", statement.contains("IF NOT EXISTS"))

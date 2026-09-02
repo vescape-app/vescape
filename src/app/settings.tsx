@@ -14,13 +14,14 @@ import {
   TagIcon,
   AndroidLogoIcon,
   AppleLogoIcon,
-  MapPinIcon,
+  HouseIcon,
   ClockCounterClockwiseIcon,
   ChartLineUpIcon,
   GaugeIcon,
   WatchIcon,
-  WarningIcon,
+  EngineIcon,
   MapTrifoldIcon,
+  PaletteIcon,
 } from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
@@ -37,6 +38,7 @@ import { ReleaseActionPill } from '@/modules/release/components/ReleaseActionPil
 import { selectAvailableUpdate } from '@/modules/release/lib/availableUpdate'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { openAppUpdate } from 'vescape-core'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const appVersion = Constants.expoConfig?.version ?? DASH
 
@@ -45,6 +47,7 @@ export default function SettingsScreen() {
   const navigation = useNavigation()
   const appStatus = useAppStatusStore((state) => state.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
+  const neutral = useResolvedNeutralColors()
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -59,7 +62,7 @@ export default function SettingsScreen() {
   }, [navigation])
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: neutral.bg }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero media={<VescapeWordmark width={200} />}>
           <View style={styles.headerStats}>
@@ -110,11 +113,18 @@ export default function SettingsScreen() {
             onPress={() => router.push(routes.settingsLiveTelemetry)}
           />
           <SettingsRow
-            icon={WarningIcon}
+            icon={EngineIcon}
             iconColor={theme.settingsIcon.diagnostics}
             label="Diagnostics"
             hint="Board warnings and health checks"
             onPress={() => router.push(routes.settingsDiagnostics)}
+          />
+          <SettingsRow
+            icon={PaletteIcon}
+            iconColor={theme.palette.purple.color}
+            label="Appearance"
+            hint="System, light, dark, or sunrise and sunset"
+            onPress={() => router.push(routes.settingsVisuals)}
           />
           <SettingsRow
             icon={MapTrifoldIcon}
@@ -152,7 +162,7 @@ export default function SettingsScreen() {
 
         <SettingsCard>
           <SettingsRow
-            icon={MapPinIcon}
+            icon={HouseIcon}
             iconColor={theme.settingsIcon.privacyZones}
             label="Privacy zones"
             hint="Skip recording near saved places"
@@ -200,7 +210,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
   },
   content: {
     padding: 16,
@@ -216,7 +225,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   headerValue: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },

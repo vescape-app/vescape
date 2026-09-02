@@ -10,7 +10,7 @@ import java.io.File
 import java.lang.reflect.Proxy
 
 /**
- * Telemetry keys on the Board id (#280, ADR 0028). Schema 34→35 adds `board_id` to
+ * Telemetry keys on the Board id (#280, ADR 0028). Schema 41→42 adds `board_id` to
  * `telemetry_frames` and `telemetry_minute_buckets`, backfills it by matching `boards.ble_id`,
  * mints a tombstoned Board for every identifier that resolves to nothing, moves the bucket primary
  * key onto the new column, and drops `device_id` and `device_name` from both tables.
@@ -38,7 +38,7 @@ class TelemetryBoardIdMigrationTest {
         else -> throw UnsupportedOperationException(method.name)
       }
     } as SupportSQLiteDatabase
-    TelemetryDatabase.MIGRATION_34_35.migrate(db)
+    TelemetryDatabase.MIGRATION_41_42.migrate(db)
     return sql
   }
 
@@ -63,9 +63,9 @@ class TelemetryBoardIdMigrationTest {
 
   @Test
   fun migrationTargetsTheCurrentSchemaVersion() {
-    assertEquals(39, TELEMETRY_DATABASE_VERSION)
-    assertEquals(34, TelemetryDatabase.MIGRATION_34_35.startVersion)
-    assertEquals(35, TelemetryDatabase.MIGRATION_34_35.endVersion)
+    assertEquals(47, TELEMETRY_DATABASE_VERSION)
+    assertEquals(41, TelemetryDatabase.MIGRATION_41_42.startVersion)
+    assertEquals(42, TelemetryDatabase.MIGRATION_41_42.endVersion)
   }
 
   // MARK: Backfill
@@ -175,15 +175,15 @@ class TelemetryBoardIdMigrationTest {
   fun aMintedBoardIsTombstonedAndCarriesNoBoardLink() {
     val sql = statement("FROM telemetry_frames t")
     val columns = sql.substringAfter("(").substringBefore(")").split(",").map { it.trim() }
-    // Tail of the SELECT list, in column order: ble_id, created_at, updated_at, sync_seq,
-    // deleted_at. A literal NULL for the link, a stamped epoch for the tombstone.
+    // Tail of the SELECT list, in column order: ble_id, created_at, deleted_at. A literal NULL for
+    // the link, a stamped epoch for the tombstone.
     val selected = sql.substringBefore("FROM telemetry_frames t").lines()
       .map { it.trim().trimEnd(',') }
       .filter { it.isNotEmpty() }
-      .takeLast(5)
+      .takeLast(3)
 
     assertEquals(
-      listOf("id", "name", "ble_id", "created_at", "updated_at", "sync_seq", "deleted_at"),
+      listOf("id", "name", "ble_id", "created_at", "deleted_at"),
       columns,
     )
     assertEquals("a minted Board carries a Board Link", "NULL", selected.first())
@@ -194,28 +194,11 @@ class TelemetryBoardIdMigrationTest {
     )
   }
 
-  /** A minted Board is an ordinary write and has to upload like one. */
-  @Test
-  fun mintedBoardsGetASyncCursorPositionAboveEveryExistingRow() {
-    val sql = migrationSql()
-    val numbered = sql.indexOfFirst { it.contains("UPDATE boards") && it.contains("SET sync_seq =") }
-    val reseeded = sql.indexOfFirst {
-      it.contains("INSERT OR REPLACE INTO sync_sequences") && it.contains("'boards'")
-    }
-
-    assertTrue("minted Boards keep sync_seq 0 and never upload", numbered >= 0)
-    assertTrue("the boards counter is reseeded before the new rows are numbered", reseeded > numbered)
-  }
-
   // MARK: Table rebuild
 
-  /**
-   * The primary key move is a rebuild, not an `ALTER`. `updated_at` and `sync_seq` landed on this
-   * table earlier in the same release, so the copy has to name them explicitly — a bucket that
-   * silently resets its cursor position stops uploading.
-   */
+  /** The primary key move is a rebuild, not an `ALTER`. */
   @Test
-  fun theBucketRebuildMovesThePrimaryKeyAndCarriesTheSyncColumns() {
+  fun theBucketRebuildMovesThePrimaryKey() {
     val create = statement("CREATE TABLE telemetry_minute_buckets_new")
     val copy = statement("INSERT INTO telemetry_minute_buckets_new")
 
@@ -223,10 +206,8 @@ class TelemetryBoardIdMigrationTest {
       "the bucket primary key is not (bucket_start_ms, board_id)",
       create.contains("PRIMARY KEY (bucket_start_ms, board_id)"),
     )
-    for (column in listOf("updated_at", "sync_seq")) {
-      assertTrue("the rebuilt bucket table drops $column", create.contains(column))
-      assertTrue("the bucket rebuild does not carry $column across", copy.contains(column))
-    }
+    assertFalse("the rebuilt bucket table still carries the BLE identifier", create.contains("device_id"))
+    assertFalse("the bucket rebuild still copies the Board name", copy.contains("device_name"))
     assertTrue(
       "the rebuilt table is not swapped in",
       migrationSql().contains("ALTER TABLE telemetry_minute_buckets_new RENAME TO telemetry_minute_buckets"),

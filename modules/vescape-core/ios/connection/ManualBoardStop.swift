@@ -19,8 +19,13 @@ struct ManualBoardStop {
     return true
   }
 
+  /// The Board id currently gated by a manual stop, if any.
+  static func suppressedBoardId(defaults: UserDefaults = .standard) -> String? {
+    defaults.string(forKey: suppressedBoardKey)
+  }
+
   static func isAutoStartSuppressed(boardId: String, defaults: UserDefaults = .standard) -> Bool {
-    defaults.string(forKey: suppressedBoardKey) == boardId
+    suppressedBoardId(defaults: defaults) == boardId
   }
 
   static func clearAutoStartSuppression(defaults: UserDefaults = .standard) {

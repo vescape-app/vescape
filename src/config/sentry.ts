@@ -13,15 +13,17 @@ import * as Sentry from '@sentry/react-native'
  * On iOS `plugins/withSentryNativeInit` injects `SentrySDK.start` into the AppDelegate, ahead of
  * React Native, so the same pre-JS window is covered; this call re-initializes with the JS options.
  *
- * Disabled when `EXPO_PUBLIC_SENTRY_DSN` is unset (local dev without a DSN).
+ * Disabled in dev builds (`__DEV__`) and when `EXPO_PUBLIC_SENTRY_DSN` is unset — local crashes
+ * are noise in the production issue stream. The native pre-JS init is compiled out of debug
+ * builds too (`plugins/withSentryNativeInit`).
  */
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN
 
 export const initSentry = () => {
   Sentry.init({
     dsn,
-    enabled: Boolean(dsn),
-    environment: __DEV__ ? 'development' : 'production',
+    enabled: !__DEV__ && Boolean(dsn),
+    environment: 'production',
     sendDefaultPii: false,
     // Errors only — no performance tracing.
     tracesSampleRate: 0,

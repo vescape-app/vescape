@@ -9,6 +9,7 @@ import type { TuneProfileFieldValue } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 import { InfoModal } from '@/components/modals/InfoModal'
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { TunePreview, TUNE_PREVIEW_DESCRIPTION } from '@/modules/tune/components/TunePreview'
 import {
   TunePreviewScenarioControls,
@@ -25,13 +26,15 @@ interface TunePreviewSectionProps {
 }
 
 export function TunePreviewSection({ fields, active, visible, children }: TunePreviewSectionProps) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const pitchInputDegrees = useSharedValue(0)
   const pitchInputActive = useSharedValue(false)
   const previewSpeedKmh = useSharedValue(15)
   const groundToBoardAngleDegrees = useSharedValue(0)
-  const previewGradientColor = theme.palette.slate.bg
+  const previewGradientColor = neutral.bg
   const previewGradientColors = [
     theme.alpha(previewGradientColor, 1),
     theme.alpha(previewGradientColor, 0.75),
@@ -48,9 +51,9 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
   if (!visible) return null
 
   return (
-    <View style={styles.tuneView}>
+    <View style={[styles.tuneView, { backgroundColor: neutral.bg }]}>
       <ScrollView
-        style={styles.formScroll}
+        style={[styles.formScroll, { backgroundColor: neutral.bg }]}
         contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
         contentInsetAdjustmentBehavior="automatic"
         stickyHeaderIndices={previewEnabled ? [0] : undefined}
@@ -80,10 +83,10 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
                   value={previewEnabled}
                   onValueChange={setPreviewEnabled}
                   trackColor={{
-                    false: theme.palette.slate.border,
-                    true: theme.alpha(theme.tune.color, 0.6),
+                    false: neutral.border,
+                    true: theme.alpha(accents.purple.color, 0.6),
                   }}
-                  thumbColor={previewEnabled ? theme.tune.color : theme.palette.slate.textMuted}
+                  thumbColor={previewEnabled ? accents.purple.color : neutral.textMuted}
                   accessibilityLabel="Enable Tune Preview"
                 />
               </View>
@@ -120,7 +123,13 @@ export function TunePreviewSection({ fields, active, visible, children }: TunePr
             />
           </View>
         ) : null}
-        <View style={[styles.content, previewEnabled && styles.contentWithPreview]}>
+        <View
+          style={[
+            styles.content,
+            { backgroundColor: neutral.bg },
+            previewEnabled && styles.contentWithPreview,
+          ]}
+        >
           {previewEnabled ? (
             <TunePreviewScenarioControls
               hillsPreset={hillsPreset}
@@ -163,10 +172,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 10,
     padding: 12,
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   previewToggleTitleRow: {
     flex: 1,
@@ -187,12 +196,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   previewToggleTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '900',
   },
   previewToggleDescription: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 10,
     fontWeight: '600',
   },

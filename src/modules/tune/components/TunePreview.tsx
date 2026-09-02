@@ -39,6 +39,7 @@ import {
   pitchInputArrow,
 } from '@/modules/tune/components/tunePreviewCanvasGeometry'
 import { useSkiaMonoFont } from '@/hooks/useSkiaFont'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import {
   DEFAULT_TUNE_PREVIEW_ADVANCED_PHYSICS,
   TUNE_PREVIEW_RESET_SPEED_KMH,
@@ -94,6 +95,8 @@ export function TunePreview({
   speedKmh,
   groundToBoardAngleDegrees,
 }: TunePreviewProps) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
   const model = useMemo(
     () => createTunePreviewModel(fields),
     // Restart the animation loop after a model hot reload instead of retaining its old closure.
@@ -245,7 +248,6 @@ export function TunePreview({
 
   return (
     <View style={styles.card}>
-      {' '}
       <TunePreviewHeader
         speedStr={speedStr}
         boardAngleStr={boardAngleStr}
@@ -286,18 +288,13 @@ export function TunePreview({
               strokeWidth={1.5}
               strokeCap="round"
             />
-            <Path
-              path={targetPath}
-              style="stroke"
-              color={theme.palette.purple.light}
-              strokeWidth={1}
-            >
+            <Path path={targetPath} style="stroke" color={accents.purple.light} strokeWidth={1}>
               <DashPathEffect intervals={[6, 5]} />
             </Path>
             <Path
               path={deckPath}
               style="stroke"
-              color={theme.palette.sky.color}
+              color={accents.sky.color}
               strokeWidth={1}
               strokeCap="round"
             />
@@ -305,7 +302,7 @@ export function TunePreview({
               path={frontArrowPath}
               opacity={frontArrowOpacity}
               style="stroke"
-              color={theme.palette.sky.color}
+              color={accents.sky.color}
               strokeWidth={1.5}
               strokeCap="round"
               strokeJoin="round"
@@ -314,7 +311,7 @@ export function TunePreview({
               path={rearArrowPath}
               opacity={rearArrowOpacity}
               style="stroke"
-              color={theme.palette.sky.color}
+              color={accents.sky.color}
               strokeWidth={1.5}
               strokeCap="round"
               strokeJoin="round"
@@ -323,14 +320,14 @@ export function TunePreview({
               cx={centerX}
               cy={GROUND_Y - WHEEL_RADIUS}
               r={WHEEL_RADIUS}
-              color={theme.palette.slate.bg}
+              color={neutral.surface}
             />
             <Circle
               cx={centerX}
               cy={GROUND_Y - WHEEL_RADIUS}
               r={WHEEL_RADIUS}
               style="stroke"
-              color={theme.palette.slate.textSecondary}
+              color={neutral.textSecondary}
               strokeWidth={1}
             />
             <Path
@@ -344,7 +341,7 @@ export function TunePreview({
               cy={GROUND_Y - WHEEL_RADIUS}
               r={4}
               style="stroke"
-              color={theme.palette.slate.border}
+              color={neutral.border}
               strokeWidth={1}
             />
             {hillsEnabled ? (

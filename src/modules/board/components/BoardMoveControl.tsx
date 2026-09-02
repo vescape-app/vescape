@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
 import { Stepper } from '@/components/forms/Stepper'
-import { CollapsibleWidget } from '@/components/widgets/CollapsibleWidget'
+import { ExpandingWidget } from '@/components/widgets/ExpandingWidget'
 import { theme } from '@/constants/theme'
 import {
   BOARD_MOVE_STRENGTH_MAX_PERCENT,
@@ -12,23 +12,27 @@ import {
   useBoardMoveControl,
 } from '@/modules/board/hooks/useBoardMoveControl'
 
-interface BoardMoveControlProps {
-  collapsible?: boolean
-  defaultExpanded?: boolean
+/**
+ * Board Move: hold a direction to roll the board while it is disengaged. The focused panel also
+ * exposes the move strength, because how much push is enough depends on the board's own remote limits.
+ */
+export function BoardMoveControl() {
+  return (
+    <ExpandingWidget
+      icon={ArrowsDownUpIcon}
+      title="Move"
+      description="Hold to roll the board while you are off it."
+      accent={theme.palette.cyan.color}
+      body={BoardMoveBody}
+      surface={false}
+    />
+  )
 }
 
-/**
- * Board Move: hold a direction to roll the board while it is disengaged. Opening
- * the row also exposes the move strength, because how much push is enough
- * depends on the board's own remote limits.
- */
-export function BoardMoveControl({
-  collapsible = true,
-  defaultExpanded = false,
-}: BoardMoveControlProps) {
+function BoardMoveBody() {
   const {
-    boardConnected,
     canCommand,
+    blockedMessage,
     strengthPercent,
     setStrengthPercent,
     moveForward,
@@ -37,16 +41,7 @@ export function BoardMoveControl({
   } = useBoardMoveControl()
 
   return (
-    <CollapsibleWidget
-      icon={ArrowsDownUpIcon}
-      title="Move board"
-      description="Hold to roll the board while you are off it."
-      accent={theme.palette.cyan.color}
-      collapsible={collapsible}
-      defaultExpanded={defaultExpanded}
-      expandedHeight={190}
-      surface={false}
-    >
+    <>
       <View style={styles.buttons}>
         <MoveButton
           icon={CaretDownIcon}
@@ -80,11 +75,9 @@ export function BoardMoveControl({
       </View>
 
       {!canCommand ? (
-        <Text style={styles.disabledNote}>
-          {boardConnected ? 'Trusted board link required.' : 'Connect board to move it.'}
-        </Text>
+        <Text style={styles.disabledNote}>{blockedMessage ?? 'Connect board to move it.'}</Text>
       ) : null}
-    </CollapsibleWidget>
+    </>
   )
 }
 
@@ -132,7 +125,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.palette.cyan.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.control.background,
   },
   buttonPressed: {
     backgroundColor: theme.palette.cyan.bg,
@@ -151,17 +144,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   strengthLabel: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
   strengthHint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
   disabledNote: {
     marginTop: 10,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
   },
 })

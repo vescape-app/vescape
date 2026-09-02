@@ -14,7 +14,7 @@ import type { WizardStepId } from '@/modules/board/hooks/useAddBoardWizard'
 
 const STEP_META: Record<WizardStepId, { label: string; icon: Icon; color: string }> = {
   scan: { label: 'Pair', icon: BluetoothIcon, color: theme.palette.sky.color },
-  name: { label: 'Name', icon: TextTIcon, color: theme.palette.yellow.color },
+  name: { label: 'Name', icon: TextTIcon, color: theme.palette.orange.color },
   battery: { label: 'Battery', icon: BatteryFullIcon, color: theme.palette.green.color },
   presets: { label: 'Alerts', icon: BellRingingIcon, color: theme.palette.amber.color },
   confirm: { label: 'Confirm', icon: CheckCircleIcon, color: theme.palette.purple.color },
@@ -69,7 +69,7 @@ export function WizardProgress({ steps, step, alertSubstep }: Props) {
             <View key={id} style={styles.labelItem}>
               <meta.icon
                 size={12}
-                color={active ? meta.color : theme.palette.slate.textDim}
+                color={active ? meta.color : theme.neutral.textDim}
                 weight="bold"
               />
               <Text style={[styles.label, active && { color: meta.color }]} numberOfLines={1}>
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 2,
     borderRadius: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   alertSegment: {
     flexDirection: 'row',
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 2,
     borderRadius: 1,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.border,
   },
   alertSubsegmentActive: {
     backgroundColor: theme.palette.amber.color,
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',

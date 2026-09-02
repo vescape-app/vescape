@@ -2,6 +2,11 @@ import { LineLayer, ShapeSource } from '@rnmapbox/maps'
 import { useEffect, useMemo, useState } from 'react'
 
 import { theme } from '@/constants/theme'
+import {
+  useResolvedAccentColors,
+  useResolvedNeutralColors,
+  useResolvedTelemetryColors,
+} from '@/hooks/useTheme'
 import { MediaHistoryPin } from '@/modules/history/components/MediaHistoryPin'
 import { getFavoriteRouteSegments } from '@/modules/history/lib/favoriteRoute'
 import {
@@ -32,6 +37,7 @@ const HISTORY_ROUTE_HIGHLIGHT_DELAY_MS = 500
 // Live sub-range highlight while trimming a Favorite. Subscribes to the trim range directly so a
 // drag only re-renders this layer, not the whole map. rideGpsSamples is a stable prop.
 function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSample[] }) {
+  const accents = useResolvedAccentColors()
   const trimRange = useMainScreenStore((s) => s.trimRange)
   const shape = useMemo(() => {
     if (!trimRange) return null
@@ -57,7 +63,7 @@ function TrimRouteHighlight({ rideGpsSamples }: { rideGpsSamples: HistoryGpsSamp
       <LineLayer
         id="center-ride-trim-line"
         style={{
-          lineColor: theme.palette.amber.color,
+          lineColor: accents.amber.color,
           lineWidth: 5,
           lineCap: 'round',
           lineJoin: 'round',
@@ -78,6 +84,7 @@ function FavoriteRouteBorder({
   highContrastRoutes: boolean
   trimming: boolean
 }) {
+  const accents = useResolvedAccentColors()
   const shape = useMemo(() => {
     const coordinates = getFavoriteRouteSegments(rideGpsSamples, favoriteRanges)
     if (coordinates.length === 0) return null
@@ -95,7 +102,7 @@ function FavoriteRouteBorder({
         id="center-ride-favorites-border"
         belowLayerID="center-ride-route-casing"
         style={{
-          lineColor: theme.status.favorite.color,
+          lineColor: accents.yellow.color,
           lineWidth: highContrastRoutes ? 10 : 6,
           lineOpacity: trimming ? 1 : 0.9,
           lineCap: 'round',
@@ -139,6 +146,9 @@ export function HistoryMapLayers({
   onOpenMedia: MainMapLayersProps['onOpenMedia']
   highContrastRoutes: boolean
 }) {
+  const accents = useResolvedAccentColors()
+  const neutral = useResolvedNeutralColors()
+  const telemetryColors = useResolvedTelemetryColors()
   // Flips only on trim enter/exit, so the whole-route layers dim without per-drag re-renders.
   const trimming = useMainScreenStore((s) => s.trimRange != null)
   const [highlightProgress, setHighlightProgress] = useState(0)
@@ -178,8 +188,18 @@ export function HistoryMapLayers({
         metric: activeHistoryMapMetric,
         hotRanges,
         gradientsEnabled,
+        colors: telemetryColors,
+        hotColor: accents.red.color,
       }),
-    [activeHistoryMapMetric, gradientsEnabled, hotRanges, rideGpsSamples, rideTelemetrySamples],
+    [
+      accents.red.color,
+      activeHistoryMapMetric,
+      gradientsEnabled,
+      hotRanges,
+      rideGpsSamples,
+      rideTelemetrySamples,
+      telemetryColors,
+    ],
   )
   const mediaClusters = useMemo(
     () =>
@@ -203,7 +223,7 @@ export function HistoryMapLayers({
           <LineLayer
             id="center-ride-route-casing"
             style={{
-              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
               lineWidth: highContrastRoutes ? 8 : 0,
               lineCap: 'round',
               lineJoin: 'round',
@@ -213,7 +233,7 @@ export function HistoryMapLayers({
           <LineLayer
             id="center-ride-route-line"
             style={{
-              lineColor: getHistoryMetricBaseColor(activeHistoryMapMetric),
+              lineColor: getHistoryMetricBaseColor(activeHistoryMapMetric, telemetryColors),
               lineWidth: highContrastRoutes ? 5 : 4,
               lineCap: 'round',
               lineJoin: 'round',

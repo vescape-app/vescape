@@ -4,7 +4,12 @@ import { useState } from 'react'
 
 import { BroadcastIcon, GaugeIcon, JoystickIcon, MapPinIcon, XIcon } from 'phosphor-react-native'
 import { Button } from '@/components/base/Button'
-import { CollapsibleWidget } from '@/components/widgets/CollapsibleWidget'
+import { ExpandingWidget } from '@/components/widgets/ExpandingWidget'
+import {
+  useWidgetFocusHost,
+  WidgetFocusOverlay,
+  WidgetFocusProvider,
+} from '@/components/overlays/widgetFocus'
 import { Placeholder } from '@/components/base/Placeholder'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { DialWidget } from '@/modules/tune/components/DialWidget'
@@ -15,39 +20,34 @@ import { theme } from '@/constants/theme'
 import { Cell, Row, SizeLabel } from '@/screens/showcase/widgets/WidgetGrid'
 
 /** A horizontal grid row — each `Cell` child takes an equal fraction of the width. */
-export function CollapsibleWidgetShowcase() {
+export function ExpandingWidgetShowcase() {
+  const focus = useWidgetFocusHost()
   return (
-    <ShowcaseCard name="CollapsibleWidget">
-      <SizeLabel>collapsed by default</SizeLabel>
-      <CollapsibleWidget
-        icon={JoystickIcon}
-        title="Tilt"
-        description="Adjust board tilt from your phone in real time."
-        accent={theme.palette.sky.color}
-        expandedHeight={130}
-      >
-        <Placeholder
-          icon={JoystickIcon}
-          description="Expanded control content goes here."
-          style={styles.collapsiblePreview}
-        />
-      </CollapsibleWidget>
-      <SizeLabel>expanded by default</SizeLabel>
-      <CollapsibleWidget
-        icon={JoystickIcon}
-        title="Tilt"
-        description="Adjust board tilt from your phone in real time."
-        accent={theme.palette.sky.color}
-        defaultExpanded
-        expandedHeight={130}
-      >
-        <Placeholder
-          icon={JoystickIcon}
-          description="Expanded control content goes here."
-          style={styles.collapsiblePreview}
-        />
-      </CollapsibleWidget>
+    <ShowcaseCard name="ExpandingWidget">
+      <View ref={focus.rootRef} collapsable={false}>
+        <WidgetFocusProvider host={focus}>
+          <SizeLabel>tap to focus the body</SizeLabel>
+          <ExpandingWidget
+            icon={JoystickIcon}
+            title="Tilt"
+            description="Adjust board tilt from your phone in real time."
+            accent={theme.palette.sky.color}
+            body={ExpandingWidgetPreviewBody}
+          />
+        </WidgetFocusProvider>
+        <WidgetFocusOverlay host={focus} />
+      </View>
     </ShowcaseCard>
+  )
+}
+
+function ExpandingWidgetPreviewBody() {
+  return (
+    <Placeholder
+      icon={JoystickIcon}
+      description="Expanded control content goes here."
+      style={styles.collapsiblePreview}
+    />
   )
 }
 
@@ -170,12 +170,13 @@ export function CanvasWidgetShowcase() {
         icon={BroadcastIcon}
         title="Group Ride"
         accent={theme.palette.groupRide.color}
+        surface="secondary"
         active={active}
         height={200}
         action={
           active ? null : (
             <Pressable onPress={() => setActive(true)} hitSlop={10} accessibilityLabel="Dismiss">
-              <XIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+              <XIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
             </Pressable>
           )
         }
@@ -271,10 +272,10 @@ const styles = StyleSheet.create({
   collapsiblePreview: { minHeight: 120 },
   statusList: { gap: 8 },
   fill: { flex: 1 },
-  meta: { color: theme.palette.slate.textSecondary, fontSize: 13 },
-  name: { color: theme.palette.slate.textPrimary, fontSize: 17, fontWeight: '700' },
+  meta: { color: theme.neutral.textSecondary, fontSize: 13 },
+  name: { color: theme.neutral.textPrimary, fontSize: 17, fontWeight: '700' },
   squareValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 26,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],

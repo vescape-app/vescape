@@ -1,6 +1,9 @@
 import { useEffect } from 'react'
 
-import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
+import {
+  canRunFirmwareCommand,
+  firmwareCommandBlockedMessage,
+} from '@/modules/board/lib/boardLinkIntegrity'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import {
   lockRemoteTilt as lockRemoteTiltNative,
@@ -22,6 +25,8 @@ export function useRemoteTiltControl() {
   return {
     boardConnected,
     canCommand,
+    blockedMessage:
+      boardConnected && !canCommand ? firmwareCommandBlockedMessage(linkIntegrity) : null,
     setRemoteTilt: (value: number) => {
       if (canCommand) void setRemoteTilt(value)
     },

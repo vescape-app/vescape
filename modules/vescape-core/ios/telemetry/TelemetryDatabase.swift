@@ -315,7 +315,6 @@ enum TelemetryDatabase {
           odometer_cm INTEGER,
           temp_mosfet_deci_c INTEGER,
           temp_motor_deci_c INTEGER,
-          fault_code INTEGER,
           latitude_e7 INTEGER,
           longitude_e7 INTEGER,
           gps_speed_centi_mps INTEGER,
@@ -330,12 +329,6 @@ enum TelemetryDatabase {
         CREATE INDEX index_telemetry_frames_device_id_captured_at_ms
         ON telemetry_frames(device_id, captured_at_ms)
         """)
-      try db.execute(sql: """
-        CREATE INDEX index_telemetry_frames_fault
-        ON telemetry_frames(captured_at_ms)
-        WHERE fault_code IS NOT NULL AND fault_code != 0
-        """)
-
       try db.execute(sql: """
         CREATE TABLE telemetry_minute_buckets (
           bucket_start_ms INTEGER NOT NULL,
@@ -354,7 +347,6 @@ enum TelemetryDatabase {
           battery_used_wh_milli INTEGER NOT NULL,
           battery_regen_wh_milli INTEGER NOT NULL,
           max_duty_abs_permille INTEGER NOT NULL,
-          fault_count INTEGER NOT NULL,
           first_odometer_cm INTEGER,
           last_odometer_cm INTEGER,
           gps_point_count INTEGER NOT NULL,
@@ -529,10 +521,204 @@ enum TelemetryDatabase {
       try FavoriteMediaStore.createTables(db)
     }
 
-    // Adds incremental-sync timestamps after the released Favorites migrations. Column checks also
-    // support feature-branch installs that already ran the old v30 sync migration.
+    // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
+    // former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_31_32`
-    migrator.registerMigration("v32_sync_cursors") { db in
+    migrator.registerMigration("v32_alert_repeat") { db in
+      let columns = try db.columns(in: "alerts").map(\.name)
+      if !columns.contains("repeat_every_seconds") {
+        try db.execute(sql: "ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
+      }
+      if !columns.contains("beep_count") {
+        try db.execute(
+          sql: "ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT \(alertBeepCountDefault)"
+        )
+      }
+    }
+
+    // Last Known Board Config Values: latest decoded Refloat config per Board + base version,
+    // restored as `lastKnown` on connect (#393).
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
+    migrator.registerMigration("v33_board_config_values") { db in
+      try BoardConfigStore.createTables(db)
+    }
+
+    migrator.registerMigration("v34_board_config_change_notices") { db in
+      try db.execute(sql: "CREATE TABLE IF NOT EXISTS board_config_change_notices (board_id TEXT NOT NULL PRIMARY KEY, detected_at INTEGER NOT NULL, diffs_json TEXT NOT NULL)")
+    }
+    migrator.registerMigration("v35_alert_config_relative") { db in
+      let columns = try db.columns(in: "alerts").map(\.name)
+      if !columns.contains("threshold_kind") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_kind TEXT NOT NULL DEFAULT 'fixed'") }
+      if !columns.contains("config_field_id") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN config_field_id TEXT") }
+      if !columns.contains("threshold_offset") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_offset REAL") }
+      if !columns.contains("threshold_max_offset") { try db.execute(sql: "ALTER TABLE alerts ADD COLUMN threshold_max_offset REAL") }
+    }
+
+    migrator.registerMigration("v36_motor_config_values") { db in
+      try MotorConfigStore.createTables(db)
+    }
+
+    /// VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
+    /// History fault path. Creates the fault tables and removes the legacy telemetry fault storage —
+    /// `telemetry_frames.fault_code` with its partial index, and
+    /// `telemetry_minute_buckets.fault_count`. Legacy values are dropped, not backfilled.
+    ///
+    /// Both tables are rebuilt by copy rather than `DROP COLUMN`, matching Android and staying
+    /// correct on SQLite builds older than 3.35.
+    ///
+    /// Numbered `v40` rather than `v37` because Room reached the same shape at version 40. The
+    /// identifiers in between only existed in development builds while the feature was being cut
+    /// down; a database that recorded them is beyond this migrator and has to be reinstalled.
+    /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_40`
+    migrator.registerMigration("v40_vesc_faults") { db in
+      try VescFaultStore.createTables(db)
+      try VescFaultCaptureStore.createTables(db)
+      try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_fault")
+      if try db.columns(in: "telemetry_frames").map(\.name).contains("fault_code") {
+        try db.execute(sql: """
+          CREATE TABLE telemetry_frames_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            captured_at_ms INTEGER NOT NULL,
+            elapsed_realtime_ms INTEGER NOT NULL,
+            device_id TEXT,
+            device_name TEXT,
+            can_id INTEGER,
+            flags INTEGER NOT NULL,
+            changed_mask_1 INTEGER NOT NULL,
+            changed_mask_2 INTEGER NOT NULL,
+            speed_centi_kmh INTEGER,
+            battery_voltage_mv INTEGER,
+            motor_current_ma INTEGER,
+            battery_current_ma INTEGER,
+            duty_permille INTEGER,
+            pitch_centi_deg INTEGER,
+            roll_centi_deg INTEGER,
+            balance_pitch_centi_deg INTEGER,
+            balance_current_ma INTEGER,
+            erpm INTEGER,
+            state INTEGER,
+            switch_state INTEGER,
+            adc1_milli INTEGER,
+            adc2_milli INTEGER,
+            odometer_cm INTEGER,
+            temp_mosfet_deci_c INTEGER,
+            temp_motor_deci_c INTEGER,
+            latitude_e7 INTEGER,
+            longitude_e7 INTEGER,
+            gps_speed_centi_mps INTEGER,
+            bearing_centi_deg INTEGER,
+            accuracy_cm INTEGER,
+            altitude_cm INTEGER,
+            location_timestamp_ms INTEGER
+          )
+          """)
+        try db.execute(sql: """
+          INSERT INTO telemetry_frames_new
+          SELECT id, captured_at_ms, elapsed_realtime_ms, device_id, device_name, can_id, flags,
+                 changed_mask_1, changed_mask_2, speed_centi_kmh, battery_voltage_mv,
+                 motor_current_ma, battery_current_ma, duty_permille, pitch_centi_deg,
+                 roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
+                 switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c,
+                 temp_motor_deci_c, latitude_e7, longitude_e7, gps_speed_centi_mps,
+                 bearing_centi_deg, accuracy_cm, altitude_cm, location_timestamp_ms
+          FROM telemetry_frames
+          """)
+        try db.execute(sql: "DROP TABLE telemetry_frames")
+        try db.execute(sql: "ALTER TABLE telemetry_frames_new RENAME TO telemetry_frames")
+        try db.execute(sql: "CREATE INDEX index_telemetry_frames_captured_at_ms ON telemetry_frames(captured_at_ms)")
+        try db.execute(sql: """
+          CREATE INDEX index_telemetry_frames_device_id_captured_at_ms
+          ON telemetry_frames(device_id, captured_at_ms)
+          """)
+      }
+
+      if try db.columns(in: "telemetry_minute_buckets").map(\.name).contains("fault_count") {
+        try db.execute(sql: """
+          CREATE TABLE telemetry_minute_buckets_new (
+            bucket_start_ms INTEGER NOT NULL,
+            device_id TEXT NOT NULL,
+            device_name TEXT,
+            sample_count INTEGER NOT NULL,
+            first_sample_at_ms INTEGER NOT NULL,
+            last_sample_at_ms INTEGER NOT NULL,
+            sum_abs_speed_centi_kmh INTEGER NOT NULL,
+            moving_speed_sample_count INTEGER,
+            sum_moving_abs_speed_centi_kmh INTEGER,
+            max_abs_speed_centi_kmh INTEGER NOT NULL,
+            min_battery_voltage_mv INTEGER,
+            max_motor_current_abs_ma INTEGER NOT NULL,
+            max_battery_current_abs_ma INTEGER NOT NULL,
+            battery_used_wh_milli INTEGER NOT NULL,
+            battery_regen_wh_milli INTEGER NOT NULL,
+            max_duty_abs_permille INTEGER NOT NULL,
+            first_odometer_cm INTEGER,
+            last_odometer_cm INTEGER,
+            gps_point_count INTEGER NOT NULL,
+            precise_gps_point_count INTEGER NOT NULL,
+            gps_distance_cm INTEGER NOT NULL,
+            max_gps_speed_centi_mps INTEGER,
+            max_temp_mosfet_deci_c INTEGER,
+            max_temp_motor_deci_c INTEGER,
+            first_latitude_e7 INTEGER,
+            first_longitude_e7 INTEGER,
+            first_moving_at_ms INTEGER,
+            last_moving_at_ms INTEGER,
+            PRIMARY KEY (bucket_start_ms, device_id)
+          )
+          """)
+        try db.execute(sql: """
+          INSERT INTO telemetry_minute_buckets_new
+          SELECT bucket_start_ms, device_id, device_name, sample_count, first_sample_at_ms,
+                 last_sample_at_ms, sum_abs_speed_centi_kmh, moving_speed_sample_count,
+                 sum_moving_abs_speed_centi_kmh, max_abs_speed_centi_kmh, min_battery_voltage_mv,
+                 max_motor_current_abs_ma, max_battery_current_abs_ma, battery_used_wh_milli,
+                 battery_regen_wh_milli, max_duty_abs_permille, first_odometer_cm,
+                 last_odometer_cm, gps_point_count, precise_gps_point_count, gps_distance_cm,
+                 max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
+                 first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
+          FROM telemetry_minute_buckets
+          """)
+        try db.execute(sql: "DROP TABLE telemetry_minute_buckets")
+        try db.execute(sql: "ALTER TABLE telemetry_minute_buckets_new RENAME TO telemetry_minute_buckets")
+        try db.execute(sql: "CREATE INDEX index_telemetry_minute_buckets_bucket_start_ms ON telemetry_minute_buckets(bucket_start_ms)")
+      }
+    }
+
+    // Board tombstones (#279). Deleting a Board stops removing its row and stamps `deleted_at`
+    // instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
+    // rows stay null, i.e. alive.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_40_41`
+    migrator.registerMigration("v41_board_deleted_at") { db in
+      let hasDeletedAt = try db.columns(in: "boards").contains { $0.name == "deleted_at" }
+      if !hasDeletedAt {
+        try db.execute(sql: "ALTER TABLE boards ADD COLUMN deleted_at INTEGER")
+      }
+    }
+
+    // Telemetry keys on the Board id (#280, ADR 0028). `telemetry_frames` and
+    // `telemetry_minute_buckets` gain `board_id` and lose `device_id` (the BLE identifier) and
+    // `device_name` (the Board name denormalized at capture time); Ride History resolves the name
+    // by looking the Board up instead.
+    //
+    // Both tables are rebuilt rather than altered: the bucket primary key moves to
+    // `(bucket_start_ms, board_id)`, and the rebuild is what drops the two retired columns.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_41_42`
+    migrator.registerMigration("v42_telemetry_board_id") { db in
+      try mintOrphanBoards(db)
+      try buildDeviceBoardMap(db)
+      try rebuildFramesOnBoardId(db)
+      try rebuildBucketsOnBoardId(db)
+      try rebuildMarkersOnBoardId(db)
+      try rebuildDiagnosticEventsOnBoardId(db)
+      try rebuildExclusionRangesOnBoardId(db)
+      try db.execute(sql: "DROP TABLE IF EXISTS \(DEVICE_BOARD_MAP)")
+    }
+
+    // Change Timestamps for the three tables that had none (#275): a rename, a toggle or a bucket
+    // still filling was invisible to an "everything changed since T" scan. Additive, and existing
+    // rows are backfilled rather than left at the `DEFAULT 0` a scan would re-send.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_42_43`
+    migrator.registerMigration("v43_sync_cursors") { db in
       let backfillSource = [
         "boards": "created_at",
         "alerts": "created_at",
@@ -551,8 +737,8 @@ enum TelemetryDatabase {
     }
 
     // Splits the device-local Sync Cursor from the wall-clock last-write-wins timestamp.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
-    migrator.registerMigration("v33_sync_seq") { db in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_43_44`
+    migrator.registerMigration("v44_sync_seq") { db in
       try db.execute(
         sql: """
           CREATE TABLE IF NOT EXISTS sync_sequences (
@@ -561,7 +747,7 @@ enum TelemetryDatabase {
           )
           """
       )
-      for table in syncSeqTablesV33 {
+      for table in syncSeqTablesV43 {
         let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
         if !hasSyncSeq {
           try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
@@ -578,37 +764,6 @@ enum TelemetryDatabase {
       }
     }
 
-    // Board tombstones (#279). Deleting a Board stops removing its row and stamps `deleted_at`
-    // instead, so Ride History outlives the Board that produced it (ADR 0027). Additive: existing
-    // rows stay null, i.e. alive.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_33_34`
-    migrator.registerMigration("v34_board_deleted_at") { db in
-      let hasDeletedAt = try db.columns(in: "boards").contains { $0.name == "deleted_at" }
-      if !hasDeletedAt {
-        try db.execute(sql: "ALTER TABLE boards ADD COLUMN deleted_at INTEGER")
-      }
-    }
-
-    // Telemetry keys on the Board id (#280, ADR 0028). `telemetry_frames` and
-    // `telemetry_minute_buckets` gain `board_id` and lose `device_id` (the BLE identifier) and
-    // `device_name` (the Board name denormalized at capture time); Ride History resolves the name
-    // by looking the Board up instead. Markers, diagnostic events and metric exclusion ranges are
-    // deliberately untouched — that is what crosses the wire for them.
-    //
-    // Both tables are rebuilt rather than altered: the bucket primary key moves to
-    // `(bucket_start_ms, board_id)`, and the rebuild is what drops the two retired columns.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_34_35`
-    migrator.registerMigration("v35_telemetry_board_id") { db in
-      try mintOrphanBoards(db)
-      try buildDeviceBoardMap(db)
-      try rebuildFramesOnBoardId(db)
-      try rebuildBucketsOnBoardId(db)
-      try rebuildMarkersOnBoardId(db)
-      try rebuildDiagnosticEventsOnBoardId(db)
-      try rebuildExclusionRangesOnBoardId(db)
-      try db.execute(sql: "DROP TABLE IF EXISTS \(DEVICE_BOARD_MAP)")
-    }
-
     // Sync Cursors for the six remaining mutable tables (#281). `board_warnings` also gains the
     // wall-clock `updated_at` every other mutable table already carries, backfilled from its newest
     // detection.
@@ -616,15 +771,15 @@ enum TelemetryDatabase {
     // Existing rows are backfilled from `rowid` — distinct and non-zero, so no two rows share a
     // cursor position and none of them sit at the seed value — and each table's sequence is seeded
     // past the highest value handed out. Every step is guarded, so a re-run is a no-op.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_35_36`
-    migrator.registerMigration("v36_sync_seq_remaining") { db in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_44_45`
+    migrator.registerMigration("v45_sync_seq_remaining") { db in
       let hasWarningUpdatedAt = try db.columns(in: "board_warnings").contains { $0.name == "updated_at" }
       if !hasWarningUpdatedAt {
         try db.execute(sql: "ALTER TABLE board_warnings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
         try db.execute(sql: "UPDATE board_warnings SET updated_at = last_detected_at")
       }
 
-      for table in syncSeqTablesV36 {
+      for table in syncSeqTablesV44 {
         let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
         if !hasSyncSeq {
           try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
@@ -655,8 +810,8 @@ enum TelemetryDatabase {
     //
     // The log is keyed on its own `AUTOINCREMENT` cursor and carries no `sync_seq`: SQLite
     // guarantees that key monotonic and never reused, so it already *is* the cursor.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_37`
-    migrator.registerMigration("v37_sync_actions") { db in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_45_46`
+    migrator.registerMigration("v46_sync_actions") { db in
       try createSyncActionsTable(db)
     }
 
@@ -664,24 +819,9 @@ enum TelemetryDatabase {
     // guarded, and deliberately left empty — an existing install is unbound until an Account signs
     // in and claims it, which is also what keeps the current age-only retention behaviour until
     // then.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_37_38`
-    migrator.registerMigration("v38_sync_binding") { db in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_46_47`
+    migrator.registerMigration("v47_sync_binding") { db in
       try createSyncBindingTable(db)
-    }
-
-    // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
-    // former hardcoded 3 beeps, so nothing a rider already configured changes how it sounds.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_38_39`
-    migrator.registerMigration("v39_alert_repeat") { db in
-      let columns = try db.columns(in: "alerts").map(\.name)
-      if !columns.contains("repeat_every_seconds") {
-        try db.execute(sql: "ALTER TABLE alerts ADD COLUMN repeat_every_seconds INTEGER")
-      }
-      if !columns.contains("beep_count") {
-        try db.execute(
-          sql: "ALTER TABLE alerts ADD COLUMN beep_count INTEGER NOT NULL DEFAULT \(alertBeepCountDefault)"
-        )
-      }
     }
 
     return migrator
@@ -723,14 +863,12 @@ internal func mintOrphanBoards(_ db: Database) throws {
           """
     try db.execute(
       sql: """
-        INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, updated_at, sync_seq, deleted_at)
+        INSERT OR IGNORE INTO boards (id, name, ble_id, created_at, deleted_at)
         SELECT
           ? || t.device_id,
           COALESCE(\(historicalName), ?),
           NULL,
           MIN(t.\(timeColumn)),
-          ?,
-          0,
           ?
         FROM \(table) t
         WHERE t.device_id IS NOT NULL
@@ -738,27 +876,9 @@ internal func mintOrphanBoards(_ db: Database) throws {
           AND NOT EXISTS (SELECT 1 FROM boards b WHERE b.ble_id = t.device_id)
         GROUP BY t.device_id
         """,
-      arguments: [ORPHAN_BOARD_ID_PREFIX, UNKNOWN_TELEMETRY_BOARD_NAME, now, now]
+      arguments: [ORPHAN_BOARD_ID_PREFIX, UNKNOWN_TELEMETRY_BOARD_NAME, now]
     )
   }
-  // A minted Board is an ordinary write and has to upload like one. Every row that survived the
-  // `v33_sync_seq` migration carries a positive `sync_seq`, so zero marks exactly the rows just
-  // minted.
-  try db.execute(
-    sql: """
-      UPDATE boards
-      SET sync_seq = (SELECT COALESCE(last_value, 0) FROM sync_sequences WHERE name = ?) + rowid
-      WHERE sync_seq = 0
-      """,
-    arguments: [syncSeqBoards]
-  )
-  try db.execute(
-    sql: """
-      INSERT OR REPLACE INTO sync_sequences (name, last_value)
-      VALUES (?, (SELECT COALESCE(MAX(sync_seq), 0) FROM boards))
-      """,
-    arguments: [syncSeqBoards]
-  )
 }
 
 /// Every table the board-id migration moves off the BLE identifier, with the time column its rows
@@ -838,12 +958,11 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
     speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, duty_permille, \
     pitch_centi_deg, roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state, \
     switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c, \
-    fault_code, latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm, \
+    latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm, \
     altitude_cm, location_timestamp_ms
     """
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_captured_at_ms")
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_device_id_captured_at_ms")
-  try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_fault")
   try db.execute(sql: """
     CREATE TABLE telemetry_frames_new (
       id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -871,7 +990,6 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
       odometer_cm INTEGER,
       temp_mosfet_deci_c INTEGER,
       temp_motor_deci_c INTEGER,
-      fault_code INTEGER,
       latitude_e7 INTEGER,
       longitude_e7 INTEGER,
       gps_speed_centi_mps INTEGER,
@@ -896,17 +1014,10 @@ private func rebuildFramesOnBoardId(_ db: Database) throws {
     CREATE INDEX IF NOT EXISTS index_telemetry_frames_board_id_captured_at_ms
     ON telemetry_frames(board_id, captured_at_ms)
     """)
-  try db.execute(sql: """
-    CREATE INDEX IF NOT EXISTS index_telemetry_frames_fault
-    ON telemetry_frames(captured_at_ms)
-    WHERE fault_code IS NOT NULL AND fault_code != 0
-    """)
 }
 
 /// The primary key move from `(bucket_start_ms, device_id)` to `(bucket_start_ms, board_id)` is a
-/// table rebuild, not an `ALTER`. `updated_at` and `sync_seq` were added to this table earlier in
-/// the same release, so the copy has to carry them across explicitly or every bucket silently
-/// resets its Sync Cursor position.
+/// table rebuild, not an `ALTER`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildBucketsOnBoardId`
 private func rebuildBucketsOnBoardId(_ db: Database) throws {
   let columns = """
@@ -914,14 +1025,12 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
     sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh, \
     max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma, \
     max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, \
-    max_duty_abs_permille, fault_count, first_odometer_cm, last_odometer_cm, gps_point_count, \
+    max_duty_abs_permille, first_odometer_cm, last_odometer_cm, gps_point_count, \
     precise_gps_point_count, gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, \
     max_temp_motor_deci_c, first_latitude_e7, first_longitude_e7, first_moving_at_ms, \
-    last_moving_at_ms, updated_at, sync_seq
+    last_moving_at_ms
     """
   try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_minute_buckets_bucket_start_ms")
-  try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_minute_buckets_updated_at")
-  try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_minute_buckets_sync_seq")
   try db.execute(sql: """
     CREATE TABLE telemetry_minute_buckets_new (
       bucket_start_ms INTEGER NOT NULL,
@@ -939,7 +1048,6 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
       battery_used_wh_milli INTEGER NOT NULL,
       battery_regen_wh_milli INTEGER NOT NULL,
       max_duty_abs_permille INTEGER NOT NULL,
-      fault_count INTEGER NOT NULL,
       first_odometer_cm INTEGER,
       last_odometer_cm INTEGER,
       gps_point_count INTEGER NOT NULL,
@@ -952,8 +1060,6 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
       first_longitude_e7 INTEGER,
       first_moving_at_ms INTEGER,
       last_moving_at_ms INTEGER,
-      updated_at INTEGER NOT NULL,
-      sync_seq INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (bucket_start_ms, board_id)
     )
     """)
@@ -981,7 +1087,6 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
       SUM(b.battery_used_wh_milli),
       SUM(b.battery_regen_wh_milli),
       MAX(b.max_duty_abs_permille),
-      SUM(b.fault_count),
       MIN(b.first_odometer_cm),
       MAX(b.last_odometer_cm),
       SUM(b.gps_point_count),
@@ -993,9 +1098,7 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
       MIN(b.first_latitude_e7),
       MIN(b.first_longitude_e7),
       MIN(b.first_moving_at_ms),
-      MAX(b.last_moving_at_ms),
-      MAX(b.updated_at),
-      MAX(b.sync_seq)
+      MAX(b.last_moving_at_ms)
     FROM telemetry_minute_buckets b
     GROUP BY b.bucket_start_ms, board_id
     """)
@@ -1004,14 +1107,6 @@ private func rebuildBucketsOnBoardId(_ db: Database) throws {
   try db.execute(sql: """
     CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_bucket_start_ms
     ON telemetry_minute_buckets(bucket_start_ms)
-    """)
-  try db.execute(sql: """
-    CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_updated_at
-    ON telemetry_minute_buckets(updated_at)
-    """)
-  try db.execute(sql: """
-    CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_sync_seq
-    ON telemetry_minute_buckets(sync_seq)
     """)
 }
 

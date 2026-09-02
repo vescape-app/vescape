@@ -7,6 +7,7 @@ import { CaretDownIcon, CheckIcon } from 'phosphor-react-native'
 import { interaction, theme } from '@/constants/theme'
 import { Dropdown } from '@/components/forms/Dropdown'
 import { inputBase } from '@/components/forms/Input'
+import { useResolvedControlColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 const MAX_DROPDOWN_HEIGHT = 280
 
@@ -21,6 +22,7 @@ interface SelectProps<T extends string = string> {
   onChange: (value: T) => void
   placeholder?: string
   style?: View['props']['style']
+  testID?: string
 }
 
 export function Select<T extends string = string>({
@@ -29,9 +31,12 @@ export function Select<T extends string = string>({
   onChange,
   placeholder = 'Select…',
   style,
+  testID,
 }: SelectProps<T>) {
   const triggerRef = useRef<View>(null)
   const [open, setOpen] = useState(false)
+  const control = useResolvedControlColors()
+  const neutral = useResolvedNeutralColors()
 
   const selectedOption = options.find((o) => o.value === value)
 
@@ -45,11 +50,25 @@ export function Select<T extends string = string>({
 
   return (
     <>
-      <Pressable ref={triggerRef} style={[styles.trigger, style]} onPress={() => setOpen(true)}>
-        <Text style={[styles.triggerText, !selectedOption && styles.placeholderText]}>
+      <Pressable
+        ref={triggerRef}
+        style={[
+          styles.trigger,
+          {
+            backgroundColor: control.background,
+            borderColor: control.border,
+          },
+          style,
+        ]}
+        testID={testID}
+        onPress={() => setOpen(true)}
+      >
+        <Text
+          style={[styles.triggerText, { color: selectedOption ? control.text : control.textMuted }]}
+        >
           {selectedOption?.label ?? placeholder}
         </Text>
-        <CaretDownIcon size={14} color={theme.palette.slate.textMuted} weight="bold" />
+        <CaretDownIcon size={14} color={neutral.textMuted} weight="bold" />
       </Pressable>
 
       <Dropdown
@@ -64,9 +83,13 @@ export function Select<T extends string = string>({
             return (
               <Pressable
                 key={option.value}
+                testID={testID ? `${testID}-option-${option.value}` : undefined}
                 style={({ pressed }) => [
                   styles.option,
-                  index < options.length - 1 && styles.optionBorder,
+                  index < options.length - 1 && [
+                    styles.optionBorder,
+                    { borderColor: neutral.border },
+                  ],
                   selected && styles.optionSelected,
                   pressed && styles.optionPressed,
                 ]}
@@ -98,13 +121,10 @@ const styles = StyleSheet.create({
     height: 42,
   },
   triggerText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '600',
     flex: 1,
-  },
-  placeholderText: {
-    color: theme.palette.slate.textMuted,
   },
   option: {
     flexDirection: 'row',
@@ -115,7 +135,7 @@ const styles = StyleSheet.create({
   },
   optionBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.palette.slate.border,
+    borderBottomColor: theme.neutral.border,
   },
   optionSelected: {
     backgroundColor: theme.palette.sky.bg,
@@ -124,7 +144,7 @@ const styles = StyleSheet.create({
     backgroundColor: interaction.pressedBg,
   },
   optionText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '500',
   },

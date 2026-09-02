@@ -3,9 +3,10 @@ import { useDerivedValue, type SharedValue } from 'react-native-reanimated'
 
 import { formatClock } from '@/components/charts/line/chartFormat'
 import { projectX, projectY, viewportFor } from '@/components/charts/line/projection'
-import { sampleAtSec, type SeriesPaths } from '@/components/charts/line/seriesPaths'
+import { sampleAtSec } from '@/components/charts/line/seriesPaths'
+import type { ScrubTarget } from '@/components/charts/line/scrubTargets'
 import { toChartMs, type ChartTimeline } from '@/components/charts/line/timeline'
-import type { ChartCamera, ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
+import type { ChartCamera, ChartPlotBox } from '@/components/charts/line/types'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
 import { theme } from '@/constants/theme'
 import { DASH } from '@/helpers/format'
@@ -23,15 +24,6 @@ const BANNER_OFFSET = 8
 const DOT_RADIUS = 3
 /** Parked off-canvas rather than hidden, so a dot with no sample costs nothing to skip. */
 const OFFSCREEN = -1_000
-
-export interface ScrubTarget {
-  paths: SeriesPaths
-  color: string
-  label?: string
-  unit?: string
-  decimals?: number
-  range: ChartYRange
-}
 
 export interface ScrubLayerProps {
   targets: ScrubTarget[]

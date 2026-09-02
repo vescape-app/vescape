@@ -40,6 +40,10 @@ and adds a virtual geiger speed rule whenever rules load. Nothing is written to 
 | `created_at`           | INTEGER          | ms epoch                                                       |
 | `repeat_every_seconds` | INTEGER nullable | repeat cadence for a single-threshold rule; NULL is one-shot   |
 | `beep_count`           | INTEGER          | sound plays per announcement, 1–5 (preset sounds only)         |
+| `threshold_kind`       | TEXT             | `fixed` or `config-relative`                                   |
+| `config_field_id`      | TEXT nullable    | VESC config field used by a relative rule                      |
+| `threshold_offset`     | REAL nullable    | start offset in alert units                                    |
+| `threshold_max_offset` | REAL nullable    | range ceiling offset in alert units                            |
 
 ## Control IDs & implicit direction
 
@@ -132,15 +136,33 @@ Runtime behavior:
 
 ## Alert Presets
 
-Presets are a JS-only layer that generates ordinary Alert Rules — native knows nothing about them. A
-rider picks one **level** per **metric**; `generateAlertPresetRules` (`src/modules/alerts/lib/alertPresets.ts`)
+Presets generate Alert Rules in JS. Fixed rules carry concrete thresholds; a preset the rider opts
+into matching carries a durable relationship to a board config field instead. Native resolves that
+field from Last Known Board Config Values (Refloat) or Last Known Motor Config Values (MCCONF) and
+follows fresh reads/writes without rewriting the rule.
+
+Per-metric opt-in, persisted in the Board's `matchBoardConfig` bag:
+
+| metric            | field                | config  | units    |
+| ----------------- | -------------------- | ------- | -------- |
+| `duty`            | `tiltback_duty`      | Refloat | fraction |
+| `motor-temp`      | `l_temp_motor_start` | MCCONF  | °C       |
+| `controller-temp` | `l_temp_fet_start`   | MCCONF  | °C       |
+
+What a field id means — which config it lives in, its scale, and the value at which the board's own
+protection is off (duty `1.0`) — is a property of the field, not of the rule, so it lives in one
+table mirrored across TS and both platforms (`configRelativeFields`) rather than on every row. A
+field that is missing, unread, or disabled leaves the relationship inactive: the rule persists, and
+neither a sound nor a gauge marker comes from it until the board supplies a value.
+
+A rider picks one **level** per **metric**; `generateAlertPresetRules` (`src/modules/alerts/lib/alertPresets.ts`)
 deterministically expands `(metric, level, options)` into concrete rule specs the Alert Preset store
 persists through the same CRUD as manual rules.
 
 ### Levels
 
-Four levels, safest first: **Off**, **Safe**, **Normal**, **Pro**. `off` (and any guard failure)
-generates no rules. Safer levels add more warning points and start earlier; Pro warns late and only at
+Four levels, safest first: **Off**, **Safe**, **Normal**, **Minimal**. `off` (and any guard failure)
+generates no rules. Safer levels add more warning points and start earlier; Minimal warns late and only at
 the extreme.
 
 ### Metrics & families

@@ -95,6 +95,15 @@ test('new boards can be created with a draft Board Link', async () => {
   )
 })
 
+test('new boards retain a preallocated id used during Board Link finalization', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+
+  const board = useBoardStore.getState().addBoard({ id: 'probe-board', name: 'ADV' })
+
+  expect(board.id).toBe('probe-board')
+  expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ id: 'probe-board' }))
+})
+
 test('stored Board Link survives a store reload from native boards', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const board: Board = {

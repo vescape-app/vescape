@@ -53,8 +53,6 @@ class HistoryGpsProjectionTest {
         elapsedRealtimeMs = capturedAtMs,
         boardId = "board-1",
         canId = null,
-        hasFault = false,
-        faultCode = 0,
         speedCentiKmh = 1_000,
         batteryVoltageMv = 77_000,
         motorCurrentMa = 0,

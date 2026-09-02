@@ -56,18 +56,18 @@ export interface LiveChartSpec extends ChartSpec {
 export interface LiveChartInput {
   key: string
   metric: TelemetryMetricConfig
-  label?: string
   data: ChartSeriesData
   range: ChartYRange
   height?: number
   bands?: ChartBand[]
+  /** Horizontal reference lines on the left axis — where a configured threshold sits. */
+  thresholds?: number[]
   /** A second line on the right-hand axis — pack voltage under pack percent. */
   secondary?: {
     key: string
     data: ChartSeriesData
     range: ChartYRange
     color: string
-    label?: string
     unit?: string
     decimals?: number
   }
@@ -79,27 +79,27 @@ const DEFAULT_CHART_HEIGHT = 80
 export function toLiveChart({
   key,
   metric,
-  label,
   data,
   range,
   height = DEFAULT_CHART_HEIGHT,
   bands,
+  thresholds,
   secondary,
 }: LiveChartInput): LiveChartSpec {
   return {
     key,
-    label: label ?? metric.label,
+    label: metric.label,
     height,
     controlId: metric.controlId,
     left: { range },
     right: secondary ? { range: secondary.range } : undefined,
     bands,
+    thresholds,
     series: [
       {
         key,
         data,
         color: metric.color,
-        label: label ?? metric.label,
         unit: metric.unit,
         decimals: metric.decimals,
       },
@@ -110,7 +110,6 @@ export function toLiveChart({
               data: secondary.data,
               color: secondary.color,
               axis: 'right' as const,
-              label: secondary.label,
               unit: secondary.unit,
               decimals: secondary.decimals,
             },

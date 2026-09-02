@@ -104,7 +104,6 @@ class FreeSpinMetricSanitizerTest {
     motorCurrentMa = 0,
     batteryCurrentMa = 0,
     dutyPermille = dutyPermille,
-    hasFault = false,
     odometerCm = null,
   )
 
@@ -124,7 +123,6 @@ class FreeSpinMetricSanitizerTest {
     motorCurrentMa = 0,
     batteryCurrentMa = 0,
     dutyPermille = dutyPermille,
-    hasFault = false,
     odometerCm = null,
     gpsSpeedCentiMps = gpsSpeedCentiMps,
     gpsTimestampMs = gpsTimestampMs,

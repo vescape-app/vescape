@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { StyleSheet, TouchableOpacity, View } from 'react-native'
 import {
   ChatTextIcon,
@@ -15,7 +15,7 @@ import { Text } from '@/components/base/Text'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { theme } from '@/constants/theme'
 import type { DerivedBatteryConfig } from '@/modules/battery/lib/types'
-import { AlertFormModal } from '@/modules/alerts/components/AlertFormModal'
+import { AlertFormSheet } from '@/modules/alerts/components/AlertFormSheet'
 import type { DraftAlertRule } from '@/modules/alerts/lib/customAlertRules'
 import type { MetricAlertsController } from '@/modules/alerts/hooks/useMetricAlerts'
 import type { AlertRuleDraft } from '@/modules/alerts/store/alertsStore'
@@ -38,6 +38,7 @@ export function AlertRuleList({
   const [formVisible, setFormVisible] = useState(false)
   const [editRule, setEditRule] = useState<DraftAlertRule | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DraftAlertRule | null>(null)
+  const addButtonRef = useRef<View>(null)
 
   const closeForm = () => {
     setFormVisible(false)
@@ -73,7 +74,7 @@ export function AlertRuleList({
         </Text>
       ) : null}
 
-      <View style={styles.addButtonRow}>
+      <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
           label="Add alert"
           icon={PlusIcon}
@@ -86,8 +87,9 @@ export function AlertRuleList({
         />
       </View>
 
-      <AlertFormModal
+      <AlertFormSheet
         visible={formVisible}
+        triggerRef={addButtonRef}
         controlId={controller.controlId}
         unit={unit}
         editRule={editRule}
@@ -142,7 +144,7 @@ function AlertRuleRow({
       <View style={styles.ruleTypeIcon}>
         <TypeIcon
           size={18}
-          color={rule.enabled ? theme.palette.yellow.color : theme.palette.slate.textDim}
+          color={rule.enabled ? theme.palette.orange.color : theme.neutral.textDim}
           weight="duotone"
         />
       </View>
@@ -177,9 +179,9 @@ function AlertRuleRow({
         style={styles.ruleAction}
       >
         {rule.enabled ? (
-          <SpeakerHighIcon size={16} color={theme.palette.yellow.color} />
+          <SpeakerHighIcon size={16} color={theme.palette.orange.color} />
         ) : (
-          <SpeakerSlashIcon size={16} color={theme.palette.slate.textDim} />
+          <SpeakerSlashIcon size={16} color={theme.neutral.textDim} />
         )}
       </TouchableOpacity>
 
@@ -215,18 +217,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   ruleContent: {
     flex: 1,
   },
   ruleThreshold: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '500',
   },
   ruleTtsTemplate: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '500',
     marginTop: 1,
@@ -238,7 +240,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   ruleTextDisabled: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
   },
   ruleAction: {
     padding: 6,
@@ -248,7 +250,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   emptyHintText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },

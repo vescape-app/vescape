@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ScrollView } from 'react-native'
+import type { FlatList, ScrollView } from 'react-native'
 import {
   Keyboard,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ReactNativeElement,
   type View,
 } from 'react-native'
 import { Gesture } from 'react-native-gesture-handler'
@@ -72,7 +73,7 @@ export function useEdgeDrawerDismissal({
   const [opensFromTop, setOpensFromTop] = useState(true)
   const [dismissRange, setDismissRange] = useState(0)
   const [keyboardInset, setKeyboardInset] = useState(0)
-  const scrollRef = useRef<ScrollView>(null)
+  const scrollRef = useRef<ScrollView | FlatList<unknown>>(null)
   const positionedRef = useRef(false)
   const openStartedRef = useRef(false)
   const dismissRangeRef = useRef(0)
@@ -86,6 +87,12 @@ export function useEdgeDrawerDismissal({
   const dismissTriggered = useSharedValue(false)
   const animatedDismissRange = useSharedValue(1)
   const nativeScrollGesture = useMemo(() => Gesture.Native(), [])
+  const scrollToOffset = useCallback((y: number, animated: boolean) => {
+    const scroll = scrollRef.current
+    if (!scroll) return
+    if ('scrollToOffset' in scroll) scroll.scrollToOffset({ offset: y, animated })
+    else scroll.scrollTo({ y, animated })
+  }, [])
 
   useEffect(() => {
     if (!visible) return
@@ -242,11 +249,13 @@ export function useEdgeDrawerDismissal({
         scrollOffsetRef.current = initialOffset
         scrollOffset.value = initialOffset
         requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({ y: initialOffset, animated: false })
+          scrollToOffset(initialOffset, false)
           dismissArmed.value = true
           if (!initialFocusRef?.current) return
           requestAnimationFrame(() => {
-            const nativeScrollRef = scrollRef.current?.getNativeScrollRef()
+            const nativeScrollRef = scrollRef.current?.getNativeScrollRef() as
+              | ReactNativeElement
+              | undefined
             if (!initialFocusRef.current || !nativeScrollRef) return
             initialFocusRef.current.measureLayout(
               nativeScrollRef,
@@ -259,7 +268,7 @@ export function useEdgeDrawerDismissal({
                 )
                 scrollOffsetRef.current = focusedOffset
                 scrollOffset.value = focusedOffset
-                scrollRef.current?.scrollTo({ y: focusedOffset, animated: false })
+                scrollToOffset(focusedOffset, false)
               },
             )
           })
@@ -280,7 +289,7 @@ export function useEdgeDrawerDismissal({
         })
         scrollOffsetRef.current = pinnedOffset
         scrollOffset.value = pinnedOffset
-        scrollRef.current?.scrollTo({ y: pinnedOffset, animated: false })
+        scrollToOffset(pinnedOffset, false)
         return
       }
 
@@ -290,7 +299,7 @@ export function useEdgeDrawerDismissal({
           ? Math.min(range, scrollOffsetRef.current + addedHeight)
           : range
         requestAnimationFrame(() => {
-          scrollRef.current?.scrollTo({ y: targetOffset, animated: true })
+          scrollToOffset(targetOffset, true)
         })
       }
     },
@@ -302,23 +311,18 @@ export function useEdgeDrawerDismissal({
       initialFocusRef,
       opensFromTop,
       scrollOffset,
+      scrollToOffset,
     ],
   )
 
   /** Settle a half-faded drawer back to the offset where it is fully opaque again. */
   const restoreFullyVisible = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      y: edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop),
-      animated: true,
-    })
-  }, [height, opensFromTop])
+    scrollToOffset(edgeDrawerRestoreOffset(dismissRangeRef.current, height, opensFromTop), true)
+  }, [height, opensFromTop, scrollToOffset])
 
   const scrollToOpenEdge = useCallback(() => {
-    scrollRef.current?.scrollTo({
-      y: opensFromTop ? 0 : dismissRangeRef.current + height,
-      animated: true,
-    })
-  }, [height, opensFromTop])
+    scrollToOffset(opensFromTop ? 0 : dismissRangeRef.current + height, true)
+  }, [height, opensFromTop, scrollToOffset])
 
   const handleScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

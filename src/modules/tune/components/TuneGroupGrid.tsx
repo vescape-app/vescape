@@ -81,7 +81,7 @@ export function TuneGroupGrid({
       {collapsible ? (
         <CaretDownIcon
           size={14}
-          color={theme.palette.slate.textMuted}
+          color={theme.neutral.textMuted}
           weight="bold"
           style={{ transform: [{ rotate: collapsed ? '0deg' : '180deg' }] }}
         />
@@ -122,14 +122,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   groupTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   groupCount: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 11,
     fontWeight: '700',
   },

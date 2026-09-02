@@ -31,7 +31,7 @@ export function MapPointStatusBanner({ top }: { top: number }) {
     >
       <WarningCircleIcon
         size={15}
-        color={error ? theme.status.error.text : theme.palette.slate.textSecondary}
+        color={error ? theme.status.error.text : theme.neutral.textSecondary}
         weight="fill"
       />
       <Text style={[styles.text, error ? styles.errorText : undefined]} numberOfLines={2}>
@@ -55,8 +55,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   notice: {
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.85),
-    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.alpha(theme.neutral.bg, 0.85),
+    borderColor: theme.neutral.border,
   },
   error: {
     backgroundColor: theme.alpha(theme.status.error.bg, 0.85),
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: theme.font('500'),
     fontSize: 12,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
   },
   errorText: {
     color: theme.status.error.text,

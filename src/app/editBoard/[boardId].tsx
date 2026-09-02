@@ -1,13 +1,13 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { View } from 'react-native'
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native'
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
-import { PencilSimpleIcon, WarningIcon } from 'phosphor-react-native'
+import { BracketsCurlyIcon, EngineIcon, WarningDiamondIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { BoardBatteryEditorModal } from '@/modules/board/components/BoardBatteryEditorModal'
-import { BoardInfoEditorModal } from '@/modules/board/components/BoardInfoEditorModal'
+import { IconButton } from '@/components/base/IconButton'
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { BoardTopSpeedCard } from '@/modules/alerts/components/BoardTopSpeedCard'
@@ -16,6 +16,8 @@ import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { EditBoardSettings } from '@/modules/board/components/EditBoardSettings'
 import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { BoardWarningsSheet } from '@/modules/board/components/BoardWarningsSheet'
+import { VescFaultsSheet } from '@/modules/board/components/VescFaultsSheet'
+import { EMPTY_FAULTS, useVescFaultsStore } from '@/modules/board/store/vescFaultsStore'
 import { useEditBoardForm } from '@/modules/board/hooks/useEditBoardForm'
 import { routes } from '@/navigation/routes'
 import { useBoardStore } from '@/modules/board/store/boardStore'
@@ -33,15 +35,17 @@ export default function EditBoardScreen() {
     })),
   )
   const navigation = useNavigation()
-
   const editingBoard = boards.find((b) => b.id === boardId)
-  // Kill switch off hides the whole Board Warnings surface, matching BoardWarningControl.
+  // Kill switch off hides the whole Board Warnings surface, matching the board pill.
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
   const storedWarnings = useBoardWarningsStore((s) => s.warningsByBoard[boardId] ?? EMPTY_WARNINGS)
   const warnings = boardWarningsEnabled ? storedWarnings : EMPTY_WARNINGS
+  // Fault evidence stays readable with collection off; only the indicator is suppressed.
+  const faults = useVescFaultsStore((s) => s.faultsByBoard[boardId] ?? EMPTY_FAULTS)
   const warningsAnchorRef = useRef<View>(null)
   const [warningsOpen, setWarningsOpen] = useState(false)
-  const [infoModalVisible, setInfoModalVisible] = useState(false)
+  const faultsAnchorRef = useRef<View>(null)
+  const [faultsOpen, setFaultsOpen] = useState(false)
   const [batteryModalVisible, setBatteryModalVisible] = useState(false)
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const [removeSaving, setRemoveSaving] = useState(false)
@@ -53,17 +57,15 @@ export default function EditBoardScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable
-          onPress={() => setInfoModalVisible(true)}
-          style={styles.headerAction}
-          hitSlop={8}
-          testID="edit-board-header"
-        >
-          <PencilSimpleIcon size={20} color={theme.palette.slate.textSecondary} weight="duotone" />
-        </Pressable>
+        <IconButton
+          icon={BracketsCurlyIcon}
+          onPress={() => router.push({ pathname: routes.editBoardConfig, params: { boardId } })}
+          accessibilityLabel="Board config"
+          testID="edit-board-config-button"
+        />
       ),
     })
-  }, [navigation])
+  }, [navigation, boardId])
 
   const handleRemoveBoard = useCallback(async () => {
     if (!editingBoard) return
@@ -109,7 +111,8 @@ export default function EditBoardScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <EditBoardSettings
             name={form.name}
-            description={form.description}
+            nameSaving={form.saving === 'info'}
+            onSaveName={form.saveName}
             link={editingBoard.link}
             linkSaving={form.saving === 'link'}
             keepMissingBatteryConfig={form.keepMissingBatteryConfig}
@@ -130,6 +133,9 @@ export default function EditBoardScreen() {
             warningCounts={warningCounts}
             warningsAnchorRef={warningsAnchorRef}
             onOpenWarnings={() => setWarningsOpen(true)}
+            faultCount={faults.length}
+            faultsAnchorRef={faultsAnchorRef}
+            onOpenFaults={() => setFaultsOpen(true)}
             onOpenBattery={() => setBatteryModalVisible(true)}
             onLink={handleLink}
             onRelink={handleRelink}
@@ -143,24 +149,29 @@ export default function EditBoardScreen() {
         visible={warningsOpen}
         triggerRef={warningsAnchorRef}
         title="Warnings"
-        icon={WarningIcon}
+        icon={EngineIcon}
         iconColor={theme.status.caution.color}
         onClose={() => setWarningsOpen(false)}
       >
         <BoardWarningsSheet boardId={editingBoard.id} warnings={warnings} />
       </EdgeDrawer>
 
-      <BoardInfoEditorModal
-        visible={infoModalVisible}
-        name={form.name}
-        description={form.description}
-        saving={form.saving === 'info'}
-        onSave={async (value) => {
-          await form.saveInfo(value)
-          setInfoModalVisible(false)
-        }}
-        onCancel={() => setInfoModalVisible(false)}
-      />
+      <EdgeDrawer
+        visible={faultsOpen}
+        triggerRef={faultsAnchorRef}
+        title="VESC faults"
+        icon={WarningDiamondIcon}
+        iconColor={theme.status.caution.color}
+        onClose={() => setFaultsOpen(false)}
+      >
+        <VescFaultsSheet
+          key={editingBoard.id}
+          boardId={editingBoard.id}
+          faults={faults}
+          visible={faultsOpen}
+        />
+      </EdgeDrawer>
+
       <BoardBatteryEditorModal
         visible={batteryModalVisible}
         batteryMode={form.battery.batteryMode}
@@ -192,7 +203,7 @@ export default function EditBoardScreen() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   container: {
     flex: 1,
@@ -200,8 +211,5 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 8,
-  },
-  headerAction: {
-    marginRight: 4,
   },
 })

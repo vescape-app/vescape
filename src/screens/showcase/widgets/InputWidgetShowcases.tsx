@@ -7,6 +7,7 @@ import {
   BroadcastIcon,
   ChartLineUpIcon,
   FadersIcon,
+  FootprintsIcon,
   GaugeIcon,
   MapPinIcon,
 } from 'phosphor-react-native'
@@ -136,6 +137,8 @@ export function SelectWidgetShowcase() {
         <SelectWidget
           icon={FadersIcon}
           selectIcon={GaugeIcon}
+          badgeIcon={FootprintsIcon}
+          badgeAccent={theme.palette.green.color}
           label="Tunes"
           value={value}
           description="Pick how your board should feel."
@@ -208,10 +211,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   optionRowActive: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   optionText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 14,
     fontWeight: '700',
   },

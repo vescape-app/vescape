@@ -5,7 +5,7 @@ import { StyleSheet } from 'react-native'
 import type { MapPointCategory } from 'vescape-core'
 
 import { IconButton } from '@/components/base/IconButton'
-import { theme } from '@/constants/theme'
+import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { MapSearchResult } from '@/modules/map/lib/search'
@@ -54,6 +54,7 @@ export function FullMapControls({
   onBeginEditMapPoint,
   onRequireMapAccount,
 }: FullMapControlsProps) {
+  const accents = useResolvedAccentColors()
   const riderColor = useRiderStore((s) => s.riderColor)
   // Category visibility and Map Point creation are store truth, not screen wiring.
   const hiddenMapPointCategories = useMapPointStore((s) => s.hiddenMapPointCategories)
@@ -202,7 +203,7 @@ export function FullMapControls({
     <>
       {addMenuOpen ? (
         <CenterPlacementPointer
-          color={riderColor ?? theme.palette.green.color}
+          color={riderColor ?? accents.green.color}
           pulseKey={placementPulseKey}
         />
       ) : null}
@@ -235,7 +236,11 @@ export function FullMapControls({
           bottom={bottom}
           sheetBottom={sheetBottom}
           open={addMenuOpen}
-          navigationAction={navigationActionColors(riderColor)}
+          navigationAction={navigationActionColors(
+            riderColor,
+            accents.green.solid,
+            accents.green.onSolid,
+          )}
           onToggle={toggleAddMenu}
           onSelectCategory={(category) => void handleSelectMapPoint(category)}
           onSelectNavigationPoint={() => void handleSelectNavigationPoint()}
@@ -250,7 +255,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
 })

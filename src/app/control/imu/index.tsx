@@ -9,6 +9,8 @@ import Animated, {
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
+import { BoardConfigSection } from '@/modules/board/components/BoardConfigSection'
+import { IMU_CONFIG_ROWS } from '@/modules/board/constants/boardConfigRows'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
 import { TickText } from '@/components/base/TickText'
@@ -196,15 +198,10 @@ export default function ImuScreen() {
         />
       </View>
 
-      <View style={styles.attitudePanel}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>ATTITUDE</Text>
-          <Text style={styles.sectionHint}>Gray line shows balance pitch</Text>
-        </View>
-        <HotAttitudeBars pitch={hot.pitch} roll={hot.roll} balancePitch={hot.balancePitch} />
-      </View>
+      <HotAttitudeBars pitch={hot.pitch} roll={hot.roll} balancePitch={hot.balancePitch} />
 
       <LiveChartStack charts={charts} />
+      <BoardConfigSection rows={IMU_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }
@@ -228,26 +225,6 @@ const styles = StyleSheet.create({
   },
   liveValue: {
     alignSelf: 'stretch',
-  },
-  attitudePanel: {
-    gap: 10,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionLabel: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  sectionHint: {
-    color: theme.palette.slate.textDim,
-    fontSize: 11,
-    fontWeight: '600',
   },
   attitudeGrid: {
     flexDirection: 'row',

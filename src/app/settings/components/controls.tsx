@@ -7,9 +7,11 @@ import {
   CircleButtonShowcase,
   FloatingActionPillShowcase,
   FloatingBarShowcase,
+  NavigationTopBarShowcase,
   PrevNextSelectorShowcase,
+  SegmentedToggleShowcase,
 } from '@/screens/showcase/controls/ButtonShowcases'
-import { MapOptionSelectorShowcase } from '@/screens/showcase/controls/MapOptionSelectorShowcase'
+import { ExpandableCircleMenuShowcase } from '@/screens/showcase/controls/ExpandableCircleMenuShowcase'
 import { ZonePillsShowcase } from '@/screens/showcase/controls/ZonePillsShowcase'
 import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
@@ -20,21 +22,23 @@ export default function ControlsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={SwatchesIcon}
-          description="CircleButton, FloatingBar, PrevNextSelector, PillSelector, MapOptionSelector, AlertPresetControl."
+          description="CircleButton, ExpandableCircleMenu, FloatingBar, PrevNextSelector, PillSelector, AlertPresetControl."
         />
         <AlertPresetControlShowcase />
         <CircleButtonShowcase />
+        <NavigationTopBarShowcase />
         <FloatingBarShowcase />
         <FloatingActionPillShowcase />
         <PrevNextSelectorShowcase />
+        <SegmentedToggleShowcase />
         <ZonePillsShowcase />
-        <MapOptionSelectorShowcase />
+        <ExpandableCircleMenuShowcase />
       </ScrollView>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
 })

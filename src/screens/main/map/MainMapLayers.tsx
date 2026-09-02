@@ -51,7 +51,13 @@ function BaseTerrainLayers({
           tileSize={256}
           maxZoomLevel={MAP_DEFAULTS.maxZoom}
         >
-          <RasterLayer id="center-mapy-tiles-layer" sourceID="center-mapy-tiles" style={{}} />
+          <RasterLayer
+            id="center-mapy-tiles-layer"
+            sourceID="center-mapy-tiles"
+            // Native rejects an empty style dictionary and logs `Invalid style: [:]`, so the
+            // opaque default is spelled out rather than left blank.
+            style={{ rasterOpacity: 1 }}
+          />
         </RasterSource>
       ) : null}
     </>
@@ -119,14 +125,8 @@ export function MainMapLayers(props: MainMapLayersProps) {
         />
       ) : (
         <>
-          <LiveMapLayers
-            liveTrailShape={props.liveTrailShape}
-            accuracyFix={props.accuracyFix}
-            accuracyShape={props.accuracyShape}
-            gpsPuckBearingDeg={props.gpsPuckBearingDeg}
-            riders={riders}
-            highContrastRoutes={isSatellite}
-          />
+          {/* Mapbox paints later style layers above earlier ones. Keep the navigation path before
+              every live point so its dots never cross over the GPS puck or heading arrow. */}
           <NavigationMapLayers
             directionPoint={props.directionPoint}
             activeNavigationTarget={props.activeNavigationTarget}
@@ -134,6 +134,14 @@ export function MainMapLayers(props: MainMapLayersProps) {
             directionColor={riderColor ?? DESTINATION_POINT_COLOR}
             directionTextColor={riderColor ?? DESTINATION_POINT_TEXT_COLOR}
             onFocusDirectionPoint={props.onFocusDirectionPoint}
+          />
+          <LiveMapLayers
+            liveTrailShape={props.liveTrailShape}
+            accuracyFix={props.accuracyFix}
+            accuracyShape={props.accuracyShape}
+            gpsPuckBearingDeg={props.gpsPuckBearingDeg}
+            riders={riders}
+            highContrastRoutes={isSatellite}
           />
           <RiderTargetPins riders={riders} />
           <MapPointLayers

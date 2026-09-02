@@ -11,15 +11,13 @@ import { GapMarkersLayer } from '@/components/charts/line/GapMarkersLayer'
 import { ScrubCursor, ScrubLayer } from '@/components/charts/line/ScrubLayer'
 import { SelectionLayer } from '@/components/charts/line/SelectionLayer'
 import { SeriesLayer } from '@/components/charts/line/SeriesLayer'
-import { toScrubTargets, type PreparedChart } from '@/components/charts/line/stackData'
+import { toScrubTargets } from '@/components/charts/line/scrubTargets'
+import type { PreparedChart } from '@/components/charts/line/stackData'
 import type { ChartPlotBox, ChartYRange } from '@/components/charts/line/types'
+import { resolveAdaptiveColor } from '@/constants/theme'
 import type { useSkiaMonoFont } from '@/hooks/useSkiaFont'
-import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors, useThemeStore } from '@/hooks/useTheme'
 import { textAdvanceWidth } from '../../../helpers/skiaText'
-
-const GRID_COLOR = theme.palette.slate.surface
-const AXIS_TEXT_COLOR = theme.palette.slate.textDim
-const THRESHOLD_COLOR = theme.alpha(theme.palette.yellow.color, 0.12)
 
 export interface LineChartProps {
   chart: PreparedChart
@@ -41,6 +39,11 @@ export interface LineChartProps {
  * readout, all read on the UI thread.
  */
 export function LineChart({ chart, width, index }: LineChartProps) {
+  const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  // Resolved at render: the palette hue is a native adaptive color, which Skia cannot consume.
+  const thresholdColor = accents.yellow.color
   const {
     camera,
     dataKey,
@@ -58,14 +61,17 @@ export function LineChart({ chart, width, index }: LineChartProps) {
   } = useChartStack()
 
   const { plot, labelBaseline, canvasHeight } = useMemo(
-    () => computeChartRow({ width, height: chart.height }),
-    [chart.height, width],
+    () => computeChartRow({ width, height: chart.height, hasLabel: chart.label != null }),
+    [chart.height, chart.label, width],
   )
   const clip = useMemo(
     () => ({ x: plot.x, y: plot.y, width: plot.width, height: plot.height }),
     [plot],
   )
-  const scrubTargets = useMemo(() => toScrubTargets(chart), [chart])
+  const scrubTargets = useMemo(
+    () => toScrubTargets(chart, (color) => resolveAdaptiveColor(color, appearance) as string),
+    [appearance, chart],
+  )
   const plotTransform = useMemo(
     () => [{ translateX: plot.x }, { translateY: plot.y }],
     [plot.x, plot.y],
@@ -94,16 +100,16 @@ export function LineChart({ chart, width, index }: LineChartProps) {
           x={plot.x}
           y={labelBaseline}
           text={chart.label}
-          color={theme.palette.slate.textSecondary}
+          color={neutral.textSecondary}
         />
       )}
 
       <Group transform={plotTransform}>
-        <Line p1={vec(0, 0.5)} p2={vec(plot.width, 0.5)} color={GRID_COLOR} strokeWidth={0.5} />
+        <Line p1={vec(0, 0.5)} p2={vec(plot.width, 0.5)} color={neutral.border} strokeWidth={0.5} />
         <Line
           p1={vec(0, plot.height / 2)}
           p2={vec(plot.width, plot.height / 2)}
-          color={GRID_COLOR}
+          color={neutral.border}
           strokeWidth={0.5}
         >
           <DashPathEffect intervals={[4, 4]} />
@@ -111,7 +117,7 @@ export function LineChart({ chart, width, index }: LineChartProps) {
         <Line
           p1={vec(0, plot.height - 0.5)}
           p2={vec(plot.width, plot.height - 0.5)}
-          color={GRID_COLOR}
+          color={neutral.border}
           strokeWidth={0.5}
         />
         {/* Thresholds are read against the value axis alone, so they need no camera: panning
@@ -121,9 +127,12 @@ export function LineChart({ chart, width, index }: LineChartProps) {
             key={value}
             p1={vec(0, projectY(value, chart.left.range, plot.height))}
             p2={vec(plot.width, projectY(value, chart.left.range, plot.height))}
-            color={THRESHOLD_COLOR}
-            strokeWidth={1}
-          />
+            color={thresholdColor}
+            strokeWidth={0.5}
+            opacity={0.35}
+          >
+            <DashPathEffect intervals={[3, 5]} />
+          </Line>
         ))}
       </Group>
 
@@ -228,6 +237,7 @@ interface AxisTicksProps {
 
 /** Three ticks — top, middle, bottom — matching the three grid lines of the plot. */
 function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
+  const neutral = useResolvedNeutralColors()
   const ticks = useMemo(() => {
     const values = [range.max, (range.min + range.max) / 2, range.min]
     const baselines = [
@@ -252,7 +262,7 @@ function AxisTicks({ font, plot, range, side }: AxisTicksProps) {
           x={tick.x}
           y={tick.y}
           text={tick.text}
-          color={AXIS_TEXT_COLOR}
+          color={neutral.textDim}
         />
       ))}
     </>

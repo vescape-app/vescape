@@ -95,8 +95,8 @@ export default function SettingsPage() {
                 <Switch
                   value={darkMode}
                   onValueChange={setDarkMode}
-                  trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                  thumbColor={darkMode ? theme.palette.sky.color : theme.palette.slate.textMuted}
+                  trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
+                  thumbColor={darkMode ? theme.palette.sky.color : theme.neutral.textMuted}
                 />
               }
             />
@@ -130,10 +130,8 @@ export default function SettingsPage() {
                 <Switch
                   value={notifications}
                   onValueChange={setNotifications}
-                  trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-                  thumbColor={
-                    notifications ? theme.palette.sky.color : theme.palette.slate.textMuted
-                  }
+                  trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
+                  thumbColor={notifications ? theme.palette.sky.color : theme.neutral.textMuted}
                 />
               }
             />
@@ -159,6 +157,6 @@ export default function SettingsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
 })

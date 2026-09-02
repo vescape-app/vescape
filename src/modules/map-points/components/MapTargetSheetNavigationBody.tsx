@@ -61,6 +61,7 @@ export function MapTargetNavigationBody({
       fallbackTextColor={targetTextColor}
       onDismiss={onDismiss}
       onFocusTarget={onFocusTarget}
+      animateEntrance
     >
       {target.type === 'mapPoint' ? <MapPointDetails point={target.point} media={media} /> : null}
       <PathFacts computing={computing} notice={notice} path={path} />

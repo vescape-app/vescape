@@ -7,7 +7,66 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
+  # Native compiles cost minutes a JS-only change never needs: Gradle wants a JDK and the Android
+  # SDK, Swift wants a macOS runner. Gate both on their own source trees so the common PR pays for
+  # the JS checks alone.
+  native-gate:
+    name: Native gate
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - 'shared/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'patches/**'
+              - '.github/workflows/ci.yml'
+            android:
+              - *shared
+              - 'modules/*/android/**'
+              - 'modules/*/*.podspec'
+              - 'plugins/**'
+              - 'watch/**'
+              - 'app.config.ts'
+              - 'scripts/generate-android-theme.ts'
+              - 'scripts/copy-shared.ts'
+            ios:
+              - *shared
+              - 'modules/*/ios/**'
+              - 'modules/*/Package.swift'
+              - 'scripts/test-ios.ts'
+              - 'scripts/native-sync.ts'
+
   check:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run copy:shared
+      - parallel:
+          - run: bun run ts
+          - run: bun run lint
+          - run: bun run format:check
+          - run: bun run knip
+          - run: bun run test:bun
+          - run: bun run release-notes:check
+
+  android:
+    needs: native-gate
+    if: needs.native-gate.outputs.android == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
@@ -34,21 +93,39 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: ''
-      # The Android SDK download is independent of everything JS, so it overlaps
-      # with install + the pure-JS checks. Only the Gradle test below needs both.
-      - run: bun install
-      - run: bun run copy:shared
       - parallel:
+          # The SDK download is independent of everything JS, so it overlaps with install.
           - name: Install Android SDK components
             run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
-          - run: bun run ts
-          - run: bun run lint
-          - run: bun run format:check
-          - run: bun run knip
-          - run: bun run test:bun
-          - run: bun run release-notes:check
+          - run: bun install
+      - run: bun run copy:shared
       - run: bun x expo prebuild --platform android --no-install
       - run: bun run test:android
       - name: Release Gradle file handles
         if: always()
         run: cd android && ./gradlew --stop || true
+
+  # Swift was only ever compiled in the release build, so a type error in `modules/vescape-core/ios`
+  # escaped every PR and failed at TestFlight time. The SwiftPM package globs the same tree
+  # CocoaPods ships, so the tests cannot run without compiling it.
+  ios:
+    needs: native-gate
+    if: needs.native-gate.outputs.ios == 'true'
+    runs-on: blacksmith-6vcpu-macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData
+          key: spm-${{ runner.os }}-${{ hashFiles('modules/vescape-core/Package.swift') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+      - run: bun run test:ios
+        env:
+          # A cold Swift build of the whole module is far past the local default.
+          IOS_TEST_TIMEOUT_MS: '1800000'

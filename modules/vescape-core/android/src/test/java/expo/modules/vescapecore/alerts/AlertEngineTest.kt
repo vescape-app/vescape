@@ -21,12 +21,18 @@ class AlertEngineTest {
         soundType: String = "default",
         repeatEverySeconds: Long? = null,
         beepCount: Int = ALERT_BEEP_COUNT_DEFAULT,
+        thresholdKind: String = "fixed",
+        configFieldId: String? = null,
+        thresholdOffset: Double? = null,
+        thresholdMaxOffset: Double? = null,
     ) = AlertRuleEntity(
         boardId = "board-1",
         id = id,
         controlId = controlId,
         threshold = threshold,
         thresholdMax = thresholdMax,
+        thresholdKind = thresholdKind, configFieldId = configFieldId,
+        thresholdOffset = thresholdOffset, thresholdMaxOffset = thresholdMaxOffset,
         enabled = true,
         soundType = soundType,
         createdAt = 0L,
@@ -35,6 +41,38 @@ class AlertEngineTest {
         source = null,
         updatedAt = 0L,
     )
+
+    @Test fun `config relative duty resolves fraction and follows updates`() {
+        val relative = rule(thresholdKind = "config-relative", configFieldId = "tiltback_duty", thresholdOffset = -10.0, thresholdMaxOffset = 0.0)
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.8))
+        assertEquals(70.0, engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.75)).single().threshold, 0.001)
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.9))
+        assertTrue(engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.75)).isEmpty())
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 1.0))
+        assertTrue(engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.99)).isEmpty())
+    }
+
+    @Test fun `config relative motor temperature anchors to the mcconf cutoff in absolute units`() {
+        val relative = rule(controlId = "controller-temp", thresholdKind = "config-relative", configFieldId = "l_temp_fet_start", thresholdOffset = -10.0)
+        engine.updateMotorConfigValues(mapOf("l_temp_fet_start" to 90.0))
+        assertEquals(80.0, engine.evaluate(listOf(relative), telemetry(tempMosfet = 82.0)).single().threshold, 0.001)
+        // No motor config read: the rule is dormant rather than firing at its stored placeholder.
+        engine.updateMotorConfigValues(emptyMap())
+        engine.resetAlertState()
+        assertTrue(engine.evaluate(listOf(relative), telemetry(tempMosfet = 82.0)).isEmpty())
+    }
+
+    @Test fun `config relative duty rearms against updated effective threshold`() {
+        val relative = rule(threshold = 70.0, thresholdKind = "config-relative", configFieldId = "tiltback_duty", thresholdOffset = -10.0)
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.9))
+        assertEquals(1, engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.81)).size)
+
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.95))
+        assertTrue(engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.79)).isEmpty())
+        engine.updateBoardConfigValues(mapOf("tiltback_duty" to 0.9))
+
+        assertEquals(1, engine.evaluate(listOf(relative), telemetry(dutyCycle = 0.81)).size)
+    }
 
     private fun telemetry(
         dutyCycle: Double = 0.0,
@@ -47,8 +85,6 @@ class AlertEngineTest {
         adc1: Double = 0.0,
         batteryCurrent: Double = 0.0,
     ) = RefloatTelemetry(
-        hasFault = false,
-        faultCode = 0,
         pitch = pitch,
         roll = 0.0,
         balancePitch = 0.0,
@@ -66,6 +102,8 @@ class AlertEngineTest {
         odometer = null,
         tempMosfet = tempMosfet,
         tempMotor = tempMotor,
+        hasFault = false,
+        faultCode = 0,
         avgLatency = null,
         pullRateHz = null,
         lastPacketAt = 0L,

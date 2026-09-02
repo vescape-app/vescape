@@ -9,13 +9,17 @@ internal const val TELEMETRY_BUCKET_SIZE_MS = 60_000L
 /**
  * Stand-in Board id for buckets whose samples match no saved Board. `board_id` is part of the
  * bucket primary key, so unattributed rows need a value rather than null.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `UNKNOWN_TELEMETRY_BOARD_ID`
  */
 internal const val UNKNOWN_TELEMETRY_BOARD_ID = ""
 internal const val UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
 
 /**
- * Id prefix for the tombstoned Boards migration 34→35 mints for telemetry whose BLE identifier
+ * Id prefix for the tombstoned Boards migration 41→42 mints for telemetry whose BLE identifier
  * resolves to nothing. Derived from the identifier rather than random so the mint is idempotent.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `ORPHAN_BOARD_ID_PREFIX`
  */
 internal const val ORPHAN_BOARD_ID_PREFIX = "orphan-"
 private const val MAX_ENERGY_SAMPLE_GAP_MS = 5_000L
@@ -29,7 +33,6 @@ internal data class BucketTelemetryPoint(
   val motorCurrentMa: Int,
   val batteryCurrentMa: Int,
   val dutyPermille: Int,
-  val hasFault: Boolean,
   val odometerCm: Long?,
   val tempMosfetDeciC: Int? = null,
   val tempMotorDeciC: Int? = null,
@@ -93,7 +96,6 @@ private class MutableBucket(
   private var batteryUsedWhMilli = 0L
   private var batteryRegenWhMilli = 0L
   private var maxDutyAbsPermille = 0
-  private var faultCount = 0
   private var firstOdometerCm: Long? = null
   private var lastOdometerCm: Long? = null
   private var gpsPointCount = 0
@@ -128,7 +130,6 @@ private class MutableBucket(
     if (!point.excludedFromMaxDuty) {
       maxDutyAbsPermille = maxOf(maxDutyAbsPermille, abs(point.dutyPermille))
     }
-    if (point.hasFault) faultCount++
     if (firstOdometerCm == null) firstOdometerCm = point.odometerCm
     if (point.odometerCm != null) lastOdometerCm = point.odometerCm
     point.tempMosfetDeciC?.let { t -> maxTempMosfetDeciC = maxOf(maxTempMosfetDeciC ?: t, t) }
@@ -190,7 +191,6 @@ private class MutableBucket(
     batteryUsedWhMilli = batteryUsedWhMilli,
     batteryRegenWhMilli = batteryRegenWhMilli,
     maxDutyAbsPermille = maxDutyAbsPermille,
-    faultCount = faultCount,
     firstOdometerCm = firstOdometerCm,
     lastOdometerCm = lastOdometerCm,
     gpsPointCount = gpsPointCount,

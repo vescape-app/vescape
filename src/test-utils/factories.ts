@@ -18,7 +18,6 @@ const BLOCK_DEFAULTS: TelemetryMinuteBucket = {
   maxMotorCurrent: 10,
   maxBatteryCurrent: 8,
   maxDuty: 0.5,
-  faultCount: 0,
   distanceDeltaM: 100,
   gpsDistanceM: 120,
   maxTempMosfet: null,
@@ -72,8 +71,6 @@ const SAMPLE_DEFAULTS: TelemetrySample = {
   odometer: null,
   tempMosfet: null,
   tempMotor: null,
-  hasFault: false,
-  faultCode: 0,
   latitude: null,
   longitude: null,
 }

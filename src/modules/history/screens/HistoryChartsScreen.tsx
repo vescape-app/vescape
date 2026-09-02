@@ -180,7 +180,7 @@ export function HistoryChartsScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
     paddingHorizontal: 8,
     gap: 8,
   },
@@ -198,12 +198,12 @@ const styles = StyleSheet.create({
     width: 38,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
   subtitle: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
   },
   stack: {

@@ -6,7 +6,7 @@ import { IconHero } from '@/components/settings/IconHero'
 import { theme } from '@/constants/theme'
 import {
   CanvasWidgetShowcase,
-  CollapsibleWidgetShowcase,
+  ExpandingWidgetShowcase,
   DialWidgetShowcase,
   SwitchWidgetShowcase,
   BackupStatusLineShowcase,
@@ -30,7 +30,7 @@ export default function WidgetsPage() {
         <LinkWidgetShowcase />
         <SelectWidgetShowcase />
         <StepperWidgetShowcase />
-        <CollapsibleWidgetShowcase />
+        <ExpandingWidgetShowcase />
         <SwitchWidgetShowcase />
         <DialWidgetShowcase />
         <CanvasWidgetShowcase />
@@ -41,6 +41,6 @@ export default function WidgetsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
 })

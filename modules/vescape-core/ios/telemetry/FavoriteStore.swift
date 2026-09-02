@@ -22,7 +22,10 @@ struct Favorite {
   let summary: FavoriteSummary
 
   /// Board name is resolved on read from `boards`, not snapshotted, so renames propagate.
-  func toMap(boardName: String?) -> [String: Any?] {
+  func toMap(
+    boardName: String?,
+    routePoints: [[String: Double]] = []
+  ) -> [String: Any?] {
     [
       "id": id,
       "boardId": boardId,
@@ -39,6 +42,7 @@ struct Favorite {
       "avgSpeedKmh": Double(summary.avgSpeedCentiKmh) / 100.0,
       "maxSpeedKmh": Double(summary.maxSpeedCentiKmh) / 100.0,
       "batteryUsedWh": Double(summary.batteryUsedWhMilli) / 1000.0,
+      "routePoints": routePoints,
     ]
   }
 }

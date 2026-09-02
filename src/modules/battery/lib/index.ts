@@ -8,6 +8,7 @@ export { deriveBatteryConfig } from '@/modules/battery/lib/config'
 
 export {
   isBmsCharging,
+  cellSpreadTone,
   summarizeBms,
   summarizeBmsWindow,
   cellBarScale,

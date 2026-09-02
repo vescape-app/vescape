@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 
 import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
 import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
 import { MetricDetailGauge } from '@/modules/board/components/MetricDetailGauge'
 import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
+import { BATTERY_CURRENT_MOTOR_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { liveSelectors, useLiveMetric } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
@@ -38,6 +40,7 @@ export default function BatteryCurrentScreen() {
       gauge={<MetricDetailGauge metric={cfg} value={liveTelemetryRuntime.values.batteryCurrent} />}
     >
       <LiveChartStack charts={charts} />
+      <MotorConfigSection rows={BATTERY_CURRENT_MOTOR_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

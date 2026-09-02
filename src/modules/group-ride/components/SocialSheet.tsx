@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import {
   BroadcastIcon,
-  ChartLineUpIcon,
   CrosshairIcon,
   PaletteIcon,
   PlusIcon,
@@ -12,41 +11,23 @@ import {
   WarningIcon,
   XIcon,
 } from 'phosphor-react-native'
-import { router } from 'expo-router'
 import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { ColorPicker } from '@/components/forms/ColorPicker'
 import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { InputWidget } from '@/components/widgets/InputWidget'
-import { LinkWidget } from '@/components/widgets/LinkWidget'
 import { riderColorOptions } from '@/modules/group-ride/constants/riderColors'
-import { routes } from '@/navigation/routes'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { theme } from '@/constants/theme'
 import { NearbyRideBody, RosterGrid } from '@/modules/group-ride/components/GroupRideRoster'
 
-interface SocialSheetProps {
-  /** Called before navigating away so the host can dismiss the sheet. */
-  onNavigate: () => void
-}
-
-export function SocialSheet({ onNavigate }: SocialSheetProps) {
+export function SocialSheet() {
   return (
     <View testID="social-sheet" style={styles.list}>
       <RiderNameWidget />
       <GroupRideWidget />
-      <LinkWidget
-        icon={ChartLineUpIcon}
-        accent={theme.palette.sky.color}
-        label="Profile stats"
-        hint="All-time & monthly riding totals"
-        onPress={() => {
-          onNavigate()
-          router.push(routes.profileStats)
-        }}
-      />
     </View>
   )
 }
@@ -75,7 +56,7 @@ function RiderNameWidget() {
           accessibilityLabel={riderColor ? `Your color ${riderColor}` : 'No color selected'}
         >
           {riderColor ? null : (
-            <PaletteIcon size={14} color={theme.palette.slate.textSecondary} weight="duotone" />
+            <PaletteIcon size={14} color={theme.neutral.textSecondary} weight="duotone" />
           )}
         </View>
       }
@@ -123,14 +104,16 @@ function GroupRideWidget() {
         icon={BroadcastIcon}
         title="Group Ride"
         accent={accent}
+        surface="secondary"
         height={240}
         footer={
           <Button
             label="Create"
+            variant="groupRide"
             icon={PlusIcon}
             onPress={() => {}}
             disabled
-            style={[styles.fill, styles.actionBtn]}
+            style={styles.fill}
             accessibilityLabel="Create group ride"
           />
         }
@@ -152,18 +135,20 @@ function GroupRideWidget() {
   ) : showNearby ? (
     <Button
       label="Join"
+      variant="groupRide"
       onPress={() => joinRide(nearby[0].ride.id)}
       disabled={!connected}
-      style={[styles.fill, styles.actionBtn]}
+      style={styles.fill}
       accessibilityLabel="Join nearest group ride"
     />
   ) : (
     <Button
       label="Create"
+      variant="groupRide"
       icon={PlusIcon}
       onPress={() => createRide('')}
       disabled={!hasLocation || !connected}
-      style={[styles.fill, styles.actionBtn]}
+      style={styles.fill}
       accessibilityLabel="Create group ride"
     />
   )
@@ -176,7 +161,7 @@ function GroupRideWidget() {
       hitSlop={10}
       accessibilityLabel="Dismiss nearby rides"
     >
-      <XIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+      <XIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
     </Pressable>
   ) : null
 
@@ -185,6 +170,7 @@ function GroupRideWidget() {
       icon={BroadcastIcon}
       title={active ? rideName : 'Group Ride'}
       accent={accent}
+      surface="secondary"
       active={active}
       height={active && rosterRows.length > 0 ? undefined : 240}
       footer={footer}
@@ -224,9 +210,6 @@ function LiveBadge({ connected }: { connected: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  actionBtn: {
-    backgroundColor: theme.palette.groupRide.border,
-  },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -253,17 +236,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
   },
   colorDotEmpty: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   colorEditor: {
     marginLeft: 36,
     gap: 8,
   },
   colorLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,

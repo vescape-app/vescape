@@ -13,6 +13,8 @@ final class AlertEngineTests: XCTestCase {
     soundType: String = "default",
     repeatEverySeconds: Int64? = nil,
     beepCount: Int = alertBeepCountDefault
+    , thresholdKind: String = "fixed", configFieldId: String? = nil,
+    thresholdOffset: Double? = nil, thresholdMaxOffset: Double? = nil
   ) -> AlertRule {
     AlertRule(
       boardId: "board-1",
@@ -20,6 +22,8 @@ final class AlertEngineTests: XCTestCase {
       controlId: controlId,
       threshold: threshold,
       thresholdMax: thresholdMax,
+      thresholdKind: thresholdKind, configFieldId: configFieldId,
+      thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset,
       enabled: true,
       soundType: soundType,
       createdAt: 0,
@@ -28,6 +32,38 @@ final class AlertEngineTests: XCTestCase {
       source: nil,
       updatedAt: 0
     )
+  }
+
+  func testConfigRelativeDutyResolvesFractionAndFollowsUpdates() {
+    let relative = rule(thresholdKind: "config-relative", configFieldId: "tiltback_duty", thresholdOffset: -10, thresholdMaxOffset: 0)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.8])
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.75)).first?.threshold, 70)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.9])
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.75)).isEmpty)
+    engine.updateBoardConfigValues(["tiltback_duty": 1.0])
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.99)).isEmpty)
+  }
+
+  func testConfigRelativeMotorTemperatureAnchorsToMcconfCutoffInAbsoluteUnits() {
+    let relative = rule(controlId: "controller-temp", thresholdKind: "config-relative", configFieldId: "l_temp_fet_start", thresholdOffset: -10)
+    engine.updateMotorConfigValues(["l_temp_fet_start": 90.0])
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(tempMosfet: 82)).first?.threshold, 80)
+    // No motor config read: the rule is dormant rather than firing at its stored placeholder.
+    engine.updateMotorConfigValues([:])
+    engine.resetAlertState()
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(tempMosfet: 82)).isEmpty)
+  }
+
+  func testConfigRelativeDutyRearmsAgainstUpdatedEffectiveThreshold() {
+    let relative = rule(threshold: 70, thresholdKind: "config-relative", configFieldId: "tiltback_duty", thresholdOffset: -10)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.9])
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.81)).count, 1)
+
+    engine.updateBoardConfigValues(["tiltback_duty": 0.95])
+    XCTAssertTrue(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.79)).isEmpty)
+    engine.updateBoardConfigValues(["tiltback_duty": 0.9])
+
+    XCTAssertEqual(engine.evaluate(rules: [relative], telemetry: telemetry(dutyCycle: 0.81)).count, 1)
   }
 
   private func telemetry(

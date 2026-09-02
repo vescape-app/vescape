@@ -1,6 +1,9 @@
 import { useEffect } from 'react'
 
-import { canRunFirmwareCommand } from '@/modules/board/lib/boardLinkIntegrity'
+import {
+  canRunFirmwareCommand,
+  firmwareCommandBlockedMessage,
+} from '@/modules/board/lib/boardLinkIntegrity'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 import { startBoardMove, stopBoardMove } from 'vescape-core'
@@ -34,6 +37,8 @@ export function useBoardMoveControl() {
   return {
     boardConnected,
     canCommand,
+    blockedMessage:
+      boardConnected && !canCommand ? firmwareCommandBlockedMessage(linkIntegrity) : null,
     strengthPercent,
     setStrengthPercent: (percent: number) => {
       const clamped = Math.min(

@@ -1,11 +1,12 @@
 import { CircleLayer, FillLayer, Images, LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { useMemo } from 'react'
+import { processColor } from 'react-native'
 
 import { theme } from '@/constants/theme'
+import { useResolvedAccentColors, useResolvedNeutralColors } from '@/hooks/useTheme'
 import { RiderPresencePin, RiderTrail } from '@/modules/group-ride/components/RiderMapLayers'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
-import { GPS_POINT_COLOR } from '@/screens/main/map/offscreenMapIndicators'
 import type { MainMapLayersProps } from '@/screens/main/map/mainMapLayerTypes'
 
 const GPS_HEADING_ICON_ID = 'center-gps-heading'
@@ -27,14 +28,17 @@ export function LiveMapLayers({
   highContrastRoutes: boolean
 }) {
   const riderColor = useRiderStore((state) => state.riderColor)
-  const gpsPointColor = riderColor ?? GPS_POINT_COLOR
-  const trailColor = riderColor ?? MAP_DEFAULTS.trailColor
+  const neutral = useResolvedNeutralColors()
+  const accents = useResolvedAccentColors()
+  const accuracyFillColor = theme.alpha(accents.violet.color, 0.12)
+  const gpsPointColor = riderColor ?? accents.purple.color
+  const trailColor = riderColor ?? accents.violet.color
   const trailGradientStart = riderColor
     ? theme.alpha(riderColor, 0)
-    : MAP_DEFAULTS.trailGradientStart
+    : theme.alpha(accents.violet.color, 0)
   const trailGradientEnd = riderColor
     ? theme.alpha(riderColor, 0.85)
-    : MAP_DEFAULTS.trailGradientEnd
+    : theme.alpha(accents.violet.color, 0.85)
   const gpsPuckPositionShape = useMemo(
     () =>
       accuracyFix
@@ -76,7 +80,7 @@ export function LiveMapLayers({
           <LineLayer
             id="center-live-trail-casing"
             style={{
-              lineColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+              lineColor: theme.alpha(neutral.surfaceDeep, 0.85),
               lineWidth: highContrastRoutes ? MAP_DEFAULTS.trailWidth + 4 : 0,
               lineCap: 'round',
               lineJoin: 'round',
@@ -108,7 +112,7 @@ export function LiveMapLayers({
             <ShapeSource id="center-gps-accuracy-source" shape={accuracyShape}>
               <FillLayer
                 id="center-gps-accuracy-fill"
-                style={{ fillColor: MAP_DEFAULTS.accuracyFillColor }}
+                style={{ fillColor: processColor(accuracyFillColor) as never }}
               />
             </ShapeSource>
           )}

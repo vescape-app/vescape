@@ -18,9 +18,6 @@ extension TelemetryRepository {
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
     guard let pool else { return emptyRangePayload() }
-    // Markers and Metric Exclusion Ranges still key on the BLE identifier (ADR 0028), so a
-    // Board-scoped range read translates before it can filter them.
-
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the range read below.
     let configs = batteryConfigByBoard()
@@ -54,16 +51,17 @@ extension TelemetryRepository {
       return mergeTelemetryPayload(
         sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
         [
-        "chartColumns": sampleColumns(
-          overviewRows,
-          batteryPercents: overviewPercents,
-          boardNames: boardNames
-        )["boardColumns"],
-        "chartCount": overviewRows.count,
-        "gpsSamples": gpsMaps(sampleRows, boardNames: boardNames),
-        "markers": markers.map(markerMap),
-        "exclusions": exclusions,
-      ])
+          "chartColumns": sampleColumns(
+            overviewRows,
+            batteryPercents: overviewPercents,
+            boardNames: boardNames
+          )["boardColumns"],
+          "chartCount": overviewRows.count,
+          "gpsSamples": gpsMaps(sampleRows, boardNames: boardNames),
+          "markers": markers.map(markerMap),
+          "exclusions": exclusions,
+        ]
+      )
     }) ?? emptyRangePayload()
   }
 }
@@ -122,8 +120,6 @@ internal func sampleColumns(
     appendNullableDouble(&data, (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 })
     appendNullableDouble(&data, (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 })
     appendNullableDouble(&data, (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 })
-    appendDouble(&data, ((row["fault_code"] as Int?) ?? 0) != 0 ? 1.0 : 0.0)
-    appendDouble(&data, Double((row["fault_code"] as Int?) ?? 0))
     appendNullableDouble(&data, (row["latitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 })
     appendNullableDouble(&data, (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 })
   }

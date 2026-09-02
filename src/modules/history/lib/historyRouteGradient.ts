@@ -1,7 +1,7 @@
 import type { LineLayerStyle } from '@rnmapbox/maps'
 
 import { theme } from '@/constants/theme'
-import { telemetry } from '@/modules/board/constants/telemetry'
+import type { ResolvedTelemetryColors } from '@/constants/theme'
 import { distanceMeters } from '@/helpers/mapGeometry'
 import { routeDistanceProgress } from '@/modules/history/lib/routeProgress'
 import {
@@ -126,22 +126,25 @@ export function getHistoryRouteHighlightGradient(
   ] as unknown as NonNullable<LineLayerStyle['lineGradient']>
 }
 
-export function getHistoryMetricBaseColor(metric: HistoryMetricKey): string {
+export function getHistoryMetricBaseColor(
+  metric: HistoryMetricKey,
+  colors: ResolvedTelemetryColors,
+): string {
   switch (metric) {
     case 'speed':
-      return telemetry.speed.color
+      return colors.speed
     case 'duty':
-      return telemetry.duty.color
+      return colors.duty
     case 'battery':
-      return telemetry.battVoltage.color
+      return colors.battVoltage
     case 'tempMotor':
-      return telemetry.motorTemp.color
+      return colors.motorTemp
     case 'tempController':
-      return telemetry.controllerTemp.color
+      return colors.controllerTemp
     case 'motorCurrent':
-      return telemetry.motorCurrent.color
+      return colors.motorCurrent
     case 'batteryCurrent':
-      return telemetry.battCurrent.color
+      return colors.battCurrent
   }
 }
 
@@ -188,16 +191,20 @@ export function getHistoryRouteMetricGradient({
   metric,
   hotRanges,
   gradientsEnabled,
+  colors,
+  hotColor,
 }: {
   gpsSamples: readonly HistoryGpsSample[]
   telemetrySamples: readonly TelemetrySample[]
   metric: HistoryMetricKey
   hotRanges: HistoryMetricHotRanges
   gradientsEnabled: boolean
+  colors: ResolvedTelemetryColors
+  hotColor: string
 }): NonNullable<LineLayerStyle['lineGradient']> | null {
   if (gpsSamples.length < 2 || telemetrySamples.length === 0) return null
-  const baseColor = getHistoryMetricBaseColor(metric)
-  const range = getHistoryMetricColorRange(metric, baseColor, hotRanges, gradientsEnabled)
+  const baseColor = getHistoryMetricBaseColor(metric, colors)
+  const range = getHistoryMetricColorRange(metric, baseColor, hotRanges, gradientsEnabled, hotColor)
   if (!range) return null
 
   const lastIndex = gpsSamples.length - 1

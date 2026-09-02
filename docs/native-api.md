@@ -6,16 +6,16 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 
 ## Term map
 
-| Domain (CONTEXT.md) | Native/API name                                                        |
-| ------------------- | ---------------------------------------------------------------------- |
-| Board               | `device_id` in DB, `boardId` in API                                    |
-| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                        |
-| Ride Recording      | frames + buckets + markers in DB                                       |
-| Ride History        | `getTelemetryHistory` (buckets), `getHistoryRange` (full)              |
-| Tune Profile        | `tune_profiles` table, `TuneProfile` type                              |
-| Tune Snapshot       | `RefloatConfigSnapshot`                                                |
-| Alert Rule          | `alerts` table, `AlertRule` type                                       |
-| User Profile Stats  | `ProfileStats` type, `getTotalProfileStats` / `getMonthlyProfileStats` |
+| Domain (CONTEXT.md) | Native/API name                                                 |
+| ------------------- | --------------------------------------------------------------- |
+| Board               | `board_id` in DB, `boardId` in API                              |
+| Telemetry Sample    | `telemetry_frames` (DB), `TelemetrySample` (JS)                 |
+| Ride Recording      | frames + buckets + markers in DB                                |
+| Ride History        | `getRideHistoryPage` (complete rides), `getHistoryRange` (full) |
+| Tune Profile        | `tune_profiles` table, `TuneProfile` type                       |
+| Tune Snapshot       | `RefloatConfigSnapshot`                                         |
+| Alert Rule          | `alerts` table, `AlertRule` type                                |
+| User Profile Stats  | `ProfileStatsSnapshot`, `getProfileStatsSnapshot`               |
 
 ---
 
@@ -68,7 +68,7 @@ Phases: `idle|connecting|discovering|subscribing|waiting_for_telemetry|connected
 1. BLE packet -> `TelemetryCapture` (human units)
 2. Scale to integer state (`FullTelemetryState`) for lossless storage
 3. Delta-encode against previous -> `TelemetryFrameEntity` (nulls = unchanged)
-4. Keyframe every 60s or on gap. Flags: `KEYFRAME=1, HAS_FAULT=2, HAS_LOCATION=4`
+4. Keyframe every 60s or on gap. Flags: `KEYFRAME=1, HAS_LOCATION=4`. Bit 2 is retired.
 5. Queue in-memory (max 1000 pending). Flush on 25 frames or 5s delay
 6. On flush: insert frames + upsert buckets (60s aggregates) + insert markers
 7. Gap marker auto-inserted when sample gap > 90s
@@ -92,23 +92,24 @@ Field omitted (null) when change < threshold from previous:
 
 ## Telemetry queries
 
-| fn                                                    | returns                                                                    | notes                                                                                             |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `getTelemetryHistory(opts?)`                          | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
-| `getTelemetrySamples({fromMs,toMs,deviceId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
-| `getHistoryRange({fromMs,toMs,deviceId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
-| `getTelemetrySummary()`                               | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
-| `getDatabaseSizeBytes()`                              | number                                                                     | File size of vescape.db                                                                           |
+| fn                                                   | returns                                                                    | notes                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `getTelemetryHistory(opts?)`                         | `TelemetryMinuteBucket[]`                                                  | 60s bucket aggregates. Pagination via `cursorBeforeMs`. Default limit 100, max 500                |
+| `getRideHistoryPage({limit?,cursorBeforeMs?})`       | `RideHistoryPage`                                                          | Complete stable rides with coarse route points; cursor never cuts through a ride                  |
+| `getTelemetrySamples({fromMs,toMs,boardId?,limit?})` | `TelemetrySample[]`                                                        | Decoded from compressed frames. Reconstructs state from nearest keyframe. Default 2000, max 10000 |
+| `getHistoryRange({fromMs,toMs,boardId?,limit?})`     | `{boardSamples, chartSamples, gpsSamples, markers}`                        | Full decoded range plus a native-decimated chart overview (max 600 samples)                       |
+| `getTelemetrySummary()`                              | `{sampleCount, gpsPointCount, firstAtMs, lastAtMs, droppedPendingSamples}` | DB-wide stats                                                                                     |
+| `getDatabaseSizeBytes()`                             | number                                                                     | File size of vescape.db                                                                           |
 
 ### TelemetryMinuteBucket (bucket shape)
 
 ```ts
 {
-  id, startAtMs, endAtMs, bucketStartMs, deviceId, deviceName,
+  id, startAtMs, endAtMs, bucketStartMs, boardId, boardName,
   sampleCount, gpsPointCount, preciseGpsPointCount,
   maxAbsSpeedKmh, maxGpsSpeedKmh?, avgSpeedKmh, avgSpeedSampleCount,
   minBatteryVoltage?, maxMotorCurrent, maxBatteryCurrent, maxDuty,
-  faultCount, distanceDeltaM?, gpsDistanceM?,
+  distanceDeltaM?, gpsDistanceM?,
   maxTempMosfet?, maxTempMotor?,
   firstLatitude?, firstLongitude?,
   boundaryBefore: 'none'|'connected'|'disconnected'|'error'|'gap'|'app_stop',
@@ -120,30 +121,65 @@ Field omitted (null) when change < threshold from previous:
 
 ```ts
 {
-  id, capturedAtMs, deviceId, deviceName,
+  id, capturedAtMs, boardId, boardName,
   speedKmh, batteryVoltage, motorCurrent, batteryCurrent, dutyCycle,
   pitch, roll, balancePitch, balanceCurrent, erpm,
   state, switchState, adc1, adc2, odometer?,
-  tempMosfet?, tempMotor?, hasFault, faultCode,
+  tempMosfet?, tempMotor?,
   latitude?, longitude?
 }
 ```
 
+## VESC faults
+
+Native owns durable, Board-scoped live fault occurrences and their past telemetry captures.
+They are independent of Ride History and Board Warnings. Refloat fault-only responses do not
+produce telemetry samples or minute-bucket counts.
+
+| fn                                     | returns                                   | notes                                                                                                                                        |
+| -------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getVescFaults()`                      | `Promise<VescFaultOccurrence[]>`          | All Boards; JS groups the result by Board.                                                                                                   |
+| `setVescFaultDismissed(id, dismissed)` | `Promise<void>`                           | Acknowledges or restores one occurrence without deleting evidence.                                                                           |
+| `getVescFaultCapture(occurrenceId)`    | `Promise<VescFaultCaptureDetail \| null>` | Past snapshot, samples oldest first.                                                                                                         |
+| `readVescFaultLog(boardId)`            | `Promise<string>`                         | Fixed read-only `faults` command; matching Board must be connected and report a finite speed at most 1 km/h. Rejects unavailable/busy reads. |
+
+```ts
+VescFaultOccurrence = {
+  id, boardId, code, occurredAtMs, lastObservedAtMs,
+  clearedAtMs: number | null, dismissed: boolean
+}
+VescFaultCaptureDetail = {
+  occurrenceId, boardId, startedAtMs, openedAtMs, sampleCount,
+  samples: VescFaultCaptureSample[]
+}
+```
+
+Each capture copies up to five seconds from the existing native live window once, at detection.
+It has no future tail or GPS. Sample fields and nullability are defined in
+`modules/vescape-core/src/index.ts`, `VescFaultCaptureSample`.
+
+`onVescFaults` emits `{ boardId, faults: VescFaultOccurrence[] }`, a full replacement list for one
+Board. JS also pulls on startup and foreground to catch changes made while backgrounded.
+`vescFaultCollectionEnabled` defaults to true; disabling it stops new live collection and fault
+indicators, but preserves existing evidence and access to the Controller Fault Log.
+
+The fault drawer requests the Controller Fault Log once when opened. Its raw text is ephemeral;
+it never creates occurrences, warnings, baselines, or persisted register snapshots. See
+[ADR 0037](./adr/0037-vesc-faults-are-board-owned-evidence.md).
+
 ## Telemetry deletion
 
-| fn                                              | returns                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `deleteTelemetryBefore(beforeMs)`               | frames deleted count. Also deletes matching markers + buckets     |
-| `deleteTelemetryRange({fromMs,toMs,deviceId?})` | frames deleted count. Flushes pending first                       |
-| `clearTelemetryHistory()`                       | void. Wipes all frames, markers, buckets + resets in-memory state |
+| fn                                             | returns                                                           |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| `deleteTelemetryBefore(beforeMs)`              | frames deleted count. Also deletes matching markers + buckets     |
+| `deleteTelemetryRange({fromMs,toMs,boardId?})` | frames deleted count. Flushes pending first                       |
+| `clearTelemetryHistory()`                      | void. Wipes all frames, markers, buckets + resets in-memory state |
 
 ## User Profile Stats
 
-| fn                                     | returns                                      |
-| -------------------------------------- | -------------------------------------------- |
-| `getTotalProfileStats()`               | `ProfileStats` across all rides              |
-| `getMonthlyProfileStats({year,month})` | `ProfileStats` for one month                 |
-| `getProfileStatMonths()`               | `{year,month}[]` desc. Months with ride data |
+| fn                                        | returns                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `getProfileStatsSnapshot({year?,month?})` | Lifetime + selected-month stats and available months from one native pass |
 
 ### ProfileStats shape
 
@@ -168,11 +204,15 @@ Rides computed from buckets + markers:
 | `upsertBoard(board)` | async | void                               |
 | `deleteBoard(id)`    | async | void                               |
 
+`upsertBoard` also starts the real Board Session when the Board being written is the one that just
+proved a link in `finalizeBoardLink` — linking connects over a throwaway probe session and drops it,
+so the persist on Save is what reconnects for real.
+
 ### Board shape
 
 ```ts
 { id, name, description?, createdAt, batteryConfig?,
-  link: { linkVersion: 3, bleId, transport, hasBms,
+  link: { linkVersion: 4, bleId, transport, hasBms,
           vescFirmwareVersion: string | null,
           refloatVersion: string | null,
           refloatBaseVersion: string | null } | null }
@@ -180,8 +220,9 @@ Rides computed from buckets + markers:
 
 A **Board Link** is saved whole or not at all: it always carries a proven BLE peripheral id
 plus a selected Board Transport (`'direct'` | CAN id). Current links also carry
-`linkVersion: 3`, a required `hasBms` boolean, exact firmware identity keys, and normalized
-`refloatBaseVersion` for Tune Compatibility. Missing or null required identity values keep
+`linkVersion: 4`, a required `hasBms` boolean, exact firmware identity keys, and normalized
+`refloatBaseVersion` for Tune Compatibility. Native finalization reads and persists Last Known
+Board Config Values before returning a saveable v4 link. Missing or null required identity values keep
 telemetry available but require re-link before firmware-dependent commands.
 
 Stored Board Links are normalized defensively: missing or malformed newer fields default to safe
@@ -323,7 +364,7 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 ### TelemetryEvent shape (live, not history)
 
 ```ts
-{ generation?, location?, hasFault, faultCode,
+{ generation?, location?,
   pitch, roll, balancePitch, balanceCurrent,
   speed, batteryVoltage, motorCurrent, batteryCurrent, erpm, dutyCycle,
   state, stateName, switchState, adc1, adc2, odometer?, tempMosfet?, tempMotor?,

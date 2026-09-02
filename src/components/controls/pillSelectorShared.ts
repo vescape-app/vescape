@@ -15,12 +15,15 @@ export interface PillSelectorCtx {
   closeMenu: () => void
   addRef: React.RefObject<View | null>
   contained: boolean
+  showFullLabel: boolean
+  variant: 'control' | 'lightTabs'
 }
 
 export const PillSelectorContext = createContext<PillSelectorCtx | null>(null)
 export const TUNE_OPTION_WIDTH = 38
 export const TUNE_DEFAULT_ACTIVE_WIDTH = 112
 export const TUNE_ANIMATION = { duration: 180 } as const
+export const TRANSPARENT = theme.alpha(theme.palette.mono.black, 0)
 
 export type PillSelectorLabelBehavior = 'active-only' | 'always'
 export type PillSelectorSlotVisibility = 'active' | 'inactive' | 'always'
@@ -38,7 +41,7 @@ export const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.control.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -58,9 +61,12 @@ export const styles = StyleSheet.create({
     marginHorizontal: 0,
     borderRadius: 19,
     overflow: 'hidden',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.control.background,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
+    borderColor: theme.control.border,
+  },
+  lightTabPill: {
+    borderWidth: 1,
   },
   containedPill: {
     height: 36,
@@ -81,19 +87,26 @@ export const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     borderWidth: 1.5,
-    borderColor: theme.palette.slate.textDim,
+    borderColor: theme.control.textMuted,
   },
   draftDot: {
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: theme.palette.slate.textDim,
+    backgroundColor: theme.control.textMuted,
   },
   enabledDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: theme.palette.green.color,
+  },
+  fullLabelHighlight: {
+    position: 'absolute',
+    top: 1,
+    bottom: 1,
+    borderRadius: 17,
+    borderWidth: 1,
   },
   hint: {
     flexDirection: 'row',
@@ -120,10 +133,10 @@ export const styles = StyleSheet.create({
   },
   menuItemSeparator: {
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.surface,
+    borderTopColor: theme.control.divider,
   },
   menuItemText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.control.textMuted,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -154,9 +167,10 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   pillTextInactive: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.control.textMuted,
   },
   scrollContent: {
+    position: 'relative',
     paddingHorizontal: 16,
     gap: 8,
     alignItems: 'center',

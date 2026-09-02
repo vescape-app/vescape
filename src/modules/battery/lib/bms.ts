@@ -52,6 +52,25 @@ const EXTREME_EPSILON_V = 0.0005
 // zero otherwise; anything above this floor means a charger is present.
 const CHARGE_DETECT_MIN_V = 10
 
+/**
+ * Cell-spread severity tiers, mirroring the native `CellSpreadDetector` constants so the readout
+ * colours agree with the Board Warning the detector would raise. Spread at or above the warn
+ * threshold is a weak or unbalanced pack; at or above the critical threshold it is a fault.
+ *
+ * @parity /modules/vescape-core/ios/warnings/CellSpreadDetector.swift `warnThresholdV`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/warnings/CellSpreadDetector.kt `WARN_THRESHOLD_V`
+ */
+export const CELL_SPREAD_WARN_V = 0.2
+export const CELL_SPREAD_CRITICAL_V = 0.5
+
+/** Severity tier for one spread reading. Worklet: the live card colours on the UI thread. */
+export function cellSpreadTone(spread: number): 'ok' | 'warn' | 'critical' {
+  'worklet'
+  if (!Number.isFinite(spread)) return 'ok'
+  if (spread >= CELL_SPREAD_CRITICAL_V) return 'critical'
+  return spread >= CELL_SPREAD_WARN_V ? 'warn' : 'ok'
+}
+
 /** True when the BMS charge-port voltage indicates a connected charger. */
 export function isBmsCharging(bms: Pick<BmsEvent, 'vCharge'> | null): boolean {
   return bms != null && Number.isFinite(bms.vCharge) && bms.vCharge > CHARGE_DETECT_MIN_V

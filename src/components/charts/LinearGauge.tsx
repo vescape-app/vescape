@@ -10,6 +10,7 @@ import {
 import { Text } from '@/components/base/Text'
 import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { interaction, theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 import { getLinearGaugeValueSlot } from '@/components/charts/linearGaugeLayout'
 import {
   BAR_H,
@@ -75,6 +76,7 @@ export function LinearGauge({
   onPress,
   testID,
 }: LinearGaugeProps) {
+  const resolvedColor = useResolvedColor(color)
   const { width, onLayout } = useBarWidth()
   const height = compact ? BAR_H_COMPACT : BAR_H
   const fraction = value == null ? 0 : fractionOf(value, min, max)
@@ -95,7 +97,7 @@ export function LinearGauge({
             width={width}
             height={height}
             fraction={fraction}
-            color={color}
+            color={resolvedColor}
             alerts={alerts}
             min={min}
             max={max}
@@ -105,7 +107,7 @@ export function LinearGauge({
         {value != null && width > 0 ? (
           <View style={[styles.valueSlot, valueSlot, { top: valueSlotTop }]} pointerEvents="none">
             <Text
-              style={[styles.value, compact && styles.valueCompact, { color }]}
+              style={[styles.value, compact && styles.valueCompact, { color: resolvedColor }]}
               numberOfLines={1}
             >
               {valueText}

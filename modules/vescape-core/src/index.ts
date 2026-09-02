@@ -14,6 +14,9 @@
 import { requireNativeModule, type EventSubscription } from 'expo-modules-core'
 
 import { e2eFake } from './e2eFake'
+import { decodeBmsSeriesFrames, type BmsSeriesFrame } from './bmsSeries'
+
+export type { BmsSeriesFrame } from './bmsSeries'
 
 // ---------------------------------------------------------------------------
 // Event payloads
@@ -119,7 +122,9 @@ export interface BoardProbeResult {
  * `connecting` → `handshake` (service discovery) → `pinging` (CAN scan) → per
  * candidate transport `probing` (waiting for telemetry proof) → `bms` (transport
  * confirmed, waiting for a BMS answer) → `identity` (BMS answered, waiting for
- * the Refloat info reply). Steps whose reply never comes are skipped — the probe
+ * the Refloat info reply) → `session` (opening a real Board Session on the pick,
+ * the same path rides use) → `config` (full schema/config read over that
+ * session). Steps whose reply never comes are skipped — the probe
  * window closing resolves them. With several responding CAN ids the sequence
  * revisits `probing` for the next candidate. Final facts are still read from the
  * returned {@link BoardCandidate}s; detail stays in Diagnostic Events.
@@ -135,6 +140,9 @@ export type BoardProbeStep =
   | 'probing'
   | 'bms'
   | 'identity'
+  | 'session'
+  | 'config'
+  | 'motor-config'
   | 'completed'
   | 'failed'
 
@@ -162,7 +170,7 @@ export type LinkIntegrity = 'unknown' | 'checking' | 'trusted' | 'outdated' | 'm
  */
 export interface BoardLink {
   /** Durable Board Link schema version. Missing/lower versions are normalized as legacy links. */
-  linkVersion?: 3
+  linkVersion?: 4
   bleId: string
   transport: BoardTransport
   /**
@@ -217,6 +225,12 @@ export interface Board {
    * persists this bag. Absent ⇒ all metrics Off (no preset rules until the rider touches setup).
    */
   alertPreset?: Record<string, unknown> | null
+  /**
+   * Per-metric opt-in: which Alert Presets follow the board's own configuration instead of fixed
+   * values. Same shape and contract as {@link alertPreset} — JS owns behavior, native persists the
+   * bag opaquely. Absent ⇒ no metric matches.
+   */
+  matchBoardConfig?: Record<string, unknown> | null
   /**
    * One-time gate for the guided Alert Preset step in the add-board wizard, per Board. False until
    * the rider completes that step for this Board. The durable setup home is the Alerts settings
@@ -304,6 +318,15 @@ export interface AlertRule {
   controlId: string
   threshold: number
   thresholdMax: number | null
+  /** Durable threshold source. Missing on legacy rows means fixed. */
+  thresholdRule?:
+    | { kind: 'fixed' }
+    | {
+        kind: 'config-relative'
+        fieldId: string
+        thresholdOffset: number
+        thresholdMaxOffset: number | null
+      }
   enabled: boolean
   soundType: AlertSoundType
   createdAt: number
@@ -451,8 +474,6 @@ export interface TelemetryEvent {
   location?: LocationEvent | null
   metricExclusions?: Record<string, boolean>
   metricExclusionUpdates?: LiveMetricExclusionUpdate[]
-  hasFault: boolean
-  faultCode: number
   pitch: number
   roll: number
   balancePitch: number
@@ -512,12 +533,6 @@ export interface BmsEvent {
   tempMaxCell: number | null
   /** BMS CAN id, or null when absent. */
   canId: number | null
-}
-
-export interface BmsSeriesFrame {
-  capturedAt: number
-  cellVoltages: number[]
-  balancing: boolean[]
 }
 
 export interface BmsSeriesUpdate {
@@ -633,7 +648,6 @@ export interface TelemetryMinuteBucket {
   maxMotorCurrent: number
   maxBatteryCurrent: number
   maxDuty: number
-  faultCount: number
   distanceDeltaM: number | null
   gpsDistanceM: number | null
   maxTempMosfet: number | null
@@ -680,8 +694,6 @@ export interface TelemetrySample {
   odometer: number | null
   tempMosfet: number | null
   tempMotor: number | null
-  hasFault: boolean
-  faultCode: number
   latitude: number | null
   longitude: number | null
 }
@@ -745,19 +757,7 @@ export interface HistoryRange {
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
  */
-const SAMPLE_COLUMN_COUNT = 25
-
-/**
- * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_FIXED_LANES`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `BMS_SERIES_FIXED_LANES`
- */
-const BMS_SERIES_FIXED_LANES = 3
-
-/**
- * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `BMS_SERIES_BALANCE_LANE_BITS`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `BMS_SERIES_BALANCE_LANE_BITS`
- */
-const BMS_SERIES_BALANCE_LANE_BITS = 30
+const SAMPLE_COLUMN_COUNT = 23
 
 /**
  * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer (25
@@ -826,10 +826,8 @@ function decodeBoardSamples(
       odometer: nullableLane(lanes[o + 18]),
       tempMosfet: nullableLane(lanes[o + 19]),
       tempMotor: nullableLane(lanes[o + 20]),
-      hasFault: lanes[o + 21] !== 0,
-      faultCode: lanes[o + 22],
-      latitude: nullableLane(lanes[o + 23]),
-      longitude: nullableLane(lanes[o + 24]),
+      latitude: nullableLane(lanes[o + 21]),
+      longitude: nullableLane(lanes[o + 22]),
     }
   }
   return samples
@@ -841,44 +839,7 @@ interface NativeBmsSeriesEvent {
   windowMs: number
   cellCount: number
   count: number
-  columns: ArrayBuffer
-}
-
-const hasLaneBit = (bits: number, bit: number): boolean => Math.floor(bits / 2 ** bit) % 2 === 1
-
-/**
- * Decode the Live BMS Series columnar buffer from native into public domain frames.
- *
- * @parity /modules/vescape-core/ios/telemetry/BmsSeriesRing.swift `encodeBmsSeriesColumns`
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/BmsSeriesRing.kt `encodeBmsSeriesColumns`
- */
-function decodeBmsSeriesFrames(event: NativeBmsSeriesEvent): BmsSeriesFrame[] {
-  const { cellCount, count, columns } = event
-  if (!count || !cellCount || !columns) return []
-  const laneCount = BMS_SERIES_FIXED_LANES + cellCount
-  const lanes = new Float64Array(columns)
-  const frameCount = Math.min(count, Math.floor(lanes.length / laneCount))
-  const frames = new Array<BmsSeriesFrame>(frameCount)
-  for (let row = 0; row < frameCount; row++) {
-    const o = row * laneCount
-    const bitsLo = lanes[o + 1]
-    const bitsHi = lanes[o + 2]
-    const cellVoltages = new Array<number>(cellCount)
-    const balancing = new Array<boolean>(cellCount)
-    for (let cell = 0; cell < cellCount; cell++) {
-      cellVoltages[cell] = lanes[o + BMS_SERIES_FIXED_LANES + cell]
-      balancing[cell] =
-        cell < BMS_SERIES_BALANCE_LANE_BITS
-          ? hasLaneBit(bitsLo, cell)
-          : hasLaneBit(bitsHi, cell - BMS_SERIES_BALANCE_LANE_BITS)
-    }
-    frames[row] = {
-      capturedAt: lanes[o],
-      cellVoltages,
-      balancing,
-    }
-  }
-  return frames
+  columns: ArrayBuffer | Uint8Array
 }
 
 export interface TelemetrySummary {
@@ -918,6 +879,8 @@ export interface Favorite {
   avgSpeedKmh: number
   maxSpeedKmh: number
   batteryUsedWh: number
+  /** Native coarse route projection; available without loading the surrounding History page. */
+  routePoints: RideRoutePoint[]
 }
 
 /**
@@ -1034,6 +997,72 @@ export interface ProfileStatsMonth {
   month: number
 }
 
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt `getProfileStatsSnapshot`
+ * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `getProfileStatsSnapshot`
+ */
+export interface ProfileStatsSnapshot {
+  total: ProfileStats
+  monthly: ProfileStats
+  months: ProfileStatsMonth[]
+  selectedMonth: ProfileStatsMonth
+}
+
+export interface RideRoutePoint {
+  latitude: number
+  longitude: number
+}
+
+/**
+ * One complete native-owned Ride History aggregate.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `rideSessionMap`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `rideSessionMap`
+ */
+export interface RideHistorySession {
+  id: string
+  /** Owning Board (`boards.id`), or null when the ride matches no saved Board. */
+  boardId: string | null
+  /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
+  boardName: string
+  startAtMs: number
+  endAtMs: number
+  movingStartAtMs: number | null
+  movingEndAtMs: number | null
+  blockIds: string[]
+  blockCount: number
+  sampleCount: number
+  gpsPointCount: number
+  preciseGpsPointCount: number
+  distanceM: number | null
+  maxSpeedKmh: number
+  avgSpeedKmh: number
+  maxTempMosfet: number | null
+  maxTempMotor: number | null
+  maxDuty: number
+  batteryUsedWh: number
+  batteryRegenWh: number
+  firstLatitude: number | null
+  firstLongitude: number | null
+  centerLatitude: number | null
+  centerLongitude: number | null
+  minLatitude: number | null
+  maxLatitude: number | null
+  minLongitude: number | null
+  maxLongitude: number | null
+  boundaryBefore: TelemetryMinuteBucket['boundaryBefore']
+  routePoints: RideRoutePoint[]
+}
+
+/**
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt `getPage`
+ * @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `getPage`
+ */
+export interface RideHistoryPage {
+  sessions: RideHistorySession[]
+  hasMore: boolean
+  nextCursorBeforeMs: number | null
+}
+
 export interface LegalPolicyReference {
   jurisdictionCode: string
 }
@@ -1063,6 +1092,8 @@ export interface AppSettings {
    * list and in profile stats. Read-time grouping, so changing it re-groups existing rides too.
    */
   rideSplitGapMinutes: number
+  /** App appearance source. `sun` resolves from local daylight at the last GPS fix. */
+  themeMode: 'system' | 'light' | 'dark' | 'sun'
   mapStyleKey: 'onedark' | 'outdoors' | 'satellite' | 'mapy'
   /** Use the custom satellite overlay style instead of the stock satellite style. */
   satelliteOverlayEnabled: boolean
@@ -1105,6 +1136,12 @@ export interface AppSettings {
    * and reappear on re-enable. Takes effect live, no reconnect needed.
    */
   boardWarningsEnabled: boolean
+  /**
+   * `VESC Fault Collection` master switch (kill switch). Off ⇒ native stops live fault trigger
+   * handling and every new fault write, and JS hides fault-driven indicators. Stored occurrences
+   * stay readable and dismissible. Deliberately independent of `boardWarningsEnabled`.
+   */
+  vescFaultCollectionEnabled: boolean
   /**
    * Android-only: minutes to pause companion auto start after the user exits the app
    * manually, so the board reappearing doesn't immediately relaunch it. 0 = off.
@@ -1456,7 +1493,6 @@ export type BoardWarningKind =
   | 'lv-pushback-low'
   | 'hv-pushback-high'
   | 'duty-pushback-high'
-  | 'moving-fault-disabled'
 
 /**
  * One durable Board Warning — an app-detected abnormal Board condition, keyed one-per-problem-kind
@@ -1484,6 +1520,294 @@ export interface BoardWarning {
 export interface BoardWarningsEvent {
   boardId: string
   warnings: BoardWarning[]
+}
+
+/**
+ * One durable VESC Fault Occurrence: a single activation of a controller fault code on one Board.
+ *
+ * Unlike a `BoardWarning` this is a time series — the same `code` activating twice is two rows, so
+ * `id` is the identity. `code` is the canonical value; display mapping must fall back safely for
+ * codes this app version does not know.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCoordinator.swift `VescFaultOccurrence`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `VescFaultOccurrence`
+ */
+export interface VescFaultOccurrence {
+  id: string
+  boardId: string
+  code: number
+  /** When the live activation was observed. */
+  occurredAtMs: number
+  lastObservedAtMs: number
+  /** Set once the controller reported a clear or a different code. Null = still open. */
+  clearedAtMs: number | null
+  dismissed: boolean
+}
+
+/**
+ * Full current occurrence list for one Board, emitted on every change and on subscribe. Same
+ * full-slice mirror contract as `BoardWarningsEvent`, on its own channel.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendVescFaults`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `onVescFaults`
+ */
+export interface VescFaultsEvent {
+  boardId: string
+  faults: VescFaultOccurrence[]
+}
+
+/**
+ * One decoded Board sample retained inside a VESC Fault Capture.
+ *
+ * A projection of the decoded live tick, not a Telemetry Sample: no GPS, no Ride History fields,
+ * and no dependency on Ride Recording. Every field is nullable because a firmware may simply not
+ * report it. `capturedAtMs` is the decoded packet time, so the series describes the Board Session's
+ * achieved response rate rather than a fixed cadence.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCaptureSample`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCaptureCoordinator.kt `VescFaultCaptureSample`
+ */
+export interface VescFaultCaptureSample {
+  capturedAtMs: number
+  speed: number | null
+  dutyCycle: number | null
+  erpm: number | null
+  batteryVoltage: number | null
+  batteryCurrent: number | null
+  motorCurrent: number | null
+  tempMosfet: number | null
+  tempMotor: number | null
+  pitch: number | null
+  roll: number | null
+  balancePitch: number | null
+  adc1: number | null
+  adc2: number | null
+  state: number | null
+}
+
+/**
+ * Metadata for telemetry copied from the native recent window when the fault was detected.
+ *
+ * @parity /modules/vescape-core/ios/faults/VescFaultCaptureCoordinator.swift `VescFaultCapture`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCaptureCoordinator.kt `VescFaultCapture`
+ */
+export interface VescFaultCapture {
+  occurrenceId: string
+  boardId: string
+  /** Intended window start: detection minus the five-second pre-roll. */
+  startedAtMs: number
+  /** Detection time — the boundary between pre-roll and incident. */
+  openedAtMs: number
+  sampleCount: number
+}
+
+/**
+ * A capture and its samples, as returned by `getVescFaultCapture`. Samples are ordered oldest
+ * first.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getVescFaultCapture`
+ */
+export interface VescFaultCaptureDetail extends VescFaultCapture {
+  samples: VescFaultCaptureSample[]
+}
+
+/**
+ * Whether a Board Config Values object was read from the board in the current Board Session
+ * (`fresh`) or restored as Last Known values on connect (`last-known`). Both render the same;
+ * the distinction only gates config writes (ADR 0035).
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigFreshness`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigFreshness`
+ */
+export type BoardConfigFreshness = 'fresh' | 'last-known'
+
+/**
+ * This Board Session's Refloat configuration as JS sees it: the decoded field map plus how fresh it
+ * is. The raw config bytes, package signature and parsed schema stay native — they are a write base,
+ * and JS never writes config from a decoded map (ADR 0035).
+ *
+ * A field the schema does not carry, or that failed to decode, is simply **absent** from `values`,
+ * so a reader never has to tell "missing" from "unparseable".
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+ */
+/**
+ * Every Refloat config field id this app names — the ones Tune edits, the ones the `/control/<metric>`
+ * screens read out, and the ones native rules evaluate.
+ *
+ * Not the whole schema: a board carries roughly 170 fields and the rest are decoded and displayed by
+ * id without ever being written down here. This union exists so that a *named* id is checked. A typo
+ * in a row definition used to render an em dash forever, which is a bug that looks like data.
+ *
+ * The ids are the board's, not ours: they are validated against the real `settings.xml` of every
+ * supported firmware by `boardConfigFieldIds.test.ts`, using the same fixture corpus the native field
+ * sets are tested with.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigFields.kt
+ * @parity /modules/vescape-core/ios/config/BoardConfigFields.swift
+ */
+export type BoardConfigFieldId =
+  | 'atr_amps_accel_ratio'
+  | 'atr_amps_decel_ratio'
+  | 'atr_angle_limit'
+  | 'atr_filter'
+  | 'atr_off_speed'
+  | 'atr_on_speed'
+  | 'atr_response_boost'
+  | 'atr_speed_boost'
+  | 'atr_strength_down'
+  | 'atr_strength_up'
+  | 'atr_threshold_down'
+  | 'atr_threshold_up'
+  | 'atr_transition_boost'
+  | 'booster_current'
+  | 'brake_current'
+  | 'braketilt_lingering'
+  | 'braketilt_strength'
+  | 'brkbooster_current'
+  | 'enable_quickstop'
+  | 'fault_adc1'
+  | 'fault_adc2'
+  | 'fault_adc_half_erpm'
+  | 'fault_darkride_enabled'
+  | 'fault_delay_pitch'
+  | 'fault_delay_roll'
+  | 'fault_delay_switch_full'
+  | 'fault_delay_switch_half'
+  | 'fault_is_dual_switch'
+  | 'fault_moving_fault_disabled'
+  | 'fault_pitch'
+  | 'fault_reversestop_enabled'
+  | 'fault_roll'
+  | 'is_dutybeep_enabled'
+  | 'ki'
+  | 'ki_limit'
+  | 'kp'
+  | 'kp2'
+  | 'kp2_brake'
+  | 'kp_brake'
+  | 'mahony_kp'
+  | 'mahony_kp_roll'
+  | 'startup_click_current'
+  | 'startup_dirtylandings_enabled'
+  | 'startup_pitch_tolerance'
+  | 'startup_pushstart_enabled'
+  | 'startup_roll_tolerance'
+  | 'startup_simplestart_enabled'
+  | 'startup_speed'
+  | 'tiltback_constant'
+  | 'tiltback_constant_erpm'
+  | 'tiltback_duty'
+  | 'tiltback_duty_angle'
+  | 'tiltback_duty_speed'
+  | 'tiltback_hv'
+  | 'tiltback_hv_angle'
+  | 'tiltback_hv_speed'
+  | 'tiltback_lv'
+  | 'tiltback_lv_angle'
+  | 'tiltback_lv_speed'
+  | 'tiltback_return_speed'
+  | 'tiltback_variable'
+  | 'tiltback_variable_erpm'
+  | 'tiltback_variable_max'
+  | 'torquetilt_angle_limit'
+  | 'torquetilt_off_speed'
+  | 'torquetilt_on_speed'
+  | 'torquetilt_start_current'
+  | 'torquetilt_strength'
+  | 'torquetilt_strength_regen'
+  | 'turntilt_angle_limit'
+  | 'turntilt_erpm_boost'
+  | 'turntilt_erpm_boost_end'
+  | 'turntilt_speed'
+  | 'turntilt_start_angle'
+  | 'turntilt_start_erpm'
+  | 'turntilt_strength'
+  | 'turntilt_yaw_aggregate'
+
+/**
+ * The decoded config map. Known ids are typed and optional — a field the schema does not carry, or
+ * that failed to decode, is **absent** rather than guessed, so every read is `| undefined` on purpose.
+ * Any other id stays readable through the index signature: the board always carries more fields than
+ * this app names.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigValues.kt `BoardConfigValues`
+ * @parity /modules/vescape-core/ios/config/BoardConfigValues.swift `BoardConfigValues`
+ */
+export type BoardConfigFieldValues = {
+  [K in BoardConfigFieldId]?: number | boolean
+} & Record<string, number | boolean | undefined>
+
+export interface BoardConfigValues {
+  boardId: string | null
+  /** Refloat base version the values were decoded against — Tune Compatibility scope (ADR 0022). */
+  refloatBaseVersion: string | null
+  capturedAtMs: number
+  freshness: BoardConfigFreshness
+  /** Decoded fields keyed by schema field id, each in its real type. */
+  values: BoardConfigFieldValues
+}
+
+/**
+ * Board Config Values changed. Nullable so clearing is expressible: fires when the post-trust read
+ * lands, after a config write, when Last Known values are restored, and with `values: null` on
+ * disconnect, board switch and `mismatched` link integrity.
+ *
+ * Deliberately not part of Live State — it changes once per session and is far too wide for an event
+ * that recomposes on every phase, GPS and scan change.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getBoardConfigValues`
+ */
+export interface BoardConfigValuesEvent {
+  values: BoardConfigValues | null
+}
+
+/**
+ * This Board Session's VESC motor configuration (MCCONF) as JS sees it: the decoded field map plus
+ * the signature it was decoded under.
+ *
+ * Read-only permanently — there is no write base and no encoder. The board serves no schema for
+ * MCCONF, so values exist only when a layout carries the board's signature; an unrecognized
+ * signature yields `null` rather than a guess (ADR 0036).
+ * @parity /modules/vescape-core/ios/config/MotorConfigValues.swift `MotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/MotorConfigValues.kt `MotorConfigValues`
+ */
+export interface MotorConfigValues {
+  boardId: string | null
+  /** `MCCONF_SIGNATURE` the values were decoded under — the layout identity and the cache scope. */
+  signature: number
+  /** Firmware branch whose layout carries this signature, e.g. `release_6_05`. */
+  firmware: string
+  capturedAtMs: number
+  freshness: BoardConfigFreshness
+  /** Decoded fields keyed by firmware field id, e.g. `l_temp_fet_start`. Every value is a number. */
+  values: Record<string, number>
+}
+
+/**
+ * Motor Config Values changed. Nullable so clearing is expressible: fires when the session's read
+ * lands, when Last Known values are restored, and with `values: null` on disconnect, board switch,
+ * `mismatched` link integrity, and when the board answers with a signature no layout carries.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+ */
+export interface MotorConfigValuesEvent {
+  values: MotorConfigValues | null
+}
+
+/** @parity native BoardConfigChangeNotice peers. */
+export interface BoardConfigChangeDiff {
+  fieldId: string
+  label: string
+  unit: string | null
+  oldValue: number | boolean | null
+  newValue: number | boolean | null
+}
+export interface BoardConfigChangeNotice {
+  boardId: string
+  detectedAtMs: number
+  diffs: BoardConfigChangeDiff[]
+}
+export interface BoardConfigChangeNoticeEvent {
+  notice: BoardConfigChangeNotice | null
 }
 
 /**
@@ -1851,7 +2175,6 @@ type VescapeCoreEvents = {
   onBms: (event: BmsEvent) => void
   onBmsSeries: (event: NativeBmsSeriesEvent) => void
   onLocation: (event: LocationEvent) => void
-  onReplayPhoneHeading: (event: { headingDeg: number }) => void
   onTelemetryRebuildProgress: (event: TelemetryRebuildProgressEvent) => void
   onBoardProbeProgress: (event: BoardProbeProgressEvent) => void
   /** Observe WebSocket connection state to the Group Ride relay. */
@@ -1868,6 +2191,14 @@ type VescapeCoreEvents = {
   onAppDataChanged: (event: AppDataChangedEvent) => void
   /** Full current Board Warning list for a board, on every registry change and on subscribe. */
   onBoardWarnings: (event: BoardWarningsEvent) => void
+  /** Full current VESC Fault Occurrence list for a board, on every change and on subscribe. */
+  onVescFaults: (event: VescFaultsEvent) => void
+  /** Board Config Values arrived, changed, or were cleared (`values: null`). */
+  onBoardConfigValues: (event: BoardConfigValuesEvent) => void
+  onMotorConfigValues: (event: MotorConfigValuesEvent) => void
+  onBoardConfigChangeNotice: (event: BoardConfigChangeNoticeEvent) => void
+  /** The board's lights, as its own `LIGHTS_CONTROL` echo reported them. */
+  onBoardLights: (event: BoardLightsEvent) => void
   /** Native App Status, on every successful refresh and on subscribe. */
   onAppStatus: (event: AppStatusEvent) => void
   /** Native Navigation, on every change (including clears) and on subscribe. */
@@ -1926,6 +2257,12 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   selectBoard(boardId: string): Promise<void>
   stopBoard(): Promise<void>
   probeBoardLink(bleId: string, probeId: string): Promise<BoardProbeResult>
+  finalizeBoardLink(
+    probeId: string,
+    boardId: string,
+    bleId: string,
+    candidate: BoardCandidate,
+  ): Promise<BoardLink>
   cancelBoardProbe(probeId: string): void
   setDebugRecordingEnabled(enabled: boolean): void
   listDebugRecordings(): Promise<DebugRecording[]>
@@ -1933,7 +2270,6 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   exportDebugRecording(name: string): Promise<DatabaseBackupResult>
   deleteDebugRecording(name: string): Promise<void>
   startDebugReplay(name: string, options: DebugReplayOptions | null): Promise<void>
-  recordPhoneHeading(headingDeg: number): void
   setWatchRouteSpanM(spanM: number | null): void
   stopDebugReplay(): Promise<void>
   reportUiError(message: string, source?: string | null, stack?: string | null): void
@@ -1965,6 +2301,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   addCompanionPresenceBoard(boardId: string): Promise<void>
   removeCompanionPresenceBoard(boardId: string): Promise<void>
   getTelemetryHistory(options: TelemetryHistoryOptions): Promise<TelemetryMinuteBucket[]>
+  getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): Promise<RideHistoryPage>
   getTelemetrySamples(options: {
     fromMs: number
     toMs: number
@@ -1996,6 +2333,16 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     payloadJson: string,
   ): Promise<void>
   devReportCleanBoardWarning(boardId: string, kind: string): Promise<void>
+  getVescFaults(): Promise<VescFaultOccurrence[]>
+  setVescFaultDismissed(id: string, dismissed: boolean): Promise<void>
+  getVescFaultCapture(occurrenceId: string): Promise<VescFaultCaptureDetail | null>
+  readVescFaultLog(boardId: string): Promise<string>
+  getBoardConfigValues(): Promise<BoardConfigValues | null>
+  getLastKnownBoardConfigValues(boardId: string): Promise<BoardConfigValues | null>
+  getMotorConfigValues(): Promise<MotorConfigValues | null>
+  getLastKnownMotorConfigValues(boardId: string): Promise<MotorConfigValues | null>
+  getBoardConfigChangeNotice(boardId: string): Promise<BoardConfigChangeNotice | null>
+  dismissBoardConfigChangeNotice(boardId: string): Promise<void>
   getDatabaseSizeBytes(): Promise<number>
   backupDatabase(): Promise<DatabaseBackupResult>
   restoreDatabase(uri: string): Promise<void>
@@ -2004,6 +2351,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   lockRemoteTilt(value: number): Promise<boolean>
   releaseRemoteTilt(value: number, durationMs: number): Promise<boolean>
   stopRemoteTilt(): Promise<boolean>
+  setBoardLights(enabled: boolean, headlightsEnabled: boolean): Promise<boolean>
   startBoardMove(input: number): Promise<boolean>
   stopBoardMove(): Promise<boolean>
   getTuneProfiles(boardId: string, refloatBaseVersion?: string | null): Promise<TuneProfile[]>
@@ -2030,9 +2378,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fields: Record<string, TuneProfileFieldValue>,
   ): Promise<TuneProfile>
   pushProfileToBoard(profileId: string): Promise<RefloatConfigSnapshot>
-  getTotalProfileStats(): Promise<ProfileStats>
-  getMonthlyProfileStats(options: ProfileStatsMonth): Promise<ProfileStats>
-  getProfileStatMonths(): Promise<ProfileStatsMonth[]>
+  getProfileStatsSnapshot(options: Partial<ProfileStatsMonth>): Promise<ProfileStatsSnapshot>
   rebuildTelemetryBuckets(): Promise<number>
   deleteTelemetryBefore(beforeMs: number): Promise<number>
   deleteTelemetryRange(options: TelemetryDeleteRangeOptions): Promise<number>
@@ -2349,6 +2695,21 @@ export async function probeBoardLink(bleId: string, probeId: string): Promise<Bo
   return native.probeBoardLink(bleId, probeId)
 }
 
+/**
+ * Verify selected probe candidate's full config and persist Last Known values before returning v4.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `finalizeBoardLink`
+ */
+export async function finalizeBoardLink(
+  probeId: string,
+  boardId: string,
+  bleId: string,
+  candidate: BoardCandidate,
+): Promise<BoardLink> {
+  if (E2E_ENABLED) return e2eFake.finalizeBoardLink(bleId, candidate)
+  return native.finalizeBoardLink(probeId, boardId, bleId, candidate)
+}
+
 /** Cancel an in-flight native Board Probe if it still matches the operation id. */
 export function cancelBoardProbe(probeId: string): void {
   if (E2E_ENABLED) return
@@ -2526,6 +2887,13 @@ export async function getTelemetryHistory(
   return native.getTelemetryHistory(options)
 }
 
+export async function getRideHistoryPage(
+  options: { limit?: number; cursorBeforeMs?: number } = {},
+): Promise<RideHistoryPage> {
+  if (E2E_ENABLED) return e2eFake.getRideHistoryPage(options)
+  return native.getRideHistoryPage(options)
+}
+
 export async function getTelemetrySamples(options: {
   fromMs: number
   toMs: number
@@ -2630,6 +2998,57 @@ export async function clearAllBoardWarnings(boardId: string): Promise<void> {
   return native.clearAllBoardWarnings(boardId)
 }
 
+/**
+ * This Board Session's Board Config Values, or `null` when none are held (no session, read not
+ * landed, no cache, or cleared). Pull on mount; `onBoardConfigValues` carries every change after.
+ */
+export async function getBoardConfigValues(): Promise<BoardConfigValues | null> {
+  return native.getBoardConfigValues()
+}
+/**
+ * Last Known Board Config Values for a Board with no Board Session — the durable copy behind
+ * {@link getBoardConfigValues}, so a config readout still has something to show while the Board is
+ * off. Always `last-known`, never a write base (ADR 0035).
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownBoardConfigValues`
+ */
+export async function getLastKnownBoardConfigValues(
+  boardId: string,
+): Promise<BoardConfigValues | null> {
+  return native.getLastKnownBoardConfigValues(boardId)
+}
+
+/**
+ * This Board Session's Motor Config Values, or `null` when none are held (no read yet, a signature
+ * no layout carries, or cleared). Pull on mount; `onMotorConfigValues` carries every change after.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getMotorConfigValues`
+ */
+export async function getMotorConfigValues(): Promise<MotorConfigValues | null> {
+  return native.getMotorConfigValues()
+}
+
+/**
+ * The durable Last Known Motor Config Values for one Board, surviving the Board Session that
+ * {@link getMotorConfigValues} is scoped to.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getLastKnownMotorConfigValues`
+ */
+export async function getLastKnownMotorConfigValues(
+  boardId: string,
+): Promise<MotorConfigValues | null> {
+  return native.getLastKnownMotorConfigValues(boardId)
+}
+
+export async function getBoardConfigChangeNotice(
+  boardId: string,
+): Promise<BoardConfigChangeNotice | null> {
+  return native.getBoardConfigChangeNotice(boardId)
+}
+export async function dismissBoardConfigChangeNotice(boardId: string): Promise<void> {
+  return native.dismissBoardConfigChangeNotice(boardId)
+}
+
 /** Dev-only: inject a fake Board Warning to exercise the fire → persist → emit pipe without a detector. */
 export async function devInjectBoardWarning(
   boardId: string,
@@ -2643,6 +3062,37 @@ export async function devInjectBoardWarning(
 /** Dev-only: report a clean evaluation for a kind (evaluated with data, condition gone), auto-clearing it. */
 export async function devReportCleanBoardWarning(boardId: string, kind: string): Promise<void> {
   return native.devReportCleanBoardWarning(boardId, kind)
+}
+
+/** Every VESC Fault Occurrence across all Boards, newest first per Board. */
+export async function getVescFaults(): Promise<VescFaultOccurrence[]> {
+  return native.getVescFaults()
+}
+
+/**
+ * Acknowledge (or restore) one occurrence. Dismissal is per occurrence and never deletes it — a
+ * later activation of the same code arrives as a new, undismissed occurrence.
+ */
+export async function setVescFaultDismissed(id: string, dismissed: boolean): Promise<void> {
+  return native.setVescFaultDismissed(id, dismissed)
+}
+
+/**
+ * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board sample
+ * retained before the incident, oldest first. Null when collection was disabled when it opened.
+ */
+export async function getVescFaultCapture(
+  occurrenceId: string,
+): Promise<VescFaultCaptureDetail | null> {
+  return native.getVescFaultCapture(occurrenceId)
+}
+
+/** Read official VESC `faults` terminal output on demand. Board must be connected and stopped.
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `readVescFaultLog`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `readVescFaultLog`
+ */
+export async function readVescFaultLog(boardId: string): Promise<string> {
+  return native.readVescFaultLog(boardId)
 }
 
 export async function getDatabaseSizeBytes(): Promise<number> {
@@ -2689,6 +3139,35 @@ export async function releaseRemoteTilt(value: number, durationMs: number): Prom
 export async function stopRemoteTilt(): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.stopRemoteTilt()
+}
+
+/**
+ * What the board says its lights are doing. `null` means the board has not said — no session, or no
+ * echo heard yet — and is not the same as off. Emitted on every echo, on Board Session end, and on
+ * subscribe.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lightsEventBody`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `lightsEventBody`
+ */
+export interface BoardLightsEvent {
+  enabled: boolean | null
+  headlightsEnabled: boolean | null
+}
+
+/**
+ * State the board's lights: the LEDs and the headlights, each on or off. Both switches are written
+ * every time, so changing one means passing the other's current value — the board is told the whole
+ * light state, never a partial edit. Runtime only: the board applies it live and stores nothing, so
+ * its own setting returns on the next power cycle, and until then the board stops applying config
+ * changes to its lights. A board with no LEDs still accepts and echoes the command. Refused unless
+ * the Board Link is trusted.
+ */
+export async function setBoardLights(
+  enabled: boolean,
+  headlightsEnabled: boolean,
+): Promise<boolean> {
+  if (E2E_ENABLED) return true
+  return native.setBoardLights(enabled, headlightsEnabled)
 }
 
 /**
@@ -2777,16 +3256,10 @@ export async function pushProfileToBoard(profileId: string): Promise<RefloatConf
   return native.pushProfileToBoard(profileId)
 }
 
-export async function getTotalProfileStats(): Promise<ProfileStats> {
-  return native.getTotalProfileStats()
-}
-
-export async function getMonthlyProfileStats(options: ProfileStatsMonth): Promise<ProfileStats> {
-  return native.getMonthlyProfileStats(options)
-}
-
-export async function getProfileStatMonths(): Promise<ProfileStatsMonth[]> {
-  return native.getProfileStatMonths()
+export async function getProfileStatsSnapshot(
+  options?: ProfileStatsMonth,
+): Promise<ProfileStatsSnapshot> {
+  return native.getProfileStatsSnapshot(options ?? {})
 }
 
 export async function rebuildTelemetryBuckets(): Promise<number> {
@@ -2832,8 +3305,25 @@ export async function getAlertRules(boardId: string): Promise<AlertRule[]> {
   return native.getAlertRules(boardId)
 }
 
+/**
+ * Expo's untyped-object converter rejects `null` inside a *nested* object (`Value is null,
+ * expected an Object`), so the config-relative `thresholdRule` cannot carry `thresholdMaxOffset:
+ * null` across the bridge. Native reads every offset optionally, so dropping the null key is the
+ * same value. Top-level nulls are fine — the argument is `Map<String, Any?>`.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `toAlertRuleEntity`
+ * @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift `upsertAlertRule`
+ */
+function bridgeableAlertRule(rule: AlertRuleInput): AlertRuleInput {
+  const thresholdRule = rule.thresholdRule
+  if (!thresholdRule || thresholdRule.kind !== 'config-relative') return rule
+  const { thresholdMaxOffset, ...rest } = thresholdRule
+  if (thresholdMaxOffset != null) return rule
+  return { ...rule, thresholdRule: rest as AlertRuleInput['thresholdRule'] }
+}
+
 export async function upsertAlertRule(rule: AlertRuleInput): Promise<void> {
-  return native.upsertAlertRule(rule)
+  return native.upsertAlertRule(bridgeableAlertRule(rule))
 }
 
 export async function setAlertRuleEnabled(
@@ -3044,10 +3534,34 @@ export function addAppDataChangedListener(
   return emitter.addListener('onAppDataChanged', cb)
 }
 
+export function addVescFaultsListener(cb: (event: VescFaultsEvent) => void): EventSubscription {
+  return emitter.addListener('onVescFaults', cb)
+}
+
 export function addBoardWarningsListener(
   cb: (event: BoardWarningsEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onBoardWarnings', cb)
+}
+
+export function addBoardConfigValuesListener(
+  cb: (event: BoardConfigValuesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onBoardConfigValues', cb)
+}
+export function addMotorConfigValuesListener(
+  cb: (event: MotorConfigValuesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onMotorConfigValues', cb)
+}
+export function addBoardConfigChangeNoticeListener(
+  cb: (event: BoardConfigChangeNoticeEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onBoardConfigChangeNotice', cb)
+}
+
+export function addBoardLightsListener(cb: (event: BoardLightsEvent) => void): EventSubscription {
+  return emitter.addListener('onBoardLights', cb)
 }
 
 export function addAppStatusListener(cb: (event: AppStatusEvent) => void): EventSubscription {
@@ -3129,33 +3643,6 @@ export function addBmsSeriesListener(cb: (event: BmsSeriesUpdate) => void): Even
 
 export function addLocationListener(cb: (event: LocationEvent) => void): EventSubscription {
   return emitter.addListener('onLocation', cb)
-}
-
-/**
- * Compass readings replayed from a Debug Recording, in place of the phone's own magnetometer.
- *
- * The sensor is read in JS, so native can neither observe it nor apply it — it only stores and
- * replays it. A replay feeds these back in at the sensor boundary so every compass-driven feature
- * runs its real code path against the rotation the rider's phone actually measured.
- *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onReplayHeading`
- * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `onReplayHeading`
- */
-export function addReplayPhoneHeadingListener(
-  cb: (event: { headingDeg: number }) => void,
-): EventSubscription {
-  return emitter.addListener('onReplayPhoneHeading', cb)
-}
-
-/**
- * Offer a compass reading to whatever Debug Recording is running; native drops it when nothing is
- * recording. Safe (and intended) to call unconditionally while the map's heading layer is live.
- *
- * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `recordPhoneHeading`
- * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recordPhoneHeading`
- */
-export function recordPhoneHeading(headingDeg: number): void {
-  native.recordPhoneHeading(headingDeg)
 }
 
 /**

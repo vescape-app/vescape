@@ -136,3 +136,57 @@ test.each([
   expect(useTuneSnapshotStore.getState().status).toBe('error')
   expect(useTuneSnapshotStore.getState().error).toBe(message)
 })
+
+test('keeps the displayed snapshot while a re-read is in flight', async () => {
+  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
+  await useTuneSnapshotStore.getState().read()
+  getRefloatConfigSnapshot.mockImplementation(() => new Promise<RefloatConfigSnapshot>(() => {}))
+
+  void useTuneSnapshotStore.getState().read()
+
+  expect(useTuneSnapshotStore.getState().status).toBe('loading')
+  expect(useTuneSnapshotStore.getState().snapshot).toEqual(snapshot)
+})
+
+test('a matching raw config hash leaves the displayed snapshot untouched', async () => {
+  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
+  await useTuneSnapshotStore.getState().read()
+  const displayed = useTuneSnapshotStore.getState().snapshot
+  getRefloatConfigSnapshot.mockImplementation(async () => ({ ...snapshot, capturedAt: 2000 }))
+
+  await useTuneSnapshotStore.getState().read()
+
+  expect(useTuneSnapshotStore.getState().snapshot).toBe(displayed)
+})
+
+test('a differing raw config hash replaces the displayed snapshot', async () => {
+  const { useTuneSnapshotStore } = await import('@/modules/tune/store/tuneSnapshotStore')
+  await useTuneSnapshotStore.getState().read()
+  const fresh = { ...snapshot, rawConfigHash: 'raw-2' }
+  getRefloatConfigSnapshot.mockImplementation(async () => fresh)
+
+  await useTuneSnapshotStore.getState().read()
+
+  expect(useTuneSnapshotStore.getState().snapshot).toEqual(fresh)
+})
+
+test('drops the snapshot when the Board Session ends', async () => {
+  const { useBoardConfigValuesStore } = await import('@/modules/board/store/boardConfigValuesStore')
+  const { startTuneSnapshotSessionSync, useTuneSnapshotStore } =
+    await import('@/modules/tune/store/tuneSnapshotStore')
+  const stop = startTuneSnapshotSessionSync()
+  useBoardConfigValuesStore.getState().replace({
+    boardId: 'board-1',
+    refloatBaseVersion: '1.3.0',
+    capturedAtMs: 1000,
+    freshness: 'fresh',
+    values: { kp: 12 },
+  })
+  await useTuneSnapshotStore.getState().read()
+
+  useBoardConfigValuesStore.getState().replace(null)
+
+  expect(useTuneSnapshotStore.getState().status).toBe('idle')
+  expect(useTuneSnapshotStore.getState().snapshot).toBeNull()
+  stop()
+})

@@ -31,9 +31,10 @@ final class VescProtocolTests: XCTestCase {
   }
 
   func testBuildsBoardMoveRcMoveCommandForOlderRefloat() {
-    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]
+    // [CUSTOM_APP_DATA, magic, RC_MOVE, direction, current, time, current + time]. `time` runs the
+    // request for `time * 100` control-loop steps (~120 ms each), so it must outlive the repeat tick.
     XCTAssertEqual(
-      [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 60, 1, 61],
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 7, 1, 60, 8, 68],
       buildBoardMoveCommand(transport: .direct, generation: .rcMove, input: 127)
     )
     XCTAssertEqual(
@@ -65,6 +66,82 @@ final class VescProtocolTests: XCTestCase {
     let payload = Array(fwVersionPayload("VESC", "Refloat").prefix(3 + 4 + 1 + 15 + 1 + 4))
 
     XCTAssertEqual("FW 6.05 · VESC · Refl", parseFwVersion(payload: payload))
+  }
+
+  func testBuildsLightsControlCommandForBothSwitches() {
+    // mask uint32 BE = 3 (lights + headlights), value = 3 (both on).
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 3],
+      buildLightsControlCommand(
+        transport: .direct, generation: .current, enabled: true, headlightsEnabled: true)
+    )
+    // The mask still names both switches when turning them off, so the value clears both.
+    XCTAssertEqual(
+      [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 0],
+      buildLightsControlCommand(
+        transport: .can(7), generation: .current, enabled: false, headlightsEnabled: false)
+    )
+    // The two switches are independent: the mask names both, the value states each one.
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 1],
+      buildLightsControlCommand(
+        transport: .direct, generation: .current, enabled: true, headlightsEnabled: false)
+    )
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 0, 0, 0, 3, 2],
+      buildLightsControlCommand(
+        transport: .direct, generation: .current, enabled: false, headlightsEnabled: true)
+    )
+  }
+
+  func testBuildsLegacyLightsControlCommandForRefloat11() {
+    // Refloat 1.1 and older: command 202 and a single mask byte, not the uint32 of 1.2+.
+    XCTAssertEqual(
+      [UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3, 3],
+      buildLightsControlCommand(
+        transport: .direct, generation: .legacy, enabled: true, headlightsEnabled: true)
+    )
+    XCTAssertEqual(
+      [UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3, 0],
+      buildLightsControlCommand(
+        transport: .can(7), generation: .legacy, enabled: false, headlightsEnabled: false)
+    )
+  }
+
+  func testResolvesLightsGenerationAtTheRefloat12Boundary() {
+    // 1.2.0 is where the command moved out of the unstable 200+ range.
+    XCTAssertEqual(.legacy, BoardLightsGeneration.forBaseVersion("1.1.2"))
+    XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion("1.2.0"))
+    XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion("2.0.0"))
+    // An unreadable version guesses current: the board ignores a command it does not know.
+    XCTAssertEqual(.current, BoardLightsGeneration.forBaseVersion(nil))
+  }
+
+  func testParsesLightsControlEcho() {
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: true),
+      parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 3])
+    )
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: false),
+      parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 1])
+    )
+    // Both bits are read independently: headlights on, lights off.
+    XCTAssertEqual(
+      BoardLightsState(enabled: false, headlightsEnabled: true),
+      parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20, 2])
+    )
+    // A telemetry frame must never be mistaken for the lights echo — this interception sits in front
+    // of the telemetry parser, in both the direct and the CAN-forwarded form.
+    XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
+    XCTAssertNil(parseLightsControlResponse([UInt8(COMM_FORWARD_CAN), 7, UInt8(COMM_CUSTOM_APP_DATA), 101, 10, 2]))
+    // The legacy echo carries the same status byte under command 202.
+    XCTAssertEqual(
+      BoardLightsState(enabled: true, headlightsEnabled: true),
+      parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 202, 3])
+    )
+    // A truncated echo has no state byte to read.
+    XCTAssertNil(parseLightsControlResponse([UInt8(COMM_CUSTOM_APP_DATA), 101, 20]))
   }
 
   func testBuildsShortPacketWithCrc() {

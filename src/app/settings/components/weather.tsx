@@ -170,11 +170,11 @@ export default function WeatherPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   iconPreview: { flexDirection: 'row', gap: 16, alignItems: 'center', paddingVertical: 8 },
-  metaPrimary: { color: theme.palette.slate.textSecondary, fontSize: 12, fontWeight: '600' },
-  metaSecondary: { color: theme.palette.slate.textDim, fontSize: 11 },
+  metaPrimary: { color: theme.neutral.textSecondary, fontSize: 12, fontWeight: '600' },
+  metaSecondary: { color: theme.neutral.textDim, fontSize: 11 },
   statPreview: { flexDirection: 'row', gap: 24, alignItems: 'center', paddingVertical: 8 },
   pillPreview: { alignItems: 'flex-start', paddingVertical: 8 },
   stripPreview: { marginHorizontal: -14, paddingVertical: 8 },

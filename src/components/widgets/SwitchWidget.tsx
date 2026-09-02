@@ -2,8 +2,12 @@ import { StyleSheet, Switch, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import type { Icon } from 'phosphor-react-native'
 
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import {
+  useResolvedSecondaryWidgetSurface,
+  type WidgetSize,
+} from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface SwitchWidgetProps {
   label: string
@@ -31,22 +35,25 @@ export function SwitchWidget({
   accessibilityLabel,
 }: SwitchWidgetProps) {
   const square = size === 'square'
+  const neutral = useResolvedNeutralColors()
+  const surface = useResolvedSecondaryWidgetSurface()
+  const resolvedAccent = useResolvedColor(accent)
 
   const control = (
     <Switch
       value={value}
       onValueChange={onValueChange}
       disabled={disabled}
-      trackColor={{ false: theme.palette.slate.border, true: theme.alpha(accent, 0.6) }}
-      thumbColor={value ? accent : theme.palette.slate.textMuted}
-      ios_backgroundColor={theme.palette.slate.border}
+      trackColor={{ false: neutral.border, true: theme.alpha(resolvedAccent, 0.6) }}
+      thumbColor={value ? resolvedAccent : neutral.textMuted}
+      ios_backgroundColor={neutral.border}
       accessibilityLabel={accessibilityLabel ?? label}
     />
   )
 
   if (square) {
     return (
-      <View style={[styles.widget, styles.widgetSquare, disabled && styles.disabled]}>
+      <View style={[surface, styles.widgetSquare, disabled && styles.disabled]}>
         {IconComponent ? <IconComponent size={26} color={accent} weight="duotone" /> : null}
         <Text style={styles.label} numberOfLines={2}>
           {label}
@@ -57,7 +64,7 @@ export function SwitchWidget({
   }
 
   return (
-    <View style={[styles.widget, styles.widgetRow, disabled && styles.disabled]}>
+    <View style={[surface, styles.widgetRow, disabled && styles.disabled]}>
       {IconComponent ? <IconComponent size={22} color={accent} weight="duotone" /> : null}
       <View style={styles.text}>
         <Text style={styles.label}>{label}</Text>
@@ -69,9 +76,6 @@ export function SwitchWidget({
 }
 
 const styles = StyleSheet.create({
-  widget: {
-    ...widgetSurface,
-  },
   widgetRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -93,12 +97,12 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   label: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
   },
   hint: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
   },
   squareControl: {
