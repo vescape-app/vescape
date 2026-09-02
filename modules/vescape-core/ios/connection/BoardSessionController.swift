@@ -239,6 +239,10 @@ internal final class BoardSessionController: VescGattListener {
   private var latestPreciseLocation: TelemetryLocationCapture?
   private let courseDeriver = GpsCourseDeriver()
   private var recentLocations: [[String: Any?]] = []
+  /// True when a replay parked a live GPS monitor that was already running. The replay borrowed
+  /// position for its lifetime; its teardown hands it back.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
+  private var gpsSuppressedByReplay = false
   /// Lives in the monitor, not mirrored here: authorization can be answered after `start()` returns,
   /// so a stored copy would go stale the moment the permission dialog resolves.
   private var gpsError: String? { gpsMonitor.error }
@@ -1088,12 +1092,13 @@ internal final class BoardSessionController: VescGattListener {
     BoardWarningFailureReporter.shared.beginSession()
     // Guarding `startLocationUpdates` is not enough: the map, the recording toggle or a prior live
     // session may already have the GPS monitor running, and those live fixes would fight the
-    // recorded ones. A replay owns position, so park the live monitor for its lifetime; every
-    // session end stops the monitor anyway, so there is nothing to unwind here.
+    // recorded ones. A replay owns position, so park the live monitor for its lifetime and unwind
+    // it in the session teardown — session end no longer stops GPS on its own.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
     if replayTransport == nil {
       _ = gpsMonitor.start()
     } else if gpsMonitor.active {
+      gpsSuppressedByReplay = true
       gpsMonitor.stop(reason: "replay_owns_position")
     }
     // Fresh rule set for this session's alert engine — only the connected Board's enabled rules
@@ -1158,6 +1163,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func endSession(phase: BoardPhase, error: String?) {
+    let wasReplay = replayTransport != nil
     // Nothing left to resurrect: drop the trapdoor so the next cold start stays BLE-free (ADR 0034).
     SessionResumeStore.shared.clear()
     clearPendingResume()
@@ -1197,7 +1203,6 @@ internal final class BoardSessionController: VescGattListener {
       status: error == nil ? "stopped" : "disconnected",
       markerType: error == nil ? "disconnect" : "error"
     )
-    gpsMonitor.stop(reason: "board_session_ended")
     stopPolling()
     stopReconnect()
     configController.onSessionTerminated(error ?? "Board session ended", connection: fallbackConfigRWConnection())
@@ -1213,10 +1218,7 @@ internal final class BoardSessionController: VescGattListener {
     boardName = nil
     boardError = error
     lastTelemetryAt = nil
-    latestLocation = nil
-    latestPreciseLocation = nil
-    courseDeriver.reset()
-    recentLocations.removeAll(keepingCapacity: true)
+    releaseGpsFromSession(wasReplay: wasReplay)
     endLiveActivity()
     settleConnect(success: false, code: error == nil ? nil : "DISCONNECTED", message: error)
     setPhase(phase)
@@ -1336,6 +1338,7 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func fail(code: String, message: String) {
+    let wasReplay = replayTransport != nil
     // Same reasoning as `endSession`: no live session means nothing to resurrect.
     SessionResumeStore.shared.clear()
     clearPendingResume()
@@ -1353,7 +1356,6 @@ internal final class BoardSessionController: VescGattListener {
     session = nil
     config = nil
     recordingCoordinator.failSession()
-    gpsMonitor.stop(reason: "board_session_failed")
     stopPolling()
     stopReconnect()
     configController.onSessionTerminated(message, connection: fallbackConfigRWConnection())
@@ -1363,6 +1365,7 @@ internal final class BoardSessionController: VescGattListener {
     // The shifted clock belongs to the replay that installed it; anything running between here and
     // the next session must not still be reading time from the past.
     sessionClock = SystemSessionClock.shared
+    releaseGpsFromSession(wasReplay: wasReplay)
     endLiveActivity()
     emit?("onError", ["message": message])
     setPhase(.error)
@@ -2357,6 +2360,28 @@ internal final class BoardSessionController: VescGattListener {
         precise: isPreciseGpsFix(accuracyM: fix.accuracyM)
       )
     )
+  }
+
+  /// Board Session teardown's only business with GPS. A Board Session does not own the monitor or
+  /// the fixes: GPS is app-level map data that survives connect and disconnect
+  /// (`docs/connectionState.md`), so a live session end leaves both exactly as it found them.
+  ///
+  /// A replay is the exception. It fed recorded fixes through the live path for its lifetime, so
+  /// they are dropped here rather than leaking onto the live map, and the live monitor the replay
+  /// parked is handed back. Must run after `replayTransport` is cleared — `startLocationUpdates`
+  /// refuses to arm while a replay is installed.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsSuppressedByReplay`
+  private func releaseGpsFromSession(wasReplay: Bool) {
+    guard wasReplay else { return }
+    latestLocation = nil
+    latestPreciseLocation = nil
+    courseDeriver.reset()
+    recentLocations.removeAll(keepingCapacity: true)
+    if gpsSuppressedByReplay {
+      gpsSuppressedByReplay = false
+      startLocationUpdates()
+    }
   }
 
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
