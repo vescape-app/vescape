@@ -33,22 +33,33 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   private var staleReported = false
   private var staleTimer: DispatchSourceTimer?
 
+  /// Injected so tests can drive the authorization transitions the phase is built on; production
+  /// always gets a real `CLLocationManager`.
+  private let makeLocationManager: () -> CLLocationManager
+
   init(
     onLocation: @escaping (TelemetryLocationCapture) -> Void,
     onAuthorizationResolved: @escaping () -> Void,
     record: @escaping (String, [String: Any?]) -> Void = { name, props in
       DiagnosticsRecorder.shared.record(eventName: name, properties: props)
-    }
+    },
+    makeLocationManager: @escaping () -> CLLocationManager = { CLLocationManager() }
   ) {
     self.onLocation = onLocation
     self.onAuthorizationResolved = onAuthorizationResolved
     self.record = record
+    self.makeLocationManager = makeLocationManager
   }
 
   var active: Bool { manager != nil }
   /// Narrower than `active`: true only once `startUpdatingLocation()` actually ran, so diagnostics
   /// can tell a pending permission dialog apart from flowing fixes.
   var updatesStarted: Bool { armed }
+  /// Live State phase. `active` means updates are running, not merely that a manager exists — a
+  /// manager held while the permission dialog is open reports `starting`.
+  var phase: GpsPhase {
+    GpsPhase.resolve(retained: manager != nil, updatesStarted: armed, error: lastError)
+  }
   var error: String? { lastError }
   var authorization: String {
     switch authorizationManager().authorizationStatus {
@@ -94,6 +105,9 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     manager?.delegate = nil
     manager = nil
     armed = false
+    // A stopped monitor is idle, not failed. `fail()` re-sets the error right after this call, so a
+    // refusal still lands on `error` — matching Android, which clears `gpsError` on every stop.
+    lastError = nil
     armedAtMs = nil
     firstFixReported = false
     staleReported = false
@@ -106,7 +120,7 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
   }
 
   private func makeManager() -> CLLocationManager {
-    let manager = CLLocationManager()
+    let manager = makeLocationManager()
     manager.delegate = self
     manager.desiredAccuracy = kCLLocationAccuracyBest
     manager.distanceFilter = kCLDistanceFilterNone
@@ -115,7 +129,7 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
 
   /// The live manager already carries the authorization state; only fall back to a throwaway
   /// instance when the monitor is stopped, so status reads do not allocate a manager per call.
-  private func authorizationManager() -> CLLocationManager { manager ?? CLLocationManager() }
+  private func authorizationManager() -> CLLocationManager { manager ?? makeLocationManager() }
 
   /// Idempotent: the authorization delegate also fires once right after manager creation, and
   /// `start()` is called from several independent places (map, recording toggle, session start).

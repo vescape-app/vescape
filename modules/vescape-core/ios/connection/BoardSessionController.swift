@@ -582,7 +582,9 @@ internal final class BoardSessionController: VescGattListener {
   private func firmwareCommandsTrusted() -> Bool {
     phase == .connected && linkIntegrity == .trusted
   }
-  func gpsActive() -> Bool { gpsMonitor.active }
+  /// Live State GPS phase (`idle | starting | active | error`), owned by the monitor.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `gpsPhase`
+  func gpsPhase() -> String { gpsMonitor.phase.rawValue }
   func gpsLatestLocation() -> [String: Any?]? { latestLocation?.map }
   func gpsLatestPreciseLocation() -> [String: Any?]? { latestPreciseLocation?.map }
   /// Where the rider is, for callers that need a position rather than a *good* position —

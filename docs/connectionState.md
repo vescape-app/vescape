@@ -69,6 +69,16 @@ Android native has separate live runtimes:
 
 Board connect/disconnect must not clear GPS fixes. GPS is app-level map data.
 
+### GPS phase
+
+Native decides the phase; JS renders it and never derives one from a boolean.
+
+- `idle` — no location manager is held.
+- `starting` — a manager is held but updates are not running: the iOS permission dialog is open, or
+  the Android foreground service that arms the monitor is still starting.
+- `active` — location updates were actually requested and fixes can arrive.
+- `error` — the monitor refused or failed. Always carries the same string as `gps.error`.
+
 ## JS role
 
 `src/modules/board/store/bleStore.ts` mirrors native state:

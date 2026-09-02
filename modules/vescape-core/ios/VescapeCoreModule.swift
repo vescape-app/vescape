@@ -1517,7 +1517,7 @@ public class VescapeCoreModule: Module {
         "remoteTilt": coordinator.remoteTiltState(),
       ] as [String: Any?],
       "gps": [
-        "phase": coordinator.gpsActive() ? "active" : "idle",
+        "phase": coordinator.gpsPhase(),
         "latestFix": coordinator.gpsLatestPreciseLocation(),
         "latestApproximateFix": coordinator.gpsLatestLocation(),
         "latestPreciseFix": coordinator.gpsLatestPreciseLocation(),

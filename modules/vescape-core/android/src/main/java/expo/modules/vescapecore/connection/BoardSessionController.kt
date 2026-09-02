@@ -680,7 +680,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var latestDutyExcluded = false
     private var fwVersionString: String? = null
     private var boardReadyTimeoutHandle: Cancellable? = null
-    private var gpsError: String? = null
+    /**
+     * Lives in the monitor, not mirrored here: a refusal is decided inside `GpsMonitor.start()` and
+     * cleared by its `stop()`, so a stored copy would go stale the moment either runs.
+     *
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `gpsError`
+     */
+    private val gpsError: String?
+        get() = gpsMonitor.error
     private var gpsSessionStartedAt: Long? = null
     private var gpsFixCount = 0
     private var gpsPreciseFixCount = 0
@@ -1021,7 +1028,6 @@ private var wearAutoLaunchOnConnect = true
 
     private fun startGpsMonitoring() {
         isStoppingService = false
-        gpsError = null
         startLocationUpdates()
         emitState()
         reassertForeground()
@@ -1030,7 +1036,6 @@ private var wearAutoLaunchOnConnect = true
     fun stopGpsMonitoring() {
         CoreForegroundService.pendingGpsStart = false
         stopLocationUpdates()
-        gpsError = null
         emitState()
         if (boardConfig == null && !groupRideObserver.active) {
             isStoppingService = true
@@ -2786,8 +2791,7 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun startLocationUpdates() {
         if (boardConfig?.replayRecordingName != null) return
-        gpsError = gpsMonitor.start()
-        if (gpsError != null) emitState()
+        if (gpsMonitor.start() != null) emitState()
     }
 
     private fun stopLocationUpdates() {
@@ -2900,7 +2904,7 @@ private var wearAutoLaunchOnConnect = true
             mapOf(
                 "message" to "GPS Board Session summary",
                 "recording_enabled" to recordingCoordinator.telemetryRecordingEnabled,
-                "updates_started" to gpsMonitor.active,
+                "updates_started" to gpsMonitor.updatesStarted,
                 "fix_count" to gpsFixCount,
                 "precise_fix_count" to gpsPreciseFixCount,
                 "first_fix_delay_ms" to gpsFirstFixAt?.minus(startedAt),
@@ -3017,7 +3021,7 @@ private var wearAutoLaunchOnConnect = true
                 connectionSeq = currentSessionId,
                 lastTelemetryAt = telemetry?.lastPacketAt,
                 recentTelemetry = recentTelemetryValue,
-                gpsActive = gpsMonitor.active,
+                gpsPhase = gpsMonitor.phase,
                 latestLocation = locationTracker.latestLocation,
                 latestPreciseLocation = locationTracker.latestPreciseLocation,
                 recentLocations = recentLocationsValue,

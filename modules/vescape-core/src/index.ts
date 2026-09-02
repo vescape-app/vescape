@@ -526,6 +526,14 @@ export interface LiveMetricExclusionUpdate {
 }
 
 export type BoardPhase = SessionStatus
+/**
+ * Native-owned GPS phase. `starting` means a location manager is held but updates are not running
+ * yet (permission dialog open, or the Android service still arming); `active` means updates were
+ * actually requested. JS renders it and never infers one from a boolean.
+ *
+ * @parity /modules/vescape-core/ios/location/GpsPhase.swift
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPhase.kt
+ */
 export type GpsPhase = 'idle' | 'starting' | 'active' | 'error'
 export type ScanPhase = ScanStatus
 /**
