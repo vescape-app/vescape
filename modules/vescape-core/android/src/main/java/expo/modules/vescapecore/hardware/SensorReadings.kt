@@ -32,6 +32,15 @@ private val SPECS = mapOf(
 
 private val UNKNOWN = ReadingSpec()
 
+/**
+ * Readings the app knows a board can take, in the order they are shown.
+ *
+ * A ranged sensor is declared rather than discovered: "nothing in reach" is a reading, and the
+ * firmware leaves the key out of the frame when it gets one. Waiting for a first echo before the
+ * row exists means the row appears late, and everything under it jumps when it does.
+ */
+internal val DECLARED_KEYS: List<String> = SPECS.entries.filter { it.value.max != null }.map { it.key }
+
 internal fun readingSpec(key: String): ReadingSpec = SPECS[key] ?: UNKNOWN
 
 /**

@@ -13,7 +13,8 @@ class SensorLogTest {
         assertTrue(log.append("""{"seq":1,"distanceMm":100,"name":"hw"}""", 1_000L))
         assertFalse(log.append("rate: 10.0 Hz", 1_010L))
         assertFalse(log.append("{}", 1_020L))
-        assertEquals(listOf("seq", "distanceMm"), log.keys())
+        // The distance rows are declared, so they exist before a sensor has answered.
+        assertEquals(listOf("distanceMm", "rangeCm", "seq"), log.keys())
     }
 
     @Test
@@ -37,10 +38,24 @@ class SensorLogTest {
     }
 
     @Test
+    fun `reads a declared sensor as far until it says otherwise`() {
+        val log = SensorLog()
+        assertEquals(listOf("distanceMm", "rangeCm"), log.keys())
+        assertEquals(listOf(40.0, 40.0), log.live().toList())
+
+        log.append("""{"distanceMm":100}""", 1_000L)
+        // The ultrasonic said nothing; it is out of reach, not missing.
+        assertEquals(listOf(10.0, 40.0), log.live().toList())
+    }
+
+    @Test
     fun `reports a range only for the readings that have one`() {
         val log = SensorLog()
         log.append("""{"distanceMm":100,"tempC":40}""", 1_000L)
-        assertEquals(listOf(0.0, 40.0, Double.NaN, Double.NaN), log.ranges().toList())
+        assertEquals(
+            listOf(0.0, 40.0, 0.0, 40.0, Double.NaN, Double.NaN),
+            log.ranges().toList(),
+        )
     }
 
     @Test
@@ -51,11 +66,13 @@ class SensorLogTest {
         log.append("""{"distanceMm":120,"rangeCm":14}""", 1_200L)
         val series = log.series().associateBy { it.key }
 
-        // Row order is the link's, so a sensor dropping out and returning cannot move the rows.
-        assertEquals(listOf("rangeCm", "distanceMm"), log.series().map { it.key })
-        // The ToF had not answered at 1000, so nothing is drawn there; the ranger rides its
-        // ceiling through the frame it missed.
-        assertEquals(listOf(1_100.0, 10.0, 1_200.0, 12.0), series["distanceMm"]!!.points.toList())
+        // Row order is declared, so a sensor dropping out and returning cannot move the rows.
+        assertEquals(listOf("distanceMm", "rangeCm"), log.series().map { it.key })
+        // Both ride their ceiling through the frames they missed.
+        assertEquals(
+            listOf(1_000.0, 40.0, 1_100.0, 10.0, 1_200.0, 12.0),
+            series["distanceMm"]!!.points.toList(),
+        )
         assertEquals(listOf(1_000.0, 12.0, 1_100.0, 40.0, 1_200.0, 14.0), series["rangeCm"]!!.points.toList())
         assertEquals(0.0, series["rangeCm"]!!.min, 0.0)
         assertEquals(40.0, series["rangeCm"]!!.max, 0.0)
@@ -66,7 +83,7 @@ class SensorLogTest {
         val log = SensorLog()
         log.append("""{"tempC":40,"heapKb":200,"seq":1}""", 1_000L)
         log.append("""{"tempC":41,"heapKb":200,"seq":2}""", 1_100L)
-        assertTrue(log.series().isEmpty())
+        assertEquals(listOf("distanceMm", "rangeCm"), log.series().map { it.key })
     }
 
     @Test
@@ -85,8 +102,9 @@ class SensorLogTest {
         val log = SensorLog()
         log.append("""{"distanceMm":100}""", 1_000L)
         log.clear()
-        assertTrue(log.keys().isEmpty())
-        assertEquals(0, log.live().size)
+        // Back to the declared rows, reading far, as if the link had just opened.
+        assertEquals(listOf("distanceMm", "rangeCm"), log.keys())
+        assertEquals(listOf(40.0, 40.0), log.live().toList())
         assertNull(log.rate().hz)
     }
 }

@@ -50,6 +50,22 @@ internal class SensorLog(
     /** When each key first carried a value, so a chart knows how far back it may draw. */
     private val firstSeen = mutableMapOf<String, Long>()
 
+    init {
+        declare()
+    }
+
+    /**
+     * The rows a board is expected to fill, present from the first frame and reading their
+     * ceiling until a sensor says otherwise. Anything else the board sends is appended as it
+     * arrives, so new hardware still needs no app release.
+     */
+    private fun declare() {
+        for (key in DECLARED_KEYS) {
+            keyOrder.add(key)
+            firstSeen[key] = 0L
+        }
+    }
+
     fun keys(): List<String> = keyOrder.toList()
 
     /**
@@ -65,7 +81,9 @@ internal class SensorLog(
             frames.removeFirst()
         }
         for (key in frame.values.keys) {
-            if (firstSeen.put(key, atMs) == null) keyOrder.add(key)
+            // First seen, not last: a key whose stamp moved with every frame would keep the chart
+            // from filling the gaps behind it.
+            if (firstSeen.putIfAbsent(key, atMs) == null) keyOrder.add(key)
         }
         return true
     }
@@ -74,6 +92,7 @@ internal class SensorLog(
         frames.clear()
         keyOrder.clear()
         firstSeen.clear()
+        declare()
     }
 
     /**
