@@ -5,6 +5,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.hardware.HardwareLink
 import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
@@ -183,6 +184,11 @@ class VescapeCoreModule : Module() {
       "onNavigation",
       "onRouteProgress",
       "onWeather",
+      "onHardwareDevice",
+      "onHardwareState",
+      "onHardwareMessage",
+      "onHardwareSensor",
+      "onHardwareSeries",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -378,8 +384,13 @@ class VescapeCoreModule : Module() {
     OnActivityResult { _, result ->
       companionPresence.onActivityResult(result.requestCode, result.resultCode)
     }
+    // Hardware Link is Android-only for now; the sink survives module reloads through OnDestroy.
+    HardwareLink.emit = { name, body -> mainHandler.post { sendEvent(name, body) } }
+
     OnDestroy {
       frontendActive = false
+      HardwareLink.emit = null
+      HardwareLink.stopScan()
       observedEvents.clear()
       // Detach the JS-facing emit sink so the process-singleton registry doesn't keep the destroyed
       // module reachable (mirrors iOS OnDestroy nulling `onChange`). A fresh module re-attaches in
@@ -400,6 +411,23 @@ class VescapeCoreModule : Module() {
     }
 
     Function("scan") { startScan(resetRetries = true) }
+    /**
+     * Vescape hardware device (ESP32 running `vescape-hardware`) over raw Nordic UART.
+     * TODO(ios parity): Android-only by request; no Swift peer yet.
+     * @parity /modules/vescape-core/src/index.ts `hardwareStartScan`
+     */
+    Function("hardwareStartScan") { HardwareLink.startScan(context.applicationContext) }
+    Function("hardwareStopScan") { HardwareLink.stopScan() }
+    Function("hardwareConnect") { id: String -> HardwareLink.connect(context.applicationContext, id) }
+    Function("hardwareDisconnect") { HardwareLink.disconnect() }
+    // Async: resolves only once the device acknowledges the write (or it times out), so the JS
+    // console can tell "delivered" apart from "the stack took it".
+    AsyncFunction("hardwareSend") { text: String, promise: Promise ->
+      HardwareLink.send(text) { ok, status, detail ->
+        promise.resolve(mapOf("ok" to ok, "status" to status, "detail" to detail))
+      }
+    }
+    Function("getHardwareState") { HardwareLink.state() }
     Function("stopScan") { stopScanInternal() }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }

@@ -2040,6 +2040,91 @@ export type CriticalRideNotificationPermissionStatus =
   | 'unknown'
 
 /**
+ * Vescape hardware device (ESP32-S3 running the `vescape-hardware` firmware), reachable over a raw
+ * Nordic UART link. Separate from the board session: no VESC framing, no reconnect, no recording.
+ *
+ * TODO(ios parity): Android-only by request. Calling these on iOS throws — guard with `Platform.OS`.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/hardware/HardwareLink.kt
+ */
+export type HardwarePhase = 'idle' | 'scanning' | 'connecting' | 'connected' | 'error'
+
+export interface HardwareStateEvent {
+  phase: HardwarePhase
+  deviceId: string | null
+  deviceName: string | null
+  error: string | null
+}
+
+export interface HardwareDeviceEvent {
+  id: string
+  name: string
+  rssi: number
+}
+
+/** Outcome of a write, as the device acknowledged it. */
+export interface HardwareWriteResult {
+  ok: boolean
+  /** Raw Android GATT status, or -1 when the write never reached the peer. */
+  status: number
+  detail: string | null
+}
+
+export interface HardwareMessage {
+  /** UTF-8 decoded notification payload from the device. */
+  text: string
+  atMs: number
+}
+
+/**
+ * Notifications received since the last delivery, oldest first.
+ *
+ * Batched rather than one event per notification: the board can push fifty a second, and a JS
+ * callback each is enough to starve the JS thread before any of it is drawn. Every notification
+ * is here, with its own arrival time.
+ */
+export interface HardwareMessageEvent {
+  messages: HardwareMessage[]
+}
+
+/**
+ * The board's live readings, already parsed, scaled and clamped natively — the link can push
+ * fifty frames a second, and doing that work in JS starves the JS thread before any of it is
+ * drawn. `values` is parallel to `keys`, in the order the board first sent each key; NaN is a
+ * sensor with nothing to say.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/hardware/SensorLog.kt `live`
+ */
+export interface HardwareSensorEvent {
+  keys: string[]
+  values: number[]
+  /** Flat `[min0, max0, ...]` parallel to `keys`, NaN where the reading has no fixed range. */
+  ranges: number[]
+  /** Frames per second actually delivered, or null until there are two frames to time. */
+  hz: number | null
+  /** Frames the board numbered but the app never received, inside the rate window. */
+  dropped: number
+  /** What the board's newest frame cost to gather, the floor under any requested rate. */
+  readMs: number | null
+}
+
+/**
+ * One chart row, decimated natively to the window the screen draws.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/hardware/SensorLog.kt `SensorSeries`
+ */
+export interface HardwareSeries {
+  key: string
+  /** Flat `[ts0, v0, ts1, v1, ...]`, in display units. */
+  points: number[]
+  min: number
+  max: number
+}
+
+export interface HardwareSeriesEvent {
+  series: HardwareSeries[]
+}
+
+/**
  * Event names must match the native `Events(...)` declarations exactly — a name only listed here
  * yields a listener that never fires.
  *
@@ -2093,6 +2178,16 @@ type VescapeCoreEvents = {
   onRouteProgress: (event: RouteProgressEvent) => void
   /** Native forecast, on every successful refresh and on subscribe. */
   onWeather: (event: WeatherEvent) => void
+  /** A Vescape hardware device seen during a Hardware Link scan (Android only). */
+  onHardwareDevice: (event: HardwareDeviceEvent) => void
+  /** Hardware Link phase changed (Android only). */
+  onHardwareState: (event: HardwareStateEvent) => void
+  /** Lines the hardware device sent over Nordic UART, batched (Android only). */
+  onHardwareMessage: (event: HardwareMessageEvent) => void
+  /** Live sensor readings, ~10x a second (Android only). */
+  onHardwareSensor: (event: HardwareSensorEvent) => void
+  /** Decimated sensor history for the charts, ~4x a second (Android only). */
+  onHardwareSeries: (event: HardwareSeriesEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2110,6 +2205,12 @@ interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) =
 type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   scan(): void
   stopScan(): void
+  hardwareStartScan(): void
+  hardwareStopScan(): void
+  hardwareConnect(id: string): void
+  hardwareDisconnect(): void
+  hardwareSend(text: string): Promise<HardwareWriteResult>
+  getHardwareState(): HardwareStateEvent
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
@@ -3574,4 +3675,67 @@ export function addGroupRideErrorListener(
   cb: (event: GroupRideErrorEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideError', cb)
+}
+
+/**
+ * Hardware Link controls. Android-only for now — callers must guard with `Platform.OS`.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `hardwareStartScan`
+ */
+export function hardwareStartScan(): void {
+  native.hardwareStartScan()
+}
+
+export function hardwareStopScan(): void {
+  native.hardwareStopScan()
+}
+
+export function hardwareConnect(id: string): void {
+  native.hardwareConnect(id)
+}
+
+export function hardwareDisconnect(): void {
+  native.hardwareDisconnect()
+}
+
+/**
+ * Sends UTF-8 text on the device's TX characteristic. Resolves once the device acknowledges the
+ * write, so a resolved `ok: true` means delivered, not merely queued.
+ */
+export function hardwareSend(text: string): Promise<HardwareWriteResult> {
+  return native.hardwareSend(text)
+}
+
+export function getHardwareState(): HardwareStateEvent {
+  return native.getHardwareState()
+}
+
+export function addHardwareDeviceListener(
+  cb: (event: HardwareDeviceEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareDevice', cb)
+}
+
+export function addHardwareStateListener(
+  cb: (event: HardwareStateEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareState', cb)
+}
+
+export function addHardwareMessageListener(
+  cb: (event: HardwareMessageEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareMessage', cb)
+}
+
+export function addHardwareSensorListener(
+  cb: (event: HardwareSensorEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareSensor', cb)
+}
+
+export function addHardwareSeriesListener(
+  cb: (event: HardwareSeriesEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onHardwareSeries', cb)
 }
