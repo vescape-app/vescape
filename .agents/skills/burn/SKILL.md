@@ -1,11 +1,13 @@
 ---
 name: burn
-description: Implement one tracked issue and close it on the current branch — `/to-code` then `/done`, no PR ceremony. Use when the user invokes `/burn <issue-id>`, says "implement and close #123", or wants an issue finished on a branch that already exists.
+description: Implement one tracked issue, commit, close it, and push the current branch. Use when the user invokes `/burn <issue-id>`, says "implement and close #123", or wants an issue finished on a branch that already exists.
 ---
 
 # Burn
 
-One issue, implemented and closed, on the branch already checked out. `/to-code` + `/done`.
+One issue, implemented, committed, closed, and pushed on the branch already checked out. `/to-code` + `/done` + `git push`.
+
+Invoking `/burn` authorizes the issue commit and push. Continue through both without asking for separate confirmation. `--no-push` skips only the push; the commit is still required.
 
 No PR, no branch creation. Need a PR opened -> `/burn --no-push` then `/pr`. Want N issues off one PR -> `/burndown` (it delegates a burn per issue).
 
@@ -49,9 +51,9 @@ Skip to-code step 6 (commit) — `/done` owns the commit.
 
 That skill's refusal triggers stay in force: no concrete expected behavior, incompatible directions, safety-sensitive board behavior, or missing hardware/creds -> stop and ask, one question at a time.
 
-## Step 2 — Close
+## Step 2 — Commit and close
 
-Follow `.agents/skills/done/SKILL.md` with the resolved issue id. It owns verification gate, scoped staging, commit message format (`<summary> #<id>`), and the close comment.
+Follow `.agents/skills/done/SKILL.md` with the resolved issue id. It owns verification gate, scoped staging, commit message format, and the close comment. Create the scoped commit before closing the issue.
 
 Do not re-run to-code's verification — `/done` verifies. One gate, not two.
 
@@ -59,7 +61,7 @@ Tests fail -> `/done` stops. Do not close, do not push. Surface and stop.
 
 ## Step 3 — Push (default on)
 
-`/done` deliberately does not push. Burn does, unless `--no-push`:
+`/done` deliberately does not push. Burn must continue to push after `/done` completes, unless `--no-push`. Its invocation supplies the explicit push authorization required by `/done`:
 
 ```bash
 git push origin <current-branch>
@@ -67,7 +69,7 @@ git push origin <current-branch>
 
 Rejected non-fast-forward -> `git pull --rebase origin <branch>` then retry once. Conflicts -> `git rebase --abort`, report, stop. Never force.
 
-`--no-push` exists for callers that batch pushes (`/burndown`) or when the branch has no upstream yet.
+`--no-push` exists for callers that batch pushes (`/burndown`) or explicitly defer the push. A missing upstream does not skip the push; the command above specifies the remote and branch.
 
 ## Report
 
