@@ -621,6 +621,15 @@ export interface TelemetryMinuteBucket {
   bucketStartMs: number
   /** Owning Board (`boards.id`), or null when the samples match no saved Board. */
   boardId: string | null
+  /**
+   * Owning Ride Recording, or null for buckets aggregated before durable recording identity
+   * existed. Board attribution and recording identity are separate facts: two recordings of one
+   * Board can share a minute and stay two buckets (ADR 0038).
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift `historyMap`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getHistory`
+   */
+  recordingId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
   boardName: string
   sampleCount: number

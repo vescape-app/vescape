@@ -5,7 +5,11 @@ import android.content.Context
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.AppSettings
+import expo.modules.vescapecore.telemetry.RIDE_RECORDING_END_BOARD_CHANGE
+import expo.modules.vescapecore.telemetry.RIDE_RECORDING_END_DISCONNECTED
+import expo.modules.vescapecore.telemetry.RIDE_RECORDING_END_STOPPED
 import expo.modules.vescapecore.telemetry.TelemetryCapture
+import expo.modules.vescapecore.telemetry.TelemetryLocationCapture
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 
 // @parity /modules/vescape-core/ios/recording/RecordingCoordinator.swift
@@ -33,13 +37,17 @@ internal class RecordingCoordinator(
 
     fun beginBoardSession(config: SessionConfig) {
         connectionLostMarkerAt = null
+        // A recording belongs to exactly one Board. An explicit connection attempt to another one
+        // ends the previous recording here, before the attempt can succeed or fail — a failed
+        // connection must not reopen it either (ADR 0038).
+        endOpenRideRecording(RIDE_RECORDING_END_BOARD_CHANGE)
         recorder = if (config.recordingEnabled) {
             SessionRecorder(context, config).also { it.start() }
         } else {
             null
         }
         telemetryStore = if (config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled) {
-            configuredTelemetryStore()
+            configuredTelemetryStore(config)
         } else {
             null
         }
@@ -55,7 +63,7 @@ internal class RecordingCoordinator(
             false
         }
         if (autoRecording && telemetryStore == null) {
-            telemetryStore = configuredTelemetryStore()
+            telemetryStore = configuredTelemetryStore(config)
         }
         recordMarker("connected", config)
     }
@@ -63,6 +71,7 @@ internal class RecordingCoordinator(
     fun finishBoardSession(status: String, markerType: String, config: SessionConfig?) {
         finishRecording(status)
         recordMarker(markerType, config)
+        endOpenRideRecording(RIDE_RECORDING_END_DISCONNECTED)
         flushTelemetryBlocking()
         telemetryStore = null
         connectionLostMarkerAt = null
@@ -70,6 +79,7 @@ internal class RecordingCoordinator(
 
     fun failSession(status: String = "error") {
         finishRecording(status)
+        endOpenRideRecording(RIDE_RECORDING_END_DISCONNECTED)
         flushTelemetryBlocking()
         telemetryStore = null
         connectionLostMarkerAt = null
@@ -93,6 +103,14 @@ internal class RecordingCoordinator(
 
     fun recordTelemetry(capture: TelemetryCapture) {
         telemetryStore?.recordTelemetry(capture)
+    }
+
+    /**
+     * Offer one GPS Fix to the Ride Track. Independent of telemetry arrival: while a Ride Recording
+     * is open and unpaused, fixes keep landing straight through a board dropout (ADR 0038).
+     */
+    fun recordGpsFix(location: TelemetryLocationCapture) {
+        telemetryStore?.recordGpsFix(location)
     }
 
     /** Marks where a Ride Recording entered an Idle Pause so the resulting gap is explained (ADR-0021). */
@@ -120,13 +138,14 @@ internal class RecordingCoordinator(
 
     fun enableTelemetryRecording(config: SessionConfig) {
         if (telemetryStore == null) {
-            telemetryStore = configuredTelemetryStore()
+            telemetryStore = configuredTelemetryStore(config)
             recordMarker("connected", config)
         }
     }
 
     fun disableTelemetryRecording(config: SessionConfig?) {
         recordMarker("app_stop", config, "Recording stopped")
+        endOpenRideRecording(RIDE_RECORDING_END_STOPPED)
         flushTelemetryBlocking()
         telemetryStore = null
         connectionLostMarkerAt = null
@@ -145,7 +164,12 @@ internal class RecordingCoordinator(
         telemetryStore?.flushBlocking()
     }
 
-    private fun configuredTelemetryStore(): TelemetryRepository {
+    /** Closing an already-closed recording is a no-op; the store owns that check. */
+    private fun endOpenRideRecording(reason: String) {
+        TelemetryRepository.get(context).endRideRecording(reason)
+    }
+
+    private fun configuredTelemetryStore(config: SessionConfig?): TelemetryRepository {
         val store = TelemetryRepository.get(context)
         val settings = try {
             kotlinx.coroutines.runBlocking {
@@ -165,6 +189,9 @@ internal class RecordingCoordinator(
             emptyList()
         }
         store.reloadPrivacyZones(zones)
+        // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
+        // boundary, minted before the first sample or fix can be admitted.
+        store.beginRideRecording(config?.appBoardId)
         return store
     }
 

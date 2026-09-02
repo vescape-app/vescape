@@ -1,7 +1,5 @@
 package expo.modules.vescapecore.connection
 
-import expo.modules.vescapecore.protocol.toCapture
-
 import expo.modules.vescapecore.service.foregroundServiceType
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
@@ -42,6 +40,7 @@ import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.protocol.LocationSnapshot
+import expo.modules.vescapecore.protocol.toCapture
 import expo.modules.vescapecore.location.LocationTracker
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
@@ -2857,9 +2856,26 @@ private var wearAutoLaunchOnConnect = true
     private fun onLocationUpdated(location: Location) {
         recordGpsFix(location)
         locationTracker.onLocationUpdated(location)
+        recordRideTrackFix()
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
+    }
+
+    /**
+     * Offer the fix that just arrived to the **Ride Track**.
+     *
+     * On the GPS clock, not the frame clock: this runs whether or not telemetry is flowing, which is
+     * what keeps the route alive through a board dropout (ADR 0038). Poor fixes are offered too —
+     * the store keeps them with their reported accuracy and the precision rule applies on read.
+     *
+     * Idle Pause halts both durable streams together, and paused fixes are dropped rather than
+     * backfilled on resume (ADR 0021). Live display, presence and the map are untouched by it.
+     */
+    private fun recordRideTrackFix() {
+        if (idlePauseDetector.isPaused) return
+        val snapshot = locationTracker.latestLocation ?: return
+        recordingCoordinator.recordGpsFix(snapshot.toCapture())
     }
 
     /**

@@ -547,6 +547,7 @@ function addHistoryRide(
 
   const bucket: TelemetryMinuteBucket = {
     id: `e2e-bucket-${rideStartMs}`,
+    recordingId: null,
     startAtMs: rideStartMs,
     endAtMs: rideEndMs,
     bucketStartMs: rideStartMs,

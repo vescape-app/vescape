@@ -2403,10 +2403,26 @@ internal final class BoardSessionController: VescGattListener {
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
     recordGpsFix(incoming)
     let location = locationTracker.onLocationUpdated(incoming)
+    recordRideTrackFix(location)
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
     emit?("onLocation", location.map)
+  }
+
+  /// Offer the fix that just arrived to the **Ride Track**.
+  ///
+  /// On the GPS clock, not the frame clock: this runs whether or not telemetry is flowing, which is
+  /// what keeps the route alive through a board dropout (ADR 0038). Poor fixes are offered too — the
+  /// store keeps them with their reported accuracy and the precision rule applies on read.
+  ///
+  /// Idle Pause halts both durable streams together, and paused fixes are dropped rather than
+  /// backfilled on resume (ADR 0021). Live display, presence and the map are untouched by it.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `recordRideTrackFix`
+  private func recordRideTrackFix(_ location: TelemetryLocationCapture) {
+    guard !idlePauseDetector.isPaused else { return }
+    recordingCoordinator.recordGpsFix(location)
   }
 
   /// One low-volume Local Diagnostic Event per Board Session. No coordinates leave the GPS path.

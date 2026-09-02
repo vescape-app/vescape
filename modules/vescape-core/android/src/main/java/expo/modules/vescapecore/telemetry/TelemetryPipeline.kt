@@ -303,7 +303,7 @@ internal class TelemetryPipeline(
 
         val capture = captureBuilder(parsed, cfg, canId)
         val baseEventMap = parsed.toMap().toMutableMap()
-        val bucketPoint = FullTelemetryState.from(capture).toBucketPoint()
+        val bucketPoint = FullTelemetryState.from(capture, recordingId = null).toBucketPoint()
         val updates = synchronized(liveLock) {
             liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap))
             pruneLiveTelemetryPoints(parsed.lastPacketAt)

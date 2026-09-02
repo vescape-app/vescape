@@ -35,6 +35,10 @@ internal final class RecordingCoordinator {
   func currentRecorder() -> SessionRecorder? { recorder }
 
   func beginBoardSession(config: BoardConnectConfig) {
+    // A recording belongs to exactly one Board. An explicit connection attempt to another one ends
+    // the previous recording here, before the attempt can succeed or fail — a failed connection
+    // must not reopen it either (ADR 0038).
+    store.endRideRecording(reason: RIDE_RECORDING_END_BOARD_CHANGE)
     activeConfig = config
     recorder?.finish(status: "stopped")
     recorder = nil
@@ -83,6 +87,7 @@ internal final class RecordingCoordinator {
     if let config = activeConfig, enabled {
       recordMarker(markerType, config: config)
     }
+    store.endRideRecording(reason: RIDE_RECORDING_END_DISCONNECTED)
     store.flushBlocking()
     activeConfig = nil
     enabled = false
@@ -91,6 +96,7 @@ internal final class RecordingCoordinator {
 
   func failSession() {
     finishDebugRecording(status: "error")
+    store.endRideRecording(reason: RIDE_RECORDING_END_DISCONNECTED)
     store.flushBlocking()
     activeConfig = nil
     enabled = false
@@ -111,6 +117,7 @@ internal final class RecordingCoordinator {
     if enabled {
       recordMarker("app_stop", config: config, message: "Recording stopped")
     }
+    store.endRideRecording(reason: RIDE_RECORDING_END_STOPPED)
     store.flushBlocking()
     enabled = false
     startedAtMs = nil
@@ -120,6 +127,13 @@ internal final class RecordingCoordinator {
   func recordTelemetry(_ capture: TelemetryCapture) {
     guard enabled else { return }
     store.recordTelemetry(capture)
+  }
+
+  /// Offer one GPS Fix to the Ride Track. Independent of telemetry arrival: while a Ride Recording
+  /// is open and unpaused, fixes keep landing straight through a board dropout (ADR 0038).
+  func recordGpsFix(_ location: TelemetryLocationCapture) {
+    guard enabled else { return }
+    store.recordGpsFix(location)
   }
 
   // MARK: Raw debug Session Recorder passthroughs
@@ -161,6 +175,9 @@ internal final class RecordingCoordinator {
   private func enableTelemetryRecording(config: BoardConnectConfig, emitConnectedMarker: Bool = true) {
     if !enabled {
       startedAtMs = nowMs()
+      // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
+      // boundary, minted before the first sample or fix can be admitted.
+      store.beginRideRecording(boardId: config.appBoardId)
       if emitConnectedMarker {
         recordMarker("connected", config: config)
       }

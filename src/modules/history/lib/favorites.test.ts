@@ -69,6 +69,7 @@ function bucket(overrides: Partial<TelemetryMinuteBucket>): TelemetryMinuteBucke
     endAtMs: 1_160_000,
     bucketStartMs: 1_100_000,
     boardId: 'ble-1',
+    recordingId: null,
     boardName: 'VESC Board',
     sampleCount: 60,
     gpsPointCount: 10,

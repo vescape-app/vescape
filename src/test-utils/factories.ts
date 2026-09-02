@@ -6,6 +6,7 @@ const BLOCK_DEFAULTS: TelemetryMinuteBucket = {
   endAtMs: 60_000,
   bucketStartMs: 0,
   boardId: 'dev-a',
+  recordingId: null,
   boardName: 'Board A',
   sampleCount: 10,
   gpsPointCount: 5,

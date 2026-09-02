@@ -314,12 +314,7 @@ final class FavoriteStoreTests: XCTestCase {
         tempMotorDeciC: nil,
         gpsSpeedCentiMps: nil,
         gpsTimestampMs: nil,
-        gpsAccuracyCm: nil,
-        latitudeE7: nil,
-        longitudeE7: nil,
-        bearingCentiDeg: nil,
-        altitudeCm: nil,
-        preciseGps: false
+        gpsAccuracyCm: nil
       )
     }
   }

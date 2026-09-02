@@ -97,6 +97,8 @@ internal struct BucketTelemetryPoint {
   let capturedAtMs: Int64
   /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
   let boardId: String?
+  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for rows without durable identity.
+  var recordingId: String = LEGACY_RIDE_RECORDING_ID
   let speedCentiKmh: Int
   let batteryVoltageMv: Int
   let motorCurrentMa: Int
@@ -108,11 +110,6 @@ internal struct BucketTelemetryPoint {
   let gpsSpeedCentiMps: Int?
   let gpsTimestampMs: Int64?
   let gpsAccuracyCm: Int?
-  let latitudeE7: Int64?
-  let longitudeE7: Int64?
-  let bearingCentiDeg: Int?
-  let altitudeCm: Int?
-  let preciseGps: Bool
   var excludedFromAvgSpeed = false
   var excludedFromMaxSpeed = false
   var excludedFromMaxDuty = false
@@ -127,10 +124,11 @@ internal struct FullTelemetryState {
   var boardId: String? { capture.boardId }
   var location: TelemetryLocationCapture? { capture.location }
 
-  func toBucketPoint() -> BucketTelemetryPoint {
+  func toBucketPoint(recordingId: String = LEGACY_RIDE_RECORDING_ID) -> BucketTelemetryPoint {
     BucketTelemetryPoint(
       capturedAtMs: capturedAtMs,
       boardId: boardId,
+      recordingId: recordingId,
       speedCentiKmh: telemetryCenti(t.speed),
       batteryVoltageMv: telemetryMilli(t.batteryVoltage),
       motorCurrentMa: telemetryMilli(t.motorCurrent),
@@ -141,12 +139,7 @@ internal struct FullTelemetryState {
       tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) },
       gpsSpeedCentiMps: location?.speedMps.map { telemetryCenti($0) },
       gpsTimestampMs: location?.timestamp,
-      gpsAccuracyCm: location?.accuracyM.map { telemetryCenti($0) },
-      latitudeE7: location.map { Int64(($0.latitude * 10_000_000.0).rounded()) },
-      longitudeE7: location.map { Int64(($0.longitude * 10_000_000.0).rounded()) },
-      bearingCentiDeg: location?.bearingDeg.map { telemetryCenti($0) },
-      altitudeCm: location?.altitudeM.map { telemetryCenti($0) },
-      preciseGps: location?.precise ?? false
+      gpsAccuracyCm: location?.accuracyM.map { telemetryCenti($0) }
     )
   }
 }

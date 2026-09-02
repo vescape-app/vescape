@@ -1,51 +1,99 @@
 package expo.modules.vescapecore.telemetry
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HistoryGpsProjectionTest {
   @Test
-  fun projectsGpsOnlyFromTelemetrySamples() {
-    val samples = listOf(
-      sample(1L, 1_000L, null),
-      sample(2L, 2_000L, location(2_000L, latitudeE7 = 500_000_000)),
-      sample(3L, 3_000L, location(2_000L, latitudeE7 = 500_000_000)),
-      sample(4L, 4_000L, location(4_000L, latitudeE7 = 500_001_000)),
+  fun measuresDistanceOnlyWithinOneRecording() {
+    val track = listOf(
+      point(1L, 1_000L, latitudeE7 = 500_000_000, recordingId = "a"),
+      point(2L, 2_000L, latitudeE7 = 500_010_000, recordingId = "a"),
+      point(3L, 3_000L, latitudeE7 = 500_020_000, recordingId = "b"),
     )
 
-    val points = samples.toHistoryGpsPoints()
+    val points = track.toRideTrackProjection()
 
-    assertEquals(listOf(2L, 4L), points.map { it.sample.id })
-    assertEquals(2_000L, points[0].location.timestampMs)
-    assertEquals(4_000L, points[1].location.timestampMs)
+    assertNull("first fix of a recording has no predecessor", points[0].distanceFromPreviousCm)
+    assertTrue((points[1].distanceFromPreviousCm ?: 0L) > 0L)
+    assertNull("a new recording never continues the previous track", points[2].distanceFromPreviousCm)
+  }
+
+  @Test
+  fun keepsPoorFixesButMarksThemImprecise() {
+    val boardNames = mapOf("board-1" to "ADV2")
+    val poor = point(9L, 5_000L, latitudeE7 = 500_000_000, accuracyCm = 12_000)
+    val good = point(10L, 6_000L, latitudeE7 = 500_000_000, accuracyCm = 500)
+
+    val maps = listOf(poor, good).toGpsSampleMaps(boardNames)
+
+    assertEquals(2, maps.size)
+    assertEquals(false, maps[0]["precise"])
+    assertEquals(120.0, maps[0]["accuracyM"] as Double, 0.0)
+    assertEquals(true, maps[1]["precise"])
   }
 
   @Test
   fun mapsSameProjectionToRangeAndBucketPayloads() {
-    val samples = listOf(
-      sample(
+    val track = listOf(
+      point(
         id = 7L,
-        capturedAtMs = 10_000L,
-        location = location(
-          timestampMs = 9_900L,
-          latitudeE7 = 500_000_000,
-          longitudeE7 = 190_000_000,
-          gpsSpeedCentiMps = 500,
-        ),
+        fixAtMs = 10_000L,
+        latitudeE7 = 500_000_000,
+        gpsSpeedCentiMps = 500,
       ),
     )
 
-    val gpsSample = samples.toGpsSampleMaps(mapOf("board-1" to "ADV2")).single()
-    val bucketPoint = samples.toBucketLocationPoints().single()
+    val gpsSample = track.toGpsSampleMaps(mapOf("board-1" to "ADV2")).single()
+    val bucketPoint = track.toBucketLocationPoints().single()
 
     assertEquals(7L, gpsSample["id"])
     assertEquals(50.0, gpsSample["latitude"] as Double, 0.0)
     assertEquals(5.0, gpsSample["speedMps"] as Double, 0.0)
+    assertEquals("ADV2", gpsSample["boardName"])
     assertEquals(10_000L, bucketPoint.capturedAtMs)
     assertEquals(500, bucketPoint.gpsSpeedCentiMps)
   }
 
-  private fun sample(id: Long, capturedAtMs: Long, location: ScaledLocation?): HistoryTelemetryState =
+  @Test
+  fun stampsSamplesFromTheTrackWithinTheAgeGate() {
+    val samples = listOf(
+      sample(1L, 10_000L),
+      sample(2L, 40_000L),
+    )
+    val track = listOf(point(1L, 9_000L, latitudeE7 = 500_000_000))
+
+    val stamped = stampTrackLocations(samples, track)
+
+    assertNotNull("a fix one second old still stamps", stamped[0].state.location)
+    assertNull("a fix half a minute old does not", stamped[1].state.location)
+  }
+
+  private fun point(
+    id: Long,
+    fixAtMs: Long,
+    latitudeE7: Int = 500_000_000,
+    longitudeE7: Int = 190_000_000,
+    accuracyCm: Int? = 300,
+    gpsSpeedCentiMps: Int? = null,
+    recordingId: String? = "recording-1",
+  ): RideTrackPointEntity = RideTrackPointEntity(
+    id = id,
+    recordingId = recordingId,
+    boardId = "board-1",
+    fixAtMs = fixAtMs,
+    latitudeE7 = latitudeE7,
+    longitudeE7 = longitudeE7,
+    accuracyCm = accuracyCm,
+    gpsSpeedCentiMps = gpsSpeedCentiMps,
+    bearingCentiDeg = null,
+    altitudeCm = null,
+  )
+
+  private fun sample(id: Long, capturedAtMs: Long): HistoryTelemetryState =
     HistoryTelemetryState(
       id = id,
       state = FullTelemetryState(
@@ -70,23 +118,7 @@ class HistoryGpsProjectionTest {
         odometerCm = null,
         tempMosfetDeciC = null,
         tempMotorDeciC = null,
-        location = location,
+        location = null,
       ),
-    )
-
-  private fun location(
-    timestampMs: Long,
-    latitudeE7: Int,
-    longitudeE7: Int = 190_000_000,
-    gpsSpeedCentiMps: Int? = null,
-  ): ScaledLocation =
-    ScaledLocation(
-      latitudeE7 = latitudeE7,
-      longitudeE7 = longitudeE7,
-      gpsSpeedCentiMps = gpsSpeedCentiMps,
-      bearingCentiDeg = null,
-      accuracyCm = null,
-      altitudeCm = null,
-      timestampMs = timestampMs,
     )
 }

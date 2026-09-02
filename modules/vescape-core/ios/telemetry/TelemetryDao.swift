@@ -2,32 +2,26 @@ import Foundation
 import GRDB
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
-internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
+internal func insertFrame(_ db: Database, _ state: FullTelemetryState, recordingId: String?) throws {
   let t = state.t
-  let loc = state.location
   try db.execute(
     sql: """
       INSERT INTO telemetry_frames (
-        captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, changed_mask_2,
+        captured_at_ms, elapsed_realtime_ms, board_id, recording_id, can_id, flags,
+        changed_mask_1, changed_mask_2,
         speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, duty_permille,
         pitch_centi_deg, roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
-        switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c,
-        latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
-        altitude_cm, location_timestamp_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
     arguments: [
-      state.capturedAtMs, state.elapsedRealtimeMs, state.boardId, state.capture.canId,
-      TELEMETRY_FLAG_KEYFRAME | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
-      Int.max, 1,
+      state.capturedAtMs, state.elapsedRealtimeMs, state.boardId, recordingId, state.capture.canId,
+      TELEMETRY_FLAG_KEYFRAME,
+      Int.max, 0,
       telemetryCenti(t.speed), telemetryMilli(t.batteryVoltage), telemetryMilli(t.motorCurrent), telemetryMilli(t.batteryCurrent), telemetryMilli(t.dutyCycle),
       telemetryCenti(t.pitch), telemetryCenti(t.roll), telemetryCenti(t.balancePitch), telemetryMilli(t.balanceCurrent), t.erpm, t.state,
       t.switchState, telemetryMilli(t.adc1), telemetryMilli(t.adc2), t.odometer.map { Int64(($0 * 100.0).rounded()) },
       t.tempMosfet.map { telemetryDeci($0) }, t.tempMotor.map { telemetryDeci($0) },
-      loc.map { Int64(($0.latitude * 10_000_000.0).rounded()) },
-      loc.map { Int64(($0.longitude * 10_000_000.0).rounded()) },
-      loc?.speedMps.map { telemetryCenti($0) }, loc?.bearingDeg.map { telemetryCenti($0) },
-      loc?.accuracyM.map { telemetryCenti($0) }, loc?.altitudeM.map { telemetryCenti($0) }, loc?.timestamp,
     ]
   )
 }
@@ -36,15 +30,15 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
   try db.execute(
     sql: """
       INSERT INTO telemetry_minute_buckets (
-        bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms,
+        bucket_start_ms, board_id, recording_id, sample_count, first_sample_at_ms, last_sample_at_ms,
         sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
         max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
         max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, max_duty_abs_permille,
         first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
         gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
         first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(bucket_start_ms, board_id) DO UPDATE SET
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(bucket_start_ms, board_id, recording_id) DO UPDATE SET
         sample_count=telemetry_minute_buckets.sample_count + excluded.sample_count,
         last_sample_at_ms=MAX(telemetry_minute_buckets.last_sample_at_ms, excluded.last_sample_at_ms),
         sum_abs_speed_centi_kmh=telemetry_minute_buckets.sum_abs_speed_centi_kmh + excluded.sum_abs_speed_centi_kmh,
@@ -60,6 +54,7 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         last_odometer_cm=COALESCE(excluded.last_odometer_cm, telemetry_minute_buckets.last_odometer_cm),
         gps_point_count=telemetry_minute_buckets.gps_point_count + excluded.gps_point_count,
         precise_gps_point_count=telemetry_minute_buckets.precise_gps_point_count + excluded.precise_gps_point_count,
+        gps_distance_cm=telemetry_minute_buckets.gps_distance_cm + excluded.gps_distance_cm,
         max_gps_speed_centi_mps=MAX(telemetry_minute_buckets.max_gps_speed_centi_mps, excluded.max_gps_speed_centi_mps),
         max_temp_mosfet_deci_c=MAX(telemetry_minute_buckets.max_temp_mosfet_deci_c, excluded.max_temp_mosfet_deci_c),
         max_temp_motor_deci_c=MAX(telemetry_minute_buckets.max_temp_motor_deci_c, excluded.max_temp_motor_deci_c),
@@ -67,11 +62,11 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         last_moving_at_ms=MAX(telemetry_minute_buckets.last_moving_at_ms, excluded.last_moving_at_ms)
       """,
     arguments: [
-      b.bucketStartMs, b.boardId, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
+      b.bucketStartMs, b.boardId, b.recordingId, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
       b.sumAbsSpeedCentiKmh, b.movingSpeedSampleCount, b.sumMovingAbsSpeedCentiKmh, b.maxAbsSpeedCentiKmh,
       b.minBatteryVoltageMv, b.maxMotorCurrentAbsMa, b.maxBatteryCurrentAbsMa, b.batteryUsedWhMilli,
       b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.firstOdometerCm, b.lastOdometerCm,
-      b.gpsPointCount, b.preciseGpsPointCount, b.maxGpsSpeedCentiMps, b.maxTempMosfetDeciC,
+      b.gpsPointCount, b.preciseGpsPointCount, b.gpsDistanceCm, b.maxGpsSpeedCentiMps, b.maxTempMosfetDeciC,
       b.maxTempMotorDeciC, b.firstLatitudeE7, b.firstLongitudeE7, b.firstMovingAtMs, b.lastMovingAtMs,
     ]
   )
@@ -117,11 +112,13 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
     return Double(max(0, last - first)) / 100.0
   }()
   return [
-    "id": "\(row["board_id"] as String):\(row["bucket_start_ms"] as Int64)",
+    // Two recordings of one Board can share a minute, so the recording is part of the identity.
+    "id": "\(row["board_id"] as String):\(row["recording_id"] as String):\(row["bucket_start_ms"] as Int64)",
     "startAtMs": row["first_sample_at_ms"] as Int64,
     "endAtMs": row["last_sample_at_ms"] as Int64,
     "bucketStartMs": row["bucket_start_ms"] as Int64,
     "boardId": (row["board_id"] as String).isEmpty ? nil : row["board_id"] as String,
+    "recordingId": (row["recording_id"] as String).isEmpty ? nil : row["recording_id"] as String,
     "boardName": boardNames[row["board_id"] as String] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "sampleCount": sampleCount,
     "gpsPointCount": row["gps_point_count"] as Int,
@@ -150,7 +147,12 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
   ]
 }
 
-internal func sampleMap(_ row: Row, batteryPercent: Double?, boardNames: [String: String]) -> [String: Any?] {
+internal func sampleMap(
+  _ row: Row,
+  batteryPercent: Double?,
+  boardNames: [String: String],
+  fix: RideTrackPoint?
+) -> [String: Any?] {
   [
     "id": row["id"] as Int64,
     "capturedAtMs": row["captured_at_ms"] as Int64,
@@ -174,8 +176,9 @@ internal func sampleMap(_ row: Row, batteryPercent: Double?, boardNames: [String
     "odometer": (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 },
     "tempMosfet": (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
     "tempMotor": (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 },
-    "latitude": (row["latitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
-    "longitude": (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
+    // Joined from Ride Track on read: position is not a column on this row any more (ADR 0038).
+    "latitude": fix.map { Double($0.latitudeE7) / 10_000_000.0 },
+    "longitude": fix.map { Double($0.longitudeE7) / 10_000_000.0 },
   ]
 }
 
@@ -209,39 +212,14 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   ]
 }
 
-internal func gpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: Any?]] {
-  var previousByBoard: [String: (lat: Double, lon: Double)] = [:]
-  return rows.compactMap { row in
-    guard let latitudeE7 = row["latitude_e7"] as Int64?, let longitudeE7 = row["longitude_e7"] as Int64? else {
-      return nil
-    }
-    let latitude = Double(latitudeE7) / 10_000_000.0
-    let longitude = Double(longitudeE7) / 10_000_000.0
-    let boardId = row["board_id"] as String? ?? ""
-    let previous = previousByBoard[boardId]
-    previousByBoard[boardId] = (latitude, longitude)
-    return [
-      "id": row["id"] as Int64,
-      "capturedAtMs": row["captured_at_ms"] as Int64,
-      "boardId": (row["board_id"] as String?) ?? nil,
-      "boardName": boardNames[boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
-      "latitude": latitude,
-      "longitude": longitude,
-      "speedMps": (row["gps_speed_centi_mps"] as Int?).map { Double($0) / 100.0 },
-      "bearingDeg": (row["bearing_centi_deg"] as Int?).map { Double($0) / 100.0 },
-      "accuracyM": (row["accuracy_cm"] as Int?).map { Double($0) / 100.0 },
-      "altitudeM": (row["altitude_cm"] as Int?).map { Double($0) / 100.0 },
-      "timestamp": (row["location_timestamp_ms"] as Int64?) ?? (row["captured_at_ms"] as Int64),
-      "precise": ((row["accuracy_cm"] as Int?) ?? Int.max) <= 2_000,
-      "distanceFromPreviousM": previous.map { telemetryHaversineM($0.lat, $0.lon, latitude, longitude) },
-    ]
-  }
-}
-
-internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
+/// Rebuild a bucket point from a stored frame, joined to the Ride Track fix that was current when
+/// it was captured — the sanitizers still need GPS speed and accuracy, which no longer live on the
+/// frame (ADR 0038).
+internal func bucketPoint(_ row: Row, fix: RideTrackPoint? = nil) -> BucketTelemetryPoint? {
   BucketTelemetryPoint(
     capturedAtMs: row["captured_at_ms"] as Int64,
     boardId: row["board_id"] as String?,
+    recordingId: (row["recording_id"] as String?) ?? LEGACY_RIDE_RECORDING_ID,
     speedCentiKmh: row["speed_centi_kmh"] as Int? ?? 0,
     batteryVoltageMv: row["battery_voltage_mv"] as Int? ?? 0,
     motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,
@@ -250,14 +228,9 @@ internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
     odometerCm: row["odometer_cm"] as Int64?,
     tempMosfetDeciC: row["temp_mosfet_deci_c"] as Int?,
     tempMotorDeciC: row["temp_motor_deci_c"] as Int?,
-    gpsSpeedCentiMps: row["gps_speed_centi_mps"] as Int?,
-    gpsTimestampMs: row["location_timestamp_ms"] as Int64?,
-    gpsAccuracyCm: row["accuracy_cm"] as Int?,
-    latitudeE7: row["latitude_e7"] as Int64?,
-    longitudeE7: row["longitude_e7"] as Int64?,
-    bearingCentiDeg: row["bearing_centi_deg"] as Int?,
-    altitudeCm: row["altitude_cm"] as Int?,
-    preciseGps: ((row["accuracy_cm"] as Int?) ?? Int.max) <= 2_000
+    gpsSpeedCentiMps: fix?.gpsSpeedCentiMps,
+    gpsTimestampMs: fix?.fixAtMs,
+    gpsAccuracyCm: fix?.accuracyCm
   )
 }
 
