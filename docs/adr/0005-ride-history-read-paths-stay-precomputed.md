@@ -14,3 +14,7 @@ Ride History and profile screens are latency-sensitive. Normal reads must load p
 - Existing Ride History may keep older derived values until an explicit maintenance path exists.
 - Future recalculation of old summaries must be an intentional maintenance workflow, not part of normal reads.
 - Read paths must not mutate durable Ride History as a side effect unless that behavior is documented as maintenance.
+
+## Scope
+
+"Reconstruct" here means replaying raw **Telemetry Samples** to recompute derived values. It does not mean any join at all. Resolving a label or attribute from a small configuration table — a **Board** name from its id, a **Tune Profile** name from its id — is a bounded lookup, not a replay, and this ADR does not forbid it. ADR-0028 relies on that reading.

@@ -74,4 +74,58 @@ final class VescFaultStoreTests: XCTestCase {
     // No foreign key, no cascade: the evidence outlives the Board record on purpose.
     XCTAssertEqual(store.getForBoard("board").count, 1)
   }
+
+  // MARK: - Sync columns (#430)
+
+  private func syncColumns(_ id: String) throws -> (updatedAt: Int64, syncSeq: Int64) {
+    try queue.read { db in
+      let row = try XCTUnwrap(
+        try Row.fetchOne(
+          db,
+          sql: "SELECT updated_at, sync_seq FROM vesc_fault_occurrences WHERE id = ?",
+          arguments: [id]
+        )
+      )
+      return (row["updated_at"] as Int64, row["sync_seq"] as Int64)
+    }
+  }
+
+  /// The whole reason the Occurrence carries its own Change Timestamp: acknowledging a fault edits
+  /// the row without the fault being observed again, so nothing else would carry it to the server.
+  func testDismissalMovesBothSyncColumns() throws {
+    store.upsert(occurrence("a"))
+    let before = try syncColumns("a")
+
+    XCTAssertTrue(store.setDismissed("a", true))
+
+    let after = try syncColumns("a")
+    XCTAssertGreaterThan(after.updatedAt, before.updatedAt)
+    XCTAssertGreaterThan(after.syncSeq, before.syncSeq)
+  }
+
+  /// A rewound clock must not leave the row stamped at or below the copy the server already holds:
+  /// its upsert guard keeps the stored row unless the incoming stamp is strictly newer, so a frozen
+  /// stamp satisfies the scan and still loses the dismissal.
+  func testDismissalNeverStampsAtOrBelowTheStoredValue() throws {
+    store.upsert(occurrence("a"))
+    let ahead = Int64(Date().timeIntervalSince1970 * 1000) + 3_600_000
+    try queue.write { db in
+      try db.execute(sql: "UPDATE vesc_fault_occurrences SET updated_at = ?", arguments: [ahead])
+    }
+
+    XCTAssertTrue(store.setDismissed("a", true))
+
+    XCTAssertEqual(try syncColumns("a").updatedAt, ahead + 1)
+  }
+
+  /// A lifecycle write is a change the server has to see too — a heartbeat that only moves
+  /// `last_observed_at` still has to leave the row above the Sync Cursor.
+  func testLifecycleUpsertMovesTheCursorPosition() throws {
+    store.upsert(occurrence("a"))
+    let before = try syncColumns("a")
+
+    store.upsert(occurrence("a", clearedAtMs: 9_000))
+
+    XCTAssertGreaterThan(try syncColumns("a").syncSeq, before.syncSeq)
+  }
 }

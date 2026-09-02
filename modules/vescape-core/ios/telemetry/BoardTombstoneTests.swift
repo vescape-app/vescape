@@ -138,4 +138,21 @@ final class BoardTombstoneTests: XCTestCase {
     XCTAssertNotNil(try deletedAt("board-1"), "an upsert cleared the tombstone")
     XCTAssertTrue(repo.getBoards().isEmpty, "a resurrected Board came back to the list")
   }
+
+  /// A tombstone is an ordinary write: the server only keeps it if it arrives with a newer stamp
+  /// and the upload scan only sees it if its Sync Cursor moved.
+  func testDeleteMovesBothSyncColumns() throws {
+    seedBoard()
+    let before = try queue.read { db in
+      try Row.fetchOne(db, sql: "SELECT updated_at, sync_seq FROM boards WHERE id = 'board-1'")!
+    }
+
+    repo.deleteBoard("board-1")
+
+    let after = try queue.read { db in
+      try Row.fetchOne(db, sql: "SELECT updated_at, sync_seq FROM boards WHERE id = 'board-1'")!
+    }
+    XCTAssertGreaterThan(after["updated_at"] as Int64, before["updated_at"] as Int64)
+    XCTAssertGreaterThan(after["sync_seq"] as Int64, before["sync_seq"] as Int64)
+  }
 }

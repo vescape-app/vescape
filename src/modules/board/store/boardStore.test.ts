@@ -111,6 +111,7 @@ test('stored Board Link survives a store reload from native boards', async () =>
     name: 'ADV',
     description: null,
     createdAt: 1,
+    updatedAt: 1,
     deletedAt: null,
     batteryConfig: null,
     link: null,
@@ -141,6 +142,7 @@ test('updated battery config survives a store reload from native boards', async 
     name: 'ADV',
     description: null,
     createdAt: 1,
+    updatedAt: 1,
     deletedAt: null,
     batteryConfig: {
       mode: 'preset',

@@ -56,6 +56,10 @@ internal struct AlertRule {
   /// Free-text provenance tag mirroring TS `AlertRule.source`: `manual` (or nil) or `preset`.
   /// JS authors and regenerates preset rules; native only persists the string.
   let source: String?
+  /// Incremental-sync cursor: epoch ms of the last write to this row, from the same clock as
+  /// `createdAt`. Equal to `createdAt` on insert and bumped on every mutation — including the
+  /// targeted enable/disable update — so a toggled rule is visible to sync.
+  let updatedAt: Int64
 }
 
 /// Adds Legal Mode's per-Board speed warning to in-memory rules. No Alert Rule row is materialized.
@@ -86,7 +90,9 @@ internal func withLegalModeOverlay(
       enabled: true,
       soundType: "preset:tick",
       createdAt: 0,
-      source: nil
+      source: nil,
+      // In-memory overlay: no row is ever persisted, so the sync cursor is meaningless here.
+      updatedAt: 0
     ),
   ]
 }

@@ -10,6 +10,7 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.CoreForegroundService
 
 import expo.modules.vescapecore.connection.BoardTransport
+import expo.modules.vescapecore.sync.SyncCoordinator
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -212,6 +213,10 @@ class AppDataRepository private constructor(private val context: Context) {
     dao.deleteBoardWithSettings(id, System.currentTimeMillis())
     dao.deleteBoardConfigValues(id)
     dao.deleteBoardConfigChangeNotice(id)
+    // Motor Config Values are keyed by Board too, and were the one decode cache this path forgot.
+    // Nothing reads them once the Board is a tombstone, and the next link re-reads them from the
+    // controller anyway, so leaving them behind only accumulated rows no one could reach.
+    dao.deleteMotorConfigValues(id)
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
@@ -402,7 +407,7 @@ class AppDataRepository private constructor(private val context: Context) {
 
   suspend fun setAlertRuleEnabled(boardId: String, id: String, enabled: Boolean): Unit =
     withContext(Dispatchers.IO) {
-      dao.setAlertRuleEnabled(boardId, id, enabled)
+      dao.setAlertRuleEnabled(boardId, id, enabled, System.currentTimeMillis())
     }
 
   suspend fun deleteAlertRule(boardId: String, id: String): Unit = withContext(Dispatchers.IO) {
@@ -473,6 +478,9 @@ class AppDataRepository private constructor(private val context: Context) {
         DEFAULT_RIDE_SPLIT_GAP_MINUTES,
         ::validRideSplitGapMinutes,
       ),
+      syncEnabled = req("syncEnabled", false) { it as? Boolean },
+      syncWifiOnly = req("syncWifiOnly", false) { it as? Boolean },
+      syncBackupChoiceMade = req("syncBackupChoiceMade", false) { it as? Boolean },
       riderId = opt("riderId") { it as? String },
       riderName = opt("riderName") { it as? String },
       riderColor = opt("riderColor") { it as? String },
@@ -552,6 +560,8 @@ class AppDataRepository private constructor(private val context: Context) {
         validAutoCloseDelayMinutes(value) ?: return@withContext
       "rideSplitGapMinutes" ->
         validRideSplitGapMinutes(value) ?: return@withContext
+      "syncEnabled", "syncWifiOnly", "syncBackupChoiceMade" ->
+        value as? Boolean ?: return@withContext
       "riderId", "riderName", "riderColor" -> value as? String
       // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
       "legalPolicy" -> return@withContext
@@ -602,6 +612,9 @@ class AppDataRepository private constructor(private val context: Context) {
         "autoCloseEnabled" -> d.autoCloseEnabled
         "autoCloseDelayMinutes" -> d.autoCloseDelayMinutes
         "rideSplitGapMinutes" -> d.rideSplitGapMinutes
+        "syncEnabled" -> d.syncEnabled
+        "syncWifiOnly" -> d.syncWifiOnly
+        "syncBackupChoiceMade" -> d.syncBackupChoiceMade
         "riderId" -> d.riderId
         "riderName" -> d.riderName
         "riderColor" -> d.riderColor
@@ -620,6 +633,12 @@ class AppDataRepository private constructor(private val context: Context) {
           updatedAt = System.currentTimeMillis(),
         ),
       )
+    }
+    // The uploader reads the Wi-Fi switch from native truth, not from a JS call, so a write from any
+    // source — the settings row, the one-time choice, a restored backup — reaches it the same way.
+    when (normalizedKey) {
+      "syncEnabled" -> SyncCoordinator.get(context).setEnabled(coerced as? Boolean ?: false)
+      "syncWifiOnly" -> SyncCoordinator.get(context).setWifiOnly(coerced as? Boolean ?: false)
     }
     notifyDataChanged(AppDataScope.SETTINGS)
   }
@@ -945,6 +964,7 @@ fun BoardEntity.toMap(settings: List<BoardSettingEntity>): Map<String, Any?> {
     "matchBoardConfig" to values["matchBoardConfig"],
     "legalMode" to (values["legalMode"] ?: mapOf("enabled" to false)),
     "link" to link,
+    "updatedAt" to updatedAt,
     "deletedAt" to deletedAt,
   )
 }
@@ -985,6 +1005,9 @@ fun AppSettings.toMap(): Map<String, Any?> = mapOf(
   "autoCloseEnabled" to autoCloseEnabled,
   "autoCloseDelayMinutes" to autoCloseDelayMinutes,
   "rideSplitGapMinutes" to rideSplitGapMinutes,
+  "syncEnabled" to syncEnabled,
+  "syncWifiOnly" to syncWifiOnly,
+  "syncBackupChoiceMade" to syncBackupChoiceMade,
   "riderId" to riderId,
   "riderName" to riderName,
   "riderColor" to riderColor,
@@ -1030,6 +1053,7 @@ fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "repeatEverySeconds" to repeatEverySeconds,
   "beepCount" to beepCount,
   "source" to source,
+  "updatedAt" to updatedAt,
 )
 
 fun TuneProfileEntity.toMap(): Map<String, Any?> = mapOf(
@@ -1182,11 +1206,17 @@ private fun Map<String, Any?>.normalizedBoardLink(): Map<String, Any?>? {
   )
 }
 
-internal fun Map<String, Any?>.toBoardEntity(): BoardEntity = BoardEntity(
+/**
+ * Native stamps [BoardEntity.updatedAt] itself rather than trusting the bridge value: it is a sync
+ * cursor, so it must come from the device clock that already writes `created_at` and must move on
+ * every upsert, including partial edits that leave `createdAt` untouched.
+ */
+internal fun Map<String, Any?>.toBoardEntity(now: Long = System.currentTimeMillis()): BoardEntity = BoardEntity(
   id = getString("id"),
   name = getString("name"),
   bleId = normalizedBoardLink()?.get("bleId") as? String,
   createdAt = getLong("createdAt"),
+  updatedAt = now,
 )
 
 internal fun Map<String, Any?>.toBoardSettingEntities(boardId: String): Pair<List<BoardSettingEntity>, List<String>> {
@@ -1336,7 +1366,10 @@ private fun parseLegacyMapString(value: String): Map<String, Any?>? {
   }.toMap()
 }
 
-private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEntity(
+/** Native stamps [AlertRuleEntity.updatedAt]; see [toBoardEntity] for why the bridge value is ignored. */
+internal fun Map<String, Any?>.toAlertRuleEntity(
+  now: Long = System.currentTimeMillis(),
+): AlertRuleEntity = AlertRuleEntity(
   boardId = getString("boardId"),
   id = getString("id"),
   controlId = getString("controlId"),
@@ -1352,6 +1385,7 @@ private fun Map<String, Any?>.toAlertRuleEntity(): AlertRuleEntity = AlertRuleEn
   repeatEverySeconds = normalizedAlertRepeatSeconds(getDoubleOrNull("repeatEverySeconds")),
   beepCount = normalizedAlertBeepCount((get("beepCount") as? Number)?.toInt()),
   source = get("source") as? String,
+  updatedAt = now,
 )
 
 private fun Map<String, Any?>.getString(key: String): String =

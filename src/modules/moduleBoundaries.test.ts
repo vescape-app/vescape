@@ -24,6 +24,8 @@ const ALLOWED_EDGES = new Set([
   'legal -> settings',
   // release reads/persists dismissed Community Message IDs through App Settings
   'release -> settings',
+  // the backup choice reads/persists the Wi-Fi-only switch through App Settings
+  'profile -> settings',
   // settings defaults sourced from owning domains
   'settings -> alerts',
   'settings -> history',

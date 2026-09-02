@@ -12,6 +12,26 @@ _Avoid_: Device, controller, scooter
 A deleted Board's surviving row, marked by a deletion stamp. The Board leaves every Rider-facing list but stays resolvable by id, so Ride History can still name the Board that produced it. Its configuration is hard-deleted; its telemetry and Tune Profiles are not (ADR 0027).
 _Avoid_: Soft delete, archived Board
 
+**Sync Action**:
+An append-only local record that something was semantically removed, so the removal reaches the Vescape Account backup. A deleted row cannot carry a **Change Timestamp** saying it is gone, so the log is the only signal there is. Typed — `delete` is the only type today — and written from Rider-facing removal paths only, never from retention, migrations or a database trigger.
+_Avoid_: Delete log, tombstone table, audit trail, change event
+
+**Sync Cursor**:
+A phone-held, device-local position saying how far one table has been accepted by the server. It never crosses the wire — the server keeps no watermark — and it runs on a counter rather than a clock, so a device clock that steps backwards cannot make the upload scan skip a write. Advanced only after a response, in its own transaction, so the failure mode is always a harmless re-send.
+_Avoid_: Watermark, sync token, last-synced timestamp, offset
+
+**Sync Batch**:
+One upload: rows from one or more tables, sent in the order the server applies them so a Board-owned row never arrives before its Board. Capped by row count and by actual compact JSON bytes. Accepted whole or refused whole — nothing is half-applied, and nothing is skipped to make a batch fit.
+_Avoid_: Sync payload, upload chunk, page, delta
+
+**Backup Status**:
+Native's one answer to "what is my backup doing": signed out, up to date, syncing, waiting for Wi-Fi, offline, or paused with the reason that stopped it. Derived from the same state the uploader decides on, so a status line can never disagree with the uploader. JS renders it and derives none of its own; every paused reason also raises a notification, because a pause never clears through ordinary retry.
+_Avoid_: Sync state, upload progress, connection status
+
+**Account Binding**:
+The one **Vescape Account** a phone's local database belongs to, claimed by the first Account to sign in. It survives sign-out, so data recorded while signed out stays protected from retention for the same Account. A different Account cannot take over the database; it can only replace it, which the Rider has to confirm.
+_Avoid_: Account link, owner id, current user
+
 **Board Link**:
 The saved, probe-confirmed reachability details for a Board, including BLE peripheral id, selected Board Transport, and capabilities or firmware facts discovered for that transport.
 _Avoid_: Pairing, connection settings, device config
@@ -360,6 +380,10 @@ _Avoid_: User, account, member, profile, friend
 An optional online identity that never gates the app's local, offline-first capabilities or ownership of local data.
 _Avoid_: Rider profile, User, Profile
 
+**Device Token**:
+A long-lived server-issued credential held by one app install that lets native call the Vescape server for a **Vescape Account's** own data without a signed-in JS runtime.
+_Avoid_: API key, session token, sync token, auth token, refresh token
+
 **Rider Presence**:
 A **Rider's** live shared snapshot within a **Group Ride**: location and heading from the phone **GPS Fix**, plus optional speed and **Battery SoC Estimate** when a **Board Session** is live. Ephemeral and server-relayed, never persisted on phone or server, suppressed while the Rider is inside a **Privacy Zone**. A Rider with no recent Rider Presence goes stale, then drops from the Group Ride.
 _Avoid_: Position update, presence ping, location share, group telemetry
@@ -484,6 +508,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Group Ride** contains zero or more **Riders** and exists only while at least one **Rider** is present; it owns no durable truth and is never written to **Ride History**.
 - A **Rider** may be in at most one **Group Ride** at a time and is identified independently of any **Board**.
 - A **Vescape Account** is independent of a **Rider** and may enable optional online services such as backup, sync, or paid entitlements, but is not required to use local Boards, Ride Recording, Ride History, or tuning.
+- **Ride History** is owned by the **Vescape Account** and only labelled by a **Board**; deleting a Board hides it and drops its configuration but never removes the rides it produced, on the phone or on the server.
+- A **Device Token** belongs to exactly one **Vescape Account** and one app install; it authorizes reading and writing that Account's data, never changing the Account itself, which requires a freshly signed-in JS runtime.
+- A **Device Token** is revoked on sign-out and is not a **Group Ride** credential, which stays unauthenticated.
 - A **Rider Presence** belongs to one **Rider** in one **Group Ride**, derives location from a **GPS Fix** and optional speed/**Battery SoC Estimate** from a live **Board Session**, and is not produced while the Rider is inside a **Privacy Zone**.
 - A **Group Ride** requires only a phone **GPS Fix** to join; a **Board Session** is optional and only enriches a **Rider Presence**, never gates it.
 
@@ -539,5 +566,6 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - "force update" was used to mean both denying server compatibility and locking app UI; resolved terms: use **Online Block** for denying **Online Capabilities** and **App Block** for the exceptional update-only UI state.
 - "version warning" was used for both an update prompt and denial of server features; resolved terms: use **Update Warning** for the non-blocking prompt and **Online Block** when **Online Capabilities** are denied.
 - "message" may mean version compatibility or general communication; resolved: compatibility belongs to the **Release Policy**, while a **Community Message** never changes capability availability.
+- "device" in **Device Token** names the calling app install, not a **Board** and not the phone BLE peripheral; resolved: a **Device Token** identifies a caller, while records the app backs up carry no device or install identity of their own.
 - "posi switch" and "dual switch" refer to **Posi Sensor** mode in rider language; the firmware field name is an implementation detail.
 - "move board" may mean **Remote Tilt** or motor movement while disengaged; resolved term: use **Board Move** for deliberate app-driven movement of a disengaged Board.

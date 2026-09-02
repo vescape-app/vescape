@@ -6,6 +6,7 @@ import expo.modules.vescapecore.api.AuthMode
 import expo.modules.vescapecore.api.HttpMethod
 import expo.modules.vescapecore.api.VescapeApi
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.sync.SyncCoordinator
 import org.json.JSONObject
 
 /**
@@ -51,8 +52,39 @@ class NativeAuthCoordinator(private val context: Context) {
       else -> throw IllegalStateException("Account verification failed ($result)")
     }
 
+    // The database is claimed before the credential is stored: a second Account must not be able to
+    // upload from a database full of the first Account's Boards, Ride History and locations. The
+    // Rider confirms the destructive reset, and only then does [confirmAccountReset] finish this.
+    if (!SyncCoordinator.get(context).bindAccount(accountId)) {
+      return stateMap() + mapOf("accountChangeRequiresReset" to true)
+    }
+
     store.write(DeviceCredential(origin, token, accountId, null))
     AppStatusCoordinator.get(context).refresh()
+    SyncCoordinator.get(context).start()
+    return stateMap()
+  }
+
+  /**
+   * The Rider confirmed that all local app data is erased and cannot yet be restored.
+   *
+   * One ordered transition: stop the uploader, invalidate in-flight work, replace the app-data
+   * database, clear Sync Cursors and pending Sync Actions, bind the fresh database to the new
+   * Account, install the new Device Token, start the uploader. Cancelling never reaches here, so the
+   * old database and Account binding stay untouched.
+   */
+  suspend fun confirmAccountReset(
+    serverUrl: String,
+    token: String,
+    accountId: String,
+  ): Map<String, Any?> {
+    val origin = serverUrl.trimEnd('/')
+    SyncCoordinator.get(context).resetForAccount(accountId)
+    // The token is installed before the uploader starts: a loop running on the previous Account's
+    // credential against the new Account's database is exactly what this ordering exists to prevent.
+    store.write(DeviceCredential(origin, token, accountId, null))
+    AppStatusCoordinator.get(context).refresh()
+    SyncCoordinator.get(context).start()
     return stateMap()
   }
 
@@ -75,7 +107,12 @@ class NativeAuthCoordinator(private val context: Context) {
     store.clear()
   }
 
-  fun clear() = store.clear()
+  fun clear() {
+    store.clear()
+    // Signing out stops the uploader but keeps the Account binding, so data recorded while signed
+    // out stays protected from retention for the same Account.
+    SyncCoordinator.get(context).stop()
+  }
 
   companion object {
     private const val ACCOUNT_PATH = "/api/account"

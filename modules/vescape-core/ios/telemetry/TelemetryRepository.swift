@@ -310,6 +310,7 @@ internal final class TelemetryRepository {
       summary: summary
     )
     guard FavoriteStore.shared.insert(favorite) else { return nil }
+    SyncCoordinator.shared.notifyRiderEdit()
     return favorite.toMap(
       boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] },
       routePoints: favoriteRoutePoints(favorite)
@@ -375,6 +376,7 @@ internal final class TelemetryRepository {
       summary: Self.favoriteSummary(points, config: config)
     )
     guard let stored = FavoriteStore.shared.update(updated) else { return nil }
+    SyncCoordinator.shared.notifyRiderEdit()
     return stored.toMap(
       boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] },
       routePoints: favoriteRoutePoints(stored)
@@ -385,7 +387,10 @@ internal final class TelemetryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteFavorite`
   func deleteFavorite(_ id: String) -> Bool {
     let deleted = FavoriteStore.shared.delete(id)
-    if deleted { FavoriteMediaStore.shared.deleteDirectory(favoriteId: id) }
+    if deleted {
+      FavoriteMediaStore.shared.deleteDirectory(favoriteId: id)
+      SyncCoordinator.shared.notifyRiderEdit()
+    }
     return deleted
   }
 
@@ -439,15 +444,13 @@ internal final class TelemetryRepository {
     return buildFavoriteSummary(buildTelemetryBuckets(sanitized))
   }
 
+  /// Retention sweep. Age-only while this database has never been bound to an Account, and age plus
+  /// the accepted Sync Cursor once it has — cleanup must not remove a row the uploader has not
+  /// delivered (#284).
   func deleteBefore(_ beforeMs: Int64) -> Int {
     guard let pool else { return 0 }
     return (try? pool.write { db in
-      let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs]) ?? 0
-      try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs])
-      try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms < ?", arguments: [beforeMs])
-      try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms < ?", arguments: [beforeMs])
-      try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms < ?", arguments: [beforeMs])
-      return count
+      try deleteBeforeGated(db, beforeMs: beforeMs)
     }) ?? 0
   }
 
@@ -616,6 +619,9 @@ internal final class TelemetryRepository {
       for marker in markers { try insertMarker(db, marker) }
       for range in sanitization.exclusions { try insertExclusion(db, range) }
     }
+    // Samples are actually being produced, which is what the uploader's ride cadence follows — Idle
+    // Pause halts production without ending the Board Session.
+    SyncCoordinator.shared.notifySamplesPersisted()
   }
 
   private func marker(type: String, capture: TelemetryCapture, gapMs: Int64?) -> [String: Any?] {

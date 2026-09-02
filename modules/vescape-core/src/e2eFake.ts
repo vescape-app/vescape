@@ -85,6 +85,9 @@ const e2eSettings: AppSettings = {
   companionPresenceCooldownMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
+  syncEnabled: false,
+  syncWifiOnly: false,
+  syncBackupChoiceMade: false,
   telemetryPollRateHz: 20,
   wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
@@ -749,10 +752,12 @@ export const e2eFake = {
   },
 
   upsertBoard(board: BoardInput): void {
+    // Stand in for native: the sync cursor is stamped by the store on every write, never by the caller.
     const index = e2eBoards.findIndex((b) => b.id === board.id)
     // A tombstone survives an upsert, like native — only a delete stamps one.
     const stored: Board = {
       ...board,
+      updatedAt: Date.now(),
       deletedAt: index >= 0 ? e2eBoards[index].deletedAt : null,
     }
     if (index >= 0) {
@@ -795,13 +800,17 @@ export const e2eFake = {
   },
 
   seedE2EData(flow: string): void {
+    // Seeded rows stand in for freshly inserted ones, where the sync cursor equals `createdAt`.
+    const seededAt = Date.now()
+
     if (flow === 'connect-board') {
       const boardId = 'e2e-board-1'
       const board: Board = {
         id: boardId,
         name: 'E2E Board',
         description: 'Seeded by Maestro',
-        createdAt: Date.now(),
+        createdAt: seededAt,
+        updatedAt: seededAt,
         deletedAt: null,
         batteryConfig: {
           mode: 'preset',
@@ -823,7 +832,8 @@ export const e2eFake = {
         id: boardId,
         name: 'E2E History Board',
         description: 'Seeded by Maestro',
-        createdAt: Date.now(),
+        createdAt: seededAt,
+        updatedAt: seededAt,
         deletedAt: null,
         batteryConfig: {
           mode: 'preset',
@@ -846,7 +856,8 @@ export const e2eFake = {
         id: boardId,
         name: 'E2E Privacy Board',
         description: 'Seeded by Maestro',
-        createdAt: Date.now(),
+        createdAt: seededAt,
+        updatedAt: seededAt,
         deletedAt: null,
         batteryConfig: {
           mode: 'preset',

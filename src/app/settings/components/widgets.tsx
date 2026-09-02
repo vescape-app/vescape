@@ -9,6 +9,7 @@ import {
   ExpandingWidgetShowcase,
   DialWidgetShowcase,
   SwitchWidgetShowcase,
+  BackupStatusLineShowcase,
 } from '@/screens/showcase/widgets/DisplayWidgetShowcases'
 import {
   InputWidgetShowcase,
@@ -33,6 +34,7 @@ export default function WidgetsPage() {
         <SwitchWidgetShowcase />
         <DialWidgetShowcase />
         <CanvasWidgetShowcase />
+        <BackupStatusLineShowcase />
       </ScrollView>
     </SafeAreaView>
   )

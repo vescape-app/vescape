@@ -175,6 +175,7 @@ class ProfileStatsRepositoryTest {
     maxGpsSpeedCentiMps = 9_999,
     firstMovingAtMs = firstMoving,
     lastMovingAtMs = lastMoving,
+    updatedAt = end,
     firstLatitudeE7 = latitudeE7,
     firstLongitudeE7 = longitudeE7,
   )

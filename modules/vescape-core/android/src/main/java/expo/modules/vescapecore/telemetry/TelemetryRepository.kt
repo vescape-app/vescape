@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import expo.modules.kotlin.jni.NativeArrayBuffer
+import expo.modules.vescapecore.sync.SyncCoordinator
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
@@ -557,8 +558,13 @@ class TelemetryRepository private constructor(context: Context) {
     dao.clearDiagnosticEvents()
   }
 
+  /**
+   * Retention sweep. Age-only while this database has never been bound to an Account, and age plus
+   * the accepted Sync Cursor once it has — cleanup must not remove a row the uploader has not
+   * delivered (#284).
+   */
   suspend fun deleteBefore(beforeMs: Long): Int = withContext(Dispatchers.IO) {
-    dao.deleteBefore(beforeMs)
+    dao.deleteBeforeGated(beforeMs)
   }
 
   suspend fun deleteRange(options: Map<String, Any?>): Int = withContext(Dispatchers.IO) {
@@ -583,7 +589,7 @@ class TelemetryRepository private constructor(context: Context) {
    */
   suspend fun getFavorites(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     favoriteMediaStore.reconcileAll()
-    val boardNames = dao.getBoards().associate { it.id to it.name }
+    val boardNames = boardNamesById()
     dao.getFavorites().map { favorite ->
       favorite.toMap(boardNames[favorite.boardId], favoriteRoutePoints(favorite))
     }
@@ -642,6 +648,7 @@ class TelemetryRepository private constructor(context: Context) {
       batteryUsedWhMilli = summary.batteryUsedWhMilli,
     )
     dao.insertFavorite(favorite)
+    SyncCoordinator.get(appContext).notifyRiderEdit()
     favorite.toMap(
       boardId?.let { boardNamesById()[it] },
       favoriteRoutePoints(favorite),
@@ -681,8 +688,9 @@ class TelemetryRepository private constructor(context: Context) {
       batteryUsedWhMilli = summary.batteryUsedWhMilli,
     )
     if (dao.updateFavorite(updated) == 0) return@withContext null
+    SyncCoordinator.get(appContext).notifyRiderEdit()
     updated.toMap(
-      dao.getBoards().firstOrNull { it.id == updated.boardId }?.name,
+      updated.boardId?.let { boardNamesById()[it] },
       favoriteRoutePoints(updated),
     )
   }
@@ -694,7 +702,10 @@ class TelemetryRepository private constructor(context: Context) {
    */
   suspend fun deleteFavorite(id: String): Boolean = withContext(Dispatchers.IO) {
     val deleted = dao.deleteFavorite(id) > 0
-    if (deleted) favoriteMediaStore.deleteDirectory(id)
+    if (deleted) {
+      favoriteMediaStore.deleteDirectory(id)
+      SyncCoordinator.get(appContext).notifyRiderEdit()
+    }
     deleted
   }
 
@@ -915,6 +926,9 @@ class TelemetryRepository private constructor(context: Context) {
         markers = markers,
         exclusions = sanitization.exclusions,
       )
+      // Samples are actually being produced, which is what the uploader's ride cadence follows —
+      // Idle Pause halts production without ending the Board Session.
+      SyncCoordinator.get(appContext).notifySamplesPersisted()
     } catch (e: Exception) {
       Log.w(TAG, "Telemetry flush failed: ${e.message}")
     }

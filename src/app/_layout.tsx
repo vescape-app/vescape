@@ -29,6 +29,7 @@ import { startBoardConfigChangeNoticeSync } from '@/modules/board/store/boardCon
 import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardConfigChangeNoticeModal'
 import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
+import { startSyncStatusSync } from '@/modules/profile/store/syncStatusStore'
 import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
@@ -105,6 +106,7 @@ function RootLayout() {
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
+    const stopSyncStatusSync = startSyncStatusSync()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
@@ -119,6 +121,7 @@ function RootLayout() {
       stopAppStatusSync()
       stopNavigationSync()
       stopWeatherSync()
+      stopSyncStatusSync()
     }
   }, [fixturesReady])
 
@@ -208,6 +211,7 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
             <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
             <Stack.Screen name={stackScreens.settingsGraphs} options={{ title: 'Graphs' }} />
+            <Stack.Screen name={stackScreens.settingsSync} options={{ title: 'Sync' }} />
             <Stack.Screen name={stackScreens.settingsDatabase} options={{ title: 'Database' }} />
             <Stack.Screen name={stackScreens.settingsAbout} options={{ title: 'About us' }} />
             <Stack.Screen

@@ -29,7 +29,8 @@ final class AlertEngineTests: XCTestCase {
       createdAt: 0,
       repeatEverySeconds: repeatEverySeconds,
       beepCount: beepCount,
-      source: nil
+      source: nil,
+      updatedAt: 0
     )
   }
 

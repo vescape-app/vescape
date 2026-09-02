@@ -6,6 +6,7 @@ import { router, useNavigation } from 'expo-router'
 import Constants from 'expo-constants'
 import {
   BluetoothConnectedIcon,
+  CloudArrowUpIcon,
   BracketsCurlyIcon,
   CodeIcon,
   DatabaseIcon,
@@ -131,6 +132,13 @@ export default function SettingsScreen() {
             label="Map"
             hint="Map appearance and satellite imagery"
             onPress={() => router.push(routes.settingsMap)}
+          />
+          <SettingsRow
+            icon={CloudArrowUpIcon}
+            iconColor={theme.palette.cyan.color}
+            label="Sync"
+            hint="Back up rides to your Vescape account"
+            onPress={() => router.push(routes.settingsSync)}
           />
         </SettingsCard>
 

@@ -28,7 +28,8 @@ export interface SettingsTriggerState {
  *
  * One rule, in priority order: a blocked or warned version outranks everything (the app may stop
  * working), a running backup outranks a merely available update (it is happening now and has
- * progress to show), and an available update stays a quiet dot the Rider can ignore.
+ * progress to show), and an available update stays a quiet dot the Rider can ignore. A paused
+ * backup needs the Rider to act, so it takes the dot over an update that does not.
  */
 export function settingsTriggerState({
   versionWarning,
@@ -45,7 +46,12 @@ export function settingsTriggerState({
     }
   }
 
-  const dot = updateAvailable ? theme.status.upgrade.color : undefined
+  const paused = backup.kind === 'blocked' && backup.reason === 'paused'
+  const dot = paused
+    ? theme.status.error.color
+    : updateAvailable
+      ? theme.status.upgrade.color
+      : undefined
 
   if (backup.kind === 'syncing') {
     return {
@@ -62,6 +68,10 @@ export function settingsTriggerState({
     accent: undefined,
     progress: undefined,
     dot,
-    accessibilityLabel: updateAvailable ? 'Settings, update available' : 'Settings',
+    accessibilityLabel: paused
+      ? 'Settings, backup paused'
+      : updateAvailable
+        ? 'Settings, update available'
+        : 'Settings',
   }
 }

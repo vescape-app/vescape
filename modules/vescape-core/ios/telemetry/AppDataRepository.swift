@@ -17,6 +17,47 @@ enum AppDataScope: String {
   case settings
 }
 
+/// App settings that name *this phone* rather than the Rider, and so never leave it: restoring them
+/// onto a second phone would overwrite that phone's own identity or session state. Enforced at the
+/// write path — `writeAppSetting` leaves their `sync_seq` at 0, which is below every Sync Cursor, so
+/// no upload scan ever sees the row.
+///
+/// Rider Name and Rider Color live in `app_settings` by design, so that Group Ride keeps working
+/// signed-out; that placement is what makes them phone-local rather than Account-scoped. See #277.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `NOT_SYNCED_SETTING_KEYS`
+internal let notSyncedSettingKeys: [String] = [
+  // Rider identity — a second phone in the same Group Ride must not become the same Rider.
+  "riderId",
+  "riderName",
+  "riderColor",
+  // Device/session state — names this phone's current session, not the Rider's configuration.
+  "selectedBoardId",
+  "lastGpsLatitude",
+  "lastGpsLongitude",
+  "directionPointLatitude",
+  "directionPointLongitude",
+  // Connection and companion behaviour — phone-side BLE and foreground policy.
+  "autoConnect",
+  "companionPresenceEnabled",
+  "companionPresenceCooldownMinutes",
+  "connectionSoundsEnabled",
+  "autoCloseEnabled",
+  "autoCloseDelayMinutes",
+  // Wear pairing — the watch is paired to one phone.
+  "wearMirrorIntervalMs",
+  "wearAutoLaunchOnConnect",
+  // The backup master switch is per phone, and deliberately does not travel through the mechanism
+  // it turns off: a restored snapshot must never be able to switch backup back on.
+  "syncEnabled",
+  // The backup choice is per phone: the expensive first upload belongs to the phone that holds the
+  // backlog, so a restore onto a second phone asks that Rider again rather than deciding for them.
+  "syncBackupChoiceMade",
+  // So is the data-plan choice, and for the same reason the other two are: it answers what this
+  // phone's connection costs, not what the Rider prefers. Travelling would let a restore onto a
+  // cellular-only phone inherit the other phone's answer and upload a ride over metered data.
+  "syncWifiOnly",
+]
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt
 final class AppDataRepository {
   static let shared = AppDataRepository()
@@ -84,7 +125,7 @@ final class AppDataRepository {
       let boards = try Row.fetchAll(
         db,
         sql: """
-          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
+          SELECT id, name, ble_id, transport, created_at, updated_at, deleted_at FROM boards
           WHERE deleted_at IS NULL ORDER BY created_at ASC
           """
       )
@@ -106,7 +147,7 @@ final class AppDataRepository {
       guard let board = try Row.fetchOne(
         db,
         sql: """
-          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
+          SELECT id, name, ble_id, transport, created_at, updated_at, deleted_at FROM boards
           WHERE id = ? LIMIT 1
           """,
         arguments: [id]
@@ -140,28 +181,44 @@ final class AppDataRepository {
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
+    // One stamp for the board row's last-write-wins timestamp and every board-setting row written
+    // below. Native stamps it rather than trusting the bridge value: it must come from the device
+    // clock that already writes `created_at` and must move on every upsert, including partial edits.
     let updatedAt = nowMs()
 
     write { db in
+      // Read-modify-write rather than an `ON CONFLICT` fold: `INSERT OR REPLACE` deletes the old row
+      // before inserting, so the ratchet has no `excluded`-style handle on the value it replaces.
+      let previous = try Int64.fetchOne(db, sql: "SELECT updated_at FROM boards WHERE id = ?", arguments: [id])
       // An existing tombstone survives the write, so an ordinary upsert can never resurrect a
       // deleted Board — deletion is terminal (ADR 0027). Only `deleteBoard` stamps a new one.
       let deletedAt = try Int64.fetchOne(db, sql: "SELECT deleted_at FROM boards WHERE id = ?", arguments: [id])
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at, deleted_at)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at, updated_at, sync_seq, deleted_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [id, name, bleId, transport, createdAt, deletedAt]
+        arguments: [
+          id, name, bleId, transport, createdAt,
+          ratchetUpdatedAt(previous, updatedAt), try nextSyncSeq(db, syncSeqBoards), deletedAt,
+        ]
       )
       for (key, value) in settings {
         guard let value, let json = Self.encodeJson(value) else {
-          try db.execute(sql: "DELETE FROM board_settings WHERE board_id = ? AND key = ?", arguments: [id, key])
+          // Semantic removal: a Board edit that drops a key is the Rider clearing that setting, so a
+          // restore must not resurrect the old value (#282).
+          try deleteForSync(
+            db,
+            target: .boardSetting,
+            boardId: id,
+            key: key,
+            whereClause: "board_id = ? AND key = ?",
+            keys: [id, key],
+            now: updatedAt
+          )
           continue
         }
-        try db.execute(
-          sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
-          arguments: [id, key, json, updatedAt]
-        )
+        try Self.writeBoardSetting(db, boardId: id, key: key, json: json, now: updatedAt)
       }
     }
     notifyDataChanged(.boards)
@@ -170,18 +227,37 @@ final class AppDataRepository {
   /// The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).
   /// Telemetry and Tune Profiles are untouched — both outlive the Board.
   ///
-  /// A Board that is not there (or already deleted) is left alone.
+  /// The tombstone is an ordinary write, so it moves both sync columns like any other edit. A Board
+  /// that is not there (or already deleted) is left alone.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `deleteBoardWithSettings`
   func deleteBoard(_ id: String) {
     let deletedAt = nowMs()
     write { db in
+      guard let row = try Row.fetchOne(
+        db,
+        sql: "SELECT updated_at, deleted_at FROM boards WHERE id = ?",
+        arguments: [id]
+      ), row["deleted_at"] as Int64? == nil else { return }
+      // The children are raw deletes — the Board's own Sync Action covers the whole cascade, so an
+      // upsert never quietly deletes rows in three other tables (#282).
       try db.execute(sql: "DELETE FROM board_settings WHERE board_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM board_warnings WHERE board_id = ?", arguments: [id])
       // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
+      // The action and the tombstone share one timestamp, the newly ratcheted `updated_at`, so the
+      // server judges both against the same moment.
+      let tombstonedAt = ratchetUpdatedAt(row["updated_at"] as Int64?, deletedAt)
+      try appendDeleteAction(
+        db,
+        target: .board,
+        boardId: nil,
+        key: id,
+        rowStamp: tombstonedAt,
+        now: tombstonedAt
+      )
       try db.execute(
-        sql: "UPDATE boards SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
-        arguments: [deletedAt, id]
+        sql: "UPDATE boards SET deleted_at = ?, updated_at = ?, sync_seq = ? WHERE id = ?",
+        arguments: [tombstonedAt, tombstonedAt, try nextSyncSeq(db, syncSeqBoards), id]
       )
     }
     BoardConfigStore.shared.clear(boardId: id)
@@ -195,10 +271,7 @@ final class AppDataRepository {
     let value: [String: Any] = ["percent": percent, "voltage": voltage ?? NSNull(), "at": atMs]
     guard let json = Self.encodeJson(value) else { return }
     write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
-        arguments: [boardId, "lastBattery", json, atMs]
-      )
+      try Self.writeBoardSetting(db, boardId: boardId, key: "lastBattery", json: json, now: atMs)
     }
     notifyDataChanged(.boards)
   }
@@ -208,10 +281,7 @@ final class AppDataRepository {
   func updateLegalMode(boardId: String, enabled: Bool) {
     guard let json = Self.encodeJson(["enabled": enabled]) else { return }
     write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
-        arguments: [boardId, "legalMode", json, self.nowMs()]
-      )
+      try Self.writeBoardSetting(db, boardId: boardId, key: "legalMode", json: json, now: self.nowMs())
     }
     notifyDataChanged(.boards)
   }
@@ -241,6 +311,7 @@ final class AppDataRepository {
       "matchBoardConfig": values["matchBoardConfig"] ?? nil,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
+      "updatedAt": row["updated_at"] as Int64,
       "deletedAt": row["deleted_at"] as Int64?,
     ]
   }
@@ -334,6 +405,7 @@ final class AppDataRepository {
           "repeatEverySeconds": row["repeat_every_seconds"] as Int64?,
           "beepCount": row["beep_count"] as Int? ?? alertBeepCountDefault,
           "source": row["source"] as String?,
+          "updatedAt": row["updated_at"] as Int64,
         ]
       }
     }
@@ -365,7 +437,8 @@ final class AppDataRepository {
           createdAt: row["created_at"] as Int64,
           repeatEverySeconds: row["repeat_every_seconds"] as Int64?,
           beepCount: row["beep_count"] as Int? ?? alertBeepCountDefault,
-          source: row["source"] as String?
+          source: row["source"] as String?,
+          updatedAt: row["updated_at"] as Int64
         )
       }
     }
@@ -385,34 +458,69 @@ final class AppDataRepository {
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
     let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
+    // Native stamps the last-write-wins timestamp rather than trusting the bridge value: it must come
+    // from the device clock that already writes `created_at` and must move on every upsert.
+    let updatedAt = nowMs()
     let thresholdRule = rule["thresholdRule"] as? [String: Any]
     let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
     let configFieldId = thresholdRule?["fieldId"] as? String
     let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
     let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
     write { db in
+      // See `upsertBoard` for why the ratchet reads the old value instead of folding it on conflict.
+      let previous = try Int64.fetchOne(
+        db,
+        sql: "SELECT updated_at FROM alerts WHERE board_id = ? AND id = ?",
+        arguments: [boardId, id]
+      )
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, threshold_kind, config_field_id, threshold_offset, threshold_max_offset)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, threshold_kind, config_field_id, threshold_offset, threshold_max_offset, updated_at, sync_seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source, thresholdKind, configFieldId, thresholdOffset, thresholdMaxOffset]
+        arguments: [
+          boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt,
+          repeatEverySeconds, beepCount, source, thresholdKind, configFieldId, thresholdOffset,
+          thresholdMaxOffset,
+          ratchetUpdatedAt(previous, updatedAt), try nextSyncSeq(db, syncSeqAlerts),
+        ]
       )
     }
   }
 
+  /// Targeted toggle. Unlike `upsertAlertRule` it never rewrites the whole row, so both sync columns
+  /// have to move here explicitly — without them, toggling a rule leaves it invisible to the upload
+  /// scan and the change never reaches the server.
+  ///
+  /// The `MAX(updated_at + 1, ?)` fold is the same ratchet `ratchetUpdatedAt` applies, expressed in
+  /// SQL because the row is already being read by the `WHERE`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `setAlertRuleEnabled`
   func setAlertRuleEnabled(_ boardId: String, _ id: String, _ enabled: Bool) {
+    let updatedAt = nowMs()
     write { db in
       try db.execute(
-        sql: "UPDATE alerts SET enabled = ? WHERE board_id = ? AND id = ?",
-        arguments: [enabled ? 1 : 0, boardId, id]
+        sql: """
+          UPDATE alerts SET enabled = ?, updated_at = MAX(updated_at + 1, ?), sync_seq = ?
+          WHERE board_id = ? AND id = ?
+          """,
+        arguments: [enabled ? 1 : 0, updatedAt, try nextSyncSeq(db, syncSeqAlerts), boardId, id]
       )
     }
   }
 
+  /// Semantic removal, and the path preset regeneration takes too: JS regenerates a Board's preset
+  /// rules by deleting the old ones and writing new ones, and the deleted ones have to disappear
+  /// server-side as well (#282).
   func deleteAlertRule(_ boardId: String, _ id: String) {
     write { db in
-      try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND id = ?", arguments: [boardId, id])
+      try deleteForSync(
+        db,
+        target: .alert,
+        boardId: boardId,
+        key: id,
+        whereClause: "board_id = ? AND id = ?",
+        keys: [boardId, id]
+      )
     }
   }
 
@@ -450,29 +558,52 @@ final class AppDataRepository {
     let createdAt = Self.longValue(zone["createdAt"] ?? nil) ?? now
     let updatedAt = Self.longValue(zone["updatedAt"] ?? nil) ?? now
     write { db in
+      let stamp = try stampSyncColumns(
+        db,
+        table: "privacy_zones",
+        sequence: syncSeqPrivacyZones,
+        whereClause: "id = ?",
+        keys: [id],
+        now: updatedAt
+      )
       try db.execute(
         sql: """
           INSERT OR REPLACE INTO privacy_zones
-            (id, preset, name, enabled, center_latitude_e7, center_longitude_e7, radius_meters, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, preset, name, enabled, center_latitude_e7, center_longitude_e7, radius_meters, created_at, updated_at, sync_seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [id, preset, name, enabled ? 1 : 0, latitude.toE7, longitude.toE7, radius, createdAt, updatedAt]
+        arguments: [
+          id, preset, name, enabled ? 1 : 0, latitude.toE7, longitude.toE7, radius, createdAt,
+          stamp.updatedAt, stamp.syncSeq,
+        ]
       )
     }
   }
 
+  /// Targeted toggle that bypasses the upsert, so it moves both sync columns itself; see
+  /// `setAlertRuleEnabled`.
   func setPrivacyZoneEnabled(_ id: String, _ enabled: Bool) {
     let updatedAt = nowMs()
     write { db in
       try db.execute(
-        sql: "UPDATE privacy_zones SET enabled = ?, updated_at = ? WHERE id = ?",
-        arguments: [enabled ? 1 : 0, updatedAt, id]
+        sql: "UPDATE privacy_zones SET enabled = ?, updated_at = MAX(updated_at + 1, ?), sync_seq = ? WHERE id = ?",
+        arguments: [enabled ? 1 : 0, updatedAt, try nextSyncSeq(db, syncSeqPrivacyZones), id]
       )
     }
   }
 
+  /// Semantic removal: the Rider deleted the zone, so the server has to lose it too (#282).
   func deletePrivacyZone(_ id: String) {
-    write { db in try db.execute(sql: "DELETE FROM privacy_zones WHERE id = ?", arguments: [id]) }
+    write { db in
+      try deleteForSync(
+        db,
+        target: .privacyZone,
+        boardId: nil,
+        key: id,
+        whereClause: "id = ?",
+        keys: [id]
+      )
+    }
   }
 
   // MARK: - Direction point
@@ -595,7 +726,7 @@ final class AppDataRepository {
     else { return }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
-      write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
+      write { db in try Self.deleteAppSetting(db, key: key, now: updatedAt) }
       notifyDataChanged(.settings)
       return
     }
@@ -612,6 +743,11 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
+    } else if key == "syncEnabled" || key == "syncWifiOnly" || key == "syncBackupChoiceMade" {
+      // Strict Bool (Android rejects non-Boolean too): the backup switch must never persist a
+      // malformed value that reads back truthy.
+      guard let flag = rawValue as? Bool else { return }
+      value = flag
     } else if key == "themeMode" {
       guard let mode = Self.themeMode(rawValue) else { return }
       value = mode
@@ -638,11 +774,12 @@ final class AppDataRepository {
     }
     guard let json = Self.encodeJson(value) else { return }
     write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: [key, json, updatedAt]
-      )
+      try Self.writeAppSetting(db, key: key, json: json, now: updatedAt)
     }
+    // The uploader reads the Wi-Fi switch from native truth, not from a JS call, so a write from any
+    // source — the settings row, the one-time choice, a restored backup — reaches it the same way.
+    if key == "syncEnabled" { SyncCoordinator.shared.setEnabled(value as? Bool ?? false) }
+    if key == "syncWifiOnly" { SyncCoordinator.shared.setWifiOnly(value as? Bool ?? false) }
     notifyDataChanged(.settings)
   }
 
@@ -653,15 +790,80 @@ final class AppDataRepository {
     let value = code.flatMap { $0.count == 2 ? ["jurisdictionCode": $0] : nil }
     write { db in
       guard let value, let json = Self.encodeJson(value) else {
-        try db.execute(sql: "DELETE FROM app_settings WHERE key = 'legalPolicy'")
+        try Self.deleteAppSetting(db, key: "legalPolicy", now: self.nowMs())
         return
       }
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: ["legalPolicy", json, self.nowMs()]
-      )
+      try Self.writeAppSetting(db, key: "legalPolicy", json: json, now: self.nowMs())
     }
     notifyDataChanged(.settings)
+  }
+
+  /// Stamps both sync columns; see `upsertBoard`.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `upsertBoardSetting`
+  private static func writeBoardSetting(
+    _ db: Database,
+    boardId: String,
+    key: String,
+    json: String,
+    now: Int64
+  ) throws {
+    let stamp = try stampSyncColumns(
+      db,
+      table: "board_settings",
+      sequence: syncSeqBoardSettings,
+      whereClause: "board_id = ? AND key = ?",
+      keys: [boardId, key],
+      now: now
+    )
+    try db.execute(
+      sql: """
+        INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at, sync_seq)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+      arguments: [boardId, key, json, stamp.updatedAt, stamp.syncSeq]
+    )
+  }
+
+  /// Semantic removal of a stored app setting. Every caller means the same thing — the stored
+  /// override is gone: an edit back to the default, and `legalPolicy` resolving to nothing.
+  ///
+  /// Phone-local keys never reach the server (they carry `sync_seq = 0`), so removing one records no
+  /// action either — an action for a row the server never held would delete nothing and say nothing.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `deleteAppSetting`
+  internal static func deleteAppSetting(_ db: Database, key: String, now: Int64) throws {
+    guard !notSyncedSettingKeys.contains(key) else {
+      try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key])
+      return
+    }
+    try deleteForSync(
+      db,
+      target: .appSetting,
+      boardId: nil,
+      key: key,
+      whereClause: "key = ?",
+      keys: [key],
+      now: now
+    )
+  }
+
+  /// Stamps both sync columns like `upsertBoard`, except for the phone-local keys in
+  /// [notSyncedSettingKeys]: those keep `sync_seq` at 0, which sits below every Sync Cursor, so the
+  /// upload scan never picks the row up and the key stays on this phone (#277).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `upsertAppSetting`
+  private static func writeAppSetting(_ db: Database, key: String, json: String, now: Int64) throws {
+    let previous = try Int64.fetchOne(
+      db,
+      sql: "SELECT updated_at FROM app_settings WHERE key = ?",
+      arguments: [key]
+    )
+    let syncSeq = notSyncedSettingKeys.contains(key) ? 0 : try nextSyncSeq(db, syncSeqAppSettings)
+    try db.execute(
+      sql: """
+        INSERT OR REPLACE INTO app_settings (key, value_json, updated_at, sync_seq)
+        VALUES (?, ?, ?, ?)
+        """,
+      arguments: [key, json, ratchetUpdatedAt(previous, now), syncSeq]
+    )
   }
 
   // MARK: - Shared pure helpers (also used by VescapeCoreModule bridge glue)
@@ -682,6 +884,12 @@ final class AppDataRepository {
     // the keys exist here only so getSettings() returns the full settings shape.
     "autoCloseEnabled": false,
     "autoCloseDelayMinutes": 15,
+    // Backup master switch. Off by default: the uploader does nothing until the Rider turns it on.
+    "syncEnabled": false,
+    // Nothing uploads on a metered connection while this is on — mid-ride included.
+    "syncWifiOnly": false,
+    // The one-time backup choice has been offered on this phone and answered.
+    "syncBackupChoiceMade": false,
     "selectedBoardId": NSNull(),
     "riderId": NSNull(),
     "riderName": NSNull(),

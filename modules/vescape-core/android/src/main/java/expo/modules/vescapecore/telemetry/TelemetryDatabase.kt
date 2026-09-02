@@ -14,7 +14,7 @@ import java.io.File
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `TELEMETRY_SCHEMA_VERSION`
-internal const val TELEMETRY_DATABASE_VERSION = 42
+internal const val TELEMETRY_DATABASE_VERSION = 48
 
 @Database(
   entities = [
@@ -31,6 +31,9 @@ internal const val TELEMETRY_DATABASE_VERSION = 42
     DiagnosticEventEntity::class,
     PrivacyZoneEntity::class,
     BoardWarningEntity::class,
+    SyncSequenceEntity::class,
+    SyncActionEntity::class,
+    SyncBindingEntity::class,
     VescFaultOccurrenceEntity::class,
     VescFaultCaptureEntity::class,
     VescFaultCaptureSampleEntity::class,
@@ -569,6 +572,199 @@ abstract class TelemetryDatabase : RoomDatabase() {
         rebuildDiagnosticEventsOnBoardId(db)
         rebuildExclusionRangesOnBoardId(db)
         db.execSQL("DROP TABLE IF EXISTS $DEVICE_BOARD_MAP")
+      }
+    }
+
+    /**
+     * Change Timestamps for the three tables that had none (#275). `boards` and `alerts` carried
+     * `created_at` only and `telemetry_minute_buckets` carried nothing, so a rename, a toggle or a
+     * bucket still filling was invisible to an "everything changed since T" scan. Additive, and
+     * existing rows are backfilled rather than left at the `DEFAULT 0` a scan would re-send.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v43_sync_cursors`
+     */
+    internal val MIGRATION_42_43 = object : Migration(42, 43) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        if (!hasColumn(db, "boards", "updated_at")) {
+          db.execSQL("ALTER TABLE boards ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+          db.execSQL("UPDATE boards SET updated_at = created_at")
+        }
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_boards_updated_at ON boards(updated_at)")
+
+        if (!hasColumn(db, "alerts", "updated_at")) {
+          db.execSQL("ALTER TABLE alerts ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+          db.execSQL("UPDATE alerts SET updated_at = created_at")
+        }
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_alerts_updated_at ON alerts(updated_at)")
+
+        if (!hasColumn(db, "telemetry_minute_buckets", "updated_at")) {
+          db.execSQL(
+            "ALTER TABLE telemetry_minute_buckets ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+          )
+          db.execSQL("UPDATE telemetry_minute_buckets SET updated_at = last_sample_at_ms")
+        }
+        db.execSQL(
+          "CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_updated_at " +
+            "ON telemetry_minute_buckets(updated_at)",
+        )
+      }
+    }
+
+    /**
+     * Splits the device-local Sync Cursor from the wall-clock last-write-wins timestamp (#275).
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v44_sync_seq`
+     */
+    internal val MIGRATION_43_44 = object : Migration(43, 44) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS sync_sequences (
+            name TEXT NOT NULL PRIMARY KEY,
+            last_value INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        for (table in SYNC_SEQ_TABLES_V44) {
+          if (!hasColumn(db, table, "sync_seq")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE $table SET sync_seq = rowid")
+          }
+          db.execSQL("CREATE INDEX IF NOT EXISTS index_${table}_sync_seq ON $table(sync_seq)")
+          db.execSQL(
+            "INSERT OR REPLACE INTO sync_sequences (name, last_value) " +
+              "VALUES ('$table', (SELECT COALESCE(MAX(sync_seq), 0) FROM $table))",
+          )
+        }
+      }
+    }
+
+
+    /**
+     * Sync Cursors for the six remaining mutable tables (#281). `board_warnings` also gains the
+     * wall-clock `updated_at` every other mutable table already carries, backfilled from its newest
+     * detection.
+     *
+     * Existing rows are backfilled from `rowid` — distinct and non-zero, so no two rows share a
+     * cursor position and none of them sit at the seed value — and each table's sequence is seeded
+     * past the highest value handed out. Every step is guarded, so a re-run is a no-op.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v45_sync_seq_remaining`
+     */
+    internal val MIGRATION_44_45 = object : Migration(44, 45) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        if (!hasColumn(db, "board_warnings", "updated_at")) {
+          db.execSQL("ALTER TABLE board_warnings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+          db.execSQL("UPDATE board_warnings SET updated_at = last_detected_at")
+        }
+
+        for (table in SYNC_SEQ_TABLES_V45) {
+          if (!hasColumn(db, table, "sync_seq")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE $table SET sync_seq = rowid")
+          }
+          db.execSQL("CREATE INDEX IF NOT EXISTS index_${table}_sync_seq ON $table(sync_seq)")
+          db.execSQL(
+            "INSERT OR REPLACE INTO sync_sequences (name, last_value) " +
+              "VALUES ('$table', (SELECT COALESCE(MAX(sync_seq), 0) FROM $table))",
+          )
+        }
+
+        // Phone-local keys are defined by their absence from the scan, so the backfill above has to
+        // be undone for them: an uploader would otherwise ship whatever this phone happened to hold
+        // at upgrade time, exactly once. See NOT_SYNCED_SETTING_KEYS.
+        val phoneLocal = NOT_SYNCED_SETTING_KEYS.joinToString(",") { "'$it'" }
+        db.execSQL("UPDATE app_settings SET sync_seq = 0 WHERE key IN ($phoneLocal)")
+      }
+    }
+
+    /**
+     * The Sync Action log (#282): an append-only record of semantic removals, which no surviving row
+     * can express. Additive — a new table only — and guarded, so a re-run is a no-op.
+     *
+     * The log is keyed on its own `AUTOINCREMENT` cursor and carries no `sync_seq`: SQLite
+     * guarantees that key monotonic and never reused, so it already *is* the cursor.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v46_sync_actions`
+     */
+    internal val MIGRATION_45_46 = object : Migration(45, 46) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS sync_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            type TEXT NOT NULL,
+            target TEXT NOT NULL,
+            board_id TEXT,
+            key TEXT NOT NULL,
+            deleted_at INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_actions_target ON sync_actions(target)")
+      }
+    }
+
+
+    /**
+     * The Account binding (#284): which Vescape Account this local database belongs to. Additive and
+     * guarded, and deliberately left empty — an existing install is unbound until an Account signs
+     * in and claims it, which is also what keeps the current age-only retention behaviour until
+     * then.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v47_sync_binding`
+     */
+    internal val MIGRATION_46_47 = object : Migration(46, 47) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS sync_binding (
+            id INTEGER PRIMARY KEY NOT NULL,
+            account_id TEXT NOT NULL,
+            bound_at INTEGER NOT NULL
+          )
+          """.trimIndent(),
+        )
+      }
+    }
+
+    /**
+     * VESC Fault Evidence joins the backup (#288). Occurrences and Captures are given the Sync
+     * Cursor every mutable table carries, and an Occurrence also gains the wall-clock `updated_at`
+     * the server compares two writes to the same row on.
+     *
+     * The stamp is backfilled from `last_observed_at` rather than left at the `DEFAULT 0`: an
+     * existing occurrence has a truthful moment it last changed, and a row reporting epoch zero
+     * loses every race against whatever the server already holds.
+     *
+     * A Capture needs no stamp — it is a past snapshot with no lifecycle — and
+     * `vesc_fault_capture_samples` needs nothing at all: it is append-only on an `AUTOINCREMENT`
+     * id, which already is its cursor.
+     *
+     * Every step is guarded, so a re-run is a no-op.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v48_fault_sync`
+     */
+    internal val MIGRATION_47_48 = object : Migration(47, 48) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        if (!hasColumn(db, "vesc_fault_occurrences", "updated_at")) {
+          db.execSQL(
+            "ALTER TABLE vesc_fault_occurrences ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+          )
+          db.execSQL("UPDATE vesc_fault_occurrences SET updated_at = last_observed_at")
+        }
+
+        for (table in SYNC_SEQ_TABLES_V48) {
+          if (!hasColumn(db, table, "sync_seq")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE $table SET sync_seq = rowid")
+          }
+          db.execSQL("CREATE INDEX IF NOT EXISTS index_${table}_sync_seq ON $table(sync_seq)")
+          db.execSQL(
+            "INSERT OR REPLACE INTO sync_sequences (name, last_value) " +
+              "VALUES ('$table', (SELECT COALESCE(MAX(sync_seq), 0) FROM $table))",
+          )
+        }
       }
     }
 
@@ -1412,6 +1608,12 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_36_40,
             MIGRATION_40_41,
             MIGRATION_41_42,
+            MIGRATION_42_43,
+            MIGRATION_43_44,
+            MIGRATION_44_45,
+            MIGRATION_45_46,
+            MIGRATION_46_47,
+            MIGRATION_47_48,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

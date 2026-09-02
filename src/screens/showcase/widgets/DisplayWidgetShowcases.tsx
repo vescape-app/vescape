@@ -15,6 +15,7 @@ import { CanvasWidget } from '@/components/widgets/CanvasWidget'
 import { DialWidget } from '@/modules/tune/components/DialWidget'
 import { SwitchWidget } from '@/components/widgets/SwitchWidget'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
+import { BackupStatusLine } from '@/modules/profile/components/BackupStatusLine'
 import { theme } from '@/constants/theme'
 import { Cell, Row, SizeLabel } from '@/screens/showcase/widgets/WidgetGrid'
 
@@ -236,8 +237,40 @@ export function CanvasWidgetShowcase() {
   )
 }
 
+const SHOWCASE_UPLOADED_AT = Date.now() - 5 * 60_000
+
+export function BackupStatusLineShowcase() {
+  const base = {
+    accountId: 'acc_1',
+    pendingRows: 0,
+    pause: null,
+    lastUploadAtMs: null,
+  } as const
+  return (
+    <ShowcaseCard name="BackupStatusLine">
+      <View style={styles.statusList}>
+        <BackupStatusLine status={{ ...base, accountId: null, activity: 'disabled' }} />
+        <BackupStatusLine status={{ ...base, accountId: null, activity: 'signedOut' }} />
+        <BackupStatusLine
+          status={{ ...base, activity: 'upToDate', lastUploadAtMs: SHOWCASE_UPLOADED_AT }}
+        />
+        <BackupStatusLine
+          status={{ ...base, activity: 'syncing', pendingRows: 1_284 }}
+          backlog={4_000}
+        />
+        <BackupStatusLine status={{ ...base, activity: 'waitingForWifi', pendingRows: 42 }} />
+        <BackupStatusLine status={{ ...base, activity: 'offline', pendingRows: 42 }} />
+        <BackupStatusLine status={{ ...base, activity: 'paused', pause: 'authentication' }} />
+        <BackupStatusLine status={{ ...base, activity: 'paused', pause: 'protocol' }} />
+        <BackupStatusLine status={{ ...base, activity: 'paused', pause: 'rowTooLarge' }} />
+      </View>
+    </ShowcaseCard>
+  )
+}
+
 const styles = StyleSheet.create({
   collapsiblePreview: { minHeight: 120 },
+  statusList: { gap: 8 },
   fill: { flex: 1 },
   meta: { color: theme.neutral.textSecondary, fontSize: 13 },
   name: { color: theme.neutral.textPrimary, fontSize: 17, fontWeight: '700' },

@@ -241,6 +241,10 @@ struct BoardConfigStore {
     try? writer.write { db in
       try db.execute(sql: "DELETE FROM board_config_values WHERE board_id = ?", arguments: [boardId])
       try db.execute(sql: "DELETE FROM board_config_change_notices WHERE board_id = ?", arguments: [boardId])
+      // Motor Config Values are decoded against the same link and keyed by the same Board, so they
+      // are stale for the same reason the other two are. The Android peer already dropped them
+      // here; leaving them behind kept rows no reader could reach once the Board was gone.
+      try db.execute(sql: "DELETE FROM motor_config_values WHERE board_id = ?", arguments: [boardId])
     }
   }
 }

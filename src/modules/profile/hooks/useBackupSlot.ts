@@ -1,19 +1,12 @@
-import { useUser } from '@clerk/expo'
-
-import type { BackupSlot } from '@/modules/profile/lib/backupSlot'
+import { toBackupSlot, type BackupSlot } from '@/modules/profile/lib/backupSlot'
+import { useSyncStatusStore } from '@/modules/profile/store/syncStatusStore'
 
 /**
- * The one place backup state enters the UI.
- *
- * TODO(#276): replace the body with a projection of `useSyncStatusStore` — `signedOut` →
- * `signedOut`, `upToDate` → `idle`, `syncing` → `syncing` with `backupProgress()` counts, and the
- * paused/offline reasons once the tile has copy for them.
- *
- * Until the uploader exists, no Rider is backing anything up. A signed-out Rider reads as
- * `signedOut` (the cell states the fact and offers sign-in, without claiming an account would
- * start a backup); a signed-in one reads as `unavailable`.
+ * The one place backup state enters the Settings Drawer. Native owns every transition; this only
+ * narrows the live status to what a strip cell can draw.
  */
 export function useBackupSlot(): BackupSlot {
-  const { isSignedIn } = useUser()
-  return isSignedIn ? { kind: 'unavailable' } : { kind: 'signedOut' }
+  const status = useSyncStatusStore((s) => s.status)
+  const backlog = useSyncStatusStore((s) => s.backlog)
+  return toBackupSlot(status, backlog)
 }

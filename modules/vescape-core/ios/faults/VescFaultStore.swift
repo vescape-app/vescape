@@ -43,13 +43,22 @@ struct VescFaultStore: VescFaultStoring {
         occurred_at INTEGER NOT NULL,
         last_observed_at INTEGER NOT NULL,
         cleared_at INTEGER,
-        dismissed INTEGER NOT NULL
+        dismissed INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL DEFAULT 0,
+        sync_seq INTEGER NOT NULL DEFAULT 0
       )
       """)
     try db.execute(sql: """
       CREATE INDEX IF NOT EXISTS index_vesc_fault_occurrences_board_id_occurred_at
       ON vesc_fault_occurrences(board_id, occurred_at)
       """)
+    try db.execute(sql: """
+      CREATE INDEX IF NOT EXISTS index_vesc_fault_occurrences_sync_seq
+      ON vesc_fault_occurrences(sync_seq)
+      """)
+    // The write path allocates a Sync Cursor position, so the counter table has to exist wherever
+    // this schema does — including the test seams that build from here rather than from a migrator.
+    try createSyncSequencesTable(db)
   }
 
   // MARK: - Reads
@@ -100,18 +109,28 @@ struct VescFaultStore: VescFaultStoring {
       try db.execute(
         sql: """
           INSERT INTO vesc_fault_occurrences
-            (id, board_id, code, occurred_at, last_observed_at, cleared_at, dismissed)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, board_id, code, occurred_at, last_observed_at, cleared_at, dismissed, updated_at,
+             sync_seq)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           -- Lifecycle writes deliberately leave `dismissed` alone: a heartbeat carrying a stale
           -- in-memory snapshot must never un-dismiss what the rider just acknowledged. Dismissal
           -- has its own statement.
+          --
+          -- `updated_at` is authored here from the observation time rather than read off the wall
+          -- clock: it is the moment this write is about, and it is what the migration backfills
+          -- existing rows from, so the two agree. The `MAX(updated_at + 1, ?)` fold is the same
+          -- ratchet `ratchetUpdatedAt` applies, expressed in SQL because the conflicting row is
+          -- already in hand.
           ON CONFLICT(id) DO UPDATE SET
             last_observed_at = excluded.last_observed_at,
-            cleared_at = excluded.cleared_at
+            cleared_at = excluded.cleared_at,
+            updated_at = MAX(vesc_fault_occurrences.updated_at + 1, excluded.updated_at),
+            sync_seq = excluded.sync_seq
           """,
         arguments: [
           occurrence.id, occurrence.boardId, occurrence.code, occurrence.occurredAtMs,
           occurrence.lastObservedAtMs, occurrence.clearedAtMs, occurrence.dismissed,
+          occurrence.lastObservedAtMs, try nextSyncSeq(db, syncSeqVescFaultOccurrences),
         ]
       )
       }
@@ -121,13 +140,22 @@ struct VescFaultStore: VescFaultStoring {
     }
   }
 
+  /// Both sync columns move here explicitly: an acknowledgement changes the row without the fault
+  /// being observed again, so nothing else would carry it to the server — and a stamp frozen at the
+  /// stored value satisfies the scan while the server's last-write-wins guard drops the edit.
   @discardableResult
   func setDismissed(_ id: String, _ dismissed: Bool) -> Bool {
     guard let writer = resolveWriter() else { return false }
     return (try? writer.write { db -> Bool in
       try db.execute(
-        sql: "UPDATE vesc_fault_occurrences SET dismissed = ? WHERE id = ?",
-        arguments: [dismissed, id]
+        sql: """
+          UPDATE vesc_fault_occurrences
+          SET dismissed = ?, updated_at = MAX(updated_at + 1, ?), sync_seq = ?
+          WHERE id = ?
+          """,
+        arguments: [
+          dismissed, telemetryNowMs(), try nextSyncSeq(db, syncSeqVescFaultOccurrences), id,
+        ]
       )
       return db.changesCount > 0
     }) ?? false

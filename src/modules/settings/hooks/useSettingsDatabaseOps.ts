@@ -132,13 +132,6 @@ export function useSettingsDatabaseOps() {
     rebuildState === 'error' && rebuildResult
       ? rebuildResult
       : 'Refresh historical data with newest algorithms and settings'
-  const rebuildProgressValue =
-    rebuildProgress && rebuildProgress.total > 0
-      ? Math.min(1, rebuildProgress.current / rebuildProgress.total)
-      : 0
-  const rebuildProgressLabel = rebuildProgress
-    ? `${rebuildProgress.current}/${rebuildProgress.total}`
-    : null
   const backupHint =
     backupState === 'error' && backupResult
       ? backupResult
@@ -156,8 +149,7 @@ export function useSettingsDatabaseOps() {
     dbSize,
     rebuildState,
     rebuildHint,
-    rebuildProgressValue,
-    rebuildProgressLabel,
+    rebuildProgress,
     backupState,
     backupHint,
     restoreState,

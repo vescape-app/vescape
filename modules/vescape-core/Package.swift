@@ -33,7 +33,9 @@ let expoOwnedSources: Set<String> = [
 /// Test-only helpers that are not themselves `XCTestCase` files, so the `*Tests.swift` rule misses
 /// them. They use `@testable import VescapeCore` and belong in the test target.
 let testSupportSources: Set<String> = [
-  "replay/ConfigReplayHarness.swift"
+  "replay/ConfigReplayHarness.swift",
+  "sync/FakeSyncServer.swift",
+  "sync/FakeSyncSource.swift",
 ]
 
 /// Symlinks into `shared/`. The pod bundles all of them through `resource_bundles`; SPM only needs

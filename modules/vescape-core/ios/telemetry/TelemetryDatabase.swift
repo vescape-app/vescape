@@ -177,6 +177,31 @@ enum TelemetryDatabase {
     }
   }
 
+  /// Replace the app-data database with an empty one, taking the Sync Cursors, the pending Sync
+  /// Actions and the Account binding with it (#284).
+  ///
+  /// Deleting the file rather than clearing tables is what makes the Account change safe: nothing
+  /// can survive with a cursor position or a binding that belonged to the previous Account. The wipe
+  /// is local maintenance and emits no Sync Actions to either Account — the log is part of what
+  /// goes.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/DatabaseBackupManager.kt `replaceWithFreshDatabase`
+  static func replaceWithFreshDatabase() throws {
+    guard let target = databaseURL else { throw CocoaError(.fileNoSuchFile) }
+    if let reopened { try? reopened.close() }
+    else if case let .success(pool) = poolResult { try? pool.close() }
+
+    let fm = FileManager.default
+    for suffix in ["", "-wal", "-shm"] {
+      try? fm.removeItem(at: URL(fileURLWithPath: target.path + suffix))
+    }
+
+    // Migrating rebuilds the schema, so the new database starts unbound with no cursors.
+    let pool = try DatabasePool(path: target.path)
+    try migrator.migrate(pool)
+    reopened = pool
+  }
+
   /// Internal, not private, so migration tests can run the real migrator against an in-memory
   /// database and stop at a chosen version with `migrate(_:upTo:)`.
   internal static var migrator: DatabaseMigrator {
@@ -687,6 +712,161 @@ enum TelemetryDatabase {
       try rebuildDiagnosticEventsOnBoardId(db)
       try rebuildExclusionRangesOnBoardId(db)
       try db.execute(sql: "DROP TABLE IF EXISTS \(DEVICE_BOARD_MAP)")
+    }
+
+    // Change Timestamps for the three tables that had none (#275): a rename, a toggle or a bucket
+    // still filling was invisible to an "everything changed since T" scan. Additive, and existing
+    // rows are backfilled rather than left at the `DEFAULT 0` a scan would re-send.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_42_43`
+    migrator.registerMigration("v43_sync_cursors") { db in
+      let backfillSource = [
+        "boards": "created_at",
+        "alerts": "created_at",
+        "telemetry_minute_buckets": "last_sample_at_ms",
+      ]
+      for (table, source) in backfillSource.sorted(by: { $0.key < $1.key }) {
+        let hasUpdatedAt = try db.columns(in: table).contains { $0.name == "updated_at" }
+        if !hasUpdatedAt {
+          try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+          try db.execute(sql: "UPDATE \(table) SET updated_at = \(source)")
+        }
+        try db.execute(
+          sql: "CREATE INDEX IF NOT EXISTS index_\(table)_updated_at ON \(table)(updated_at)"
+        )
+      }
+    }
+
+    // Splits the device-local Sync Cursor from the wall-clock last-write-wins timestamp.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_43_44`
+    migrator.registerMigration("v44_sync_seq") { db in
+      try db.execute(
+        sql: """
+          CREATE TABLE IF NOT EXISTS sync_sequences (
+            name TEXT NOT NULL PRIMARY KEY,
+            last_value INTEGER NOT NULL
+          )
+          """
+      )
+      for table in syncSeqTablesV44 {
+        let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
+        if !hasSyncSeq {
+          try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+          try db.execute(sql: "UPDATE \(table) SET sync_seq = rowid")
+        }
+        try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_\(table)_sync_seq ON \(table)(sync_seq)")
+        try db.execute(
+          sql: """
+            INSERT OR REPLACE INTO sync_sequences (name, last_value)
+            VALUES (?, (SELECT COALESCE(MAX(sync_seq), 0) FROM \(table)))
+            """,
+          arguments: [table]
+        )
+      }
+    }
+
+    // Sync Cursors for the six remaining mutable tables (#281). `board_warnings` also gains the
+    // wall-clock `updated_at` every other mutable table already carries, backfilled from its newest
+    // detection.
+    //
+    // Existing rows are backfilled from `rowid` — distinct and non-zero, so no two rows share a
+    // cursor position and none of them sit at the seed value — and each table's sequence is seeded
+    // past the highest value handed out. Every step is guarded, so a re-run is a no-op.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_44_45`
+    migrator.registerMigration("v45_sync_seq_remaining") { db in
+      let hasWarningUpdatedAt = try db.columns(in: "board_warnings").contains { $0.name == "updated_at" }
+      if !hasWarningUpdatedAt {
+        try db.execute(sql: "ALTER TABLE board_warnings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")
+        try db.execute(sql: "UPDATE board_warnings SET updated_at = last_detected_at")
+      }
+
+      for table in syncSeqTablesV45 {
+        let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
+        if !hasSyncSeq {
+          try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+          try db.execute(sql: "UPDATE \(table) SET sync_seq = rowid")
+        }
+        try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_\(table)_sync_seq ON \(table)(sync_seq)")
+        try db.execute(
+          sql: """
+            INSERT OR REPLACE INTO sync_sequences (name, last_value)
+            VALUES (?, (SELECT COALESCE(MAX(sync_seq), 0) FROM \(table)))
+            """,
+          arguments: [table]
+        )
+      }
+
+      // Phone-local keys are defined by their absence from the scan, so the backfill above has to be
+      // undone for them: an uploader would otherwise ship whatever this phone happened to hold at
+      // upgrade time, exactly once. See `notSyncedSettingKeys`.
+      let placeholders = notSyncedSettingKeys.map { _ in "?" }.joined(separator: ",")
+      try db.execute(
+        sql: "UPDATE app_settings SET sync_seq = 0 WHERE key IN (\(placeholders))",
+        arguments: StatementArguments(notSyncedSettingKeys)
+      )
+    }
+
+    // The Sync Action log (#282): an append-only record of semantic removals, which no surviving row
+    // can express. Additive — a new table only — and guarded, so a re-run is a no-op.
+    //
+    // The log is keyed on its own `AUTOINCREMENT` cursor and carries no `sync_seq`: SQLite
+    // guarantees that key monotonic and never reused, so it already *is* the cursor.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_45_46`
+    migrator.registerMigration("v46_sync_actions") { db in
+      try createSyncActionsTable(db)
+    }
+
+    // The Account binding (#284): which Vescape Account this local database belongs to. Additive and
+    // guarded, and deliberately left empty — an existing install is unbound until an Account signs
+    // in and claims it, which is also what keeps the current age-only retention behaviour until
+    // then.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_46_47`
+    migrator.registerMigration("v47_sync_binding") { db in
+      try createSyncBindingTable(db)
+    }
+
+    // VESC Fault Evidence joins the backup (#430). The two mutable fault tables gain the Sync Cursor
+    // every other mutable table carries, and the Occurrence gains the wall-clock `updated_at` the
+    // server keys its upsert on.
+    //
+    // `updated_at` is backfilled from `last_observed_at` rather than left at `DEFAULT 0`: an
+    // existing occurrence has a truthful moment it last changed, and epoch zero would be a lie the
+    // server's last-write-wins guard reads as "older than anything".
+    //
+    // It cannot simply be derived from `last_observed_at` on every read either — a Rider dismissing
+    // an occurrence changes the row without the fault being observed again, and that edit is
+    // precisely the one a restore has to preserve.
+    //
+    // `vesc_fault_capture_samples` gets nothing: it is append-only on an `INTEGER PRIMARY KEY
+    // AUTOINCREMENT`, which already is its cursor.
+    //
+    // Backfill and seeding follow `v45_sync_seq_remaining` exactly, and every step is guarded, so a
+    // re-run is a no-op.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_47_48`
+    migrator.registerMigration("v48_fault_sync") { db in
+      let hasOccurrenceUpdatedAt = try db.columns(in: "vesc_fault_occurrences")
+        .contains { $0.name == "updated_at" }
+      if !hasOccurrenceUpdatedAt {
+        try db.execute(
+          sql: "ALTER TABLE vesc_fault_occurrences ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0"
+        )
+        try db.execute(sql: "UPDATE vesc_fault_occurrences SET updated_at = last_observed_at")
+      }
+
+      for table in syncSeqTablesV48 {
+        let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
+        if !hasSyncSeq {
+          try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+          try db.execute(sql: "UPDATE \(table) SET sync_seq = rowid")
+        }
+        try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_\(table)_sync_seq ON \(table)(sync_seq)")
+        try db.execute(
+          sql: """
+            INSERT OR REPLACE INTO sync_sequences (name, last_value)
+            VALUES (?, (SELECT COALESCE(MAX(sync_seq), 0) FROM \(table)))
+            """,
+          arguments: [table]
+        )
+      }
     }
 
     return migrator

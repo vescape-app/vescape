@@ -264,6 +264,7 @@ class FavoriteSummaryBuilderTest {
     firstLongitudeE7 = null,
     firstMovingAtMs = bucketStartMs,
     lastMovingAtMs = bucketStartMs + 9_000,
+    updatedAt = bucketStartMs + 9_000,
   )
 
   private fun favorite(distanceCm: Long?) = FavoriteEntity(

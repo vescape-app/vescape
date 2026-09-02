@@ -168,7 +168,14 @@ private class MutableBucket(
     }
   }
 
-  fun toEntity(): TelemetryMinuteBucketEntity = TelemetryMinuteBucketEntity(
+  /**
+   * [now] is the incremental-sync cursor stamped on the row, so every append or rebuild that
+   * reaches the database is visible to cursor sync.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift `upsertBucket`
+   */
+  fun toEntity(now: Long = System.currentTimeMillis()): TelemetryMinuteBucketEntity = TelemetryMinuteBucketEntity(
+    updatedAt = now,
     bucketStartMs = bucketStartMs,
     boardId = boardId,
     sampleCount = sampleCount,

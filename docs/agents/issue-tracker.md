@@ -84,6 +84,7 @@ Use one or more app-area labels for filtering:
 | `area:legal-mode`   | `[Legal Mode]`   | Legal Mode UI, jurisdiction speed defaults, speed-warning alerts, and legal board constraints                               |
 | `area:warnings`     | `[Warnings]`     | Board Warnings: app-authored condition detection, warning registry, rider-facing warnings                                   |
 | `area:diagnostics`  | `[Diagnostics]`  | Debug Recordings, replay tooling, Diagnostic Events, dev-mode debugging surfaces                                            |
+| `area:sync`         | `[Sync]`         | Backup sync — native uploader, Sync Cursors, Sync Actions, Device Token, backup status                                      |
 | `area:auth`         | `[Auth]`         | Clerk sessions, native Device Tokens, credential lifecycle, and endpoint caller policy                                      |
 | `area:release`      | `[Release]`      | release automation, Play tracks, versioning, release notes, and GitHub Releases                                             |
 | `area:assets`       | `[Assets]`       | hosted media, image normalization, upload state, and remote Asset references                                                |

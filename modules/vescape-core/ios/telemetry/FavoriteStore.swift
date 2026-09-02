@@ -154,11 +154,15 @@ struct FavoriteStore {
         moving_duration_ms INTEGER NOT NULL,
         avg_speed_centi_kmh INTEGER NOT NULL,
         max_speed_centi_kmh INTEGER NOT NULL,
-        battery_used_wh_milli INTEGER NOT NULL
+        battery_used_wh_milli INTEGER NOT NULL,
+        sync_seq INTEGER NOT NULL DEFAULT 0
       )
       """)
     try db.execute(sql: "CREATE INDEX index_favorites_start_ms_end_ms ON favorites(start_ms, end_ms)")
     try db.execute(sql: "CREATE INDEX index_favorites_board_id ON favorites(board_id)")
+    try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_favorites_sync_seq ON favorites(sync_seq)")
+    try createSyncSequencesTable(db)
+    try createSyncActionsTable(db)
   }
 
   // MARK: - Reads
@@ -183,8 +187,8 @@ struct FavoriteStore {
             INSERT INTO favorites (
               id, board_id, name, start_ms, end_ms, created_at, updated_at,
               sample_count, gps_point_count, distance_cm, moving_duration_ms,
-              avg_speed_centi_kmh, max_speed_centi_kmh, battery_used_wh_milli
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              avg_speed_centi_kmh, max_speed_centi_kmh, battery_used_wh_milli, sync_seq
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             favorite.id, favorite.boardId, favorite.name,
@@ -192,6 +196,7 @@ struct FavoriteStore {
             favorite.summary.sampleCount, favorite.summary.gpsPointCount, favorite.summary.distanceCm,
             favorite.summary.movingDurationMs, favorite.summary.avgSpeedCentiKmh,
             favorite.summary.maxSpeedCentiKmh, favorite.summary.batteryUsedWhMilli,
+            try nextSyncSeq(db, syncSeqFavorites),
           ]
         )
       }
@@ -208,13 +213,14 @@ struct FavoriteStore {
       try db.execute(
         sql: """
           UPDATE favorites SET
-            name = ?, start_ms = ?, end_ms = ?, updated_at = ?,
+            name = ?, start_ms = ?, end_ms = ?, updated_at = MAX(updated_at + 1, ?), sync_seq = ?,
             sample_count = ?, gps_point_count = ?, distance_cm = ?, moving_duration_ms = ?,
             avg_speed_centi_kmh = ?, max_speed_centi_kmh = ?, battery_used_wh_milli = ?
           WHERE id = ?
           """,
         arguments: [
           favorite.name, favorite.startMs, favorite.endMs, favorite.updatedAtMs,
+          try nextSyncSeq(db, syncSeqFavorites),
           favorite.summary.sampleCount, favorite.summary.gpsPointCount,
           favorite.summary.distanceCm, favorite.summary.movingDurationMs,
           favorite.summary.avgSpeedCentiKmh, favorite.summary.maxSpeedCentiKmh,
@@ -233,15 +239,23 @@ struct FavoriteStore {
   }
 
   /// Unpin one Favorite. Telemetry inside its range is untouched and becomes deletable again.
-  /// Favorite Media rows are parent-covered and raw-deleted in the same transaction (ADR 0030);
+  /// Emits one Sync Action for the Favorite; its Favorite Media rows emit none, because the parent
+  /// action covers them. Favorite Media rows are parent-covered and raw-deleted in the same
+  /// transaction (ADR 0030);
   /// filesystem cleanup is best-effort in the repository after this commit succeeds.
   @discardableResult
   func delete(_ id: String) -> Bool {
     guard let writer = resolveWriter() else { return false }
     return (try? writer.write { db in
       try db.execute(sql: "DELETE FROM favorite_media WHERE favorite_id = ?", arguments: [id])
-      try db.execute(sql: "DELETE FROM favorites WHERE id = ?", arguments: [id])
-      return db.changesCount > 0
+      return try deleteForSync(
+        db,
+        target: .favorite,
+        boardId: nil,
+        key: id,
+        whereClause: "id = ?",
+        keys: [id]
+      )
     }) ?? false
   }
 

@@ -17,7 +17,7 @@ import java.lang.reflect.Proxy
  *
  * Room's `@Query` has BINARY retention and its generated implementation keeps the SQL in a
  * method-local string, so a JVM unit test has no runtime handle on the statements Room will run —
- * the read/delete contracts are asserted against the DAO source.
+ * the read/delete contracts are asserted against the DAO source, as in [SyncCursorMigrationTest].
  *
  * @parity /modules/vescape-core/ios/telemetry/BoardTombstoneTests.swift
  */
@@ -99,7 +99,7 @@ class BoardTombstoneTest {
     assertFalse("a DELETE on boards survives", dao.contains("DELETE FROM boards"))
     assertTrue(
       "the delete path does not stamp a tombstone",
-      dao.contains("insertBoardRow(board.copy(deletedAt = deletedAt))"),
+      dao.contains("upsertBoard(board.copy(deletedAt = tombstonedAt, updatedAt = tombstonedAt))"),
     )
   }
 
@@ -109,7 +109,7 @@ class BoardTombstoneTest {
     val dao = daoSource()
     val body = dao.substringAfter("suspend fun deleteBoardWithSettings").substringBefore("\n  }")
 
-    for (call in listOf("deleteBoardSettings(id)", "deleteBoardWarnings(id)", "deleteAlertRules(id)")) {
+    for (call in listOf("deleteBoardSettingsRaw(id)", "deleteBoardWarningsRaw(id)", "deleteAlertRulesRaw(id)")) {
       assertTrue("the delete path dropped `$call`", body.contains(call))
     }
   }

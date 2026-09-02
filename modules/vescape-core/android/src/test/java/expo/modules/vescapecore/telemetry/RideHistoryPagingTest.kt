@@ -69,5 +69,6 @@ class RideHistoryPagingTest {
     lastMovingAtMs = end,
     firstLatitudeE7 = null,
     firstLongitudeE7 = null,
+    updatedAt = end,
   )
 }

@@ -57,6 +57,10 @@ struct ApiRequest {
 struct ApiResponse {
   let status: Int
   let body: String
+  /// Lowercased response headers. Only what a caller has to act on crosses this seam today: a `429`
+  /// carries its delay in `Retry-After`, and guessing one instead would either hammer the server or
+  /// stall a drain far longer than it asked for.
+  var headers: [String: String] = [:]
 }
 
 /// The single HTTP seam. Production wires `URLSession`; tests wire a fake and never reach the

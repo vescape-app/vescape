@@ -39,6 +39,7 @@ class AlertEngineTest {
         repeatEverySeconds = repeatEverySeconds,
         beepCount = beepCount,
         source = null,
+        updatedAt = 0L,
     )
 
     @Test fun `config relative duty resolves fraction and follows updates`() {

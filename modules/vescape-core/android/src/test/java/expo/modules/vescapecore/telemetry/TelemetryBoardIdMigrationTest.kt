@@ -63,7 +63,7 @@ class TelemetryBoardIdMigrationTest {
 
   @Test
   fun migrationTargetsTheCurrentSchemaVersion() {
-    assertEquals(42, TELEMETRY_DATABASE_VERSION)
+    assertEquals(48, TELEMETRY_DATABASE_VERSION)
     assertEquals(41, TelemetryDatabase.MIGRATION_41_42.startVersion)
     assertEquals(42, TelemetryDatabase.MIGRATION_41_42.endVersion)
   }
