@@ -42,6 +42,8 @@ internal let syncSeqBoardWarnings = "board_warnings"
 internal let syncSeqPrivacyZones = "privacy_zones"
 internal let syncSeqTuneProfiles = "tune_profiles"
 internal let syncSeqFavorites = "favorites"
+internal let syncSeqVescFaultOccurrences = "vesc_fault_occurrences"
+internal let syncSeqVescFaultCaptures = "vesc_fault_captures"
 
 /// The three tables the `v44_sync_seq` migration gave a `sync_seq`, frozen at the set that existed
 /// then. A migration iterates the tables it actually shipped with, never the current
@@ -58,10 +60,14 @@ internal let syncSeqTablesV45 = [
   syncSeqFavorites,
 ]
 
+/// The two mutable VESC Fault Evidence tables, given a `sync_seq` by `v48_fault_sync` (#430).
+/// `vesc_fault_capture_samples` is deliberately absent: it is append-only on an `AUTOINCREMENT` key.
+internal let syncSeqTablesV48 = [syncSeqVescFaultOccurrences, syncSeqVescFaultCaptures]
+
 /// Every table carrying a `sync_seq`. Append-only tables are deliberately absent: they declare
 /// `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
 /// key already *is* their cursor.
-internal let syncSeqTables = syncSeqTablesV44 + syncSeqTablesV45
+internal let syncSeqTables = syncSeqTablesV44 + syncSeqTablesV45 + syncSeqTablesV48
 
 /// The Sync Cursor counter table. Idempotent, and called both from the migration that introduced it
 /// and from the store-level `createTables` seams tests build their schema from — a table whose write

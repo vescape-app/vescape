@@ -13,7 +13,6 @@ package expo.modules.vescapecore.sync
  * for mutable ones. Both are device-local counters that never cross the wire.
  *
  * @parity /modules/vescape-core/ios/sync/SyncTables.swift `SyncTable`
- * @parity /modules/vescape-core/src/index.ts `SyncTable`
  */
 enum class SyncTable(val wire: String, val table: String, val cursorColumn: String) {
   APP_SETTINGS("appSettings", "app_settings", SYNC_SEQ_COLUMN),
@@ -30,6 +29,12 @@ enum class SyncTable(val wire: String, val table: String, val cursorColumn: Stri
   TELEMETRY_FRAMES("telemetryFrames", "telemetry_frames", ROW_ID_COLUMN),
   TELEMETRY_MINUTE_BUCKETS("telemetryMinuteBuckets", "telemetry_minute_buckets", SYNC_SEQ_COLUMN),
   FAVORITES("favorites", "favorites", SYNC_SEQ_COLUMN),
+
+  // Board-owned, so after `boards`; the Capture and its samples reference the Occurrence, so after
+  // it in turn. This chain is the one place the ordering rule bites twice inside one batch.
+  VESC_FAULT_OCCURRENCES("vescFaultOccurrences", "vesc_fault_occurrences", SYNC_SEQ_COLUMN),
+  VESC_FAULT_CAPTURES("vescFaultCaptures", "vesc_fault_captures", SYNC_SEQ_COLUMN),
+  VESC_FAULT_CAPTURE_SAMPLES("vescFaultCaptureSamples", "vesc_fault_capture_samples", ROW_ID_COLUMN),
   DELETE_ACTIONS("deleteActions", "sync_actions", ROW_ID_COLUMN),
   ;
 

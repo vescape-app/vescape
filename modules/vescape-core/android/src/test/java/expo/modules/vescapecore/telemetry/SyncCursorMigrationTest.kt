@@ -98,13 +98,15 @@ class SyncCursorMigrationTest {
 
   @Test
   fun migrationsTargetTheCurrentSchemaVersion() {
-    assertEquals(47, TELEMETRY_DATABASE_VERSION)
+    assertEquals(48, TELEMETRY_DATABASE_VERSION)
     assertEquals(42, TelemetryDatabase.MIGRATION_42_43.startVersion)
     assertEquals(43, TelemetryDatabase.MIGRATION_42_43.endVersion)
     assertEquals(43, TelemetryDatabase.MIGRATION_43_44.startVersion)
     assertEquals(44, TelemetryDatabase.MIGRATION_43_44.endVersion)
     assertEquals(44, TelemetryDatabase.MIGRATION_44_45.startVersion)
     assertEquals(45, TelemetryDatabase.MIGRATION_44_45.endVersion)
+    assertEquals(47, TelemetryDatabase.MIGRATION_47_48.startVersion)
+    assertEquals(48, TelemetryDatabase.MIGRATION_47_48.endVersion)
   }
 
   /**
@@ -315,6 +317,95 @@ class SyncCursorMigrationTest {
       "the retired unconditional-upsert claim is still in the source",
       !dao.contains("unconditional upsert"),
     )
+  }
+
+  // MARK: VESC Fault Evidence (#288)
+
+  private fun faultEvidenceSql(): List<String> = migrationSql(TelemetryDatabase.MIGRATION_47_48)
+
+  @Test
+  fun faultEvidenceTablesGainColumnIndexAndCounter() {
+    val sql = faultEvidenceSql()
+
+    for (table in SYNC_SEQ_TABLES_V48) {
+      assertTrue(
+        "missing sync_seq column on $table",
+        sql.any { it == "ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0" },
+      )
+      assertTrue(
+        "missing sync_seq index on $table",
+        sql.any { it == "CREATE INDEX IF NOT EXISTS index_${table}_sync_seq ON $table(sync_seq)" },
+      )
+      val backfilled = sql.indexOf("UPDATE $table SET sync_seq = rowid")
+      val seeded = sql.indexOfFirst {
+        it.contains("INSERT OR REPLACE INTO sync_sequences") && it.contains("'$table'")
+      }
+      assertTrue("missing sync_seq backfill for $table", backfilled >= 0)
+      assertTrue("counter for $table is seeded before its rows are numbered", seeded > backfilled)
+    }
+    // The samples are append-only on an AUTOINCREMENT id, which already is their cursor.
+    assertTrue(
+      "capture samples must not be given a redundant counter",
+      sql.none { it.contains("vesc_fault_capture_samples") },
+    )
+  }
+
+  /**
+   * An occurrence changes when the Rider dismisses it, with nothing else about the row moving, so
+   * the stamp cannot be derived from `last_observed_at` at read time — but it is the truthful
+   * moment an existing occurrence last changed, so it is what the backfill uses. Left at the
+   * `DEFAULT 0` the row would report epoch zero and lose every race the server judges.
+   */
+  @Test
+  fun faultOccurrencesGainUpdatedAtBackfilledFromTheLastObservation() {
+    val sql = faultEvidenceSql()
+
+    val added = sql.indexOf(
+      "ALTER TABLE vesc_fault_occurrences ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+    )
+    val backfilled = sql.indexOf("UPDATE vesc_fault_occurrences SET updated_at = last_observed_at")
+    assertTrue("missing updated_at on vesc_fault_occurrences", added >= 0)
+    assertTrue("backfill runs before the column is added", backfilled > added)
+  }
+
+  /**
+   * Dismissal is a targeted `UPDATE`, the shape that made `setAlertRuleEnabled` regress — and here
+   * it is the only write that moves `updated_at` at all, because nothing else about the row
+   * changes. Without the ratchet the Rider's acknowledgement never reaches the server.
+   */
+  @Test
+  fun dismissingAnOccurrenceMovesBothSyncColumns() {
+    val dao = daoSource().replace(Regex("""\"\s*\+\s*\""""), "")
+    val query = Regex("""\"(UPDATE vesc_fault_occurrences SET dismissed[^"]*)\"""")
+      .find(dao)?.groupValues?.get(1)
+
+    assertEquals(
+      "UPDATE vesc_fault_occurrences SET dismissed = :dismissed, " +
+        "updated_at = MAX(updated_at + 1, :updatedAt), sync_seq = :syncSeq WHERE id = :id",
+      query,
+    )
+  }
+
+  /** The lifecycle advance is the other targeted update on the table, and carries both columns. */
+  @Test
+  fun faultEvidenceWritePathsAllocateASyncSeq() {
+    val dao = daoSource()
+
+    for (marker in listOf(
+      "syncSeq = nextSyncSeq(SYNC_SEQ_VESC_FAULT_OCCURRENCES)",
+      "nextSyncSeq(SYNC_SEQ_VESC_FAULT_CAPTURES)",
+    )) {
+      assertTrue("no write path allocates via `$marker`", dao.contains(marker))
+    }
+    assertTrue(
+      "the fault upsert does not ratchet",
+      dao.contains("ratchetUpdatedAt(getVescFaultUpdatedAt(fault.id), fault.lastObservedAtMs)"),
+    )
+    val lifecycle = dao.replace(Regex("""\"\s*\+\s*\""""), "")
+      .substringAfter("UPDATE vesc_fault_occurrences SET last_observed_at")
+      .substringBefore("\"")
+    assertTrue("the lifecycle advance drops updated_at", lifecycle.contains("updated_at = :updatedAt"))
+    assertTrue("the lifecycle advance drops the cursor", lifecycle.contains("sync_seq = :syncSeq"))
   }
 
   // MARK: Last-write-wins ratchet (#275)

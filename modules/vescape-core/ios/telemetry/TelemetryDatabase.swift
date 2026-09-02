@@ -824,6 +824,51 @@ enum TelemetryDatabase {
       try createSyncBindingTable(db)
     }
 
+    // VESC Fault Evidence joins the backup (#430). The two mutable fault tables gain the Sync Cursor
+    // every other mutable table carries, and the Occurrence gains the wall-clock `updated_at` the
+    // server keys its upsert on.
+    //
+    // `updated_at` is backfilled from `last_observed_at` rather than left at `DEFAULT 0`: an
+    // existing occurrence has a truthful moment it last changed, and epoch zero would be a lie the
+    // server's last-write-wins guard reads as "older than anything".
+    //
+    // It cannot simply be derived from `last_observed_at` on every read either — a Rider dismissing
+    // an occurrence changes the row without the fault being observed again, and that edit is
+    // precisely the one a restore has to preserve.
+    //
+    // `vesc_fault_capture_samples` gets nothing: it is append-only on an `INTEGER PRIMARY KEY
+    // AUTOINCREMENT`, which already is its cursor.
+    //
+    // Backfill and seeding follow `v45_sync_seq_remaining` exactly, and every step is guarded, so a
+    // re-run is a no-op.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_47_48`
+    migrator.registerMigration("v48_fault_sync") { db in
+      let hasOccurrenceUpdatedAt = try db.columns(in: "vesc_fault_occurrences")
+        .contains { $0.name == "updated_at" }
+      if !hasOccurrenceUpdatedAt {
+        try db.execute(
+          sql: "ALTER TABLE vesc_fault_occurrences ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0"
+        )
+        try db.execute(sql: "UPDATE vesc_fault_occurrences SET updated_at = last_observed_at")
+      }
+
+      for table in syncSeqTablesV48 {
+        let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
+        if !hasSyncSeq {
+          try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+          try db.execute(sql: "UPDATE \(table) SET sync_seq = rowid")
+        }
+        try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_\(table)_sync_seq ON \(table)(sync_seq)")
+        try db.execute(
+          sql: """
+            INSERT OR REPLACE INTO sync_sequences (name, last_value)
+            VALUES (?, (SELECT COALESCE(MAX(sync_seq), 0) FROM \(table)))
+            """,
+          arguments: [table]
+        )
+      }
+    }
+
     return migrator
   }
 }

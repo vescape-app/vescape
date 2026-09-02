@@ -14,7 +14,7 @@ import java.io.File
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `TELEMETRY_SCHEMA_VERSION`
-internal const val TELEMETRY_DATABASE_VERSION = 47
+internal const val TELEMETRY_DATABASE_VERSION = 48
 
 @Database(
   entities = [
@@ -725,6 +725,46 @@ abstract class TelemetryDatabase : RoomDatabase() {
           )
           """.trimIndent(),
         )
+      }
+    }
+
+    /**
+     * VESC Fault Evidence joins the backup (#288). Occurrences and Captures are given the Sync
+     * Cursor every mutable table carries, and an Occurrence also gains the wall-clock `updated_at`
+     * the server compares two writes to the same row on.
+     *
+     * The stamp is backfilled from `last_observed_at` rather than left at the `DEFAULT 0`: an
+     * existing occurrence has a truthful moment it last changed, and a row reporting epoch zero
+     * loses every race against whatever the server already holds.
+     *
+     * A Capture needs no stamp — it is a past snapshot with no lifecycle — and
+     * `vesc_fault_capture_samples` needs nothing at all: it is append-only on an `AUTOINCREMENT`
+     * id, which already is its cursor.
+     *
+     * Every step is guarded, so a re-run is a no-op.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v48_fault_sync`
+     */
+    internal val MIGRATION_47_48 = object : Migration(47, 48) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        if (!hasColumn(db, "vesc_fault_occurrences", "updated_at")) {
+          db.execSQL(
+            "ALTER TABLE vesc_fault_occurrences ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0",
+          )
+          db.execSQL("UPDATE vesc_fault_occurrences SET updated_at = last_observed_at")
+        }
+
+        for (table in SYNC_SEQ_TABLES_V48) {
+          if (!hasColumn(db, table, "sync_seq")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE $table SET sync_seq = rowid")
+          }
+          db.execSQL("CREATE INDEX IF NOT EXISTS index_${table}_sync_seq ON $table(sync_seq)")
+          db.execSQL(
+            "INSERT OR REPLACE INTO sync_sequences (name, last_value) " +
+              "VALUES ('$table', (SELECT COALESCE(MAX(sync_seq), 0) FROM $table))",
+          )
+        }
       }
     }
 
@@ -1573,6 +1613,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_44_45,
             MIGRATION_45_46,
             MIGRATION_46_47,
+            MIGRATION_47_48,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

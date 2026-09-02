@@ -15,6 +15,9 @@ import expo.modules.vescapecore.telemetry.TelemetryMarkerEntity
 import expo.modules.vescapecore.telemetry.TelemetryMinuteBucketEntity
 import expo.modules.vescapecore.telemetry.TuneHistoryEntryEntity
 import expo.modules.vescapecore.telemetry.TuneProfileEntity
+import expo.modules.vescapecore.telemetry.VescFaultCaptureEntity
+import expo.modules.vescapecore.telemetry.VescFaultCaptureSampleEntity
+import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
 
 /**
  * Local rows as the server reads them.
@@ -61,16 +64,28 @@ object SyncWire {
     .timestamp("firstDetectedAt", row.firstDetectedAt)
     .timestamp("lastDetectedAt", row.lastDetectedAt)
     .text("payloadJson", row.payloadJson)
+    .timestamp("updatedAt", row.updatedAt)
     .build()
 
+  /**
+   * The threshold numbers travel with the kind that says how to read them: a config-relative rule
+   * restored as a bare number looks configured and fires at the wrong point, which is worse than
+   * losing it.
+   */
   fun alert(row: AlertRuleEntity): String = SyncRowWriter(SyncTable.ALERTS)
     .keyText("boardId", row.boardId)
     .keyText("id", row.id)
     .keyText("controlId", row.controlId)
     .number("threshold", row.threshold)
     .number("thresholdMax", row.thresholdMax)
+    .keyText("thresholdKind", row.thresholdKind)
+    .nullableKeyText("configFieldId", row.configFieldId)
+    .number("thresholdOffset", row.thresholdOffset)
+    .number("thresholdMaxOffset", row.thresholdMaxOffset)
     .bool("enabled", row.enabled)
     .text("soundType", row.soundType)
+    .timestamp("repeatEverySeconds", row.repeatEverySeconds)
+    .count("beepCount", row.beepCount)
     .text("source", row.source)
     .timestamp("createdAt", row.createdAt)
     .timestamp("updatedAt", row.updatedAt)
@@ -174,10 +189,6 @@ object SyncWire {
     .int64("odometerCm", row.odometerCm)
     .int32("tempMosfetDeciC", row.tempMosfetDeciC)
     .int32("tempMotorDeciC", row.tempMotorDeciC)
-    // The server still declares the field, but a Telemetry Sample stopped carrying a fault code
-    // when VESC faults became Board-owned evidence in their own tables (ADR-0037). Those tables
-    // are not in SyncTable yet, so the honest value is an explicit null.
-    .int32("faultCode", null)
     .int32("latitudeE7", row.latitudeE7)
     .int32("longitudeE7", row.longitudeE7)
     .int32("gpsSpeedCentiMps", row.gpsSpeedCentiMps)
@@ -205,11 +216,6 @@ object SyncWire {
       .int64("batteryUsedWhMilli", row.batteryUsedWhMilli)
       .int64("batteryRegenWhMilli", row.batteryRegenWhMilli)
       .int32("maxDutyAbsPermille", row.maxDutyAbsPermille)
-      // A minute bucket stopped counting faults when VESC faults became Board-owned evidence in
-      // their own tables (ADR-0037), so zero is the truthful count under the new model. Not null:
-      // the server declares this one non-nullable inside a strict schema it validates whole, so a
-      // null here refuses the entire Sync Batch, not the field.
-      .count("faultCount", 0)
       .int64("firstOdometerCm", row.firstOdometerCm)
       .int64("lastOdometerCm", row.lastOdometerCm)
       .count("gpsPointCount", row.gpsPointCount)
@@ -241,6 +247,67 @@ object SyncWire {
     .int32("maxSpeedCentiKmh", row.maxSpeedCentiKmh)
     .int64("batteryUsedWhMilli", row.batteryUsedWhMilli)
     .build()
+
+  /**
+   * One VESC Fault Occurrence: firmware-authored live evidence, keyed on the app's own minted id
+   * because the same code activating twice is two occurrences, never one row keyed on the code.
+   *
+   * `updatedAt` is carried in its own right rather than derived from `lastObservedAtMs`: a Rider
+   * dismissing an occurrence changes the row without the fault being observed again.
+   */
+  fun vescFaultOccurrence(row: VescFaultOccurrenceEntity): String =
+    SyncRowWriter(SyncTable.VESC_FAULT_OCCURRENCES)
+      .keyText("id", row.id)
+      .keyText("boardId", row.boardId)
+      .int32("code", row.code)
+      .timestamp("occurredAtMs", row.occurredAtMs)
+      .timestamp("lastObservedAtMs", row.lastObservedAtMs)
+      .timestamp("clearedAtMs", row.clearedAtMs)
+      .bool("dismissed", row.dismissed)
+      .timestamp("updatedAt", row.updatedAt)
+      .build()
+
+  /**
+   * One VESC Fault Capture. Keyed by the Occurrence — one Occurrence has at most one Capture — so
+   * the parent reference and the identity are the same field. Immutable, so it carries no change
+   * timestamp and a re-send is a no-op rather than an upsert.
+   */
+  fun vescFaultCapture(row: VescFaultCaptureEntity): String =
+    SyncRowWriter(SyncTable.VESC_FAULT_CAPTURES)
+      .keyText("occurrenceId", row.occurrenceId)
+      .keyText("boardId", row.boardId)
+      .timestamp("startedAtMs", row.startedAtMs)
+      .timestamp("openedAtMs", row.openedAtMs)
+      .count("sampleCount", row.sampleCount)
+      .build()
+
+  /**
+   * One decoded sample inside a Capture, identified by its Occurrence and its capture time. The
+   * local autoincrement id never crosses the wire — it restarts on a fresh install, exactly as a
+   * Tune History entry's does.
+   *
+   * Every value is nullable: a sample carries what that Board Session actually reported, and a
+   * field the firmware did not send is absent rather than zero.
+   */
+  fun vescFaultCaptureSample(row: VescFaultCaptureSampleEntity): String =
+    SyncRowWriter(SyncTable.VESC_FAULT_CAPTURE_SAMPLES)
+      .keyText("occurrenceId", row.occurrenceId)
+      .timestamp("capturedAtMs", row.capturedAtMs)
+      .reading("speed", row.speed)
+      .reading("dutyCycle", row.dutyCycle)
+      .reading("erpm", row.erpm)
+      .reading("batteryVoltage", row.batteryVoltage)
+      .reading("batteryCurrent", row.batteryCurrent)
+      .reading("motorCurrent", row.motorCurrent)
+      .reading("tempMosfet", row.tempMosfet)
+      .reading("tempMotor", row.tempMotor)
+      .reading("pitch", row.pitch)
+      .reading("roll", row.roll)
+      .reading("balancePitch", row.balancePitch)
+      .reading("adc1", row.adc1)
+      .reading("adc2", row.adc2)
+      .int32("state", row.state)
+      .build()
 
   /**
    * One Sync Action, flat: the target, the identity within that target's scope, and when the Rider

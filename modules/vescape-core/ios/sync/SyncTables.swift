@@ -12,7 +12,6 @@ import Foundation
 /// `sync_seq` for mutable ones. Both are device-local counters that never cross the wire.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/sync/SyncTables.kt `SyncTable`
-/// @parity /modules/vescape-core/src/index.ts `SyncTable`
 enum SyncTable: String, CaseIterable {
   case appSettings
   case boards
@@ -28,6 +27,11 @@ enum SyncTable: String, CaseIterable {
   case telemetryFrames
   case telemetryMinuteBuckets
   case favorites
+  // Board-owned, so after `boards`; the Capture and its samples reference the Occurrence, so after
+  // it in turn. This chain is the one place the ordering rule bites twice in one batch.
+  case vescFaultOccurrences
+  case vescFaultCaptures
+  case vescFaultCaptureSamples
   case deleteActions
 
   var wire: String { rawValue }
@@ -48,6 +52,9 @@ enum SyncTable: String, CaseIterable {
     case .telemetryFrames: return "telemetry_frames"
     case .telemetryMinuteBuckets: return "telemetry_minute_buckets"
     case .favorites: return "favorites"
+    case .vescFaultOccurrences: return "vesc_fault_occurrences"
+    case .vescFaultCaptures: return "vesc_fault_captures"
+    case .vescFaultCaptureSamples: return "vesc_fault_capture_samples"
     case .deleteActions: return "sync_actions"
     }
   }
@@ -55,7 +62,7 @@ enum SyncTable: String, CaseIterable {
   var cursorColumn: String {
     switch self {
     case .tuneHistoryEntries, .telemetryMarkers, .metricExclusionRanges, .diagnosticEvents,
-         .telemetryFrames, .deleteActions:
+         .telemetryFrames, .vescFaultCaptureSamples, .deleteActions:
       return syncRowIdColumn
     default:
       return syncSeqColumn

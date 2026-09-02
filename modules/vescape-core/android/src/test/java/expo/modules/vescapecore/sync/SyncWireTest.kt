@@ -1,10 +1,15 @@
 package expo.modules.vescapecore.sync
 
+import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import expo.modules.vescapecore.telemetry.AppSettingEntity
 import expo.modules.vescapecore.telemetry.BoardEntity
+import expo.modules.vescapecore.telemetry.BoardWarningEntity
 import expo.modules.vescapecore.telemetry.SyncActionEntity
 import expo.modules.vescapecore.telemetry.TelemetryFrameEntity
 import expo.modules.vescapecore.telemetry.TelemetryMinuteBucketEntity
+import expo.modules.vescapecore.telemetry.VescFaultCaptureEntity
+import expo.modules.vescapecore.telemetry.VescFaultCaptureSampleEntity
+import expo.modules.vescapecore.telemetry.VescFaultOccurrenceEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -143,6 +148,187 @@ class SyncWireTest {
         SyncActionEntity(id = 3, target = "somethingElse", boardId = null, key = "x", deletedAt = 1),
       )
     }
+  }
+
+  /**
+   * The whole reason the occurrence carries its own change timestamp: dismissal is a Rider edit the
+   * restore has to preserve, and `lastObservedAtMs` cannot express it.
+   */
+  @Test
+  fun `a fault occurrence carries its own change timestamp, not just the last observation`() {
+    assertEquals(
+      """{"id":"fault-1","boardId":"board-1","code":6,"occurredAtMs":1000,""" +
+        """"lastObservedAtMs":2000,"clearedAtMs":null,"dismissed":true,"updatedAt":9000}""",
+      SyncWire.vescFaultOccurrence(
+        VescFaultOccurrenceEntity(
+          id = "fault-1",
+          boardId = "board-1",
+          code = 6,
+          occurredAtMs = 1_000,
+          lastObservedAtMs = 2_000,
+          clearedAtMs = null,
+          dismissed = true,
+          updatedAt = 9_000,
+          syncSeq = 4,
+        ),
+      ),
+    )
+  }
+
+  /** A Capture is immutable, so it carries no change timestamp — and no cursor either. */
+  @Test
+  fun `a fault capture encodes exactly the declared fields`() {
+    assertEquals(
+      """{"occurrenceId":"fault-1","boardId":"board-1","startedAtMs":500,"openedAtMs":1000,""" +
+        """"sampleCount":42}""",
+      SyncWire.vescFaultCapture(
+        VescFaultCaptureEntity(
+          occurrenceId = "fault-1",
+          boardId = "board-1",
+          startedAtMs = 500,
+          openedAtMs = 1_000,
+          sampleCount = 42,
+          syncSeq = 7,
+        ),
+      ),
+    )
+  }
+
+  /**
+   * The local autoincrement id restarts on a fresh install, so it can never be identity: a restored
+   * phone's re-upload has to be an idempotent no-op, keyed on the Occurrence and the capture time.
+   */
+  @Test
+  fun `a capture sample sends no local row id and nulls what the firmware never reported`() {
+    val encoded = SyncWire.vescFaultCaptureSample(
+      VescFaultCaptureSampleEntity(
+        id = 31,
+        occurrenceId = "fault-1",
+        capturedAtMs = 1_500,
+        speed = 12.5,
+        dutyCycle = null,
+        erpm = null,
+        batteryVoltage = null,
+        batteryCurrent = null,
+        motorCurrent = null,
+        tempMosfet = null,
+        tempMotor = null,
+        pitch = null,
+        roll = null,
+        balancePitch = null,
+        adc1 = null,
+        adc2 = null,
+        state = 4,
+      ),
+    )
+
+    assertTrue(encoded.startsWith("""{"occurrenceId":"fault-1","capturedAtMs":1500,"speed":12.5,"""))
+    assertTrue(encoded.contains(""""dutyCycle":null"""))
+    assertTrue(encoded.endsWith(""""state":4}"""))
+    assertTrue("the local row id must never cross the wire", !encoded.contains("\"id\""))
+  }
+
+  /**
+   * A decoded Board sample is the one thing on the wire the app did not author — it received it.
+   * Refusing a non-finite float here would pause every table's backup on a permanent protocol
+   * error that no retry can clear, over a reading the firmware itself could not express. Absent is
+   * what these nullable columns already mean, so an unusable reading is absent too.
+   */
+  @Test
+  fun `an unusable firmware reading is absent rather than a permanent protocol pause`() {
+    val encoded = SyncWire.vescFaultCaptureSample(
+      VescFaultCaptureSampleEntity(
+        id = 32,
+        occurrenceId = "fault-1",
+        capturedAtMs = 1_500,
+        speed = Double.NaN,
+        dutyCycle = Double.POSITIVE_INFINITY,
+        erpm = Double.NEGATIVE_INFINITY,
+        batteryVoltage = 78.9,
+        batteryCurrent = null,
+        motorCurrent = null,
+        tempMosfet = null,
+        tempMotor = null,
+        pitch = null,
+        roll = null,
+        balancePitch = null,
+        adc1 = null,
+        adc2 = null,
+        state = 4,
+      ),
+    )
+
+    assertTrue(encoded.contains(""""speed":null"""))
+    assertTrue(encoded.contains(""""dutyCycle":null"""))
+    assertTrue(encoded.contains(""""erpm":null"""))
+    assertTrue("a usable reading beside an unusable one still lands", encoded.contains(""""batteryVoltage":78.9"""))
+  }
+
+  /**
+   * A rule restored without its kind looks configured and fires at the wrong point; a field the
+   * server has dropped rejects the entire batch. Both are asserted on the exact bytes.
+   */
+  @Test
+  fun `an alert carries the kind its thresholds are read under`() {
+    assertEquals(
+      """{"boardId":"board-1","id":"rule-1","controlId":"duty","threshold":70,""" +
+        """"thresholdMax":null,"thresholdKind":"configRelative","configFieldId":"tiltback_duty",""" +
+        """"thresholdOffset":-5,"thresholdMaxOffset":null,"enabled":true,"soundType":"beep",""" +
+        """"repeatEverySeconds":30,"beepCount":2,"source":"preset","createdAt":10,"updatedAt":20}""",
+      SyncWire.alert(
+        AlertRuleEntity(
+          boardId = "board-1",
+          id = "rule-1",
+          controlId = "duty",
+          threshold = 70.0,
+          thresholdMax = null,
+          thresholdKind = "configRelative",
+          configFieldId = "tiltback_duty",
+          thresholdOffset = -5.0,
+          thresholdMaxOffset = null,
+          enabled = true,
+          soundType = "beep",
+          createdAt = 10,
+          repeatEverySeconds = 30,
+          beepCount = 2,
+          source = "preset",
+          updatedAt = 20,
+        ),
+      ),
+    )
+  }
+
+  /**
+   * Without the stamp the server has nothing to compare, and a re-detection wins or loses
+   * arbitrarily against whatever it already holds.
+   */
+  @Test
+  fun `a board warning carries the stamp the server judges two writes on`() {
+    assertEquals(
+      """{"boardId":"board-1","kind":"cellSpread","severity":"warning","firstDetectedAt":10,""" +
+        """"lastDetectedAt":20,"payloadJson":"{}","updatedAt":21}""",
+      SyncWire.boardWarning(
+        BoardWarningEntity(
+          boardId = "board-1",
+          kind = "cellSpread",
+          severity = "warning",
+          firstDetectedAt = 10,
+          lastDetectedAt = 20,
+          payloadJson = "{}",
+          updatedAt = 21,
+        ),
+      ),
+    )
+  }
+
+  /**
+   * Both columns are gone from the server's schema, which validates a batch whole: sending either
+   * one rejects every row in it, not just the field.
+   */
+  @Test
+  fun `the columns the server dropped are not sent at all`() {
+    assertTrue(!SyncWire.telemetryFrame(frame()).contains("faultCode"))
+    assertTrue(!SyncWire.telemetryMinuteBucket(bucket(sampleCount = 1)).contains("faultCount"))
   }
 
   private fun bucket(sampleCount: Int) = TelemetryMinuteBucketEntity(

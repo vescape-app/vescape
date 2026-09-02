@@ -111,6 +111,28 @@ class SyncCursorContractTest {
     }
   }
 
+  /**
+   * A Metric Exclusion Range written by a sanitizer with no Board connected carries the
+   * unknown-Board sentinel, and the server's composite foreign key refuses it — a 409 that fails
+   * the whole Sync Batch. The row is retained, so without this filter the same batch retries
+   * forever and backup wedges permanently. An unattributed range names no Board, so there is
+   * nothing for the server to hang it off; it is an unowned local row, exactly like an unowned
+   * frame or bucket.
+   */
+  @Test
+  fun `unowned rows are skipped by every scan the server keys on a Board`() {
+    for (table in listOf(
+      SyncTable.METRIC_EXCLUSION_RANGES,
+      SyncTable.TELEMETRY_MINUTE_BUCKETS,
+    )) {
+      val method = scanMethods().getValue(table)
+      assertTrue(
+        "$method must skip the unknown-Board sentinel: ${query(method)}",
+        query(method).contains("board_id != ''"),
+      )
+    }
+  }
+
   /** The retained tables, and the column whose cursor decides what may be pruned. */
   private val gatedSweeps = mapOf(
     "deleteFramesBeforeUpTo" to "id <= :cursor",
@@ -171,6 +193,9 @@ class SyncCursorContractTest {
         "telemetryFrames",
         "telemetryMinuteBuckets",
         "favorites",
+        "vescFaultOccurrences",
+        "vescFaultCaptures",
+        "vescFaultCaptureSamples",
         "deleteActions",
       ),
       SyncTable.entries.map { it.wire },

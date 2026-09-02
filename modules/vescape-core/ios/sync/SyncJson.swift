@@ -99,6 +99,21 @@ final class SyncRowWriter {
     return raw(field, value == Double(whole) ? String(whole) : String(value))
   }
 
+  /// A measurement the firmware reported, where non-finite means the reading is unusable rather
+  /// than that the row is malformed.
+  ///
+  /// ``number(_:_:)`` refuses infinity and NaN, which is right for a value a Rider authored — one
+  /// there is a bug worth stopping for. A decoded Board sample is the opposite case: the app did
+  /// not choose the value, it received it, and one bad float would pause every table's backup on a
+  /// permanent protocol error that no retry can clear. These columns are all nullable precisely
+  /// because a field the firmware did not send is absent, so an unusable one is absent too.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/sync/SyncJson.kt `reading`
+  @discardableResult
+  func reading(_ field: String, _ value: Double?) throws -> SyncRowWriter {
+    try number(field, value.flatMap { $0.isFinite ? $0 : nil })
+  }
+
   private func bounded(_ field: String, _ value: Int64?, _ min: Int64, _ max: Int64) throws -> SyncRowWriter {
     guard let value else { return raw(field, "null") }
     if value < min || value > max { throw fail(field, "is out of bounds") }

@@ -213,6 +213,10 @@ class AppDataRepository private constructor(private val context: Context) {
     dao.deleteBoardWithSettings(id, System.currentTimeMillis())
     dao.deleteBoardConfigValues(id)
     dao.deleteBoardConfigChangeNotice(id)
+    // Motor Config Values are keyed by Board too, and were the one decode cache this path forgot.
+    // Nothing reads them once the Board is a tombstone, and the next link re-reads them from the
+    // controller anyway, so leaving them behind only accumulated rows no one could reach.
+    dao.deleteMotorConfigValues(id)
     notifyDataChanged(AppDataScope.BOARDS)
   }
 

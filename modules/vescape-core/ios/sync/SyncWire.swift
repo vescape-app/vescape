@@ -30,6 +30,9 @@ enum SyncWire {
     case .telemetryFrames: return try telemetryFrame(row)
     case .telemetryMinuteBuckets: return try telemetryMinuteBucket(row)
     case .favorites: return try favorite(row)
+    case .vescFaultOccurrences: return try vescFaultOccurrence(row)
+    case .vescFaultCaptures: return try vescFaultCapture(row)
+    case .vescFaultCaptureSamples: return try vescFaultCaptureSample(row)
     case .deleteActions: return try deleteAction(row)
     }
   }
@@ -74,9 +77,14 @@ enum SyncWire {
     try writer.timestamp("firstDetectedAt", row["first_detected_at"])
     try writer.timestamp("lastDetectedAt", row["last_detected_at"])
     writer.text("payloadJson", row["payload_json"])
+    try writer.timestamp("updatedAt", row["updated_at"])
     return writer.build()
   }
 
+  /// An Alert Rule is not always "fire above this number": `thresholdKind` says how to read them, and
+  /// a config-relative rule follows the Refloat field in `configFieldId` with the offsets applied to
+  /// whatever that field holds. Restoring the numbers without the kind produces a rule that looks
+  /// configured and fires at the wrong point, which is worse than losing it.
   static func alert(_ row: Row) throws -> String {
     let writer = SyncRowWriter(.alerts)
     try writer.keyText("boardId", text(row, "board_id"))
@@ -84,8 +92,14 @@ enum SyncWire {
     try writer.keyText("controlId", text(row, "control_id"))
     try writer.number("threshold", row["threshold"])
     try writer.number("thresholdMax", row["threshold_max"])
+    try writer.keyText("thresholdKind", text(row, "threshold_kind"))
+    try writer.nullableKeyText("configFieldId", row["config_field_id"])
+    try writer.number("thresholdOffset", row["threshold_offset"])
+    try writer.number("thresholdMaxOffset", row["threshold_max_offset"])
     writer.bool("enabled", (row["enabled"] as Int64? ?? 0) != 0)
     writer.text("soundType", row["sound_type"])
+    try writer.timestamp("repeatEverySeconds", row["repeat_every_seconds"])
+    try writer.count("beepCount", row["beep_count"])
     writer.text("source", row["source"])
     try writer.timestamp("createdAt", row["created_at"])
     try writer.timestamp("updatedAt", row["updated_at"])
@@ -198,10 +212,6 @@ enum SyncWire {
     try writer.int64("odometerCm", row["odometer_cm"])
     try writer.int32("tempMosfetDeciC", row["temp_mosfet_deci_c"])
     try writer.int32("tempMotorDeciC", row["temp_motor_deci_c"])
-    // The server still declares the field, but a Telemetry Sample stopped carrying a fault code
-    // when VESC faults became Board-owned evidence in their own tables (ADR-0037). Those tables
-    // are not in SyncTable yet, so the honest value is an explicit null.
-    try writer.int32("faultCode", nil)
     try writer.int32("latitudeE7", row["latitude_e7"])
     try writer.int32("longitudeE7", row["longitude_e7"])
     try writer.int32("gpsSpeedCentiMps", row["gps_speed_centi_mps"])
@@ -230,11 +240,6 @@ enum SyncWire {
     try writer.int64("batteryUsedWhMilli", row["battery_used_wh_milli"])
     try writer.int64("batteryRegenWhMilli", row["battery_regen_wh_milli"])
     try writer.int32("maxDutyAbsPermille", row["max_duty_abs_permille"])
-    // A minute bucket stopped counting faults when VESC faults became Board-owned evidence in their
-    // own tables (ADR-0037), so zero is the truthful count under the new model. Not null: the
-    // server declares this one non-nullable inside a strict schema it validates whole, so a null
-    // here refuses the entire Sync Batch, not the field.
-    try writer.count("faultCount", 0)
     try writer.int64("firstOdometerCm", row["first_odometer_cm"])
     try writer.int64("lastOdometerCm", row["last_odometer_cm"])
     try writer.count("gpsPointCount", row["gps_point_count"])
@@ -267,6 +272,64 @@ enum SyncWire {
     try writer.int32("avgSpeedCentiKmh", row["avg_speed_centi_kmh"])
     try writer.int32("maxSpeedCentiKmh", row["max_speed_centi_kmh"])
     try writer.int64("batteryUsedWhMilli", row["battery_used_wh_milli"])
+    return writer.build()
+  }
+
+  /// One activation of a controller fault code on one Board (ADR-0037). A time series, so identity is
+  /// the app's minted id and never `(boardId, code)`.
+  ///
+  /// `code` crosses the wire raw: display has to tolerate a code the other side has never seen, so
+  /// the number is canonical and no interpretation of it travels.
+  static func vescFaultOccurrence(_ row: Row) throws -> String {
+    let writer = SyncRowWriter(.vescFaultOccurrences)
+    try writer.keyText("id", text(row, "id"))
+    try writer.keyText("boardId", text(row, "board_id"))
+    try writer.int32("code", row["code"])
+    try writer.timestamp("occurredAtMs", row["occurred_at"])
+    try writer.timestamp("lastObservedAtMs", row["last_observed_at"])
+    try writer.timestamp("clearedAtMs", row["cleared_at"])
+    writer.bool("dismissed", (row["dismissed"] as Int64? ?? 0) != 0)
+    try writer.timestamp("updatedAt", row["updated_at"])
+    return writer.build()
+  }
+
+  /// The window of decoded Board samples an Occurrence owns. Keyed by the Occurrence — one Occurrence
+  /// has at most one Capture — so the parent reference and the identity are the same field, and it
+  /// carries no Change Timestamp because it has no lifecycle to report.
+  static func vescFaultCapture(_ row: Row) throws -> String {
+    let writer = SyncRowWriter(.vescFaultCaptures)
+    try writer.keyText("occurrenceId", text(row, "occurrence_id"))
+    try writer.keyText("boardId", text(row, "board_id"))
+    try writer.timestamp("startedAtMs", row["started_at"])
+    try writer.timestamp("openedAtMs", row["opened_at"])
+    try writer.count("sampleCount", row["sample_count"])
+    return writer.build()
+  }
+
+  /// One decoded sample inside a Capture. The local row id stays home: it is an autoincrement that
+  /// restarts on a fresh install, so identity is `(occurrenceId, capturedAtMs)`, exactly as a Tune
+  /// History entry is keyed.
+  ///
+  /// Every value is nullable — a decoded sample carries whatever that Board Session actually
+  /// reported, and a field the firmware never sent is absent rather than zero.
+  static func vescFaultCaptureSample(_ row: Row) throws -> String {
+    let writer = SyncRowWriter(.vescFaultCaptureSamples)
+    try writer.keyText("occurrenceId", text(row, "occurrence_id"))
+    try writer.timestamp("capturedAtMs", row["captured_at"])
+    try writer.reading("speed", row["speed"])
+    try writer.reading("dutyCycle", row["duty_cycle"])
+    try writer.reading("erpm", row["erpm"])
+    try writer.reading("batteryVoltage", row["battery_voltage"])
+    try writer.reading("batteryCurrent", row["battery_current"])
+    try writer.reading("motorCurrent", row["motor_current"])
+    try writer.reading("tempMosfet", row["temp_mosfet"])
+    try writer.reading("tempMotor", row["temp_motor"])
+    try writer.reading("pitch", row["pitch"])
+    try writer.reading("roll", row["roll"])
+    try writer.reading("balancePitch", row["balance_pitch"])
+    try writer.reading("adc1", row["adc1"])
+    try writer.reading("adc2", row["adc2"])
+    try writer.int32("state", row["state"])
     return writer.build()
   }
 

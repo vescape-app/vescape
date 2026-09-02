@@ -400,6 +400,8 @@ internal const val SYNC_SEQ_BOARD_WARNINGS = "board_warnings"
 internal const val SYNC_SEQ_PRIVACY_ZONES = "privacy_zones"
 internal const val SYNC_SEQ_TUNE_PROFILES = "tune_profiles"
 internal const val SYNC_SEQ_FAVORITES = "favorites"
+internal const val SYNC_SEQ_VESC_FAULT_OCCURRENCES = "vesc_fault_occurrences"
+internal const val SYNC_SEQ_VESC_FAULT_CAPTURES = "vesc_fault_captures"
 
 /**
  * The three tables the schema-44 migration gave a `sync_seq`, frozen at the set that existed then.
@@ -423,11 +425,20 @@ internal val SYNC_SEQ_TABLES_V45 = listOf(
 )
 
 /**
+ * VESC Fault Evidence, given a `sync_seq` at schema 48. `vesc_fault_capture_samples` is absent for
+ * the usual reason: it is append-only and already keyed on an `AUTOINCREMENT` id.
+ */
+internal val SYNC_SEQ_TABLES_V48 = listOf(
+  SYNC_SEQ_VESC_FAULT_OCCURRENCES,
+  SYNC_SEQ_VESC_FAULT_CAPTURES,
+)
+
+/**
  * Every table carrying a `sync_seq`. Append-only tables are deliberately absent: they declare
  * `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
  * key already *is* their cursor.
  */
-internal val SYNC_SEQ_TABLES = SYNC_SEQ_TABLES_V44 + SYNC_SEQ_TABLES_V45
+internal val SYNC_SEQ_TABLES = SYNC_SEQ_TABLES_V44 + SYNC_SEQ_TABLES_V45 + SYNC_SEQ_TABLES_V48
 
 /**
  * What a [SyncActionEntity] can name — and, by omission, what it cannot.
@@ -647,6 +658,10 @@ internal val NOT_SYNCED_SETTING_KEYS = setOf(
   // The backup choice is per phone: the expensive first upload belongs to the phone that holds the
   // backlog, so a restore onto a second phone asks that Rider again rather than deciding for them.
   "syncBackupChoiceMade",
+  // So is the data-plan choice, and for the same reason the other two are: it answers what this
+  // phone's connection costs, not what the Rider prefers. Travelling would let a restore onto a
+  // cellular-only phone inherit the other phone's answer and upload a ride over metered data.
+  "syncWifiOnly",
 )
 
 /**
@@ -996,6 +1011,7 @@ data class BoardConfigChangeNoticeEntity(
   tableName = "vesc_fault_occurrences",
   indices = [
     Index(value = ["board_id", "occurred_at"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class VescFaultOccurrenceEntity(
@@ -1016,6 +1032,17 @@ data class VescFaultOccurrenceEntity(
   val clearedAtMs: Long?,
   /** Rider acknowledged this occurrence: stays durable, stops driving the fault icon. */
   val dismissed: Boolean,
+  /**
+   * Ratcheted last-write-wins timestamp; see [BoardEntity.updatedAt]. Distinct from
+   * [lastObservedAtMs], which moves only when the controller reported the code again — a Rider
+   * dismissing an occurrence rewrites the row without the fault ever being observed a second time,
+   * and that edit is precisely what a restore has to preserve.
+   */
+  @ColumnInfo(name = "updated_at")
+  val updatedAt: Long = 0,
+  /** Device-local Sync Cursor position; see [SyncSequenceEntity]. */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 /**
  * Metadata for one VESC Fault Capture: the self-contained window of decoded Board samples a single
@@ -1031,6 +1058,7 @@ data class VescFaultOccurrenceEntity(
   tableName = "vesc_fault_captures",
   indices = [
     Index(value = ["board_id"]),
+    Index(value = ["sync_seq"]),
   ],
 )
 data class VescFaultCaptureEntity(
@@ -1048,6 +1076,13 @@ data class VescFaultCaptureEntity(
   /** Samples actually retained — the achieved Board Session rate, never a fabricated cadence. */
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
+  /**
+   * Device-local Sync Cursor position; see [SyncSequenceEntity]. A Capture carries no change
+   * timestamp — it is a past snapshot with no lifecycle — so the counter alone decides when the
+   * uploader has caught up with it.
+   */
+  @ColumnInfo(name = "sync_seq")
+  val syncSeq: Long = 0,
 )
 
 /**

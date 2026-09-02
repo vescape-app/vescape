@@ -169,6 +169,32 @@ final class SyncStoreTests: XCTestCase {
     XCTAssertNil(cursors(try store.pending(rowLimit: 100))[.telemetryFrames])
   }
 
+  private func seedExclusionRange(id: Int64, boardId: String) throws {
+    try queue.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO metric_exclusion_ranges (id, board_id, reason, start_ms, end_ms, sample_count)
+          VALUES (?, ?, 'idle', 0, 1, 0)
+          """,
+        arguments: [id, boardId]
+      )
+    }
+  }
+
+  /// A range recorded with no Board connected carries `UNKNOWN_TELEMETRY_BOARD_ID`, and the server's
+  /// composite foreign key refuses it — which refuses the whole batch, and since the row is retained
+  /// the same batch retries forever. Offering it once would wedge backup permanently.
+  func testAnUnattributedExclusionRangeIsNeitherOfferedNorCounted() throws {
+    let store = store()
+    try seedBoard("a", syncSeq: 1)
+    try seedExclusionRange(id: 1, boardId: UNKNOWN_TELEMETRY_BOARD_ID)
+    try seedExclusionRange(id: 2, boardId: "a")
+
+    let pending = try store.pending(rowLimit: 100)
+    XCTAssertEqual(cursors(pending)[.metricExclusionRanges], [2])
+    XCTAssertEqual(store.pendingCount(), 2, "one board and one owned range")
+  }
+
   /// `pendingCount` drives the status line and the "send again immediately" decision. A count that
   /// disagrees with the scan reports a drained backlog while rows are still waiting.
   func testThePendingCountAgreesWithWhatTheScanWillActuallyOffer() throws {

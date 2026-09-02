@@ -272,7 +272,16 @@ interface TelemetryDao {
   @Query("SELECT * FROM telemetry_markers WHERE id > :cursor ORDER BY id ASC LIMIT :limit")
   suspend fun getTelemetryMarkersAfter(cursor: Long, limit: Int): List<TelemetryMarkerEntity>
 
-  @Query("SELECT * FROM metric_exclusion_ranges WHERE id > :cursor ORDER BY id ASC LIMIT :limit")
+  /**
+   * A range whose Board is the unknown-Board sentinel is unowned in the same way as a frame: an
+   * unattributed range names no Board, so the server has nothing to hang it off — its composite
+   * foreign key refuses `''` and 409s the whole Sync Batch. The row is retained, so the same batch
+   * would retry forever; the scan skips it instead.
+   */
+  @Query(
+    "SELECT * FROM metric_exclusion_ranges WHERE id > :cursor AND board_id != '' " +
+      "ORDER BY id ASC LIMIT :limit",
+  )
   suspend fun getExclusionRangesAfter(cursor: Long, limit: Int): List<MetricExclusionRangeEntity>
 
   @Query("SELECT * FROM diagnostic_events WHERE id > :cursor ORDER BY id ASC LIMIT :limit")
@@ -305,6 +314,20 @@ interface TelemetryDao {
   @Query("SELECT * FROM favorites WHERE sync_seq > :cursor ORDER BY sync_seq ASC LIMIT :limit")
   suspend fun getFavoritesAfter(cursor: Long, limit: Int): List<FavoriteEntity>
 
+  // VESC Fault Evidence. Never pruned — the one Rider-visible history that is permanent on the
+  // phone (ADR-0016) — so these scans have no retention counterpart to stay ahead of.
+
+  @Query(
+    "SELECT * FROM vesc_fault_occurrences WHERE sync_seq > :cursor ORDER BY sync_seq ASC LIMIT :limit",
+  )
+  suspend fun getVescFaultOccurrencesAfter(cursor: Long, limit: Int): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_captures WHERE sync_seq > :cursor ORDER BY sync_seq ASC LIMIT :limit")
+  suspend fun getVescFaultCapturesAfter(cursor: Long, limit: Int): List<VescFaultCaptureEntity>
+
+  @Query("SELECT * FROM vesc_fault_capture_samples WHERE id > :cursor ORDER BY id ASC LIMIT :limit")
+  suspend fun getVescFaultCaptureSamplesAfter(cursor: Long, limit: Int): List<VescFaultCaptureSampleEntity>
+
   @Query("SELECT COUNT(*) FROM app_settings WHERE sync_seq > :cursor")
   suspend fun countAppSettingsAfter(cursor: Long): Int
 
@@ -332,7 +355,7 @@ interface TelemetryDao {
   @Query("SELECT COUNT(*) FROM telemetry_markers WHERE id > :cursor")
   suspend fun countTelemetryMarkersAfter(cursor: Long): Int
 
-  @Query("SELECT COUNT(*) FROM metric_exclusion_ranges WHERE id > :cursor")
+  @Query("SELECT COUNT(*) FROM metric_exclusion_ranges WHERE id > :cursor AND board_id != ''")
   suspend fun countExclusionRangesAfter(cursor: Long): Int
 
   @Query("SELECT COUNT(*) FROM diagnostic_events WHERE id > :cursor")
@@ -346,6 +369,15 @@ interface TelemetryDao {
 
   @Query("SELECT COUNT(*) FROM favorites WHERE sync_seq > :cursor")
   suspend fun countFavoritesAfter(cursor: Long): Int
+
+  @Query("SELECT COUNT(*) FROM vesc_fault_occurrences WHERE sync_seq > :cursor")
+  suspend fun countVescFaultOccurrencesAfter(cursor: Long): Int
+
+  @Query("SELECT COUNT(*) FROM vesc_fault_captures WHERE sync_seq > :cursor")
+  suspend fun countVescFaultCapturesAfter(cursor: Long): Int
+
+  @Query("SELECT COUNT(*) FROM vesc_fault_capture_samples WHERE id > :cursor")
+  suspend fun countVescFaultCaptureSamplesAfter(cursor: Long): Int
 
   @Query("SELECT COUNT(*) FROM sync_actions WHERE id > :cursor")
   suspend fun countSyncActionsAfter(cursor: Long): Int
@@ -1188,36 +1220,78 @@ interface TelemetryDao {
   @Insert(onConflict = OnConflictStrategy.IGNORE)
   suspend fun insertVescFault(fault: VescFaultOccurrenceEntity): Long
 
+  @Query("SELECT updated_at FROM vesc_fault_occurrences WHERE id = :id")
+  suspend fun getVescFaultUpdatedAt(id: String): Long?
+
   @Query(
-    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt WHERE id = :id",
+    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt, " +
+      "updated_at = :updatedAt, sync_seq = :syncSeq WHERE id = :id",
   )
   suspend fun updateVescFaultLifecycle(
     id: String,
     lastObservedAt: Long,
     clearedAt: Long?,
+    updatedAt: Long,
+    syncSeq: Long,
   )
 
   /**
    * Insert-or-advance. Deliberately not a `REPLACE` upsert: that rewrites `dismissed` from the
    * caller's in-memory snapshot, so a stale heartbeat could un-dismiss what the rider just
    * acknowledged. Dismissal has its own statement.
+   *
+   * Stamps both sync columns like [upsertBoardWarning]: the caller supplies observation times only,
+   * so `updated_at` is authored here from [VescFaultOccurrenceEntity.lastObservedAtMs] as the write
+   * clock. Both branches write the row, so both take the one position handed out.
    */
   @Transaction
   suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
-    if (insertVescFault(fault) == -1L) {
-      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs)
+    val updatedAt = ratchetUpdatedAt(getVescFaultUpdatedAt(fault.id), fault.lastObservedAtMs)
+    val syncSeq = nextSyncSeq(SYNC_SEQ_VESC_FAULT_OCCURRENCES)
+    if (insertVescFault(fault.copy(updatedAt = updatedAt, syncSeq = syncSeq)) == -1L) {
+      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs, updatedAt, syncSeq)
     }
   }
 
-  @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
-  suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int
+  @Query(
+    "UPDATE vesc_fault_occurrences SET dismissed = :dismissed, " +
+      "updated_at = MAX(updated_at + 1, :updatedAt), sync_seq = :syncSeq WHERE id = :id",
+  )
+  suspend fun setVescFaultDismissedRow(
+    id: String,
+    dismissed: Boolean,
+    updatedAt: Long,
+    syncSeq: Long,
+  ): Int
+
+  /**
+   * The Rider acknowledged an occurrence. A targeted `UPDATE` rather than an entity round-trip, so
+   * it has to move both sync columns in its own SQL — and it is the write `updated_at` exists for:
+   * nothing else about the row changes, so without the stamp the edit would never reach the server.
+   */
+  @Transaction
+  suspend fun setVescFaultDismissed(
+    id: String,
+    dismissed: Boolean,
+    now: Long = System.currentTimeMillis(),
+  ): Int = setVescFaultDismissedRow(id, dismissed, now, nextSyncSeq(SYNC_SEQ_VESC_FAULT_OCCURRENCES))
 
   // VESC Fault Captures — one self-contained window of decoded Board samples per occurrence. Append
   // only, no GPS, and outside every Ride History retention/pruning path.
   // @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift
 
   @Upsert
-  suspend fun upsertVescFaultCapture(capture: VescFaultCaptureEntity)
+  suspend fun upsertVescFaultCaptureRow(capture: VescFaultCaptureEntity)
+
+  /**
+   * Stamps the Sync Cursor position. A Capture is immutable once written, so a rewrite is a
+   * re-statement of the same snapshot rather than an edit — it still takes a fresh position,
+   * because the scan may already have passed the row it replaces.
+   */
+  @Transaction
+  suspend fun upsertVescFaultCapture(capture: VescFaultCaptureEntity) {
+    upsertVescFaultCaptureRow(capture.copy(syncSeq = nextSyncSeq(SYNC_SEQ_VESC_FAULT_CAPTURES)))
+  }
 
   @Query("SELECT * FROM vesc_fault_captures WHERE occurrence_id = :occurrenceId LIMIT 1")
   suspend fun getVescFaultCapture(occurrenceId: String): VescFaultCaptureEntity?

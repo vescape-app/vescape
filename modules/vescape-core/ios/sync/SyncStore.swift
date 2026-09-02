@@ -80,9 +80,15 @@ final class SyncStore: SyncSource {
   /// Resolved per call: an Account reset replaces the whole database under this object.
   private var pool: (any DatabaseWriter)? { database() }
 
-  /// Frames and buckets that name no Board are not offered: the server keys those tables on the
-  /// Board and has nowhere to put a sample that belongs to none (ADR-0028). They are unowned local
-  /// rows, not rows a Rider is waiting to see backed up.
+  /// Rows that name no Board are not offered: the server keys these tables on the Board and has
+  /// nowhere to put a row that belongs to none (ADR-0028). They are unowned local rows, not rows a
+  /// Rider is waiting to see backed up.
+  ///
+  /// An Exclusion Range is filtered for the same reason a bucket is, and it is not optional: the
+  /// sanitizers write `UNKNOWN_TELEMETRY_BOARD_ID` — the empty string — on a range recorded with no
+  /// Board connected, and an unattributed range names no Board for the server to hang it off. Its
+  /// composite foreign key refuses that row, which refuses the whole Sync Batch, and since the row is
+  /// retained the same batch retries forever: backup wedges permanently on one unowned range.
   ///
   /// The consequence is deliberate: a later owned row carries the cursor past a skipped one, so
   /// cursor-gated retention prunes unowned telemetry on age alone, exactly as it did before the
@@ -91,7 +97,7 @@ final class SyncStore: SyncSource {
   private func scanPredicate(_ table: SyncTable) -> String {
     switch table {
     case .telemetryFrames: return " AND board_id IS NOT NULL"
-    case .telemetryMinuteBuckets: return " AND board_id != ''"
+    case .telemetryMinuteBuckets, .metricExclusionRanges: return " AND board_id != ''"
     default: return ""
     }
   }

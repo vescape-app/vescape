@@ -51,6 +51,9 @@ class SyncStore(
         SyncTable.TELEMETRY_FRAMES -> database().countTelemetryFramesAfter(cursor)
         SyncTable.TELEMETRY_MINUTE_BUCKETS -> database().countMinuteBucketsAfter(cursor)
         SyncTable.FAVORITES -> database().countFavoritesAfter(cursor)
+        SyncTable.VESC_FAULT_OCCURRENCES -> database().countVescFaultOccurrencesAfter(cursor)
+        SyncTable.VESC_FAULT_CAPTURES -> database().countVescFaultCapturesAfter(cursor)
+        SyncTable.VESC_FAULT_CAPTURE_SAMPLES -> database().countVescFaultCaptureSamplesAfter(cursor)
         SyncTable.DELETE_ACTIONS -> database().countSyncActionsAfter(cursor)
       }
     }
@@ -102,6 +105,12 @@ class SyncStore(
         database().getMinuteBucketsAfter(cursor, limit).map { SyncPendingRow(it.syncSeq, SyncWire.telemetryMinuteBucket(it)) }
       SyncTable.FAVORITES ->
         database().getFavoritesAfter(cursor, limit).map { SyncPendingRow(it.syncSeq, SyncWire.favorite(it)) }
+      SyncTable.VESC_FAULT_OCCURRENCES ->
+        database().getVescFaultOccurrencesAfter(cursor, limit).map { SyncPendingRow(it.syncSeq, SyncWire.vescFaultOccurrence(it)) }
+      SyncTable.VESC_FAULT_CAPTURES ->
+        database().getVescFaultCapturesAfter(cursor, limit).map { SyncPendingRow(it.syncSeq, SyncWire.vescFaultCapture(it)) }
+      SyncTable.VESC_FAULT_CAPTURE_SAMPLES ->
+        database().getVescFaultCaptureSamplesAfter(cursor, limit).map { SyncPendingRow(it.id, SyncWire.vescFaultCaptureSample(it)) }
       SyncTable.DELETE_ACTIONS ->
         database().getSyncActionsAfter(cursor, limit).map { SyncPendingRow(it.id, SyncWire.deleteAction(it)) }
     }

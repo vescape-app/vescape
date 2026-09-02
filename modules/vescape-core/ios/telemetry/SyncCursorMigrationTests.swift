@@ -447,4 +447,117 @@ final class SyncCursorMigrationTests: XCTestCase {
     XCTAssertEqual(try rowSyncSeq("app_settings", "key = ?", ["riderName"]), 0)
     XCTAssertGreaterThan(try XCTUnwrap(rowSyncSeq("app_settings", "key = ?", ["liveHistoryLimit"])), 0)
   }
+
+  // MARK: - VESC Fault Evidence (#430)
+
+  /// Seed fault evidence the way an installed app holds it just before the upgrade.
+  ///
+  /// The tables are rebuilt in their pre-v48 shape first: `VescFaultStore.createTables` is the
+  /// current schema, so migrating from scratch produces the columns a phone installed on v40..v47
+  /// does not have — and only that phone's shape exercises the backfill.
+  private func seedFaultEvidenceBeforeV48() throws {
+    try TelemetryDatabase.migrator.migrate(queue, upTo: "v47_sync_binding")
+    try queue.write { db in
+      try db.execute(sql: "DROP TABLE vesc_fault_occurrences")
+      try db.execute(sql: "DROP TABLE vesc_fault_captures")
+      try db.execute(sql: """
+        CREATE TABLE vesc_fault_occurrences (
+          id TEXT NOT NULL PRIMARY KEY,
+          board_id TEXT NOT NULL,
+          code INTEGER NOT NULL,
+          occurred_at INTEGER NOT NULL,
+          last_observed_at INTEGER NOT NULL,
+          cleared_at INTEGER,
+          dismissed INTEGER NOT NULL
+        )
+        """)
+      try db.execute(sql: """
+        CREATE TABLE vesc_fault_captures (
+          occurrence_id TEXT NOT NULL PRIMARY KEY,
+          board_id TEXT NOT NULL,
+          started_at INTEGER NOT NULL,
+          opened_at INTEGER NOT NULL,
+          sample_count INTEGER NOT NULL
+        )
+        """)
+    }
+    try queue.write { db in
+      for (index, id) in ["fault-1", "fault-2"].enumerated() {
+        try db.execute(
+          sql: """
+            INSERT INTO vesc_fault_occurrences
+              (id, board_id, code, occurred_at, last_observed_at, cleared_at, dismissed)
+            VALUES (?, 'board-1', 9, ?, ?, NULL, 0)
+            """,
+          arguments: [id, 1_000 + index, 5_000 + index]
+        )
+        try db.execute(
+          sql: """
+            INSERT INTO vesc_fault_captures
+              (occurrence_id, board_id, started_at, opened_at, sample_count)
+            VALUES (?, 'board-1', ?, ?, 3)
+            """,
+          arguments: [id, 900 + index, 1_000 + index]
+        )
+      }
+    }
+  }
+
+  func testFaultEvidenceGainsItsCursorColumnsAndIndexes() throws {
+    try migrateToLatest()
+
+    XCTAssertTrue(try columnNames("vesc_fault_occurrences").contains("updated_at"))
+    for table in syncSeqTablesV48 {
+      XCTAssertTrue(try columnNames(table).contains("sync_seq"), "\(table) is missing sync_seq")
+      XCTAssertTrue(
+        try indexNames(table).contains("index_\(table)_sync_seq"),
+        "\(table) is missing its sync_seq index"
+      )
+    }
+    // Append-only on an `AUTOINCREMENT` key, which already is its cursor.
+    XCTAssertFalse(try columnNames("vesc_fault_capture_samples").contains("sync_seq"))
+  }
+
+  /// Epoch zero is not a truthful change timestamp: the server keeps the stored row unless the
+  /// incoming stamp is strictly newer, so a whole existing fault record would arrive unrestorable.
+  func testOccurrenceChangeTimestampIsBackfilledFromTheLastObservation() throws {
+    try seedFaultEvidenceBeforeV48()
+
+    try migrateToLatest()
+
+    let stamps = try queue.read { db in
+      try Int64.fetchAll(db, sql: "SELECT updated_at FROM vesc_fault_occurrences ORDER BY id")
+    }
+    XCTAssertEqual(stamps, [5_000, 5_001])
+  }
+
+  func testFaultEvidenceBackfillsDistinctPositionsAndSeedsItsCounters() throws {
+    try seedFaultEvidenceBeforeV48()
+
+    try migrateToLatest()
+
+    for (table, counterName) in [
+      ("vesc_fault_occurrences", syncSeqVescFaultOccurrences),
+      ("vesc_fault_captures", syncSeqVescFaultCaptures),
+    ] {
+      let seqs = try queue.read { db in
+        try Int64.fetchAll(db, sql: "SELECT sync_seq FROM \(table) ORDER BY sync_seq")
+      }
+      XCTAssertEqual(Set(seqs).count, 2, "\(table) backfilled positions collide")
+      XCTAssertFalse(seqs.contains(0), "\(table) has a row at the seed value")
+      XCTAssertEqual(try counter(counterName), seqs.max())
+    }
+  }
+
+  /// Re-running the migrator must not renumber rows or re-seed a counter below positions already
+  /// handed out.
+  func testFaultEvidenceMigrationIsANoOpOnReRun() throws {
+    try seedFaultEvidenceBeforeV48()
+    try migrateToLatest()
+    let before = try counter(syncSeqVescFaultOccurrences)
+
+    try migrateToLatest()
+
+    XCTAssertEqual(try counter(syncSeqVescFaultOccurrences), before)
+  }
 }

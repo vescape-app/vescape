@@ -52,6 +52,10 @@ internal let notSyncedSettingKeys: [String] = [
   // The backup choice is per phone: the expensive first upload belongs to the phone that holds the
   // backlog, so a restore onto a second phone asks that Rider again rather than deciding for them.
   "syncBackupChoiceMade",
+  // So is the data-plan choice, and for the same reason the other two are: it answers what this
+  // phone's connection costs, not what the Rider prefers. Travelling would let a restore onto a
+  // cellular-only phone inherit the other phone's answer and upload a ride over metered data.
+  "syncWifiOnly",
 ]
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt
