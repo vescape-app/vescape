@@ -1,5 +1,9 @@
 # Ride History routes come from Telemetry Samples
 
+## Status
+
+Storage and shared-timeline decisions superseded by ADR-0038. Ride Track supplies the route; GPS movement can extend the shared history seek bounds and Time while Board readings remain unavailable in telemetry gaps. Distance, average speed, and top speed remain Board-based. GPS alone still does not start a Ride Recording. The original decision below is retained as historical context.
+
 Ride History derives routes from GPS fixes attached to Telemetry Samples. Standalone phone GPS updates remain part of Live State only and do not create or extend Ride Recordings.
 
 ## Considered Options
