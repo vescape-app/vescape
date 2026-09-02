@@ -205,10 +205,11 @@ object SyncWire {
       .int64("batteryUsedWhMilli", row.batteryUsedWhMilli)
       .int64("batteryRegenWhMilli", row.batteryRegenWhMilli)
       .int32("maxDutyAbsPermille", row.maxDutyAbsPermille)
-      // The server still declares the field, but a minute bucket stopped counting faults when
-      // VESC faults became Board-owned evidence in their own tables (ADR-0037). Those tables are
-      // not in SyncTable yet, so the honest value is an explicit null rather than a stale zero.
-      .count("faultCount", null)
+      // A minute bucket stopped counting faults when VESC faults became Board-owned evidence in
+      // their own tables (ADR-0037), so zero is the truthful count under the new model. Not null:
+      // the server declares this one non-nullable inside a strict schema it validates whole, so a
+      // null here refuses the entire Sync Batch, not the field.
+      .count("faultCount", 0)
       .int64("firstOdometerCm", row.firstOdometerCm)
       .int64("lastOdometerCm", row.lastOdometerCm)
       .count("gpsPointCount", row.gpsPointCount)

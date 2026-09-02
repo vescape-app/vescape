@@ -406,14 +406,14 @@ internal const val SYNC_SEQ_FAVORITES = "favorites"
  * A migration iterates the tables it actually shipped with, never the current [SYNC_SEQ_TABLES] —
  * growing that list must not retroactively change what an older migration step does.
  */
-internal val SYNC_SEQ_TABLES_V43 = listOf(
+internal val SYNC_SEQ_TABLES_V44 = listOf(
   SYNC_SEQ_BOARDS,
   SYNC_SEQ_ALERTS,
   SYNC_SEQ_MINUTE_BUCKETS,
 )
 
 /** The six remaining mutable tables, given a `sync_seq` at schema 45 (#281). */
-internal val SYNC_SEQ_TABLES_V44 = listOf(
+internal val SYNC_SEQ_TABLES_V45 = listOf(
   SYNC_SEQ_APP_SETTINGS,
   SYNC_SEQ_BOARD_SETTINGS,
   SYNC_SEQ_BOARD_WARNINGS,
@@ -427,7 +427,7 @@ internal val SYNC_SEQ_TABLES_V44 = listOf(
  * `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
  * key already *is* their cursor.
  */
-internal val SYNC_SEQ_TABLES = SYNC_SEQ_TABLES_V43 + SYNC_SEQ_TABLES_V44
+internal val SYNC_SEQ_TABLES = SYNC_SEQ_TABLES_V44 + SYNC_SEQ_TABLES_V45
 
 /**
  * What a [SyncActionEntity] can name — and, by omission, what it cannot.
@@ -453,11 +453,6 @@ enum class DeleteTarget(val wire: String, val table: String) {
   TUNE_PROFILE("tuneProfile", "tune_profiles"),
   PRIVACY_ZONE("privacyZone", "privacy_zones"),
 
-  /**
-   * Favorites have no server table yet (#286 owns that half), so the uploader drops this case until
-   * they do. The log still records it: a Favorite removed while the phone is offline has to survive
-   * as intent, not as a gap the restore silently re-creates.
-   */
   FAVORITE("favorite", "favorites"),
 }
 

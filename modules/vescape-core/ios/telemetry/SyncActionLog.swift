@@ -22,9 +22,6 @@ enum DeleteTarget: String, CaseIterable {
   case alert
   case tuneProfile
   case privacyZone
-  /// Favorites have no server table yet (#286 owns that half), so the uploader drops this case until
-  /// they do. The log still records it: a Favorite removed while the phone is offline has to survive
-  /// as intent, not as a gap the restore silently re-creates.
   case favorite
 
   var table: String {

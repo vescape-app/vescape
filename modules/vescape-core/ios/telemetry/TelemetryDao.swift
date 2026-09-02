@@ -46,10 +46,10 @@ internal let syncSeqFavorites = "favorites"
 /// The three tables the `v44_sync_seq` migration gave a `sync_seq`, frozen at the set that existed
 /// then. A migration iterates the tables it actually shipped with, never the current
 /// [syncSeqTables] — growing that list must not retroactively change an older migration step.
-internal let syncSeqTablesV43 = [syncSeqBoards, syncSeqAlerts, syncSeqMinuteBuckets]
+internal let syncSeqTablesV44 = [syncSeqBoards, syncSeqAlerts, syncSeqMinuteBuckets]
 
 /// The six remaining mutable tables, given a `sync_seq` by `v45_sync_seq_remaining` (#281).
-internal let syncSeqTablesV44 = [
+internal let syncSeqTablesV45 = [
   syncSeqAppSettings,
   syncSeqBoardSettings,
   syncSeqBoardWarnings,
@@ -61,7 +61,7 @@ internal let syncSeqTablesV44 = [
 /// Every table carrying a `sync_seq`. Append-only tables are deliberately absent: they declare
 /// `INTEGER PRIMARY KEY AUTOINCREMENT`, which SQLite guarantees monotonic and never reused, so their
 /// key already *is* their cursor.
-internal let syncSeqTables = syncSeqTablesV43 + syncSeqTablesV44
+internal let syncSeqTables = syncSeqTablesV44 + syncSeqTablesV45
 
 /// The Sync Cursor counter table. Idempotent, and called both from the migration that introduced it
 /// and from the store-level `createTables` seams tests build their schema from — a table whose write

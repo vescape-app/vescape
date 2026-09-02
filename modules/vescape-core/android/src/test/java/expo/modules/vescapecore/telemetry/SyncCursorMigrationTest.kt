@@ -10,15 +10,15 @@ import java.io.File
 import java.lang.reflect.Proxy
 
 /**
- * Incremental-sync cursors: schema 31→32 adds `updated_at` to `boards`, `alerts` and
+ * Incremental-sync cursors: schema 42→43 adds `updated_at` to `boards`, `alerts` and
  * `telemetry_minute_buckets`, backfills it from each table's best evidence of last change, and
- * indexes it. Schema 32→33 then splits the two jobs that column was doing — `sync_seq` carries the
+ * indexes it. Schema 43→44 then splits the two jobs that column was doing — `sync_seq` carries the
  * Sync Cursor, `updated_at` stays the last-write-wins timestamp. Every write path has to move both.
  *
  * @parity /modules/vescape-core/ios/telemetry/SyncCursorMigrationTests.swift
  */
 class SyncCursorMigrationTest {
-  /** Table → the column its pre-32 rows backfill from. */
+  /** Table → the column its pre-43 rows backfill from. */
   private val backfillSource = mapOf(
     "boards" to "created_at",
     "alerts" to "created_at",
@@ -145,7 +145,7 @@ class SyncCursorMigrationTest {
       "missing sync_sequences table",
       sql.any { it.contains("CREATE TABLE IF NOT EXISTS sync_sequences") },
     )
-    for (table in SYNC_SEQ_TABLES_V43) {
+    for (table in SYNC_SEQ_TABLES_V44) {
       assertTrue(
         "missing sync_seq column on $table",
         sql.any { it == "ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0" },
@@ -169,7 +169,7 @@ class SyncCursorMigrationTest {
   fun syncSeqMigrationBackfillsExistingRowsBeforeSeedingTheCounter() {
     val sql = migrationSql(TelemetryDatabase.MIGRATION_43_44)
 
-    for (table in SYNC_SEQ_TABLES_V43) {
+    for (table in SYNC_SEQ_TABLES_V44) {
       val backfilled = sql.indexOf("UPDATE $table SET sync_seq = rowid")
       val seeded = sql.indexOfFirst {
         it.contains("INSERT OR REPLACE INTO sync_sequences") && it.contains("'$table'")
@@ -209,7 +209,7 @@ class SyncCursorMigrationTest {
   fun remainingTablesGainColumnIndexAndCounter() {
     val sql = remainingTablesSql()
 
-    for (table in SYNC_SEQ_TABLES_V44) {
+    for (table in SYNC_SEQ_TABLES_V45) {
       assertTrue(
         "missing sync_seq column on $table",
         sql.any { it == "ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0" },

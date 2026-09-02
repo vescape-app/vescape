@@ -625,7 +625,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
           )
           """.trimIndent(),
         )
-        for (table in SYNC_SEQ_TABLES_V43) {
+        for (table in SYNC_SEQ_TABLES_V44) {
           if (!hasColumn(db, table, "sync_seq")) {
             db.execSQL("ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
             db.execSQL("UPDATE $table SET sync_seq = rowid")
@@ -658,7 +658,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
           db.execSQL("UPDATE board_warnings SET updated_at = last_detected_at")
         }
 
-        for (table in SYNC_SEQ_TABLES_V44) {
+        for (table in SYNC_SEQ_TABLES_V45) {
           if (!hasColumn(db, table, "sync_seq")) {
             db.execSQL("ALTER TABLE $table ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
             db.execSQL("UPDATE $table SET sync_seq = rowid")

@@ -230,10 +230,11 @@ enum SyncWire {
     try writer.int64("batteryUsedWhMilli", row["battery_used_wh_milli"])
     try writer.int64("batteryRegenWhMilli", row["battery_regen_wh_milli"])
     try writer.int32("maxDutyAbsPermille", row["max_duty_abs_permille"])
-    // The server still declares the field, but a minute bucket stopped counting faults when VESC
-    // faults became Board-owned evidence in their own tables (ADR-0037). Those tables are not in
-    // SyncTable yet, so the honest value is an explicit null rather than a stale zero.
-    try writer.count("faultCount", nil)
+    // A minute bucket stopped counting faults when VESC faults became Board-owned evidence in their
+    // own tables (ADR-0037), so zero is the truthful count under the new model. Not null: the
+    // server declares this one non-nullable inside a strict schema it validates whole, so a null
+    // here refuses the entire Sync Batch, not the field.
+    try writer.count("faultCount", 0)
     try writer.int64("firstOdometerCm", row["first_odometer_cm"])
     try writer.int64("lastOdometerCm", row["last_odometer_cm"])
     try writer.count("gpsPointCount", row["gps_point_count"])

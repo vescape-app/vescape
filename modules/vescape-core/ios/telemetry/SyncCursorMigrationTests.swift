@@ -337,7 +337,7 @@ final class SyncCursorMigrationTests: XCTestCase {
   func testRemainingMutableTablesCarryACursorAndItsIndex() throws {
     try migrateToLatest()
 
-    for table in syncSeqTablesV44 {
+    for table in syncSeqTablesV45 {
       XCTAssertTrue(try columnNames(table).contains("sync_seq"), "\(table) is missing sync_seq")
       XCTAssertTrue(
         try indexNames(table).contains("index_\(table)_sync_seq"),

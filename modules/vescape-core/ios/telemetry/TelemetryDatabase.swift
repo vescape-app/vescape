@@ -747,7 +747,7 @@ enum TelemetryDatabase {
           )
           """
       )
-      for table in syncSeqTablesV43 {
+      for table in syncSeqTablesV44 {
         let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
         if !hasSyncSeq {
           try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")
@@ -779,7 +779,7 @@ enum TelemetryDatabase {
         try db.execute(sql: "UPDATE board_warnings SET updated_at = last_detected_at")
       }
 
-      for table in syncSeqTablesV44 {
+      for table in syncSeqTablesV45 {
         let hasSyncSeq = try db.columns(in: table).contains { $0.name == "sync_seq" }
         if !hasSyncSeq {
           try db.execute(sql: "ALTER TABLE \(table) ADD COLUMN sync_seq INTEGER NOT NULL DEFAULT 0")

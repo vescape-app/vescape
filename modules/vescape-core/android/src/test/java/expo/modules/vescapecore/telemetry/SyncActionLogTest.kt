@@ -90,9 +90,9 @@ class SyncActionLogTest {
     "clearAll",
     "deleteFavoriteMedia",
     "deleteOrphanFavoriteMedia",
-    // Board-owned decode caches. Absent from SyncTable, so they never upload and there is
-    // nothing on the server to remove — the Board's own action already says its
-    // configuration is gone.
+    // Board-owned decode caches, rebuilt from the board on the next read. A removal is never
+    // durable state the server has to learn, which holds at every call site alike: dropped with
+    // the Board, on a link mismatch, and on a Rider dismissing a change notice.
     "deleteBoardConfigValues",
     "deleteMotorConfigValues",
     "deleteBoardConfigChangeNotice",

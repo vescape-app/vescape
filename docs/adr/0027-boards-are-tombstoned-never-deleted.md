@@ -1,6 +1,6 @@
 # Boards Are Tombstoned, Never Deleted
 
-Deleting a **Board** sets `boards.deleted_at` instead of removing the row, on the phone and on the Vescape server alike. The Board disappears from every Rider-facing list, its configuration (Board settings, Board warnings, **Alert Rules**, Last Known Board Config Values) is hard-deleted as before, and its **Ride History** is untouched — as it already was locally, and now as it is on the server too.
+Deleting a **Board** sets `boards.deleted_at` instead of removing the row, on the phone and on the Vescape server alike. The Board disappears from every Rider-facing list, its configuration (Board settings, Board warnings, **Alert Rules**) and its decoded config caches (Last Known Board Config Values and any pending change notice) are hard-deleted as before, and its **Ride History** is untouched — as it already was locally, and now as it is on the server too.
 
 The reason is that **Ride History** outlives the Board that produced it. The app has always kept telemetry after a Board delete, but the `boards` row vanishing left those rides pointing at a Board id that resolves to nothing. History could only fall back to the `device_name` snapshotted on each row: a frozen label, not an identity. A tombstone keeps the row resolvable, so a deleted Board's rides still name it and still group by it.
 
