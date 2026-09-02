@@ -77,8 +77,12 @@ A single phone location sample used for live map position or ride recording.
 _Avoid_: Location event, GPS point
 
 **Ride Recording**:
-A persisted ride capture made from board telemetry samples, optionally enriched with precise GPS fixes captured at the same time as telemetry.
+A persisted ride capture. It is created by a connected **Board** and carries that Board's **Telemetry Samples**; it also carries a **Ride Track** whenever the phone has GPS during the ride. The two streams are recorded independently on their own clocks and joined by time when read.
 _Avoid_: Session recording, raw recording
+
+**Ride Track**:
+The durable sequence of **GPS Fixes** recorded during one **Ride Recording**, stored on its own and not attached to **Telemetry Samples**. Every fix the phone produced during the ride is kept with the accuracy it was reported at, including poor ones; how good a fix must be to draw a route or derive a value is a read-side decision, never a discard-on-write one. A Ride Track survives spans where the **Board Link** dropped and no telemetry existed.
+_Avoid_: Route, GPS trace, location history, breadcrumb
 
 **Privacy Zone**:
 A user-defined geographic area where Ride Recording data is not retained.
@@ -400,7 +404,8 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Session** may produce a **Live BMS Series** when its **Board Link** includes BMS capability; native retains it continuously in the recent live-telemetry window (`liveHistoryLimit`) but pushes it across the bridge to JS only while the battery-detail view is focused. It is ephemeral, never persisted, and never written to **Ride Recording**. The cell **spread** scalar shown in main telemetry is not the series: it derives from the latest smart-BMS frame on the `onBms` pipe (~4Hz, always flowing), separate from the 30Hz telemetry frame.
 - A **Metric Sanitizer** may create **Metric Exclusions** for values derived from **Telemetry Samples** while preserving the original samples and current live board readout.
 - A **Metric Exclusion** belongs to one **Telemetry Sample** and one metric.
-- A **GPS Fix** may be associated with live map state, but only GPS fixes captured alongside **Telemetry Samples** contribute to a **Ride Recording**.
+- A **GPS Fix** may be associated with live map state; GPS fixes produced during a **Ride Recording** are kept in its **Ride Track** whether or not a **Telemetry Sample** was captured at the same moment.
+- A **Ride Track** belongs to one **Ride Recording** and is independent of its **Telemetry Samples**: either stream may have gaps the other does not.
 - A **Map Point** is placed by a signed-in **Vescape Account** on the live map and does not belong to **Ride Recording** or **Ride History**; the server owns it, and the app reads the ones near the camera without keeping a durable copy.
 - A **Map Point Reaction** belongs to one **Vescape Account** and one **Map Point**; the server derives the score from its reaction rows.
 - A **Direction Point** is one rider's private navigation target, is never a **Map Point**, and stays on the phone so **Group Ride** presence can share it.
