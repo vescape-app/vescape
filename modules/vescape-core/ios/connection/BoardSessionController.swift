@@ -184,6 +184,7 @@ internal final class BoardSessionController: VescGattListener {
   private let batteryConfigMismatchDetector = BatteryConfigMismatchDetector()
   /// True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only.
   private var bmsSeriesFocused = false
+  private lazy var lastGpsPersistence = LastGpsLocationPersistence(appData: appData)
   private let appData: AppDataRepository
   private lazy var recordingCoordinator = RecordingCoordinator(appData: appData)
   private lazy var configController = ConfigRWController()
@@ -2426,6 +2427,7 @@ internal final class BoardSessionController: VescGattListener {
     )
     if location.precise {
       latestPreciseLocation = location
+      lastGpsPersistence.onLocationUpdated(location)
       recentLocations.append(location.map)
       pruneRecentLocations(now: location.timestamp)
     }

@@ -585,6 +585,22 @@ final class AppDataRepository {
     return Self.normalizeSettings(merged)
   }
 
+  /// Persist both coordinates together so readers cannot observe a mixed position.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastGpsLocation`
+  func updateLastGpsLocation(latitude: Double, longitude: Double) {
+    guard let lat = Self.encodeJson(latitude), let lon = Self.encodeJson(longitude) else { return }
+    let updatedAt = nowMs()
+    write { db in
+      for (key, value) in [("lastGpsLatitude", lat), ("lastGpsLongitude", lon)] {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+          arguments: [key, value, updatedAt]
+        )
+      }
+    }
+    notifyDataChanged(.settings)
+  }
+
   func updateSetting(_ key: String, rawValue: Any?) {
     // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
     // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the

@@ -23,3 +23,7 @@ internal func isPreciseGpsFix(accuracyM: Double?) -> Bool {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPrecision.kt `GPS_STALE_FIX_TIMEOUT_MS`
 internal let GPS_STALE_FIX_TIMEOUT_S = 30.0
+
+/// Minimum interval between durable last-position writes on both platforms.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPrecision.kt `LAST_GPS_PERSIST_INTERVAL_MS`
+internal let LAST_GPS_PERSIST_INTERVAL_MS: Int64 = 30_000

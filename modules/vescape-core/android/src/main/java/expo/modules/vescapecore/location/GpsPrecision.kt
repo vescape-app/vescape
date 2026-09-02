@@ -18,3 +18,7 @@ internal fun isPreciseGpsFix(provider: String?, accuracyM: Double?): Boolean =
  * @parity /modules/vescape-core/ios/location/GpsPrecision.swift `GPS_STALE_FIX_TIMEOUT_S`
  */
 internal const val GPS_STALE_FIX_TIMEOUT_MS = 30_000L
+
+// Minimum interval between durable last-position writes on both platforms.
+// @parity /modules/vescape-core/ios/location/GpsPrecision.swift `LAST_GPS_PERSIST_INTERVAL_MS`
+internal const val LAST_GPS_PERSIST_INTERVAL_MS = 30_000L

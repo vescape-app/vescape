@@ -97,9 +97,10 @@ internal class LocationTracker(
         }
     }
 
+    // @parity /modules/vescape-core/ios/location/LastGpsLocationPersistence.swift `onLocationUpdated`
     private fun persistLastGpsLocation(location: LocationSnapshot) {
         val now = System.currentTimeMillis()
-        if (now - lastGpsPersistedAt < 30_000L) return
+        if (now - lastGpsPersistedAt < LAST_GPS_PERSIST_INTERVAL_MS) return
         lastGpsPersistedAt = now
         appDataScope.launch {
             AppDataRepository.get(applicationContext).updateLastGpsLocation(location.latitude, location.longitude)
