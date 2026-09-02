@@ -25,6 +25,7 @@ import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
+import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
 import { useSharedValue } from 'react-native-reanimated'
 import { theme } from '@/constants/theme'
 
@@ -357,6 +358,7 @@ export default function BoardComponentsPage() {
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
         <BoardPillShowcase />
+        <GpsStatusPillShowcase />
         <DeviceRowShowcase />
         <StepTimelineShowcase />
         <BoardWarningRowShowcase />
