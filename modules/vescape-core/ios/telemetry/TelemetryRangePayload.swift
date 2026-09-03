@@ -44,38 +44,23 @@ extension TelemetryRepository {
         sql: "SELECT * FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY start_ms ASC",
         arguments: [fromMs, toMs, boardId, boardId]
       ).map(exclusionMap)
-      // Ride Track is the route source now — denser than the frames and alive through a board
-      // dropout. The lead-in covers the age gate used to stamp the first sample's position.
-      let track = try fetchRideTrack(
-        db,
-        fromMs: fromMs - telemetryLocationMaxAgeMs,
-        toMs: toMs,
-        boardId: boardId
-      )
-      let trackRows = track.filter { ($0["fix_at_ms"] as Int64) >= fromMs }
-      var stamper = RideTrackStamper(track.map(rideTrackPoint))
-      let fixes = sampleRows.map { row in
-        stamper.fix(
-          atOrBefore: row["captured_at_ms"] as Int64,
-          boardId: row["board_id"] as String?
-        )
-      }
+      // Ride Track is the route source now — denser than the frames, alive through a board
+      // dropout, and read over exactly the requested window on its own clock.
+      let track = try fetchRideTrack(db, fromMs: fromMs, toMs: toMs, boardId: boardId)
       let percents = self.batteryPercents(sampleRows, configs: configs, windowMs: windowMs)
       let overviewIndices = evenlySpacedIndices(sampleRows.count, limit: HISTORY_CHART_OVERVIEW_SAMPLES)
       let overviewRows = overviewIndices.map { sampleRows[$0] }
       let overviewPercents = overviewIndices.map { percents[$0] }
-      let overviewFixes = overviewIndices.map { fixes[$0] }
       return mergeTelemetryPayload(
-        sampleColumns(sampleRows, batteryPercents: percents, fixes: fixes, boardNames: boardNames),
+        sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
         [
           "chartColumns": sampleColumns(
             overviewRows,
             batteryPercents: overviewPercents,
-            fixes: overviewFixes,
             boardNames: boardNames
           )["boardColumns"],
           "chartCount": overviewRows.count,
-          "gpsSamples": rideTrackGpsMaps(trackRows, boardNames: boardNames),
+          "gpsSamples": rideTrackGpsMaps(track, boardNames: boardNames),
           "markers": markers.map(markerMap),
           "exclusions": exclusions,
         ]
@@ -100,18 +85,17 @@ private func evenlySpacedIndices(_ count: Int, limit: Int) -> [Int] {
 internal func sampleColumns(
   _ rows: [Row],
   batteryPercents: [Double?],
-  fixes: [RideTrackPoint?],
   boardNames: [String: String]
 ) -> [String: Any?] {
   var data = Data(capacity: rows.count * SAMPLE_COLUMN_COUNT * MemoryLayout<Double>.size)
   var boardIds: [String?] = []
   var names: [String] = []
   var boardIndex: [String: Int] = [:]
-  for (i, row) in rows.enumerated() {
+  for (index, row) in rows.enumerated() {
     let id: Int64 = row["id"]
     let rawBoardId = row["board_id"] as String?
     let key = rawBoardId ?? ""
-    let index = boardIndex[key] ?? {
+    let boardLane = boardIndex[key] ?? {
       boardIds.append(rawBoardId)
       names.append(rawBoardId.flatMap { boardNames[$0] } ?? UNKNOWN_TELEMETRY_BOARD_NAME)
       let newIndex = boardIds.count - 1
@@ -120,10 +104,10 @@ internal func sampleColumns(
     }()
     appendDouble(&data, Double(id))
     appendDouble(&data, Double(row["captured_at_ms"] as Int64))
-    appendDouble(&data, Double(index))
+    appendDouble(&data, Double(boardLane))
     appendDouble(&data, Double(row["speed_centi_kmh"] as Int? ?? 0) / 100.0)
     appendDouble(&data, Double(row["battery_voltage_mv"] as Int? ?? 0) / 1000.0)
-    appendNullableDouble(&data, batteryPercents[i])
+    appendNullableDouble(&data, batteryPercents[index])
     appendDouble(&data, Double(row["motor_current_ma"] as Int? ?? 0) / 1000.0)
     appendDouble(&data, Double(row["battery_current_ma"] as Int? ?? 0) / 1000.0)
     appendDouble(&data, Double(row["duty_permille"] as Int? ?? 0) / 1000.0)
@@ -139,9 +123,6 @@ internal func sampleColumns(
     appendNullableDouble(&data, (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 })
     appendNullableDouble(&data, (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 })
     appendNullableDouble(&data, (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 })
-    // Joined from Ride Track on read: position is not a column on this row any more (ADR 0038).
-    appendNullableDouble(&data, fixes[i].map { Double($0.latitudeE7) / 10_000_000.0 })
-    appendNullableDouble(&data, fixes[i].map { Double($0.longitudeE7) / 10_000_000.0 })
   }
   return [
     "boardColumns": (try? NativeArrayBuffer.copy(data: data)) ?? NativeArrayBuffer.allocate(size: 0),

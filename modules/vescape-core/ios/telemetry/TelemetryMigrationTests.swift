@@ -721,10 +721,7 @@ final class TelemetryMigrationTests: XCTestCase {
             dutyPermille: 0,
             odometerCm: nil,
             tempMosfetDeciC: nil,
-            tempMotorDeciC: nil,
-            gpsSpeedCentiMps: nil,
-            gpsTimestampMs: nil,
-            gpsAccuracyCm: nil
+            tempMotorDeciC: nil
           )
         )
         try upsertBucket(db, bucket)

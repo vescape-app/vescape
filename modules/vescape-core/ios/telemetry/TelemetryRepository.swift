@@ -14,7 +14,7 @@ internal let MAX_SAMPLE_LIMIT = 20_000
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
 /// @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
-internal let SAMPLE_COLUMN_COUNT = 23
+internal let SAMPLE_COLUMN_COUNT = 21
 
 /// GRDB writer for iOS Ride Recording telemetry. Raw Telemetry Samples are preserved; Metric
 /// Sanitizers only write exclusion ranges and bucket-derived metric values.
@@ -282,22 +282,10 @@ internal final class TelemetryRepository {
         arguments: [fromMs, toMs, boardId, boardId, limit]
       )
       let percents = self.batteryPercents(rows, configs: configs, windowMs: windowMs)
-      // Position is joined from Ride Track on read; the track window starts one age gate early so
-      // the first sample can still be stamped.
-      var stamper = RideTrackStamper(
-        try fetchRideTrack(db, fromMs: fromMs - telemetryLocationMaxAgeMs, toMs: toMs, boardId: boardId)
-          .map(rideTrackPoint)
-      )
+      // No position here: a Telemetry Sample is a Board reading. The route is the Ride Track, read
+      // on its own clock by `getRange` (ADR 0038).
       return zip(rows, percents).map { row, percent in
-        sampleMap(
-          row,
-          batteryPercent: percent,
-          boardNames: boardNames,
-          fix: stamper.fix(
-            atOrBefore: row["captured_at_ms"] as Int64,
-            boardId: row["board_id"] as String?
-          )
-        )
+        sampleMap(row, batteryPercent: percent, boardNames: boardNames)
       }
     }) ?? []
   }
@@ -412,7 +400,7 @@ internal final class TelemetryRepository {
     let trimmedName = (options["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let config = queue.sync { metricConfig }
     let inputs = favoriteSummaryInputs(startMs: startMs, endMs: endMs, boardId: boardId)
-    let summary = Self.favoriteSummary(inputs.points, locationPoints: inputs.locations, config: config)
+    let summary = Self.favoriteSummary(inputs.points, track: inputs.track, config: config)
     let nowMs = telemetryNowMs()
     let favorite = Favorite(
       id: UUID().uuidString,
@@ -477,7 +465,7 @@ internal final class TelemetryRepository {
       endMs: endMs,
       createdAtMs: existing.createdAtMs,
       updatedAtMs: telemetryNowMs(),
-      summary: Self.favoriteSummary(inputs.points, locationPoints: inputs.locations, config: config)
+      summary: Self.favoriteSummary(inputs.points, track: inputs.track, config: config)
     )
     guard let stored = FavoriteStore.shared.update(updated) else { return nil }
     return stored.toMap(
@@ -535,7 +523,7 @@ internal final class TelemetryRepository {
     startMs: Int64,
     endMs: Int64,
     boardId: String?
-  ) -> (points: [BucketTelemetryPoint], locations: [BucketLocationPoint]) {
+  ) -> (points: [BucketTelemetryPoint], track: [RideTrackPoint]) {
     guard let pool else { return ([], []) }
     return (try? pool.read { db in
       let rows = try Row.fetchAll(
@@ -547,40 +535,34 @@ internal final class TelemetryRepository {
           """,
         arguments: [startMs, endMs, boardId, boardId]
       )
-      let leadIn = try fetchRideTrack(
-        db,
-        fromMs: startMs - telemetryLocationMaxAgeMs,
-        toMs: endMs,
-        boardId: boardId
-      ).map(rideTrackPoint)
-      var stamper = RideTrackStamper(leadIn)
-      let points = rows.compactMap { row in
-        bucketPoint(
-          row,
-          fix: stamper.fix(
-            atOrBefore: row["captured_at_ms"] as Int64,
-            boardId: row["board_id"] as String?
-          )
-        )
-      }
-      return (points, rideTrackBucketPoints(leadIn.filter { $0.fixAtMs >= startMs }))
+      let track = try fetchRideTrack(db, fromMs: startMs, toMs: endMs, boardId: boardId)
+        .map(rideTrackPoint)
+      return (rows.compactMap(bucketPoint), track)
     }) ?? ([], [])
   }
 
   internal static func favoriteSummary(
     _ points: [BucketTelemetryPoint],
-    locationPoints: [BucketLocationPoint] = [],
+    track: [RideTrackPoint] = [],
     config: MetricSanitizerConfig
   ) -> FavoriteSummary {
-    guard !points.isEmpty || !locationPoints.isEmpty else { return FavoriteSummary() }
-    let sanitization = sanitizeTelemetrySamples(points, config: config)
+    guard !points.isEmpty || !track.isEmpty else { return FavoriteSummary() }
+    let sanitization = sanitizeTelemetrySamples(points, track: track, config: config)
     var sanitized = points
     for i in sanitized.indices {
       sanitized[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
       sanitized[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
       sanitized[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
     }
-    return buildFavoriteSummary(buildTelemetryBuckets(sanitized, locationPoints: locationPoints))
+    return buildFavoriteSummary(
+      buildTelemetryBuckets(
+        sanitized,
+        locationPoints: rideTrackBucketPoints(
+          track,
+          movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh
+        )
+      )
+    )
   }
 
   func deleteBefore(_ beforeMs: Int64) -> Int {
@@ -662,23 +644,10 @@ internal final class TelemetryRepository {
             """,
           arguments: [chunkFrom, chunkTo]
         )
-        let track = try fetchRideTrack(
-          db,
-          fromMs: chunkFrom - telemetryLocationMaxAgeMs,
-          toMs: chunkTo,
-          boardId: nil
-        ).map(rideTrackPoint)
-        var stamper = RideTrackStamper(track)
-        var points = rows.compactMap { row in
-          bucketPoint(
-            row,
-            fix: stamper.fix(
-              atOrBefore: row["captured_at_ms"] as Int64,
-              boardId: row["board_id"] as String?
-            )
-          )
-        }
-        let sanitization = sanitizeTelemetrySamples(points, config: metricConfig)
+        let track = try fetchRideTrack(db, fromMs: chunkFrom, toMs: chunkTo, boardId: nil)
+          .map(rideTrackPoint)
+        var points = rows.compactMap(bucketPoint)
+        let sanitization = sanitizeTelemetrySamples(points, track: track, config: metricConfig)
         for i in points.indices {
           points[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
           points[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
@@ -687,7 +656,10 @@ internal final class TelemetryRepository {
         for range in sanitization.exclusions { try insertExclusion(db, range) }
         let buckets = buildTelemetryBuckets(
           points,
-          locationPoints: rideTrackBucketPoints(track.filter { $0.fixAtMs >= chunkFrom })
+          locationPoints: rideTrackBucketPoints(
+            track,
+            movingThresholdCentiKmh: metricConfig.movingSpeedThresholdCentiKmh
+          )
         )
         for bucket in buckets {
           try upsertBucket(db, bucket)
@@ -796,7 +768,7 @@ internal final class TelemetryRepository {
     guard !states.isEmpty || !persisted.isEmpty || !markers.isEmpty || !track.isEmpty else { return }
 
     let telemetryPoints = states.map { $0.toBucketPoint() }
-    let sanitization = sanitizeTelemetrySamples(telemetryPoints, config: metricConfig)
+    let sanitization = sanitizeTelemetrySamples(telemetryPoints, track: track, config: metricConfig)
     var sanitized = telemetryPoints
     for i in sanitized.indices {
       sanitized[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
@@ -807,7 +779,11 @@ internal final class TelemetryRepository {
     // the two streams keep their own clocks and are joined here only for the summary.
     let buckets = buildTelemetryBuckets(
       sanitized,
-      locationPoints: rideTrackBucketPoints(track, previous: previousTrackPoint)
+      locationPoints: rideTrackBucketPoints(
+        track,
+        previous: previousTrackPoint,
+        movingThresholdCentiKmh: metricConfig.movingSpeedThresholdCentiKmh
+      )
     )
 
     try? pool.write { db in

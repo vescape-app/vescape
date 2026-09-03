@@ -99,6 +99,8 @@ internal class TelemetryPipeline(
     private data class LivePoint(
         val bucketPoint: BucketTelemetryPoint,
         val eventMap: MutableMap<String, Any?>,
+        /** The fix this packet carried, as a Ride Track point — what free spin compares against. */
+        val fix: RideTrackPointEntity?,
     )
 
     private val recentTelemetry = ArrayDeque<MutableMap<String, Any?>>()
@@ -303,9 +305,10 @@ internal class TelemetryPipeline(
 
         val capture = captureBuilder(parsed, cfg, canId)
         val baseEventMap = parsed.toMap().toMutableMap()
-        val bucketPoint = FullTelemetryState.from(capture, recordingId = null).toBucketPoint()
+        val state = FullTelemetryState.from(capture, recordingId = null)
+        val bucketPoint = state.toBucketPoint()
         val updates = synchronized(liveLock) {
-            liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap))
+            liveTelemetryPoints.addLast(LivePoint(bucketPoint, baseEventMap, state.toLiveTrackPoint()))
             pruneLiveTelemetryPoints(parsed.lastPacketAt)
             sanitizeLivePoints()
         }
@@ -338,7 +341,10 @@ internal class TelemetryPipeline(
     private fun sanitizeLivePoints(): List<Map<String, Any?>> {
         if (liveTelemetryPoints.isEmpty()) return emptyList()
         val points = liveTelemetryPoints.map { it.bucketPoint }
-        val sanitization = sanitizeTelemetrySamples(points, metricSanitizerConfig)
+        // The live equivalent of the Ride Track: the fixes these packets arrived with, so free spin
+        // has the same phone-speed comparison it has in history, without position on the sample.
+        val track = liveTelemetryPoints.mapNotNull { it.fix }.sortedBy { it.fixAtMs }
+        val sanitization = sanitizeTelemetrySamples(points, track, metricSanitizerConfig)
         val updates = mutableListOf<Map<String, Any?>>()
         val lastIndex = liveTelemetryPoints.size - 1
         liveTelemetryPoints.forEachIndexed { index, point ->

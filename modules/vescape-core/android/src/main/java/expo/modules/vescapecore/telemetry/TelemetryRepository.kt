@@ -18,7 +18,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
-import expo.modules.vescapecore.protocol.TELEMETRY_LOCATION_MAX_AGE_MS
 import kotlin.math.roundToLong
 
 private const val TAG = "TelemetryStore"
@@ -48,7 +47,7 @@ private const val MIN_PERSIST_INTERVAL_MS = 500L
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
  */
-private const val SAMPLE_COLUMN_COUNT = 23
+private const val SAMPLE_COLUMN_COUNT = 21
 
 data class TelemetryLocationCapture(
   val latitude: Double,
@@ -516,10 +515,12 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Columnar binary encoding of [smoothedSampleMaps] for the history read path. Each sample is 25
+   * Columnar binary encoding of [smoothedSampleMaps] for the history read path. Each sample is 21
    * little-endian Float64 lanes packed row-major into one direct ByteBuffer, returned as a JSI
-   * ArrayBuffer. This replaces ~25 per-field JSI conversions × N samples (the dominant history-load
-   * cost) with a single buffer transfer; JS rebuilds TelemetrySample objects locally. Nullable
+   * ArrayBuffer. This replaces ~21 per-field JSI conversions × N samples (the dominant history-load
+   * cost) with a single buffer transfer; JS rebuilds TelemetrySample objects locally. Position is
+   * not among them: the route is the Ride Track, its own stream on its own clock (ADR 0038).
+   * Nullable
    * numeric lanes use NaN as the null sentinel; the Board id and name are dictionary-encoded.
    *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `sampleColumns`
@@ -574,8 +575,6 @@ class TelemetryRepository private constructor(context: Context) {
         .putDouble(s.odometerCm?.let { it / 100.0 } ?: Double.NaN)
         .putDouble(s.tempMosfetDeciC?.let { it / 10.0 } ?: Double.NaN)
         .putDouble(s.tempMotorDeciC?.let { it / 10.0 } ?: Double.NaN)
-        .putDouble(s.location?.latitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
-        .putDouble(s.location?.longitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
       if (overviewCursor < overviewIndices.size && overviewIndices[overviewCursor] == sampleIndex) {
         val rowStart = sampleIndex * SAMPLE_COLUMN_COUNT * 8
         val row = buffer.duplicate().apply {
@@ -659,18 +658,7 @@ class TelemetryRepository private constructor(context: Context) {
       samples.add(HistoryTelemetryState(frame.id, current))
       if (samples.size >= limit) break
     }
-    if (samples.isEmpty()) return samples
-    // Position lives in Ride Track now, so the streams are joined here rather than read off the
-    // row. The track window starts one age gate early so the first sample can still be stamped.
-    return stampTrackLocations(
-      samples,
-      dao.getRideTrackPoints(
-        fromMs = samples.first().state.capturedAtMs - TELEMETRY_LOCATION_MAX_AGE_MS,
-        toMs = samples.last().state.capturedAtMs,
-        boardId = boardId,
-        limit = Int.MAX_VALUE,
-      ),
-    )
+    return samples
   }
 
   /**
@@ -888,7 +876,7 @@ class TelemetryRepository private constructor(context: Context) {
   ): FavoriteSummary {
     if (states.isEmpty() && track.isEmpty()) return FavoriteSummary()
     val telemetryPoints = states.map { it.state.toBucketPoint() }
-    val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+    val sanitization = sanitizeTelemetrySamples(telemetryPoints, track, metricSanitizerConfig)
     val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
       point.copy(
         excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -899,7 +887,9 @@ class TelemetryRepository private constructor(context: Context) {
     return buildFavoriteSummary(
       buildTelemetryBuckets(
         telemetryPoints = sanitizedPoints,
-        locationPoints = track.toBucketLocationPoints(),
+        locationPoints = track.toBucketLocationPoints(
+          movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+        ),
       ),
     )
   }
@@ -928,7 +918,7 @@ class TelemetryRepository private constructor(context: Context) {
       val track = rideTrack(chunkFrom, chunkTo, null)
       if (states.isNotEmpty() || track.isNotEmpty()) {
         val telemetryPoints = states.map { it.state.toBucketPoint() }
-        val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+        val sanitization = sanitizeTelemetrySamples(telemetryPoints, track, metricSanitizerConfig)
         val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
           point.copy(
             excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -939,7 +929,9 @@ class TelemetryRepository private constructor(context: Context) {
         if (sanitization.exclusions.isNotEmpty()) dao.upsertExclusionRanges(sanitization.exclusions)
         val buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
-          locationPoints = track.toBucketLocationPoints(),
+          locationPoints = track.toBucketLocationPoints(
+          movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+        ),
         )
         if (buckets.isNotEmpty()) {
           dao.upsertBuckets(buckets)
@@ -1088,7 +1080,7 @@ class TelemetryRepository private constructor(context: Context) {
       }
 
       val telemetryPoints = filteredStates.map { it.toBucketPoint() }
-      val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+      val sanitization = sanitizeTelemetrySamples(telemetryPoints, filteredTrack, metricSanitizerConfig)
       val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
         point.copy(
           excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -1102,7 +1094,10 @@ class TelemetryRepository private constructor(context: Context) {
         // frame: the two streams keep their own clocks and are joined here only for the summary.
         buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
-          locationPoints = filteredTrack.toBucketLocationPoints(previousTrackPoint),
+          locationPoints = filteredTrack.toBucketLocationPoints(
+            previous = previousTrackPoint,
+            movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+          ),
         ),
         markers = markers,
         exclusions = sanitization.exclusions,
@@ -1310,9 +1305,26 @@ internal data class FullTelemetryState(
     "odometer" to odometerCm?.let { it / 100.0 },
     "tempMosfet" to tempMosfetDeciC?.let { it / 10.0 },
     "tempMotor" to tempMotorDeciC?.let { it / 10.0 },
-    "latitude" to location?.latitudeE7?.let { it / 10_000_000.0 },
-    "longitude" to location?.longitudeE7?.let { it / 10_000_000.0 },
   )
+
+  /**
+   * The fix this frame arrived with, shaped as a Ride Track point. Live only: durable reads take
+   * the real track from storage, and this never carries a recording id, so a fix with no reported
+   * accuracy stays unqualified rather than inheriting the legacy exemption (ADR 0038).
+   */
+  fun toLiveTrackPoint(): RideTrackPointEntity? = location?.let {
+    RideTrackPointEntity(
+      recordingId = recordingId ?: LEGACY_RIDE_RECORDING_ID,
+      boardId = boardId,
+      fixAtMs = it.timestampMs,
+      latitudeE7 = it.latitudeE7,
+      longitudeE7 = it.longitudeE7,
+      accuracyCm = it.accuracyCm,
+      gpsSpeedCentiMps = it.gpsSpeedCentiMps,
+      bearingCentiDeg = it.bearingCentiDeg,
+      altitudeCm = it.altitudeCm,
+    )
+  }
 
   fun toBucketPoint(): BucketTelemetryPoint = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
@@ -1326,9 +1338,6 @@ internal data class FullTelemetryState(
     odometerCm = odometerCm,
     tempMosfetDeciC = tempMosfetDeciC,
     tempMotorDeciC = tempMotorDeciC,
-    gpsSpeedCentiMps = location?.gpsSpeedCentiMps,
-    gpsTimestampMs = location?.timestampMs,
-    gpsAccuracyCm = location?.accuracyCm,
   )
 
   companion object {
@@ -1398,7 +1407,8 @@ internal data class FullTelemetryState(
         odometerCm = pick(frame.odometerCm, base?.odometerCm),
         tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC),
         tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC),
-        // Position is not on the frame any more; read paths stamp it from Ride Track (ADR 0038).
+        // Position is not on the frame any more, and no read path puts it back: the route is the
+        // Ride Track, read on its own clock (ADR 0038).
         location = null,
       )
     }
@@ -1423,16 +1433,6 @@ internal data class ScaledLocation(
       accuracyCm = location.accuracyM?.let { (it * 100.0).roundToInt() },
       altitudeCm = location.altitudeM?.let { (it * 100.0).roundToInt() },
       timestampMs = location.timestamp,
-    )
-
-    fun fromTrackPoint(point: RideTrackPointEntity): ScaledLocation = ScaledLocation(
-      latitudeE7 = point.latitudeE7,
-      longitudeE7 = point.longitudeE7,
-      gpsSpeedCentiMps = point.gpsSpeedCentiMps,
-      bearingCentiDeg = point.bearingCentiDeg,
-      accuracyCm = point.accuracyCm,
-      altitudeCm = point.altitudeCm,
-      timestampMs = point.fixAtMs,
     )
   }
 }

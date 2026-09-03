@@ -1,17 +1,18 @@
 import Foundation
 
-/// Threshold (meters) at or below which a horizontal accuracy is treated as a precise GPS fix
-/// good enough for Ride Recording. Matches Android `MAX_RECORDING_ACCURACY_M`.
+/// Threshold (meters) at or below which a horizontal accuracy is treated as a precise GPS fix.
+/// One number for live classification and for Ride History's read-side rule, on both platforms.
 internal let MAX_RECORDING_ACCURACY_M = 20.0
 
-/// Classify a GPS fix as precise (recording-grade) vs approximate. Android also requires the
-/// fix to come from the `GPS_PROVIDER`; iOS has no provider concept, so `CLLocation`'s
-/// `horizontalAccuracy` (already surfaced as `accuracyM`) is the sole signal — a coarse or
-/// reduced-authorization fix reports a large accuracy and falls through as approximate.
+/// Classify a **live** GPS fix as precise (recording-grade) vs approximate — the GPS status pill,
+/// the live map and the course deriver. Ride History does not go through here: a stored fix is
+/// judged by `rideTrackFixIsPrecise`, which applies the same 20m limit to the accuracy the fix was
+/// stored with and deliberately knows nothing about providers (ADR 0038).
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsPrecision.kt
-/// @platform-diff iOS keys off `horizontalAccuracy` alone (no provider), which also covers the
-/// iOS 14 "approximate location" authorization since reduced fixes report low accuracy.
+/// @platform-diff Android additionally requires `GPS_PROVIDER` here, which iOS has no concept of.
+/// The difference is confined to live classification and no longer reaches durable data: history
+/// reads one shared, provider-independent rule on both platforms.
 internal func isPreciseGpsFix(accuracyM: Double?) -> Bool {
   guard let accuracyM else { return false }
   return accuracyM <= MAX_RECORDING_ACCURACY_M

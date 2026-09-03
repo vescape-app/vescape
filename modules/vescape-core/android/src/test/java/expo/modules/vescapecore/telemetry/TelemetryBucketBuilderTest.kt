@@ -252,6 +252,51 @@ class TelemetryBucketBuilderTest {
     assertNull(bucket.lastMovingAtMs)
   }
 
+  /**
+   * The board dropped mid-ride and the phone kept moving: the Moving Window has to follow the GPS,
+   * or the seek timeline and Time stop at the last telemetry frame (ADR 0017, ADR 0038).
+   */
+  @Test
+  fun extendsMovingWindowThroughGpsOnlyMovement() {
+    val bucket = buildTelemetryBuckets(
+      telemetryPoints = listOf(
+        BucketTelemetryPoint(
+          capturedAtMs = 1_000L,
+          boardId = "board-1",
+          recordingId = "recording-1",
+          speedCentiKmh = 1_200,
+          batteryVoltageMv = 70_000,
+          motorCurrentMa = 0,
+          batteryCurrentMa = 0,
+          dutyPermille = 0,
+          odometerCm = null,
+          excludedFromAvgSpeed = false,
+        ),
+      ),
+      locationPoints = listOf(
+        locationPoint(capturedAtMs = 20_000L, moving = true),
+        locationPoint(capturedAtMs = 30_000L, moving = false),
+      ),
+    ).single()
+
+    assertEquals(1_000L, bucket.firstMovingAtMs)
+    assertEquals("GPS movement widens the window past the last frame", 20_000L, bucket.lastMovingAtMs)
+    assertEquals("but never counts as a Telemetry Sample", 1, bucket.sampleCount)
+    assertEquals(1, bucket.movingSpeedSampleCount)
+  }
+
+  private fun locationPoint(capturedAtMs: Long, moving: Boolean) = BucketLocationPoint(
+    capturedAtMs = capturedAtMs,
+    boardId = "board-1",
+    recordingId = "recording-1",
+    precise = true,
+    moving = moving,
+    distanceFromPreviousCm = null,
+    gpsSpeedCentiMps = null,
+    latitudeE7 = 500_000_000,
+    longitudeE7 = 190_000_000,
+  )
+
   @Test
   fun integratesBatteryUsedAndRegenInsideMinuteBucket() {
     val bucket = buildTelemetryBuckets(

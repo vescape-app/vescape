@@ -15,7 +15,6 @@ function makeGps(id: number, capturedAtMs: number, lat: number, lng: number): Hi
     accuracyM: null,
     altitudeM: null,
     timestamp: capturedAtMs,
-    precise: true,
     distanceFromPreviousM: null,
   }
 }

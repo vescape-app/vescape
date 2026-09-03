@@ -689,10 +689,13 @@ export interface TelemetrySample {
   odometer: number | null
   tempMosfet: number | null
   tempMotor: number | null
-  latitude: number | null
-  longitude: number | null
 }
 
+/**
+ * One Ride Track fix, as history reads it. Only fixes that pass the shared native precision rule
+ * (20m reported horizontal accuracy, both platforms, provider-independent) are returned, so this is
+ * already the route stream — no consumer re-filters it (ADR 0038).
+ */
 export interface HistoryGpsSample {
   id: number
   capturedAtMs: number
@@ -705,7 +708,6 @@ export interface HistoryGpsSample {
   accuracyM: number | null
   altitudeM: number | null
   timestamp: number
-  precise: boolean
   distanceFromPreviousM: number | null
 }
 
@@ -752,7 +754,7 @@ export interface HistoryRange {
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
  */
-const SAMPLE_COLUMN_COUNT = 23
+const SAMPLE_COLUMN_COUNT = 21
 
 /**
  * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer (25
@@ -821,8 +823,6 @@ function decodeBoardSamples(
       odometer: nullableLane(lanes[o + 18]),
       tempMosfet: nullableLane(lanes[o + 19]),
       tempMotor: nullableLane(lanes[o + 20]),
-      latitude: nullableLane(lanes[o + 21]),
-      longitude: nullableLane(lanes[o + 22]),
     }
   }
   return samples

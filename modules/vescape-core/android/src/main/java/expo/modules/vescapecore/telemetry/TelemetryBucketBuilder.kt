@@ -38,9 +38,6 @@ internal data class BucketTelemetryPoint(
   val odometerCm: Long?,
   val tempMosfetDeciC: Int? = null,
   val tempMotorDeciC: Int? = null,
-  val gpsSpeedCentiMps: Int? = null,
-  val gpsTimestampMs: Long? = null,
-  val gpsAccuracyCm: Int? = null,
   val excludedFromAvgSpeed: Boolean = false,
   val excludedFromMaxSpeed: Boolean = false,
   val excludedFromMaxDuty: Boolean = false,
@@ -51,6 +48,8 @@ internal data class BucketLocationPoint(
   val boardId: String?,
   val recordingId: String = LEGACY_RIDE_RECORDING_ID,
   val precise: Boolean,
+  /** GPS movement evidence: precise, with a reported speed at or above the rider's threshold. */
+  val moving: Boolean = false,
   val distanceFromPreviousCm: Long?,
   val gpsSpeedCentiMps: Int?,
   val latitudeE7: Int? = null,
@@ -164,6 +163,13 @@ private class MutableBucket(
     if (point.precise) preciseGpsPointCount++
     firstSampleAtMs = minOf(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = maxOf(lastSampleAtMs, point.capturedAtMs)
+    // GPS movement extends the Moving Window through a stretch with no telemetry at all, which is
+    // what keeps the seek timeline and Time honest after a board drops mid-ride (ADR 0017). It
+    // stays ends-only trimming: this widens the window, it never counts a Telemetry Sample.
+    if (point.moving) {
+      firstMovingAtMs = minOf(firstMovingAtMs ?: point.capturedAtMs, point.capturedAtMs)
+      lastMovingAtMs = maxOf(lastMovingAtMs ?: point.capturedAtMs, point.capturedAtMs)
+    }
     if (firstLatitudeE7 == null && point.latitudeE7 != null) {
       firstLatitudeE7 = point.latitudeE7
       firstLongitudeE7 = point.longitudeE7

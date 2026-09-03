@@ -92,6 +92,23 @@ A qualifying GPS fix counts as movement when its reported speed meets the existi
 
 Average and top speed remain board-telemetry-based. Preserve their existing aggregation and sanitizer rules; do not blend in GPS speed or recalculate average speed from Distance divided by the extended ride duration.
 
+## Read composition
+
+The two streams are joined on time at read, never at write, and never re-clocked onto each other.
+
+- Telemetry Samples carry no position at all. The route is the Ride Track, read on its own clock;
+  the seek pin, the preview route and media matching all read that one stream.
+- Only fixes passing the shared precision rule cross the bridge, so the rule is applied once,
+  natively, rather than by each consumer. Minute buckets still count every stored fix
+  (`gps_point_count`) but derive only from qualifying ones: route anchor, step distance, and GPS
+  movement evidence.
+- Minute buckets stay keyed `(bucket_start_ms, board_id, recording_id)`, and a minute holding only
+  Ride Track fixes creates its own bucket — a board dropout is exactly when the track matters most.
+  Track-only buckets carry no Telemetry Samples, so they never move a sample-based statistic.
+- The Metric Sanitizers read the Ride Track directly for the free-spin speed comparison, rather than
+  a fix synthesised back onto a sample. Live sanitization uses the fixes the packets arrived with,
+  which is the same rule against the live equivalent of the stream.
+
 ## Disconnect intent
 
 Unexpected Board connection loss allows the active Ride Recording to continue on GPS. An explicit rider Disconnect ends Ride Recording, as does an explicit Stop Recording. Continuing across connection loss does not override a rider's stop intent.

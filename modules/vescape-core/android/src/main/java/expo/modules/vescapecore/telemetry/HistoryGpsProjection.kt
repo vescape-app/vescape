@@ -1,7 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.location.MAX_RECORDING_ACCURACY_M
-import expo.modules.vescapecore.protocol.TELEMETRY_LOCATION_MAX_AGE_MS
+import expo.modules.vescapecore.telemetry.sanitizers.gpsSpeedCentiMpsToKmh
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToLong
@@ -28,10 +28,23 @@ internal val RIDE_TRACK_PRECISE_ACCURACY_CM = (MAX_RECORDING_ACCURACY_M * 100.0)
 internal fun RideTrackPointEntity.isPrecise(): Boolean =
   if (accuracyCm == null) recordingId == null else accuracyCm <= RIDE_TRACK_PRECISE_ACCURACY_CM
 
+/**
+ * Does this fix evidence movement? The fix's **own reported speed**, checked after the accuracy
+ * rule and against the rider's movement threshold — never a speed derived from the displacement
+ * between two coordinates, which turns GPS scatter into a phantom ride. A fix with no reported
+ * speed is not movement evidence, but stays a perfectly good route point (ADR 0038).
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackFixIsMovement`
+ */
+internal fun RideTrackPointEntity.isMovementEvidence(movingThresholdCentiKmh: Int): Boolean =
+  isPrecise() && gpsSpeedCentiMps != null &&
+    gpsSpeedCentiMpsToKmh(gpsSpeedCentiMps) >= movingThresholdCentiKmh
+
 /** One Ride Track fix with the distance from the fix before it, which is a sequence property. */
 internal data class RideTrackProjectionPoint(
   val point: RideTrackPointEntity,
   val distanceFromPreviousCm: Long?,
+  val movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ) {
   /** [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028). */
   fun toSampleMap(boardNames: Map<String, String>): Map<String, Any?> = mapOf(
@@ -46,7 +59,6 @@ internal data class RideTrackProjectionPoint(
     "accuracyM" to point.accuracyCm?.let { it / 100.0 },
     "altitudeM" to point.altitudeCm?.let { it / 100.0 },
     "timestamp" to point.fixAtMs,
-    "precise" to point.isPrecise(),
     "distanceFromPreviousM" to distanceFromPreviousCm?.let { it / 100.0 },
   )
 
@@ -55,10 +67,11 @@ internal data class RideTrackProjectionPoint(
     boardId = point.boardId,
     recordingId = point.recordingId ?: LEGACY_RIDE_RECORDING_ID,
     precise = point.isPrecise(),
+    moving = point.isMovementEvidence(movingThresholdCentiKmh),
     distanceFromPreviousCm = distanceFromPreviousCm,
     gpsSpeedCentiMps = point.gpsSpeedCentiMps,
-    latitudeE7 = point.latitudeE7,
-    longitudeE7 = point.longitudeE7,
+    latitudeE7 = point.latitudeE7.takeIf { point.isPrecise() },
+    longitudeE7 = point.longitudeE7.takeIf { point.isPrecise() },
   )
 }
 
@@ -66,32 +79,54 @@ internal data class RideTrackProjectionPoint(
  * Project a Ride Track into points carrying their step distance. [previous] continues the sequence
  * across a batch boundary so the first fix of a flush is not silently free of distance.
  *
- * Distance is only measured between two fixes of the same Ride Recording **and the same Board**.
- * Legacy rows carry no recording, so recording equality alone would chain every migrated fix to
- * every other one regardless of Board; the predecessor is therefore tracked per Board, exactly as
- * the frame columns this replaced did.
+ * Distance is only measured between two **qualifying** fixes of the same Ride Recording **and the
+ * same Board**. Legacy rows carry no recording, so recording equality alone would chain every
+ * migrated fix to every other one regardless of Board; the predecessor is therefore tracked per
+ * Board, exactly as the frame columns this replaced did.
  */
 internal fun List<RideTrackPointEntity>.toRideTrackProjection(
   previous: RideTrackPointEntity? = null,
+  movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ): List<RideTrackProjectionPoint> {
   val points = mutableListOf<RideTrackProjectionPoint>()
   val lastByBoard = HashMap<String?, RideTrackPointEntity>()
-  previous?.let { lastByBoard[it.boardId] = it }
+  previous?.takeIf { it.isPrecise() }?.let { lastByBoard[it.boardId] = it }
   for (point in this) {
-    val from = lastByBoard[point.boardId]?.takeIf { it.recordingId == point.recordingId }
-    points.add(RideTrackProjectionPoint(point, from?.let { distanceCm(it, point) }))
-    lastByBoard[point.boardId] = point
+    val precise = point.isPrecise()
+    val from = lastByBoard[point.boardId]
+      ?.takeIf { precise && it.recordingId == point.recordingId }
+    points.add(
+      RideTrackProjectionPoint(point, from?.let { distanceCm(it, point) }, movingThresholdCentiKmh),
+    )
+    if (precise) lastByBoard[point.boardId] = point
   }
   return points
 }
 
+/**
+ * The Ride Track as JS reads it: the route stream.
+ *
+ * Only fixes that pass the shared read-side precision rule cross the bridge. A poor fix stays in
+ * storage — that is the whole point of ADR 0038's write-everything decision — but it never draws a
+ * route, never anchors a marker and never contributes a step distance, so the rule is applied
+ * exactly once, here, instead of in every JS consumer.
+ */
 internal fun List<RideTrackPointEntity>.toGpsSampleMaps(
   boardNames: Map<String, String>,
-): List<Map<String, Any?>> = toRideTrackProjection().map { it.toSampleMap(boardNames) }
+): List<Map<String, Any?>> = toRideTrackProjection()
+  .filter { it.point.isPrecise() }
+  .map { it.toSampleMap(boardNames) }
 
+/**
+ * The same projection, as the minute-bucket location contribution. Every stored fix is counted, so
+ * `gpsPointCount` stays an honest measure of what was captured, but only qualifying fixes derive
+ * anything: the bucket's route anchor, its step distances and its GPS movement evidence.
+ */
 internal fun List<RideTrackPointEntity>.toBucketLocationPoints(
   previous: RideTrackPointEntity? = null,
-): List<BucketLocationPoint> = toRideTrackProjection(previous).map { it.toBucketPoint() }
+  movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
+): List<BucketLocationPoint> =
+  toRideTrackProjection(previous, movingThresholdCentiKmh).map { it.toBucketPoint() }
 
 private fun distanceCm(from: RideTrackPointEntity, to: RideTrackPointEntity): Long {
   val lat1 = Math.toRadians(from.latitudeE7 / 10_000_000.0)
@@ -102,46 +137,4 @@ private fun distanceCm(from: RideTrackPointEntity, to: RideTrackPointEntity): Lo
     cos(lat1) * cos(lat2) * sin(deltaLon / 2.0) * sin(deltaLon / 2.0)
   val c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
   return (6_371_000.0 * c * 100.0).roundToLong()
-}
-
-/**
- * Stamp each Telemetry Sample with the Ride Track fix that was current when it was captured.
- *
- * The two streams are written on two clocks and joined here, on read — never at write time. The age
- * gate is the same one live telemetry uses: beyond it a sample records no position rather than
- * repeating a dead fix (ADR 0034). Both lists must be ordered by time.
- *
- * The cursor is kept **per Board**: a rebuild reads a mixed-Board track, and a single cursor would
- * let one Board's fix become the current one for another Board's next sample, dropping a position
- * that Board's own in-range fix already covered.
- */
-internal fun stampTrackLocations(
-  states: List<HistoryTelemetryState>,
-  track: List<RideTrackPointEntity>,
-): List<HistoryTelemetryState> {
-  if (states.isEmpty() || track.isEmpty()) return states
-  var cursor = 0
-  val currentByBoard = HashMap<String, RideTrackPointEntity>()
-  // A fix that matched no saved Board can stamp any Board's sample, as it always could.
-  var currentUnattributed: RideTrackPointEntity? = null
-  var currentAny: RideTrackPointEntity? = null
-  return states.map { sample ->
-    while (cursor < track.size && track[cursor].fixAtMs <= sample.state.capturedAtMs) {
-      val point = track[cursor]
-      val boardId = point.boardId
-      if (boardId == null) currentUnattributed = point else currentByBoard[boardId] = point
-      currentAny = point
-      cursor++
-    }
-    val sampleBoardId = sample.state.boardId
-    val candidate = if (sampleBoardId == null) {
-      currentAny
-    } else {
-      listOfNotNull(currentByBoard[sampleBoardId], currentUnattributed).maxByOrNull { it.fixAtMs }
-    }
-    val fix = candidate?.takeIf {
-      sample.state.capturedAtMs - it.fixAtMs <= TELEMETRY_LOCATION_MAX_AGE_MS
-    } ?: return@map sample
-    sample.copy(state = sample.state.copy(location = ScaledLocation.fromTrackPoint(fix)))
-  }
 }

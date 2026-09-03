@@ -14,7 +14,15 @@ Ride History derives routes from GPS fixes attached to Telemetry Samples. Standa
 
 ## Consequences
 
-- Historical routes, graphs, summaries, and seek controls share the same telemetry-owned timeline.
+- ~~Historical routes, graphs, summaries, and seek controls share the same telemetry-owned timeline.~~
+  **Retired.** There is no single telemetry-owned timeline any more. Route and graphs are two streams
+  joined on time, and the Ride Track can be longer than the telemetry, so each read path answers for
+  itself: the route draws the whole track; graphs stay telemetry-bound and show honest gaps rather
+  than interpolating; Distance, average speed and top speed stay board-based whatever the track does;
+  and the scrubber spans one combined, natively precomputed Moving Window that GPS movement can
+  extend past the last telemetry sample. One shared read-side precision rule (20m reported accuracy,
+  both platforms, provider-independent) decides which stored fixes may draw or evidence movement.
+  See ADR-0038 and `docs/history.md`.
 - Existing GPS-only history rows are dropped by migration.
 - Live map GPS behavior is unchanged; approximate and precise phone fixes can still update Live State without becoming Ride History.
-- A GPS outage during a ride leaves telemetry samples without route points for that span instead of creating a separate route stream.
+- ~~A GPS outage during a ride leaves telemetry samples without route points for that span instead of creating a separate route stream.~~ Superseded by ADR-0038: the Ride Track is that separate stream, and a gap in either stream is now a gap in that stream alone.

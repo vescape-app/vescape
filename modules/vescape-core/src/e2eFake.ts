@@ -273,7 +273,7 @@ function stopBoardSession(): void {
 // ---------------------------------------------------------------------------
 // Telemetry history fake storage
 // ---------------------------------------------------------------------------
-const SAMPLE_COLUMN_COUNT = 23
+const SAMPLE_COLUMN_COUNT = 21
 
 let nextHistorySampleId = 1
 let nextHistoryGpsId = 1
@@ -411,8 +411,6 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
     lanes[o + 18] = s.odometer ?? NaN
     lanes[o + 19] = s.tempMosfet ?? NaN
     lanes[o + 20] = s.tempMotor ?? NaN
-    lanes[o + 21] = s.latitude ?? NaN
-    lanes[o + 22] = s.longitude ?? NaN
   }
 
   return {
@@ -604,8 +602,6 @@ function addHistoryRide(
       odometer: 1234 + progress * ride.distanceM,
       tempMosfet: ride.maxTempMosfet - 2 + progress * 2,
       tempMotor: ride.maxTempMotor - 2 + progress * 2,
-      latitude: ride.startLatitude + progress * 0.01,
-      longitude: ride.startLongitude + progress * 0.01,
     })
   }
 
@@ -623,7 +619,6 @@ function addHistoryRide(
       accuracyM: 3,
       altitudeM: 120,
       timestamp: rideStartMs + progress * durationMs,
-      precise: true,
       distanceFromPreviousM: i === 0 ? null : ride.distanceM / (gpsPointCount - 1),
     })
   }

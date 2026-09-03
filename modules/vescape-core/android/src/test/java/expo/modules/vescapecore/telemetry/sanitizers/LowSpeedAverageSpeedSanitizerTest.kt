@@ -58,7 +58,7 @@ class LowSpeedAverageSpeedSanitizerTest {
 
   private fun contextFor(vararg points: BucketTelemetryPoint) = MetricSanitizationContext(
     samples = points.toList(),
-    preciseGpsIndices = emptyList(),
+    track = emptyList(),
   )
 
   private fun point(

@@ -13,6 +13,7 @@ final class RideTrackProjectionTests: XCTestCase {
     fixAtMs: Int64,
     latitudeE7: Int64 = 500_000_000,
     accuracyCm: Int? = 300,
+    gpsSpeedCentiMps: Int? = nil,
     recordingId: String? = "recording-1",
     boardId: String? = "board-1"
   ) -> RideTrackPoint {
@@ -23,7 +24,7 @@ final class RideTrackProjectionTests: XCTestCase {
       latitudeE7: latitudeE7,
       longitudeE7: 190_000_000,
       accuracyCm: accuracyCm,
-      gpsSpeedCentiMps: nil,
+      gpsSpeedCentiMps: gpsSpeedCentiMps,
       bearingCentiDeg: nil,
       altitudeCm: nil
     )
@@ -77,23 +78,50 @@ final class RideTrackProjectionTests: XCTestCase {
     XCTAssertLessThan(step, 20_000, "board A continues its own track, not board B's")
   }
 
-  /// A rebuild stamps a mixed-Board track. One shared cursor would let board B's later fix become
-  /// "current" and strip board A's sample of the position its own in-range fix already covered.
-  func testEachBoardIsStampedFromItsOwnCursor() {
-    var stamper = RideTrackStamper([
-      point(fixAtMs: 9_000, latitudeE7: 500_000_000, boardId: "board-a"),
-      point(fixAtMs: 9_500, latitudeE7: 520_000_000, boardId: "board-b"),
+  /// A poor fix is counted, kept in storage, and derives nothing.
+  func testAPoorFixIsCountedButDerivesNothing() {
+    let points = rideTrackBucketPoints([
+      point(fixAtMs: 1_000, accuracyCm: 12_000, gpsSpeedCentiMps: 500)
     ])
 
-    let fix = stamper.fix(atOrBefore: 10_000, boardId: "board-a")
-
-    XCTAssertEqual(fix?.latitudeE7, 500_000_000)
+    XCTAssertEqual(points.count, 1)
+    XCTAssertFalse(points[0].precise)
+    XCTAssertFalse(points[0].moving, "a poor fix is never movement evidence")
+    XCTAssertNil(points[0].latitudeE7)
   }
 
-  func testAFixOlderThanTheAgeGateDoesNotStamp() {
-    var stamper = RideTrackStamper([point(fixAtMs: 9_000)])
+  /// Movement is the fix's own reported speed, never a coordinate-displacement derivation.
+  func testMovementComesFromTheFixesReportedSpeed() {
+    let points = rideTrackBucketPoints(
+      [
+        point(fixAtMs: 1_000, gpsSpeedCentiMps: 200),  // 7.2 km/h
+        point(fixAtMs: 2_000, gpsSpeedCentiMps: 50),  // 1.8 km/h
+        point(fixAtMs: 3_000, gpsSpeedCentiMps: nil),
+      ],
+      movingThresholdCentiKmh: 300
+    )
 
-    XCTAssertNotNil(stamper.fix(atOrBefore: 10_000, boardId: "board-1"))
-    XCTAssertNil(stamper.fix(atOrBefore: 40_000, boardId: "board-1"))
+    XCTAssertTrue(points[0].moving)
+    XCTAssertFalse(points[1].moving)
+    XCTAssertFalse(points[2].moving, "a fix with no reported speed is not movement evidence")
+    XCTAssertTrue(points[2].precise, "but it is still a route point")
+  }
+
+  /// GPS movement widens the Moving Window through a minute with no telemetry at all.
+  func testGpsMovementExtendsTheMovingWindow() {
+    let buckets = buildTelemetryBuckets(
+      [],
+      locationPoints: rideTrackBucketPoints(
+        [
+          point(fixAtMs: 120_000, gpsSpeedCentiMps: 500),
+          point(fixAtMs: 150_000, gpsSpeedCentiMps: 10),
+        ],
+        movingThresholdCentiKmh: 300
+      )
+    )
+
+    XCTAssertEqual(buckets.first?.firstMovingAtMs, 120_000)
+    XCTAssertEqual(buckets.first?.lastMovingAtMs, 120_000)
+    XCTAssertEqual(buckets.first?.sampleCount, 0, "a fix is never a Telemetry Sample")
   }
 }

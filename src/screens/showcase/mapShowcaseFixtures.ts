@@ -81,7 +81,6 @@ export const FIXTURE_RIDE_GPS_SAMPLES: HistoryGpsSample[] = rideRouteCoordinates
       accuracyM: 5,
       altitudeM: 240 + index,
       timestamp: NOW - (ROUTE_POINT_COUNT - 1 - index) * 5_000,
-      precise: true,
       distanceFromPreviousM: index === 0 ? null : 80,
     }
   },

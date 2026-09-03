@@ -155,8 +155,7 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
 internal func sampleMap(
   _ row: Row,
   batteryPercent: Double?,
-  boardNames: [String: String],
-  fix: RideTrackPoint?
+  boardNames: [String: String]
 ) -> [String: Any?] {
   [
     "id": row["id"] as Int64,
@@ -181,9 +180,6 @@ internal func sampleMap(
     "odometer": (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 },
     "tempMosfet": (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
     "tempMotor": (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 },
-    // Joined from Ride Track on read: position is not a column on this row any more (ADR 0038).
-    "latitude": fix.map { Double($0.latitudeE7) / 10_000_000.0 },
-    "longitude": fix.map { Double($0.longitudeE7) / 10_000_000.0 },
   ]
 }
 
@@ -217,10 +213,9 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   ]
 }
 
-/// Rebuild a bucket point from a stored frame, joined to the Ride Track fix that was current when
-/// it was captured — the sanitizers still need GPS speed and accuracy, which no longer live on the
-/// frame (ADR 0038).
-internal func bucketPoint(_ row: Row, fix: RideTrackPoint? = nil) -> BucketTelemetryPoint? {
+/// Rebuild a bucket point from a stored frame. Position is not part of it: the Ride Track is its
+/// own stream, and the sanitizers that need a fix read that stream directly (ADR 0038).
+internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
   BucketTelemetryPoint(
     capturedAtMs: row["captured_at_ms"] as Int64,
     boardId: row["board_id"] as String?,
@@ -232,10 +227,7 @@ internal func bucketPoint(_ row: Row, fix: RideTrackPoint? = nil) -> BucketTelem
     dutyPermille: row["duty_permille"] as Int? ?? 0,
     odometerCm: row["odometer_cm"] as Int64?,
     tempMosfetDeciC: row["temp_mosfet_deci_c"] as Int?,
-    tempMotorDeciC: row["temp_motor_deci_c"] as Int?,
-    gpsSpeedCentiMps: fix?.gpsSpeedCentiMps,
-    gpsTimestampMs: fix?.fixAtMs,
-    gpsAccuracyCm: fix?.accuracyCm
+    tempMotorDeciC: row["temp_motor_deci_c"] as Int?
   )
 }
 

@@ -311,10 +311,7 @@ final class FavoriteStoreTests: XCTestCase {
         dutyPermille: 400,
         odometerCm: (startMs + offset) / 10,
         tempMosfetDeciC: nil,
-        tempMotorDeciC: nil,
-        gpsSpeedCentiMps: nil,
-        gpsTimestampMs: nil,
-        gpsAccuracyCm: nil
+        tempMotorDeciC: nil
       )
     }
   }

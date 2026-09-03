@@ -77,6 +77,13 @@ internal struct TelemetryBucket {
     if point.precise { preciseGpsPointCount += 1 }
     firstSampleAtMs = min(firstSampleAtMs, point.capturedAtMs)
     lastSampleAtMs = max(lastSampleAtMs, point.capturedAtMs)
+    // GPS movement extends the Moving Window through a stretch with no telemetry at all, which is
+    // what keeps the seek timeline and Time honest after a board drops mid-ride (ADR 0017). It
+    // stays ends-only trimming: this widens the window, it never counts a Telemetry Sample.
+    if point.moving {
+      firstMovingAtMs = min(firstMovingAtMs ?? point.capturedAtMs, point.capturedAtMs)
+      lastMovingAtMs = max(lastMovingAtMs ?? point.capturedAtMs, point.capturedAtMs)
+    }
     if firstLatitudeE7 == nil, let latitude = point.latitudeE7, let longitude = point.longitudeE7 {
       firstLatitudeE7 = latitude
       firstLongitudeE7 = longitude
@@ -93,6 +100,8 @@ internal struct BucketLocationPoint {
   let boardId: String?
   let recordingId: String
   let precise: Bool
+  /// GPS movement evidence: precise, with a reported speed at or above the rider's threshold.
+  let moving: Bool
   let distanceFromPreviousCm: Int64?
   let gpsSpeedCentiMps: Int?
   let latitudeE7: Int64?

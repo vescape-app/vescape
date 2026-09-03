@@ -107,9 +107,6 @@ internal struct BucketTelemetryPoint {
   let odometerCm: Int64?
   let tempMosfetDeciC: Int?
   let tempMotorDeciC: Int?
-  let gpsSpeedCentiMps: Int?
-  let gpsTimestampMs: Int64?
-  let gpsAccuracyCm: Int?
   var excludedFromAvgSpeed = false
   var excludedFromMaxSpeed = false
   var excludedFromMaxDuty = false
@@ -142,10 +139,7 @@ internal struct FullTelemetryState {
       dutyPermille: telemetryMilli(t.dutyCycle),
       odometerCm: t.odometer.map { Int64(($0 * 100.0).rounded()) },
       tempMosfetDeciC: t.tempMosfet.map { telemetryDeci($0) },
-      tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) },
-      gpsSpeedCentiMps: location?.speedMps.map { telemetryCenti($0) },
-      gpsTimestampMs: location?.timestamp,
-      gpsAccuracyCm: location?.accuracyM.map { telemetryCenti($0) }
+      tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) }
     )
   }
 }

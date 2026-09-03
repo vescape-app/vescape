@@ -72,8 +72,6 @@ const SAMPLE_DEFAULTS: TelemetrySample = {
   odometer: null,
   tempMosfet: null,
   tempMotor: null,
-  latitude: null,
-  longitude: null,
 }
 
 export function makeSample(overrides: Partial<TelemetrySample> = {}): TelemetrySample {
