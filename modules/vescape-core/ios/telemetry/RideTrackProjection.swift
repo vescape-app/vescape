@@ -35,7 +35,7 @@ internal func rideTrackFixIsMovement(_ point: RideTrackPoint, movingThresholdCen
   return gpsSpeedCentiMpsToCentiKmh(speedCentiMps) >= movingThresholdCentiKmh
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/sanitizers/FreeSpinMetricSanitizer.kt `gpsSpeedCentiMpsToKmh`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/sanitizers/FreeSpinMetricSanitizer.kt `gpsSpeedCentiMpsToCentiKmh`
 internal func gpsSpeedCentiMpsToCentiKmh(_ centiMps: Int) -> Int { (centiMps * 36) / 10 }
 
 /// The Ride Track as JS reads it: the route stream.

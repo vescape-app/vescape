@@ -103,11 +103,11 @@ private func isFreeSpin(
   guard let nearest = nearestFix(to: point, in: track), let gpsSpeed = nearest.gpsSpeedCentiMps
   else { return false }
   let boardSpeed = abs(point.speedCentiKmh)
-  let gpsSpeedKmh = gpsSpeedCentiMpsToCentiKmh(gpsSpeed)
-  if gpsSpeedKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH {
+  let gpsSpeedCentiKmh = gpsSpeedCentiMpsToCentiKmh(gpsSpeed)
+  if gpsSpeedCentiKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH {
     return boardSpeed > max(0, stationaryCap)
   }
-  return boardSpeed - gpsSpeedKmh > max(0, maxDelta)
+  return boardSpeed - gpsSpeedCentiKmh > max(0, maxDelta)
 }
 
 /// The fix nearest in time to a sample, within the age window and attributable to its Board. The
@@ -123,16 +123,25 @@ private func nearestFix(to point: BucketTelemetryPoint, in track: [RideTrackPoin
   }
   var best: RideTrackPoint?
   var bestAge = Int64.max
-  for index in (low - 2)...(low + 1) where index >= 0 && index < track.count {
-    let candidate = track[index]
-    // A fix that matched no saved Board can stand in for any Board's sample, as it always could.
-    guard candidate.boardId == nil || candidate.boardId == point.boardId else { continue }
+
+  // Walk outward until the age window closes rather than over a fixed number of neighbours: a
+  // multi-Board track interleaves fixes, so the nearest same-Board fix can sit several indices out.
+  func consider(_ candidate: RideTrackPoint) -> Bool {
     let age = abs(candidate.fixAtMs - point.capturedAtMs)
-    if age <= FREE_SPIN_NEAREST_GPS_MAX_AGE_MS && age < bestAge {
+    if age > FREE_SPIN_NEAREST_GPS_MAX_AGE_MS { return false }
+    // A fix that matched no saved Board can stand in for any Board's sample, as it always could.
+    let attributable = candidate.boardId == nil || candidate.boardId == point.boardId
+    if attributable && age < bestAge {
       best = candidate
       bestAge = age
     }
+    return true
   }
+
+  var backward = low - 1
+  while backward >= 0, consider(track[backward]) { backward -= 1 }
+  var forward = low
+  while forward < track.count, consider(track[forward]) { forward += 1 }
   return best
 }
 

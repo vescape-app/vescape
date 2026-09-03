@@ -23,11 +23,11 @@ internal class FreeSpinMetricSanitizer(
   ): MetricSanitizerOutput {
     val absSpeed = abs(point.speedCentiKmh)
     val nearestGps = findNearestFix(point, context.track) ?: return MetricSanitizerOutput()
-    val gpsSpeedKmh = gpsSpeedCentiMpsToKmh(nearestGps.gpsSpeedCentiMps!!)
-    val freeSpin = if (gpsSpeedKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH) {
+    val gpsSpeedCentiKmh = gpsSpeedCentiMpsToCentiKmh(nearestGps.gpsSpeedCentiMps!!)
+    val freeSpin = if (gpsSpeedCentiKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH) {
       absSpeed > stationaryCap
     } else {
-      absSpeed - gpsSpeedKmh > maxDelta
+      absSpeed - gpsSpeedCentiKmh > maxDelta
     }
     if (!freeSpin) return MetricSanitizerOutput()
 
@@ -67,18 +67,27 @@ internal fun findNearestFix(
 
   var best: RideTrackPointEntity? = null
   var bestAge = Long.MAX_VALUE
-  for (index in (low - 2)..(low + 1)) {
-    if (index < 0 || index >= track.size) continue
-    val candidate = track[index]
-    // A fix that matched no saved Board can stand in for any Board's sample, as it always could.
-    if (candidate.boardId != null && candidate.boardId != point.boardId) continue
+
+  // Walk outward until the age window closes rather than over a fixed number of neighbours: a
+  // multi-Board track interleaves fixes, so the nearest same-Board fix can sit several indices out.
+  fun consider(candidate: RideTrackPointEntity): Boolean {
     val age = abs(candidate.fixAtMs - point.capturedAtMs)
-    if (age <= FREE_SPIN_NEAREST_GPS_MAX_AGE_MS && age < bestAge) {
+    if (age > FREE_SPIN_NEAREST_GPS_MAX_AGE_MS) return false
+    // A fix that matched no saved Board can stand in for any Board's sample, as it always could.
+    val attributable = candidate.boardId == null || candidate.boardId == point.boardId
+    if (attributable && age < bestAge) {
       best = candidate
       bestAge = age
     }
+    return true
   }
+
+  var backward = low - 1
+  while (backward >= 0 && consider(track[backward])) backward--
+  var forward = low
+  while (forward < track.size && consider(track[forward])) forward++
   return best
 }
 
-internal fun gpsSpeedCentiMpsToKmh(centiMps: Int): Int = (centiMps * 36) / 10
+/** @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift `gpsSpeedCentiMpsToCentiKmh` */
+internal fun gpsSpeedCentiMpsToCentiKmh(centiMps: Int): Int = (centiMps * 36) / 10

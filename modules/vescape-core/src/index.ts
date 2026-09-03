@@ -757,9 +757,9 @@ export interface HistoryRange {
 const SAMPLE_COLUMN_COUNT = 21
 
 /**
- * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer (25
- * lanes/sample, row-major) plus a device dictionary, instead of an array of ~25-field objects. This
- * replaces N×25 per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
+ * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer
+ * (`SAMPLE_COLUMN_COUNT` lanes/sample, row-major) plus a device dictionary, instead of an array of
+ * per-field objects. This replaces N×`SAMPLE_COLUMN_COUNT` per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
  */
 /**
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `getRange`

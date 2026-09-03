@@ -1,7 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import expo.modules.vescapecore.location.MAX_RECORDING_ACCURACY_M
-import expo.modules.vescapecore.telemetry.sanitizers.gpsSpeedCentiMpsToKmh
+import expo.modules.vescapecore.telemetry.sanitizers.gpsSpeedCentiMpsToCentiKmh
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToLong
@@ -38,7 +38,7 @@ internal fun RideTrackPointEntity.isPrecise(): Boolean =
  */
 internal fun RideTrackPointEntity.isMovementEvidence(movingThresholdCentiKmh: Int): Boolean =
   isPrecise() && gpsSpeedCentiMps != null &&
-    gpsSpeedCentiMpsToKmh(gpsSpeedCentiMps) >= movingThresholdCentiKmh
+    gpsSpeedCentiMpsToCentiKmh(gpsSpeedCentiMps) >= movingThresholdCentiKmh
 
 /** One Ride Track fix with the distance from the fix before it, which is a sequence property. */
 internal data class RideTrackProjectionPoint(
@@ -62,17 +62,20 @@ internal data class RideTrackProjectionPoint(
     "distanceFromPreviousM" to distanceFromPreviousCm?.let { it / 100.0 },
   )
 
-  fun toBucketPoint(): BucketLocationPoint = BucketLocationPoint(
-    capturedAtMs = point.fixAtMs,
-    boardId = point.boardId,
-    recordingId = point.recordingId ?: LEGACY_RIDE_RECORDING_ID,
-    precise = point.isPrecise(),
-    moving = point.isMovementEvidence(movingThresholdCentiKmh),
-    distanceFromPreviousCm = distanceFromPreviousCm,
-    gpsSpeedCentiMps = point.gpsSpeedCentiMps,
-    latitudeE7 = point.latitudeE7.takeIf { point.isPrecise() },
-    longitudeE7 = point.longitudeE7.takeIf { point.isPrecise() },
-  )
+  fun toBucketPoint(): BucketLocationPoint {
+    val precise = point.isPrecise()
+    return BucketLocationPoint(
+      capturedAtMs = point.fixAtMs,
+      boardId = point.boardId,
+      recordingId = point.recordingId ?: LEGACY_RIDE_RECORDING_ID,
+      precise = precise,
+      moving = point.isMovementEvidence(movingThresholdCentiKmh),
+      distanceFromPreviousCm = distanceFromPreviousCm,
+      gpsSpeedCentiMps = point.gpsSpeedCentiMps,
+      latitudeE7 = point.latitudeE7.takeIf { precise },
+      longitudeE7 = point.longitudeE7.takeIf { precise },
+    )
+  }
 }
 
 /**

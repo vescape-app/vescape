@@ -3,7 +3,11 @@ import type { HistoryGpsSample, HistoryMarker, TelemetrySample } from 'vescape-c
 import { findNearestSampleIndexByTime } from '@/modules/history/lib/playback'
 
 const MEDIA_GPS_TOLERANCE_MS = 30_000
-const MEDIA_GPS_SPAN_GAP_MS = 30_000
+// Longest hole between two *route-quality* fixes that still counts as one continuous span. Native
+// filters the Ride Track to the shared 20m precision rule before it crosses the bridge (ADR 0038),
+// so this measures a gap in usable fixes, not a gap in GPS reception: a stretch where fixes kept
+// arriving at worse accuracy reads as a hole here, and media inside it stays unmatched.
+const MEDIA_PRECISE_GPS_SPAN_GAP_MS = 30_000
 export const MEDIA_CLUSTER_DISTANCE_M = 12
 const MEDIA_TELEMETRY_TOLERANCE_MS = 5_000
 const MEDIA_TELEMETRY_SPAN_GAP_MS = 10_000
@@ -77,6 +81,11 @@ function hasBreakBetween(markers: readonly HistoryMarker[], fromMs: number, toMs
   )
 }
 
+/**
+ * Is `targetMs` inside the same continuous run of route-quality fixes as `samples[index]`? Span
+ * continuity is measured over the precision-filtered stream, so a run of imprecise fixes breaks a
+ * span exactly like a reception gap does — see [MEDIA_PRECISE_GPS_SPAN_GAP_MS].
+ */
 function belongsToGpsSpan(
   samples: readonly HistoryGpsSample[],
   index: number,
@@ -88,7 +97,8 @@ function belongsToGpsSpan(
   const adjacentIndex = targetMs < sample.capturedAtMs ? index - 1 : index + 1
   const adjacent = samples[adjacentIndex]
   if (!adjacent) return false
-  if (Math.abs(adjacent.capturedAtMs - sample.capturedAtMs) > MEDIA_GPS_SPAN_GAP_MS) return false
+  if (Math.abs(adjacent.capturedAtMs - sample.capturedAtMs) > MEDIA_PRECISE_GPS_SPAN_GAP_MS)
+    return false
   return !hasBreakBetween(markers, adjacent.capturedAtMs, sample.capturedAtMs)
 }
 

@@ -270,6 +270,22 @@ interface TelemetryDao {
   @Query("SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms ASC")
   suspend fun getAllHistoryBucketsAsc(): List<TelemetryMinuteBucketEntity>
 
+  /**
+   * Ride grouping reads every bucket, including the ones a Ride Track wrote with no Telemetry
+   * Sample in them. A board dropout is exactly when those minutes exist, and they carry the Moving
+   * Window and route anchor that keep Time and the seek timeline honest across it (ADR 0038).
+   * [getHistoryBuckets] stays sample-only: its rows are graph buckets.
+   */
+  @Query(
+    """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms <= :beforeMs
+    ORDER BY bucket_start_ms DESC
+    LIMIT :limit
+    """,
+  )
+  suspend fun getRideBuckets(beforeMs: Long, limit: Int): List<TelemetryMinuteBucketEntity>
+
   @Query(
     """
     SELECT * FROM telemetry_markers

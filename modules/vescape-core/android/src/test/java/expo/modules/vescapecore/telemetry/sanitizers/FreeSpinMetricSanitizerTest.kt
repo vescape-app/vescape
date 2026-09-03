@@ -81,6 +81,33 @@ class FreeSpinMetricSanitizerTest {
     assertEquals(EXCLUSION_REASON_FREE_SPIN, result.exclusions.single().reason)
   }
 
+  /**
+   * A multi-Board track interleaves fixes, so the nearest same-Board fix can sit well past the
+   * immediate neighbours of the binary-search landing index.
+   */
+  @Test
+  fun findsASameBoardFixBehindOtherBoardsFixes() {
+    val captured = pointWithGps(
+      capturedAtMs = 5_000L,
+      speedCentiKmh = 5000,
+      gpsSpeedCentiMps = 100,
+      gpsTimestampMs = 1_000L,
+    )
+    val otherBoardFixes = listOf(2_000L, 3_000L, 4_000L, 4_500L).map { fixAtMs ->
+      pointWithGps(
+        deviceId = "board-2",
+        gpsSpeedCentiMps = 100,
+        gpsTimestampMs = fixAtMs,
+      )
+    }
+    val context = contextFor(listOf(captured) + otherBoardFixes)
+
+    val result = FreeSpinMetricSanitizer(maxSpeedDeltaCentiKmh = 1200, stationaryBoardCapCentiKmh = 1500)
+      .sanitize(0, captured.point, context)
+
+    assertTrue(result.excludedFromMaxSpeed)
+  }
+
   private fun sanitize(captured: Captured): MetricSanitizerOutput =
     FreeSpinMetricSanitizer(maxSpeedDeltaCentiKmh = 1200, stationaryBoardCapCentiKmh = 1500)
       .sanitize(0, captured.point, contextFor(listOf(captured)))
