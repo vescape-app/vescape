@@ -15,9 +15,11 @@ internal final class RecordingCoordinator {
   /// The rider stopped recording during this Board Session. Survives reconnects so a re-ready board
   /// cannot auto-restart what they explicitly stopped; cleared when a new Board Session begins.
   private var explicitlyStopped = false
-  /// This Board Session is a restoration resume, so the first enable rejoins the open recording
-  /// instead of minting a second identity for one ride.
-  private var resumingRecording = false
+  /// The Ride Recording this Board Session's first enable must rejoin instead of minting a second
+  /// identity for one ride: the one left open across a reconnect loop the rider tapped Connect
+  /// through, or the one a state-restoration relaunch is rebuilding a session for. Named, not
+  /// searched for — an abandoned recording from another day is never adopted (#450).
+  private var resumeRecordingId: String?
   /// Auto-recording is a *connect* rule, not a re-ready rule: it fires at the first board-ready of a
   /// Board Session and stays quiet for every reconnect's board-ready after it.
   private var boardReadySeen = false
@@ -39,32 +41,31 @@ internal final class RecordingCoordinator {
   }
 
   var telemetryRecordingEnabled: Bool { enabled }
+  /// Identity of the open Ride Recording, for the durable resume marker to name.
+  var activeRideRecordingId: String? { store.activeRideRecordingId }
   var activeBoardId: String? { enabled ? activeConfig?.appBoardId : nil }
 
   func currentRecorder() -> SessionRecorder? { recorder }
 
   /// Begin a Board Session's recording side.
   ///
-  /// `resume` marks the one caller that may rejoin an open recording instead of starting a new one:
-  /// an iOS BLE state-restoration relaunch rebuilding the session that was live when the process
-  /// died (ADR 0034). Everything else — a fresh connect, an auto-connect, a Board change — starts a
-  /// new recording, because a rider who asked to connect is asking for a new capture.
-  func beginBoardSession(config: BoardConnectConfig, resume: Bool = false) {
+  /// `restoredRecordingId` names the recording a CoreBluetooth state-restoration relaunch is
+  /// rebuilding this session for (ADR 0034); it is rejoined rather than replaced. Any other connect
+  /// that finds no open recording of this Board starts a new one, because a rider who asked to
+  /// connect a Board they were not recording is asking for a new capture.
+  func beginBoardSession(config: BoardConnectConfig, restoredRecordingId: String? = nil) {
     // A recording belongs to exactly one Board. An explicit connection attempt to another one ends
     // the previous recording here, before the attempt can succeed or fail — a failed connection
-    // must not reopen it either (ADR 0038). Same Board is a stop-then-start and says so.
-    let previousBoardId = store.activeRideRecordingBoardId
-    if store.activeRideRecordingId != nil {
-      store.endRideRecording(
-        reason: previousBoardId == config.appBoardId
-          ? RIDE_RECORDING_END_STOPPED
-          : RIDE_RECORDING_END_BOARD_CHANGE
-      )
-    }
+    // must not reopen it either (ADR 0038).
+    //
+    // The *same* Board keeps its recording. Tapping Connect during a reconnect loop is the rider
+    // hurrying that reconnect along, not stopping the ride — splitting it here would produce two
+    // history entries and label the first one `stopped`, which is not what happened (#450).
+    let retained = store.retainRideRecording(forBoardId: config.appBoardId)
     // A new Board Session spends the rider's previous stop: the gate exists to stop a *reconnect*
     // from restarting what they stopped, not to keep the next ride from recording.
     explicitlyStopped = false
-    resumingRecording = resume
+    resumeRecordingId = retained ?? restoredRecordingId
     activeConfig = config
     recorder?.finish(status: "stopped")
     recorder = nil
@@ -84,8 +85,9 @@ internal final class RecordingCoordinator {
     store.applySettings(appData.getSettings())
     // `autoRecording` is honored at board-ready, not here — mirrors Android, which only enables
     // the telemetry store once the board is actually connected. Only an explicit JS request
-    // (`setTelemetryRecordingEnabled`) starts recording this early.
-    if requestedTelemetryRecordingEnabled {
+    // (`setTelemetryRecordingEnabled`) starts recording this early — or a recording this session
+    // rejoins, which was already capturing and must not lose the fixes between here and board-ready.
+    if requestedTelemetryRecordingEnabled || resumeRecordingId != nil {
       enableTelemetryRecording(config: config, emitConnectedMarker: false)
     } else {
       enabled = false
@@ -129,7 +131,7 @@ internal final class RecordingCoordinator {
     enabled = false
     startedAtMs = nil
     boardReadySeen = false
-    resumingRecording = false
+    resumeRecordingId = nil
   }
 
   func failSession() {
@@ -140,7 +142,7 @@ internal final class RecordingCoordinator {
     enabled = false
     startedAtMs = nil
     boardReadySeen = false
-    resumingRecording = false
+    resumeRecordingId = nil
   }
 
   func setTelemetryRecordingEnabled(_ requested: Bool) -> Bool {
@@ -222,13 +224,15 @@ internal final class RecordingCoordinator {
       // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
       // boundary, minted before the first sample or fix can be admitted.
       //
-      // A restoration resume rejoins the recording left open instead, so one ride across a process
-      // death stays one identity and one history entry. It is consumed once: if the rider stops and
-      // starts again inside the resumed session, that really is a new recording. `nil` means the
-      // recording was explicitly ended before the process died — that intent is durable, so a new
-      // recording is the only honest thing to open.
-      let resumed = resumingRecording ? store.resumeRideRecording(boardId: config.appBoardId) : nil
-      resumingRecording = false
+      // A resume rejoins the recording left open instead, so one ride across a reconnect loop or a
+      // process death stays one identity and one history entry. It is consumed once: if the rider
+      // stops and starts again inside that session, that really is a new recording. `nil` means the
+      // recording was already ended — that intent is durable, so a new recording is the only honest
+      // thing to open.
+      let resumed = resumeRecordingId.flatMap {
+        store.resumeRideRecording(boardId: config.appBoardId, recordingId: $0)
+      }
+      resumeRecordingId = nil
       if resumed == nil {
         store.beginRideRecording(boardId: config.appBoardId)
       }

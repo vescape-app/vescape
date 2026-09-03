@@ -1297,6 +1297,11 @@ private var wearAutoLaunchOnConnect = true
                 )
                 setError("Board disconnected")
                 recordingCoordinator.finishDebugRecording("error")
+                // No reconnect is coming, but the Ride Recording stays open (nothing tore the
+                // session down), so release the connected-Board pause gate here too. Off the link
+                // there is no Board movement signal to ever reopen it, and a gate stuck closed
+                // silently discards every later GPS Fix.
+                resetIdlePause()
             }
         }
 

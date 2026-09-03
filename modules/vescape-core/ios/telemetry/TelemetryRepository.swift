@@ -60,43 +60,75 @@ internal final class TelemetryRepository {
   /// Identity #449 groups history on and #450 carries across a Board Session teardown.
   var activeRideRecordingId: String? { queue.sync { currentRecording?.id } }
 
-  /// Board the open Ride Recording is attributed to. Lets a caller tell a Board change from a
-  /// stop-then-start of the same Board without holding its own copy of the recording's Board.
-  var activeRideRecordingBoardId: String? { queue.sync { currentRecording?.boardId } }
 
-  /// Rejoin the Ride Recording this Board was left recording into, or nil when there is none.
+  /// Rejoin the Ride Recording named by `recordingId`, or nil when it can no longer be rejoined.
   ///
-  /// The one path that does not mint a new identity. An iOS BLE state-restoration relaunch resumes
-  /// a Board Session whose recording is still open in the database, and creating a second recording
-  /// there would split one ride into two history entries across a process death the rider never
-  /// asked for. The still-open row is also the persisted end intent: an explicitly stopped or
-  /// disconnected recording carries `ended_at_ms`, so this returns nil and the caller must start a
-  /// fresh recording rather than reviving an ended one.
+  /// The one path that does not mint a new identity. Two callers need it: an iOS BLE
+  /// state-restoration relaunch rebuilding the session that was live when the process died (ADR
+  /// 0034), and an explicit Connect to the Board that already owns the open recording — a rider
+  /// tapping Connect to hurry its reconnect loop along is not asking for a second ride.
+  ///
+  /// The recording is named, not searched for. An abandoned row from a ride days ago has a
+  /// different identity and is refused, so a restoration relaunch can never claim capture across a
+  /// gap the process could not run through. The still-open row is also the persisted end intent: an
+  /// explicitly stopped or disconnected recording carries `ended_at_ms`, so this returns nil and the
+  /// caller must start a fresh recording rather than reviving an ended one.
   ///
   /// The dead interval is left exactly as honest as it was — no fix or frame is fabricated for the
   /// time the process could not run.
   ///
-  /// @platform-diff No Android peer. Android's `CoreForegroundService` keeps the process alive, so
-  /// there is no restoration relaunch to resume from, and its launch auto-connect is an ordinary
-  /// cold start that may be days later — adopting an open recording there would claim capture across
-  /// a gap the process never covered.
+  /// @platform-diff No Android peer for the restoration half. Android's `CoreForegroundService`
+  /// keeps the process alive, so there is no restoration relaunch to resume from, and its launch
+  /// auto-connect is an ordinary cold start.
   @discardableResult
-  func resumeRideRecording(boardId: String?) -> String? {
+  func resumeRideRecording(boardId: String?, recordingId: String) -> String? {
     if let open = queue.sync(execute: { currentRecording }) {
-      // Already live in this process: a resume of the session we are already recording for is the
-      // same recording, and anything else is a Board change the caller must make explicit.
-      return open.boardId == boardId ? open.id : nil
+      // Already live in this process: only the very recording asked for is a resume.
+      return open.id == recordingId && open.boardId == boardId ? open.id : nil
     }
-    guard let pool else { return nil }
-    guard let recording = try? pool.read({ db in try openRideRecordingForBoard(db, boardId: boardId) })
+    guard let pool,
+      let recording = try? pool.read({ db in
+        try openRideRecording(db, id: recordingId, boardId: boardId)
+      })
     else { return nil }
-    queue.sync {
+    return queue.sync {
+      // Re-checked inside the write section, not just before the read: a `beginRideRecording` that
+      // landed while the row was being read owns the repository now, and adopting over it would
+      // leave its row open while every later write was stamped with the old identity.
+      guard currentRecording == nil else { return nil }
       currentRecording = recording
       // Adopting is not continuing: the process died between the last flushed point and now, so the
       // track geometry restarts rather than drawing a line across the gap.
       lastFlushedTrackPoint = nil
+      return recording.id
     }
-    return recording.id
+  }
+
+  /// Close every Ride Recording a dead process left open, stamping each at its own last durable
+  /// write. Called once the launch is known not to be adopting one: an unswept row has no
+  /// `ended_at_ms`, and #449's reader shows only finished recordings, so leaving it open hides that
+  /// ride from history until some later recording happens to sweep it — possibly never.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `closeAbandonedRideRecordings`
+  func closeAbandonedRideRecordings() {
+    guard let pool else { return }
+    let keepOpenId = queue.sync { currentRecording?.id }
+    try? pool.write { db in
+      try VescapeCore.closeAbandonedRideRecordings(
+        db, reason: RIDE_RECORDING_END_DISCONNECTED, except: keepOpenId)
+    }
+  }
+
+  /// Keep the open Ride Recording when it belongs to `boardId`; end it as a Board change otherwise.
+  /// Returns the identity still open, or nil when nothing is.
+  ///
+  /// One decision, one critical section: reading the open recording's Board and then acting on it
+  /// from outside would let a concurrent begin/end land in between and answer for the wrong ride.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `retainRideRecording`
+  @discardableResult
+  func retainRideRecording(forBoardId boardId: String?) -> String? {
+    closeOpenRideRecording(reason: RIDE_RECORDING_END_BOARD_CHANGE, keepingBoardId: boardId)
   }
 
   /// Open a **Ride Recording**: mint its durable identity and stamp its start boundary.
@@ -108,16 +140,10 @@ internal final class TelemetryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `beginRideRecording`
   @discardableResult
   func beginRideRecording(boardId: String?) -> String {
-    // A recording still open when another starts ended because the Board changed — unless it is the
-    // same Board, which is a Stop then Start and says so.
-    let previous = queue.sync { currentRecording }
-    if let previous {
-      endRideRecording(
-        reason: previous.boardId == boardId
-          ? RIDE_RECORDING_END_STOPPED
-          : RIDE_RECORDING_END_BOARD_CHANGE
-      )
-    }
+    // Starting over a recording that is still open is the rider stopping and starting again inside
+    // one Board Session; a Board change never reaches here, `retainRideRecording` has already ended
+    // the old ride by then.
+    endRideRecording(reason: RIDE_RECORDING_END_STOPPED)
     let recording = RideRecording(
       id: UUID().uuidString,
       boardId: boardId,
@@ -130,9 +156,8 @@ internal final class TelemetryRepository {
         // Minting a new identity is the moment any recording still open from a process that died
         // without ending one becomes unrejoinable. Close it here rather than leaving a row open
         // forever — the capture really did end when the process did.
-        try closeAbandonedRideRecordings(
+        try VescapeCore.closeAbandonedRideRecordings(
           db,
-          endedAtMs: recording.startedAtMs,
           reason: RIDE_RECORDING_END_DISCONNECTED,
           except: recording.id
         )
@@ -153,21 +178,35 @@ internal final class TelemetryRepository {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `endRideRecording`
   func endRideRecording(reason: String) {
-    // Read and clear in one critical section: a concurrent `beginRideRecording` between the two
-    // would nil out the *new* recording's identity while its row stayed open.
-    let closed: RideRecording? = queue.sync {
-      guard let recording = currentRecording else { return nil }
+    _ = closeOpenRideRecording(reason: reason, keepingBoardId: nil, keepAnyBoard: false)
+  }
+
+  /// Read, decide and clear in one critical section: a concurrent `beginRideRecording` between the
+  /// steps would nil out the *new* recording's identity while its row stayed open, and a Board read
+  /// from outside could answer for a ride that has already been replaced.
+  ///
+  /// `keepAnyBoard` distinguishes "keep the recording of this Board" from "close whatever is open",
+  /// which a plain `nil` `keepingBoardId` cannot: nil is itself a valid Board attribution.
+  @discardableResult
+  private func closeOpenRideRecording(
+    reason: String,
+    keepingBoardId: String?,
+    keepAnyBoard: Bool = true
+  ) -> String? {
+    let outcome: (retained: String?, closed: RideRecording?) = queue.sync {
+      guard let recording = currentRecording else { return (nil, nil) }
+      if keepAnyBoard && recording.boardId == keepingBoardId { return (recording.id, nil) }
       self.flushOnQueue()
       currentRecording = nil
       lastFlushedTrackPoint = nil
-      return recording
+      return (nil, recording)
     }
-    guard let recording = closed else { return }
-    if let pool {
+    if let recording = outcome.closed, let pool {
       try? pool.write { db in
         try closeRideRecordingRow(db, id: recording.id, endedAtMs: telemetryNowMs(), reason: reason)
       }
     }
+    return outcome.retained
   }
 
   /// Offer one GPS Fix to the **Ride Track**.

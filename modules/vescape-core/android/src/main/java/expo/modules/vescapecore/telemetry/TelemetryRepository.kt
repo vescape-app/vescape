@@ -126,12 +126,12 @@ class TelemetryRepository private constructor(context: Context) {
   val activeRideRecordingId: String?
     get() = currentRecording?.id
 
-  /**
-   * Board the open Ride Recording is attributed to. Lets a caller tell a Board change from a
-   * stop-then-start of the same Board without holding its own copy of the recording's Board.
-   */
-  val activeRideRecordingBoardId: String?
-    get() = currentRecording?.boardId
+  init {
+    // Once per process, before any Board Session can have minted a recording: a row left open by a
+    // process that died is invisible to Ride History until something closes it, and on Android
+    // nothing else ever will — there is no restoration relaunch to adopt it.
+    scope.launch { closeAbandonedRideRecordings() }
+  }
 
   fun setMovingSpeedThresholdKmh(value: Double) {
     metricSanitizerConfig = metricSanitizerConfig.copy(
@@ -169,39 +169,32 @@ class TelemetryRepository private constructor(context: Context) {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `beginRideRecording`
    */
   fun beginRideRecording(boardId: String?): String {
-    // A recording still open when another starts ended because the Board changed — unless it is the
-    // same Board, which is a Stop then Start and says so.
-    val previous = currentRecording
-    if (previous != null) {
-      endRideRecording(
-        if (previous.boardId == boardId) {
-          RIDE_RECORDING_END_STOPPED
-        } else {
-          RIDE_RECORDING_END_BOARD_CHANGE
-        },
-      )
-    }
+    // Starting over a recording that is still open is the rider stopping and starting again inside
+    // one Board Session; a Board change never reaches here, `retainRideRecording` has already ended
+    // the old ride by then.
+    endRideRecording(RIDE_RECORDING_END_STOPPED)
     val recording = RideRecordingEntity(
       id = UUID.randomUUID().toString(),
       boardId = boardId,
       startedAtMs = System.currentTimeMillis(),
     )
-    runBlocking(Dispatchers.IO) {
-      try {
-        // Minting a new identity is the moment any recording still open from a process that died
-        // without ending one becomes unrejoinable. Close it here rather than leaving a row open
-        // forever — the capture really did end when the process did.
-        dao.closeAbandonedRideRecordings(
-          endedAtMs = recording.startedAtMs,
-          reason = RIDE_RECORDING_END_DISCONNECTED,
-          keepOpenId = recording.id,
-        )
-        dao.insertRideRecording(recording)
-      } catch (e: Exception) {
-        Log.w(TAG, "Ride Recording open failed: ${e.message}")
-      }
-    }
+    // Insert and publish under one lock: the launch sweep closes every row this repository does not
+    // hold open, and a row inserted but not yet published would be swept out from under itself.
     synchronized(lock) {
+      runBlocking(Dispatchers.IO) {
+        try {
+          // Minting a new identity is the moment any recording still open from a process that died
+          // without ending one becomes unrejoinable. Close it here rather than leaving a row open
+          // forever — the capture really did end when the process did.
+          dao.closeAbandonedRideRecordings(
+            reason = RIDE_RECORDING_END_DISCONNECTED,
+            keepOpenId = recording.id,
+          )
+          dao.insertRideRecording(recording)
+        } catch (e: Exception) {
+          Log.w(TAG, "Ride Recording open failed: ${e.message}")
+        }
+      }
       currentRecording = recording
       // A new recording never continues the previous one's delta chain or its track geometry.
       forceNextKeyframe = true
@@ -219,13 +212,45 @@ class TelemetryRepository private constructor(context: Context) {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `endRideRecording`
    */
   fun endRideRecording(reason: String) {
-    // Read and clear in one critical section: a concurrent `beginRideRecording` between the two
-    // would nil out the *new* recording's identity while its row stayed open.
+    closeOpenRideRecording(reason, keepingBoardId = null, keepAnyBoard = false)
+  }
+
+  /**
+   * Keep the open Ride Recording when it belongs to [boardId]; end it as a Board change otherwise.
+   * Returns the identity still open, or null when nothing is.
+   *
+   * One decision, one critical section: reading the open recording's Board and then acting on it
+   * from outside would let a concurrent begin/end land in between and answer for the wrong ride.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `retainRideRecording`
+   */
+  fun retainRideRecording(boardId: String?): String? =
+    closeOpenRideRecording(RIDE_RECORDING_END_BOARD_CHANGE, keepingBoardId = boardId)
+
+  /**
+   * Read, decide and clear in one critical section: a concurrent `beginRideRecording` between the
+   * steps would null out the *new* recording's identity while its row stayed open, and a Board read
+   * from outside could answer for a ride that has already been replaced.
+   *
+   * [keepAnyBoard] distinguishes "keep the recording of this Board" from "close whatever is open",
+   * which a plain null [keepingBoardId] cannot: null is itself a valid Board attribution.
+   */
+  private fun closeOpenRideRecording(
+    reason: String,
+    keepingBoardId: String?,
+    keepAnyBoard: Boolean = true,
+  ): String? {
+    var retained: String? = null
     val recording = synchronized(lock) {
-      val open = currentRecording ?: return
-      currentRecording = null
-      open
-    }
+      val open = currentRecording ?: return null
+      if (keepAnyBoard && open.boardId == keepingBoardId) {
+        retained = open.id
+        null
+      } else {
+        currentRecording = null
+        open
+      }
+    } ?: return retained
     flushBlocking()
     runBlocking(Dispatchers.IO) {
       try {
@@ -235,6 +260,37 @@ class TelemetryRepository private constructor(context: Context) {
       }
     }
     synchronized(lock) { lastFlushedTrackPoint = null }
+    return null
+  }
+
+  /**
+   * Close every Ride Recording a dead process left open, stamping each at its own last durable
+   * write. An unswept row has no `ended_at_ms`, and #449's reader shows only finished recordings, so
+   * leaving it open hides that ride from history until some later recording happens to sweep it —
+   * possibly never.
+   *
+   * The `keepOpenId` is read under the same lock `beginRideRecording` publishes under, so a mint
+   * racing the sweep is safe.
+   *
+   * @platform-diff Android sweeps at process start; iOS sweeps when its launch resume window
+   * expires, which is the moment its state-restoration relaunch is known not to be adopting one
+   * (ADR 0034). Android has no such relaunch, so process start is that moment.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `closeAbandonedRideRecordings`
+   */
+  fun closeAbandonedRideRecordings() {
+    synchronized(lock) {
+      runBlocking(Dispatchers.IO) {
+        try {
+          dao.closeAbandonedRideRecordings(
+            reason = RIDE_RECORDING_END_DISCONNECTED,
+            keepOpenId = currentRecording?.id,
+          )
+        } catch (e: Exception) {
+          Log.w(TAG, "Abandoned Ride Recording sweep failed: ${e.message}")
+        }
+      }
+    }
   }
 
   /**

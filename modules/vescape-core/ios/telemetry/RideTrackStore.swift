@@ -90,35 +90,28 @@ internal func closeRideRecordingRow(_ db: Database, id: String, endedAtMs: Int64
   )
 }
 
-/// The still-open Ride Recording of a Board, if the rider never ended one.
+/// The still-open Ride Recording with this exact identity, if the rider never ended it.
 ///
-/// This row *is* the persisted end intent (#450). An explicit Stop Recording or Disconnect stamps
+/// Identity-matched, not just Board-matched: a resume names the recording it means, so an
+/// abandoned row from a ride days ago can never be adopted into today's one (#450). The Board is
+/// checked too — a recording rejoined under the wrong Board would mis-attribute every later write.
+///
+/// This row *is* the persisted end intent. An explicit Stop Recording or Disconnect stamps
 /// `ended_at_ms`, and nothing can un-stamp it — so a stale delegate callback, a late reconnect, or
 /// an iOS BLE state-restoration relaunch asking to resume finds nothing here and is refused a
 /// revival. Only a recording the rider left open can be rejoined.
 ///
 /// @platform-diff No Android peer: only iOS has a state-restoration relaunch that resumes a session
 /// (ADR 0034), so only iOS ever rejoins an open recording.
-internal func openRideRecordingForBoard(_ db: Database, boardId: String?) throws -> RideRecording? {
-  let row: Row? =
-    boardId == nil
-    ? try Row.fetchOne(
-      db,
-      sql: """
-        SELECT id, board_id, started_at_ms FROM ride_recordings
-        WHERE ended_at_ms IS NULL AND board_id IS NULL
-        ORDER BY started_at_ms DESC LIMIT 1
-        """
-    )
-    : try Row.fetchOne(
-      db,
-      sql: """
-        SELECT id, board_id, started_at_ms FROM ride_recordings
-        WHERE ended_at_ms IS NULL AND board_id = ?
-        ORDER BY started_at_ms DESC LIMIT 1
-        """,
-      arguments: [boardId]
-    )
+internal func openRideRecording(_ db: Database, id: String, boardId: String?) throws -> RideRecording? {
+  let row = try Row.fetchOne(
+    db,
+    sql: """
+      SELECT id, board_id, started_at_ms FROM ride_recordings
+      WHERE id = ? AND ended_at_ms IS NULL AND board_id IS ?
+      """,
+    arguments: [id, boardId]
+  )
   guard let row else { return nil }
   return RideRecording(
     id: row["id"],
@@ -132,23 +125,37 @@ internal func openRideRecordingForBoard(_ db: Database, boardId: String?) throws
 /// Close every recording left open by a process that died without ending it.
 ///
 /// A relaunch that does *not* adopt an open recording must not leave it open forever: the rider's
-/// capture really did stop when the process did. Called before minting a new recording, which is
-/// the one moment we know the old row can no longer be rejoined.
+/// capture really did stop when the process did. Called when we know the old row can no longer be
+/// rejoined — at the launch resume window expiring, and again before minting a new recording.
+///
+/// The end is stamped at the recording's **last durable write**, not at the sweep: a ride abandoned
+/// on Monday and swept on Friday lasted minutes, not four days, and `ended_at_ms` is the column
+/// #449 reads to decide a recording is finished. A recording with no writes at all ends where it
+/// started.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `closeAbandonedRideRecordings`
 @discardableResult
 internal func closeAbandonedRideRecordings(
   _ db: Database,
-  endedAtMs: Int64,
   reason: String,
   except keepOpenId: String?
 ) throws -> Int {
   try db.execute(
     sql: """
-      UPDATE ride_recordings SET ended_at_ms = ?, ended_reason = ?
+      UPDATE ride_recordings SET ended_at_ms = MAX(
+          started_at_ms,
+          COALESCE(
+            (SELECT MAX(captured_at_ms) FROM telemetry_frames f WHERE f.recording_id = ride_recordings.id),
+            0
+          ),
+          COALESCE(
+            (SELECT MAX(fix_at_ms) FROM ride_track_points p WHERE p.recording_id = ride_recordings.id),
+            0
+          )
+        ), ended_reason = ?
       WHERE ended_at_ms IS NULL AND id IS NOT ?
       """,
-    arguments: [endedAtMs, reason, keepOpenId]
+    arguments: [reason, keepOpenId]
   )
   return db.changesCount
 }

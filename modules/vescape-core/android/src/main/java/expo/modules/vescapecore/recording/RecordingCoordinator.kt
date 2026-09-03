@@ -5,7 +5,6 @@ import android.content.Context
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.AppSettings
-import expo.modules.vescapecore.telemetry.RIDE_RECORDING_END_BOARD_CHANGE
 import expo.modules.vescapecore.telemetry.RIDE_RECORDING_END_DISCONNECTED
 import expo.modules.vescapecore.telemetry.RIDE_RECORDING_END_STOPPED
 import expo.modules.vescapecore.telemetry.TelemetryCapture
@@ -48,11 +47,12 @@ internal class RecordingCoordinator(
     fun currentRecorder(): SessionRecorder? = recorder
 
     /**
-     * Begin a Board Session's recording side. Always starts a new Ride Recording: a rider who asked
-     * to connect is asking for a new capture.
+     * Begin a Board Session's recording side. A connect to a Board with no open recording starts a
+     * new one: a rider who asked to connect a Board they were not recording is asking for a new
+     * capture.
      *
-     * @platform-diff iOS takes a `resume` flag here for a CoreBluetooth state-restoration relaunch,
-     * which rejoins the recording left open by the process that died (ADR 0034). Android's
+     * @platform-diff iOS additionally takes the recording id of a CoreBluetooth state-restoration
+     * relaunch, which rejoins the recording left open by the process that died (ADR 0034). Android's
      * `CoreForegroundService` keeps the process alive instead, and its launch auto-connect is an
      * ordinary cold start that may be days later — adopting an open recording there would claim
      * capture across a gap the process never covered.
@@ -61,18 +61,13 @@ internal class RecordingCoordinator(
         connectionLostMarkerAt = null
         // A recording belongs to exactly one Board. An explicit connection attempt to another one
         // ends the previous recording here, before the attempt can succeed or fail — a failed
-        // connection must not reopen it either (ADR 0038). Same Board is a stop-then-start and says
-        // so.
+        // connection must not reopen it either (ADR 0038).
+        //
+        // The *same* Board keeps its recording. Tapping Connect during a reconnect loop is the rider
+        // hurrying that reconnect along, not stopping the ride — splitting it here would produce two
+        // history entries and label the first one `stopped`, which is not what happened (#450).
         val store = TelemetryRepository.get(context)
-        if (store.activeRideRecordingId != null) {
-            endOpenRideRecording(
-                if (store.activeRideRecordingBoardId == config.appBoardId) {
-                    RIDE_RECORDING_END_STOPPED
-                } else {
-                    RIDE_RECORDING_END_BOARD_CHANGE
-                },
-            )
-        }
+        val retained = store.retainRideRecording(config.appBoardId)
         // A new Board Session spends the rider's previous stop: the gate exists to stop a *reconnect*
         // from restarting what they stopped, not to keep the next ride from recording.
         explicitlyStopped = false
@@ -82,8 +77,12 @@ internal class RecordingCoordinator(
         } else {
             null
         }
-        telemetryStore = if (config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled) {
-            configuredTelemetryStore(config)
+        // A retained recording was already capturing: keep the store armed so no fix is dropped
+        // between this connect and the board-ready that would otherwise enable it.
+        telemetryStore = if (
+            config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled || retained != null
+        ) {
+            configuredTelemetryStore(config, openNewRecording = retained == null)
         } else {
             null
         }
@@ -222,7 +221,14 @@ internal class RecordingCoordinator(
         TelemetryRepository.get(context).endRideRecording(reason)
     }
 
-    private fun configuredTelemetryStore(config: SessionConfig?): TelemetryRepository {
+    /**
+     * [openNewRecording] is false for the one caller that already has a Ride Recording to write
+     * into: a Board Session that retained the recording still open across its own reconnect loop.
+     */
+    private fun configuredTelemetryStore(
+        config: SessionConfig?,
+        openNewRecording: Boolean = true,
+    ): TelemetryRepository {
         val store = TelemetryRepository.get(context)
         val settings = try {
             kotlinx.coroutines.runBlocking {
@@ -244,7 +250,7 @@ internal class RecordingCoordinator(
         store.reloadPrivacyZones(zones)
         // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
         // boundary, minted before the first sample or fix can be admitted.
-        store.beginRideRecording(config?.appBoardId)
+        if (openNewRecording) store.beginRideRecording(config?.appBoardId)
         return store
     }
 

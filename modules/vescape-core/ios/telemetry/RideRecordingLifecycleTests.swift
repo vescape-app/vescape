@@ -41,8 +41,27 @@ final class RideRecordingLifecycleTests: XCTestCase {
     return id
   }
 
-  private func openRecording(boardId: String?) throws -> RideRecording? {
-    try queue.read { db in try openRideRecordingForBoard(db, boardId: boardId) }
+  private func openRecording(id: String, boardId: String?) throws -> RideRecording? {
+    try queue.read { db in try openRideRecording(db, id: id, boardId: boardId) }
+  }
+
+  private func endedAt(_ id: String) throws -> Int64? {
+    try queue.read { db in
+      try Int64.fetchOne(db, sql: "SELECT ended_at_ms FROM ride_recordings WHERE id = ?", arguments: [id])
+    }
+  }
+
+  private func track(_ recordingId: String, fixAtMs: Int64) throws {
+    try queue.write { db in
+      try insertRideTrackPoint(
+        db,
+        RideTrackPoint(
+          recordingId: recordingId, boardId: "board-a", fixAtMs: fixAtMs,
+          latitudeE7: 1, longitudeE7: 1, accuracyCm: nil, gpsSpeedCentiMps: nil,
+          bearingCentiDeg: nil, altitudeCm: nil
+        )
+      )
+    }
   }
 
   private func endedReason(_ id: String) throws -> String? {
@@ -54,11 +73,23 @@ final class RideRecordingLifecycleTests: XCTestCase {
   // MARK: - Rejoining an open recording
 
   /// The reconnect case the whole issue is about: the rider's Board dropped, the recording stayed
-  /// open, and the session that comes back must find the very same identity rather than a new one.
-  func testOpenRecordingIsFoundForItsBoard() throws {
+  /// open, and the session that comes back — a restoration relaunch, or the rider tapping Connect to
+  /// hurry the reconnect along — must find the very same identity rather than mint a new one.
+  func testOpenRecordingIsFoundByItsOwnIdentity() throws {
     try open(id: "rec-a", boardId: "board-a")
 
-    XCTAssertEqual(try openRecording(boardId: "board-a")?.id, "rec-a")
+    XCTAssertEqual(try openRecording(id: "rec-a", boardId: "board-a")?.id, "rec-a")
+  }
+
+  /// The blocker this rejoin exists to avoid (#450): a resume names the recording it means, so a
+  /// row abandoned by a process that died days ago is never adopted into today's ride. Without the
+  /// identity match, a CoreBluetooth relaunch on Friday would append to Monday's recording and
+  /// produce one history entry spanning four days.
+  func testAStaleAbandonedRecordingIsNeverAdopted() throws {
+    try open(id: "rec-monday", boardId: "board-a", startedAtMs: 1_000)
+
+    XCTAssertNil(try openRecording(id: "rec-friday", boardId: "board-a"))
+    XCTAssertEqual(try openRecording(id: "rec-monday", boardId: "board-a")?.id, "rec-monday")
   }
 
   /// Board attribution is not recording identity, but it does scope the rejoin: Board B must never
@@ -66,25 +97,15 @@ final class RideRecordingLifecycleTests: XCTestCase {
   func testOpenRecordingIsScopedToItsBoard() throws {
     try open(id: "rec-a", boardId: "board-a")
 
-    XCTAssertNil(try openRecording(boardId: "board-b"))
+    XCTAssertNil(try openRecording(id: "rec-a", boardId: "board-b"))
   }
 
   /// A recording with no Board attribution is its own scope, not a wildcard that any Board matches.
   func testNilBoardMatchesOnlyNilBoardRecordings() throws {
-    try open(id: "rec-a", boardId: "board-a")
-    try open(id: "rec-none", boardId: nil, startedAtMs: 2_000)
+    try open(id: "rec-none", boardId: nil)
 
-    XCTAssertEqual(try openRecording(boardId: nil)?.id, "rec-none")
-    XCTAssertEqual(try openRecording(boardId: "board-a")?.id, "rec-a")
-  }
-
-  /// With more than one open row for a Board — a state only a crash can produce — the rejoin takes
-  /// the newest, never an older ride the rider has long since finished riding.
-  func testNewestOpenRecordingWins() throws {
-    try open(id: "rec-old", boardId: "board-a", startedAtMs: 1_000)
-    try open(id: "rec-new", boardId: "board-a", startedAtMs: 5_000)
-
-    XCTAssertEqual(try openRecording(boardId: "board-a")?.id, "rec-new")
+    XCTAssertEqual(try openRecording(id: "rec-none", boardId: nil)?.id, "rec-none")
+    XCTAssertNil(try openRecording(id: "rec-none", boardId: "board-a"))
   }
 
   // MARK: - Persisted end intent
@@ -98,7 +119,7 @@ final class RideRecordingLifecycleTests: XCTestCase {
       try closeRideRecordingRow(db, id: "rec-a", endedAtMs: 2_000, reason: RIDE_RECORDING_END_STOPPED)
     }
 
-    XCTAssertNil(try openRecording(boardId: "board-a"))
+    XCTAssertNil(try openRecording(id: "rec-a", boardId: "board-a"))
   }
 
   /// Explicit Disconnect ends the recording just as a Stop does, and just as durably.
@@ -108,7 +129,7 @@ final class RideRecordingLifecycleTests: XCTestCase {
       try closeRideRecordingRow(db, id: "rec-a", endedAtMs: 2_000, reason: RIDE_RECORDING_END_DISCONNECTED)
     }
 
-    XCTAssertNil(try openRecording(boardId: "board-a"))
+    XCTAssertNil(try openRecording(id: "rec-a", boardId: "board-a"))
   }
 
   /// The end intent is write-once. A stale callback that races a second close — the same shape as a
@@ -130,19 +151,43 @@ final class RideRecordingLifecycleTests: XCTestCase {
 
   // MARK: - Recordings abandoned by a dead process
 
-  /// A process that died without ending its recording leaves the row open. The next recording to be
-  /// minted is the moment that old one becomes unrejoinable, so it is closed then — a `disconnected`
-  /// end, because that is what happened to the link.
-  func testMintingANewRecordingClosesAbandonedOnes() throws {
+  /// A process that died without ending its recording leaves the row open. Closing it is a
+  /// `disconnected` end, because that is what happened to the link.
+  func testTheSweepClosesAbandonedRecordings() throws {
     try open(id: "rec-dead", boardId: "board-a")
 
     let closed = try queue.write { db in
-      try closeAbandonedRideRecordings(
-        db, endedAtMs: 8_000, reason: RIDE_RECORDING_END_DISCONNECTED, except: "rec-new")
+      try closeAbandonedRideRecordings(db, reason: RIDE_RECORDING_END_DISCONNECTED, except: "rec-new")
     }
 
     XCTAssertEqual(closed, 1)
     XCTAssertEqual(try endedReason("rec-dead"), RIDE_RECORDING_END_DISCONNECTED)
+  }
+
+  /// A ride abandoned on Monday and swept on Friday lasted minutes, not four days: the end is
+  /// stamped at the recording's last durable write, which is the last moment capture is known to
+  /// have happened. `ended_at_ms` is the column #449 reads to decide a recording is finished.
+  func testTheSweepStampsTheLastKnownWrite() throws {
+    try open(id: "rec-dead", boardId: "board-a", startedAtMs: 1_000)
+    try track("rec-dead", fixAtMs: 4_000)
+    try track("rec-dead", fixAtMs: 6_000)
+
+    try queue.write { db in
+      _ = try closeAbandonedRideRecordings(db, reason: RIDE_RECORDING_END_DISCONNECTED, except: nil)
+    }
+
+    XCTAssertEqual(try endedAt("rec-dead"), 6_000)
+  }
+
+  /// A recording that never admitted a single write ends where it started, not at the sweep.
+  func testASweptRecordingWithNoWritesEndsWhereItStarted() throws {
+    try open(id: "rec-empty", boardId: "board-a", startedAtMs: 1_000)
+
+    try queue.write { db in
+      _ = try closeAbandonedRideRecordings(db, reason: RIDE_RECORDING_END_DISCONNECTED, except: nil)
+    }
+
+    XCTAssertEqual(try endedAt("rec-empty"), 1_000)
   }
 
   /// The recording being opened must survive its own sweep — otherwise every new recording would
@@ -151,11 +196,10 @@ final class RideRecordingLifecycleTests: XCTestCase {
     try open(id: "rec-new", boardId: "board-a")
 
     try queue.write { db in
-      _ = try closeAbandonedRideRecordings(
-        db, endedAtMs: 8_000, reason: RIDE_RECORDING_END_DISCONNECTED, except: "rec-new")
+      _ = try closeAbandonedRideRecordings(db, reason: RIDE_RECORDING_END_DISCONNECTED, except: "rec-new")
     }
 
-    XCTAssertEqual(try openRecording(boardId: "board-a")?.id, "rec-new")
+    XCTAssertEqual(try openRecording(id: "rec-new", boardId: "board-a")?.id, "rec-new")
   }
 
   /// Sweeping abandoned rows must not re-close, or re-date, recordings the rider already ended.
@@ -163,11 +207,11 @@ final class RideRecordingLifecycleTests: XCTestCase {
     try open(id: "rec-stopped", boardId: "board-a")
     try queue.write { db in
       try closeRideRecordingRow(db, id: "rec-stopped", endedAtMs: 2_000, reason: RIDE_RECORDING_END_STOPPED)
-      _ = try closeAbandonedRideRecordings(
-        db, endedAtMs: 8_000, reason: RIDE_RECORDING_END_DISCONNECTED, except: nil)
+      _ = try closeAbandonedRideRecordings(db, reason: RIDE_RECORDING_END_DISCONNECTED, except: nil)
     }
 
     XCTAssertEqual(try endedReason("rec-stopped"), RIDE_RECORDING_END_STOPPED)
+    XCTAssertEqual(try endedAt("rec-stopped"), 2_000)
   }
 
   // MARK: - Board change
@@ -181,8 +225,8 @@ final class RideRecordingLifecycleTests: XCTestCase {
       try closeRideRecordingRow(db, id: "rec-a", endedAtMs: 3_000, reason: RIDE_RECORDING_END_BOARD_CHANGE)
     }
 
-    XCTAssertNil(try openRecording(boardId: "board-a"))
-    XCTAssertNil(try openRecording(boardId: "board-b"))
+    XCTAssertNil(try openRecording(id: "rec-a", boardId: "board-a"))
+    XCTAssertNil(try openRecording(id: "rec-a", boardId: "board-b"))
     XCTAssertEqual(try endedReason("rec-a"), RIDE_RECORDING_END_BOARD_CHANGE)
   }
 }

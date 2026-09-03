@@ -9,7 +9,9 @@ internal struct SessionResumeMarker: Equatable {
   /// Whether Ride Recording was writing frames. A resumed session re-enables it so telemetry keeps
   /// appending to the same open recording (the history gap-splitter explains the dead interval).
   let recordingActive: Bool
-  let savedAtMs: Int64
+  /// Identity of that open Ride Recording. The resume names the recording it means rather than
+  /// searching for one, so a relaunch days later can never adopt an abandoned ride (#450).
+  let recordingId: String?
 }
 
 /// Durable "a Board Session was live" marker, written at session begin and cleared at session end.
@@ -41,28 +43,35 @@ internal final class SessionResumeStore {
       appBoardId: appBoardId,
       bleId: bleId,
       recordingActive: raw["recordingActive"] as? Bool ?? false,
-      savedAtMs: (raw["savedAtMs"] as? NSNumber)?.int64Value ?? 0
+      recordingId: (raw["recordingId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     )
   }
 
-  func save(appBoardId: String, bleId: String, recordingActive: Bool, nowMs: Int64) {
-    defaults.set(
-      [
-        "appBoardId": appBoardId,
-        "bleId": bleId,
-        "recordingActive": recordingActive,
-        "savedAtMs": NSNumber(value: nowMs),
-      ],
-      forKey: key
-    )
+  func save(appBoardId: String, bleId: String, recordingActive: Bool, recordingId: String?) {
+    var raw: [String: Any] = [
+      "appBoardId": appBoardId,
+      "bleId": bleId,
+      "recordingActive": recordingActive,
+    ]
+    if let recordingId { raw["recordingId"] = recordingId }
+    defaults.set(raw, forKey: key)
   }
 
-  /// Recording is toggled mid-session (auto-recording at board-ready, the JS switch), so the flag
-  /// is refreshed in place rather than only at session begin.
-  func setRecordingActive(_ active: Bool) {
+  /// Recording is toggled mid-session (auto-recording at board-ready, the JS switch) and its
+  /// identity is minted after the session begins, so both are refreshed in place rather than only
+  /// at session begin.
+  func setRecording(active: Bool, recordingId: String?) {
     guard var raw = defaults.dictionary(forKey: key) else { return }
-    guard (raw["recordingActive"] as? Bool ?? false) != active else { return }
+    guard
+      (raw["recordingActive"] as? Bool ?? false) != active
+        || (raw["recordingId"] as? String) != recordingId
+    else { return }
     raw["recordingActive"] = active
+    if let recordingId {
+      raw["recordingId"] = recordingId
+    } else {
+      raw.removeValue(forKey: "recordingId")
+    }
     defaults.set(raw, forKey: key)
   }
 

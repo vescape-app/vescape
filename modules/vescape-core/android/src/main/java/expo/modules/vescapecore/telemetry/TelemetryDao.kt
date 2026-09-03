@@ -146,18 +146,33 @@ interface TelemetryDao {
   suspend fun endRideRecording(id: String, endedAtMs: Long, reason: String): Int
 
   /**
-   * Close every recording left open by a process that died without ending it. Called before minting
-   * a new recording, which is the one moment we know the old row can no longer be rejoined.
+   * Close every recording left open by a process that died without ending it. Called at launch and
+   * again before minting a new recording — the moments we know the old row can no longer be
+   * rejoined.
+   *
+   * The end is stamped at the recording's **last durable write**, not at the sweep: a ride abandoned
+   * days ago lasted minutes, not days, and `ended_at_ms` is the column #449 reads to decide a
+   * recording is finished. A recording with no writes at all ends where it started.
    *
    * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `closeAbandonedRideRecordings`
    */
   @Query(
     """
-    UPDATE ride_recordings SET ended_at_ms = :endedAtMs, ended_reason = :reason
+    UPDATE ride_recordings SET ended_at_ms = MAX(
+        started_at_ms,
+        COALESCE(
+          (SELECT MAX(captured_at_ms) FROM telemetry_frames f WHERE f.recording_id = ride_recordings.id),
+          0
+        ),
+        COALESCE(
+          (SELECT MAX(fix_at_ms) FROM ride_track_points p WHERE p.recording_id = ride_recordings.id),
+          0
+        )
+      ), ended_reason = :reason
     WHERE ended_at_ms IS NULL AND id IS NOT :keepOpenId
     """,
   )
-  suspend fun closeAbandonedRideRecordings(endedAtMs: Long, reason: String, keepOpenId: String?): Int
+  suspend fun closeAbandonedRideRecordings(reason: String, keepOpenId: String?): Int
 
   @Insert
   suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)

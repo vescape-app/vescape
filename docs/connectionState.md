@@ -167,7 +167,14 @@ Starting again after a stop mints a new identity, even within the same minute.
 
 Within a live Board Session the same intent is held in memory: auto-recording fires at the **first**
 board-ready of a session only, so a reconnect's board-ready never restarts a recording the rider
-stopped, nor mints a second one beside the recording still open across the drop.
+stopped, nor mints a second one beside the recording still open across the drop. Auto-recording is
+therefore a _connect_ rule: enabling the setting mid-session does not start a recording, and a later
+reconnect's board-ready does not either. The next Board Session picks it up.
+
+A recording left open by a process that died is closed as `disconnected` at the first moment nothing
+can rejoin it — on Android at process start, on iOS when the launch resume window expires without a
+state restoration — and its end is stamped at its own last durable write, not at the sweep. Ride
+History only shows finished recordings, so a row left open is a ride missing from history.
 
 ### Idle Pause and disconnection
 
@@ -182,9 +189,15 @@ stops it. On reconnection the detector takes over again from the next board-read
 
 ### Changing Boards
 
+An explicit Connect targeting the **same** Board — the rider tapping Connect to hurry a reconnect
+loop along — rejoins the recording still open for that Board rather than ending it. One ride stays
+one identity and one history entry, and nothing is labelled `stopped` that the rider never stopped.
+Capture stays armed from that connect, not from the board-ready after it, so no GPS Fix is dropped
+in between.
+
 An explicit Connect targeting a different Board ends the previous Board Session and Ride Recording
-immediately — including while the old Board is disconnected and reconnecting, and even if the new
-connection then fails. Merely browsing or selecting another Board does not end capture. Writes
+immediately, as `board_change` — including while the old Board is disconnected and reconnecting, and
+even if the new connection then fails. Merely browsing or selecting another Board does not end capture. Writes
 already admitted are flushed under their original Board and recording identities; fixes captured
 between two recordings are never backfilled into either. Old reconnect work is cancelled and late
 callbacks for the old Board cannot revive its recording or contaminate the new one.
