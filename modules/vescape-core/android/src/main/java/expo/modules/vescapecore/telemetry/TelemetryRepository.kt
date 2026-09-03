@@ -163,7 +163,18 @@ class TelemetryRepository private constructor(context: Context) {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `beginRideRecording`
    */
   fun beginRideRecording(boardId: String?): String {
-    endRideRecording(RIDE_RECORDING_END_BOARD_CHANGE)
+    // A recording still open when another starts ended because the Board changed — unless it is the
+    // same Board, which is a Stop then Start and says so.
+    val previous = currentRecording
+    if (previous != null) {
+      endRideRecording(
+        if (previous.boardId == boardId) {
+          RIDE_RECORDING_END_STOPPED
+        } else {
+          RIDE_RECORDING_END_BOARD_CHANGE
+        },
+      )
+    }
     val recording = RideRecordingEntity(
       id = UUID.randomUUID().toString(),
       boardId = boardId,
@@ -194,8 +205,13 @@ class TelemetryRepository private constructor(context: Context) {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `endRideRecording`
    */
   fun endRideRecording(reason: String) {
-    val recording = currentRecording ?: return
-    synchronized(lock) { currentRecording = null }
+    // Read and clear in one critical section: a concurrent `beginRideRecording` between the two
+    // would nil out the *new* recording's identity while its row stayed open.
+    val recording = synchronized(lock) {
+      val open = currentRecording ?: return
+      currentRecording = null
+      open
+    }
     flushBlocking()
     runBlocking(Dispatchers.IO) {
       try {
@@ -221,25 +237,37 @@ class TelemetryRepository private constructor(context: Context) {
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `recordGpsFix`
    */
   fun recordGpsFix(location: TelemetryLocationCapture) {
-    val recording = currentRecording ?: return
     val scaled = ScaledLocation.from(location)
     // The one Privacy Zone geometry check, shared with the Telemetry Sample filter below.
     if (isInsideAnyPrivacyZone(scaled.latitudeE7, scaled.longitudeE7, enabledPrivacyZones)) return
-    val point = RideTrackPointEntity(
-      recordingId = recording.id,
-      boardId = recording.boardId,
-      fixAtMs = scaled.timestampMs,
-      latitudeE7 = scaled.latitudeE7,
-      longitudeE7 = scaled.longitudeE7,
-      accuracyCm = scaled.accuracyCm,
-      gpsSpeedCentiMps = scaled.gpsSpeedCentiMps,
-      bearingCentiDeg = scaled.bearingCentiDeg,
-      altitudeCm = scaled.altitudeCm,
-    )
     synchronized(lock) {
-      pendingTrack.addLast(point)
-      while (pendingTrack.size > MAX_PENDING_FRAMES) pendingTrack.removeFirst()
-      scheduleFlushLocked()
+      // The open recording is read under the lock the flush clears it under, so a fix racing
+      // `endRideRecording` cannot land in the recording that just closed.
+      val recording = currentRecording ?: return
+      pendingTrack.addLast(
+        RideTrackPointEntity(
+          recordingId = recording.id,
+          boardId = recording.boardId,
+          fixAtMs = scaled.timestampMs,
+          latitudeE7 = scaled.latitudeE7,
+          longitudeE7 = scaled.longitudeE7,
+          accuracyCm = scaled.accuracyCm,
+          gpsSpeedCentiMps = scaled.gpsSpeedCentiMps,
+          bearingCentiDeg = scaled.bearingCentiDeg,
+          altitudeCm = scaled.altitudeCm,
+        ),
+      )
+      // A dropped fix is a dropped sample: `getSummary().droppedPendingSamples` must say so.
+      while (pendingTrack.size > MAX_PENDING_FRAMES) {
+        pendingTrack.removeFirst()
+        droppedPendingFrames++
+      }
+      if (pendingTrack.size >= FLUSH_FRAME_COUNT) {
+        flushScheduled = false
+        scope.launch { flushNow() }
+      } else {
+        scheduleFlushLocked()
+      }
     }
   }
 
@@ -877,8 +905,12 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   suspend fun rebuildBuckets(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
-    val firstMs = dao.firstFrameAt() ?: return@withContext 0
-    val lastMs = dao.lastFrameAt() ?: return@withContext 0
+    // The rebuild spans both streams: a minute can hold Ride Track fixes and no frame at all, and
+    // bounding on frames alone would silently drop those buckets.
+    val firstMs = listOfNotNull(dao.firstFrameAt(), dao.firstRideTrackAt()).minOrNull()
+      ?: return@withContext 0
+    val lastMs = listOfNotNull(dao.lastFrameAt(), dao.lastRideTrackAt()).maxOrNull()
+      ?: return@withContext 0
 
     dao.clearBuckets()
     dao.clearExclusions()
@@ -893,7 +925,8 @@ class TelemetryRepository private constructor(context: Context) {
       val chunkTo = minOf(chunkFrom + chunkMs - 1, lastMs)
 
       val states = getSampleStates(chunkFrom, chunkTo, null, Int.MAX_VALUE)
-      if (states.isNotEmpty()) {
+      val track = rideTrack(chunkFrom, chunkTo, null)
+      if (states.isNotEmpty() || track.isNotEmpty()) {
         val telemetryPoints = states.map { it.state.toBucketPoint() }
         val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
         val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
@@ -906,7 +939,7 @@ class TelemetryRepository private constructor(context: Context) {
         if (sanitization.exclusions.isNotEmpty()) dao.upsertExclusionRanges(sanitization.exclusions)
         val buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
-          locationPoints = rideTrack(chunkFrom, chunkTo, null).toBucketLocationPoints(),
+          locationPoints = track.toBucketLocationPoints(),
         )
         if (buckets.isNotEmpty()) {
           dao.upsertBuckets(buckets)
@@ -1040,11 +1073,16 @@ class TelemetryRepository private constructor(context: Context) {
         val loc = state.location ?: return@filter true
         !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
       }
+      // The Ride Track is re-filtered here too, against the zones enabled *now*: a zone switched on
+      // mid-ride must suppress what is still buffered, in both streams alike (ADR 0009).
+      val filteredTrack = if (zones.isEmpty()) trackPoints else trackPoints.filter { point ->
+        !isInsideAnyPrivacyZone(point.latitudeE7, point.longitudeE7, zones)
+      }
       if (
         filteredFrames.isEmpty() &&
         filteredStates.isEmpty() &&
         markers.isEmpty() &&
-        trackPoints.isEmpty()
+        filteredTrack.isEmpty()
       ) {
         return
       }
@@ -1064,11 +1102,11 @@ class TelemetryRepository private constructor(context: Context) {
         // frame: the two streams keep their own clocks and are joined here only for the summary.
         buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
-          locationPoints = trackPoints.toBucketLocationPoints(previousTrackPoint),
+          locationPoints = filteredTrack.toBucketLocationPoints(previousTrackPoint),
         ),
         markers = markers,
         exclusions = sanitization.exclusions,
-        trackPoints = trackPoints,
+        trackPoints = filteredTrack,
       )
     } catch (e: Exception) {
       Log.w(TAG, "Telemetry flush failed: ${e.message}")
@@ -1208,8 +1246,6 @@ internal data class FullTelemetryState(
 ) {
   fun toFrame(previous: FullTelemetryState?, keyframe: Boolean): TelemetryFrameEntity {
     var mask1 = 0
-    // Reserved: no mask-2 field survives now that position lives in Ride Track (ADR 0038).
-    val mask2 = 0
     fun include(changed: Boolean, mask: Int): Boolean {
       if (keyframe || changed) {
         mask1 = mask1 or mask
@@ -1245,7 +1281,9 @@ internal data class FullTelemetryState(
       odometerCm = if (include(changedBy(previous?.odometerCm, odometerCm, 25), TELEMETRY_MASK_ODOMETER)) odometerCm else null,
       tempMosfetDeciC = if (include(changedBy(previous?.tempMosfetDeciC, tempMosfetDeciC, 5), TELEMETRY_MASK_TEMP_MOSFET)) tempMosfetDeciC else null,
       tempMotorDeciC = if (include(changedBy(previous?.tempMotorDeciC, tempMotorDeciC, 5), TELEMETRY_MASK_TEMP_MOTOR)) tempMotorDeciC else null,
-    ).copy(changedMask1 = mask1, changedMask2 = mask2)
+      // `changed_mask_2` is reserved: no field of the delta chain lands in it now that position
+      // lives in Ride Track (ADR 0038). Kept as a column so the frame layout can grow again.
+    ).copy(changedMask1 = mask1, changedMask2 = 0)
   }
 
   /** Board name is resolved by the caller from `boards`, never read off the row (ADR 0028). */

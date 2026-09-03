@@ -145,28 +145,6 @@ interface TelemetryDao {
   )
   suspend fun endRideRecording(id: String, endedAtMs: Long, reason: String): Int
 
-  @Query("SELECT * FROM ride_recordings WHERE id = :id LIMIT 1")
-  suspend fun getRideRecording(id: String): RideRecordingEntity?
-
-  /** Recordings overlapping a time range, oldest first. An open recording has no end bound yet. */
-  @Query(
-    """
-    SELECT * FROM ride_recordings
-    WHERE started_at_ms <= :toMs
-      AND (ended_at_ms IS NULL OR ended_at_ms >= :fromMs)
-      AND (:boardId IS NULL OR board_id = :boardId)
-    ORDER BY started_at_ms ASC
-    """,
-  )
-  suspend fun getRideRecordings(
-    fromMs: Long,
-    toMs: Long,
-    boardId: String?,
-  ): List<RideRecordingEntity>
-
-  @Query("SELECT * FROM ride_recordings WHERE ended_at_ms IS NULL ORDER BY started_at_ms ASC")
-  suspend fun getOpenRideRecordings(): List<RideRecordingEntity>
-
   @Insert
   suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)
 
@@ -194,6 +172,16 @@ interface TelemetryDao {
 
   @Query("SELECT COUNT(*) FROM ride_track_points")
   suspend fun countRideTrackPoints(): Long
+
+  /**
+   * Ride Track bounds, on the GPS clock. A rebuild covers them as well as the frame bounds: a
+   * minute can hold fixes and no frame at all, and that minute still owns a bucket (ADR 0038).
+   */
+  @Query("SELECT MIN(fix_at_ms) FROM ride_track_points")
+  suspend fun firstRideTrackAt(): Long?
+
+  @Query("SELECT MAX(fix_at_ms) FROM ride_track_points")
+  suspend fun lastRideTrackAt(): Long?
 
   @Query("DELETE FROM ride_track_points WHERE fix_at_ms < :beforeMs")
   suspend fun deleteRideTrackPointsBefore(beforeMs: Long): Int

@@ -2855,8 +2855,8 @@ private var wearAutoLaunchOnConnect = true
 
     private fun onLocationUpdated(location: Location) {
         recordGpsFix(location)
-        locationTracker.onLocationUpdated(location)
-        recordRideTrackFix()
+        val snapshot = locationTracker.onLocationUpdated(location)
+        recordRideTrackFix(snapshot)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
@@ -2872,9 +2872,8 @@ private var wearAutoLaunchOnConnect = true
      * Idle Pause halts both durable streams together, and paused fixes are dropped rather than
      * backfilled on resume (ADR 0021). Live display, presence and the map are untouched by it.
      */
-    private fun recordRideTrackFix() {
+    private fun recordRideTrackFix(snapshot: LocationSnapshot) {
         if (idlePauseDetector.isPaused) return
-        val snapshot = locationTracker.latestLocation ?: return
         recordingCoordinator.recordGpsFix(snapshot.toCapture())
     }
 

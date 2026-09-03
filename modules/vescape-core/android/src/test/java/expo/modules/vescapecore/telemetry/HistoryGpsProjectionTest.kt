@@ -1,6 +1,7 @@
 package expo.modules.vescapecore.telemetry
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -72,6 +73,58 @@ class HistoryGpsProjectionTest {
     assertNull("a fix half a minute old does not", stamped[1].state.location)
   }
 
+  /**
+   * All migrated fixes carry a null recording, so recording equality alone makes every legacy pair
+   * "the same recording" — chaining a haversine step from one Board's fix to another's.
+   */
+  @Test
+  fun neverChainsLegacyDistanceAcrossBoards() {
+    val track = listOf(
+      point(1L, 1_000L, latitudeE7 = 500_000_000, recordingId = null, boardId = "board-a"),
+      point(2L, 1_500L, latitudeE7 = 520_000_000, recordingId = null, boardId = "board-b"),
+      point(3L, 2_000L, latitudeE7 = 500_010_000, recordingId = null, boardId = "board-a"),
+    )
+
+    val points = track.toRideTrackProjection()
+
+    assertNull(points[0].distanceFromPreviousCm)
+    assertNull("a different Board is not a predecessor", points[1].distanceFromPreviousCm)
+    val step = points[2].distanceFromPreviousCm ?: 0L
+    assertTrue("board A continues its own track", step in 1L..20_000L)
+  }
+
+  /**
+   * A legacy row was persisted through the old write-time precision gate, so a missing accuracy on
+   * it means "precise", not "unknown". A live fix with no accuracy is genuinely unknown.
+   */
+  @Test
+  fun readsMigratedFixesWithoutAccuracyAsPrecise() {
+    val legacy = point(1L, 1_000L, accuracyCm = null, recordingId = null)
+    val live = point(2L, 2_000L, accuracyCm = null, recordingId = "recording-1")
+
+    assertTrue(legacy.isPrecise())
+    assertFalse(live.isPrecise())
+  }
+
+  /**
+   * A rebuild stamps a mixed-Board track. One shared cursor lets Board B's fix become "current" and
+   * strips Board A's next sample of the position its own in-range fix already covered.
+   */
+  @Test
+  fun stampsEachBoardFromItsOwnCursor() {
+    val samples = listOf(sample(1L, 10_000L, boardId = "board-a"))
+    val track = listOf(
+      point(1L, 9_000L, latitudeE7 = 500_000_000, boardId = "board-a"),
+      point(2L, 9_500L, latitudeE7 = 520_000_000, boardId = "board-b"),
+    )
+
+    val stamped = stampTrackLocations(samples, track)
+
+    val location = stamped[0].state.location
+    assertNotNull("board A keeps its own fix", location)
+    assertEquals(500_000_000L, location!!.latitudeE7.toLong())
+  }
+
   private fun point(
     id: Long,
     fixAtMs: Long,
@@ -80,10 +133,11 @@ class HistoryGpsProjectionTest {
     accuracyCm: Int? = 300,
     gpsSpeedCentiMps: Int? = null,
     recordingId: String? = "recording-1",
+    boardId: String? = "board-1",
   ): RideTrackPointEntity = RideTrackPointEntity(
     id = id,
     recordingId = recordingId,
-    boardId = "board-1",
+    boardId = boardId,
     fixAtMs = fixAtMs,
     latitudeE7 = latitudeE7,
     longitudeE7 = longitudeE7,
@@ -93,13 +147,17 @@ class HistoryGpsProjectionTest {
     altitudeCm = null,
   )
 
-  private fun sample(id: Long, capturedAtMs: Long): HistoryTelemetryState =
+  private fun sample(
+    id: Long,
+    capturedAtMs: Long,
+    boardId: String? = "board-1",
+  ): HistoryTelemetryState =
     HistoryTelemetryState(
       id = id,
       state = FullTelemetryState(
         capturedAtMs = capturedAtMs,
         elapsedRealtimeMs = capturedAtMs,
-        boardId = "board-1",
+        boardId = boardId,
         canId = null,
         speedCentiKmh = 1_000,
         batteryVoltageMv = 77_000,

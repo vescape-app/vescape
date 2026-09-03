@@ -76,7 +76,9 @@ internal fun buildTelemetryBuckets(
     val bucketStart = point.capturedAtMs - (point.capturedAtMs % TELEMETRY_BUCKET_SIZE_MS)
     val boardId = point.boardId ?: UNKNOWN_TELEMETRY_BOARD_ID
     val key = Triple(bucketStart, boardId, point.recordingId)
-    val bucket = buckets[key] ?: continue
+    // A minute can hold fixes and no frame at all — a board dropout is exactly when the Ride Track
+    // matters most — so the track creates its own bucket rather than being discarded (ADR 0038).
+    val bucket = buckets.getOrPut(key) { MutableBucket(bucketStart, boardId, point.recordingId) }
     bucket.addLocation(point)
   }
   return buckets.values.map { it.toEntity() }

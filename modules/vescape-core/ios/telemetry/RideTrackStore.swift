@@ -108,12 +108,16 @@ internal func insertRideTrackPoint(_ db: Database, _ point: RideTrackPoint) thro
 
 /// The Ride Track over a time range, on the GPS clock. Every stored fix is returned with the
 /// accuracy it was reported with — filtering poor fixes is a read-side decision the caller makes.
+/// [limit] is the same read cap the Telemetry Sample reads carry: a wide range must not pull an
+/// unbounded track into memory and across the bridge.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideTrackPoints`
 internal func fetchRideTrack(
   _ db: Database,
   fromMs: Int64,
   toMs: Int64,
-  boardId: String?
+  boardId: String?,
+  limit: Int = MAX_SAMPLE_LIMIT
 ) throws -> [Row] {
   try Row.fetchAll(
     db,
@@ -121,8 +125,9 @@ internal func fetchRideTrack(
       SELECT * FROM ride_track_points
       WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND (? IS NULL OR board_id = ?)
       ORDER BY fix_at_ms ASC
+      LIMIT ?
       """,
-    arguments: [fromMs, toMs, boardId, boardId]
+    arguments: [fromMs, toMs, boardId, boardId, limit]
   )
 }
 

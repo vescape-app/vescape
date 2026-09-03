@@ -69,7 +69,16 @@ internal final class TelemetryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `beginRideRecording`
   @discardableResult
   func beginRideRecording(boardId: String?) -> String {
-    endRideRecording(reason: RIDE_RECORDING_END_BOARD_CHANGE)
+    // A recording still open when another starts ended because the Board changed — unless it is the
+    // same Board, which is a Stop then Start and says so.
+    let previous = queue.sync { currentRecording }
+    if let previous {
+      endRideRecording(
+        reason: previous.boardId == boardId
+          ? RIDE_RECORDING_END_STOPPED
+          : RIDE_RECORDING_END_BOARD_CHANGE
+      )
+    }
     let recording = RideRecording(
       id: UUID().uuidString,
       boardId: boardId,
@@ -92,12 +101,16 @@ internal final class TelemetryRepository {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `endRideRecording`
   func endRideRecording(reason: String) {
-    guard let recording = queue.sync(execute: { currentRecording }) else { return }
-    queue.sync {
+    // Read and clear in one critical section: a concurrent `beginRideRecording` between the two
+    // would nil out the *new* recording's identity while its row stayed open.
+    let closed: RideRecording? = queue.sync {
+      guard let recording = currentRecording else { return nil }
       self.flushOnQueue()
       currentRecording = nil
       lastFlushedTrackPoint = nil
+      return recording
     }
+    guard let recording = closed else { return }
     if let pool {
       try? pool.write { db in
         try closeRideRecordingRow(db, id: recording.id, endedAtMs: telemetryNowMs(), reason: reason)
@@ -147,8 +160,10 @@ internal final class TelemetryRepository {
   }
 
   func recordTelemetry(_ capture: TelemetryCapture) {
-    let state = FullTelemetryState(capture: capture)
     queue.async {
+      // Stamped here, not at flush: a flush can land after this recording closed, and reading the
+      // current recording then would file these frames under whatever opened next.
+      let state = FullTelemetryState(capture: capture, recordingId: self.currentRecording?.id)
       let gapMs = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
       let gap = (gapMs ?? 0) > GAP_BOUNDARY_MS
       let keyframe = self.lastHistoryAtMs == nil || gap || self.lastKeyframeAtMs == nil ||
@@ -617,9 +632,15 @@ internal final class TelemetryRepository {
     flushBlocking()
     guard let pool else { return 0 }
     return (try? pool.write { db in
+      // The rebuild spans both streams: a minute can hold Ride Track fixes and no frame at all,
+      // and bounding on frames alone would silently drop those buckets.
+      let frameFirst = try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames")
+      let frameLast = try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames")
+      let trackFirst = try Int64.fetchOne(db, sql: "SELECT MIN(fix_at_ms) FROM ride_track_points")
+      let trackLast = try Int64.fetchOne(db, sql: "SELECT MAX(fix_at_ms) FROM ride_track_points")
       guard
-        let firstMs = try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames"),
-        let lastMs = try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames")
+        let firstMs = [frameFirst, trackFirst].compactMap({ $0 }).min(),
+        let lastMs = [frameLast, trackLast].compactMap({ $0 }).max()
       else { return 0 }
       try db.execute(sql: "DELETE FROM telemetry_minute_buckets")
       try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
@@ -752,15 +773,21 @@ internal final class TelemetryRepository {
         || !pendingTrack.isEmpty)
     else { return }
     let markers = pendingMarkers
-    let track = pendingTrack
     let previousTrackPoint = lastFlushedTrackPoint
-    let recordingId = currentRecording?.id
     // Drop any fix inside an enabled Privacy Zone before it reaches storage. Fixes without a
-    // location always pass. Bucket source (full rate) and persisted frames are filtered alike so
-    // aggregates and detail traces stay consistent.
+    // location always pass. Bucket source (full rate), persisted frames and the Ride Track are all
+    // filtered here, against the zones enabled *now*: a zone switched on mid-ride must suppress
+    // what is still buffered, in both streams alike (ADR 0009).
     let zones = enabledPrivacyZones
     let states = zones.isEmpty ? pendingStates : pendingStates.filter { !Self.isInPrivacyZone($0, zones) }
     let persisted = zones.isEmpty ? pendingPersisted : pendingPersisted.filter { !Self.isInPrivacyZone($0, zones) }
+    let track = zones.isEmpty ? pendingTrack : pendingTrack.filter { point in
+      !isInsideAnyPrivacyZone(
+        latitudeE7: Int(point.latitudeE7),
+        longitudeE7: Int(point.longitudeE7),
+        zones: zones
+      )
+    }
     pendingStates.removeAll(keepingCapacity: true)
     pendingPersisted.removeAll(keepingCapacity: true)
     pendingMarkers.removeAll(keepingCapacity: true)
@@ -768,7 +795,7 @@ internal final class TelemetryRepository {
     lastFlushedTrackPoint = track.last ?? previousTrackPoint
     guard !states.isEmpty || !persisted.isEmpty || !markers.isEmpty || !track.isEmpty else { return }
 
-    let telemetryPoints = states.map { $0.toBucketPoint(recordingId: recordingId ?? LEGACY_RIDE_RECORDING_ID) }
+    let telemetryPoints = states.map { $0.toBucketPoint() }
     let sanitization = sanitizeTelemetrySamples(telemetryPoints, config: metricConfig)
     var sanitized = telemetryPoints
     for i in sanitized.indices {
@@ -784,7 +811,7 @@ internal final class TelemetryRepository {
     )
 
     try? pool.write { db in
-      for state in persisted { try insertFrame(db, state, recordingId: recordingId) }
+      for state in persisted { try insertFrame(db, state, recordingId: state.recordingId) }
       for point in track { try insertRideTrackPoint(db, point) }
       for bucket in buckets { try upsertBucket(db, bucket) }
       for marker in markers { try insertMarker(db, marker) }
@@ -831,7 +858,7 @@ internal final class TelemetryRepository {
           sql: """
             INSERT INTO diagnostic_events
               (occurred_at_ms, elapsed_realtime_ms, event_name, operation, phase, board_id, message, properties_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [occurredAtMs, elapsed, eventName, operation, phase, boardId, message, propertiesJson]
         )

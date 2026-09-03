@@ -52,6 +52,11 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         battery_regen_wh_milli=telemetry_minute_buckets.battery_regen_wh_milli + excluded.battery_regen_wh_milli,
         max_duty_abs_permille=MAX(telemetry_minute_buckets.max_duty_abs_permille, excluded.max_duty_abs_permille),
         last_odometer_cm=COALESCE(excluded.last_odometer_cm, telemetry_minute_buckets.last_odometer_cm),
+        -- The two streams flush on their own clocks, so a minute's first flush can carry frames and
+        -- no fix at all. Without this the bucket's route point would stay NULL forever even though a
+        -- fix arrived in the very next flush of the same minute.
+        first_latitude_e7=COALESCE(telemetry_minute_buckets.first_latitude_e7, excluded.first_latitude_e7),
+        first_longitude_e7=COALESCE(telemetry_minute_buckets.first_longitude_e7, excluded.first_longitude_e7),
         gps_point_count=telemetry_minute_buckets.gps_point_count + excluded.gps_point_count,
         precise_gps_point_count=telemetry_minute_buckets.precise_gps_point_count + excluded.precise_gps_point_count,
         gps_distance_cm=telemetry_minute_buckets.gps_distance_cm + excluded.gps_distance_cm,

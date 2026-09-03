@@ -117,6 +117,12 @@ internal struct BucketTelemetryPoint {
 
 internal struct FullTelemetryState {
   let capture: TelemetryCapture
+  /// Owning Ride Recording, stamped when the frame is admitted rather than when it is flushed: a
+  /// flush can land after the recording that produced these frames was closed, and reading the
+  /// current recording then would file them under whatever opened next (ADR 0038).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `FullTelemetryState`
+  var recordingId: String?
 
   var t: RefloatTelemetry { capture.telemetry }
   var capturedAtMs: Int64 { capture.capturedAtMs }
@@ -124,11 +130,11 @@ internal struct FullTelemetryState {
   var boardId: String? { capture.boardId }
   var location: TelemetryLocationCapture? { capture.location }
 
-  func toBucketPoint(recordingId: String = LEGACY_RIDE_RECORDING_ID) -> BucketTelemetryPoint {
+  func toBucketPoint() -> BucketTelemetryPoint {
     BucketTelemetryPoint(
       capturedAtMs: capturedAtMs,
       boardId: boardId,
-      recordingId: recordingId,
+      recordingId: recordingId ?? LEGACY_RIDE_RECORDING_ID,
       speedCentiKmh: telemetryCenti(t.speed),
       batteryVoltageMv: telemetryMilli(t.batteryVoltage),
       motorCurrentMa: telemetryMilli(t.motorCurrent),
