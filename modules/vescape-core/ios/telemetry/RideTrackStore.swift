@@ -90,6 +90,69 @@ internal func closeRideRecordingRow(_ db: Database, id: String, endedAtMs: Int64
   )
 }
 
+/// The still-open Ride Recording of a Board, if the rider never ended one.
+///
+/// This row *is* the persisted end intent (#450). An explicit Stop Recording or Disconnect stamps
+/// `ended_at_ms`, and nothing can un-stamp it — so a stale delegate callback, a late reconnect, or
+/// an iOS BLE state-restoration relaunch asking to resume finds nothing here and is refused a
+/// revival. Only a recording the rider left open can be rejoined.
+///
+/// @platform-diff No Android peer: only iOS has a state-restoration relaunch that resumes a session
+/// (ADR 0034), so only iOS ever rejoins an open recording.
+internal func openRideRecordingForBoard(_ db: Database, boardId: String?) throws -> RideRecording? {
+  let row: Row? =
+    boardId == nil
+    ? try Row.fetchOne(
+      db,
+      sql: """
+        SELECT id, board_id, started_at_ms FROM ride_recordings
+        WHERE ended_at_ms IS NULL AND board_id IS NULL
+        ORDER BY started_at_ms DESC LIMIT 1
+        """
+    )
+    : try Row.fetchOne(
+      db,
+      sql: """
+        SELECT id, board_id, started_at_ms FROM ride_recordings
+        WHERE ended_at_ms IS NULL AND board_id = ?
+        ORDER BY started_at_ms DESC LIMIT 1
+        """,
+      arguments: [boardId]
+    )
+  guard let row else { return nil }
+  return RideRecording(
+    id: row["id"],
+    boardId: row["board_id"],
+    startedAtMs: row["started_at_ms"],
+    endedAtMs: nil,
+    endedReason: nil
+  )
+}
+
+/// Close every recording left open by a process that died without ending it.
+///
+/// A relaunch that does *not* adopt an open recording must not leave it open forever: the rider's
+/// capture really did stop when the process did. Called before minting a new recording, which is
+/// the one moment we know the old row can no longer be rejoined.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `closeAbandonedRideRecordings`
+@discardableResult
+internal func closeAbandonedRideRecordings(
+  _ db: Database,
+  endedAtMs: Int64,
+  reason: String,
+  except keepOpenId: String?
+) throws -> Int {
+  try db.execute(
+    sql: """
+      UPDATE ride_recordings SET ended_at_ms = ?, ended_reason = ?
+      WHERE ended_at_ms IS NULL AND id IS NOT ?
+      """,
+    arguments: [endedAtMs, reason, keepOpenId]
+  )
+  return db.changesCount
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `insertRideTrackPoints`
 internal func insertRideTrackPoint(_ db: Database, _ point: RideTrackPoint) throws {
   try db.execute(

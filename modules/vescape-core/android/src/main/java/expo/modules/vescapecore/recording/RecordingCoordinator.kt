@@ -21,6 +21,18 @@ internal class RecordingCoordinator(
     private var telemetryStore: TelemetryRepository? = null
     private var connectionLostMarkerAt: Long? = null
 
+    /**
+     * The rider stopped recording during this Board Session. Survives reconnects so a re-ready board
+     * cannot auto-restart what they explicitly stopped; cleared when a new Board Session begins.
+     */
+    private var explicitlyStopped = false
+
+    /**
+     * Auto-recording is a *connect* rule, not a re-ready rule: it fires at the first board-ready of
+     * a Board Session and stays quiet for every reconnect's board-ready after it.
+     */
+    private var boardReadySeen = false
+
     val telemetryRecordingEnabled: Boolean
         get() = telemetryStore != null
 
@@ -35,12 +47,36 @@ internal class RecordingCoordinator(
 
     fun currentRecorder(): SessionRecorder? = recorder
 
+    /**
+     * Begin a Board Session's recording side. Always starts a new Ride Recording: a rider who asked
+     * to connect is asking for a new capture.
+     *
+     * @platform-diff iOS takes a `resume` flag here for a CoreBluetooth state-restoration relaunch,
+     * which rejoins the recording left open by the process that died (ADR 0034). Android's
+     * `CoreForegroundService` keeps the process alive instead, and its launch auto-connect is an
+     * ordinary cold start that may be days later — adopting an open recording there would claim
+     * capture across a gap the process never covered.
+     */
     fun beginBoardSession(config: SessionConfig) {
         connectionLostMarkerAt = null
         // A recording belongs to exactly one Board. An explicit connection attempt to another one
         // ends the previous recording here, before the attempt can succeed or fail — a failed
-        // connection must not reopen it either (ADR 0038).
-        endOpenRideRecording(RIDE_RECORDING_END_BOARD_CHANGE)
+        // connection must not reopen it either (ADR 0038). Same Board is a stop-then-start and says
+        // so.
+        val store = TelemetryRepository.get(context)
+        if (store.activeRideRecordingId != null) {
+            endOpenRideRecording(
+                if (store.activeRideRecordingBoardId == config.appBoardId) {
+                    RIDE_RECORDING_END_STOPPED
+                } else {
+                    RIDE_RECORDING_END_BOARD_CHANGE
+                },
+            )
+        }
+        // A new Board Session spends the rider's previous stop: the gate exists to stop a *reconnect*
+        // from restarting what they stopped, not to keep the next ride from recording.
+        explicitlyStopped = false
+        boardReadySeen = false
         recorder = if (config.recordingEnabled) {
             SessionRecorder(context, config).also { it.start() }
         } else {
@@ -53,8 +89,19 @@ internal class RecordingCoordinator(
         }
     }
 
+    /**
+     * Board-ready for the current Board Session — the first one after a connect, and again after
+     * every reconnect that gets telemetry flowing.
+     *
+     * Auto-recording only fires on the first: a reconnect that re-readied the board must not start a
+     * recording the rider stopped, nor mint a second recording alongside the one still open across
+     * the drop (#450). The `connected` marker still lands on every ready, as disconnect evidence
+     * inside a continuing recording.
+     */
     fun markBoardReady(config: SessionConfig) {
         connectionLostMarkerAt = null
+        val firstReady = !boardReadySeen
+        boardReadySeen = true
         val autoRecording = try {
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getTypedSettings().autoRecording
@@ -62,7 +109,7 @@ internal class RecordingCoordinator(
         } catch (_: Exception) {
             false
         }
-        if (autoRecording && telemetryStore == null) {
+        if (autoRecording && telemetryStore == null && firstReady && !explicitlyStopped) {
             telemetryStore = configuredTelemetryStore(config)
         }
         recordMarker("connected", config)
@@ -75,6 +122,7 @@ internal class RecordingCoordinator(
         flushTelemetryBlocking()
         telemetryStore = null
         connectionLostMarkerAt = null
+        boardReadySeen = false
     }
 
     fun failSession(status: String = "error") {
@@ -83,6 +131,7 @@ internal class RecordingCoordinator(
         flushTelemetryBlocking()
         telemetryStore = null
         connectionLostMarkerAt = null
+        boardReadySeen = false
     }
 
     fun finishDebugRecording(status: String) {
@@ -137,6 +186,7 @@ internal class RecordingCoordinator(
     }
 
     fun enableTelemetryRecording(config: SessionConfig) {
+        explicitlyStopped = false
         if (telemetryStore == null) {
             telemetryStore = configuredTelemetryStore(config)
             recordMarker("connected", config)
@@ -144,6 +194,9 @@ internal class RecordingCoordinator(
     }
 
     fun disableTelemetryRecording(config: SessionConfig?) {
+        // Explicit Stop Recording. The end is stamped on the recording row below, which is what a
+        // late reconnect callback or a resumed session reads — neither can revive an ended recording.
+        explicitlyStopped = true
         recordMarker("app_stop", config, "Recording stopped")
         endOpenRideRecording(RIDE_RECORDING_END_STOPPED)
         flushTelemetryBlocking()

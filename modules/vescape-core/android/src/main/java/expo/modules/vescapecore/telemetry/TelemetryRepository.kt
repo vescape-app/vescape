@@ -126,6 +126,13 @@ class TelemetryRepository private constructor(context: Context) {
   val activeRideRecordingId: String?
     get() = currentRecording?.id
 
+  /**
+   * Board the open Ride Recording is attributed to. Lets a caller tell a Board change from a
+   * stop-then-start of the same Board without holding its own copy of the recording's Board.
+   */
+  val activeRideRecordingBoardId: String?
+    get() = currentRecording?.boardId
+
   fun setMovingSpeedThresholdKmh(value: Double) {
     metricSanitizerConfig = metricSanitizerConfig.copy(
       movingSpeedThresholdCentiKmh = (value * 100.0).roundToInt().coerceAtLeast(0),
@@ -181,6 +188,14 @@ class TelemetryRepository private constructor(context: Context) {
     )
     runBlocking(Dispatchers.IO) {
       try {
+        // Minting a new identity is the moment any recording still open from a process that died
+        // without ending one becomes unrejoinable. Close it here rather than leaving a row open
+        // forever — the capture really did end when the process did.
+        dao.closeAbandonedRideRecordings(
+          endedAtMs = recording.startedAtMs,
+          reason = RIDE_RECORDING_END_DISCONNECTED,
+          keepOpenId = recording.id,
+        )
         dao.insertRideRecording(recording)
       } catch (e: Exception) {
         Log.w(TAG, "Ride Recording open failed: ${e.message}")

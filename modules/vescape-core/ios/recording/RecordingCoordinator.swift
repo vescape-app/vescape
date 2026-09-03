@@ -12,6 +12,15 @@ internal final class RecordingCoordinator {
   private var enabled = false
   private var startedAtMs: Int64?
   private var requestedTelemetryRecordingEnabled = false
+  /// The rider stopped recording during this Board Session. Survives reconnects so a re-ready board
+  /// cannot auto-restart what they explicitly stopped; cleared when a new Board Session begins.
+  private var explicitlyStopped = false
+  /// This Board Session is a restoration resume, so the first enable rejoins the open recording
+  /// instead of minting a second identity for one ride.
+  private var resumingRecording = false
+  /// Auto-recording is a *connect* rule, not a re-ready rule: it fires at the first board-ready of a
+  /// Board Session and stays quiet for every reconnect's board-ready after it.
+  private var boardReadySeen = false
   private var backgroundFlush: BackgroundFlushGuard?
 
   init(appData: AppDataRepository) {
@@ -34,11 +43,28 @@ internal final class RecordingCoordinator {
 
   func currentRecorder() -> SessionRecorder? { recorder }
 
-  func beginBoardSession(config: BoardConnectConfig) {
+  /// Begin a Board Session's recording side.
+  ///
+  /// `resume` marks the one caller that may rejoin an open recording instead of starting a new one:
+  /// an iOS BLE state-restoration relaunch rebuilding the session that was live when the process
+  /// died (ADR 0034). Everything else — a fresh connect, an auto-connect, a Board change — starts a
+  /// new recording, because a rider who asked to connect is asking for a new capture.
+  func beginBoardSession(config: BoardConnectConfig, resume: Bool = false) {
     // A recording belongs to exactly one Board. An explicit connection attempt to another one ends
     // the previous recording here, before the attempt can succeed or fail — a failed connection
-    // must not reopen it either (ADR 0038).
-    store.endRideRecording(reason: RIDE_RECORDING_END_BOARD_CHANGE)
+    // must not reopen it either (ADR 0038). Same Board is a stop-then-start and says so.
+    let previousBoardId = store.activeRideRecordingBoardId
+    if store.activeRideRecordingId != nil {
+      store.endRideRecording(
+        reason: previousBoardId == config.appBoardId
+          ? RIDE_RECORDING_END_STOPPED
+          : RIDE_RECORDING_END_BOARD_CHANGE
+      )
+    }
+    // A new Board Session spends the rider's previous stop: the gate exists to stop a *reconnect*
+    // from restarting what they stopped, not to keep the next ride from recording.
+    explicitlyStopped = false
+    resumingRecording = resume
     activeConfig = config
     recorder?.finish(status: "stopped")
     recorder = nil
@@ -52,6 +78,7 @@ internal final class RecordingCoordinator {
       recorder.start()
       self.recorder = recorder
     }
+    boardReadySeen = false
     store.resetSessionState()
     store.reloadPrivacyZones(appData.getEnabledPrivacyZoneEntities())
     store.applySettings(appData.getSettings())
@@ -66,10 +93,19 @@ internal final class RecordingCoordinator {
     }
   }
 
+  /// Board-ready for the current Board Session — the first one after a connect, and again after
+  /// every reconnect that gets telemetry flowing.
+  ///
+  /// Auto-recording only fires on the first: a reconnect that re-readied the board must not start a
+  /// recording the rider stopped, nor mint a second recording alongside the one still open across
+  /// the drop (#450). The `connected` marker still lands on every ready, as disconnect evidence
+  /// inside a continuing recording.
   func markBoardReady(config: BoardConnectConfig) {
     activeConfig = config
+    let firstReady = !boardReadySeen
+    boardReadySeen = true
     let autoRecording = appData.getSettings()["autoRecording"] as? Bool ?? false
-    if autoRecording && !enabled {
+    if autoRecording && !enabled && firstReady && !explicitlyStopped {
       enableTelemetryRecording(config: config, emitConnectedMarker: false)
     }
     if enabled {
@@ -92,6 +128,8 @@ internal final class RecordingCoordinator {
     activeConfig = nil
     enabled = false
     startedAtMs = nil
+    boardReadySeen = false
+    resumingRecording = false
   }
 
   func failSession() {
@@ -101,10 +139,13 @@ internal final class RecordingCoordinator {
     activeConfig = nil
     enabled = false
     startedAtMs = nil
+    boardReadySeen = false
+    resumingRecording = false
   }
 
   func setTelemetryRecordingEnabled(_ requested: Bool) -> Bool {
     requestedTelemetryRecordingEnabled = requested
+    if requested { explicitlyStopped = false }
     guard let config = activeConfig else {
       enabled = false
       startedAtMs = nil
@@ -114,6 +155,9 @@ internal final class RecordingCoordinator {
       enableTelemetryRecording(config: config)
       return true
     }
+    // Explicit Stop Recording. The end is stamped on the recording row below, which is what a late
+    // reconnect callback or a restoration relaunch reads — neither can revive an ended recording.
+    explicitlyStopped = true
     if enabled {
       recordMarker("app_stop", config: config, message: "Recording stopped")
     }
@@ -177,7 +221,17 @@ internal final class RecordingCoordinator {
       startedAtMs = nowMs()
       // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
       // boundary, minted before the first sample or fix can be admitted.
-      store.beginRideRecording(boardId: config.appBoardId)
+      //
+      // A restoration resume rejoins the recording left open instead, so one ride across a process
+      // death stays one identity and one history entry. It is consumed once: if the rider stops and
+      // starts again inside the resumed session, that really is a new recording. `nil` means the
+      // recording was explicitly ended before the process died — that intent is durable, so a new
+      // recording is the only honest thing to open.
+      let resumed = resumingRecording ? store.resumeRideRecording(boardId: config.appBoardId) : nil
+      resumingRecording = false
+      if resumed == nil {
+        store.beginRideRecording(boardId: config.appBoardId)
+      }
       if emitConnectedMarker {
         recordMarker("connected", config: config)
       }

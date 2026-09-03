@@ -60,6 +60,45 @@ internal final class TelemetryRepository {
   /// Identity #449 groups history on and #450 carries across a Board Session teardown.
   var activeRideRecordingId: String? { queue.sync { currentRecording?.id } }
 
+  /// Board the open Ride Recording is attributed to. Lets a caller tell a Board change from a
+  /// stop-then-start of the same Board without holding its own copy of the recording's Board.
+  var activeRideRecordingBoardId: String? { queue.sync { currentRecording?.boardId } }
+
+  /// Rejoin the Ride Recording this Board was left recording into, or nil when there is none.
+  ///
+  /// The one path that does not mint a new identity. An iOS BLE state-restoration relaunch resumes
+  /// a Board Session whose recording is still open in the database, and creating a second recording
+  /// there would split one ride into two history entries across a process death the rider never
+  /// asked for. The still-open row is also the persisted end intent: an explicitly stopped or
+  /// disconnected recording carries `ended_at_ms`, so this returns nil and the caller must start a
+  /// fresh recording rather than reviving an ended one.
+  ///
+  /// The dead interval is left exactly as honest as it was — no fix or frame is fabricated for the
+  /// time the process could not run.
+  ///
+  /// @platform-diff No Android peer. Android's `CoreForegroundService` keeps the process alive, so
+  /// there is no restoration relaunch to resume from, and its launch auto-connect is an ordinary
+  /// cold start that may be days later — adopting an open recording there would claim capture across
+  /// a gap the process never covered.
+  @discardableResult
+  func resumeRideRecording(boardId: String?) -> String? {
+    if let open = queue.sync(execute: { currentRecording }) {
+      // Already live in this process: a resume of the session we are already recording for is the
+      // same recording, and anything else is a Board change the caller must make explicit.
+      return open.boardId == boardId ? open.id : nil
+    }
+    guard let pool else { return nil }
+    guard let recording = try? pool.read({ db in try openRideRecordingForBoard(db, boardId: boardId) })
+    else { return nil }
+    queue.sync {
+      currentRecording = recording
+      // Adopting is not continuing: the process died between the last flushed point and now, so the
+      // track geometry restarts rather than drawing a line across the gap.
+      lastFlushedTrackPoint = nil
+    }
+    return recording.id
+  }
+
   /// Open a **Ride Recording**: mint its durable identity and stamp its start boundary.
   ///
   /// Board attribution and recording identity are separate facts. `boardId` says which Board is
@@ -86,7 +125,20 @@ internal final class TelemetryRepository {
       endedAtMs: nil,
       endedReason: nil
     )
-    if let pool { try? pool.write { db in try insertRideRecording(db, recording) } }
+    if let pool {
+      try? pool.write { db in
+        // Minting a new identity is the moment any recording still open from a process that died
+        // without ending one becomes unrejoinable. Close it here rather than leaving a row open
+        // forever — the capture really did end when the process did.
+        try closeAbandonedRideRecordings(
+          db,
+          endedAtMs: recording.startedAtMs,
+          reason: RIDE_RECORDING_END_DISCONNECTED,
+          except: recording.id
+        )
+        try insertRideRecording(db, recording)
+      }
+    }
     queue.sync {
       currentRecording = recording
       // A new recording never continues the previous one's track geometry.

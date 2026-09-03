@@ -145,6 +145,20 @@ interface TelemetryDao {
   )
   suspend fun endRideRecording(id: String, endedAtMs: Long, reason: String): Int
 
+  /**
+   * Close every recording left open by a process that died without ending it. Called before minting
+   * a new recording, which is the one moment we know the old row can no longer be rejoined.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `closeAbandonedRideRecordings`
+   */
+  @Query(
+    """
+    UPDATE ride_recordings SET ended_at_ms = :endedAtMs, ended_reason = :reason
+    WHERE ended_at_ms IS NULL AND id IS NOT :keepOpenId
+    """,
+  )
+  suspend fun closeAbandonedRideRecordings(endedAtMs: Long, reason: String, keepOpenId: String?): Int
+
   @Insert
   suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)
 

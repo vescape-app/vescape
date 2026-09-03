@@ -2703,9 +2703,19 @@ private var wearAutoLaunchOnConnect = true
     private fun setStatus(next: BoardPhase) =
         transitionBoardPhase(next, recordName = next.recordName())
 
+    /**
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginReconnect`
+     */
     private fun scheduleAutoReconnect(session: SessionConfig, gattStatus: Int?, reason: String) {
         if (!session.autoReconnect || isStoppingService) return
         val reconnectSession = boardSession ?: return
+        // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
+        // halts *both* streams, GPS included — so a board that went stationary and then dropped would
+        // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
+        // Off the link there is no Board movement signal and no GPS-based Idle Pause (ADR 0021), so
+        // recording continues until the rider stops it; the detector takes over again on the next
+        // board-ready.
+        resetIdlePause()
         // Lost a live link (telemetry was flowing) — signal the rider we're now without telemetry.
         // Fires once at loss: subsequent reconnect attempts enter here as Reconnecting/Rescanning.
         if (connectionSoundsEnabled && (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale)) {

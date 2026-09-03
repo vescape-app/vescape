@@ -989,8 +989,12 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     // Re-arm the recording request *before* the session begins so `beginBoardSession` enables the
-    // telemetry store on its normal path. Nothing resets the store's tables: frames land in the
-    // same open recording and the existing gap-splitter explains the dead interval.
+    // telemetry store on its normal path, and it begins with `resume: true` so that enable rejoins
+    // the Ride Recording left open rather than minting a second identity for one ride (#450).
+    //
+    // The marker only says the rider *had* recording on; whether a recording is still open is the
+    // database's answer, and an explicitly stopped or disconnected one carries an `ended_at_ms` no
+    // restoration can clear. The dead interval stays a real gap in both streams.
     if marker.recordingActive {
       _ = recordingCoordinator.setTelemetryRecordingEnabled(true)
     }
@@ -1092,7 +1096,7 @@ internal final class BoardSessionController: VescGattListener {
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
-    recordingCoordinator.beginBoardSession(config: config)
+    recordingCoordinator.beginBoardSession(config: config, resume: resume)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
     // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1417,6 +1421,13 @@ internal final class BoardSessionController: VescGattListener {
     // below refreshes it to the reconnect state, mirroring Android mutating the persistent chip.
     session?.invalidate()
     stopPolling()
+    // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
+    // halts *both* streams, GPS included — so a board that went stationary and then dropped would
+    // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
+    // Off the link there is no Board movement signal and no GPS-based Idle Pause (ADR 0021), so
+    // recording continues until the rider stops it; the detector takes over again on the next
+    // board-ready.
+    resetIdlePause()
     reassembler.reset()
     socWindow.reset()
     // Drop prior-connection BMS rows before reconnecting, mirroring Android's reconnect-path
