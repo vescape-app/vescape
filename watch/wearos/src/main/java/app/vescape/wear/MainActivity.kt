@@ -62,7 +62,8 @@ class MainActivity : ComponentActivity() {
     /**
      * Cold phone state arriving on the Data Layer: the route polyline (pushed once per route
      * change, deleted when the route ends — deletion is what hides the drawn line) and the rider's
-     * settings (pushed once per settings change).
+     * settings (pushed once per settings change), and the board's lights (pushed on every echo,
+     * config seed and session teardown).
      */
     private val dataListener = DataClient.OnDataChangedListener { events ->
         for (event in events) {
@@ -80,10 +81,17 @@ class MainActivity : ComponentActivity() {
                     val weather = if (deleted) null else readWeather(event.dataItem)
                     runOnUiThread { WeatherState.accept(weather) }
                 }
+                BOARD_PATH -> {
+                    // Deletion is the phone saying nothing, which decodes to unknown, never off.
+                    val lights = decodeBoardLights(if (deleted) null else dataMapOf(event.dataItem))
+                    runOnUiThread { BoardState.accept(lights) }
+                }
             }
         }
         events.release()
     }
+
+    private fun dataMapOf(item: DataItem) = DataMapItem.fromDataItem(item).dataMap
 
     private fun readSettings(item: DataItem): WatchSettings {
         val dataMap = DataMapItem.fromDataItem(item).dataMap
@@ -164,6 +172,8 @@ class MainActivity : ComponentActivity() {
             SettingsState.accept(settings?.let(::readSettings) ?: WatchSettings())
             val weather = items.firstOrNull { it.uri.path == WEATHER_PATH }
             WeatherState.accept(weather?.let(::readWeather))
+            val board = items.firstOrNull { it.uri.path == BOARD_PATH }
+            BoardState.accept(decodeBoardLights(board?.let(::dataMapOf)))
             items.release()
         }
         phoneLinkMonitor.start()

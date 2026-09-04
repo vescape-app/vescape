@@ -74,6 +74,8 @@ import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
+import expo.modules.vescapecore.watch.WatchBoard
+import expo.modules.vescapecore.watch.WatchBoardPusher
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WATCH_MIRROR_AWAKE_TIMEOUT_MS
 import expo.modules.vescapecore.watch.WatchMirrorPresence
@@ -334,6 +336,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val watchWeatherPusher by lazy {
         WatchWeatherPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
     }
+    private val watchBoardPusher by lazy {
+        WatchBoardPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    }
     private val weatherCoordinator = WeatherCoordinator.get()
 
     /** Removes this controller's weather subscription; a restarted service must not stack them. */
@@ -525,7 +530,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // which clears its runtime override and hands authority back to config. Keeping the old
             // echo would leave the switch showing pre-reboot state that nothing ever corrects.
             boardLights = null
-            emitEvent("onBoardLights", lightsEventBody())
+            publishBoardLights()
             // Re-arm the post-trust read so the relinked session gets fresh values back.
             boardConfigReadScheduled = false
             // Same reasoning as the Refloat demote above: the disconnected window is where another
@@ -2342,6 +2347,23 @@ private var wearAutoLaunchOnConnect = true
     )
 
     /**
+     * Every point [boardLights] changes ends here: JS gets the event, the wrist gets the same truth
+     * on the Data Layer. Nulls stay null on both sides — the board is not saying, so neither is the
+     * phone. `lightsControllable` repeats [setBoardLights]' own guards rather than a second policy,
+     * so the wrist never has to know what a trusted Board Link is.
+     */
+    private fun publishBoardLights() {
+        emitEvent("onBoardLights", lightsEventBody())
+        watchBoardPusher.push(
+            WatchBoard(
+                lightsEnabled = boardLights?.enabled,
+                headlightsEnabled = boardLights?.headlightsEnabled,
+                lightsControllable = firmwareCommandsTrusted() && currentBoardTransport() != null,
+            ),
+        )
+    }
+
+    /**
      * State the board's lights: the LEDs and the headlights, each on or off. Both switches are
      * always written, so a caller changing one must pass the other's current value. Runtime only:
      * firmware applies it live and writes no config, so the board's own setting returns on the next
@@ -2372,7 +2394,7 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun onBoardLightsEcho(lights: BoardLightsState) {
         boardLights = lights
-        emitEvent("onBoardLights", lightsEventBody())
+        publishBoardLights()
         if (lightsGeneration() != BoardLightsGeneration.Legacy) return
         val values = boardConfigValues ?: return
         val boardId = values.boardId ?: return
@@ -2403,7 +2425,7 @@ private var wearAutoLaunchOnConnect = true
         val lights = BoardLightsState(enabled, values.flag(BoardConfigFlagField.HEADLIGHTS_ON) ?: false)
         if (lights == boardLights) return
         boardLights = lights
-        emitEvent("onBoardLights", lightsEventBody())
+        publishBoardLights()
     }
 
     fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
@@ -2544,7 +2566,7 @@ private var wearAutoLaunchOnConnect = true
         motorConfigRequested = false
         // Lights are per Board Session: what the last board's echo said means nothing for the next.
         boardLights = null
-        emitEvent("onBoardLights", lightsEventBody())
+        publishBoardLights()
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread
