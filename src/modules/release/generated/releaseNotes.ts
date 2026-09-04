@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.92.0',
+    markdown:
+      '## New\n\n- View animated rain radar on your watch, centered around your location with 50 km and 100 km range guides and a timeline of the last two hours.\n- Control your board’s lights and headlight independently from your watch on compatible Refloat firmware.\n- A status below the live gauges now clearly shows when GPS is starting, searching, weak, lost, off, or blocked, with quick access to navigation diagnostics.\n\n## Improved\n\n- Speed, duty, battery, and temperature gauges now stay pinned around the watch face while you use weather, navigation, Board Move, light controls, or diagnostics.\n- Rain radar in the app now adds labeled range rings, frames the full 100 km view, and resumes playback after you scrub the timeline.\n\n## Fixed\n\n- On iPhone, GPS now continues after a board disconnect and remembers your last precise location between app launches.\n',
+  },
+  {
     version: '0.91.1',
     markdown:
       '## Improved\n\n- The event log now gives clearer details when GPS updates stop, lose signal, recover, or fail because of permissions or provider errors.\n\n## Fixed\n\n- Fixed a crash that could occur when live ride and battery readouts used adaptive theme colors.\n',
