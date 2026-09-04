@@ -87,7 +87,7 @@ internal fun FrameLayout(
         // Bottom layer: route ahead + rider dot, under every gauge and readout.
         if (hasNav) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
-                NavRoute(frame = frame, muted = muted)
+                NavRoute(frame = frame, muted = muted, navFocus = focus)
             }
         }
 
