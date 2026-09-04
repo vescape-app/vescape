@@ -127,7 +127,7 @@ fun RadarScreen(visible: Boolean) {
                 for ((_, fraction) in rings) {
                     drawCircle(GuideColor, faceRadius * fraction, centre, style = ringStroke)
                 }
-                drawRider(centre, riderColor)
+                drawRiderDot(centre, riderColor)
             }
             drawTimeline(centre, size.minDimension / 2f, progress, timelineColor)
         }
@@ -171,12 +171,6 @@ private fun DrawScope.drawRadar(image: ImageBitmap, centre: Offset, faceRadius: 
         dstSize = IntSize(side, side),
         alpha = RADAR_ALPHA,
     )
-}
-
-/** "You are here", drawn exactly like the nav page's rider so the two pages read as one map. */
-private fun DrawScope.drawRider(centre: Offset, color: Color) {
-    drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), centre)
-    drawCircle(color, radius = RIDER_DOT_R.toPx(), centre, style = Stroke(width = RIDER_RING_W.toPx()))
 }
 
 /**
@@ -278,9 +272,6 @@ private val RING_LABEL_INSET = 10.dp
 private val HEADER_TOP_PADDING = 12.dp
 private val HEADER_ICON_SIZE = 14.dp
 private val HEADER_FONT_SIZE = 9.sp
-
-private val RIDER_DOT_R = 4.dp
-private val RIDER_RING_W = 2.dp
 
 /** Inside the battery arc's ring, so the two never touch. */
 private val TIMELINE_INSET = 20.dp

@@ -2,7 +2,7 @@ import { LineLayer, ShapeSource, SymbolLayer } from '@rnmapbox/maps'
 import { useMemo } from 'react'
 
 import { theme } from '@/constants/theme'
-import { makeCircleFeature } from '@/helpers/mapGeometry'
+import { makeCircleFeature, offsetCoordinate } from '@/helpers/mapGeometry'
 import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 /**
@@ -23,7 +23,9 @@ const RANGE_RING_KM = [50, 100]
  */
 const RING_LINE_WIDTH = 1.5
 const RING_DASH: [number, number] = [3, 3]
-const EARTH_RADIUS_M = 6_378_137
+
+/** Due east, the radius the labels ride out on. */
+const LABEL_HEADING_DEG = 90
 
 interface RadarRangeRingsProps {
   visible: boolean
@@ -54,7 +56,11 @@ export function RadarRangeRings({ visible, fix }: RadarRangeRingsProps) {
             type: 'Feature' as const,
             geometry: {
               type: 'Point' as const,
-              coordinates: [fix.longitude + eastOffsetDeg(fix.latitude, km * 1_000), fix.latitude],
+              coordinates: offsetCoordinate(
+                [fix.longitude, fix.latitude],
+                LABEL_HEADING_DEG,
+                km * 1_000,
+              ),
             },
             properties: { label: `${km} km` },
           }))
@@ -93,10 +99,4 @@ export function RadarRangeRings({ visible, fix }: RadarRangeRingsProps) {
       </ShapeSource>
     </>
   )
-}
-
-/** Degrees of longitude that cover [distanceM] due east at [latitude]. */
-function eastOffsetDeg(latitude: number, distanceM: number): number {
-  const latRad = (latitude * Math.PI) / 180
-  return ((distanceM / (EARTH_RADIUS_M * Math.cos(latRad))) * 180) / Math.PI
 }

@@ -7,7 +7,7 @@ import { Text } from '@/components/base/Text'
 import { ChipRow, ToggleRow, ValueRow } from '@/components/dev/ShowcaseControls'
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
 import { theme } from '@/constants/theme'
-import { makeCircleFeature } from '@/helpers/mapGeometry'
+import { makeCircleFeature, offsetCoordinate } from '@/helpers/mapGeometry'
 import { PlaygroundSlider } from '@/modules/map/components/PlaygroundSlider'
 import { SpringTraceChart, type SpringTraceSample } from '@/modules/map/components/SpringTraceChart'
 import {
@@ -21,7 +21,6 @@ import {
   advanceFakeGps,
   createFakeGpsState,
   fakeCompassHeading,
-  offsetCoordinate,
   type FakeGpsMode,
   type FakeGpsState,
 } from '@/modules/map/lib/fakeGps'

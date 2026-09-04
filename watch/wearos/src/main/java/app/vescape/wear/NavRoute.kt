@@ -61,17 +61,23 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float =
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Rider sits below the screen centre so more of the frame is "ahead" than behind.
-        val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
-        // "You are here": a ring in the route's own colour, punched out to black so the line
-        // passing under it never reads as passing through the rider.
-        drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), center = center)
-        drawCircle(
-            color,
-            radius = RIDER_DOT_R.toPx(),
-            center = center,
-            style = Stroke(width = RIDER_RING_W.toPx()),
-        )
+        drawRiderDot(Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx()), color)
     }
+}
+
+/**
+ * "You are here": a ring in the route's own colour, punched out to black so whatever passes under
+ * it never reads as passing through the rider. Shared with the radar page — the two are the same
+ * map seen at different scales, and a rider that looked different on each would say otherwise.
+ */
+internal fun DrawScope.drawRiderDot(center: Offset, color: Color) {
+    drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), center = center)
+    drawCircle(
+        color,
+        radius = RIDER_DOT_R.toPx(),
+        center = center,
+        style = Stroke(width = RIDER_RING_W.toPx()),
+    )
 }
 
 @Composable
