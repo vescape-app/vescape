@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -51,25 +52,31 @@ fun MirrorScreen(
     var showClosePrompt by remember { mutableStateOf(false) }
     // A hold must not be interpreted as a page swipe, and must never end because the page moved.
     var moveHeld by remember { mutableStateOf(false) }
-    val weatherPagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
+    // One pager owns the whole vertical axis: weather above the gauges, nav focus below. Two
+    // stacked vertical pagers used to compete for the same drag — the inner one claimed the
+    // pointer, forwarded the leftover delta to the outer one but kept the velocity, so the outer
+    // could only settle by dragging past half the screen and a normal flick sprang back.
+    val verticalPagerState = rememberPagerState(initialPage = VERTICAL_PAGE_GAUGES, pageCount = { VERTICAL_PAGE_COUNT })
+    // Fractional position on the axis, 0 = weather, 1 = gauges, 2 = nav focus. Both focus
+    // progresses are read off it, so a drag fades exactly as far as it has travelled.
+    val verticalPosition = {
+        verticalPagerState.currentPage + verticalPagerState.currentPageOffsetFraction
+    }
     // Nav focus is a page of its own so the drag is a real gesture, but nothing new is drawn there:
     // the gauges pin themselves in place (see [navFocus]) and shed their readouts on the way.
-    val navPagerState = rememberPagerState(pageCount = { 2 })
-    val navFocus = { (navPagerState.currentPage + navPagerState.currentPageOffsetFraction).coerceIn(0f, 1f) }
-    val navFocused = navPagerState.currentPage != 0
+    val navFocus = { (verticalPosition() - VERTICAL_PAGE_GAUGES).coerceIn(0f, 1f) }
+    val navFocused = verticalPagerState.currentPage == VERTICAL_PAGE_NAV
     val scope = rememberCoroutineScope()
-    val weatherVisible = !isAmbient && weatherPagerState.currentPage == 0
+    val weatherVisible = !isAmbient && verticalPagerState.currentPage == VERTICAL_PAGE_WEATHER
 
     // Mutually exclusive by `enabled`: back closes the innermost thing that is open, and only the
     // gauges themselves treat back as "leave the mirror".
     BackHandler(enabled = showClosePrompt) {
         showClosePrompt = false
     }
-    BackHandler(enabled = !showClosePrompt && weatherVisible) {
-        scope.launch { weatherPagerState.animateScrollToPage(1) }
-    }
-    BackHandler(enabled = !showClosePrompt && !weatherVisible && navFocused) {
-        scope.launch { navPagerState.animateScrollToPage(0) }
+    // Either end of the vertical axis returns to the gauges; only the gauges treat back as leave.
+    BackHandler(enabled = !showClosePrompt && (weatherVisible || navFocused)) {
+        scope.launch { verticalPagerState.animateScrollToPage(VERTICAL_PAGE_GAUGES) }
     }
     BackHandler(enabled = !showClosePrompt && !weatherVisible && !navFocused) {
         showClosePrompt = true
@@ -107,10 +114,7 @@ fun MirrorScreen(
                     (controlPagerState.currentPage + controlPagerState.currentPageOffsetFraction)
                         .coerceIn(0f, 1f)
                 }
-                val weatherFocus = {
-                    (1f - (weatherPagerState.currentPage + weatherPagerState.currentPageOffsetFraction))
-                        .coerceIn(0f, 1f)
-                }
+                val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
                 // A page is interactive only once it has settled: a tap landing mid-swipe belongs
                 // to the gesture, not to the control it happened to be over.
                 val activePage = controlPagerState.currentPage
@@ -122,17 +126,15 @@ fun MirrorScreen(
                 // Changing the parent modifier then cancels that animation mid-page.
                 LaunchedEffect(
                     controlPagerState.isScrollInProgress,
-                    weatherPagerState.isScrollInProgress,
-                    navFocused,
+                    verticalPagerState.isScrollInProgress,
                 ) {
                     if (!controlPagerState.isScrollInProgress &&
                         controlPagerState.currentPageOffsetFraction == 0f &&
-                        !weatherPagerState.isScrollInProgress &&
-                        weatherPagerState.currentPageOffsetFraction == 0f
+                        !verticalPagerState.isScrollInProgress &&
+                        verticalPagerState.currentPageOffsetFraction == 0f
                     ) {
-                        dismissEnabled = controlPagerState.currentPage == 0 &&
-                            weatherPagerState.currentPage == 1 &&
-                            !navFocused
+                        dismissEnabled = controlPagerState.currentPage == CONTROL_PAGE_GAUGES &&
+                            verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
                     }
                 }
                 // Horizontal pages are transient controls, so an untouched wrist drifts back to
@@ -142,8 +144,8 @@ fun MirrorScreen(
                 LaunchedEffect(lastTouchMs, moveHeld) {
                     if (moveHeld) return@LaunchedEffect
                     delay(CONTROL_IDLE_RETURN_MS)
-                    if (controlPagerState.currentPage != 0) {
-                        controlPagerState.animateScrollToPage(0)
+                    if (controlPagerState.currentPage != CONTROL_PAGE_GAUGES) {
+                        controlPagerState.animateScrollToPage(CONTROL_PAGE_GAUGES)
                     }
                 }
                 // The dismiss box wraps the pinned gauges. Outside it, a dismiss drag would slide
@@ -181,20 +183,34 @@ fun MirrorScreen(
                                 controlFocus = controlFocus,
                                 weatherFocus = weatherFocus,
                                 onWeatherClick = {
-                                    scope.launch { weatherPagerState.animateScrollToPage(0) }
+                                    scope.launch {
+                                        verticalPagerState.animateScrollToPage(VERTICAL_PAGE_WEATHER)
+                                    }
                                 },
                             )
                             VerticalPager(
-                                state = weatherPagerState,
+                                state = verticalPagerState,
                                 userScrollEnabled = !moveHeld,
+                                // A page swap on the wrist is a flick, not a drag: the default
+                                // half-screen threshold means a rider has to pull the weather page
+                                // most of the way down or watch it spring back.
+                                flingBehavior = PagerDefaults.flingBehavior(
+                                    state = verticalPagerState,
+                                    snapPositionalThreshold = PAGE_SNAP_THRESHOLD,
+                                ),
                                 modifier = Modifier.fillMaxSize(),
-                            ) { weatherPage ->
-                                if (weatherPage == 0) {
-                                    WeatherScreen()
-                                } else {
-                                    HorizontalPager(
+                            ) { verticalPage ->
+                                when (verticalPage) {
+                                    VERTICAL_PAGE_WEATHER -> WeatherScreen()
+                                    // Gesture-only page: nothing is drawn here, the drag offset
+                                    // alone is the nav-focus progress. Keeping the gauges out of
+                                    // the pager is what makes this a transition rather than a page
+                                    // swap — a pager clips its pages, so content inside would
+                                    // slide away instead of pinning.
+                                    VERTICAL_PAGE_NAV -> Unit
+                                    else -> HorizontalPager(
                                         state = controlPagerState,
-                                        userScrollEnabled = !moveHeld && !navFocused,
+                                        userScrollEnabled = !moveHeld,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .then(
@@ -210,26 +226,19 @@ fun MirrorScreen(
                                             contentAlignment = Alignment.Center,
                                         ) {
                                             when (page) {
-                                                // Gesture-only pager over the gauges: both its
-                                                // pages are empty, and its drag offset is the
-                                                // nav-focus progress. Keeping the gauges out of
-                                                // it is what makes this a transition rather
-                                                // than a page swap — a pager clips its pages,
-                                                // so content inside would slide away instead.
-                                                0 -> VerticalPager(
-                                                    state = navPagerState,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                ) {}
-                                                1 -> MoveScreen(
+                                                // Page 0 is empty: it is the gauges themselves,
+                                                // pinned at the root behind this transparent pager.
+                                                CONTROL_PAGE_GAUGES -> Unit
+                                                CONTROL_PAGE_MOVE -> MoveScreen(
                                                     sender = sender,
-                                                    interactionEnabled = activePage == 1,
+                                                    interactionEnabled = activePage == CONTROL_PAGE_MOVE,
                                                     onHoldChanged = { moveHeld = it },
                                                 )
-                                                2 -> LightsScreen(
+                                                CONTROL_PAGE_LIGHTS -> LightsScreen(
                                                     sender = sender,
-                                                    interactionEnabled = activePage == 2,
+                                                    interactionEnabled = activePage == CONTROL_PAGE_LIGHTS,
                                                 )
-                                                3 -> DiagnosticsScreen()
+                                                CONTROL_PAGE_DIAGNOSTICS -> DiagnosticsScreen()
                                                 else -> Unit
                                             }
                                         }
@@ -244,10 +253,23 @@ fun MirrorScreen(
     }
 }
 
+/** Fraction of a page a drag must cover to settle on the next one rather than spring back. */
+private const val PAGE_SNAP_THRESHOLD = 0.25f
+
 /** Idle time after which the horizontal pager drifts back to the gauges. */
 private const val CONTROL_IDLE_RETURN_MS = 45_000L
 
+/** Weather above the gauges, nav focus below: one pager owns the whole vertical axis. */
+private const val VERTICAL_PAGE_WEATHER = 0
+private const val VERTICAL_PAGE_GAUGES = 1
+private const val VERTICAL_PAGE_NAV = 2
+private const val VERTICAL_PAGE_COUNT = 3
+
 /** Gauges centre, Board Move, board Lights, diagnostics. */
+private const val CONTROL_PAGE_GAUGES = 0
+private const val CONTROL_PAGE_MOVE = 1
+private const val CONTROL_PAGE_LIGHTS = 2
+private const val CONTROL_PAGE_DIAGNOSTICS = 3
 private const val CONTROL_PAGE_COUNT = 4
 
 @Composable
