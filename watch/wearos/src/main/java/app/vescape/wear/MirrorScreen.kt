@@ -190,7 +190,10 @@ fun MirrorScreen(
                             )
                             VerticalPager(
                                 state = verticalPagerState,
-                                userScrollEnabled = !moveHeld,
+                                // The vertical axis belongs to the gauges alone: weather above,
+                                // nav focus below. From a control page it would open a blank map
+                                // over a page the rider is working on, so it is only live there.
+                                userScrollEnabled = !moveHeld && activePage == CONTROL_PAGE_GAUGES,
                                 // A page swap on the wrist is a flick, not a drag: the default
                                 // half-screen threshold means a rider has to pull the weather page
                                 // most of the way down or watch it spring back.
