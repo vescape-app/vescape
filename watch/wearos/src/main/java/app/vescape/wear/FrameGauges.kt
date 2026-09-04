@@ -48,15 +48,25 @@ import kotlin.math.sin
  * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
  *
- * [focus] is the nav-focus progress (0 = full telemetry, 1 = navigation only), read as a lambda so
- * dragging never recomposes the layout: the numeric readouts fade and slide away in a graphics
- * layer while the rim gauges, clock, forecast and the whole nav stack stay put.
+ * This layout is pinned at the root of the mirror, under both pagers: the rim arcs are permanent
+ * furniture and never move, whatever page the rider swipes to. The three focus progresses say how
+ * far a page has taken over, and each is read as a lambda so dragging never recomposes the layout —
+ * everything above the arcs fades and slides in a graphics layer instead.
+ *
+ * - [focus] — nav focus (up-drag over the gauges): readouts leave, the nav stack stays and grows.
+ * - [controlFocus] — the horizontal control pager (Move, diagnostics): readouts and nav stack leave.
+ * - [weatherFocus] — the forecast page above: readouts and nav stack leave.
+ *
+ * The clock and the forecast readout at the top rim gap fade with the readouts; on the weather
+ * centre they would otherwise duplicate the fuller forecast underneath.
  */
 @Composable
 internal fun FrameLayout(
     frame: WatchFrame,
     muted: Boolean,
     focus: () -> Float = { 0f },
+    controlFocus: () -> Float = { 0f },
+    weatherFocus: () -> Float = { 0f },
     onWeatherClick: () -> Unit = {},
 ) {
     val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
@@ -65,6 +75,10 @@ internal fun FrameLayout(
     val motorColor = if (muted || frame.motorTemp == null) DimText else MotorTempColor
     val ctrlColor = if (muted || frame.ctrlTemp == null) DimText else CtrlTempColor
 
+    // Readouts leave for any focus mode; the nav stack survives nav focus alone.
+    val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
+    val navStackAlpha = { fadeOut(maxOf(controlFocus(), weatherFocus())) }
+
     val navBearing = frame.navBearing
     val navDistance = frame.navDistanceM
     val hasNav = navBearing != null && navDistance != null
@@ -72,7 +86,9 @@ internal fun FrameLayout(
     Box(modifier = Modifier.fillMaxSize()) {
         // Bottom layer: route ahead + rider dot, under every gauge and readout.
         if (hasNav) {
-            NavRoute(frame = frame, muted = muted)
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
+                NavRoute(frame = frame, muted = muted)
+            }
         }
 
         // Rim gauges on one shared screen-centred circle.
@@ -102,30 +118,35 @@ internal fun FrameLayout(
         // Navigation, only while the phone is sending it: chevron on the rim + distance above the
         // battery %. No destination means no nav lanes, and the frame renders exactly as before.
         if (hasNav) {
-            NavPointer(bearingDeg = navBearing!!, distanceM = navDistance!!, muted = muted, focus = focus)
+            NavPointer(
+                bearingDeg = navBearing!!,
+                distanceM = navDistance!!,
+                muted = muted,
+                focus = focus,
+                stackAlpha = navStackAlpha,
+            )
         } else {
             // Nav focus with nothing to show would be a blank circle. Say why, but only once the
             // drag is nearly done, so it never flickers under the departing readouts.
-            NavAbsentHint(focus)
+            NavAbsentHint(focus = focus, stackAlpha = navStackAlpha)
         }
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
         // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
-        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor, focus)
-        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor, focus)
+        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor, readoutFocus)
+        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor, readoutFocus)
 
         // ── Top: wall clock at the rim gap, forecast under it ──
         // Its own stack, so the heroes below never move when the forecast appears or disappears.
         Column(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 8.dp)
+                .graphicsLayer { alpha = fadeOut(readoutFocus()) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             WatchClock(color = if (muted) DimText else SecondaryText)
-            WeatherReadout(
-                muted = muted,
-                onClick = onWeatherClick,
-                modifier = Modifier.graphicsLayer { alpha = fadeOut(focus()) },
-            )
+            WeatherReadout(muted = muted, onClick = onWeatherClick)
         }
 
         // ── Speed + duty: pinned to the rim, not stacked under the clock ──
@@ -135,7 +156,7 @@ internal fun FrameLayout(
                 .fillMaxWidth()
                 .padding(start = 32.dp, end = 32.dp, top = HERO_TOP_INSET)
                 .graphicsLayer {
-                    val f = focus()
+                    val f = readoutFocus()
                     alpha = fadeOut(f)
                     // Values retreat into the arcs they belong to: speed/duty up to the top
                     // rim, battery down to the bottom one.
@@ -159,7 +180,7 @@ internal fun FrameLayout(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)
                 .graphicsLayer {
-                    val f = focus()
+                    val f = readoutFocus()
                     alpha = fadeOut(f)
                     translationY = f * BATTERY_FOCUS_DROP.toPx()
                 },
@@ -173,12 +194,12 @@ internal fun FrameLayout(
  * recomposes.
  */
 @Composable
-private fun NavAbsentHint(focus: () -> Float) {
+private fun NavAbsentHint(focus: () -> Float, stackAlpha: () -> Float) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 32.dp)
-            .graphicsLayer { alpha = fadeIn(focus()) },
+            .graphicsLayer { alpha = fadeIn(focus()) * stackAlpha() },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

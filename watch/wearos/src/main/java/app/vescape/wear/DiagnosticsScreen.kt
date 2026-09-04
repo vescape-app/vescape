@@ -1,6 +1,7 @@
 package app.vescape.wear
 
 import android.os.SystemClock
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,7 +45,11 @@ fun DiagnosticsScreen() {
         }
     }
 
-    ScalingLazyColumn(modifier = Modifier.fillMaxSize()) {
+    // Vertical room so scrolled items never graze the pinned rim arcs above and below.
+    ScalingLazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(vertical = RIM_CLEARANCE),
+    ) {
         item {
             Text(
                 text = "Diagnostics",
@@ -117,3 +122,6 @@ private fun lastFrameLabel(lastFrameAtMs: Long?, nowMs: Long): String {
     if (lastFrameAtMs == null) return "never"
     return "${((nowMs - lastFrameAtMs).coerceAtLeast(0L)) / 1000}s ago"
 }
+
+/** Keeps the list clear of the rim gauges the mirror pins behind every page. */
+private val RIM_CLEARANCE = 28.dp
