@@ -61,7 +61,18 @@ fun WeatherScreen() {
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(top = CURRENT_TOP_PADDING),
+        // The rim arcs own the outside of the circle now, so the whole page lives inside them:
+        // without the inset the hourly strip and the sun times run straight into the arcs.
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                PaddingValues(
+                    start = PAGE_INSET,
+                    end = PAGE_INSET,
+                    top = CURRENT_TOP_PADDING,
+                    bottom = PAGE_INSET,
+                ),
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top,
     ) {
@@ -74,7 +85,7 @@ fun WeatherScreen() {
             )
             Text(
                 text = "${forecast.temperatureC}°",
-                style = MaterialTheme.typography.display2,
+                style = MaterialTheme.typography.display3,
                 color = PrimaryText,
                 modifier = Modifier.padding(start = 8.dp),
             )
@@ -107,7 +118,7 @@ fun WeatherScreen() {
         Spacer(modifier = Modifier.height(12.dp))
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 12.dp),
+            contentPadding = PaddingValues(horizontal = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(HOUR_GAP),
         ) {
             items(forecast.hourly, key = { it.minuteOfDay }) { hour -> HourColumn(hour) }
@@ -209,12 +220,15 @@ private fun FadingRule(modifier: Modifier = Modifier) {
     )
 }
 
-private val HERO_ICON_SIZE = 32.dp
-private val CURRENT_TOP_PADDING = 30.dp
+/** Horizontal and bottom margin into the inner circle, clear of the pinned rim arcs. */
+private val PAGE_INSET = GAUGE_INNER_INSET + 8.dp
+
+private val HERO_ICON_SIZE = 26.dp
+private val CURRENT_TOP_PADDING = 34.dp
 private val LABEL_TRACKING = 1.2.sp
-private val FORECAST_GAP = 14.dp
-private val RULE_INSET = 30.dp
-private val SUN_TIMES_GAP = 10.dp
-private val HOUR_GAP = 12.dp
-private val HOUR_ICON_SIZE = 20.dp
+private val FORECAST_GAP = 12.dp
+private val RULE_INSET = 14.dp
+private val SUN_TIMES_GAP = 8.dp
+private val HOUR_GAP = 10.dp
+private val HOUR_ICON_SIZE = 18.dp
 private val HOUR_PRECIP_FONT_SIZE = 10.sp

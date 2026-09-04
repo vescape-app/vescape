@@ -140,7 +140,7 @@ private fun LightsSplit(
 ) {
     val accent = if (enabled) LightsColor else GuideColor
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val diameter = minOf(size.width, size.height) - INNER_INSET.toPx() * 2f
+        val diameter = minOf(size.width, size.height) - GAUGE_INNER_INSET.toPx() * 2f
         val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
         val arcSize = Size(diameter, diameter)
 
@@ -209,7 +209,6 @@ private fun LightsHalf(
 private const val PENDING_TIMEOUT_MS = 2_000L
 
 /** Clears the rim arcs: the Lights centre lives inside the circle the gauges draw. */
-private val INNER_INSET = 14.dp
 private val GLYPH_SIZE = 28.dp
 private const val DIVIDER_STROKE_PX = 2f
 private const val ON_TINT_ALPHA = 0.18f

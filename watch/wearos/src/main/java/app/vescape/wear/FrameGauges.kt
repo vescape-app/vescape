@@ -348,6 +348,12 @@ private const val BATTERY_SWEEP = 100f
 /** Distance from the layout edge to the gauge circle every rim arc is drawn on. */
 internal val GAUGE_RIM_INSET = 3.dp
 
+/**
+ * Distance from the layout edge to the inner circle a centre page may use. Everything outside it
+ * belongs to the pinned rim arcs, so a page that ignores this insets its content into them.
+ */
+internal val GAUGE_INNER_INSET = 14.dp
+
 private const val SPEED_MAX = 50.0
 
 private const val TEMP_MIN = 10.0

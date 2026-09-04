@@ -121,7 +121,7 @@ fun MoveScreen(
 private fun MoveSplit(held: Int, enabled: Boolean) {
     val accent = if (enabled) SpeedColor else GuideColor
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val diameter = minOf(size.width, size.height) - INNER_INSET.toPx() * 2f
+        val diameter = minOf(size.width, size.height) - GAUGE_INNER_INSET.toPx() * 2f
         val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
         val arcSize = Size(diameter, diameter)
 
@@ -197,7 +197,6 @@ private fun CenterLabel(enabled: Boolean, strengthPercent: Int?) {
 }
 
 /** Clears the rim arcs: the Move centre lives inside the circle the gauges draw. */
-private val INNER_INSET = 14.dp
 private const val DIVIDER_STROKE_PX = 2f
 private const val HELD_TINT_ALPHA = 0.18f
 private const val DIVIDER_GAP_FRACTION = 0.5f
