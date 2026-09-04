@@ -30,7 +30,7 @@ export function validateReleaseMarkdown(source: string, label = 'Release note'):
     ),
   )
   if (unsupported) throw new Error(`${label} uses unsupported Markdown (${unsupported.type})`)
-  const allowedSections = ['New', 'Improved', 'Fixed']
+  const allowedSections = ['New', 'Improved', 'Fixed', 'Watch']
   const sections = tokens.flatMap((token, index) => {
     if (token.type !== 'heading_open') return []
     const name = tokens[index + 1]?.type === 'inline' ? tokens[index + 1].content.trim() : ''
@@ -42,7 +42,7 @@ export function validateReleaseMarkdown(source: string, label = 'Release note'):
   if (new Set(sections).size !== sections.length) throw new Error(`${label} repeats a section`)
   const indexes = sections.map((section) => allowedSections.indexOf(section))
   if (indexes.some((index, position) => position > 0 && index <= indexes[position - 1])) {
-    throw new Error(`${label} sections must be ordered New, Improved, Fixed`)
+    throw new Error(`${label} sections must be ordered New, Improved, Fixed, Watch`)
   }
 }
 
