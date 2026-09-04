@@ -1,5 +1,6 @@
 package app.vescape.wear
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,6 +10,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -16,6 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.wear.compose.foundation.BasicSwipeToDismissBox
 import androidx.wear.compose.foundation.edgeSwipeToDismiss
 import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
@@ -92,6 +96,10 @@ fun MirrorScreen(
                 // 3 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
                 val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
                 var dismissEnabled by remember { mutableStateOf(true) }
+                // Idle clock for the auto-return. Remembered inside this branch on purpose:
+                // ambient replaces the whole subtree, so leaving ambient re-remembers it and the
+                // window restarts from the moment the rider looks at the screen again.
+                var lastTouchMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
                 // Both pagers are transparent: they only swap the centre of the circle. Their drag
                 // offsets are the focus progresses the pinned frame fades its readouts against.
                 val controlFocus = {
@@ -123,6 +131,17 @@ fun MirrorScreen(
                             !navFocused
                     }
                 }
+                // Horizontal pages are transient controls, so an untouched wrist drifts back to
+                // the gauges. The vertical axis is never moved: weather and the nav-focus map are
+                // places a rider parks on deliberately. Re-keying on lastTouchMs restarts the
+                // window; a held Move suspends it outright.
+                LaunchedEffect(lastTouchMs, moveHeld) {
+                    if (moveHeld) return@LaunchedEffect
+                    delay(CONTROL_IDLE_RETURN_MS)
+                    if (controlPagerState.currentPage != 0) {
+                        controlPagerState.animateScrollToPage(0)
+                    }
+                }
                 // The dismiss box wraps the pinned gauges. Outside it, a dismiss drag would slide
                 // the transparent pages away while the arcs stayed nailed down.
                 BasicSwipeToDismissBox(
@@ -130,7 +149,21 @@ fun MirrorScreen(
                     state = dismissState,
                     userSwipeEnabled = dismissEnabled,
                 ) { isBackground ->
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(
+                        // Initial pass: the event is seen before any child consumes it, so a tap
+                        // that lands on a Move half or does nothing at all still counts as touch.
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent(PointerEventPass.Initial)
+                                        lastTouchMs = SystemClock.elapsedRealtime()
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         if (isBackground) {
                             ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
                         } else {
@@ -204,6 +237,9 @@ fun MirrorScreen(
         }
     }
 }
+
+/** Idle time after which the horizontal pager drifts back to the gauges. */
+private const val CONTROL_IDLE_RETURN_MS = 45_000L
 
 /** Gauges centre, Board Move, the reserved Lights slot, diagnostics. */
 private const val CONTROL_PAGE_COUNT = 4
