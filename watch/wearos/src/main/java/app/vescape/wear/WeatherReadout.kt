@@ -32,9 +32,10 @@ internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Mo
 
     Column(
         // Null while another page has the screen: the readout is drawn over the pagers so the tap
-        // can reach it at all, and an invisible target up there would swallow taps meant for them.
+        // can reach it at all, and a target up there would swallow drags meant for them. A disabled
+        // `clickable` still installs a pointer-input node, so the modifier has to be absent, not off.
         modifier = modifier
-            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -116,17 +117,25 @@ fun MirrorScreen(
                 }
                 val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
                 // A page is interactive only once it has settled: a tap landing mid-swipe belongs
-                // to the gesture, not to the control it happened to be over.
-                val activePage = controlPagerState.currentPage
-                    .takeIf {
-                        !controlPagerState.isScrollInProgress &&
-                            controlPagerState.currentPageOffsetFraction == 0f
+                // to the gesture, not to the control it happened to be over. Derived, so the drag
+                // offset does not invalidate the whole mirror on every frame of a swipe.
+                val activePage by remember(controlPagerState) {
+                    derivedStateOf {
+                        controlPagerState.currentPage.takeIf {
+                            !controlPagerState.isScrollInProgress &&
+                                controlPagerState.currentPageOffsetFraction == 0f
+                        }
                     }
+                }
                 // The readout only answers a tap while the gauges own both axes; mid-swipe or on
                 // another page the tap belongs to the page under it.
-                val weatherTappable = activePage == CONTROL_PAGE_GAUGES &&
-                    !verticalPagerState.isScrollInProgress &&
-                    verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+                val weatherTappable by remember(controlPagerState, verticalPagerState) {
+                    derivedStateOf {
+                        activePage == CONTROL_PAGE_GAUGES &&
+                            !verticalPagerState.isScrollInProgress &&
+                            verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+                    }
+                }
                 // PagerState.settledPage can change before the snap reaches offset zero.
                 // Changing the parent modifier then cancels that animation mid-page.
                 LaunchedEffect(

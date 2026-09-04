@@ -48,8 +48,10 @@ import kotlin.math.sin
  * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
  *
- * This layout is pinned at the root of the mirror, under both pagers: the rim arcs are permanent
- * furniture and never move, whatever page the rider swipes to. The three focus progresses say how
+ * This layout is pinned at the root of the mirror, over both pagers: the rim arcs are permanent
+ * furniture and never move, whatever page the rider swipes to. It draws above the pages so the
+ * forecast readout can be tapped at all; that readout is the only thing here that takes pointer
+ * input, and only while [onWeatherClick] is non-null, so a page below is never blocked. The three focus progresses say how
  * far a page has taken over, and each is read as a lambda so dragging never recomposes the layout —
  * everything above the arcs fades and slides in a graphics layer instead.
  *
