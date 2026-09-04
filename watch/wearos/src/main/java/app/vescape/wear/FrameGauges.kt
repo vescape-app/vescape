@@ -100,14 +100,18 @@ internal fun FrameLayout(
             val battFrac = ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
             val motorFrac = tempFraction(frame.motorTemp)
             val ctrlFrac = tempFraction(frame.ctrlTemp)
-            val motorGlow = 0.08f + 0.40f * motorFrac
-            val ctrlGlow = 0.08f + 0.40f * ctrlFrac
-            val battGlow = 0.06f + 0.20f * battFrac
+            // Read in the draw scope, so a drag repaints the arcs without recomposing them.
+            // The wedge fills recede on a focused page: the rim lines still carry the values, but
+            // their glow stops competing with whatever took the centre of the circle.
+            val glowDim = dimGlow(readoutFocus())
+            val motorGlow = (0.08f + 0.40f * motorFrac) * glowDim
+            val ctrlGlow = (0.08f + 0.40f * ctrlFrac) * glowDim
+            val battGlow = (0.06f + 0.20f * battFrac) * glowDim
 
             // Speed: left (180°) -> top, sweep clockwise.
-            drawGauge(center, radius, 180f, QUARTER_SWEEP, speedFrac, speedColor, style = StrongGaugeStyle)
+            drawGauge(center, radius, 180f, QUARTER_SWEEP, speedFrac, speedColor, style = StrongGaugeStyle, glowStrength = STRONG_GLOW * glowDim)
             // Duty: right (360°) -> top, sweep counter-clockwise.
-            drawGauge(center, radius, 360f, -QUARTER_SWEEP, dutyFrac, dutyColor, style = StrongGaugeStyle)
+            drawGauge(center, radius, 360f, -QUARTER_SWEEP, dutyFrac, dutyColor, style = StrongGaugeStyle, glowStrength = STRONG_GLOW * glowDim)
             // Battery: bottom arc, left (140°) -> right (40°) through 90°.
             drawGauge(center, radius, 140f, -BATTERY_SWEEP, battFrac, battColor, style = SoftGaugeStyle, drawHead = false, glowStrength = battGlow)
             // Temps: small arcs in the gaps beside the battery gauge, growing from the bottom.
@@ -282,7 +286,7 @@ private fun DrawScope.drawGauge(
     color: Color,
     style: GaugeStyle,
     drawHead: Boolean = true,
-    glowStrength: Float = 0.38f,
+    glowStrength: Float = STRONG_GLOW,
 ) {
     val topLeft = Offset(center.x - radius, center.y - radius)
     val arcSize = Size(radius * 2f, radius * 2f)
@@ -366,6 +370,14 @@ private const val CTRL_ARC_START = 36f
 internal fun fadeOut(focus: Float): Float = (1f - focus * FOCUS_FADE_RATE).coerceIn(0f, 1f)
 
 internal const val FOCUS_FADE_RATE = 1.8f
+
+/** Gradient fill strength on the gauges page; every arc scales its glow off this. */
+private const val STRONG_GLOW = 0.38f
+
+/** How far the wedge fills recede once a page has taken focus. Rim lines are left alone. */
+internal fun dimGlow(focus: Float): Float = 1f - focus.coerceIn(0f, 1f) * GLOW_FOCUS_DIM
+
+private const val GLOW_FOCUS_DIM = 0.55f
 
 /** The no-nav hint arrives only after the readouts are gone, so the two never overlap. */
 private fun fadeIn(focus: Float): Float =
