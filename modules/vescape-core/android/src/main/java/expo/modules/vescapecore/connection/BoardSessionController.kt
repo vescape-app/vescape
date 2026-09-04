@@ -76,6 +76,8 @@ import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
 import expo.modules.vescapecore.watch.WatchBoard
 import expo.modules.vescapecore.watch.WatchBoardPusher
+import expo.modules.vescapecore.watch.WatchLightsRelay
+import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WATCH_MIRROR_AWAKE_TIMEOUT_MS
 import expo.modules.vescapecore.watch.WatchMirrorPresence
@@ -352,6 +354,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
             strengthPercent = { boardMoveStrengthPercent },
             startMove = ::startBoardMove,
             stopMove = ::stopBoardMove,
+            record = ::recordWatchDiagnostic,
+        )
+    }
+    private val watchLightsRelay by lazy {
+        WatchLightsRelay(
+            scheduler = scheduler,
+            currentLights = { boardLights },
+            setLights = ::setBoardLights,
             record = ::recordWatchDiagnostic,
         )
     }
@@ -2067,6 +2077,8 @@ private var wearAutoLaunchOnConnect = true
         if (next == lastEmittedLinkIntegrity) return
         lastEmittedLinkIntegrity = next
         emitState()
+        // Trust is half of `lightsControllable`, and it moves without the lights moving.
+        pushWatchBoard()
         // Link just became trusted — schedule the one background config read for this session.
         if (next == LinkIntegrity.Trusted) scheduleBoardConfigRead()
         // Mismatched firmware makes every cached offset meaningless: drop the held object and the
@@ -2354,6 +2366,17 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun publishBoardLights() {
         emitEvent("onBoardLights", lightsEventBody())
+        pushWatchBoard()
+    }
+
+    /**
+     * Push the wrist's slice of the light state. Called from [publishBoardLights] and from every
+     * phase and link-integrity change too, because `lightsControllable` moves on its own: a link
+     * that drops trust or a transport that goes away changes whether a write would be accepted
+     * without changing either switch, and the wrist would otherwise keep offering taps that the
+     * phone silently refuses. The pusher deduplicates, so the extra calls cost nothing on the wire.
+     */
+    private fun pushWatchBoard() {
         watchBoardPusher.push(
             WatchBoard(
                 lightsEnabled = boardLights?.enabled,
@@ -2435,6 +2458,12 @@ private var wearAutoLaunchOnConnect = true
      * setting — and a missing tick stops the board, see [WatchMoveRelay].
      */
     fun watchMove(direction: Int) = watchMoveRelay.accept(direction)
+
+    /**
+     * A wrist light edit (ADR-0033). One switch named, both composed and written here, see
+     * [WatchLightsRelay].
+     */
+    internal fun watchLights(switch: WatchLightsSwitch, on: Boolean) = watchLightsRelay.accept(switch, on)
 
     /**
      * Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level
@@ -2660,6 +2689,9 @@ private var wearAutoLaunchOnConnect = true
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        // A phase change can flip whether a light write would be accepted, with the lights
+        // themselves unchanged. See [pushWatchBoard].
+        pushWatchBoard()
         recordName?.let { recordingCoordinator.recordState(it, recordProperties) }
         rescheduleAutoClose()
         // The notification mirrors the phase, not just telemetry frames: without this a phase change

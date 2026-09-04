@@ -33,7 +33,8 @@ import kotlinx.coroutines.launch
  * so the rider never loses speed, duty, battery and temps by swiping. Routes between the Board
  * Move page ([MoveScreen]), the diagnostics pager page ([DiagnosticsScreen]), the
  * waiting/disconnected status layouts, the ambient hero, and the close prompt. Also owns the
- * refresh tick that ages a stopped stream into DISCONNECTED.
+ * refresh tick that ages a stopped stream into DISCONNECTED. The board Lights page ([LightsScreen])
+ * sits between them.
  *
  * The mirror deliberately does not hold the screen on. `FLAG_KEEP_SCREEN_ON` also suppresses
  * ambient, so a ride ran the display at full brightness for hours and the low-power ambient hero
@@ -92,7 +93,7 @@ fun MirrorScreen(
             }
             else -> {
                 val dismissState = rememberSwipeToDismissBoxState()
-                // Page 0 = gauges centre (empty), 1 = Board Move, 2 = reserved for Lights (#456),
+                // Page 0 = gauges centre (empty), 1 = Board Move, 2 = board Lights,
                 // 3 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
                 val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
                 var dismissEnabled by remember { mutableStateOf(true) }
@@ -110,10 +111,13 @@ fun MirrorScreen(
                     (1f - (weatherPagerState.currentPage + weatherPagerState.currentPageOffsetFraction))
                         .coerceIn(0f, 1f)
                 }
-                val moveInteractionEnabled =
-                    controlPagerState.currentPage == 1 &&
+                // A page is interactive only once it has settled: a tap landing mid-swipe belongs
+                // to the gesture, not to the control it happened to be over.
+                val activePage = controlPagerState.currentPage
+                    .takeIf {
                         !controlPagerState.isScrollInProgress &&
-                        controlPagerState.currentPageOffsetFraction == 0f
+                            controlPagerState.currentPageOffsetFraction == 0f
+                    }
                 // PagerState.settledPage can change before the snap reaches offset zero.
                 // Changing the parent modifier then cancels that animation mid-page.
                 LaunchedEffect(
@@ -218,11 +222,13 @@ fun MirrorScreen(
                                                 ) {}
                                                 1 -> MoveScreen(
                                                     sender = sender,
-                                                    interactionEnabled = moveInteractionEnabled,
+                                                    interactionEnabled = activePage == 1,
                                                     onHoldChanged = { moveHeld = it },
                                                 )
-                                                // Page 2 is deliberately empty: the Lights page
-                                                // lands here without touching pager wiring.
+                                                2 -> LightsScreen(
+                                                    sender = sender,
+                                                    interactionEnabled = activePage == 2,
+                                                )
                                                 3 -> DiagnosticsScreen()
                                                 else -> Unit
                                             }
@@ -241,7 +247,7 @@ fun MirrorScreen(
 /** Idle time after which the horizontal pager drifts back to the gauges. */
 private const val CONTROL_IDLE_RETURN_MS = 45_000L
 
-/** Gauges centre, Board Move, the reserved Lights slot, diagnostics. */
+/** Gauges centre, Board Move, board Lights, diagnostics. */
 private const val CONTROL_PAGE_COUNT = 4
 
 @Composable

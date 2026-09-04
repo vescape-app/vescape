@@ -19,6 +19,7 @@ const val COMMAND_PATH = "/command"
 
 private const val COMMAND_KIND_MOVE: Byte = 1
 private const val COMMAND_KIND_MIRROR_AWAKE: Byte = 2
+private const val COMMAND_KIND_LIGHTS: Byte = 3
 
 /**
  * How often the Mirror re-states its wake level while it is on screen. The phone stops pushing
@@ -54,6 +55,31 @@ fun encodeMoveCommand(direction: Int): ByteArray =
 /** `[kind, level]`, level per [WakeLevel.wire]. */
 fun encodeWakeLevelCommand(level: WakeLevel): ByteArray =
     byteArrayOf(COMMAND_KIND_MIRROR_AWAKE, level.wire)
+
+/**
+ * Which of the board's two light switches an edit names.
+ *
+ * Deliberately *not* the wire mask Refloat's lights command uses (bit0 = LEDs, bit1 = headlights):
+ * there both bits are values, here bit1 is a selector and bit0 is the value. Reusing the same bit
+ * order would make `0b10` mean "headlights on" in one place and "headlights off" in the other.
+ *
+ * Wire values — append, never renumber.
+ */
+enum class LightSwitch(val selector: Int) {
+    LEDS(0),
+    HEADLIGHT(1),
+}
+
+/**
+ * `[kind, value]` where value is `bit1 << 1 | bit0`: **bit0 = the target on/off state, bit1 = which
+ * switch** ([LightSwitch.selector]).
+ *
+ * The wrist sends the *edit*, never both switches. Asserting both would let a wrist holding a
+ * slightly stale `/board` push revert a switch the phone flipped a moment earlier, and it would
+ * duplicate the compose step the phone already owns.
+ */
+fun encodeLightsCommand(switch: LightSwitch, on: Boolean): ByteArray =
+    byteArrayOf(COMMAND_KIND_LIGHTS, ((switch.selector shl 1) or if (on) 1 else 0).toByte())
 
 /**
  * Fire-and-forget send of the rider's *current* intent to every connected node, off the UI thread.
@@ -116,6 +142,21 @@ class CommandSender(context: Context) {
         } catch (rejected: RejectedExecutionException) {
             // The wrist app is going away; the phone's wake-level dead-man stops the push anyway.
             Log.w("VescapeWear", "Wake level dropped after shutdown", rejected)
+        }
+    }
+
+    /**
+     * Flip one board light switch. Like [sendWakeLevel] and unlike [sendMove], this is queued in
+     * order rather than routed through the latest-wins [pending] slot: that slot exists so a Move
+     * release can overtake stale holds, and coalescing a light edit into it would drop one of two
+     * taps the rider made on purpose.
+     */
+    fun sendLights(switch: LightSwitch, on: Boolean) {
+        try {
+            sends.execute { sendPayload(encodeLightsCommand(switch, on)) }
+        } catch (rejected: RejectedExecutionException) {
+            // The wrist app is going away; the board keeps whatever the last accepted write set.
+            Log.w("VescapeWear", "Lights command dropped after shutdown", rejected)
         }
     }
 
