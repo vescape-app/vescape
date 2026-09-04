@@ -117,6 +117,8 @@ object ReplaySceneParser {
             },
             sunriseMinuteOfDay = root.getInt("sunriseMinuteOfDay"),
             sunsetMinuteOfDay = root.getInt("sunsetMinuteOfDay"),
+            latitude = root.optDouble("latitude").takeIf { !it.isNaN() },
+            longitude = root.optDouble("longitude").takeIf { !it.isNaN() },
             fetchedAtMs = nowMs,
         )
     } catch (e: Exception) {

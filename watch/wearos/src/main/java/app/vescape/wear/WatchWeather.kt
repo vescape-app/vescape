@@ -31,6 +31,8 @@ const val WEATHER_HOUR_ICONS = "hourIcons"
 const val WEATHER_HOUR_PRECIPS = "hourPrecips"
 const val WEATHER_SUNRISE = "sunriseMinuteOfDay"
 const val WEATHER_SUNSET = "sunsetMinuteOfDay"
+const val WEATHER_LATITUDE = "latitude"
+const val WEATHER_LONGITUDE = "longitude"
 const val WEATHER_FETCHED_AT = "fetchedAtMs"
 
 /** One forecast hour, as the wrist renders it. [minuteOfDay] is local to the forecast location. */
@@ -54,6 +56,12 @@ data class WatchWeather(
     /** Minutes since local midnight; null when the phone had no daily times to send. */
     val sunriseMinuteOfDay: Int?,
     val sunsetMinuteOfDay: Int?,
+    /**
+     * Where the forecast was taken. Null from a phone too old to send it, which is why the radar
+     * page can be empty on a wrist that is otherwise showing weather fine.
+     */
+    val latitude: Double?,
+    val longitude: Double?,
     val fetchedAtMs: Long,
 )
 
@@ -139,6 +147,12 @@ fun currentMinuteOfDay(): Int {
 
 /** Minute of day from the device clock, the unit every sun and hour time on the wrist is in. */
 fun minuteOfDayNow(): Int = Calendar.getInstance().let {
+    it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
+}
+
+/** Local minute of day for an instant, the unit every wrist time is formatted from. */
+fun minuteOfDay(epochMs: Long): Int = Calendar.getInstance().let {
+    it.timeInMillis = epochMs
     it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
 }
 

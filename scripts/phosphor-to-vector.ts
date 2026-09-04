@@ -29,6 +29,7 @@ const ICONS = [
   'map-pin',
   'lightbulb',
   'headlights',
+  'target',
 ]
 
 const WEIGHT = 'duotone'

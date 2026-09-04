@@ -9,6 +9,7 @@ import { LegalLimitsMapLayer } from '@/modules/legal/components/LegalLimitsMapLa
 import { MapPin } from '@/modules/map/components/MapPin'
 import { MAP_DEFAULTS } from '@/modules/map/constants/mapStyles'
 import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import { RadarRangeRings } from '@/modules/weather/components/RadarRangeRings'
 import { RainViewerOverlay } from '@/modules/weather/components/RainViewerOverlay'
 import { HistoryMapLayers } from '@/screens/main/map/HistoryMapLayers'
 import { LiveMapLayers } from '@/screens/main/map/LiveMapLayers'
@@ -103,6 +104,7 @@ export function MainMapLayers(props: MainMapLayersProps) {
     <>
       <BaseTerrainLayers isMapy={isMapy} isOneDark={isOneDark} showBuildings3d={showBuildings3d} />
       <RainViewerOverlay visible={weatherActive} />
+      <RadarRangeRings visible={weatherActive} fix={props.accuracyFix} />
       {legalLimitsActive ? <LegalLimitsMapLayer onSelectCountry={onSelectLegalCountry} /> : null}
       <PrivacyZonesMapLayer />
       {historyActive ? (

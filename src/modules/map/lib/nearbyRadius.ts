@@ -8,11 +8,18 @@ const ASSUMED_VIEWPORT_PX = 1024
 const MIN_WATCH_ROUTE_SPAN_METERS = 150
 const MAX_WATCH_ROUTE_SPAN_METERS = 2_000
 
-function metersPerPixel(zoom: number, latitude: number): number | null {
+/** Ground metres one screen pixel covers at [zoom] and [latitude]. Null on non-finite input. */
+export function metersPerPixel(zoom: number, latitude: number): number | null {
   if (!Number.isFinite(zoom) || !Number.isFinite(latitude)) return null
   const latitudeScale = Math.cos((Math.min(Math.abs(latitude), 85) * Math.PI) / 180)
   const value = (EARTH_CIRCUMFERENCE_METERS * latitudeScale) / (TILE_SIZE_PX * 2 ** zoom)
   return Number.isFinite(value) ? value : null
+}
+
+/** The zoom at which one screen pixel covers [scale] metres — the inverse of [metersPerPixel]. */
+export function zoomForMetersPerPixel(scale: number, latitude: number): number {
+  const latitudeScale = Math.cos((Math.min(Math.abs(latitude), 85) * Math.PI) / 180)
+  return Math.log2((EARTH_CIRCUMFERENCE_METERS * latitudeScale) / (TILE_SIZE_PX * scale))
 }
 
 /**

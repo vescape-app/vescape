@@ -22,7 +22,6 @@ interface RainViewerRadarState {
 interface RainViewerRadarActions {
   fetch: (force?: boolean) => Promise<void>
   setFrameIndex: (index: number, transitionMode?: RainViewerRadarTransitionMode) => void
-  nextFrame: () => void
 }
 
 interface RainViewerMetaResponse {
@@ -37,6 +36,13 @@ function clampFrameIndex(index: number, frameCount: number): number {
   return Math.max(0, Math.min(frameCount - 1, index))
 }
 
+/**
+ * Slippy-map tile template for the phone's Mapbox overlay. The wrist renders the same provider from
+ * single centred images instead of a tile grid, so the two build different URLs from the same
+ * metadata — the frame list and the "past frames only" rule are what must stay in step.
+ *
+ * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRadar.kt `RainViewer`
+ */
 export function buildRainViewerTileTemplate(host: string, frame: RainViewerRadarFrame): string {
   return `${host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`
 }
@@ -116,12 +122,6 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
     setFrameIndex(index, transitionMode = 'manual') {
       const { frames } = get()
       set({ selectedFrameIndex: clampFrameIndex(index, frames.length), transitionMode })
-    },
-
-    nextFrame() {
-      const { frames, selectedFrameIndex } = get()
-      if (frames.length <= 1) return
-      set({ selectedFrameIndex: (selectedFrameIndex + 1) % frames.length, transitionMode: 'auto' })
     },
   }),
 )
