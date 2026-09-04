@@ -46,6 +46,42 @@ class WatchLightsRelayTest {
         assertEquals(listOf("watch_lights_dropped"), events)
     }
 
+    /** Two taps before the echo: the second states the first's value, not the pre-edit one. */
+    @Test
+    fun aSecondEditBeforeTheEchoKeepsTheFirst() {
+        current = BoardLightsState(enabled = false, headlightsEnabled = false)
+        val relay = relay()
+        relay.send(WatchLightsSwitch.LEDS, true)
+        relay.send(WatchLightsSwitch.HEADLIGHT, true)
+        assertEquals(listOf(true to false, true to true), writes)
+    }
+
+    /** Once the phone's own truth moves, it wins again — a wrist edit never reverts it. */
+    @Test
+    fun aPhoneSideChangeReplacesThePendingPair() {
+        current = BoardLightsState(enabled = false, headlightsEnabled = false)
+        val relay = relay()
+        relay.send(WatchLightsSwitch.LEDS, true)
+        current = BoardLightsState(enabled = false, headlightsEnabled = true)
+        relay.send(WatchLightsSwitch.LEDS, true)
+        assertEquals(listOf(true to false, true to true), writes)
+    }
+
+    /** A refused write is not state; the next edit composes from the phone's truth again. */
+    @Test
+    fun aRefusedWriteLeavesNoPendingPair() {
+        current = BoardLightsState(enabled = false, headlightsEnabled = false)
+        val relay = WatchLightsRelay(
+            scheduler = scheduler,
+            currentLights = { current },
+            setLights = { enabled, headlights -> writes.add(enabled to headlights); false },
+            record = { name, _ -> events.add(name) },
+        )
+        relay.send(WatchLightsSwitch.LEDS, true)
+        relay.send(WatchLightsSwitch.HEADLIGHT, true)
+        assertEquals(listOf(true to false, false to true), writes)
+    }
+
     /** A binder-thread command must not touch Board Session state before the hop. */
     @Test
     fun nothingIsWrittenUntilTheSchedulerRunsIt() {

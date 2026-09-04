@@ -11,7 +11,8 @@ import expo.modules.vescapecore.runtime.Scheduler
  * The wrist sends one switch; the write states both. Composing the pair here rather than on the
  * wrist is what keeps a slightly stale `/board` push from reverting a switch the phone changed a
  * moment earlier, and it mirrors `useBoardLights`, which also refuses to write until both values
- * are known.
+ * are known. Edits that arrive before the board echoes compose on top of each other, so a quick
+ * second tap cannot undo the first.
  *
  * Commands arrive on a Wear binder thread; every read of Board Session light state and the write
  * itself hop to [scheduler], the one thread allowed to touch that state.
@@ -25,18 +26,32 @@ internal class WatchLightsRelay(
     private val setLights: (Boolean, Boolean) -> Boolean,
     private val record: (String, Map<String, Any?>) -> Unit,
 ) {
+    /** The pair last written from a wrist edit, and the phone truth it was composed against. */
+    private var pending: BoardLightsState? = null
+    private var pendingBase: BoardLightsState? = null
+
     fun accept(switch: WatchLightsSwitch, on: Boolean) {
         scheduler.post { apply(switch, on) }
     }
 
     private fun apply(switch: WatchLightsSwitch, on: Boolean) {
-        val next = composeBoardLights(currentLights(), switch, on)
+        val truth = currentLights()
+        // A second edit before the first echo must build on the first, or it states the pre-edit
+        // value of the other switch and reverts it. The moment the phone's own truth moves — echo,
+        // config seed, session end — that truth wins again and the pending pair is forgotten, which
+        // is what keeps a wrist edit from reverting a switch the phone changed meanwhile.
+        val base = if (pending != null && truth == pendingBase) pending else truth
+        val next = composeBoardLights(base, switch, on)
         if (next == null) {
             // The board has never said what its lights are, so there is no second value to state.
+            pending = null
+            pendingBase = null
             record("watch_lights_dropped", mapOf("switch" to switch.name, "on" to on))
             return
         }
         val accepted = setLights(next.enabled, next.headlightsEnabled)
+        pending = if (accepted) next else null
+        pendingBase = if (accepted) truth else null
         record(
             "watch_lights_set",
             mapOf(
