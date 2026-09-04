@@ -59,71 +59,97 @@ fun WeatherScreen() {
         return
     }
 
-    Column(
-        // The rim arcs own the outside of the circle, so the page lives inside them. The inset is
-        // per-child rather than on the column: the hourly strip carries it as content padding so
-        // its ends still scroll out to the bezel instead of stopping short of it.
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = CURRENT_TOP_PADDING, bottom = PAGE_INSET),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(weatherIconRes(forecast.icon)),
-                contentDescription = forecast.label,
-                tint = weatherColor(forecast.icon),
-                modifier = Modifier.size(HERO_ICON_SIZE),
-            )
-            Text(
-                text = "${forecast.temperatureC}°",
-                style = MaterialTheme.typography.display3,
-                color = PrimaryText,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-        Text(
-            text = forecast.label.uppercase(),
-            style = MaterialTheme.typography.caption3.copy(letterSpacing = LABEL_TRACKING),
-            color = SecondaryText,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = PAGE_INSET),
-        )
-        if (forecast.precipitationProbability > 0) {
-            Spacer(modifier = Modifier.height(2.dp))
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            // The rim arcs own the outside of the circle, so the page lives inside them. The inset is
+            // per-child rather than on the column: the hourly strip carries it as content padding so
+            // its ends still scroll out to the bezel instead of stopping short of it.
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = CURRENT_TOP_PADDING, bottom = PAGE_INSET),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top,
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_ph_drop),
-                    contentDescription = null,
-                    tint = weatherColor("cloud-rain"),
-                    modifier = Modifier.size(11.dp),
+                    painter = painterResource(weatherIconRes(forecast.icon)),
+                    contentDescription = forecast.label,
+                    tint = weatherColor(forecast.icon),
+                    modifier = Modifier.size(HERO_ICON_SIZE),
                 )
                 Text(
-                    text = "${forecast.precipitationProbability}% rain",
-                    style = MaterialTheme.typography.caption2,
-                    color = weatherColor("cloud-rain"),
-                    modifier = Modifier.padding(start = 4.dp),
+                    text = "${forecast.temperatureC}°",
+                    style = MaterialTheme.typography.display3,
+                    color = PrimaryText,
+                    modifier = Modifier.padding(start = 8.dp),
                 )
             }
+            Text(
+                text = forecast.label.uppercase(),
+                style = MaterialTheme.typography.caption3.copy(letterSpacing = LABEL_TRACKING),
+                color = SecondaryText,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = PAGE_INSET),
+            )
+            if (forecast.precipitationProbability > 0) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_ph_drop),
+                        contentDescription = null,
+                        tint = weatherColor("cloud-rain"),
+                        modifier = Modifier.size(11.dp),
+                    )
+                    Text(
+                        text = "${forecast.precipitationProbability}% rain",
+                        style = MaterialTheme.typography.caption2,
+                        color = weatherColor("cloud-rain"),
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(FORECAST_GAP))
+            FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_INSET + RULE_INSET))
+            Spacer(modifier = Modifier.height(12.dp))
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = STRIP_INSET),
+                horizontalArrangement = Arrangement.spacedBy(HOUR_GAP),
+            ) {
+                items(forecast.hourly, key = { it.minuteOfDay }) { hour -> HourColumn(hour) }
+            }
+            // Only the sun event still ahead: both at once needed a divider and ran the full width of
+            // the circle, and the one already behind the rider is not what they are planning around.
+            val nextSunEvent = nextSunEvent(forecast.sunriseMinuteOfDay, forecast.sunsetMinuteOfDay)
+            if (nextSunEvent != null) {
+                Spacer(modifier = Modifier.height(SUN_TIMES_GAP))
+                SunTime(nextSunEvent.minuteOfDay, rising = nextSunEvent.rising)
+            }
         }
-        Spacer(modifier = Modifier.height(FORECAST_GAP))
-        FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_INSET + RULE_INSET))
-        Spacer(modifier = Modifier.height(12.dp))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = STRIP_INSET),
-            horizontalArrangement = Arrangement.spacedBy(HOUR_GAP),
-        ) {
-            items(forecast.hourly, key = { it.minuteOfDay }) { hour -> HourColumn(hour) }
-        }
-        // Only the sun event still ahead: both at once needed a divider and ran the full width of
-        // the circle, and the one already behind the rider is not what they are planning around.
-        val nextSunEvent = nextSunEvent(forecast.sunriseMinuteOfDay, forecast.sunsetMinuteOfDay)
-        if (nextSunEvent != null) {
-            Spacer(modifier = Modifier.height(SUN_TIMES_GAP))
-            SunTime(nextSunEvent.minuteOfDay, rising = nextSunEvent.rising)
-        }
+        RadarHint(modifier = Modifier.align(Alignment.TopCenter).padding(top = RADAR_HINT_TOP_PADDING))
+    }
+}
+
+/**
+ * That the radar page exists. A page above the top page of the axis is the one thing on the wrist a
+ * rider has no reason to guess at, so it is signposted — dim and glyph-only, since it is a hint
+ * about a gesture rather than a control.
+ */
+@Composable
+private fun RadarHint(modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            painter = painterResource(R.drawable.ic_caret_up),
+            contentDescription = null,
+            tint = DimText,
+            modifier = Modifier.size(RADAR_HINT_CARET_SIZE),
+        )
+        Icon(
+            painter = painterResource(R.drawable.ic_ph_target),
+            contentDescription = "Rain radar above",
+            tint = DimText,
+            modifier = Modifier.size(RADAR_HINT_ICON_SIZE),
+        )
     }
 }
 
@@ -235,6 +261,10 @@ private val PAGE_INSET = GAUGE_INNER_INSET + 8.dp
  * ends need more room than the rest of the page. Content padding, so it still scrolls to the bezel.
  */
 private val STRIP_INSET = PAGE_INSET + 12.dp
+
+private val RADAR_HINT_TOP_PADDING = 8.dp
+private val RADAR_HINT_CARET_SIZE = 8.dp
+private val RADAR_HINT_ICON_SIZE = 11.dp
 
 private val HERO_ICON_SIZE = 26.dp
 private val CURRENT_TOP_PADDING = 34.dp

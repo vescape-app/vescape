@@ -5,6 +5,8 @@
   "precipitationProbability": 15,
   "sunriseMinuteOfDay": 312,
   "sunsetMinuteOfDay": 1248,
+  "latitude": 52.2297,
+  "longitude": 21.0122,
   "hourly": [
     { "temperatureC": 17, "icon": "sun", "precipitationProbability": 0 },
     { "temperatureC": 19, "icon": "cloud-sun", "precipitationProbability": 13 },

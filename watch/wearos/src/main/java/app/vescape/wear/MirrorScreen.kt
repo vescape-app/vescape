@@ -58,7 +58,7 @@ fun MirrorScreen(
     // pointer, forwarded the leftover delta to the outer one but kept the velocity, so the outer
     // could only settle by dragging past half the screen and a normal flick sprang back.
     val verticalPagerState = rememberPagerState(initialPage = VERTICAL_PAGE_GAUGES, pageCount = { VERTICAL_PAGE_COUNT })
-    // Fractional position on the axis, 0 = weather, 1 = gauges, 2 = nav focus. Both focus
+    // Fractional position on the axis, from radar at 0 up to nav focus at the end. Both focus
     // progresses are read off it, so a drag fades exactly as far as it has travelled.
     val verticalPosition = {
         verticalPagerState.currentPage + verticalPagerState.currentPageOffsetFraction
@@ -66,20 +66,22 @@ fun MirrorScreen(
     // Nav focus is a page of its own so the drag is a real gesture, but nothing new is drawn there:
     // the gauges pin themselves in place (see [navFocus]) and shed their readouts on the way.
     val navFocus = { (verticalPosition() - VERTICAL_PAGE_GAUGES).coerceIn(0f, 1f) }
-    val navFocused = verticalPagerState.currentPage == VERTICAL_PAGE_NAV
     val scope = rememberCoroutineScope()
-    val weatherVisible = !isAmbient && verticalPagerState.currentPage == VERTICAL_PAGE_WEATHER
+    // Which page owns the vertical axis right now. The radar page fetches while it is on screen and
+    // nowhere else, so this is the difference between an idle wrist and a fetching one.
+    val onGauges = verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
+    val radarVisible = !isAmbient && verticalPagerState.currentPage == VERTICAL_PAGE_RADAR
 
     // Mutually exclusive by `enabled`: back closes the innermost thing that is open, and only the
     // gauges themselves treat back as "leave the mirror".
     BackHandler(enabled = showClosePrompt) {
         showClosePrompt = false
     }
-    // Either end of the vertical axis returns to the gauges; only the gauges treat back as leave.
-    BackHandler(enabled = !showClosePrompt && (weatherVisible || navFocused)) {
+    // Anywhere else on the vertical axis returns to the gauges; only the gauges treat back as leave.
+    BackHandler(enabled = !showClosePrompt && !onGauges) {
         scope.launch { verticalPagerState.animateScrollToPage(VERTICAL_PAGE_GAUGES) }
     }
-    BackHandler(enabled = !showClosePrompt && !weatherVisible && !navFocused) {
+    BackHandler(enabled = !showClosePrompt && onGauges) {
         showClosePrompt = true
     }
 
@@ -203,6 +205,7 @@ fun MirrorScreen(
                                 modifier = Modifier.fillMaxSize(),
                             ) { verticalPage ->
                                 when (verticalPage) {
+                                    VERTICAL_PAGE_RADAR -> RadarScreen(visible = radarVisible)
                                     VERTICAL_PAGE_WEATHER -> WeatherScreen()
                                     // Gesture-only page: nothing is drawn here, the drag offset
                                     // alone is the nav-focus progress. Keeping the gauges out of
@@ -283,11 +286,16 @@ private const val PAGE_SNAP_THRESHOLD = 0.25f
 /** Idle time after which the horizontal pager drifts back to the gauges. */
 private const val CONTROL_IDLE_RETURN_MS = 45_000L
 
-/** Weather above the gauges, nav focus below: one pager owns the whole vertical axis. */
-private const val VERTICAL_PAGE_WEATHER = 0
-private const val VERTICAL_PAGE_GAUGES = 1
-private const val VERTICAL_PAGE_NAV = 2
-private const val VERTICAL_PAGE_COUNT = 3
+/**
+ * Radar and weather above the gauges, nav focus below: one pager owns the whole vertical axis.
+ * Radar sits above the forecast because it is the same subject one step further out — the rider
+ * swipes up from the numbers, to the hours, to the sky itself.
+ */
+private const val VERTICAL_PAGE_RADAR = 0
+private const val VERTICAL_PAGE_WEATHER = 1
+private const val VERTICAL_PAGE_GAUGES = 2
+private const val VERTICAL_PAGE_NAV = 3
+private const val VERTICAL_PAGE_COUNT = 4
 
 /** Gauges centre, Board Move, board Lights, diagnostics. */
 private const val CONTROL_PAGE_GAUGES = 0

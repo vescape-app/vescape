@@ -135,6 +135,10 @@ class MainActivity : ComponentActivity() {
             // An older phone never sends the sun keys; `getInt` would read that absence as midnight.
             sunriseMinuteOfDay = if (dataMap.containsKey(WEATHER_SUNRISE)) dataMap.getInt(WEATHER_SUNRISE) else null,
             sunsetMinuteOfDay = if (dataMap.containsKey(WEATHER_SUNSET)) dataMap.getInt(WEATHER_SUNSET) else null,
+            // Absent from a phone that predates the radar page; `getDouble` would read that as
+            // the Gulf of Guinea rather than "unknown".
+            latitude = if (dataMap.containsKey(WEATHER_LATITUDE)) dataMap.getDouble(WEATHER_LATITUDE) else null,
+            longitude = if (dataMap.containsKey(WEATHER_LONGITUDE)) dataMap.getDouble(WEATHER_LONGITUDE) else null,
             fetchedAtMs = dataMap.getLong(WEATHER_FETCHED_AT),
         )
     }
