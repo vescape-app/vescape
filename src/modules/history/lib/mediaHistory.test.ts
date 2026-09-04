@@ -24,7 +24,6 @@ function gps(id: number, capturedAtMs: number, latitude = 52, longitude = 21): H
     accuracyM: null,
     altitudeM: null,
     timestamp: capturedAtMs,
-    precise: true,
     distanceFromPreviousM: null,
   }
 }

@@ -47,7 +47,7 @@ private const val MIN_PERSIST_INTERVAL_MS = 500L
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
  */
-private const val SAMPLE_COLUMN_COUNT = 23
+private const val SAMPLE_COLUMN_COUNT = 21
 
 data class TelemetryLocationCapture(
   val latitude: Double,
@@ -101,6 +101,11 @@ class TelemetryRepository private constructor(context: Context) {
   // 2 Hz subset is persisted as frames. Flushed and cleared together with `pending`.
   private val pendingBucketStates = ArrayDeque<FullTelemetryState>()
   private val pendingMarkers = ArrayDeque<TelemetryMarkerEntity>()
+  // Ride Track fixes admitted but not yet durable. Written on the GPS clock, never aligned to a
+  // telemetry frame, and already carrying the Board and Ride Recording they were captured under —
+  // a Board change flushes them under those identities rather than the new session's (ADR 0038).
+  private val pendingTrack = ArrayDeque<RideTrackPointEntity>()
+  private var lastFlushedTrackPoint: RideTrackPointEntity? = null
 
   private var flushScheduled = false
   private var lastState: FullTelemetryState? = null
@@ -112,6 +117,21 @@ class TelemetryRepository private constructor(context: Context) {
   private var metricSanitizerConfig = MetricSanitizerConfig()
   @Volatile
   private var enabledPrivacyZones: List<PrivacyZoneEntity> = emptyList()
+
+  /** The open Ride Recording, or null when nothing is being recorded. */
+  @Volatile
+  private var currentRecording: RideRecordingEntity? = null
+
+  /** Identity #449 groups history on and #450 carries across a Board Session teardown. */
+  val activeRideRecordingId: String?
+    get() = currentRecording?.id
+
+  init {
+    // Once per process, before any Board Session can have minted a recording: a row left open by a
+    // process that died is invisible to Ride History until something closes it, and on Android
+    // nothing else ever will — there is no restoration relaunch to adopt it.
+    scope.launch { closeAbandonedRideRecordings() }
+  }
 
   fun setMovingSpeedThresholdKmh(value: Double) {
     metricSanitizerConfig = metricSanitizerConfig.copy(
@@ -137,6 +157,188 @@ class TelemetryRepository private constructor(context: Context) {
 
   fun reloadPrivacyZones(zones: List<PrivacyZoneEntity>) {
     enabledPrivacyZones = zones
+  }
+
+  /**
+   * Open a **Ride Recording**: mint its durable identity and stamp its start boundary.
+   *
+   * Board attribution and recording identity are separate facts. `boardId` says which Board is
+   * riding; the returned id says which capture, so two recordings of one Board — even inside the
+   * same minute — never merge in storage or in the summaries built from it.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `beginRideRecording`
+   */
+  fun beginRideRecording(boardId: String?): String {
+    // Starting over a recording that is still open is the rider stopping and starting again inside
+    // one Board Session; a Board change never reaches here, `retainRideRecording` has already ended
+    // the old ride by then.
+    endRideRecording(RIDE_RECORDING_END_STOPPED)
+    val recording = RideRecordingEntity(
+      id = UUID.randomUUID().toString(),
+      boardId = boardId,
+      startedAtMs = System.currentTimeMillis(),
+    )
+    // Insert and publish under one lock: the launch sweep closes every row this repository does not
+    // hold open, and a row inserted but not yet published would be swept out from under itself.
+    synchronized(lock) {
+      runBlocking(Dispatchers.IO) {
+        try {
+          // Minting a new identity is the moment any recording still open from a process that died
+          // without ending one becomes unrejoinable. Close it here rather than leaving a row open
+          // forever — the capture really did end when the process did.
+          dao.closeAbandonedRideRecordings(
+            reason = RIDE_RECORDING_END_DISCONNECTED,
+            keepOpenId = recording.id,
+          )
+          dao.insertRideRecording(recording)
+        } catch (e: Exception) {
+          Log.w(TAG, "Ride Recording open failed: ${e.message}")
+        }
+      }
+      currentRecording = recording
+      // A new recording never continues the previous one's delta chain or its track geometry.
+      forceNextKeyframe = true
+      lastState = null
+      lastFlushedTrackPoint = null
+    }
+    return recording.id
+  }
+
+  /**
+   * Close the open Ride Recording, if any. Everything already admitted is flushed first, under the
+   * Board and recording it was captured with — a late fix from the old session is never re-attributed
+   * to whatever comes next.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `endRideRecording`
+   */
+  fun endRideRecording(reason: String) {
+    closeOpenRideRecording(reason, keepingBoardId = null, keepAnyBoard = false)
+  }
+
+  /**
+   * Keep the open Ride Recording when it belongs to [boardId]; end it as a Board change otherwise.
+   * Returns the identity still open, or null when nothing is.
+   *
+   * One decision, one critical section: reading the open recording's Board and then acting on it
+   * from outside would let a concurrent begin/end land in between and answer for the wrong ride.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `retainRideRecording`
+   */
+  fun retainRideRecording(boardId: String?): String? =
+    closeOpenRideRecording(RIDE_RECORDING_END_BOARD_CHANGE, keepingBoardId = boardId)
+
+  /**
+   * Read, decide and clear in one critical section: a concurrent `beginRideRecording` between the
+   * steps would null out the *new* recording's identity while its row stayed open, and a Board read
+   * from outside could answer for a ride that has already been replaced.
+   *
+   * [keepAnyBoard] distinguishes "keep the recording of this Board" from "close whatever is open",
+   * which a plain null [keepingBoardId] cannot: null is itself a valid Board attribution.
+   */
+  private fun closeOpenRideRecording(
+    reason: String,
+    keepingBoardId: String?,
+    keepAnyBoard: Boolean = true,
+  ): String? {
+    var retained: String? = null
+    val recording = synchronized(lock) {
+      val open = currentRecording ?: return null
+      if (keepAnyBoard && open.boardId == keepingBoardId) {
+        retained = open.id
+        null
+      } else {
+        currentRecording = null
+        open
+      }
+    } ?: return retained
+    flushBlocking()
+    runBlocking(Dispatchers.IO) {
+      try {
+        dao.endRideRecording(recording.id, System.currentTimeMillis(), reason)
+      } catch (e: Exception) {
+        Log.w(TAG, "Ride Recording close failed: ${e.message}")
+      }
+    }
+    synchronized(lock) { lastFlushedTrackPoint = null }
+    return null
+  }
+
+  /**
+   * Close every Ride Recording a dead process left open, stamping each at its own last durable
+   * write. An unswept row has no `ended_at_ms`, and #449's reader shows only finished recordings, so
+   * leaving it open hides that ride from history until some later recording happens to sweep it —
+   * possibly never.
+   *
+   * The `keepOpenId` is read under the same lock `beginRideRecording` publishes under, so a mint
+   * racing the sweep is safe.
+   *
+   * @platform-diff Android sweeps at process start; iOS sweeps when its launch resume window
+   * expires, which is the moment its state-restoration relaunch is known not to be adopting one
+   * (ADR 0034). Android has no such relaunch, so process start is that moment.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `closeAbandonedRideRecordings`
+   */
+  fun closeAbandonedRideRecordings() {
+    synchronized(lock) {
+      runBlocking(Dispatchers.IO) {
+        try {
+          dao.closeAbandonedRideRecordings(
+            reason = RIDE_RECORDING_END_DISCONNECTED,
+            keepOpenId = currentRecording?.id,
+          )
+        } catch (e: Exception) {
+          Log.w(TAG, "Abandoned Ride Recording sweep failed: ${e.message}")
+        }
+      }
+    }
+  }
+
+  /**
+   * Offer one GPS Fix to the **Ride Track**.
+   *
+   * Stored with the accuracy the platform reported, poor fixes included: write-time discard is
+   * unrecoverable and would bake one consumer's threshold into everyone's data (ADR 0038). The fix
+   * does not have to line up with a telemetry frame, so a board dropout no longer erases the route.
+   *
+   * Two gates still drop a fix, and both are shared with the Telemetry Sample stream: an enabled
+   * Privacy Zone (ADR 0009 — a separate stream leaks straight through a zone otherwise), and the
+   * Ride Recording being closed or in Idle Pause, which the caller owns (ADR 0021).
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `recordGpsFix`
+   */
+  fun recordGpsFix(location: TelemetryLocationCapture) {
+    val scaled = ScaledLocation.from(location)
+    // The one Privacy Zone geometry check, shared with the Telemetry Sample filter below.
+    if (isInsideAnyPrivacyZone(scaled.latitudeE7, scaled.longitudeE7, enabledPrivacyZones)) return
+    synchronized(lock) {
+      // The open recording is read under the lock the flush clears it under, so a fix racing
+      // `endRideRecording` cannot land in the recording that just closed.
+      val recording = currentRecording ?: return
+      pendingTrack.addLast(
+        RideTrackPointEntity(
+          recordingId = recording.id,
+          boardId = recording.boardId,
+          fixAtMs = scaled.timestampMs,
+          latitudeE7 = scaled.latitudeE7,
+          longitudeE7 = scaled.longitudeE7,
+          accuracyCm = scaled.accuracyCm,
+          gpsSpeedCentiMps = scaled.gpsSpeedCentiMps,
+          bearingCentiDeg = scaled.bearingCentiDeg,
+          altitudeCm = scaled.altitudeCm,
+        ),
+      )
+      // A dropped fix is a dropped sample: `getSummary().droppedPendingSamples` must say so.
+      while (pendingTrack.size > MAX_PENDING_FRAMES) {
+        pendingTrack.removeFirst()
+        droppedPendingFrames++
+      }
+      if (pendingTrack.size >= FLUSH_FRAME_COUNT) {
+        flushScheduled = false
+        scope.launch { flushNow() }
+      } else {
+        scheduleFlushLocked()
+      }
+    }
   }
 
   fun recordMarker(
@@ -183,7 +385,7 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   fun recordTelemetry(capture: TelemetryCapture) {
-    val current = FullTelemetryState.from(capture)
+    val current = FullTelemetryState.from(capture, currentRecording?.id)
     synchronized(lock) {
       val previous = lastState
       val gapMs = lastHistoryAtMs?.let { capture.capturedAtMs - it }
@@ -264,6 +466,8 @@ class TelemetryRepository private constructor(context: Context) {
       pending.clear()
       pendingBucketStates.clear()
       pendingMarkers.clear()
+      pendingTrack.clear()
+      lastFlushedTrackPoint = null
       flushScheduled = false
       lastState = null
       lastFrameAtMs = null
@@ -312,11 +516,13 @@ class TelemetryRepository private constructor(context: Context) {
       val maxGpsSpeedKmh = bucket.maxGpsSpeedCentiMps?.let { it / 100.0 * 3.6 }
       val distanceM = distanceDeltaM(bucket) ?: bucket.gpsDistanceCm.takeIf { it > 0L }?.let { it / 100.0 }
       mapOf(
-        "id" to "${bucket.boardId}:${bucket.bucketStartMs}",
+        // Two recordings of one Board can share a minute, so the recording is part of the identity.
+        "id" to "${bucket.boardId}:${bucket.recordingId}:${bucket.bucketStartMs}",
         "startAtMs" to bucket.firstSampleAtMs,
         "endAtMs" to bucket.lastSampleAtMs,
         "bucketStartMs" to bucket.bucketStartMs,
         "boardId" to bucket.boardId.ifBlank { null },
+        "recordingId" to bucket.recordingId.ifBlank { null },
         "boardName" to (boardNames[bucket.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME),
         "sampleCount" to bucket.sampleCount,
         "gpsPointCount" to bucket.gpsPointCount,
@@ -380,10 +586,12 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   /**
-   * Columnar binary encoding of [smoothedSampleMaps] for the history read path. Each sample is 25
+   * Columnar binary encoding of [smoothedSampleMaps] for the history read path. Each sample is 21
    * little-endian Float64 lanes packed row-major into one direct ByteBuffer, returned as a JSI
-   * ArrayBuffer. This replaces ~25 per-field JSI conversions × N samples (the dominant history-load
-   * cost) with a single buffer transfer; JS rebuilds TelemetrySample objects locally. Nullable
+   * ArrayBuffer. This replaces ~21 per-field JSI conversions × N samples (the dominant history-load
+   * cost) with a single buffer transfer; JS rebuilds TelemetrySample objects locally. Position is
+   * not among them: the route is the Ride Track, its own stream on its own clock (ADR 0038).
+   * Nullable
    * numeric lanes use NaN as the null sentinel; the Board id and name are dictionary-encoded.
    *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `sampleColumns`
@@ -438,8 +646,6 @@ class TelemetryRepository private constructor(context: Context) {
         .putDouble(s.odometerCm?.let { it / 100.0 } ?: Double.NaN)
         .putDouble(s.tempMosfetDeciC?.let { it / 10.0 } ?: Double.NaN)
         .putDouble(s.tempMotorDeciC?.let { it / 10.0 } ?: Double.NaN)
-        .putDouble(s.location?.latitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
-        .putDouble(s.location?.longitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
       if (overviewCursor < overviewIndices.size && overviewIndices[overviewCursor] == sampleIndex) {
         val rowStart = sampleIndex * SAMPLE_COLUMN_COUNT * 8
         val row = buffer.duplicate().apply {
@@ -526,13 +732,20 @@ class TelemetryRepository private constructor(context: Context) {
     return samples
   }
 
+  /**
+   * The Ride Track over a range: every stored fix, on the GPS clock, independent of whether a
+   * telemetry frame arrived near it.
+   */
+  private suspend fun rideTrack(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity> =
+    dao.getRideTrackPoints(fromMs, toMs, boardId, MAX_SAMPLE_LIMIT)
+
   suspend fun getRange(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
     val query = SampleQueryOptions.from(options)
     val samples = getSampleStates(query.fromMs, query.toMs, query.boardId, query.limit)
     val configs = batteryConfigByBoard()
     val boardNames = boardNamesById()
     smoothedSampleColumns(samples, configs, boardNames) + mapOf(
-      "gpsSamples" to samples.toGpsSampleMaps(boardNames),
+      "gpsSamples" to rideTrack(query.fromMs, query.toMs, query.boardId).toGpsSampleMaps(boardNames),
       "markers" to dao.getMarkers(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
       "exclusions" to dao.getExclusions(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
     )
@@ -541,7 +754,7 @@ class TelemetryRepository private constructor(context: Context) {
   suspend fun getSummary(): Map<String, Any?> = withContext(Dispatchers.IO) {
     mapOf(
       "sampleCount" to dao.countFrames(),
-      "gpsPointCount" to dao.countTelemetryGpsPoints(),
+      "gpsPointCount" to dao.countRideTrackPoints(),
       "firstAtMs" to dao.firstFrameAt(),
       "lastAtMs" to dao.lastFrameAt(),
       "droppedPendingSamples" to synchronized(lock) { droppedPendingFrames },
@@ -623,7 +836,7 @@ class TelemetryRepository private constructor(context: Context) {
     flushNow()
 
     val states = getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE)
-    val summary = favoriteSummary(states)
+    val summary = favoriteSummary(states, rideTrack(startMs, endMs, boardId))
     val nowMs = System.currentTimeMillis()
     val favorite = FavoriteEntity(
       id = UUID.randomUUID().toString(),
@@ -666,7 +879,10 @@ class TelemetryRepository private constructor(context: Context) {
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val summary = favoriteSummary(getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE))
+    val summary = favoriteSummary(
+      getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE),
+      rideTrack(startMs, endMs, boardId),
+    )
     val updated = existing.copy(
       name = name,
       startMs = startMs,
@@ -725,10 +941,13 @@ class TelemetryRepository private constructor(context: Context) {
    *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `favoriteSummary`
    */
-  private fun favoriteSummary(states: List<HistoryTelemetryState>): FavoriteSummary {
-    if (states.isEmpty()) return FavoriteSummary()
+  private fun favoriteSummary(
+    states: List<HistoryTelemetryState>,
+    track: List<RideTrackPointEntity>,
+  ): FavoriteSummary {
+    if (states.isEmpty() && track.isEmpty()) return FavoriteSummary()
     val telemetryPoints = states.map { it.state.toBucketPoint() }
-    val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+    val sanitization = sanitizeTelemetrySamples(telemetryPoints, track, metricSanitizerConfig)
     val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
       point.copy(
         excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -739,14 +958,20 @@ class TelemetryRepository private constructor(context: Context) {
     return buildFavoriteSummary(
       buildTelemetryBuckets(
         telemetryPoints = sanitizedPoints,
-        locationPoints = states.toBucketLocationPoints(),
+        locationPoints = track.toBucketLocationPoints(
+          movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+        ),
       ),
     )
   }
 
   suspend fun rebuildBuckets(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
-    val firstMs = dao.firstFrameAt() ?: return@withContext 0
-    val lastMs = dao.lastFrameAt() ?: return@withContext 0
+    // The rebuild spans both streams: a minute can hold Ride Track fixes and no frame at all, and
+    // bounding on frames alone would silently drop those buckets.
+    val firstMs = listOfNotNull(dao.firstFrameAt(), dao.firstRideTrackAt()).minOrNull()
+      ?: return@withContext 0
+    val lastMs = listOfNotNull(dao.lastFrameAt(), dao.lastRideTrackAt()).maxOrNull()
+      ?: return@withContext 0
 
     dao.clearBuckets()
     dao.clearExclusions()
@@ -761,9 +986,10 @@ class TelemetryRepository private constructor(context: Context) {
       val chunkTo = minOf(chunkFrom + chunkMs - 1, lastMs)
 
       val states = getSampleStates(chunkFrom, chunkTo, null, Int.MAX_VALUE)
-      if (states.isNotEmpty()) {
+      val track = rideTrack(chunkFrom, chunkTo, null)
+      if (states.isNotEmpty() || track.isNotEmpty()) {
         val telemetryPoints = states.map { it.state.toBucketPoint() }
-        val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+        val sanitization = sanitizeTelemetrySamples(telemetryPoints, track, metricSanitizerConfig)
         val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
           point.copy(
             excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -774,7 +1000,9 @@ class TelemetryRepository private constructor(context: Context) {
         if (sanitization.exclusions.isNotEmpty()) dao.upsertExclusionRanges(sanitization.exclusions)
         val buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
-          locationPoints = states.toBucketLocationPoints(),
+          locationPoints = track.toBucketLocationPoints(
+          movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+        ),
         )
         if (buckets.isNotEmpty()) {
           dao.upsertBuckets(buckets)
@@ -804,6 +1032,8 @@ class TelemetryRepository private constructor(context: Context) {
     synchronized(lock) {
       pending.clear()
       pendingMarkers.clear()
+      pendingTrack.clear()
+      lastFlushedTrackPoint = null
       lastState = null
       lastFrameAtMs = null
       lastHistoryAtMs = null
@@ -869,17 +1099,28 @@ class TelemetryRepository private constructor(context: Context) {
     val frames: List<PendingFrame>
     val bucketStates: List<FullTelemetryState>
     val markers: List<TelemetryMarkerEntity>
+    val trackPoints: List<RideTrackPointEntity>
+    val previousTrackPoint: RideTrackPointEntity?
     synchronized(lock) {
-      if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty()) {
+      if (
+        pending.isEmpty() &&
+        pendingBucketStates.isEmpty() &&
+        pendingMarkers.isEmpty() &&
+        pendingTrack.isEmpty()
+      ) {
         flushScheduled = false
         return
       }
       frames = pending.toList()
       bucketStates = pendingBucketStates.toList()
       markers = pendingMarkers.toList()
+      trackPoints = pendingTrack.toList()
+      previousTrackPoint = lastFlushedTrackPoint
       pending.clear()
       pendingBucketStates.clear()
       pendingMarkers.clear()
+      pendingTrack.clear()
+      lastFlushedTrackPoint = trackPoints.lastOrNull() ?: previousTrackPoint
       flushScheduled = false
     }
 
@@ -895,10 +1136,22 @@ class TelemetryRepository private constructor(context: Context) {
         val loc = state.location ?: return@filter true
         !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
       }
-      if (filteredFrames.isEmpty() && filteredStates.isEmpty() && markers.isEmpty()) return
+      // The Ride Track is re-filtered here too, against the zones enabled *now*: a zone switched on
+      // mid-ride must suppress what is still buffered, in both streams alike (ADR 0009).
+      val filteredTrack = if (zones.isEmpty()) trackPoints else trackPoints.filter { point ->
+        !isInsideAnyPrivacyZone(point.latitudeE7, point.longitudeE7, zones)
+      }
+      if (
+        filteredFrames.isEmpty() &&
+        filteredStates.isEmpty() &&
+        markers.isEmpty() &&
+        filteredTrack.isEmpty()
+      ) {
+        return
+      }
 
       val telemetryPoints = filteredStates.map { it.toBucketPoint() }
-      val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
+      val sanitization = sanitizeTelemetrySamples(telemetryPoints, filteredTrack, metricSanitizerConfig)
       val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
         point.copy(
           excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
@@ -908,12 +1161,18 @@ class TelemetryRepository private constructor(context: Context) {
       }
       dao.insertBatch(
         frames = filteredFrames.map { it.frame },
+        // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a
+        // frame: the two streams keep their own clocks and are joined here only for the summary.
         buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
-          locationPoints = filteredStates.map { HistoryTelemetryState(0L, it) }.toBucketLocationPoints(),
+          locationPoints = filteredTrack.toBucketLocationPoints(
+            previous = previousTrackPoint,
+            movingThresholdCentiKmh = metricSanitizerConfig.movingSpeedThresholdCentiKmh,
+          ),
         ),
         markers = markers,
         exclusions = sanitization.exclusions,
+        trackPoints = filteredTrack,
       )
     } catch (e: Exception) {
       Log.w(TAG, "Telemetry flush failed: ${e.message}")
@@ -1029,6 +1288,8 @@ internal data class FullTelemetryState(
   val capturedAtMs: Long,
   val elapsedRealtimeMs: Long,
   val boardId: String?,
+  /** Owning Ride Recording; null for legacy rows and for states rebuilt from them (ADR 0038). */
+  val recordingId: String? = null,
   val canId: Int?,
   val speedCentiKmh: Int,
   val batteryVoltageMv: Int,
@@ -1051,7 +1312,6 @@ internal data class FullTelemetryState(
 ) {
   fun toFrame(previous: FullTelemetryState?, keyframe: Boolean): TelemetryFrameEntity {
     var mask1 = 0
-    var mask2 = 0
     fun include(changed: Boolean, mask: Int): Boolean {
       if (keyframe || changed) {
         mask1 = mask1 or mask
@@ -1059,15 +1319,13 @@ internal data class FullTelemetryState(
       }
       return false
     }
-    val includeLocation = keyframe || locationChanged(previous?.location, location)
-    if (includeLocation) mask2 = mask2 or TELEMETRY_MASK2_LOCATION
-    val flags = (if (keyframe) TELEMETRY_FLAG_KEYFRAME else 0) or
-      (if (location != null) TELEMETRY_FLAG_HAS_LOCATION else 0)
+    val flags = if (keyframe) TELEMETRY_FLAG_KEYFRAME else 0
 
     return TelemetryFrameEntity(
       capturedAtMs = capturedAtMs,
       elapsedRealtimeMs = elapsedRealtimeMs,
       boardId = boardId,
+      recordingId = recordingId,
       canId = canId,
       flags = flags,
       changedMask1 = 0,
@@ -1089,14 +1347,9 @@ internal data class FullTelemetryState(
       odometerCm = if (include(changedBy(previous?.odometerCm, odometerCm, 25), TELEMETRY_MASK_ODOMETER)) odometerCm else null,
       tempMosfetDeciC = if (include(changedBy(previous?.tempMosfetDeciC, tempMosfetDeciC, 5), TELEMETRY_MASK_TEMP_MOSFET)) tempMosfetDeciC else null,
       tempMotorDeciC = if (include(changedBy(previous?.tempMotorDeciC, tempMotorDeciC, 5), TELEMETRY_MASK_TEMP_MOTOR)) tempMotorDeciC else null,
-      latitudeE7 = if (includeLocation) location?.latitudeE7 else null,
-      longitudeE7 = if (includeLocation) location?.longitudeE7 else null,
-      gpsSpeedCentiMps = if (includeLocation) location?.gpsSpeedCentiMps else null,
-      bearingCentiDeg = if (includeLocation) location?.bearingCentiDeg else null,
-      accuracyCm = if (includeLocation) location?.accuracyCm else null,
-      altitudeCm = if (includeLocation) location?.altitudeCm else null,
-      locationTimestampMs = if (includeLocation) location?.timestampMs else null,
-    ).copy(changedMask1 = mask1, changedMask2 = mask2)
+      // `changed_mask_2` is reserved: no field of the delta chain lands in it now that position
+      // lives in Ride Track (ADR 0038). Kept as a column so the frame layout can grow again.
+    ).copy(changedMask1 = mask1, changedMask2 = 0)
   }
 
   /** Board name is resolved by the caller from `boards`, never read off the row (ADR 0028). */
@@ -1123,13 +1376,31 @@ internal data class FullTelemetryState(
     "odometer" to odometerCm?.let { it / 100.0 },
     "tempMosfet" to tempMosfetDeciC?.let { it / 10.0 },
     "tempMotor" to tempMotorDeciC?.let { it / 10.0 },
-    "latitude" to location?.latitudeE7?.let { it / 10_000_000.0 },
-    "longitude" to location?.longitudeE7?.let { it / 10_000_000.0 },
   )
+
+  /**
+   * The fix this frame arrived with, shaped as a Ride Track point. Live only: durable reads take
+   * the real track from storage, and this never carries a recording id, so a fix with no reported
+   * accuracy stays unqualified rather than inheriting the legacy exemption (ADR 0038).
+   */
+  fun toLiveTrackPoint(): RideTrackPointEntity? = location?.let {
+    RideTrackPointEntity(
+      recordingId = recordingId ?: LEGACY_RIDE_RECORDING_ID,
+      boardId = boardId,
+      fixAtMs = it.timestampMs,
+      latitudeE7 = it.latitudeE7,
+      longitudeE7 = it.longitudeE7,
+      accuracyCm = it.accuracyCm,
+      gpsSpeedCentiMps = it.gpsSpeedCentiMps,
+      bearingCentiDeg = it.bearingCentiDeg,
+      altitudeCm = it.altitudeCm,
+    )
+  }
 
   fun toBucketPoint(): BucketTelemetryPoint = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
     boardId = boardId,
+    recordingId = recordingId ?: LEGACY_RIDE_RECORDING_ID,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = batteryVoltageMv,
     motorCurrentMa = motorCurrentMa,
@@ -1138,16 +1409,14 @@ internal data class FullTelemetryState(
     odometerCm = odometerCm,
     tempMosfetDeciC = tempMosfetDeciC,
     tempMotorDeciC = tempMotorDeciC,
-    gpsSpeedCentiMps = location?.gpsSpeedCentiMps,
-    gpsTimestampMs = location?.timestampMs,
-    gpsAccuracyCm = location?.accuracyCm,
   )
 
   companion object {
-    fun from(capture: TelemetryCapture): FullTelemetryState = FullTelemetryState(
+    fun from(capture: TelemetryCapture, recordingId: String?): FullTelemetryState = FullTelemetryState(
       capturedAtMs = capture.capturedAtMs,
       elapsedRealtimeMs = capture.elapsedRealtimeMs,
       boardId = capture.boardId,
+      recordingId = recordingId,
       canId = capture.canId,
       speedCentiKmh = (capture.speed * 100.0).roundToInt(),
       batteryVoltageMv = (capture.batteryVoltage * 1000.0).roundToInt(),
@@ -1186,15 +1455,11 @@ internal data class FullTelemetryState(
       val switchState = pick(frame.switchState, base?.switchState) ?: return null
       val adc1 = pick(frame.adc1Milli, base?.adc1Milli) ?: return null
       val adc2 = pick(frame.adc2Milli, base?.adc2Milli) ?: return null
-      val location = if ((frame.changedMask2 and TELEMETRY_MASK2_LOCATION) != 0) {
-        ScaledLocation.fromFrame(frame)
-      } else {
-        base?.location
-      }
       return FullTelemetryState(
         capturedAtMs = frame.capturedAtMs,
         elapsedRealtimeMs = frame.elapsedRealtimeMs,
         boardId = frame.boardId ?: base?.boardId,
+        recordingId = frame.recordingId ?: base?.recordingId,
         canId = frame.canId ?: base?.canId,
         speedCentiKmh = speed,
         batteryVoltageMv = voltage,
@@ -1213,7 +1478,9 @@ internal data class FullTelemetryState(
         odometerCm = pick(frame.odometerCm, base?.odometerCm),
         tempMosfetDeciC = pick(frame.tempMosfetDeciC, base?.tempMosfetDeciC),
         tempMotorDeciC = pick(frame.tempMotorDeciC, base?.tempMotorDeciC),
-        location = location,
+        // Position is not on the frame any more, and no read path puts it back: the route is the
+        // Ride Track, read on its own clock (ADR 0038).
+        location = null,
       )
     }
   }
@@ -1238,20 +1505,6 @@ internal data class ScaledLocation(
       altitudeCm = location.altitudeM?.let { (it * 100.0).roundToInt() },
       timestampMs = location.timestamp,
     )
-
-    fun fromFrame(frame: TelemetryFrameEntity): ScaledLocation? {
-      val lat = frame.latitudeE7 ?: return null
-      val lon = frame.longitudeE7 ?: return null
-      return ScaledLocation(
-        latitudeE7 = lat,
-        longitudeE7 = lon,
-        gpsSpeedCentiMps = frame.gpsSpeedCentiMps,
-        bearingCentiDeg = frame.bearingCentiDeg,
-        accuracyCm = frame.accuracyCm,
-        altitudeCm = frame.altitudeCm,
-        timestampMs = frame.locationTimestampMs ?: frame.capturedAtMs,
-      )
-    }
   }
 }
 
@@ -1264,15 +1517,6 @@ private fun changedBy(previous: Long?, current: Long?, threshold: Long): Boolean
 private fun changedBy(previous: Int?, current: Int?, threshold: Int): Boolean =
   previous != current && (previous == null || current == null || abs(current - previous) >= threshold)
 
-private fun locationChanged(previous: ScaledLocation?, current: ScaledLocation?): Boolean {
-  if (previous == null || current == null) return previous != current
-  val latMeters = (current.latitudeE7 - previous.latitudeE7) * 0.0111
-  val lonMeters = (current.longitudeE7 - previous.longitudeE7) * 0.0111
-  val distanceChanged = abs(latMeters) > 2.0 || abs(lonMeters) > 2.0
-  val accuracyChanged = changedBy(previous.accuracyCm, current.accuracyCm, 200)
-  val timeChanged = current.timestampMs - previous.timestampMs > 5_000L
-  return distanceChanged || accuracyChanged || timeChanged
-}
 
 private fun distanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
   val first = bucket.firstOdometerCm ?: return null

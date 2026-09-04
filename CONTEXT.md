@@ -77,11 +77,11 @@ A single phone location sample used for live map position or ride recording.
 _Avoid_: Location event, GPS point
 
 **Ride Recording**:
-A persisted ride capture. It is created by a connected **Board** and carries that Board's **Telemetry Samples**; it also carries a **Ride Track** whenever the phone has GPS during the ride. The two streams are recorded independently on their own clocks and joined by time when read.
+A single persisted capture of one **Board**'s ride, begun while that Board is connected and retaining its identity through data gaps until explicitly ended, with independent **Telemetry Samples** and an optional **Ride Track**.
 _Avoid_: Session recording, raw recording
 
 **Ride Track**:
-The durable sequence of **GPS Fixes** recorded during one **Ride Recording**, stored on its own and not attached to **Telemetry Samples**. Every fix the phone produced during the ride is kept with the accuracy it was reported at, including poor ones; how good a fix must be to draw a route or derive a value is a read-side decision, never a discard-on-write one. A Ride Track survives spans where the **Board Link** dropped and no telemetry existed.
+The durable sequence of **GPS Fixes** recorded during one **Ride Recording**, stored on its own and not attached to **Telemetry Samples**. Every fix the phone produced while the ride is recording, outside **Idle Pause** and enabled **Privacy Zones** is kept with the accuracy it was reported at, including poor ones; how good a fix must be to draw a route or derive a value is a read-side decision, never a discard-on-write one. A Ride Track survives spans where the **Board Link** dropped and no telemetry existed.
 _Avoid_: Route, GPS trace, location history, breadcrumb
 
 **Privacy Zone**:
@@ -97,11 +97,11 @@ A map-visible point in Ride History that explains a ride boundary, connection lo
 _Avoid_: Telemetry marker, debug marker, log point
 
 **Moving Window**:
-The span of a Ride Recording from its first to its last moving Telemetry Sample — the part the rider treats as actual riding. A Telemetry Sample counts as moving when it is not excluded from speed metrics (so low-speed and free-spin samples do not count). Leading and trailing non-moving spans fall outside the Moving Window; internal stops (photos, cooldown) stay inside it. Drives history-timeline trimming and the moving ride time shown in stats. A Ride Recording with no moving samples has no Moving Window and is not shown in Ride History; legacy recordings with an unknown Moving Window fall back to their full wall-clock span.
+The span of a Ride Recording from its first to its last movement evidenced by **Telemetry Samples** or **Ride Track**, including GPS-only stretches. A Telemetry Sample counts as moving when it is not excluded from speed metrics (so low-speed and free-spin samples do not count). Leading and trailing non-moving spans fall outside the Moving Window; internal stops (photos, cooldown) stay inside it. Drives history-timeline trimming and the moving ride time shown in stats. A Ride Recording with no movement evidenced by either stream has no Moving Window and is not shown in Ride History; legacy recordings with an unknown Moving Window fall back to their full wall-clock span.
 _Avoid_: Trim range, active range, ride duration
 
 **Idle Pause**:
-A temporary state of a Ride Recording in which sample persistence halts because the Board has produced no moving Telemetry Sample for a sustained interval, while the Board Session stays live at a reduced poll rate and auto-resumes on the next moving sample. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
+A temporary state of a Ride Recording in which both **Telemetry Sample** and **Ride Track** persistence halt because the Board has produced no moving Telemetry Sample for a sustained interval, while the Board Session stays live at a reduced poll rate and auto-resumes on the next moving sample. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
 _Avoid_: Stop recording, auto-stop, sleep, parked mode
 
 **Favorite**:
@@ -399,6 +399,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Board Session** uses the stored **Board Link** and is not established for a Board without one.
 - A **Board Probe** can resolve a **Board Transport** before a **Board** is created.
 - A **Board Session** owns one live BLE connection to a **Board**; only Telemetry Samples received during the active session count toward live state and Ride Recording.
+- A **Ride Recording** belongs to exactly one **Board**; explicitly attempting to connect a different Board ends the previous **Board Session** and **Ride Recording**, even if the new connection fails.
 - A **Board** produces **Telemetry Samples** while connected.
 - **Telemetry Stale** describes missing live data and is distinct from a **Stale Board Link**.
 - A **Board Session** may produce a **Live BMS Series** when its **Board Link** includes BMS capability; native retains it continuously in the recent live-telemetry window (`liveHistoryLimit`) but pushes it across the bridge to JS only while the battery-detail view is focused. It is ephemeral, never persisted, and never written to **Ride Recording**. The cell **spread** scalar shown in main telemetry is not the series: it derives from the latest smart-BMS frame on the `onBms` pipe (~4Hz, always flowing), separate from the 30Hz telemetry frame.
@@ -425,8 +426,9 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A weather view uses a **Map Camera Profile** rather than a direct zoom change; it keeps the current map center while applying a weather overview zoom and low or flat pitch.
 - A **Map Camera Controller** uses **App Settings** such as map style, **Map Orientation Mode**, and perspective mode, but those settings remain durable preferences outside the controller.
 - A **Privacy Zone** limits what **Ride Recording** data is retained without changing **Live State**.
-- A **Ride Recording** becomes part of **Ride History**.
-- A **Moving Window** belongs to one **Ride Recording** and is derived from which **Telemetry Samples** are excluded from speed metrics; a Ride Recording without one is excluded from **Ride History**.
+- A **Ride Recording** with explicit recording boundaries contributes at most one entry to **Ride History**; data gaps do not split it, and a new recording after an explicit stop is a separate entry.
+- A **Moving Window** belongs to one **Ride Recording** and spans movement evidenced by **Telemetry Samples** or **Ride Track**; a Ride Recording without one is excluded from **Ride History**.
+- A gap in both streams remains inside the **Moving Window**, and counts toward Time, when movement is evidenced on both sides within the same **Ride Recording**.
 - A **Ride History Marker** belongs to **Ride History** and may explain where a **Ride Recording** lost or regained board data.
 - An **Idle Pause** belongs to one **Ride Recording**, begins after a sustained absence of moving **Telemetry Samples**, keeps the **Board Session** live at a reduced poll rate, and produces a **Ride History Marker**; its sample gap stays inside the **Moving Window** (and counts toward ride time) when it occurs between two moving spans.
 - A **Favorite** is a durable time range over **Ride History**; its telemetry is pinned against deletion, and a deleted ride leaves its favorited sub-ranges intact.
@@ -537,7 +539,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - "navigation mode" may mean how the map camera is oriented or guidance toward a destination; resolved term: use **Map Orientation Mode** for camera orientation and reserve "navigation" for destination guidance.
 - "smoother" is avoided in the raw-telemetry layer (see **Metric Sanitizer**) but is legitimate for the **Battery SoC Estimate**, a processed derived value that smooths the percentage only — never the raw voltage **Telemetry Sample**.
 - "BMS telemetry" may mean live smart-BMS cell values or a durable battery-health archive; resolved: use **Live BMS Series** for the ephemeral in-memory cell-voltage window (retained by `liveHistoryLimit`, never persisted), distinct from scalar **Telemetry Samples**. No durable BMS/battery-health store exists; if one is ever added it needs its own term and a rest-normalized capture trigger.
-- "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts **Ride Recording** sample persistence only — the **Board Session** stays connected and live at a reduced poll rate.
+- "pause" may mean stopping the **Board Session** versus temporarily halting sample persistence; resolved: **Idle Pause** halts both **Telemetry Sample** and **Ride Track** persistence — the **Board Session** stays connected and live at a reduced poll rate.
 - "ride" may mean a personal persisted capture or a live shared room; resolved terms: use **Ride Recording** for the local persisted capture and **Group Ride** for the live shared room. The two are independent — a Rider can do either, both, or neither.
 - "presence" / "location share" may mean a one-off map dot or the live group feed; resolved term: use **Rider Presence** for what a **Rider** shares into a **Group Ride**.
 - "account", "profile", and "Rider" were used interchangeably; resolved: a **Vescape Account** is optional online identity, while a **Rider** remains an anonymous device-local Group Ride participant.

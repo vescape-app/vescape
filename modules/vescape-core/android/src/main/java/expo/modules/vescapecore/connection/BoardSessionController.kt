@@ -1,7 +1,5 @@
 package expo.modules.vescapecore.connection
 
-import expo.modules.vescapecore.protocol.toCapture
-
 import expo.modules.vescapecore.service.foregroundServiceType
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
@@ -42,6 +40,7 @@ import expo.modules.vescapecore.GroupRideObserver
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.telemetry.LiveSeriesEmitter
 import expo.modules.vescapecore.protocol.LocationSnapshot
+import expo.modules.vescapecore.protocol.toCapture
 import expo.modules.vescapecore.location.LocationTracker
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.notification.NotificationController
@@ -1313,6 +1312,11 @@ private var wearAutoLaunchOnConnect = true
                 )
                 setError("Board disconnected")
                 recordingCoordinator.finishDebugRecording("error")
+                // No reconnect is coming, but the Ride Recording stays open (nothing tore the
+                // session down), so release the connected-Board pause gate here too. Off the link
+                // there is no Board movement signal to ever reopen it, and a gate stuck closed
+                // silently discards every later GPS Fix.
+                resetIdlePause()
             }
         }
 
@@ -2758,9 +2762,19 @@ private var wearAutoLaunchOnConnect = true
     private fun setStatus(next: BoardPhase) =
         transitionBoardPhase(next, recordName = next.recordName())
 
+    /**
+     * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `beginReconnect`
+     */
     private fun scheduleAutoReconnect(session: SessionConfig, gattStatus: Int?, reason: String) {
         if (!session.autoReconnect || isStoppingService) return
         val reconnectSession = boardSession ?: return
+        // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
+        // halts *both* streams, GPS included — so a board that went stationary and then dropped would
+        // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
+        // Off the link there is no Board movement signal and no GPS-based Idle Pause (ADR 0021), so
+        // recording continues until the rider stops it; the detector takes over again on the next
+        // board-ready.
+        resetIdlePause()
         // Lost a live link (telemetry was flowing) — signal the rider we're now without telemetry.
         // Fires once at loss: subsequent reconnect attempts enter here as Reconnecting/Rescanning.
         if (connectionSoundsEnabled && (boardStatus == BoardPhase.Connected || boardStatus == BoardPhase.Stale)) {
@@ -2910,10 +2924,26 @@ private var wearAutoLaunchOnConnect = true
 
     private fun onLocationUpdated(location: Location) {
         recordGpsFix(location)
-        locationTracker.onLocationUpdated(location)
+        val snapshot = locationTracker.onLocationUpdated(location)
+        recordRideTrackFix(snapshot)
         latestRiderPresence()?.let(groupRideObserver::pushPresence)
         // Offered on every Fix; the coordinator owns the freshness and distance gates.
         weatherCoordinator.onPosition(location.latitude, location.longitude)
+    }
+
+    /**
+     * Offer the fix that just arrived to the **Ride Track**.
+     *
+     * On the GPS clock, not the frame clock: this runs whether or not telemetry is flowing, which is
+     * what keeps the route alive through a board dropout (ADR 0038). Poor fixes are offered too —
+     * the store keeps them with their reported accuracy and the precision rule applies on read.
+     *
+     * Idle Pause halts both durable streams together, and paused fixes are dropped rather than
+     * backfilled on resume (ADR 0021). Live display, presence and the map are untouched by it.
+     */
+    private fun recordRideTrackFix(snapshot: LocationSnapshot) {
+        if (idlePauseDetector.isPaused) return
+        recordingCoordinator.recordGpsFix(snapshot.toCapture())
     }
 
     /**

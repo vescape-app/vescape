@@ -12,6 +12,11 @@ internal data class RideRoutePoint(val latitude: Double, val longitude: Double)
 internal data class RideSessionAggregate(
   /** Owning Board (`boards.id`), blank when the buckets match no saved Board (ADR 0028). */
   val boardId: String,
+  /**
+   * Owning Ride Recording, or [LEGACY_RIDE_RECORDING_ID] for buckets with no durable identity.
+   * A real recording *is* the history entry: gap length and disconnect markers never split it.
+   */
+  val recordingId: String,
   var boundaryBefore: String,
   var firstBucketStartMs: Long,
   var startAtMs: Long,
@@ -72,7 +77,7 @@ internal class RideHistoryRepository private constructor(private val context: Co
 
       while (hasOlderBuckets && complete.size < limit) {
         val beforeInclusive = if (beforeExclusive == Long.MAX_VALUE) Long.MAX_VALUE else beforeExclusive - 1L
-        val fetched = dao.getHistoryBuckets(0, Long.MAX_VALUE, beforeInclusive, null, RIDE_BUCKET_BATCH_SIZE + 1)
+        val fetched = dao.getRideBuckets(beforeInclusive, RIDE_BUCKET_BATCH_SIZE + 1)
         val batch = fetched.take(RIDE_BUCKET_BATCH_SIZE)
         if (batch.isEmpty()) {
           hasOlderBuckets = false
@@ -143,11 +148,15 @@ internal fun groupRideSessions(
   var previous: TelemetryMinuteBucketEntity? = null
 
   for (bucket in buckets.sortedBy { it.firstSampleAtMs }) {
-    if (bucket.sampleCount <= 0) continue
     val boundary = rideBoundaryForBucket(bucket, markers)
+    // Legacy rows have no recording identity, so they keep reconstructing rides from gaps and
+    // break markers. A row that carries one needs neither: the recording *is* the entry, and a
+    // dropout of any length inside it stays one ride (ADR 0038).
+    val legacy = bucket.recordingId == LEGACY_RIDE_RECORDING_ID
     val split = current == null || current.boardId != bucket.boardId ||
-      (previous != null && bucket.firstSampleAtMs - previous.lastSampleAtMs > gapMs) ||
-      RIDE_BREAK_BOUNDARIES.contains(boundary)
+      current.recordingId != bucket.recordingId ||
+      (legacy && previous != null && bucket.firstSampleAtMs - previous.lastSampleAtMs > gapMs) ||
+      (legacy && RIDE_BREAK_BOUNDARIES.contains(boundary))
     if (split) {
       current?.let(sessions::add)
       current = newRideAggregate(bucket, boundary)
@@ -161,6 +170,7 @@ internal fun groupRideSessions(
 
 private fun newRideAggregate(bucket: TelemetryMinuteBucketEntity, boundary: String) = RideSessionAggregate(
   boardId = bucket.boardId,
+  recordingId = bucket.recordingId,
   boundaryBefore = boundary,
   firstBucketStartMs = bucket.bucketStartMs,
   startAtMs = bucket.firstSampleAtMs,
@@ -179,7 +189,8 @@ private fun mergeRideBucket(session: RideSessionAggregate, bucket: TelemetryMinu
   session.firstBucketStartMs = minOf(session.firstBucketStartMs, bucket.bucketStartMs)
   session.startAtMs = minOf(session.startAtMs, bucket.firstSampleAtMs)
   session.endAtMs = maxOf(session.endAtMs, bucket.lastSampleAtMs)
-  session.blockIds.add("${bucket.boardId}:${bucket.bucketStartMs}")
+  // Same identity `getHistory` gives a bucket: two recordings of one Board can share a minute.
+  session.blockIds.add("${bucket.boardId}:${bucket.recordingId}:${bucket.bucketStartMs}")
   session.blockCount++
   session.sampleCount += bucket.sampleCount
   session.gpsPointCount += bucket.gpsPointCount

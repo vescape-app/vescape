@@ -5,6 +5,51 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TelemetryBucketBuilderTest {
+  /**
+   * The two streams are independent now, so a board dropout produces a minute of Ride Track fixes
+   * and no telemetry frame at all — the exact case the durable track exists for. That minute owns a
+   * bucket of its own; discarding it would erase the route, the GPS distance and the history entry.
+   */
+  @Test
+  fun buildsABucketForAMinuteThatOnlyHasTrackFixes() {
+    val buckets = buildTelemetryBuckets(
+      telemetryPoints = emptyList(),
+      locationPoints = listOf(
+        BucketLocationPoint(
+          capturedAtMs = 120_500L,
+          boardId = "board-1",
+          recordingId = "recording-1",
+          precise = true,
+          distanceFromPreviousCm = null,
+          gpsSpeedCentiMps = 900,
+          latitudeE7 = 500_000_000,
+          longitudeE7 = 190_000_000,
+        ),
+        BucketLocationPoint(
+          capturedAtMs = 130_000L,
+          boardId = "board-1",
+          recordingId = "recording-1",
+          precise = true,
+          distanceFromPreviousCm = 4_200L,
+          gpsSpeedCentiMps = 1_100,
+          latitudeE7 = 500_010_000,
+          longitudeE7 = 190_000_000,
+        ),
+      ),
+    )
+
+    val bucket = buckets.single()
+    assertEquals(120_000L, bucket.bucketStartMs)
+    assertEquals("recording-1", bucket.recordingId)
+    assertEquals(0, bucket.sampleCount)
+    assertEquals(2, bucket.gpsPointCount)
+    assertEquals(2, bucket.preciseGpsPointCount)
+    assertEquals(4_200L, bucket.gpsDistanceCm)
+    assertEquals(120_500L, bucket.firstSampleAtMs)
+    assertEquals(130_000L, bucket.lastSampleAtMs)
+    assertEquals(500_000_000, bucket.firstLatitudeE7)
+  }
+
   @Test
   fun combinesBoardAndGpsPointsForSameDeviceMinute() {
     val buckets = buildTelemetryBuckets(
@@ -69,8 +114,9 @@ class TelemetryBucketBuilderTest {
     assertEquals(1_250, buckets.maxGpsSpeedCentiMps)
   }
 
+  /** An unattributed fix still owns a minute; `board_id` just falls back to the stand-in id. */
   @Test
-  fun ignoresGpsOnlyPoints() {
+  fun bucketsGpsOnlyPointsThatMatchNoBoard() {
     val buckets = buildTelemetryBuckets(
       telemetryPoints = emptyList(),
       locationPoints = listOf(
@@ -84,7 +130,11 @@ class TelemetryBucketBuilderTest {
       ),
     )
 
-    assertEquals(emptyList<TelemetryMinuteBucketEntity>(), buckets)
+    val bucket = buckets.single()
+    assertEquals(60_000L, bucket.bucketStartMs)
+    assertEquals(UNKNOWN_TELEMETRY_BOARD_ID, bucket.boardId)
+    assertEquals(0, bucket.sampleCount)
+    assertEquals(1, bucket.gpsPointCount)
   }
 
   @Test
@@ -201,6 +251,51 @@ class TelemetryBucketBuilderTest {
     assertNull(bucket.firstMovingAtMs)
     assertNull(bucket.lastMovingAtMs)
   }
+
+  /**
+   * The board dropped mid-ride and the phone kept moving: the Moving Window has to follow the GPS,
+   * or the seek timeline and Time stop at the last telemetry frame (ADR 0017, ADR 0038).
+   */
+  @Test
+  fun extendsMovingWindowThroughGpsOnlyMovement() {
+    val bucket = buildTelemetryBuckets(
+      telemetryPoints = listOf(
+        BucketTelemetryPoint(
+          capturedAtMs = 1_000L,
+          boardId = "board-1",
+          recordingId = "recording-1",
+          speedCentiKmh = 1_200,
+          batteryVoltageMv = 70_000,
+          motorCurrentMa = 0,
+          batteryCurrentMa = 0,
+          dutyPermille = 0,
+          odometerCm = null,
+          excludedFromAvgSpeed = false,
+        ),
+      ),
+      locationPoints = listOf(
+        locationPoint(capturedAtMs = 20_000L, moving = true),
+        locationPoint(capturedAtMs = 30_000L, moving = false),
+      ),
+    ).single()
+
+    assertEquals(1_000L, bucket.firstMovingAtMs)
+    assertEquals("GPS movement widens the window past the last frame", 20_000L, bucket.lastMovingAtMs)
+    assertEquals("but never counts as a Telemetry Sample", 1, bucket.sampleCount)
+    assertEquals(1, bucket.movingSpeedSampleCount)
+  }
+
+  private fun locationPoint(capturedAtMs: Long, moving: Boolean) = BucketLocationPoint(
+    capturedAtMs = capturedAtMs,
+    boardId = "board-1",
+    recordingId = "recording-1",
+    precise = true,
+    moving = moving,
+    distanceFromPreviousCm = null,
+    gpsSpeedCentiMps = null,
+    latitudeE7 = 500_000_000,
+    longitudeE7 = 190_000_000,
+  )
 
   @Test
   fun integratesBatteryUsedAndRegenInsideMinuteBucket() {

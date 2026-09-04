@@ -2,10 +2,11 @@ package expo.modules.vescapecore.telemetry.sanitizers
 
 import expo.modules.vescapecore.telemetry.BucketTelemetryPoint
 import expo.modules.vescapecore.telemetry.EXCLUSION_REASON_FREE_SPIN
-import expo.modules.vescapecore.telemetry.FREE_SPIN_GPS_PRECISE_ACCURACY_CM
 import expo.modules.vescapecore.telemetry.FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH
 import expo.modules.vescapecore.telemetry.FREE_SPIN_NEAREST_GPS_MAX_AGE_MS
+import expo.modules.vescapecore.telemetry.RideTrackPointEntity
 import expo.modules.vescapecore.telemetry.UNKNOWN_TELEMETRY_BOARD_ID
+import expo.modules.vescapecore.telemetry.isPrecise
 import kotlin.math.abs
 
 internal class FreeSpinMetricSanitizer(
@@ -21,12 +22,12 @@ internal class FreeSpinMetricSanitizer(
     context: MetricSanitizationContext,
   ): MetricSanitizerOutput {
     val absSpeed = abs(point.speedCentiKmh)
-    val nearestGps = findNearestPreciseGps(index, point, context) ?: return MetricSanitizerOutput()
-    val gpsSpeedKmh = gpsSpeedCentiMpsToKmh(nearestGps.gpsSpeedCentiMps!!)
-    val freeSpin = if (gpsSpeedKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH) {
+    val nearestGps = findNearestFix(point, context.track) ?: return MetricSanitizerOutput()
+    val gpsSpeedCentiKmh = gpsSpeedCentiMpsToCentiKmh(nearestGps.gpsSpeedCentiMps!!)
+    val freeSpin = if (gpsSpeedCentiKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH) {
       absSpeed > stationaryCap
     } else {
-      absSpeed - gpsSpeedKmh > maxDelta
+      absSpeed - gpsSpeedCentiKmh > maxDelta
     }
     if (!freeSpin) return MetricSanitizerOutput()
 
@@ -44,50 +45,49 @@ internal class FreeSpinMetricSanitizer(
   }
 }
 
-internal fun buildPreciseGpsIndex(samples: List<BucketTelemetryPoint>): List<Int> =
-  samples.indices.filter { i -> isPreciseGps(samples[i]) }
+internal fun preciseGpsTrack(track: List<RideTrackPointEntity>): List<RideTrackPointEntity> =
+  track.filter { it.isPrecise() && it.gpsSpeedCentiMps != null }
 
-internal fun isPreciseGps(point: BucketTelemetryPoint): Boolean =
-  point.gpsSpeedCentiMps != null &&
-    point.gpsTimestampMs != null &&
-    point.gpsAccuracyCm != null &&
-    point.gpsAccuracyCm <= FREE_SPIN_GPS_PRECISE_ACCURACY_CM
-
-internal fun findNearestPreciseGps(
-  index: Int,
+/**
+ * The fix nearest in time to a sample, within the age window and attributable to its Board. The two
+ * streams run on two clocks, so "nearest" is a search, not an index: a fix either side of the
+ * sample is equally usable. [track] must be ordered by `fixAtMs`.
+ */
+internal fun findNearestFix(
   point: BucketTelemetryPoint,
-  context: MetricSanitizationContext,
-): BucketTelemetryPoint? {
-  if (context.preciseGpsIndices.isEmpty()) return null
+  track: List<RideTrackPointEntity>,
+): RideTrackPointEntity? {
+  if (track.isEmpty()) return null
+  var low = 0
+  var high = track.size
+  while (low < high) {
+    val mid = (low + high) / 2
+    if (track[mid].fixAtMs < point.capturedAtMs) low = mid + 1 else high = mid
+  }
 
-  var insertionPoint = context.preciseGpsIndices.binarySearch(index)
-  if (insertionPoint < 0) insertionPoint = -(insertionPoint + 1)
-
-  var best: BucketTelemetryPoint? = null
+  var best: RideTrackPointEntity? = null
   var bestAge = Long.MAX_VALUE
 
-  for (offset in intArrayOf(0, -1)) {
-    val idx = insertionPoint + offset
-    if (idx < 0 || idx >= context.preciseGpsIndices.size) continue
-    val candidate = context.samples[context.preciseGpsIndices[idx]]
-    val age = abs(candidate.gpsTimestampMs!! - point.capturedAtMs)
-    if (age <= FREE_SPIN_NEAREST_GPS_MAX_AGE_MS && age < bestAge) {
+  // Walk outward until the age window closes rather than over a fixed number of neighbours: a
+  // multi-Board track interleaves fixes, so the nearest same-Board fix can sit several indices out.
+  fun consider(candidate: RideTrackPointEntity): Boolean {
+    val age = abs(candidate.fixAtMs - point.capturedAtMs)
+    if (age > FREE_SPIN_NEAREST_GPS_MAX_AGE_MS) return false
+    // A fix that matched no saved Board can stand in for any Board's sample, as it always could.
+    val attributable = candidate.boardId == null || candidate.boardId == point.boardId
+    if (attributable && age < bestAge) {
       best = candidate
       bestAge = age
     }
-  }
-  for (offset in intArrayOf(1)) {
-    val idx = insertionPoint + offset
-    if (idx < 0 || idx >= context.preciseGpsIndices.size) continue
-    val candidate = context.samples[context.preciseGpsIndices[idx]]
-    val age = abs(candidate.gpsTimestampMs!! - point.capturedAtMs)
-    if (age <= FREE_SPIN_NEAREST_GPS_MAX_AGE_MS && age < bestAge) {
-      best = candidate
-      bestAge = age
-    }
+    return true
   }
 
+  var backward = low - 1
+  while (backward >= 0 && consider(track[backward])) backward--
+  var forward = low
+  while (forward < track.size && consider(track[forward])) forward++
   return best
 }
 
-internal fun gpsSpeedCentiMpsToKmh(centiMps: Int): Int = (centiMps * 36) / 10
+/** @parity /modules/vescape-core/ios/telemetry/MetricSanitizer.swift `gpsSpeedCentiMpsToCentiKmh` */
+internal fun gpsSpeedCentiMpsToCentiKmh(centiMps: Int): Int = (centiMps * 36) / 10

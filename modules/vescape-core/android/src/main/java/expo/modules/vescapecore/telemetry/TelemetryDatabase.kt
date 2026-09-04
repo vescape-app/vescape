@@ -14,12 +14,14 @@ import java.io.File
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `TELEMETRY_SCHEMA_VERSION`
-internal const val TELEMETRY_DATABASE_VERSION = 42
+internal const val TELEMETRY_DATABASE_VERSION = 43
 
 @Database(
   entities = [
     TelemetryFrameEntity::class,
     TelemetryMinuteBucketEntity::class,
+    RideRecordingEntity::class,
+    RideTrackPointEntity::class,
     TelemetryMarkerEntity::class,
     MetricExclusionRangeEntity::class,
     BoardEntity::class,
@@ -571,6 +573,254 @@ abstract class TelemetryDatabase : RoomDatabase() {
         db.execSQL("DROP TABLE IF EXISTS $DEVICE_BOARD_MAP")
       }
     }
+
+    /**
+     * Ride Track becomes the durable home for ride position (#448, ADR 0038). GPS stops being seven
+     * nullable columns on the telemetry row and gets its own table on its own clock, so a board
+     * dropout no longer erases the route; Ride Recordings gain durable identity and explicit
+     * boundaries, held apart from the Board they belong to.
+     *
+     * The existing values are moved, not dropped — the frames' own `board_id` is the attribution,
+     * already resolved once by migration 41→42, so this migration never re-decides who owns a row.
+     * Rides recorded before today gain no new points: their tracks come out exactly as sparse as
+     * their telemetry was, which is the honest answer, not a migration bug.
+     *
+     * Legacy rows get no recording identity. `rideSplitGapMinutes` still groups them, because
+     * inventing recording boundaries out of sparse samples would rewrite history that has no
+     * evidence either way.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v43_ride_track`
+     */
+    internal val MIGRATION_42_43 = object : Migration(42, 43) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        createRideRecordingTables(db)
+        migrateFrameGpsIntoRideTrack(db)
+        rebuildFramesWithoutGps(db)
+        rebuildBucketsOnRecordingId(db)
+      }
+    }
+
+    /** @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `createRideRecordingTables` */
+    private fun createRideRecordingTables(db: SupportSQLiteDatabase) {
+      db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS ride_recordings (
+          id TEXT NOT NULL PRIMARY KEY,
+          board_id TEXT,
+          started_at_ms INTEGER NOT NULL,
+          ended_at_ms INTEGER,
+          ended_reason TEXT
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_ride_recordings_started_at_ms " +
+          "ON ride_recordings(started_at_ms)",
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_ride_recordings_board_id_started_at_ms " +
+          "ON ride_recordings(board_id, started_at_ms)",
+      )
+      db.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS ride_track_points (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          recording_id TEXT,
+          board_id TEXT,
+          fix_at_ms INTEGER NOT NULL,
+          latitude_e7 INTEGER NOT NULL,
+          longitude_e7 INTEGER NOT NULL,
+          accuracy_cm INTEGER,
+          gps_speed_centi_mps INTEGER,
+          bearing_centi_deg INTEGER,
+          altitude_cm INTEGER
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_ride_track_points_fix_at_ms " +
+          "ON ride_track_points(fix_at_ms)",
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_ride_track_points_board_id_fix_at_ms " +
+          "ON ride_track_points(board_id, fix_at_ms)",
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_ride_track_points_recording_id_fix_at_ms " +
+          "ON ride_track_points(recording_id, fix_at_ms)",
+      )
+    }
+
+    /**
+     * Every frame that carried a fix becomes a Ride Track point. `location_timestamp_ms` is the GPS
+     * clock and is preferred over the frame's capture time, which is the clock the fix was merely
+     * stamped onto. A frame with no coordinates contributes nothing — a ride recorded without GPS
+     * migrates to an empty track, not to fabricated points.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `migrateFrameGpsIntoRideTrack`
+     */
+    private fun migrateFrameGpsIntoRideTrack(db: SupportSQLiteDatabase) {
+      db.execSQL(
+        """
+        INSERT INTO ride_track_points (
+          recording_id, board_id, fix_at_ms, latitude_e7, longitude_e7,
+          accuracy_cm, gps_speed_centi_mps, bearing_centi_deg, altitude_cm
+        )
+        SELECT
+          NULL,
+          f.board_id,
+          COALESCE(f.location_timestamp_ms, f.captured_at_ms),
+          f.latitude_e7,
+          f.longitude_e7,
+          f.accuracy_cm,
+          f.gps_speed_centi_mps,
+          f.bearing_centi_deg,
+          f.altitude_cm
+        FROM telemetry_frames f
+        WHERE f.latitude_e7 IS NOT NULL AND f.longitude_e7 IS NOT NULL
+        ORDER BY f.captured_at_ms ASC, f.id ASC
+        """.trimIndent(),
+      )
+    }
+
+    /**
+     * Drops the seven raw GPS columns and adds `recording_id`. A rebuild rather than an `ALTER`:
+     * dropping a column in place needs a SQLite newer than the oldest supported device ships.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildFramesWithoutGps`
+     */
+    private fun rebuildFramesWithoutGps(db: SupportSQLiteDatabase) {
+      val columns =
+        "captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, " +
+          "changed_mask_2, speed_centi_kmh, battery_voltage_mv, motor_current_ma, " +
+          "battery_current_ma, duty_permille, pitch_centi_deg, roll_centi_deg, " +
+          "balance_pitch_centi_deg, balance_current_ma, erpm, state, switch_state, adc1_milli, " +
+          "adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c"
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_captured_at_ms")
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_frames_board_id_captured_at_ms")
+      db.execSQL(
+        """
+        CREATE TABLE telemetry_frames_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          captured_at_ms INTEGER NOT NULL,
+          elapsed_realtime_ms INTEGER NOT NULL,
+          board_id TEXT,
+          recording_id TEXT,
+          can_id INTEGER,
+          flags INTEGER NOT NULL,
+          changed_mask_1 INTEGER NOT NULL,
+          changed_mask_2 INTEGER NOT NULL,
+          speed_centi_kmh INTEGER,
+          battery_voltage_mv INTEGER,
+          motor_current_ma INTEGER,
+          battery_current_ma INTEGER,
+          duty_permille INTEGER,
+          pitch_centi_deg INTEGER,
+          roll_centi_deg INTEGER,
+          balance_pitch_centi_deg INTEGER,
+          balance_current_ma INTEGER,
+          erpm INTEGER,
+          state INTEGER,
+          switch_state INTEGER,
+          adc1_milli INTEGER,
+          adc2_milli INTEGER,
+          odometer_cm INTEGER,
+          temp_mosfet_deci_c INTEGER,
+          temp_motor_deci_c INTEGER
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(
+        """
+        INSERT INTO telemetry_frames_new (id, recording_id, $columns)
+        SELECT f.id, NULL, $columns
+        FROM telemetry_frames f
+        """.trimIndent(),
+      )
+      db.execSQL("DROP TABLE telemetry_frames")
+      db.execSQL("ALTER TABLE telemetry_frames_new RENAME TO telemetry_frames")
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_telemetry_frames_captured_at_ms " +
+          "ON telemetry_frames(captured_at_ms)",
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_telemetry_frames_board_id_captured_at_ms " +
+          "ON telemetry_frames(board_id, captured_at_ms)",
+      )
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_telemetry_frames_recording_id_captured_at_ms " +
+          "ON telemetry_frames(recording_id, captured_at_ms)",
+      )
+    }
+
+    /**
+     * The bucket primary key gains `recording_id`, so two recordings of one Board inside one minute
+     * stop aggregating into a single row. Existing buckets take [LEGACY_RIDE_RECORDING_ID] and keep
+     * grouping exactly as they did.
+     *
+     * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `rebuildBucketsOnRecordingId`
+     */
+    private fun rebuildBucketsOnRecordingId(db: SupportSQLiteDatabase) {
+      val columns =
+        "bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms, " +
+          "sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh, " +
+          "max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma, " +
+          "max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, " +
+          "max_duty_abs_permille, first_odometer_cm, last_odometer_cm, gps_point_count, " +
+          "precise_gps_point_count, gps_distance_cm, max_gps_speed_centi_mps, " +
+          "max_temp_mosfet_deci_c, max_temp_motor_deci_c, first_latitude_e7, first_longitude_e7, " +
+          "first_moving_at_ms, last_moving_at_ms"
+      db.execSQL("DROP INDEX IF EXISTS index_telemetry_minute_buckets_bucket_start_ms")
+      db.execSQL(
+        """
+        CREATE TABLE telemetry_minute_buckets_new (
+          bucket_start_ms INTEGER NOT NULL,
+          board_id TEXT NOT NULL,
+          recording_id TEXT NOT NULL DEFAULT '',
+          sample_count INTEGER NOT NULL,
+          first_sample_at_ms INTEGER NOT NULL,
+          last_sample_at_ms INTEGER NOT NULL,
+          sum_abs_speed_centi_kmh INTEGER NOT NULL,
+          moving_speed_sample_count INTEGER,
+          sum_moving_abs_speed_centi_kmh INTEGER,
+          max_abs_speed_centi_kmh INTEGER NOT NULL,
+          min_battery_voltage_mv INTEGER,
+          max_motor_current_abs_ma INTEGER NOT NULL,
+          max_battery_current_abs_ma INTEGER NOT NULL,
+          battery_used_wh_milli INTEGER NOT NULL,
+          battery_regen_wh_milli INTEGER NOT NULL,
+          max_duty_abs_permille INTEGER NOT NULL,
+          first_odometer_cm INTEGER,
+          last_odometer_cm INTEGER,
+          gps_point_count INTEGER NOT NULL,
+          precise_gps_point_count INTEGER NOT NULL,
+          gps_distance_cm INTEGER NOT NULL,
+          max_gps_speed_centi_mps INTEGER,
+          max_temp_mosfet_deci_c INTEGER,
+          max_temp_motor_deci_c INTEGER,
+          first_latitude_e7 INTEGER,
+          first_longitude_e7 INTEGER,
+          first_moving_at_ms INTEGER,
+          last_moving_at_ms INTEGER,
+          PRIMARY KEY (bucket_start_ms, board_id, recording_id)
+        )
+        """.trimIndent(),
+      )
+      db.execSQL(
+        """
+        INSERT INTO telemetry_minute_buckets_new ($columns, recording_id)
+        SELECT $columns, '$LEGACY_RIDE_RECORDING_ID'
+        FROM telemetry_minute_buckets
+        """.trimIndent(),
+      )
+      db.execSQL("DROP TABLE telemetry_minute_buckets")
+      db.execSQL("ALTER TABLE telemetry_minute_buckets_new RENAME TO telemetry_minute_buckets")
+      db.execSQL(
+        "CREATE INDEX IF NOT EXISTS index_telemetry_minute_buckets_bucket_start_ms " +
+          "ON telemetry_minute_buckets(bucket_start_ms)",
+      )
+    }
+
 
     /**
      * Telemetry whose `device_id` matches no Board would lose both its identity and its label:
@@ -1412,6 +1662,7 @@ abstract class TelemetryDatabase : RoomDatabase() {
             MIGRATION_36_40,
             MIGRATION_40_41,
             MIGRATION_41_42,
+            MIGRATION_42_43,
           )
           .fallbackToDestructiveMigration(true)
           .addCallback(object : Callback() {

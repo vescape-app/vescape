@@ -32,3 +32,9 @@ ADR-0009 (Privacy Zones) rejected "pause recording inside zones" because a recor
 - A mid-ride stop longer than the threshold now produces a clean **gap** instead of a flat low-speed line. Because the gap sits between two moving spans, it stays **inside** the Moving Window and still counts toward Time — consistent with ADR-0017's "internal stops stay in the ride."
 - A pause longer than `GAP_BOUNDARY_MS` (90 s) also trips the existing automatic `"gap"` marker on resume; the `"auto_pause"` marker adds the _reason_.
 - Scoped to recording-active for v1. A board connected and parked but **not** recording still polls full-rate; idle-throttling the Board Session independent of recording (a larger battery win) is deferred until that case proves to matter.
+
+## Ride Track amendment
+
+Idle Pause pauses Telemetry Sample and Ride Track persistence together, and resumption enables both streams together. Keeping GPS writes active while the UI reports recording paused would retain the rider's movements during the pause. Live GPS consumers remain unaffected. #448 applies this shared persistence gate; #450 defines pause and resume detection when the Board Session is no longer live.
+
+While connected, Board movement controls Idle Pause; phone movement cannot override a stationary Board. After unexpected Board disconnection, GPS recording continues without GPS-based Idle Pause. Disconnected recording continues until explicit rider stop, without an automatic timeout.

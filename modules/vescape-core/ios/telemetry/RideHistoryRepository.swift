@@ -13,6 +13,9 @@ internal struct RideRoutePoint {
 internal struct RideSessionAggregate {
   /// Owning Board (`boards.id`), empty when the buckets match no saved Board (ADR 0028).
   let boardId: String
+  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for buckets with no durable identity.
+  /// A real recording *is* the history entry: gap length and disconnect markers never split it.
+  let recordingId: String
   var boundaryBefore: String
   var firstBucketStartMs: Int64
   var startAtMs: Int64
@@ -77,7 +80,10 @@ internal final class RideHistoryRepository {
       while hasOlderBuckets && complete.count < limit {
         let batch = try Row.fetchAll(
           db,
-          sql: "SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms < ? AND sample_count > 0 ORDER BY bucket_start_ms DESC LIMIT ?",
+          // Every bucket, including the ones a Ride Track wrote with no Telemetry Sample in them: a
+          // board dropout is exactly when those minutes exist, and they carry the Moving Window and
+          // route anchor that keep Time and the seek timeline honest across it (ADR 0038).
+          sql: "SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms < ? ORDER BY bucket_start_ms DESC LIMIT ?",
           arguments: [beforeMs, rideBucketBatchSize + 1]
         )
         if batch.isEmpty { hasOlderBuckets = false; break }
@@ -131,16 +137,21 @@ internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) ->
   var current: RideSessionAggregate?
   var previous: Row?
   for bucket in buckets.sorted(by: { ($0["first_sample_at_ms"] as Int64) < ($1["first_sample_at_ms"] as Int64) }) {
-    if (bucket["sample_count"] as Int) <= 0 { continue }
     let boundary = rideBoundaryForBucket(bucket, markers: markers)
     let boardId = bucket["board_id"] as String
-    let split = current == nil || current?.boardId != boardId ||
-      (previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false) ||
-      rideBreakBoundaries.contains(boundary)
+    let recordingId = bucket["recording_id"] as String
+    // Legacy rows have no recording identity, so they keep reconstructing rides from gaps and
+    // break markers. A row that carries one needs neither: the recording *is* the entry, and a
+    // dropout of any length inside it stays one ride (ADR 0038).
+    let legacy = recordingId == LEGACY_RIDE_RECORDING_ID
+    let split = current == nil || current?.boardId != boardId || current?.recordingId != recordingId ||
+      (legacy && (previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false)) ||
+      (legacy && rideBreakBoundaries.contains(boundary))
     if split {
       if let current { sessions.append(current) }
       current = RideSessionAggregate(
         boardId: boardId,
+        recordingId: recordingId,
         boundaryBefore: boundary,
         firstBucketStartMs: bucket["bucket_start_ms"] as Int64,
         startAtMs: bucket["first_sample_at_ms"] as Int64,
@@ -159,7 +170,8 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.firstBucketStartMs = min(session.firstBucketStartMs, bucketStart)
   session.startAtMs = min(session.startAtMs, bucket["first_sample_at_ms"] as Int64)
   session.endAtMs = max(session.endAtMs, bucket["last_sample_at_ms"] as Int64)
-  session.blockIds.append("\(session.boardId):\(bucketStart)")
+  // Same identity `getHistory` gives a bucket: two recordings of one Board can share a minute.
+  session.blockIds.append("\(session.boardId):\(session.recordingId):\(bucketStart)")
   session.blockCount += 1
   session.sampleCount += bucket["sample_count"] as Int
   session.gpsPointCount += bucket["gps_point_count"] as Int

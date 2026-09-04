@@ -197,7 +197,7 @@ class FavoriteSummaryBuilderTest {
   }
 
   private fun bucketsFor(points: List<BucketTelemetryPoint>): Collection<TelemetryMinuteBucketEntity> {
-    val sanitization = sanitizeTelemetrySamples(points, MetricSanitizerConfig())
+    val sanitization = sanitizeTelemetrySamples(points, emptyList(), MetricSanitizerConfig())
     val sanitized = points.mapIndexed { index, point ->
       point.copy(
         excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,

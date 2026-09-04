@@ -1,8 +1,8 @@
 # Ride Track is a separate durable GPS stream
 
 A **Ride Track** — every **GPS Fix** the phone produced during a **Ride Recording**, stored on its own
-clock with its reported accuracy — becomes the durable home for ride position. GPS is no longer written
-as `latitude_e7` / `longitude_e7` / `accuracy_cm` columns on a telemetry frame, and a **Ride Recording**
+clock with its reported accuracy — becomes the durable home for ride position. The complete recorded GPS fix moves out of the telemetry frame: coordinates, reported accuracy,
+GPS speed, raw bearing, altitude, and fix timestamp live in Ride Track, and a **Ride Recording**
 no longer ends when its **Board Link** does: it continues on GPS alone and telemetry resumes into the
 same recording if the Board comes back.
 
@@ -54,14 +54,69 @@ a telemetry row.
 - Route and graphs no longer share one timeline. Every read path that renders a ride must decide what
   it does when the track is longer than the telemetry — the scrubber, distance, summary and graphs.
   This is the real cost, and it lands squarely in ADR-0005's precomputed read paths.
-- Migration moves existing frames' position columns into the Ride Track and drops them. Rides recorded
+- Migration moves all existing frames' raw GPS fields into Ride Track and drops those columns. Rides recorded
   before the migration gain no new points; their tracks stay exactly as sparse as their telemetry was.
-- A ride outliving its Board needs an ending rule that does not depend on the Board. Idle Pause
-  (ADR-0021) is the existing pattern. Getting this wrong drains the phone: on iOS the active location
-  manager is what keeps the process alive at all (ADR-0034), so a ride that never ends is a ride that
-  never stops consuming GPS. A hard timeout is required, not optional.
+- Unexpected BLE loss preserves the rider's recording intent while reconnect attempts continue.
+  Recording ends on explicit rider stop or Disconnect, not an elapsed-time limit.
 - Privacy Zones (ADR-0009) must drop Ride Track points, not only telemetry samples. Under ADR-0004 a
   suppressed sample took its position with it; a separate stream will leak position through a zone
   unless it is filtered on its own.
-- Ride Track is not covered by the server backup contract, which accepts frames and buckets keyed on
-  `boardId`. Until that is extended, a restored app has telemetry and no route.
+
+## Recording gates
+
+Ride Track persistence follows the Ride Recording state: Idle Pause pauses both streams, and resumption enables both together. Enabled Privacy Zones use the existing reported-coordinate geometry, without expansion by GPS accuracy. Keeping poor fixes does not override either gate.
+
+Privacy Zones keep the current drop-on-write behavior for this release. Reuse existing reader gap checks without adding continuity flags, segment identities, privacy markers, or new privacy-specific gap detection. Short filtered spans retain the existing continuity limitations. Recording inside zones, sharing prevention/warnings, and Group Ride invisibility belong to a future Privacy Zone rework, outside #452. See the interim scope in ADR-0009.
+
+## Recording identity and history boundaries
+
+New Ride Recordings have a durable identity and explicit start/end boundaries, independent of their Board Sessions and sample arrival. `board_id` remains Board attribution; it does not distinguish two recordings of the same Board. Both streams and their precomputed summaries must remain attributable to the recording that captured them.
+
+One new recording produces at most one history entry, subject to the existing movement visibility rule. Unexpected disconnect, Idle Pause, process interruption, and even an hour with neither telemetry nor GPS do not split an open recording. Reconnection and supported restoration recover the same recording identity. Explicit Stop Recording or Disconnect ends it; starting again creates a separate recording even within the same minute. Minute aggregation must not merge those recordings.
+
+Gap-based grouping was rejected for new recordings because it can split a capture the Rider never stopped. `rideSplitGapMinutes` applies only to legacy history without durable recording boundaries. Migration preserves that existing grouping behavior rather than inventing old recording identities from sparse samples. The setting's UI must explain its legacy-only scope.
+
+Missing samples remain missing. When movement is evidenced before and after a gap in the same recording, the gap remains inside the Moving Window and counts toward Time. This does not imply uninterrupted capture, interpolate either stream, or change Board-based distance and speed statistics.
+
+#448 owns the durable identity/boundary storage contract and stream attribution, #449 reads that contract for grouping and precomputed summaries, and #450 preserves or ends it through recording lifecycle transitions. Agree this shared contract before implementing the storage migration; the three issues still ship together in #452.
+
+## History distance
+
+Ride History Distance remains board-odometer-based. A longer Ride Track does not switch Distance to GPS or add GPS-derived distance to the odometer result. The route and the Distance metric can therefore cover different spans when telemetry is unavailable.
+
+GPS movement can extend the Moving Window, history timeline, and ride duration beyond telemetry coverage. Unavailable Board readings remain gaps while the GPS route continues. These bounds are precomputed natively as required by ADR-0005.
+
+History uses one reported horizontal-accuracy limit of 20m on both platforms for route points and GPS movement evidence. Fixes with worse or unavailable accuracy remain stored but do not qualify for those reads. This rule does not depend on Android provider identity and does not change live GPS classification.
+
+A qualifying GPS fix counts as movement when its reported speed meets the existing rider-configured movement threshold, default 3 km/h. Missing speed is not movement evidence, but does not disqualify an otherwise accurate route point. Do not infer movement speed from coordinate displacement for this rule.
+
+Average and top speed remain board-telemetry-based. Preserve their existing aggregation and sanitizer rules; do not blend in GPS speed or recalculate average speed from Distance divided by the extended ride duration.
+
+## Read composition
+
+The two streams are joined on time at read, never at write, and never re-clocked onto each other.
+
+- Telemetry Samples carry no position at all. The route is the Ride Track, read on its own clock;
+  the seek pin, the preview route and media matching all read that one stream.
+- Only fixes passing the shared precision rule cross the bridge, so the rule is applied once,
+  natively, rather than by each consumer. Minute buckets still count every stored fix
+  (`gps_point_count`) but derive only from qualifying ones: route anchor, step distance, and GPS
+  movement evidence.
+- Minute buckets stay keyed `(bucket_start_ms, board_id, recording_id)`, and a minute holding only
+  Ride Track fixes creates its own bucket — a board dropout is exactly when the track matters most.
+  Track-only buckets carry no Telemetry Samples, so they never move a sample-based statistic.
+- The Metric Sanitizers read the Ride Track directly for the free-spin speed comparison, rather than
+  a fix synthesised back onto a sample. Live sanitization uses the fixes the packets arrived with,
+  which is the same rule against the live equivalent of the stream.
+
+## Disconnect intent
+
+Unexpected Board connection loss allows the active Ride Recording to continue on GPS. An explicit rider Disconnect ends Ride Recording, as does an explicit Stop Recording. Continuing across connection loss does not override a rider's stop intent.
+
+An explicit Connect request for a different Board ends the previous Board Session and Ride Recording immediately, including when the previous Board is disconnected and reconnecting. A failed connection to the new Board does not reopen the old recording. Merely browsing or selecting another Board does not end it. Once the new Board connects, a new recording may start under the existing automatic/manual recording rules; GPS captured between the two recordings is not backfilled into either.
+
+Admitted writes for the old recording are flushed with their original Board and recording identities. Late callbacks, reconnect attempts, or restoration for the old Board cannot revive that recording or contribute samples to the new one. Each Board change creates a separate capture boundary, even within one minute. Independent live GPS consumers keep their existing lifetimes.
+
+While connected, the Board controls Idle Pause, even when the phone moves. Unexpected disconnection continues GPS recording without GPS-based Idle Pause; it remains active until the rider explicitly stops it.
+
+The earlier mandatory hard-timeout proposal is rejected. A rider who lost BLE while riding expects capture to continue for the duration of reconnect attempts. Neither elapsed disconnection time nor GPS inactivity ends or pauses that capture. Platform process suspension or termination can still leave real gaps; never fabricate missing fixes.

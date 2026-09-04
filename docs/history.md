@@ -1,13 +1,26 @@
 # Ride History
 
-Ride History is the persisted view of board riding after live operation ends or moves out of the current live window. It combines board telemetry, telemetry-associated precise GPS fixes, history markers, and derived summaries.
+Ride History is the persisted view of board riding after live operation ends or moves out of the current live window. It combines two independent durable streams — Telemetry Samples and the Ride Track — plus history markers and derived summaries.
+
+## Two streams, one timeline
+
+Position is not a column on a Telemetry Sample. The **Ride Track** is its own stream on the GPS clock, and it can outlive telemetry: a Board that drops at 20 km of a 30 km ride leaves 30 km of route and 20 km of graphs. Every read path answers that with one rule each:
+
+- **Route** draws the whole Ride Track, including spans with no telemetry at all.
+- **Graphs** stay telemetry-bound. A telemetry-less stretch is a gap, never an interpolated or carried-forward Board reading.
+- **Distance** is board-odometer-based and stays that way. A longer track never grows Distance, and GPS distance is never blended into a telemetry gap. Average and top speed likewise stay board-telemetry-based, with their existing aggregation and sanitizer rules.
+- **Scrubber / seek** spans the combined **Moving Window**: GPS movement extends it through GPS-only stretches, so the timeline covers the whole ride. Scrubbing into a telemetry-less stretch keeps moving the route pin and shows the graphs' gap — Board values are unavailable there, not zero.
+- **Precision** is one shared read-side rule: reported horizontal accuracy of at most 20 m, identical on both platforms and independent of the Android provider. Poorer or unreported accuracy stays stored but never draws a route or evidences movement. Migrated fixes without a stored accuracy count as precise, because the old write-time gate is why they exist at all. Live GPS classification is separate and unchanged.
+- **GPS movement** is the fix's own reported speed at or above the rider's movement threshold (default 3 km/h), checked after the accuracy rule. A fix with no reported speed is not movement evidence but is still a route point; movement is never derived from coordinate displacement.
+
+All of this is precomputed natively per ADR-0005 — minute buckets carry the combined Moving Window, and a minute holding only Ride Track fixes produces its own bucket. Reads never reconstruct it. See [ADR-0038](./adr/0038-ride-track-is-a-separate-durable-gps-stream.md) and [ADR-0004](./adr/0004-ride-history-route-from-telemetry.md).
 
 ## Ownership
 
 Native owns durable history truth.
 
 - JS asks native for summaries and ranges.
-- Native persists board telemetry with telemetry-associated GPS fixes, minute buckets, and markers in SQLite.
+- Native persists board telemetry, the Ride Track, minute buckets, and markers in SQLite.
 - JS renders selected history state and sends user intents such as selecting or deleting a ride.
 
 Main files:
@@ -22,9 +35,11 @@ Main files:
 
 ## Persisted Data
 
-`telemetry_frames` stores board telemetry samples and any precise GPS fix attached to those telemetry samples. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
+`telemetry_frames` stores board telemetry samples, without position. Frames are delta encoded with periodic keyframes. Queries reconstruct full samples from nearest keyframe before requested range.
 
-`telemetry_minute_buckets` stores minute-level summaries used by history lists. Buckets include sample counts, GPS counts, distance, speed, and battery/current summaries. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
+`ride_track_points` stores the Ride Track: every admitted GPS fix on its own clock, with the accuracy the platform reported. `ride_recordings` stores durable recording identity and explicit boundaries.
+
+`telemetry_minute_buckets` stores minute-level summaries used by history lists, keyed on `(bucket_start_ms, board_id, recording_id)`. Buckets include sample counts, GPS counts, distance, speed, battery/current summaries and the combined Moving Window. A minute with Ride Track fixes and no frame still gets a bucket. VESC faults live in separate Board-owned storage and are never counted or retained by Ride History.
 
 `telemetry_markers` stores ride boundaries and abnormal events. Current marker types include:
 
@@ -36,7 +51,7 @@ Main files:
 
 ## Recording Rules
 
-A Ride Recording should represent board telemetry captured while a Board is connected, plus precise GPS fixes captured alongside that telemetry.
+A Ride Recording is started by a Board, and captures both streams: board telemetry while the Board is connected, and the Ride Track for as long as the recording is open.
 
 Standalone GPS may update live map state but should not create a Ride Recording.
 
@@ -55,7 +70,7 @@ list thumbnails, so JS neither groups buckets nor scans all loaded buckets per r
 `historyStore.selectSession(session)` loads:
 
 - board samples from `getHistoryRange({ fromMs, toMs, boardId, limit: 10000 })`
-- GPS samples derived from telemetry samples in the same range
+- Ride Track fixes over the same range, already reduced natively to those passing the precision rule
 - markers from same range
 
 Selected history is rendered from `sessionSamples`, `sessionGpsSamples`, and `sessionMarkers`.
@@ -78,7 +93,7 @@ For each selected-ride Media History read:
 
 A continuous recording-backed GPS span contains adjacent GPS fixes no more than `30_000ms` apart. Explicit `gap` markers and ride-boundary markers (`disconnected`, `app_stop`, or `error`) always split spans. Span coverage begins at its first GPS fix and ends at its last GPS fix; matching tolerance does not extend it.
 
-No valid nearby recording-backed GPS fix means no map pin. This excludes media captured during unsupported route spans, including GPS outages and Privacy Zone or Ride History gaps. Media cannot match into or across a gap even when a fix on its other side is within `30_000ms`.
+No valid nearby recording-backed GPS fix means no map pin. Media cannot match into or across a gap detected by the span rules above, even when a fix on its other side is within `30_000ms`. Privacy Zone filtering stores no explicit break: a short filtered span below the time-gap threshold may still be treated as continuous. The Ride Track work in #448, #449, and #450 retains this limitation and does not introduce privacy-specific continuity metadata. See [ADR-0009](./adr/0009-privacy-zones-drop-ride-recording-samples.md).
 
 Matching is recomputed from current photo-library access and selected Ride History data whenever Media History is read for a selected ride. Results may live in memory for that active read only; changing ride, disabling Media History, changing permission, or refreshing discards them.
 
@@ -93,14 +108,24 @@ Permission states should expose the relevant OS action for changing access. Asse
 
 See ADR 0014 for the ownership and matching decision.
 
-## Session Grouping
+## Ride grouping
+
+### Accepted Ride Track behavior, pending #448, #449, and #450
+
+New recordings use durable recording identity and explicit boundaries. An open recording remains one history entry through BLE loss, Idle Pause, and gaps in both streams, regardless of their duration. Explicit stop followed by a new start produces separate recordings even within one minute. The movement visibility rule still applies. An internal gap between two movement observations counts toward Time without implying capture during that gap.
+
+An explicit connection attempt to a different Board ends the previous recording immediately. A recording started after the new Board connects is a separate capture under that Board, even within the same minute; a failed connection does not reopen the previous recording. Browsing or selecting another Board alone does not end capture.
+
+The `rideSplitGapMinutes` setting, labelled "Split older rides after" in History settings, applies only to legacy history without durable recording boundaries. Migration preserves the existing legacy grouping behavior; it must not infer old recording identities. See [ADR-0038](./adr/0038-ride-track-is-a-separate-durable-gps-stream.md).
+
+### Current implementation and retained legacy grouping
 
 `RideHistoryRepository` groups minute buckets oldest-first inside one database snapshot. The same
 native grouping implementation feeds both Ride History pages and Profile Stats.
 
 Session breaks happen when:
 
-- device id changes
+- Board id changes
 - gap between adjacent buckets exceeds the rider's `rideSplitGapMinutes` setting (default 30)
 - bucket `boundaryBefore` is one of `disconnected`, `app_stop`, or `error`
 
@@ -108,12 +133,12 @@ Important limitation: grouping only sees `boundaryBefore` attached near bucket s
 
 ## Map Rendering
 
-History route comes from `sessionGpsSamples`.
+History route comes from `sessionGpsSamples`, which is the Ride Track — the route can extend past the last telemetry sample.
 
 - Route line: all selected GPS samples as one `LineString`.
 - Start pin: first GPS sample, green.
 - End pin: last GPS sample, error color.
-- Seek pin: current playback sample, yellow GPS marker color.
+- Seek pin: the track fix nearest the scrub head, yellow GPS marker color. It keeps moving through telemetry-less stretches, where the graphs show a gap.
 - Marker pins: each `sessionMarker` is mapped to nearest GPS sample by timestamp.
 
 Current marker rendering paints every non-error marker yellow. This means `connected` and `app_stop` can look like important trail points even when they are only lifecycle markers.

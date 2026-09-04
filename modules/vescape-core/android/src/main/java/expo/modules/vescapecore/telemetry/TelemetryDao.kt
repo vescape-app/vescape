@@ -88,13 +88,25 @@ interface TelemetryDao {
   @Update
   suspend fun updateBucket(bucket: TelemetryMinuteBucketEntity)
 
-  @Query("SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId LIMIT 1")
-  suspend fun getBucket(bucketStartMs: Long, boardId: String): TelemetryMinuteBucketEntity?
+  @Query(
+    """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms = :bucketStartMs
+      AND board_id = :boardId
+      AND recording_id = :recordingId
+    LIMIT 1
+    """,
+  )
+  suspend fun getBucket(
+    bucketStartMs: Long,
+    boardId: String,
+    recordingId: String,
+  ): TelemetryMinuteBucketEntity?
 
   @Transaction
   suspend fun upsertBuckets(buckets: Collection<TelemetryMinuteBucketEntity>) {
     for (bucket in buckets) {
-      val existing = getBucket(bucket.bucketStartMs, bucket.boardId)
+      val existing = getBucket(bucket.bucketStartMs, bucket.boardId, bucket.recordingId)
       if (existing == null) {
         insertBucket(bucket)
       } else {
@@ -109,12 +121,138 @@ interface TelemetryDao {
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
+    trackPoints: List<RideTrackPointEntity> = emptyList(),
   ) {
     if (frames.isNotEmpty()) insertFrames(frames)
     if (buckets.isNotEmpty()) upsertBuckets(buckets)
     if (markers.isNotEmpty()) insertMarkers(markers)
     if (exclusions.isNotEmpty()) upsertExclusionRanges(exclusions)
+    if (trackPoints.isNotEmpty()) insertRideTrackPoints(trackPoints)
   }
+
+  // Ride Recording identity and Ride Track (ADR 0038). The durable contract #449 reads for history
+  // composition and #450 extends across Board Session teardown.
+
+  @Insert
+  suspend fun insertRideRecording(recording: RideRecordingEntity)
+
+  @Query(
+    """
+    UPDATE ride_recordings
+    SET ended_at_ms = :endedAtMs, ended_reason = :reason
+    WHERE id = :id AND ended_at_ms IS NULL
+    """,
+  )
+  suspend fun endRideRecording(id: String, endedAtMs: Long, reason: String): Int
+
+  /**
+   * Close every recording left open by a process that died without ending it. Called at launch and
+   * again before minting a new recording — the moments we know the old row can no longer be
+   * rejoined.
+   *
+   * The end is stamped at the recording's **last durable write**, not at the sweep: a ride abandoned
+   * days ago lasted minutes, not days, and `ended_at_ms` is the column #449 reads to decide a
+   * recording is finished. A recording with no writes at all ends where it started.
+   *
+   * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `closeAbandonedRideRecordings`
+   */
+  @Query(
+    """
+    UPDATE ride_recordings SET ended_at_ms = MAX(
+        started_at_ms,
+        COALESCE(
+          (SELECT MAX(captured_at_ms) FROM telemetry_frames f WHERE f.recording_id = ride_recordings.id),
+          0
+        ),
+        COALESCE(
+          (SELECT MAX(fix_at_ms) FROM ride_track_points p WHERE p.recording_id = ride_recordings.id),
+          0
+        )
+      ), ended_reason = :reason
+    WHERE ended_at_ms IS NULL AND id IS NOT :keepOpenId
+    """,
+  )
+  suspend fun closeAbandonedRideRecordings(reason: String, keepOpenId: String?): Int
+
+  @Insert
+  suspend fun insertRideTrackPoints(points: List<RideTrackPointEntity>)
+
+  /**
+   * The Ride Track over a time range, on the GPS clock. Every stored fix is returned with the
+   * accuracy it was reported with — filtering poor fixes is a read-side decision the caller makes,
+   * not one this query bakes in.
+   */
+  @Query(
+    """
+    SELECT * FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs
+      AND fix_at_ms <= :toMs
+      AND (:boardId IS NULL OR board_id = :boardId)
+    ORDER BY fix_at_ms ASC
+    LIMIT :limit
+    """,
+  )
+  suspend fun getRideTrackPoints(
+    fromMs: Long,
+    toMs: Long,
+    boardId: String?,
+    limit: Int,
+  ): List<RideTrackPointEntity>
+
+  @Query("SELECT COUNT(*) FROM ride_track_points")
+  suspend fun countRideTrackPoints(): Long
+
+  /**
+   * Ride Track bounds, on the GPS clock. A rebuild covers them as well as the frame bounds: a
+   * minute can hold fixes and no frame at all, and that minute still owns a bucket (ADR 0038).
+   */
+  @Query("SELECT MIN(fix_at_ms) FROM ride_track_points")
+  suspend fun firstRideTrackAt(): Long?
+
+  @Query("SELECT MAX(fix_at_ms) FROM ride_track_points")
+  suspend fun lastRideTrackAt(): Long?
+
+  @Query("DELETE FROM ride_track_points WHERE fix_at_ms < :beforeMs")
+  suspend fun deleteRideTrackPointsBefore(beforeMs: Long): Int
+
+  @Query(
+    """
+    DELETE FROM ride_track_points
+    WHERE fix_at_ms >= :fromMs
+      AND fix_at_ms <= :toMs
+      AND (
+        (:boardId IS NOT NULL AND board_id = :boardId)
+        OR (:boardId IS NULL AND board_id IS NULL)
+      )
+    """,
+  )
+  suspend fun deleteRideTrackPointsRange(fromMs: Long, toMs: Long, boardId: String?): Int
+
+  @Query("DELETE FROM ride_track_points WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs")
+  suspend fun deleteRideTrackPointsRangeAllDevices(fromMs: Long, toMs: Long): Int
+
+  @Query("DELETE FROM ride_track_points")
+  suspend fun clearRideTrackPoints()
+
+  /**
+   * Drop closed recordings no row references any more. Identity outlives its rows only as long as
+   * something can still be attributed to it, and an open recording is never pruned.
+   */
+  @Query(
+    """
+    DELETE FROM ride_recordings
+    WHERE ended_at_ms IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM ride_track_points p WHERE p.recording_id = ride_recordings.id)
+      AND NOT EXISTS (SELECT 1 FROM telemetry_frames f WHERE f.recording_id = ride_recordings.id)
+      AND NOT EXISTS (
+        SELECT 1 FROM telemetry_minute_buckets b WHERE b.recording_id = ride_recordings.id
+      )
+    """,
+  )
+  suspend fun pruneOrphanRideRecordings(): Int
+
+  @Query("DELETE FROM ride_recordings")
+  suspend fun clearRideRecordings()
 
   @Transaction
   suspend fun upsertExclusionRanges(exclusions: List<MetricExclusionRangeEntity>) {
@@ -160,6 +298,22 @@ interface TelemetryDao {
 
   @Query("SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms ASC")
   suspend fun getAllHistoryBucketsAsc(): List<TelemetryMinuteBucketEntity>
+
+  /**
+   * Ride grouping reads every bucket, including the ones a Ride Track wrote with no Telemetry
+   * Sample in them. A board dropout is exactly when those minutes exist, and they carry the Moving
+   * Window and route anchor that keep Time and the seek timeline honest across it (ADR 0038).
+   * [getHistoryBuckets] stays sample-only: its rows are graph buckets.
+   */
+  @Query(
+    """
+    SELECT * FROM telemetry_minute_buckets
+    WHERE bucket_start_ms <= :beforeMs
+    ORDER BY bucket_start_ms DESC
+    LIMIT :limit
+    """,
+  )
+  suspend fun getRideBuckets(beforeMs: Long, limit: Int): List<TelemetryMinuteBucketEntity>
 
   @Query(
     """
@@ -247,9 +401,6 @@ interface TelemetryDao {
   @Query("SELECT COUNT(*) FROM telemetry_frames")
   suspend fun countFrames(): Long
 
-  @Query("SELECT COALESCE(SUM(gps_point_count), 0) FROM telemetry_minute_buckets WHERE sample_count > 0")
-  suspend fun countTelemetryGpsPoints(): Long
-
   @Query("SELECT MIN(captured_at_ms) FROM telemetry_frames")
   suspend fun firstFrameAt(): Long?
 
@@ -275,6 +426,8 @@ interface TelemetryDao {
     deleteBucketsBefore(beforeMs)
     deleteDiagnosticEventsBefore(beforeMs)
     deleteExclusionsBefore(beforeMs)
+    deleteRideTrackPointsBefore(beforeMs)
+    pruneOrphanRideRecordings()
     return frames
   }
 
@@ -321,6 +474,8 @@ interface TelemetryDao {
     deleteMarkersRange(fromMs, toMs, boardId)
     deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
     deleteExclusionsRange(fromMs, toMs)
+    deleteRideTrackPointsRange(fromMs, toMs, boardId)
+    pruneOrphanRideRecordings()
     return frames
   }
 
@@ -345,6 +500,8 @@ interface TelemetryDao {
     deleteMarkersRangeAllDevices(fromMs, toMs)
     deleteBucketsRangeAllDevices(fromMs, toMs)
     deleteExclusionsRange(fromMs, toMs)
+    deleteRideTrackPointsRangeAllDevices(fromMs, toMs)
+    pruneOrphanRideRecordings()
     return frames
   }
 
@@ -367,6 +524,8 @@ interface TelemetryDao {
     clearBuckets()
     clearDiagnosticEvents()
     clearExclusions()
+    clearRideTrackPoints()
+    clearRideRecordings()
   }
 
   /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */

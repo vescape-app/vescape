@@ -526,11 +526,214 @@ final class TelemetryMigrationTests: XCTestCase {
 
     XCTAssertEqual(
       try queue.read { db in try db.primaryKey("telemetry_minute_buckets").columns },
-      ["bucket_start_ms", "board_id"]
+      // The Ride Track migration adds the third key column (ADR 0038).
+      ["bucket_start_ms", "board_id", "recording_id"]
     )
     let columns = try columnNames("telemetry_minute_buckets")
     XCTAssertFalse(columns.contains("device_id"))
     XCTAssertFalse(columns.contains("device_name"))
   }
 
+  // MARK: Ride Track (#448, ADR 0038)
+
+  private static let beforeRideTrack = "v42_telemetry_board_id"
+
+  /// A frame the way it looked while position was still seven columns on the telemetry row.
+  private func insertFrameWithGps(
+    boardId: String?,
+    capturedAtMs: Int64,
+    latitudeE7: Int64?,
+    longitudeE7: Int64?,
+    accuracyCm: Int? = 500,
+    locationTimestampMs: Int64? = nil
+  ) throws {
+    try queue.write { db in
+      try db.execute(
+        sql: """
+          INSERT INTO telemetry_frames (
+            captured_at_ms, elapsed_realtime_ms, board_id, flags, changed_mask_1, changed_mask_2,
+            speed_centi_kmh, latitude_e7, longitude_e7, accuracy_cm, gps_speed_centi_mps,
+            bearing_centi_deg, altitude_cm, location_timestamp_ms
+          ) VALUES (?, 0, ?, 1, 0, 1, 1234, ?, ?, ?, 250, 9000, 12000, ?)
+          """,
+        arguments: [
+          capturedAtMs, boardId, latitudeE7, longitudeE7, accuracyCm, locationTimestampMs,
+        ]
+      )
+    }
+  }
+
+  private func trackRows() throws -> [Row] {
+    try queue.read { db in
+      try Row.fetchAll(db, sql: "SELECT * FROM ride_track_points ORDER BY fix_at_ms ASC")
+    }
+  }
+
+  /// A ride with sparse positions keeps exactly the fixes it had — no more, and none invented.
+  func testSparsePositionsMoveIntoTheRideTrackOnTheGpsClock() throws {
+    try migrate(upTo: Self.beforeRideTrack)
+    try insertFrameWithGps(boardId: "board-1", capturedAtMs: 60_000, latitudeE7: nil, longitudeE7: nil)
+    try insertFrameWithGps(
+      boardId: "board-1",
+      capturedAtMs: 61_000,
+      latitudeE7: 520_000_000,
+      longitudeE7: 210_000_000,
+      locationTimestampMs: 60_800
+    )
+    try insertFrameWithGps(boardId: "board-1", capturedAtMs: 62_000, latitudeE7: nil, longitudeE7: nil)
+
+    try migrate()
+
+    let rows = try trackRows()
+    XCTAssertEqual(rows.count, 1)
+    XCTAssertEqual(rows[0]["latitude_e7"] as Int64, 520_000_000)
+    // The GPS clock wins over the frame clock the fix was merely stamped onto.
+    XCTAssertEqual(rows[0]["fix_at_ms"] as Int64, 60_800)
+    XCTAssertEqual(rows[0]["board_id"] as String?, "board-1")
+    XCTAssertEqual(rows[0]["accuracy_cm"] as Int?, 500)
+    XCTAssertEqual(rows[0]["gps_speed_centi_mps"] as Int?, 250)
+    XCTAssertEqual(rows[0]["altitude_cm"] as Int?, 12_000)
+    // Legacy rows get no invented recording identity; `rideSplitGapMinutes` still groups them.
+    XCTAssertNil(rows[0]["recording_id"] as String?)
+  }
+
+  /// A ride recorded without GPS migrates to an empty track, and keeps its telemetry.
+  func testARideWithNoPositionsMigratesToAnEmptyTrack() throws {
+    try migrate(upTo: Self.beforeRideTrack)
+    try insertFrameWithGps(boardId: "board-1", capturedAtMs: 60_000, latitudeE7: nil, longitudeE7: nil)
+
+    try migrate()
+
+    XCTAssertEqual(try trackRows().count, 0)
+    let speed = try queue.read { db in
+      try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames")
+    }
+    XCTAssertEqual(speed, 1234)
+  }
+
+  /// A fix with no timestamp of its own falls back to the frame's, and a poor fix is kept: the
+  /// precision rule moved to read time, so the migration must not filter on accuracy.
+  func testFixesWithoutTimestampsOrGoodAccuracyAreStillMigrated() throws {
+    try migrate(upTo: Self.beforeRideTrack)
+    try insertFrameWithGps(
+      boardId: "board-1",
+      capturedAtMs: 60_000,
+      latitudeE7: 520_000_000,
+      longitudeE7: 210_000_000,
+      accuracyCm: 15_000,
+      locationTimestampMs: nil
+    )
+
+    try migrate()
+
+    let rows = try trackRows()
+    XCTAssertEqual(rows.count, 1)
+    XCTAssertEqual(rows[0]["fix_at_ms"] as Int64, 60_000)
+    XCTAssertEqual(rows[0]["accuracy_cm"] as Int?, 15_000)
+  }
+
+  /// Board attribution comes from the column the board-id migration already resolved, so a fix on a
+  /// re-linked or deleted Board keeps whatever that migration decided, through both upgrade paths.
+  func testBoardAttributionSurvivesTheOlderUpgradePath() throws {
+    try migrate(upTo: Self.beforeBoardId)
+    try insertLegacyFrame(deviceId: "ble-gone", deviceName: "Old Board", capturedAtMs: 60_000)
+    try queue.write { db in
+      try db.execute(
+        sql: """
+          UPDATE telemetry_frames
+          SET latitude_e7 = 520000000, longitude_e7 = 210000000, accuracy_cm = 400
+          """
+      )
+    }
+
+    try migrate()
+
+    let rows = try trackRows()
+    XCTAssertEqual(rows.count, 1)
+    XCTAssertEqual(rows[0]["board_id"] as String?, "orphan-ble-gone")
+  }
+
+  /// The seven raw GPS columns go, and the telemetry that shared the row stays.
+  func testFramesLoseTheirGpsColumnsAndKeepTheirTelemetry() throws {
+    try migrate(upTo: Self.beforeRideTrack)
+    try insertFrameWithGps(
+      boardId: "board-1",
+      capturedAtMs: 60_000,
+      latitudeE7: 520_000_000,
+      longitudeE7: 210_000_000
+    )
+
+    try migrate()
+
+    let columns = try columnNames("telemetry_frames")
+    for retired in [
+      "latitude_e7", "longitude_e7", "gps_speed_centi_mps", "bearing_centi_deg", "accuracy_cm",
+      "altitude_cm", "location_timestamp_ms",
+    ] {
+      XCTAssertFalse(columns.contains(retired), "telemetry_frames kept \(retired)")
+    }
+    XCTAssertTrue(columns.contains("recording_id"))
+    XCTAssertTrue(columns.contains("speed_centi_kmh"))
+    XCTAssertEqual(
+      try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") },
+      1
+    )
+  }
+
+  /// Existing buckets keep their grouping: one legacy recording id, so nothing splits or merges.
+  func testExistingBucketsKeepLegacyGrouping() throws {
+    try migrate(upTo: Self.beforeBoardId)
+    try insertBoard(id: "board-1", name: "ADV", bleId: "ble-a")
+    try insertLegacyBucket(deviceId: "ble-a", deviceName: "ADV", bucketStartMs: 60_000)
+
+    try migrate()
+
+    let rows = try queue.read { db in
+      try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets")
+    }
+    XCTAssertEqual(rows.count, 1)
+    XCTAssertEqual(rows[0]["recording_id"] as String, "")
+  }
+
+  /// Two recordings of one Board inside one minute must stay two rows.
+  func testOneMinuteHoldsTwoRecordingsSeparately() throws {
+    try migrate()
+    try queue.write { db in
+      try insertRideRecording(
+        db,
+        RideRecording(id: "rec-a", boardId: "board-1", startedAtMs: 60_000, endedAtMs: nil, endedReason: nil)
+      )
+      try insertRideRecording(
+        db,
+        RideRecording(id: "rec-b", boardId: "board-1", startedAtMs: 60_500, endedAtMs: nil, endedReason: nil)
+      )
+      for recordingId in ["rec-a", "rec-b"] {
+        var bucket = TelemetryBucket(bucketStartMs: 60_000, boardId: "board-1", recordingId: recordingId)
+        bucket.add(
+          BucketTelemetryPoint(
+            capturedAtMs: 60_000,
+            boardId: "board-1",
+            recordingId: recordingId,
+            speedCentiKmh: 1_000,
+            batteryVoltageMv: 50_000,
+            motorCurrentMa: 0,
+            batteryCurrentMa: 0,
+            dutyPermille: 0,
+            odometerCm: nil,
+            tempMosfetDeciC: nil,
+            tempMotorDeciC: nil
+          )
+        )
+        try upsertBucket(db, bucket)
+      }
+    }
+
+    let ids = try queue.read { db in
+      try String.fetchAll(
+        db,
+        sql: "SELECT recording_id FROM telemetry_minute_buckets ORDER BY recording_id"
+      )
+    }
+    XCTAssertEqual(ids, ["rec-a", "rec-b"])
+  }
 }

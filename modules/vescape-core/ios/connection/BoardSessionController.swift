@@ -908,6 +908,10 @@ internal final class BoardSessionController: VescGattListener {
       return
     }
     pendingResume = nil
+    // No restoration came, so nothing will ever rejoin the recording the dead process left open.
+    // Close it now rather than at the next mint, which may never happen: the reader only shows a
+    // recording with `ended_at_ms`, so an unswept row is a ride missing from history entirely.
+    TelemetryRepository.shared.closeAbandonedRideRecordings()
     reapOrphanLiveActivities()
   }
 
@@ -989,12 +993,23 @@ internal final class BoardSessionController: VescGattListener {
     liveSeries.speed = { [weak self] in self?.sessionClock.speed ?? 1.0 }
     liveSeries.setWindowMinutes(config.liveHistoryLimitMinutes)
     // Re-arm the recording request *before* the session begins so `beginBoardSession` enables the
-    // telemetry store on its normal path. Nothing resets the store's tables: frames land in the
-    // same open recording and the existing gap-splitter explains the dead interval.
+    // telemetry store on its normal path, and it begins with `resume: true` so that enable rejoins
+    // the Ride Recording left open rather than minting a second identity for one ride (#450).
+    //
+    // The marker names the recording that was open; whether it is *still* open is the database's
+    // answer, and an explicitly stopped or disconnected one carries an `ended_at_ms` no restoration
+    // can clear. Naming it is what keeps a relaunch days later from adopting some other abandoned
+    // ride. The dead interval stays a real gap in both streams.
     if marker.recordingActive {
       _ = recordingCoordinator.setTelemetryRecordingEnabled(true)
     }
-    beginSession(config: config, resume: true, onSuccess: {}, onError: { _, _ in })
+    beginSession(
+      config: config,
+      resume: true,
+      restoredRecordingId: marker.recordingActive ? marker.recordingId : nil,
+      onSuccess: {},
+      onError: { _, _ in }
+    )
     let restoredId = restoredPeripheralIds.first {
       $0.caseInsensitiveCompare(config.bleId) == .orderedSame
     }
@@ -1024,7 +1039,10 @@ internal final class BoardSessionController: VescGattListener {
   /// auto-recording at board-ready and by the JS switch.
   private func syncResumeMarkerRecording() {
     guard session != nil, replayTransport == nil else { return }
-    SessionResumeStore.shared.setRecordingActive(recordingCoordinator.telemetryRecordingEnabled)
+    SessionResumeStore.shared.setRecording(
+      active: recordingCoordinator.telemetryRecordingEnabled,
+      recordingId: recordingCoordinator.activeRideRecordingId
+    )
   }
 
   // MARK: - Session lifecycle
@@ -1032,6 +1050,7 @@ internal final class BoardSessionController: VescGattListener {
   private func beginSession(
     config: BoardConnectConfig,
     resume: Bool = false,
+    restoredRecordingId: String? = nil,
     onSuccess: @escaping () -> Void,
     onError: @escaping (String, String) -> Void
   ) {
@@ -1092,7 +1111,7 @@ internal final class BoardSessionController: VescGattListener {
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
-    recordingCoordinator.beginBoardSession(config: config)
+    recordingCoordinator.beginBoardSession(config: config, restoredRecordingId: restoredRecordingId)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
     // Board Session). Detectors that fire warnings this session land in later slices.
@@ -1160,7 +1179,7 @@ internal final class BoardSessionController: VescGattListener {
         appBoardId: config.appBoardId,
         bleId: config.bleId,
         recordingActive: recordingCoordinator.telemetryRecordingEnabled,
-        nowMs: nowMs()
+        recordingId: recordingCoordinator.activeRideRecordingId
       )
     }
     // Start the Live Activity while foreground (connect is user-initiated); it then updates from
@@ -1393,6 +1412,7 @@ internal final class BoardSessionController: VescGattListener {
   /// reconnect to CoreBluetooth, and starts the supplemental rescan cycle. The JS `generation`
   /// (`connectionSeq`) is intentionally *not* bumped — the logical session survives the drop, so
   /// the live series keeps flowing once telemetry resumes (Android parity).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `scheduleAutoReconnect`
   private func beginReconnect() {
     guard config != nil else { return }
     // Replay links are not recoverable: watchdogs (board-ready, stale) stay no-ops and playback
@@ -1417,6 +1437,13 @@ internal final class BoardSessionController: VescGattListener {
     // below refreshes it to the reconnect state, mirroring Android mutating the persistent chip.
     session?.invalidate()
     stopPolling()
+    // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
+    // halts *both* streams, GPS included — so a board that went stationary and then dropped would
+    // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
+    // Off the link there is no Board movement signal and no GPS-based Idle Pause (ADR 0021), so
+    // recording continues until the rider stops it; the detector takes over again on the next
+    // board-ready.
+    resetIdlePause()
     reassembler.reset()
     socWindow.reset()
     // Drop prior-connection BMS rows before reconnecting, mirroring Android's reconnect-path
@@ -2403,10 +2430,26 @@ internal final class BoardSessionController: VescGattListener {
   private func onLocationUpdated(_ incoming: TelemetryLocationCapture) {
     recordGpsFix(incoming)
     let location = locationTracker.onLocationUpdated(incoming)
+    recordRideTrackFix(location)
     // Offered on every Fix; the coordinator owns the freshness and distance gates.
     WeatherCoordinator.shared.onPosition(latitude: location.latitude, longitude: location.longitude)
     latestRiderPresence().map(groupRideObserver.pushPresence)
     emit?("onLocation", location.map)
+  }
+
+  /// Offer the fix that just arrived to the **Ride Track**.
+  ///
+  /// On the GPS clock, not the frame clock: this runs whether or not telemetry is flowing, which is
+  /// what keeps the route alive through a board dropout (ADR 0038). Poor fixes are offered too — the
+  /// store keeps them with their reported accuracy and the precision rule applies on read.
+  ///
+  /// Idle Pause halts both durable streams together, and paused fixes are dropped rather than
+  /// backfilled on resume (ADR 0021). Live display, presence and the map are untouched by it.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `recordRideTrackFix`
+  private func recordRideTrackFix(_ location: TelemetryLocationCapture) {
+    guard !idlePauseDetector.isPaused else { return }
+    recordingCoordinator.recordGpsFix(location)
   }
 
   /// One low-volume Local Diagnostic Event per Board Session. No coordinates leave the GPS path.
