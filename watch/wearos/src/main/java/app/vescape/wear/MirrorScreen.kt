@@ -122,6 +122,11 @@ fun MirrorScreen(
                         !controlPagerState.isScrollInProgress &&
                             controlPagerState.currentPageOffsetFraction == 0f
                     }
+                // The readout only answers a tap while the gauges own both axes; mid-swipe or on
+                // another page the tap belongs to the page under it.
+                val weatherTappable = activePage == CONTROL_PAGE_GAUGES &&
+                    !verticalPagerState.isScrollInProgress &&
+                    verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
                 // PagerState.settledPage can change before the snap reaches offset zero.
                 // Changing the parent modifier then cancels that animation mid-page.
                 LaunchedEffect(
@@ -173,21 +178,6 @@ fun MirrorScreen(
                         if (isBackground) {
                             ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
                         } else {
-                            // Rim arcs, drawn once at the root and never inside a pager: the rider
-                            // keeps speed, duty, battery and temps on every page.
-                            MirrorContent(
-                                state = state,
-                                phoneLink = phoneLink,
-                                isAmbient = false,
-                                focus = navFocus,
-                                controlFocus = controlFocus,
-                                weatherFocus = weatherFocus,
-                                onWeatherClick = {
-                                    scope.launch {
-                                        verticalPagerState.animateScrollToPage(VERTICAL_PAGE_WEATHER)
-                                    }
-                                },
-                            )
                             VerticalPager(
                                 state = verticalPagerState,
                                 // The vertical axis belongs to the gauges alone: weather above,
@@ -248,6 +238,28 @@ fun MirrorScreen(
                                     }
                                 }
                             }
+                            // Rim arcs, drawn once at the root and never inside a pager: the rider
+                            // keeps speed, duty, battery and temps on every page. Drawn *over* the
+                            // pagers, because the forecast readout is the one thing here a rider
+                            // taps and a full-screen pager above it would eat the tap. Nothing else
+                            // in the frame takes pointer input, so the pages stay reachable.
+                            MirrorContent(
+                                state = state,
+                                phoneLink = phoneLink,
+                                isAmbient = false,
+                                focus = navFocus,
+                                controlFocus = controlFocus,
+                                weatherFocus = weatherFocus,
+                                onWeatherClick = if (weatherTappable) {
+                                    {
+                                        scope.launch {
+                                            verticalPagerState.animateScrollToPage(VERTICAL_PAGE_WEATHER)
+                                        }
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
                         }
                     }
                 }
@@ -283,7 +295,7 @@ private fun MirrorContent(
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
-    onWeatherClick: () -> Unit = {},
+    onWeatherClick: (() -> Unit)? = null,
 ) {
     when (state.status) {
         MirrorStatus.DISCONNECTED -> {

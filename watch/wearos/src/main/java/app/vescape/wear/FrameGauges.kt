@@ -67,7 +67,7 @@ internal fun FrameLayout(
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
-    onWeatherClick: () -> Unit = {},
+    onWeatherClick: (() -> Unit)? = null,
 ) {
     val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
     val dutyColor = if (muted || frame.duty == null) DimText else DutyColor

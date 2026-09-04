@@ -25,13 +25,17 @@ import androidx.wear.compose.material.Text
  * on a phone too old to send one. Tapping opens [WeatherScreen].
  */
 @Composable
-internal fun WeatherReadout(muted: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val forecast = freshWeather() ?: return
     val iconColor = if (muted) DimText else weatherColor(forecast.icon)
     val textColor = if (muted) DimText else SecondaryText
 
     Column(
-        modifier = modifier.clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 2.dp),
+        // Null while another page has the screen: the readout is drawn over the pagers so the tap
+        // can reach it at all, and an invisible target up there would swallow taps meant for them.
+        modifier = modifier
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
