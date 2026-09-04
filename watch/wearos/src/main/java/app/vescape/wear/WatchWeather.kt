@@ -4,11 +4,13 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import java.util.Calendar
 
 /**
  * Data Layer path the phone publishes the forecast on. Must match the phone-side
@@ -115,6 +117,29 @@ fun weatherIconRes(slug: String): Int = when (slug) {
     "cloud-snow" -> R.drawable.ic_ph_cloud_snow
     "cloud-lightning" -> R.drawable.ic_ph_cloud_lightning
     else -> R.drawable.ic_ph_cloud
+}
+
+/**
+ * Local wall-clock minute of day, re-read on the same coarse tick as staleness so a forecast left
+ * open on the wrist crosses sunset on its own.
+ */
+@Composable
+fun currentMinuteOfDay(): Int {
+    var minuteOfDay by remember { mutableIntStateOf(minuteOfDayNow()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(STALENESS_TICK_MS)
+            minuteOfDay = minuteOfDayNow()
+        }
+    }
+
+    return minuteOfDay
+}
+
+/** Minute of day from the device clock, the unit every sun and hour time on the wrist is in. */
+fun minuteOfDayNow(): Int = Calendar.getInstance().let {
+    it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
 }
 
 /** `HH:MM` for a minute-of-day, matching [WatchClock]'s always-24h readout. */

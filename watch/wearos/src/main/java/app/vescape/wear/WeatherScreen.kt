@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -61,18 +60,12 @@ fun WeatherScreen() {
     }
 
     Column(
-        // The rim arcs own the outside of the circle now, so the whole page lives inside them:
-        // without the inset the hourly strip and the sun times run straight into the arcs.
+        // The rim arcs own the outside of the circle, so the page lives inside them. The inset is
+        // per-child rather than on the column: the hourly strip carries it as content padding so
+        // its ends still scroll out to the bezel instead of stopping short of it.
         modifier = Modifier
             .fillMaxSize()
-            .padding(
-                PaddingValues(
-                    start = PAGE_INSET,
-                    end = PAGE_INSET,
-                    top = CURRENT_TOP_PADDING,
-                    bottom = PAGE_INSET,
-                ),
-            ),
+            .padding(top = CURRENT_TOP_PADDING, bottom = PAGE_INSET),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top,
     ) {
@@ -95,6 +88,7 @@ fun WeatherScreen() {
             style = MaterialTheme.typography.caption3.copy(letterSpacing = LABEL_TRACKING),
             color = SecondaryText,
             textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = PAGE_INSET),
         )
         if (forecast.precipitationProbability > 0) {
             Spacer(modifier = Modifier.height(2.dp))
@@ -114,28 +108,21 @@ fun WeatherScreen() {
             }
         }
         Spacer(modifier = Modifier.height(FORECAST_GAP))
-        FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = RULE_INSET))
+        FadingRule(modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_INSET + RULE_INSET))
         Spacer(modifier = Modifier.height(12.dp))
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 6.dp),
+            contentPadding = PaddingValues(horizontal = STRIP_INSET),
             horizontalArrangement = Arrangement.spacedBy(HOUR_GAP),
         ) {
             items(forecast.hourly, key = { it.minuteOfDay }) { hour -> HourColumn(hour) }
         }
-        if (forecast.sunriseMinuteOfDay != null && forecast.sunsetMinuteOfDay != null) {
+        // Only the sun event still ahead: both at once needed a divider and ran the full width of
+        // the circle, and the one already behind the rider is not what they are planning around.
+        val nextSunEvent = nextSunEvent(forecast.sunriseMinuteOfDay, forecast.sunsetMinuteOfDay)
+        if (nextSunEvent != null) {
             Spacer(modifier = Modifier.height(SUN_TIMES_GAP))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SunTime(forecast.sunriseMinuteOfDay, rising = true)
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp)
-                        .width(1.dp)
-                        .height(10.dp)
-                        .background(GuideColor),
-                )
-                SunTime(forecast.sunsetMinuteOfDay, rising = false)
-            }
+            SunTime(nextSunEvent.minuteOfDay, rising = nextSunEvent.rising)
         }
     }
 }
@@ -172,6 +159,26 @@ private fun HourColumn(hour: WatchWeatherHour) {
         } else {
             Spacer(modifier = Modifier.height(HOUR_PRECIP_FONT_SIZE.value.dp))
         }
+    }
+}
+
+/** Which sun event the rider still has ahead of them today, and when. */
+private data class SunEvent(val minuteOfDay: Int, val rising: Boolean)
+
+/**
+ * The next sun event from now: sunrise while the sun is still down, sunset once it is up, and
+ * tomorrow's sunrise after dark. Null when the phone sent neither time.
+ */
+@Composable
+private fun nextSunEvent(sunriseMinuteOfDay: Int?, sunsetMinuteOfDay: Int?): SunEvent? {
+    val nowMinuteOfDay = currentMinuteOfDay()
+    return when {
+        sunriseMinuteOfDay != null && nowMinuteOfDay < sunriseMinuteOfDay ->
+            SunEvent(sunriseMinuteOfDay, rising = true)
+        sunsetMinuteOfDay != null && nowMinuteOfDay < sunsetMinuteOfDay ->
+            SunEvent(sunsetMinuteOfDay, rising = false)
+        sunriseMinuteOfDay != null -> SunEvent(sunriseMinuteOfDay, rising = true)
+        else -> sunsetMinuteOfDay?.let { SunEvent(it, rising = false) }
     }
 }
 
@@ -222,6 +229,12 @@ private fun FadingRule(modifier: Modifier = Modifier) {
 
 /** Horizontal and bottom margin into the inner circle, clear of the pinned rim arcs. */
 private val PAGE_INSET = GAUGE_INNER_INSET + 8.dp
+
+/**
+ * The strip sits at the widest part of the circle, where the arcs cut furthest in, so its resting
+ * ends need more room than the rest of the page. Content padding, so it still scrolls to the bezel.
+ */
+private val STRIP_INSET = PAGE_INSET + 12.dp
 
 private val HERO_ICON_SIZE = 26.dp
 private val CURRENT_TOP_PADDING = 34.dp
