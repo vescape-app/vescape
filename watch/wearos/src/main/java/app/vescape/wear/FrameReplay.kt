@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import org.json.JSONObject
-import java.util.Calendar
 
 /**
  * Emulator-only Watch Frame replay: feeds recorded lane samples into [TelemetryState] on the same
@@ -197,9 +196,9 @@ class FrameReplayer(private val context: Context) {
     private fun loadScene() {
         readAsset(REPLAY_FIXTURE_ROUTE)?.let { RouteState.accept(ReplaySceneParser.parseRoute(it)) }
         readAsset(REPLAY_FIXTURE_WEATHER)?.let {
-            val now = Calendar.getInstance()
-            val minuteOfDay = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-            WeatherState.accept(ReplaySceneParser.parseWeather(it, now.timeInMillis, minuteOfDay))
+            WeatherState.accept(
+                ReplaySceneParser.parseWeather(it, System.currentTimeMillis(), minuteOfDayNow()),
+            )
         }
     }
 

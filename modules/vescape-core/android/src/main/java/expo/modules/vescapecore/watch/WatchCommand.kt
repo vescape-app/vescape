@@ -18,6 +18,7 @@ internal const val WATCH_COMMAND_PATH = "/command"
 /** Command kinds. Values are wire constants — append, never renumber. */
 internal const val WATCH_COMMAND_KIND_MOVE = 1
 internal const val WATCH_COMMAND_KIND_MIRROR_AWAKE = 2
+internal const val WATCH_COMMAND_KIND_LIGHTS = 3
 
 /**
  * How long the phone keeps pushing frames after the last wrist wake-level tick. The Mirror re-sends
@@ -61,6 +62,25 @@ internal enum class WatchMirrorWakeLevel(val wire: Int) {
     }
 }
 
+/**
+ * Which of the board's two light switches a wrist edit names.
+ *
+ * Deliberately *not* the wire mask `buildLightsControlCommand` writes (bit0 = LEDs, bit1 =
+ * headlights): there both bits are values, here bit1 is a selector and bit0 is the value. Reusing
+ * that bit order would make `0b10` mean "headlights on" on the BLE wire and "headlights off" here.
+ *
+ * Wire values — append, never renumber.
+ */
+internal enum class WatchLightsSwitch(val selector: Int) {
+    LEDS(0),
+    HEADLIGHT(1),
+    ;
+
+    internal companion object {
+        fun fromSelector(selector: Int): WatchLightsSwitch? = entries.firstOrNull { it.selector == selector }
+    }
+}
+
 /** A decoded wrist command. */
 internal sealed interface WatchCommand {
     /** Hold the board rolling in [direction] (`-1` back, `0` stop, `1` forward) until the next tick. */
@@ -68,6 +88,13 @@ internal sealed interface WatchCommand {
 
     /** The Mirror reporting how awake it is; re-sent on a heartbeat so its absence is meaningful. */
     data class MirrorAwake(val level: WatchMirrorWakeLevel) : WatchCommand
+
+    /**
+     * Put one light [switch] into state [on]. An edit, not an assertion of both switches: the
+     * phone composes the other value from its own [WatchBoard] truth, so a wrist holding a slightly
+     * stale `/board` push cannot revert a switch the phone flipped a moment earlier.
+     */
+    data class Lights(val switch: WatchLightsSwitch, val on: Boolean) : WatchCommand
 }
 
 /** Pure bytes -> [WatchCommand] decoder. Returns null for a short buffer or an unknown kind. */
@@ -78,6 +105,15 @@ internal object WatchCommandDecoder {
             WATCH_COMMAND_KIND_MOVE -> WatchCommand.Move(bytes[1].toInt().coerceIn(-1, 1))
             WATCH_COMMAND_KIND_MIRROR_AWAKE ->
                 WatchMirrorWakeLevel.fromWire(bytes[1].toInt())?.let(WatchCommand::MirrorAwake)
+            WATCH_COMMAND_KIND_LIGHTS -> {
+                val value = bytes[1].toInt() and 0xff
+                // bit0 = target on/off, bit1 = which switch. Anything above those two bits is a
+                // wrist newer than this phone, and is dropped rather than read as a switch it is
+                // not — the same lenience the unknown-kind branch gives.
+                WatchLightsSwitch.fromSelector((value shr 1) and 0x1)
+                    ?.takeIf { value and 0x3.inv() == 0 }
+                    ?.let { WatchCommand.Lights(it, value and 0x1 == 1) }
+            }
             else -> null
         }
     }

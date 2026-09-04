@@ -27,6 +27,8 @@ const ICONS = [
   'cloud-lightning',
   'drop',
   'map-pin',
+  'lightbulb',
+  'headlights',
 ]
 
 const WEIGHT = 'duotone'
