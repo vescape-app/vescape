@@ -112,6 +112,7 @@ export type MapCameraIntent =
       type: 'EnterWeatherView'
       currentCamera: MapCameraSnapshot | null
       fallbackCenterCoordinate: [number, number]
+      viewport: { width: number; height: number }
       perspectiveEnabled: boolean
     }
   | {
@@ -127,6 +128,35 @@ export type MapCameraIntent =
 export interface MapCameraEffect {
   camera: Partial<MapCameraSnapshot>
 }
+
+/**
+ * Zoom at which the outer radar range ring just fits across the narrow side of the screen. The
+ * radar answers "what is heading for me", so the framing is the rings, not the rider's street —
+ * but framed no wider than that, or the rider is looking at other countries.
+ *
+ * @parity /src/modules/weather/components/RadarRangeRings.tsx `RANGE_RING_KM`
+ */
+export function zoomForRadarView(
+  latitude: number,
+  viewport: { width: number; height: number },
+): number {
+  const fitPx = Math.min(viewport.width, viewport.height)
+  if (fitPx <= 0) return RADAR_VIEW_FALLBACK_ZOOM
+  const spanM = RADAR_VIEW_RADIUS_M * 2 * (1 + RADAR_VIEW_PADDING)
+  const metersPerPixel = spanM / fitPx
+  const latitudeScale = Math.cos((latitude * Math.PI) / 180)
+  // Mapbox tiles are 512 px wide, so the world is 512 * 2^zoom pixels across.
+  return Math.log2((EQUATOR_M_PER_TILE * latitudeScale) / (metersPerPixel * TILE_PX))
+}
+
+/** The outer ring the view is framed around, matching the rings drawn on the map. */
+const RADAR_VIEW_RADIUS_M = 100_000
+
+/** Breathing room around that ring, so it never touches the screen edge. */
+const RADAR_VIEW_PADDING = 0.12
+const RADAR_VIEW_FALLBACK_ZOOM = 7
+const EQUATOR_M_PER_TILE = 40_075_016.686
+const TILE_PX = 512
 
 export const initialMapCameraControllerState: MapCameraControllerState = {
   mode: { kind: 'liveFollow' },
@@ -345,7 +375,7 @@ export function reduceMapCameraIntent(
   }
 
   if (intent.type === 'EnterWeatherView') {
-    const zoomLevel = 8
+    const zoomLevel = zoomForRadarView(intent.fallbackCenterCoordinate[1], intent.viewport)
     return {
       state: {
         ...state,

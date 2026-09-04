@@ -22,7 +22,6 @@ interface RainViewerRadarState {
 interface RainViewerRadarActions {
   fetch: (force?: boolean) => Promise<void>
   setFrameIndex: (index: number, transitionMode?: RainViewerRadarTransitionMode) => void
-  nextFrame: () => void
 }
 
 interface RainViewerMetaResponse {
@@ -123,12 +122,6 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
     setFrameIndex(index, transitionMode = 'manual') {
       const { frames } = get()
       set({ selectedFrameIndex: clampFrameIndex(index, frames.length), transitionMode })
-    },
-
-    nextFrame() {
-      const { frames, selectedFrameIndex } = get()
-      if (frames.length <= 1) return
-      set({ selectedFrameIndex: (selectedFrameIndex + 1) % frames.length, transitionMode: 'auto' })
     },
   }),
 )
