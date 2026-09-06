@@ -14,7 +14,7 @@ internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
         switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c,
         latitude_e7, longitude_e7, gps_speed_centi_mps, bearing_centi_deg, accuracy_cm,
         altitude_cm, location_timestamp_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
     arguments: [
       state.capturedAtMs, state.elapsedRealtimeMs, state.boardId, state.capture.canId,
@@ -43,7 +43,7 @@ internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
         first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
         gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
         first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(bucket_start_ms, board_id) DO UPDATE SET
         sample_count=telemetry_minute_buckets.sample_count + excluded.sample_count,
         last_sample_at_ms=MAX(telemetry_minute_buckets.last_sample_at_ms, excluded.last_sample_at_ms),
