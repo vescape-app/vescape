@@ -33,6 +33,31 @@ struct FavoriteMedia {
   }
 }
 
+private struct FavoriteMediaRecord: Codable, PersistableRecord {
+  static let databaseTableName = "favorite_media"
+  let id: String
+  let favoriteId: String
+  let capturedAt: Int64?
+  let mimeType: String
+  let mediaKind: String
+  let byteCount: Int64
+  let contentHash: String
+  let createdAt: Int64
+
+  init(_ media: FavoriteMedia) {
+    id = media.id; favoriteId = media.favoriteId; capturedAt = media.capturedAtMs
+    mimeType = media.mimeType; mediaKind = media.mediaKind; byteCount = media.byteCount
+    contentHash = media.contentHash; createdAt = media.createdAtMs
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case id
+    case favoriteId = "favorite_id", capturedAt = "captured_at", mimeType = "mime_type"
+    case mediaKind = "media_kind", byteCount = "byte_count", contentHash = "content_hash"
+    case createdAt = "created_at"
+  }
+}
+
 enum FavoriteMediaStoreError: Error {
   case favoriteNotFound
   case invalidSource
@@ -76,16 +101,16 @@ struct FavoriteMediaStore {
     try PersistenceSchema.createFavoriteMedia(db)
   }
 
-  func list(favoriteId: String) -> [FavoriteMedia] {
-    reconcile(favoriteId: favoriteId)
-    guard let writer = resolveWriter() else { return [] }
-    return (try? writer.read { db in
+  func list(favoriteId: String) throws -> [FavoriteMedia] {
+    try reconcile(favoriteId: favoriteId)
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
+    return try writer.read { db in
       try Row.fetchAll(
         db,
         sql: "SELECT * FROM favorite_media WHERE favorite_id = ? ORDER BY created_at, id",
         arguments: [favoriteId]
       ).map(Self.media)
-    }) ?? []
+    }
   }
 
   func importMedia(
@@ -96,13 +121,13 @@ struct FavoriteMediaStore {
     mediaKind: String
   ) throws -> FavoriteMedia {
     guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
-    let favoriteExists = (try? writer.read { db in
+    let favoriteExists = try writer.read { db in
       try Bool.fetchOne(
         db,
         sql: "SELECT EXISTS(SELECT 1 FROM favorites WHERE id = ?)",
         arguments: [favoriteId]
-      )
-    }) ?? false
+      ) ?? false
+    }
     guard favoriteExists else { throw FavoriteMediaStoreError.favoriteNotFound }
     guard let source = URL(string: sourceURI), source.isFileURL else {
       throw FavoriteMediaStoreError.invalidSource
@@ -149,17 +174,7 @@ struct FavoriteMediaStore {
     )
     do {
       try writer.write { db in
-        try db.execute(
-          sql: """
-            INSERT INTO favorite_media (
-              id, favorite_id, captured_at, mime_type, media_kind, byte_count, content_hash, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-          arguments: [
-            completed.id, completed.favoriteId, completed.capturedAtMs, completed.mimeType,
-            completed.mediaKind, completed.byteCount, completed.contentHash, completed.createdAtMs,
-          ]
-        )
+        try FavoriteMediaRecord(completed).insert(db)
       }
     } catch {
       try? FileManager.default.removeItem(at: destination)
@@ -180,16 +195,16 @@ struct FavoriteMediaStore {
 
   /// Repair cross-store disagreement on the normal Favorites read path: remove manifest rows whose
   /// parent disappeared, reconcile every live Favorite, and delete directories with no parent.
-  func reconcileAll() {
-    guard let writer = resolveWriter() else { return }
-    let favoriteIds = (try? writer.write { db -> [String] in
+  func reconcileAll() throws {
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
+    let favoriteIds = try writer.write { db -> [String] in
       try db.execute(
         sql: "DELETE FROM favorite_media WHERE favorite_id NOT IN (SELECT id FROM favorites)"
       )
       return try String.fetchAll(db, sql: "SELECT id FROM favorites")
-    }) ?? []
+    }
     let live = Set(favoriteIds)
-    for favoriteId in favoriteIds { reconcile(favoriteId: favoriteId) }
+    for favoriteId in favoriteIds { try reconcile(favoriteId: favoriteId) }
     guard let directories = try? FileManager.default.contentsOfDirectory(
       at: rootURL,
       includingPropertiesForKeys: [.isDirectoryKey]
@@ -199,16 +214,16 @@ struct FavoriteMediaStore {
     }
   }
 
-  func reconcile(favoriteId: String) {
-    guard let writer = resolveWriter() else { return }
+  func reconcile(favoriteId: String) throws {
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
     let directory = favoriteDirectory(favoriteId)
-    let rows = (try? writer.read { db in
+    let rows = try writer.read { db in
       try Row.fetchAll(
         db,
         sql: "SELECT * FROM favorite_media WHERE favorite_id = ?",
         arguments: [favoriteId]
       ).map(Self.media)
-    }) ?? []
+    }
     let fm = FileManager.default
     var expected = Set<String>()
     var missing: [String] = []
@@ -218,7 +233,7 @@ struct FavoriteMediaStore {
       if !fm.fileExists(atPath: file.path) { missing.append(row.id) }
     }
     if !missing.isEmpty {
-      try? writer.write { db in
+      try writer.write { db in
         for id in missing {
           try db.execute(sql: "DELETE FROM favorite_media WHERE id = ?", arguments: [id])
         }

@@ -913,37 +913,65 @@ public class VescapeCoreModule: Module {
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getFavorites`
     AsyncFunction("getFavorites") { (promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getFavorites())
+      do { promise.resolve(try TelemetryRepository.shared.getFavorites()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "favorites_read", error: error)
+        promise.reject("ERR_FAVORITES_READ", "Could not load Favorites", error)
+      }
     }
 
     AsyncFunction("createFavorite") { (options: [String: Any], promise: Promise) in
-      guard let favorite = TelemetryRepository.shared.createFavorite(options) else {
-        promise.reject("ERR_CREATE_FAVORITE", "favorite range is invalid or could not be stored")
-        return
+      do {
+        guard let favorite = try TelemetryRepository.shared.createFavorite(options) else {
+          promise.reject("ERR_CREATE_FAVORITE", "favorite range is invalid")
+          return
+        }
+        promise.resolve(favorite)
+      } catch {
+        RecordingStorageFailure.report(operation: "favorite_create", category: "write_failed", error: error)
+        promise.reject("ERR_CREATE_FAVORITE", "Favorite could not be stored", error)
       }
-      promise.resolve(favorite)
     }
 
     AsyncFunction("updateFavorite") { (id: String, options: [String: Any], promise: Promise) in
-      guard let favorite = TelemetryRepository.shared.updateFavorite(id, options: options) else {
-        promise.reject("ERR_UPDATE_FAVORITE", "favorite does not exist or could not be stored")
-        return
+      do {
+        guard let favorite = try TelemetryRepository.shared.updateFavorite(id, options: options) else {
+          promise.reject("ERR_UPDATE_FAVORITE", "Favorite does not exist or range is invalid")
+          return
+        }
+        promise.resolve(favorite)
+      } catch {
+        RecordingStorageFailure.report(operation: "favorite_update", category: "write_failed", error: error)
+        promise.reject("ERR_UPDATE_FAVORITE", "Favorite could not be stored", error)
       }
-      promise.resolve(favorite)
     }
 
     AsyncFunction("deleteFavorite") { (id: String, promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.deleteFavorite(id))
+      do {
+        guard try TelemetryRepository.shared.deleteFavorite(id) else {
+          promise.reject("ERR_DELETE_FAVORITE", "Favorite does not exist")
+          return
+        }
+        promise.resolve(true)
+      } catch {
+        RecordingStorageFailure.report(operation: "favorite_delete", category: "write_failed", error: error)
+        promise.reject("ERR_DELETE_FAVORITE", "Favorite could not be deleted", error)
+      }
     }
 
     AsyncFunction("getFavoriteMedia") { (favoriteId: String, promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getFavoriteMedia(favoriteId))
+      do { promise.resolve(try TelemetryRepository.shared.getFavoriteMedia(favoriteId)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "favorite_media_read", error: error)
+        promise.reject("ERR_FAVORITE_MEDIA_READ", "Could not load Favorite Media", error)
+      }
     }
 
     AsyncFunction("importFavoriteMedia") { (options: [String: Any], promise: Promise) in
       do {
         promise.resolve(try TelemetryRepository.shared.importFavoriteMedia(options))
       } catch {
+        RecordingStorageFailure.report(operation: "favorite_media_import", category: "write_failed", error: error)
         promise.reject("ERR_IMPORT_FAVORITE_MEDIA", error.localizedDescription)
       }
     }
@@ -1701,7 +1729,13 @@ public class VescapeCoreModule: Module {
   /// Asks for the path again, to the Direction Point the rider already has and from where they are
   /// now. A no-op with no Direction Point: there is nothing to compute a path to.
   private func recomputeNavigation() {
-    guard let directionPoint = appData.getDirectionPoint() else { return }
+    let directionPoint: DirectionPoint?
+    do { directionPoint = try appData.getDirectionPoint() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
+      return
+    }
+    guard let directionPoint else { return }
     let origin = navigationOrigin()
     NavigationController.shared.recompute(
       toLatitude: directionPoint.latitude,

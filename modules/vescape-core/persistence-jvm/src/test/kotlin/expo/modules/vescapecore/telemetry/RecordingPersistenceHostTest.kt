@@ -16,6 +16,80 @@ import org.junit.Assert.assertTrue
 /** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
   @Test
+  fun favoriteCreateRenameTrimDeleteAndReopen(): Unit = runBlocking {
+    val contract = JSONObject(checkNotNull(javaClass.classLoader?.getResource("favorite-persistence-contract.json")).readText())
+    assertEquals("favorite-create-rename-trim-delete-reopen", contract.getString("scenario"))
+    val input = contract.getJSONObject("input")
+    val expected = contract.getJSONObject("expected")
+    val samples = input.getJSONArray("samples")
+    val points = (0 until samples.length()).map { index ->
+      val sample = samples.getJSONObject(index)
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, sample.getInt("speedCentiKmh"),
+        80_000, 0, 0, 100, sample.getLong("odometerCm"), 300, 300)
+    }
+    val summary = buildFavoriteSummary(buildTelemetryBuckets(points, emptyList()))
+    assertEquals(expected.getInt("sampleCount"), summary.sampleCount)
+    assertEquals(expected.getLong("distanceCm"), summary.distanceCm)
+    assertEquals(expected.getInt("avgSpeedCentiKmh"), summary.avgSpeedCentiKmh)
+    val path = Files.createTempFile("vescape-favorite-contract", ".db")
+    Files.deleteIfExists(path)
+    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    var db = open()
+    val createdRange = TelemetryTimeRange(input.getLong("startMs"), input.getLong("endMs"))
+    val created = persistFavorite(db.telemetryDao(), null, createdRange, input.getString("boardId"), input.getString("name"), input.getLong("startMs"), { input.getString("id") }) { requested, boardId ->
+      assertEquals(createdRange, requested); assertEquals(input.getString("boardId"), boardId); summary
+    }!!
+    val trimmedRange = TelemetryTimeRange(input.getLong("trimmedStartMs"), input.getLong("trimmedEndMs"))
+    val trimmed = persistFavorite(db.telemetryDao(), created.id, trimmedRange, null, input.getString("renamed"), created.updatedAt + 1, { error("must preserve id") }) { requested, boardId ->
+      assertEquals(trimmedRange, requested); assertEquals(input.getString("boardId"), boardId); summary
+    }!!
+    assertEquals(input.getString("boardId"), trimmed.boardId)
+    val conflicting = persistFavorite(db.telemetryDao(), created.id, trimmedRange, "conflicting-board", input.getString("renamed"), trimmed.updatedAt + 1, { error("must preserve id") }) { _, boardId ->
+      assertEquals(input.getString("boardId"), boardId); summary
+    }!!
+    assertEquals(input.getString("boardId"), conflicting.boardId)
+    val ownerless = persistFavorite(db.telemetryDao(), null, createdRange, null, null, created.updatedAt, { "ownerless-favorite" }) { _, boardId ->
+      assertEquals(null, boardId); summary
+    }!!
+    val ownerlessUpdated = persistFavorite(db.telemetryDao(), ownerless.id, trimmedRange, "conflicting-board", null, ownerless.updatedAt + 1, { error("must preserve id") }) { _, boardId ->
+      assertEquals(null, boardId); summary
+    }!!
+    assertEquals(null, ownerlessUpdated.boardId)
+    assertEquals(1, db.telemetryDao().deleteFavorite(ownerless.id))
+    db.close()
+    db = open()
+    val reopened = db.telemetryDao().getFavorite(created.id)!!
+    assertEquals(created.id, reopened.id)
+    assertEquals(created.createdAt, reopened.createdAt)
+    assertEquals(input.getString("renamed"), reopened.name)
+    assertEquals(input.getLong("trimmedStartMs"), reopened.startMs)
+    assertEquals(expected.getInt("sampleCount"), reopened.sampleCount)
+    val protectedRange = expandTelemetryRangeToBuckets(TelemetryTimeRange(reopened.startMs, reopened.endMs))
+    val deletable = subtractProtectedTelemetryRanges(TelemetryTimeRange(0, 120_000), listOf(protectedRange))
+    assertTrue(deletable.all { it.endMs < protectedRange.startMs || it.startMs > protectedRange.endMs })
+    db.telemetryDao().insertFavoriteMedia(FavoriteMediaEntity(
+      "owned-media", created.id, null, "image/jpeg", "photo", 1, "00", created.createdAt,
+    ))
+    db.close()
+    var connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("CREATE TRIGGER fail_favorite_delete BEFORE DELETE ON favorites BEGIN SELECT RAISE(FAIL, 'late Favorite delete failure'); END")
+    connection.close()
+    db = open()
+    var deleteFailed = false
+    try { db.telemetryDao().deleteFavorite(created.id) } catch (_: Exception) { deleteFailed = true }
+    assertTrue(deleteFailed)
+    assertEquals(1, db.telemetryDao().getFavoriteMedia(created.id).size)
+    db.close()
+    connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TRIGGER fail_favorite_delete")
+    connection.close()
+    db = open()
+    assertEquals(1, db.telemetryDao().deleteFavorite(created.id))
+    assertEquals(null, db.telemetryDao().getFavorite(created.id))
+    db.close()
+    Files.deleteIfExists(path)
+  }
+  @Test
   fun boardAndSettingsSurviveReopenAndFailuresStayExplicit(): Unit = runBlocking {
     val fixture = JSONObject(
       checkNotNull(javaClass.classLoader?.getResource("board-settings-persistence-contract.json")).readText(),

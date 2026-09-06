@@ -248,10 +248,10 @@ internal final class TelemetryRepository {
   /// Board names are resolved here, not stored on the row: a Favorite outlives board renames, and
   /// a snapshot would drift.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getFavorites`
-  func getFavorites() -> [[String: Any?]] {
-    FavoriteMediaStore.shared.reconcileAll()
+  func getFavorites() throws -> [[String: Any?]] {
+    try FavoriteMediaStore.shared.reconcileAll()
     let boardNames = Self.boardNamesById()
-    return FavoriteStore.shared.list().map { favorite in
+    return try FavoriteStore.shared.list().map { favorite in
       favorite.toMap(
         boardName: favorite.boardId.flatMap { boardNames[$0] },
         routePoints: favoriteRoutePoints(favorite)
@@ -288,39 +288,27 @@ internal final class TelemetryRepository {
   /// optional name are the only things JS gets to supply. Summary stats come from the raw samples
   /// inside the range, so a range that cuts mid-bucket still gets exact numbers.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `createFavorite`
-  func createFavorite(_ options: [String: Any]) -> [String: Any?]? {
+  func createFavorite(_ options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
-    guard let pool else { return nil }
     guard let range = Self.favoriteRange(options) else { return nil }
+    let pool = try TelemetryDatabase.requirePool()
     let startMs = range.startMs
     let endMs = range.endMs
     let boardId = options["boardId"] as? String
     let trimmedName = (options["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let config = queue.sync { metricConfig }
-    let points = (try? pool.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          """,
-        arguments: [startMs, endMs, boardId, boardId]
-      ).compactMap(bucketPoint)
-    }) ?? []
-    let summary = Self.favoriteSummary(points, config: config)
     let nowMs = telemetryNowMs()
-    let favorite = Favorite(
-      id: UUID().uuidString,
-      boardId: boardId,
+    let favorite = try persistFavorite(
+      store: .shared, existingId: nil, range: range, boardId: boardId,
       name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName,
-      startMs: startMs,
-      endMs: endMs,
-      createdAtMs: nowMs,
-      updatedAtMs: nowMs,
-      summary: summary
-    )
-    guard FavoriteStore.shared.insert(favorite) else { return nil }
+      nowMs: nowMs, newId: { UUID().uuidString },
+      loadSummary: { requested, owner in
+        let points = try pool.read { db in
+          try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY captured_at_ms ASC", arguments: [requested.startMs, requested.endMs, owner, owner]).compactMap(bucketPoint)
+        }
+        return Self.favoriteSummary(points, config: config)
+      }
+    )!
     return favorite.toMap(
       boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] },
       routePoints: favoriteRoutePoints(favorite)
@@ -354,38 +342,27 @@ internal final class TelemetryRepository {
   /// Re-trim/rename a Favorite in place. Identity, creation time and Favorite Media stay attached;
   /// summary stats are rebuilt from raw samples for the new exact range.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `updateFavorite`
-  func updateFavorite(_ id: String, options: [String: Any]) -> [String: Any?]? {
+  func updateFavorite(_ id: String, options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
-    guard let existing = FavoriteStore.shared.list().first(where: { $0.id == id }), let pool
-    else { return nil }
     guard let range = Self.favoriteRange(options) else { return nil }
+    let pool = try TelemetryDatabase.requirePool()
     let startMs = range.startMs
     let endMs = range.endMs
     let boardId = options["boardId"] as? String
     let trimmedName = (options["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let config = queue.sync { metricConfig }
-    let points = (try? pool.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          """,
-        arguments: [startMs, endMs, boardId, boardId]
-      ).compactMap(bucketPoint)
-    }) ?? []
-    let updated = Favorite(
-      id: existing.id,
-      boardId: existing.boardId,
+    let persisted = try persistFavorite(
+      store: .shared, existingId: id, range: range, boardId: boardId,
       name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName,
-      startMs: startMs,
-      endMs: endMs,
-      createdAtMs: existing.createdAtMs,
-      updatedAtMs: telemetryNowMs(),
-      summary: Self.favoriteSummary(points, config: config)
+      nowMs: telemetryNowMs(), newId: { UUID().uuidString },
+      loadSummary: { requested, owner in
+        let points = try pool.read { db in
+          try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY captured_at_ms ASC", arguments: [requested.startMs, requested.endMs, owner, owner]).compactMap(bucketPoint)
+        }
+        return Self.favoriteSummary(points, config: config)
+      }
     )
-    guard let stored = FavoriteStore.shared.update(updated) else { return nil }
+    guard let stored = persisted else { return nil }
     return stored.toMap(
       boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] },
       routePoints: favoriteRoutePoints(stored)
@@ -394,8 +371,8 @@ internal final class TelemetryRepository {
 
   /// Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteFavorite`
-  func deleteFavorite(_ id: String) -> Bool {
-    let deleted = FavoriteStore.shared.delete(id)
+  func deleteFavorite(_ id: String) throws -> Bool {
+    let deleted = try FavoriteStore.shared.delete(id)
     if deleted { FavoriteMediaStore.shared.deleteDirectory(favoriteId: id) }
     return deleted
   }
@@ -403,8 +380,8 @@ internal final class TelemetryRepository {
   /// Read and reconcile Favorite Media. Missing files remove their manifest rows; temp/orphan files
   /// are deleted and never published to JS.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getFavoriteMedia`
-  func getFavoriteMedia(_ favoriteId: String) -> [[String: Any?]] {
-    FavoriteMediaStore.shared.list(favoriteId: favoriteId).map {
+  func getFavoriteMedia(_ favoriteId: String) throws -> [[String: Any?]] {
+    try FavoriteMediaStore.shared.list(favoriteId: favoriteId).map {
       $0.toMap(fileURL: FavoriteMediaStore.shared.fileURL(for: $0))
     }
   }
@@ -590,10 +567,15 @@ internal final class TelemetryRepository {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteTelemetryRanges`
   private func favoriteTelemetryRanges() -> [TelemetryTimeRange] {
-    FavoriteStore.shared.list().map {
-      expandTelemetryRangeToBuckets(
-        TelemetryTimeRange(startMs: $0.startMs, endMs: $0.endMs)
-      )
+    do {
+      return try FavoriteStore.shared.list().map {
+        expandTelemetryRangeToBuckets(
+          TelemetryTimeRange(startMs: $0.startMs, endMs: $0.endMs)
+        )
+      }
+    } catch {
+      RecordingStorageFailure.reportRead(operation: "favorite_pins_read", error: error)
+      return [TelemetryTimeRange(startMs: Int64.min, endMs: Int64.max)]
     }
   }
 

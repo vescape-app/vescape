@@ -259,6 +259,99 @@ try boardQueue!.write { db in
 do { _ = try boardPersistence.settings(); throw Failure(description: "settings query failure became defaults") } catch is DatabaseError {}
 try boardQueue!.close()
 try FileManager.default.removeItem(at: boardURL)
+
+let favoriteFixtureURL = root.appendingPathComponent("shared/favorite-persistence-contract.json")
+let favoriteFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: favoriteFixtureURL)) as! [String: Any]
+try require(favoriteFixture["scenario"] as? String == "favorite-create-rename-trim-delete-reopen", "unknown Favorite scenario")
+let favoriteInput = favoriteFixture["input"] as! [String: Any]
+let favoriteExpected = favoriteFixture["expected"] as! [String: Any]
+let favoriteURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-favorite-\(UUID().uuidString).db")
+var favoriteQueue: DatabaseQueue? = try DatabaseQueue(path: favoriteURL.path)
+try TelemetryDatabase.migrator.migrate(favoriteQueue!)
+var favoriteStore = FavoriteStore(dbWriter: favoriteQueue!)
+let favoriteId = favoriteInput["id"] as! String
+let favoriteCreatedAt = Int64(int(favoriteInput["startMs"]))
+let favoriteSamples = favoriteInput["samples"] as! [[String: Any]]
+let favoritePoints = favoriteSamples.map { sample in
+  BucketTelemetryPoint(
+    capturedAtMs: Int64(int(sample["capturedAtMs"])), boardId: nil,
+    speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: 80_000,
+    motorCurrentMa: 0, batteryCurrentMa: 0, dutyPermille: 100,
+    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 300,
+    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
+    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+  )
+}
+let contractSummary = buildFavoriteSummary(buildTelemetryBuckets(favoritePoints))
+try require(contractSummary.sampleCount == int(favoriteExpected["sampleCount"]), "Favorite derived sample count")
+try require(contractSummary.distanceCm == Int64(int(favoriteExpected["distanceCm"])), "Favorite derived distance")
+try require(contractSummary.avgSpeedCentiKmh == int(favoriteExpected["avgSpeedCentiKmh"]), "Favorite derived average")
+let createdRange = TelemetryTimeRange(startMs: Int64(int(favoriteInput["startMs"])), endMs: Int64(int(favoriteInput["endMs"])))
+let createdFavorite = try persistFavorite(store: favoriteStore, existingId: nil, range: createdRange, boardId: favoriteInput["boardId"] as? String, name: favoriteInput["name"] as? String, nowMs: favoriteCreatedAt, newId: { favoriteId }) { requested, owner in
+  try require(requested == createdRange, "Favorite create query range")
+  try require(owner == favoriteInput["boardId"] as? String, "Favorite create Board")
+  return contractSummary
+}!
+let trimmedRange = TelemetryTimeRange(startMs: Int64(int(favoriteInput["trimmedStartMs"])), endMs: Int64(int(favoriteInput["trimmedEndMs"])))
+let updatedFavorite = try persistFavorite(store: favoriteStore, existingId: favoriteId, range: trimmedRange, boardId: nil, name: favoriteInput["renamed"] as? String, nowMs: createdFavorite.updatedAtMs + 1, newId: { fatalError("must preserve id") }) { requested, owner in
+  try require(requested == trimmedRange, "Favorite trim query range")
+  try require(owner == favoriteInput["boardId"] as? String, "Favorite trim Board")
+  return contractSummary
+}
+try require(updatedFavorite?.id == favoriteId, "Favorite rename/trim")
+try require(updatedFavorite?.boardId == favoriteInput["boardId"] as? String, "Favorite trim ownership")
+let conflictingFavorite = try persistFavorite(store: favoriteStore, existingId: favoriteId, range: trimmedRange, boardId: "conflicting-board", name: favoriteInput["renamed"] as? String, nowMs: createdFavorite.updatedAtMs + 2, newId: { fatalError("must preserve id") }) { _, owner in
+  try require(owner == favoriteInput["boardId"] as? String, "Favorite conflicting Board ignored")
+  return contractSummary
+}
+try require(conflictingFavorite?.boardId == favoriteInput["boardId"] as? String, "Favorite conflicting ownership preserved")
+let ownerless = try persistFavorite(store: favoriteStore, existingId: nil, range: createdRange, boardId: nil, name: nil, nowMs: favoriteCreatedAt, newId: { "ownerless-favorite" }) { _, owner in
+  try require(owner == nil, "Favorite ownerless create")
+  return contractSummary
+}!
+let ownerlessUpdated = try persistFavorite(store: favoriteStore, existingId: ownerless.id, range: trimmedRange, boardId: "conflicting-board", name: nil, nowMs: favoriteCreatedAt + 1, newId: { fatalError("must preserve id") }) { _, owner in
+  try require(owner == nil, "Favorite ownerless update")
+  return contractSummary
+}
+try require(ownerlessUpdated?.boardId == nil, "Favorite ownerless ownership preserved")
+_ = try favoriteStore.delete(ownerless.id)
+try favoriteQueue!.close()
+favoriteQueue = try DatabaseQueue(path: favoriteURL.path)
+favoriteStore = FavoriteStore(dbWriter: favoriteQueue!)
+let reopenedFavorite = try favoriteStore.list().first
+try require(reopenedFavorite?.id == favoriteId, "Favorite reopen identity")
+try require(reopenedFavorite?.name == favoriteInput["renamed"] as? String, "Favorite reopen name")
+try require(reopenedFavorite?.startMs == Int64(int(favoriteInput["trimmedStartMs"])), "Favorite reopen range")
+try require(reopenedFavorite?.summary.sampleCount == int(favoriteExpected["sampleCount"]), "Favorite reopen summary")
+let protectedFavoriteRange = expandTelemetryRangeToBuckets(TelemetryTimeRange(startMs: reopenedFavorite!.startMs, endMs: reopenedFavorite!.endMs))
+let deletableAroundFavorite = subtractProtectedTelemetryRanges(
+  deleteRange: TelemetryTimeRange(startMs: 0, endMs: 120_000), protectedRanges: [protectedFavoriteRange]
+)
+try require(deletableAroundFavorite.allSatisfy { $0.endMs < protectedFavoriteRange.startMs || $0.startMs > protectedFavoriteRange.endMs }, "Favorite pin allowed deletion")
+try favoriteQueue!.write { db in
+  try db.execute(sql: "INSERT INTO favorite_media (id, favorite_id, mime_type, media_kind, byte_count, content_hash, created_at) VALUES ('owned-media', ?, 'image/jpeg', 'photo', 1, '00', ?)", arguments: [favoriteId, favoriteCreatedAt])
+  try db.execute(sql: "CREATE TRIGGER fail_favorite_delete BEFORE DELETE ON favorites BEGIN SELECT RAISE(FAIL, 'late Favorite delete failure'); END")
+}
+do { _ = try favoriteStore.delete(favoriteId); throw Failure(description: "failed Favorite delete reported success") } catch is DatabaseError {}
+let retainedMedia = try favoriteQueue!.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM favorite_media WHERE favorite_id = ?", arguments: [favoriteId]) }
+try require(retainedMedia == 1, "failed Favorite delete removed media manifest")
+try favoriteQueue!.write { db in try db.execute(sql: "DROP TRIGGER fail_favorite_delete") }
+let deletedFavorite = try favoriteStore.delete(favoriteId)
+try require(deletedFavorite, "Favorite delete")
+let remainingFavorites = try favoriteStore.list()
+try require(remainingFavorites.isEmpty, "Favorite deleted row reopened")
+let mediaRoot = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-favorite-media-\(UUID().uuidString)", isDirectory: true)
+let mediaDirectory = mediaRoot.appendingPathComponent("preserved", isDirectory: true)
+let preservedMedia = mediaDirectory.appendingPathComponent("existing.jpg")
+try FileManager.default.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
+try Data([1, 2, 3]).write(to: preservedMedia)
+let mediaStore = FavoriteMediaStore(dbWriter: favoriteQueue!, rootURL: mediaRoot)
+try favoriteQueue!.write { db in try db.drop(table: "favorite_media") }
+do { try mediaStore.reconcile(favoriteId: "preserved"); throw Failure(description: "Favorite Media lookup failure became empty") } catch is DatabaseError {}
+try require(FileManager.default.fileExists(atPath: preservedMedia.path), "failed Favorite Media lookup deleted file")
+try FileManager.default.removeItem(at: mediaRoot)
+try favoriteQueue!.close()
+try FileManager.default.removeItem(at: favoriteURL)
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

@@ -643,26 +643,10 @@ class TelemetryRepository private constructor(context: Context) {
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val states = getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE)
-    val summary = favoriteSummary(states)
     val nowMs = System.currentTimeMillis()
-    val favorite = FavoriteEntity(
-      id = UUID.randomUUID().toString(),
-      boardId = boardId,
-      name = name,
-      startMs = startMs,
-      endMs = endMs,
-      createdAt = nowMs,
-      updatedAt = nowMs,
-      sampleCount = summary.sampleCount,
-      gpsPointCount = summary.gpsPointCount,
-      distanceCm = summary.distanceCm,
-      movingDurationMs = summary.movingDurationMs,
-      avgSpeedCentiKmh = summary.avgSpeedCentiKmh,
-      maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
-      batteryUsedWhMilli = summary.batteryUsedWhMilli,
-    )
-    dao.insertFavorite(favorite)
+    val favorite = persistFavorite(dao, null, range, boardId, name, nowMs, { UUID.randomUUID().toString() }) { requested, owner ->
+      favoriteSummary(getSampleStates(requested.startMs, requested.endMs, owner, Int.MAX_VALUE))
+    } ?: return@withContext null
     favorite.toMap(
       boardId?.let { boardNamesById()[it] },
       favoriteRoutePoints(favorite),
@@ -679,7 +663,6 @@ class TelemetryRepository private constructor(context: Context) {
     id: String,
     options: Map<String, Any?>,
   ): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    val existing = dao.getFavorite(id) ?: return@withContext null
     val range = favoriteRange(options) ?: return@withContext null
     val startMs = range.startMs
     val endMs = range.endMs
@@ -687,21 +670,9 @@ class TelemetryRepository private constructor(context: Context) {
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val summary = favoriteSummary(getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE))
-    val updated = existing.copy(
-      name = name,
-      startMs = startMs,
-      endMs = endMs,
-      updatedAt = System.currentTimeMillis(),
-      sampleCount = summary.sampleCount,
-      gpsPointCount = summary.gpsPointCount,
-      distanceCm = summary.distanceCm,
-      movingDurationMs = summary.movingDurationMs,
-      avgSpeedCentiKmh = summary.avgSpeedCentiKmh,
-      maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
-      batteryUsedWhMilli = summary.batteryUsedWhMilli,
-    )
-    if (dao.updateFavorite(updated) == 0) return@withContext null
+    val updated = persistFavorite(dao, id, range, boardId, name, System.currentTimeMillis(), { UUID.randomUUID().toString() }) { requested, owner ->
+      favoriteSummary(getSampleStates(requested.startMs, requested.endMs, owner, Int.MAX_VALUE))
+    } ?: return@withContext null
     updated.toMap(
       dao.getBoards().firstOrNull { it.id == updated.boardId }?.name,
       favoriteRoutePoints(updated),

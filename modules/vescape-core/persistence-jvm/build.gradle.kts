@@ -23,6 +23,8 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt",
       "expo/modules/vescapecore/telemetry/RideHistoryRepository.kt",
       "expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt",
+      "expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt",
+      "expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt",
     ).forEach { relative ->
       val source = productionRoot.file(relative).asFile.readText()
       output.resolve(relative).apply { parentFile.mkdirs(); writeText(source) }

@@ -878,24 +878,59 @@ class VescapeCoreModule : Module() {
     // and the denormalized summary are native.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getFavorites`
     AsyncFunction("getFavorites") Coroutine { ->
-      TelemetryRepository.get(context.applicationContext).getFavorites()
+      try { TelemetryRepository.get(context.applicationContext).getFavorites() }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("favorites_read", error)
+        throw CodedException("ERR_FAVORITES_READ", "Could not load Favorites", error)
+      }
     }
     AsyncFunction("createFavorite") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).createFavorite(options)
-        ?: throw CodedException("ERR_CREATE_FAVORITE", "favorite range is invalid or could not be stored", null)
+      val favorite = try {
+        TelemetryRepository.get(context.applicationContext).createFavorite(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_create", "write_failed", error)
+        throw CodedException("ERR_CREATE_FAVORITE", "Favorite could not be stored", error)
+      }
+      favorite ?: throw CodedException("ERR_CREATE_FAVORITE", "favorite range is invalid", null)
     }
     AsyncFunction("updateFavorite") Coroutine { id: String, options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).updateFavorite(id, options)
-        ?: throw CodedException("ERR_UPDATE_FAVORITE", "favorite does not exist or could not be stored", null)
+      val favorite = try {
+        TelemetryRepository.get(context.applicationContext).updateFavorite(id, options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_update", "write_failed", error)
+        throw CodedException("ERR_UPDATE_FAVORITE", "Favorite could not be stored", error)
+      }
+      favorite ?: throw CodedException("ERR_UPDATE_FAVORITE", "Favorite does not exist or range is invalid", null)
     }
     AsyncFunction("deleteFavorite") Coroutine { id: String ->
-      TelemetryRepository.get(context.applicationContext).deleteFavorite(id)
+      val deleted = try {
+        TelemetryRepository.get(context.applicationContext).deleteFavorite(id)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_delete", "write_failed", error)
+        throw CodedException("ERR_DELETE_FAVORITE", "Favorite could not be deleted", error)
+      }
+      if (!deleted) throw CodedException("ERR_DELETE_FAVORITE", "Favorite does not exist", null)
+      true
     }
     AsyncFunction("getFavoriteMedia") Coroutine { favoriteId: String ->
-      TelemetryRepository.get(context.applicationContext).getFavoriteMedia(favoriteId)
+      try { TelemetryRepository.get(context.applicationContext).getFavoriteMedia(favoriteId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.reportRead("favorite_media_read", error)
+        throw CodedException("ERR_FAVORITE_MEDIA_READ", "Could not load Favorite Media", error)
+      }
     }
     AsyncFunction("importFavoriteMedia") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).importFavoriteMedia(options)
+      try { TelemetryRepository.get(context.applicationContext).importFavoriteMedia(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) {
+        RecordingStorageFailure.report("favorite_media_import", "write_failed", error)
+        throw CodedException("ERR_IMPORT_FAVORITE_MEDIA", "Could not save Favorite Media", error)
+      }
     }
     AsyncFunction("deleteTelemetryBefore") Coroutine { beforeMs: Double ->
       TelemetryRepository.get(context.applicationContext).deleteBefore(beforeMs.toLong())

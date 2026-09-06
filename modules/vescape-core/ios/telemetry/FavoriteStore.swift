@@ -60,6 +60,70 @@ struct FavoriteSummary {
   var batteryUsedWhMilli: Int64 = 0
 }
 
+private struct FavoriteRecord: Codable, FetchableRecord, PersistableRecord {
+  static let databaseTableName = "favorites"
+  let id: String
+  let boardId: String?
+  let name: String?
+  let startMs: Int64
+  let endMs: Int64
+  let createdAt: Int64
+  let updatedAt: Int64
+  let sampleCount: Int
+  let gpsPointCount: Int
+  let distanceCm: Int64?
+  let movingDurationMs: Int64
+  let avgSpeedCentiKmh: Int
+  let maxSpeedCentiKmh: Int
+  let batteryUsedWhMilli: Int64
+
+  init(_ favorite: Favorite) {
+    id = favorite.id; boardId = favorite.boardId; name = favorite.name
+    startMs = favorite.startMs; endMs = favorite.endMs
+    createdAt = favorite.createdAtMs; updatedAt = favorite.updatedAtMs
+    sampleCount = favorite.summary.sampleCount; gpsPointCount = favorite.summary.gpsPointCount
+    distanceCm = favorite.summary.distanceCm; movingDurationMs = favorite.summary.movingDurationMs
+    avgSpeedCentiKmh = favorite.summary.avgSpeedCentiKmh
+    maxSpeedCentiKmh = favorite.summary.maxSpeedCentiKmh
+    batteryUsedWhMilli = favorite.summary.batteryUsedWhMilli
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case id, name
+    case boardId = "board_id", startMs = "start_ms", endMs = "end_ms"
+    case createdAt = "created_at", updatedAt = "updated_at"
+    case sampleCount = "sample_count", gpsPointCount = "gps_point_count"
+    case distanceCm = "distance_cm", movingDurationMs = "moving_duration_ms"
+    case avgSpeedCentiKmh = "avg_speed_centi_kmh", maxSpeedCentiKmh = "max_speed_centi_kmh"
+    case batteryUsedWhMilli = "battery_used_wh_milli"
+  }
+}
+
+/// App-used create/update mapping. The host injects only clock, id, and summary query results.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt `persistFavorite`
+internal func persistFavorite(
+  store: FavoriteStore,
+  existingId: String?,
+  range: TelemetryTimeRange,
+  boardId: String?,
+  name: String?,
+  nowMs: Int64,
+  newId: () -> String,
+  loadSummary: (TelemetryTimeRange, String?) throws -> FavoriteSummary
+) throws -> Favorite? {
+  let existing = try existingId.flatMap { id in try store.list().first { $0.id == id } }
+  if existingId != nil, existing == nil { return nil }
+  let resolvedBoardId = existing == nil ? boardId : existing!.boardId
+  let favorite = Favorite(
+    id: existing?.id ?? newId(), boardId: resolvedBoardId, name: name,
+    startMs: range.startMs, endMs: range.endMs,
+    createdAtMs: existing?.createdAtMs ?? nowMs, updatedAtMs: nowMs,
+    summary: try loadSummary(range, resolvedBoardId)
+  )
+  if existing == nil { try store.insert(favorite); return favorite }
+  return try store.update(favorite)
+}
+
 /// Aggregate the buckets built from a Favorite's raw samples into one denormalized summary. Pure so
 /// both the create path and its tests share one definition. Mirrors how JS collapses minute buckets
 /// into a history session summary.
@@ -144,65 +208,27 @@ struct FavoriteStore {
 
   // MARK: - Reads
 
-  func list() -> [Favorite] {
-    guard let writer = resolveWriter() else { return [] }
-    return (try? writer.read { db in
+  func list() throws -> [Favorite] {
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
+    return try writer.read { db in
       try Row.fetchAll(db, sql: "SELECT * FROM favorites ORDER BY start_ms DESC").map(Self.favorite)
-    }) ?? []
+    }
   }
 
   // MARK: - Writes
 
   /// Insert a Favorite whose identity and timestamps were minted by the caller's native clock.
-  @discardableResult
-  func insert(_ favorite: Favorite) -> Bool {
-    guard let writer = resolveWriter() else { return false }
-    do {
-      try writer.write { db in
-        try db.execute(
-          sql: """
-            INSERT INTO favorites (
-              id, board_id, name, start_ms, end_ms, created_at, updated_at,
-              sample_count, gps_point_count, distance_cm, moving_duration_ms,
-              avg_speed_centi_kmh, max_speed_centi_kmh, battery_used_wh_milli
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-          arguments: [
-            favorite.id, favorite.boardId, favorite.name,
-            favorite.startMs, favorite.endMs, favorite.createdAtMs, favorite.updatedAtMs,
-            favorite.summary.sampleCount, favorite.summary.gpsPointCount, favorite.summary.distanceCm,
-            favorite.summary.movingDurationMs, favorite.summary.avgSpeedCentiKmh,
-            favorite.summary.maxSpeedCentiKmh, favorite.summary.batteryUsedWhMilli,
-          ]
-        )
-      }
-      return true
-    } catch {
-      return false
-    }
+  func insert(_ favorite: Favorite) throws {
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
+    try writer.write { db in try FavoriteRecord(favorite).insert(db) }
   }
 
   /// Re-trim/rename one row in place so identity, creation time and Favorite Media remain stable.
-  func update(_ favorite: Favorite) -> Favorite? {
-    guard let writer = resolveWriter() else { return nil }
-    let updated = try? writer.write { db -> Favorite? in
-      try db.execute(
-        sql: """
-          UPDATE favorites SET
-            name = ?, start_ms = ?, end_ms = ?, updated_at = ?,
-            sample_count = ?, gps_point_count = ?, distance_cm = ?, moving_duration_ms = ?,
-            avg_speed_centi_kmh = ?, max_speed_centi_kmh = ?, battery_used_wh_milli = ?
-          WHERE id = ?
-          """,
-        arguments: [
-          favorite.name, favorite.startMs, favorite.endMs, favorite.updatedAtMs,
-          favorite.summary.sampleCount, favorite.summary.gpsPointCount,
-          favorite.summary.distanceCm, favorite.summary.movingDurationMs,
-          favorite.summary.avgSpeedCentiKmh, favorite.summary.maxSpeedCentiKmh,
-          favorite.summary.batteryUsedWhMilli, favorite.id,
-        ]
-      )
-      guard db.changesCount > 0 else { return nil }
+  func update(_ favorite: Favorite) throws -> Favorite? {
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
+    return try writer.write { db -> Favorite? in
+      guard try FavoriteRecord.fetchOne(db, key: favorite.id) != nil else { return nil }
+      try FavoriteRecord(favorite).update(db)
       return try Row.fetchOne(
         db,
         sql: "SELECT * FROM favorites WHERE id = ?",
@@ -210,20 +236,19 @@ struct FavoriteStore {
       )
         .map(Self.favorite)
     }
-    return updated ?? nil
   }
 
   /// Unpin one Favorite. Telemetry inside its range is untouched and becomes deletable again.
   /// Favorite Media rows are parent-covered and raw-deleted in the same transaction (ADR 0030);
   /// filesystem cleanup is best-effort in the repository after this commit succeeds.
   @discardableResult
-  func delete(_ id: String) -> Bool {
-    guard let writer = resolveWriter() else { return false }
-    return (try? writer.write { db in
+  func delete(_ id: String) throws -> Bool {
+    guard let writer = resolveWriter() else { throw FavoriteMediaStoreError.manifestWriteFailed }
+    return try writer.write { db in
       try db.execute(sql: "DELETE FROM favorite_media WHERE favorite_id = ?", arguments: [id])
       try db.execute(sql: "DELETE FROM favorites WHERE id = ?", arguments: [id])
       return db.changesCount > 0
-    }) ?? false
+    }
   }
 
   private static func favorite(_ row: Row) -> Favorite {
