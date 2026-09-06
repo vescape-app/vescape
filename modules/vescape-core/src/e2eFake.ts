@@ -619,6 +619,7 @@ function addHistoryRide(
       accuracyM: 3,
       altitudeM: 120,
       timestamp: rideStartMs + progress * durationMs,
+      recordingId: null,
       distanceFromPreviousM: i === 0 ? null : ride.distanceM / (gpsPointCount - 1),
     })
   }

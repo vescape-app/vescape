@@ -50,6 +50,7 @@ internal func gpsSpeedCentiMpsToCentiKmh(_ centiMps: Int) -> Int { (centiMps * 3
 /// (which all share a nil recording) never chain across Boards.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `toGpsSampleMaps`
+/// @parity /modules/vescape-core/src/index.ts `HistoryGpsSample`
 internal func rideTrackGpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: Any?]] {
   var previousByBoard: [String: (recordingId: String?, lat: Double, lon: Double)] = [:]
   return rows.compactMap { row in
@@ -67,6 +68,7 @@ internal func rideTrackGpsMaps(_ rows: [Row], boardNames: [String: String]) -> [
     previousByBoard[boardKey] = (recordingId, latitude, longitude)
     return [
       "id": row["id"] as Int64,
+      "recordingId": recordingId,
       "capturedAtMs": row["fix_at_ms"] as Int64,
       "boardId": boardId,
       "boardName": boardId.flatMap { boardNames[$0] } ?? UNKNOWN_TELEMETRY_BOARD_NAME,

@@ -276,6 +276,7 @@ test('selects ride immediately while loading its full route', async () => {
       accuracyM: null,
       altitudeM: null,
       timestamp: next.startAtMs + index,
+      recordingId: null,
       distanceFromPreviousM: null,
     })),
     markers: [],
@@ -355,6 +356,7 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     accuracyM: null,
     altitudeM: null,
     timestamp: ride.startAtMs,
+    recordingId: null,
     distanceFromPreviousM: null,
   }
   let resolvePreviewRange: (value: HistoryRangeResult) => void = () => {}

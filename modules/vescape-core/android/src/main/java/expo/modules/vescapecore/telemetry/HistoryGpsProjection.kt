@@ -47,8 +47,11 @@ internal data class RideTrackProjectionPoint(
   val movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
 ) {
   /** [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028). */
+  // @parity /modules/vescape-core/src/index.ts `HistoryGpsSample`
+  // @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackGpsMaps`
   fun toSampleMap(boardNames: Map<String, String>): Map<String, Any?> = mapOf(
     "id" to point.id,
+    "recordingId" to point.recordingId,
     "capturedAtMs" to point.fixAtMs,
     "boardId" to point.boardId,
     "boardName" to (point.boardId?.let { boardNames[it] } ?: UNKNOWN_TELEMETRY_BOARD_NAME),

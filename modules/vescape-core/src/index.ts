@@ -695,9 +695,13 @@ export interface TelemetrySample {
  * One Ride Track fix, as history reads it. Only fixes that pass the shared native precision rule
  * (20m reported horizontal accuracy, both platforms, provider-independent) are returned, so this is
  * already the route stream — no consumer re-filters it (ADR 0038).
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackGpsMaps`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `toSampleMap`
  */
 export interface HistoryGpsSample {
   id: number
+  /** Owning Ride Recording; null for migrated legacy fixes. */
+  recordingId: string | null
   capturedAtMs: number
   boardId: string | null
   boardName: string

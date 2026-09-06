@@ -99,6 +99,11 @@ function belongsToGpsSpan(
   if (!adjacent) return false
   if (Math.abs(adjacent.capturedAtMs - sample.capturedAtMs) > MEDIA_PRECISE_GPS_SPAN_GAP_MS)
     return false
+  // Recording identity owns new Ride Track boundaries. BLE/telemetry markers can occur while
+  // precise GPS continues; they only define GPS continuity for legacy fixes without an identity.
+  if (sample.recordingId != null || adjacent.recordingId != null) {
+    return sample.recordingId === adjacent.recordingId && sample.boardId === adjacent.boardId
+  }
   return !hasBreakBetween(markers, adjacent.capturedAtMs, sample.capturedAtMs)
 }
 

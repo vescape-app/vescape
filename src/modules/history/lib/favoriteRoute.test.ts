@@ -16,6 +16,7 @@ function gps(capturedAtMs: number, longitude: number): HistoryGpsSample {
     accuracyM: null,
     altitudeM: null,
     timestamp: capturedAtMs,
+    recordingId: null,
     distanceFromPreviousM: null,
   }
 }

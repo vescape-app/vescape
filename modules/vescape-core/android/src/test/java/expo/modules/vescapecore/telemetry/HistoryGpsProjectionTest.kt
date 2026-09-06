@@ -8,6 +8,18 @@ import org.junit.Test
 
 class HistoryGpsProjectionTest {
   @Test
+  fun routePayloadPreservesRecordingIdentityAndLegacyNull() {
+    val maps = listOf(
+      point(1L, 1_000L, recordingId = "ride-a"),
+      point(2L, 2_000L, recordingId = "ride-b"),
+      point(3L, 3_000L, recordingId = null),
+    ).toGpsSampleMaps(mapOf("board-1" to "Board"))
+
+    assertEquals(listOf("ride-a", "ride-b", null), maps.map { it["recordingId"] })
+    assertTrue(maps[2].containsKey("recordingId"))
+  }
+
+  @Test
   fun measuresDistanceOnlyWithinOneRecording() {
     val track = listOf(
       point(1L, 1_000L, latitudeE7 = 500_000_000, recordingId = "a"),

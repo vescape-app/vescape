@@ -1,3 +1,4 @@
+import GRDB
 import XCTest
 
 @testable import VescapeCore
@@ -9,6 +10,28 @@ import XCTest
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/HistoryGpsProjectionTest.kt
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilderTest.kt
 final class RideTrackProjectionTests: XCTestCase {
+  /// The media matcher must distinguish recording boundaries even in a range spanning multiple rides.
+  func testRoutePayloadPreservesRecordingIdentityAndLegacyNull() throws {
+    let database = try DatabaseQueue()
+    try TelemetryDatabase.migrator.migrate(database)
+    try database.write { db in
+      for (index, recordingId) in (["ride-a", "ride-b", nil] as [String?]).enumerated() {
+        try insertRideTrackPoint(db, point(fixAtMs: Int64(index + 1) * 1_000, recordingId: recordingId))
+      }
+    }
+    let maps = try database.read { db in
+      rideTrackGpsMaps(
+        try fetchRideTrack(db, fromMs: 0, toMs: 4_000, boardId: "board-1"),
+        boardNames: ["board-1": "Board"]
+      )
+    }
+    XCTAssertEqual(maps.count, 3)
+    XCTAssertEqual(maps[0]["recordingId"] as? String, "ride-a")
+    XCTAssertEqual(maps[1]["recordingId"] as? String, "ride-b")
+    XCTAssertTrue(maps[2].keys.contains("recordingId"))
+    XCTAssertNil(maps[2]["recordingId"] as? String)
+  }
+
   private func point(
     fixAtMs: Int64,
     latitudeE7: Int64 = 500_000_000,
