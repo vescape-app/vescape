@@ -3,11 +3,9 @@ import GRDB
 
 internal let TELEMETRY_FLAG_KEYFRAME = 1
 internal let TELEMETRY_FLAG_HAS_LOCATION = 1 << 2
-internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
 internal let GAP_BOUNDARY_MS: Int64 = 90_000
 internal let KEYFRAME_INTERVAL_MS: Int64 = 60_000
 internal let MIN_PERSIST_INTERVAL_MS: Int64 = 500
-internal let MAX_ENERGY_SAMPLE_GAP_MS: Int64 = 5_000
 internal let DEFAULT_HISTORY_LIMIT = 100
 internal let DEFAULT_SAMPLE_LIMIT = 2_000
 internal let MAX_SAMPLE_LIMIT = 20_000

@@ -77,23 +77,7 @@ struct BoardConfigStore {
   /// reused by tests so the schema stays single-source. Mirrors Android `BoardConfigValuesEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE IF NOT EXISTS board_config_values (
-        board_id TEXT NOT NULL,
-        refloat_base_version TEXT NOT NULL,
-        values_json TEXT NOT NULL,
-        captured_at INTEGER NOT NULL,
-        PRIMARY KEY (board_id, refloat_base_version)
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_board_config_values_board_id ON board_config_values(board_id)")
-    try db.execute(sql: """
-      CREATE TABLE IF NOT EXISTS board_config_change_notices (
-        board_id TEXT NOT NULL PRIMARY KEY,
-        detected_at INTEGER NOT NULL,
-        diffs_json TEXT NOT NULL
-      )
-      """)
+    try PersistenceSchema.createBoardConfig(db)
   }
 
   /// Last Known values for this Board + Refloat base version. Nil when none exist for that scope.

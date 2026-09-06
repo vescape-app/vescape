@@ -68,32 +68,7 @@ struct TuneProfileStore {
   /// so the schema stays single-source. Mirrors Android `TuneProfileEntity` / `TuneHistoryEntryEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE tune_profiles (
-        id TEXT NOT NULL PRIMARY KEY,
-        board_id TEXT NOT NULL,
-        refloat_base_version TEXT NOT NULL DEFAULT '',
-        name TEXT NOT NULL,
-        icon TEXT NOT NULL DEFAULT 'sliders-horizontal',
-        color TEXT NOT NULL DEFAULT 'purple',
-        fields_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX index_tune_profiles_board_id ON tune_profiles(board_id)")
-    try db.execute(sql: "CREATE INDEX index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)")
-
-    try db.execute(sql: """
-      CREATE TABLE tune_history_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        profile_id TEXT NOT NULL,
-        fields_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX index_tune_history_entries_profile_id ON tune_history_entries(profile_id)")
-    try db.execute(sql: "CREATE INDEX index_tune_history_entries_created_at ON tune_history_entries(created_at)")
+    try PersistenceSchema.createTuneProfiles(db)
   }
 
   // MARK: - Reads

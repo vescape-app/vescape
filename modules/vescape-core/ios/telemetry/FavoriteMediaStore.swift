@@ -73,21 +73,7 @@ struct FavoriteMediaStore {
   }
 
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE favorite_media (
-        id TEXT NOT NULL PRIMARY KEY,
-        favorite_id TEXT NOT NULL,
-        captured_at INTEGER,
-        mime_type TEXT NOT NULL,
-        media_kind TEXT NOT NULL,
-        byte_count INTEGER NOT NULL,
-        content_hash TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      )
-      """)
-    try db.execute(
-      sql: "CREATE INDEX index_favorite_media_favorite_id_created_at ON favorite_media(favorite_id, created_at)"
-    )
+    try PersistenceSchema.createFavoriteMedia(db)
   }
 
   func list(favoriteId: String) -> [FavoriteMedia] {

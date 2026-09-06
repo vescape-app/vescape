@@ -14,15 +14,11 @@ internal const val METRIC_MAX_SPEED = "max_speed"
 internal const val METRIC_MAX_DUTY = "max_duty"
 internal const val EXCLUSION_REASON_LOW_SPEED = "low_speed"
 internal const val EXCLUSION_REASON_FREE_SPIN = "free_spin"
-internal const val METRIC_EXCLUSION_RANGE_MERGE_GAP_MS = 2_000L
 
 internal const val FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH = 700
 internal const val FREE_SPIN_MAX_DELTA_CENTI_KMH = 1200
 internal const val FREE_SPIN_NEAREST_GPS_MAX_AGE_MS = 10_000L
 internal const val FREE_SPIN_GPS_PRECISE_ACCURACY_CM = 2000
-
-internal const val DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH = 12.0
-internal const val DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH = 15.0
 
 internal data class MetricSanitizerConfig(
   val movingSpeedThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,

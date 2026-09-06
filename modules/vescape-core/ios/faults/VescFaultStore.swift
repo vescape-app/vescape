@@ -35,21 +35,7 @@ struct VescFaultStore: VescFaultStoring {
   /// by tests so the schema stays single-source.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `VescFaultOccurrenceEntity`
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE IF NOT EXISTS vesc_fault_occurrences (
-        id TEXT NOT NULL PRIMARY KEY,
-        board_id TEXT NOT NULL,
-        code INTEGER NOT NULL,
-        occurred_at INTEGER NOT NULL,
-        last_observed_at INTEGER NOT NULL,
-        cleared_at INTEGER,
-        dismissed INTEGER NOT NULL
-      )
-      """)
-    try db.execute(sql: """
-      CREATE INDEX IF NOT EXISTS index_vesc_fault_occurrences_board_id_occurred_at
-      ON vesc_fault_occurrences(board_id, occurred_at)
-      """)
+    try PersistenceSchema.createVescFaults(db)
   }
 
   // MARK: - Reads

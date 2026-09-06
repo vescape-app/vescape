@@ -399,10 +399,9 @@ enum TelemetryDatabase {
     }
 
     // MARK: Tune Profiles (#161)
-    // Per-board VESC tune configs with reversible Tune History. DDL lives on `TuneProfileStore` so
-    // the schema stays single-source with the tests that reuse it.
+    // Per-board VESC tune configs with reversible Tune History. Host and app share the DDL.
     migrator.registerMigration("v2_tune_profiles") { db in
-      try TuneProfileStore.createTables(db)
+      try PersistenceSchema.createTuneProfiles(db)
     }
 
     migrator.registerMigration("v23_tune_profile_metadata") { db in
@@ -425,10 +424,9 @@ enum TelemetryDatabase {
     }
 
     // MARK: Board Warnings (#208)
-    // Durable one-row-per-(board, kind) warning store. DDL lives on `BoardWarningStore` so the schema
-    // stays single-source with the tests that reuse it. Mirrors Android Room migration 24→25.
+    // Durable one-row-per-(board, kind) warning store. Mirrors Android Room migration 24→25.
     migrator.registerMigration("v25_board_warnings") { db in
-      try BoardWarningStore.createTables(db)
+      try PersistenceSchema.createBoardWarnings(db)
     }
 
     migrator.registerMigration("v26_alert_source") { db in
@@ -481,19 +479,18 @@ enum TelemetryDatabase {
     }
 
     // MARK: Favorites (#287)
-    // Durable, optionally named time ranges over Ride History (ADR 0029). DDL lives on
-    // `FavoriteStore` so the schema stays single-source with the tests that reuse it. Mirrors
-    // Android Room migration 29→30.
+    // Durable, optionally named time ranges over Ride History (ADR 0029). Mirrors Android Room
+    // migration 29→30.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_29_30`
     migrator.registerMigration("v30_favorites") { db in
-      try FavoriteStore.createTables(db)
+      try PersistenceSchema.createFavorites(db)
     }
 
     // Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
     // app storage (ADR 0030).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_30_31`
     migrator.registerMigration("v31_favorite_media") { db in
-      try FavoriteMediaStore.createTables(db)
+      try PersistenceSchema.createFavoriteMedia(db)
     }
 
     // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
@@ -515,7 +512,7 @@ enum TelemetryDatabase {
     // restored as `lastKnown` on connect (#393).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
     migrator.registerMigration("v33_board_config_values") { db in
-      try BoardConfigStore.createTables(db)
+      try PersistenceSchema.createBoardConfig(db)
     }
 
     migrator.registerMigration("v34_board_config_change_notices") { db in
@@ -530,7 +527,7 @@ enum TelemetryDatabase {
     }
 
     migrator.registerMigration("v36_motor_config_values") { db in
-      try MotorConfigStore.createTables(db)
+      try PersistenceSchema.createMotorConfig(db)
     }
 
     /// VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
@@ -546,8 +543,8 @@ enum TelemetryDatabase {
     /// down; a database that recorded them is beyond this migrator and has to be reinstalled.
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_40`
     migrator.registerMigration("v40_vesc_faults") { db in
-      try VescFaultStore.createTables(db)
-      try VescFaultCaptureStore.createTables(db)
+      try PersistenceSchema.createVescFaults(db)
+      try PersistenceSchema.createVescFaultCaptures(db)
       try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_fault")
       if try db.columns(in: "telemetry_frames").map(\.name).contains("fault_code") {
         try db.execute(sql: """

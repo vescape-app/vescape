@@ -10,7 +10,6 @@ import java.time.ZoneId
  * @parity /src/modules/history/lib/sessions.ts `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
  */
-internal const val DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
 data class ProfileStatsMonth(val year: Int, val month: Int)
 
 // @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift

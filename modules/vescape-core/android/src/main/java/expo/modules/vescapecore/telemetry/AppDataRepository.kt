@@ -118,15 +118,6 @@ internal fun validWearPushRateHz(value: Any?): Int? =
     ?.toInt()
     ?.coerceIn(1, 20)
 
-val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
-  "speed" to mapOf("start" to 30.0, "end" to 40.0),
-  "duty" to mapOf("start" to 60.0, "end" to 80.0),
-  "tempMotor" to mapOf("start" to 70.0, "end" to 90.0),
-  "tempController" to mapOf("start" to 60.0, "end" to 80.0),
-  "motorCurrent" to mapOf("start" to 35.0, "end" to 55.0),
-  "batteryCurrent" to mapOf("start" to 25.0, "end" to 45.0),
-)
-
 private val historyMetricHotRangeKeys = setOf(
   "speed",
   "duty",

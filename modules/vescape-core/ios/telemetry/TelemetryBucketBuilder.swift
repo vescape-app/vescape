@@ -1,5 +1,37 @@
 import Foundation
 
+internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
+internal let MAX_ENERGY_SAMPLE_GAP_MS: Int64 = 5_000
+
+internal struct BucketTelemetryPoint {
+  let capturedAtMs: Int64
+  let boardId: String?
+  let speedCentiKmh: Int
+  let batteryVoltageMv: Int
+  let motorCurrentMa: Int
+  let batteryCurrentMa: Int
+  let dutyPermille: Int
+  let odometerCm: Int64?
+  let tempMosfetDeciC: Int?
+  let tempMotorDeciC: Int?
+  let gpsSpeedCentiMps: Int?
+  let gpsTimestampMs: Int64?
+  let gpsAccuracyCm: Int?
+  let latitudeE7: Int64?
+  let longitudeE7: Int64?
+  let bearingCentiDeg: Int?
+  let altitudeCm: Int?
+  let preciseGps: Bool
+  var excludedFromAvgSpeed = false
+  var excludedFromMaxSpeed = false
+  var excludedFromMaxDuty = false
+}
+
+internal func telemetryMaxOptional(_ lhs: Int?, _ rhs: Int?) -> Int? {
+  guard let rhs else { return lhs }
+  return max(lhs ?? rhs, rhs)
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt
 internal struct TelemetryBucket {
   let bucketStartMs: Int64

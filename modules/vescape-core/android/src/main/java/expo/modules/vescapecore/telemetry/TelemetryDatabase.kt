@@ -2,9 +2,8 @@ package expo.modules.vescapecore.telemetry
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import androidx.room.Database
 import androidx.room.Room
-import androidx.room.RoomDatabase
+import androidx.room.RoomDatabase.Callback
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
@@ -13,42 +12,9 @@ import java.io.File
 // @parity /modules/vescape-core/ios/VescapeCoreModule.swift
 internal const val TELEMETRY_DATABASE_NAME = "vescape.db"
 internal const val LEGACY_TELEMETRY_DATABASE_NAME = "telemetry.db"
-// @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `TELEMETRY_SCHEMA_VERSION`
-internal const val TELEMETRY_DATABASE_VERSION = 42
-
-@Database(
-  entities = [
-    TelemetryFrameEntity::class,
-    TelemetryMinuteBucketEntity::class,
-    TelemetryMarkerEntity::class,
-    MetricExclusionRangeEntity::class,
-    BoardEntity::class,
-    BoardSettingEntity::class,
-    AlertRuleEntity::class,
-    AppSettingEntity::class,
-    TuneProfileEntity::class,
-    TuneHistoryEntryEntity::class,
-    DiagnosticEventEntity::class,
-    PrivacyZoneEntity::class,
-    BoardWarningEntity::class,
-    VescFaultOccurrenceEntity::class,
-    VescFaultCaptureEntity::class,
-    VescFaultCaptureSampleEntity::class,
-    FavoriteEntity::class,
-    FavoriteMediaEntity::class,
-    BoardConfigValuesEntity::class,
-    MotorConfigValuesEntity::class,
-    BoardConfigChangeNoticeEntity::class,
-  ],
-  version = TELEMETRY_DATABASE_VERSION,
-  exportSchema = false,
-)
-abstract class TelemetryDatabase : RoomDatabase() {
-  abstract fun telemetryDao(): TelemetryDao
-
-  companion object {
+internal object TelemetryDatabase {
     @Volatile
-    private var instance: TelemetryDatabase? = null
+    private var instance: TelemetryRoomDatabase? = null
 
     private fun hasColumn(db: SupportSQLiteDatabase, tableName: String, columnName: String): Boolean {
       db.query("PRAGMA table_info($tableName)").use { cursor ->
@@ -1367,12 +1333,12 @@ abstract class TelemetryDatabase : RoomDatabase() {
       }
     }
 
-    fun get(context: Context): TelemetryDatabase {
+    fun get(context: Context): TelemetryRoomDatabase {
       return instance ?: synchronized(this) {
         migrateLegacyDatabaseFile(context.applicationContext)
         instance ?: Room.databaseBuilder(
           context.applicationContext,
-          TelemetryDatabase::class.java,
+          TelemetryRoomDatabase::class.java,
           TELEMETRY_DATABASE_NAME,
         )
           .addMigrations(
@@ -1430,5 +1396,4 @@ abstract class TelemetryDatabase : RoomDatabase() {
         instance = null
       }
     }
-  }
 }

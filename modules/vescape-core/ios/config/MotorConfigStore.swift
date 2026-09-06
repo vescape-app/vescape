@@ -29,17 +29,7 @@ struct MotorConfigStore {
   /// and reused by tests so the schema stays single-source.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE IF NOT EXISTS motor_config_values (
-        board_id TEXT NOT NULL,
-        mcconf_signature INTEGER NOT NULL,
-        firmware TEXT NOT NULL,
-        values_json TEXT NOT NULL,
-        captured_at INTEGER NOT NULL,
-        PRIMARY KEY (board_id, mcconf_signature)
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_motor_config_values_board_id ON motor_config_values(board_id)")
+    try PersistenceSchema.createMotorConfig(db)
   }
 
   /// The Board's most recently captured values, whatever signature they were read under. The live

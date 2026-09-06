@@ -139,26 +139,7 @@ struct FavoriteStore {
   /// the schema stays single-source. Mirrors Android `FavoriteEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `FavoriteEntity`
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE favorites (
-        id TEXT NOT NULL PRIMARY KEY,
-        board_id TEXT,
-        name TEXT,
-        start_ms INTEGER NOT NULL,
-        end_ms INTEGER NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        sample_count INTEGER NOT NULL,
-        gps_point_count INTEGER NOT NULL,
-        distance_cm INTEGER,
-        moving_duration_ms INTEGER NOT NULL,
-        avg_speed_centi_kmh INTEGER NOT NULL,
-        max_speed_centi_kmh INTEGER NOT NULL,
-        battery_used_wh_milli INTEGER NOT NULL
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX index_favorites_start_ms_end_ms ON favorites(start_ms, end_ms)")
-    try db.execute(sql: "CREATE INDEX index_favorites_board_id ON favorites(board_id)")
+    try PersistenceSchema.createFavorites(db)
   }
 
   // MARK: - Reads

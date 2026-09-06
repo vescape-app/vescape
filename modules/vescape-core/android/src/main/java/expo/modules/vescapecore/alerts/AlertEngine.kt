@@ -38,14 +38,6 @@ const val ALERT_REPEAT_MIN_SECONDS = 3L
  */
 val ALERT_BEEP_COUNT_RANGE = 1..5
 
-/**
- * Beeps per announcement when nothing says otherwise.
- *
- * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
- * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountDefault`
- */
-const val ALERT_BEEP_COUNT_DEFAULT = 3
-
 /** Gap between beeps of one announcement — tight enough that a burst reads as a single signal. */
 internal const val ALERT_BEEP_SPACING_MS = 350L
 

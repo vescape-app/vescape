@@ -55,18 +55,7 @@ struct BoardWarningStore {
   /// tests so the schema stays single-source. Mirrors Android `BoardWarningEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE board_warnings (
-        board_id TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        severity TEXT NOT NULL,
-        first_detected_at INTEGER NOT NULL,
-        last_detected_at INTEGER NOT NULL,
-        payload_json TEXT NOT NULL,
-        PRIMARY KEY (board_id, kind)
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX index_board_warnings_board_id ON board_warnings(board_id)")
+    try PersistenceSchema.createBoardWarnings(db)
   }
 
   /// The shared pool failed to open — findings are dropped / reads come back empty, so leave the

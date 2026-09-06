@@ -92,6 +92,7 @@ class TelemetryRepository private constructor(context: Context) {
   private val appContext = context.applicationContext
   private val db = TelemetryDatabase.get(context)
   private val dao = db.telemetryDao()
+  private val recordingPersistence = RecordingPersistence(dao)
   private val favoriteMediaStore = FavoriteMediaStore(appContext, dao)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val lock = Any()
@@ -906,7 +907,7 @@ class TelemetryRepository private constructor(context: Context) {
           excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
         )
       }
-      dao.insertBatch(
+      recordingPersistence.commit(
         frames = filteredFrames.map { it.frame },
         buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
