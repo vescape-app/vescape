@@ -77,12 +77,12 @@ internal struct RideSessionAggregate {
 internal final class RideHistoryRepository {
   static let shared = RideHistoryRepository()
   private let poolProvider: () throws -> DatabasePool
-  private let gapMsProvider: () -> Int64
+  private let gapMsProvider: () throws -> Int64
 
   internal init(
     poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
-    gapMsProvider: @escaping () -> Int64 = {
-      let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
+    gapMsProvider: @escaping () throws -> Int64 = {
+      let minutes = telemetryInt(try AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
       return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
     }
   ) {
@@ -94,7 +94,7 @@ internal final class RideHistoryRepository {
   func getPage(_ options: [String: Any]) throws -> [String: Any?] {
     let limit = min(maxRidePageSize, max(1, telemetryInt(options["limit"]) ?? 10))
     var beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? Int64.max
-    let gapMs = gapMsProvider()
+    let gapMs = try gapMsProvider()
     let pool = try poolProvider()
     return try pool.read { db in
       // Names resolve from `boards` on read, never off the bucket row (ADR 0028).

@@ -139,6 +139,10 @@ internal enum RecordingStorageFailure {
     reporter.report(operation: operation, category: "query_failed", error: error)
   }
 
+  static func report(operation: String, category: String, error: Error) {
+    reporter.report(operation: operation, category: category, error: error)
+  }
+
   static func classify(_ error: Error) -> RecordingStorageFailureKind {
     guard let dbError = error as? DatabaseError else { return .writeFailed }
     if dbError.resultCode == .SQLITE_FULL { return .fullDisk }

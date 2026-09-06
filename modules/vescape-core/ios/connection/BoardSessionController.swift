@@ -42,14 +42,24 @@ internal struct BoardConnectConfig {
     appData: AppDataRepository,
     recordingEnabled: Bool = false
   ) -> BoardConnectConfig? {
-    guard let board = appData.getBoard(boardId) else { return nil }
+    let board: [String: Any?]
+    do { guard let stored = try appData.getBoard(boardId) else { return nil }; board = stored }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "board_connect_read", error: error)
+      return nil
+    }
     // Reads resolve tombstones so history can name them (ADR 0027); connecting to one is refused.
     guard board["deletedAt"] as? Int64 == nil else { return nil }
     guard let link = board["link"] as? [String: Any?] else { return nil }
     guard let bleId = link["bleId"] as? String, !bleId.isEmpty else { return nil }
     let transport = BoardTransport.fromBridge(link["transport"] ?? nil) ?? .direct
     let name = board["name"] as? String ?? "VESC Board"
-    let settings = appData.getSettings()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "board_connect_settings_read", error: error)
+      return nil
+    }
     let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
     return BoardConnectConfig(
       appBoardId: boardId,
@@ -300,6 +310,7 @@ internal final class BoardSessionController: VescGattListener {
   /// `reloadTelemetrySettings` so the BMS path never re-reads settings.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardWarningsEnabled`
   private var boardWarningsEnabled = true
+  private var connectionSoundsEnabled = false
   private var lastPollAt: Int64 = 0
   private var smoothedPeriodMs = 0.0
   private var pollTick: Int64 = 0
@@ -403,13 +414,27 @@ internal final class BoardSessionController: VescGattListener {
       .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
     let baseName = recordingName.hasSuffix(".jsonl") ? String(recordingName.dropLast(6)) : recordingName
     let replayBoardId = "replay:" + baseName
-    let settings = appData.getSettings()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "replay_settings_read", error: error)
+      onError("APP_STORAGE_READ_FAILED", "Could not read replay settings")
+      return
+    }
     // The synthetic `replay:` board id has no board row and therefore no pack config, so the SoC
     // estimate would stay nil for the whole playback and the battery bar would read nothing. The
     // recording is a ride of a real board: borrow the selected board's pack to size it.
-    let replayBatteryConfig = (settings["selectedBoardId"] as? String)
-      .flatMap { appData.getBoard($0) }
-      .flatMap { AppDataRepository.normalizeBatteryConfig($0["batteryConfig"] ?? nil) }
+    var replayBatteryConfig: [String: Any]?
+    if let selectedBoardId = settings["selectedBoardId"] as? String {
+      do {
+        replayBatteryConfig = try appData.getBoard(selectedBoardId)
+          .flatMap { AppDataRepository.normalizeBatteryConfig($0["batteryConfig"] ?? nil) }
+      } catch {
+        RecordingStorageFailure.reportRead(operation: "replay_board_read", error: error)
+        onError("APP_STORAGE_READ_FAILED", "Could not read replay Board")
+        return
+      }
+    }
     let config = BoardConnectConfig(
       appBoardId: replayBoardId,
       bleId: replayBoardId,
@@ -729,7 +754,11 @@ internal final class BoardSessionController: VescGattListener {
   /// GPS tick.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadGroupRideTarget`
   func loadGroupRideTarget() {
-    groupRideTarget = appData.getDirectionPoint().map { TargetPoint(lat: $0.latitude, lng: $0.longitude) }
+    do { groupRideTarget = try appData.getDirectionPoint().map { TargetPoint(lat: $0.latitude, lng: $0.longitude) } }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "group_ride_target_read", error: error)
+      return
+    }
     latestRiderPresence().map(groupRideObserver.pushPresence)
   }
 
@@ -748,10 +777,16 @@ internal final class BoardSessionController: VescGattListener {
       alertCoordinator.replaceRules([])
       return
     }
-    let board = appData.getBoard(boardId)
+    let board: [String: Any?]?
+    let settings: [String: Any?]
+    do { board = try appData.getBoard(boardId); settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "alert_settings_read", error: error)
+      return
+    }
     let enabled = ((board?["legalMode"] ?? nil) as? [String: Any])?["enabled"] as? Bool ?? false
     let jurisdictionCode =
-      ((appData.getSettings()["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
+      ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let speeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
     alertCoordinator.replaceRules(withLegalModeOverlay(
       appData.getEnabledAlertRules(boardId),
@@ -777,7 +812,12 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `reloadBoardDataForActiveBoard`
   func reloadBoardDataForActiveBoard() {
     guard let current = config else { return }
-    guard let board = appData.getBoard(current.appBoardId) else { return }
+    let board: [String: Any?]
+    do { guard let stored = try appData.getBoard(current.appBoardId) else { return }; board = stored }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "active_board_read", error: error)
+      return
+    }
     let name = (board["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? current.name
     let updated = BoardConnectConfig(
       appBoardId: current.appBoardId,
@@ -805,7 +845,12 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadTelemetrySettings`
   func reloadTelemetrySettings() {
     guard let current = config else { return }
-    let settings = appData.getSettings()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "telemetry_settings_read", error: error)
+      return
+    }
     let hz = AppDataRepository.intValue(settings["telemetryPollRateHz"] ?? nil) ?? 0
     let liveHistoryLimit = AppDataRepository.liveHistoryLimitMinutes(settings["liveHistoryLimit"] ?? nil)
       ?? current.liveHistoryLimitMinutes
@@ -841,6 +886,7 @@ internal final class BoardSessionController: VescGattListener {
       lastFaultDispatchAtMs = 0
     }
     boardWarningsEnabled = settings["boardWarningsEnabled"] as? Bool ?? true
+    connectionSoundsEnabled = settings["connectionSoundsEnabled"] as? Bool ?? true
     // Disabled→enabled with an already-trusted link: link integrity won't transition again, so
     // schedule the config-safety read here.
     if !warningsWereEnabled, boardWarningsEnabled, lastEmittedLinkIntegrity == .trusted {
@@ -934,7 +980,12 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/service/AutoConnectProvider.kt
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `autoConnectSelectedBoard`
   func autoConnectSelectedBoard() {
-    let settings = appData.getSettings()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "auto_connect_settings_read", error: error)
+      return
+    }
     let decision = AutoConnectGate.decide(
       settings: settings,
       suppressedBoardId: ManualBoardStop.suppressedBoardId(),
@@ -1093,11 +1144,17 @@ internal final class BoardSessionController: VescGattListener {
     if let session {
       lastEmittedLinkIntegrity = session.startLinkIntegrityCheck(expected: config.linkIdentity())
     }
-    let sessionSettings = appData.getSettings()
+    let sessionSettings: [String: Any?]
+    do { sessionSettings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "session_settings_read", error: error)
+      return
+    }
     movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: sessionSettings).movingSpeedThresholdCentiKmh
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
+    connectionSoundsEnabled = sessionSettings["connectionSoundsEnabled"] as? Bool ?? true
     recordingCoordinator.beginBoardSession(config: config)
     beginGpsSessionDiagnostics()
     // Reset per-session Board Warning breadcrumb bookkeeping (one Diagnostic Event per kind per
@@ -1124,7 +1181,12 @@ internal final class BoardSessionController: VescGattListener {
     }
     // Fresh rule set for this session's alert engine — only the connected Board's enabled rules
     // (mirrors Android loadAlertRules on connect).
-    let board = appData.getBoard(config.appBoardId)
+    let board: [String: Any?]?
+    do { board = try appData.getBoard(config.appBoardId) }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "session_board_read", error: error)
+      return
+    }
     let legalModeEnabled = ((board?["legalMode"] ?? nil) as? [String: Any])?["enabled"] as? Bool ?? false
     let jurisdictionCode =
       ((sessionSettings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
@@ -2064,19 +2126,16 @@ internal final class BoardSessionController: VescGattListener {
     guard let percent else { return }
     guard let boardId = config?.appBoardId else { return }
     if !force && now - lastBatteryPersistedAt < 30_000 { return }
-    lastBatteryPersistedAt = now
-    appData.updateLastBattery(boardId: boardId, percent: percent, voltage: voltage, atMs: now)
+    do {
+      try appData.updateLastBattery(boardId: boardId, percent: percent, voltage: voltage, atMs: now)
+      lastBatteryPersistedAt = now
+    } catch {
+      RecordingStorageFailure.report(operation: "last_battery_save", category: "write_failed", error: error)
+    }
   }
 
   private func recordAlertDiagnostic(_ name: String, _ props: [String: Any?]) {
     DiagnosticsRecorder.shared.record(eventName: name, properties: props)
-  }
-
-  /// Whether connect/disconnect chimes are enabled. Read live from settings — connect/disconnect
-  /// are rare, so the read is always current without any settings-apply plumbing. Defaults to
-  /// `true` to match the JS + Android default when the key is unset.
-  private var connectionSoundsEnabled: Bool {
-    (appData.getSettings()["connectionSoundsEnabled"] as? Bool) ?? true
   }
 
   /// Persist a connection-lifecycle Local Diagnostic Event with the base session context (device,

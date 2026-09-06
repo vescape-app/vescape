@@ -277,13 +277,21 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
     legalPolicyResolutionStarted = true
     Task {
       let appData = AppDataRepository.shared
-      let stored = appData.getSettings()["legalPolicy"] ?? nil
+      let stored: Any?
+      do { stored = try appData.getSettings()["legalPolicy"] ?? nil }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "legal_policy_settings_read", error: error)
+        return
+      }
       guard stored == nil || stored is NSNull else { return }
       let countryCode = await legalPolicyResolver.resolve(
         latitude: location.coordinate.latitude,
         longitude: location.coordinate.longitude
       )
-      if let countryCode { appData.updateLegalPolicy(jurisdictionCode: countryCode) }
+      if let countryCode {
+        do { try appData.updateLegalPolicy(jurisdictionCode: countryCode) }
+        catch { RecordingStorageFailure.report(operation: "legal_policy_save", category: "write_failed", error: error) }
+      }
     }
   }
 }

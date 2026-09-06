@@ -438,6 +438,8 @@ interface TelemetryDao {
     deleteBoardWarnings(id)
     // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
     deleteAlertRules(id)
+    deleteBoardConfigValues(id)
+    deleteBoardConfigChangeNotice(id)
     insertBoardRow(board.copy(deletedAt = deletedAt))
   }
 

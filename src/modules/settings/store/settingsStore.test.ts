@@ -87,6 +87,7 @@ beforeEach(async () => {
   const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
   useSettingsStore.setState({
     loaded: false,
+    loadError: null,
     companionPresenceBoards: [],
     load: useSettingsStore.getInitialState().load,
   })
@@ -105,6 +106,46 @@ test('reloading identical settings notifies no subscribers and keeps object refs
 
   expect(notifications).toBe(0)
   expect(useSettingsStore.getState().historyMetricHotRanges).toBe(hotRangesRef)
+})
+
+test('failed settings read does not mark defaults as loaded', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  getSettings.mockRejectedValueOnce(new Error('storage unavailable'))
+
+  await useSettingsStore.getState().load()
+
+  expect(useSettingsStore.getState().loaded).toBe(false)
+  expect(useSettingsStore.getState().loadError).toBe(
+    'Settings could not be read. Restart Vescape before changing settings.',
+  )
+  await expect(useSettingsStore.getState().set('themeMode', 'dark')).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  await expect(useSettingsStore.getState().addCompanionBoard('board-a')).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  expect(updateSetting).not.toHaveBeenCalled()
+  expect(addCompanionPresenceBoard).not.toHaveBeenCalled()
+})
+
+test('failed reload revokes mutation access while preserving loaded values', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  await useSettingsStore.getState().load()
+  const loadedTheme = useSettingsStore.getState().themeMode
+  getSettings.mockRejectedValueOnce(new Error('storage unavailable'))
+
+  await useSettingsStore.getState().load()
+
+  expect(useSettingsStore.getState().loaded).toBe(false)
+  expect(useSettingsStore.getState().themeMode).toBe(loadedTheme)
+  await expect(useSettingsStore.getState().setCompanionPresence(true)).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  await expect(useSettingsStore.getState().removeCompanionBoard('board-a')).rejects.toThrow(
+    'Settings are unavailable',
+  )
+  expect(setCompanionPresenceEnabled).not.toHaveBeenCalled()
+  expect(removeCompanionPresenceBoard).not.toHaveBeenCalled()
 })
 
 test('reload applies only the keys that actually changed', async () => {
@@ -141,6 +182,7 @@ test('companionPresenceEnabled forces autoConnect on load', async () => {
 test('adding and removing auto-start boards reloads native association membership', async () => {
   const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
   const board = { boardId: 'board-a', name: 'Thor', bleId: 'AA:BB' }
+  await useSettingsStore.getState().load()
 
   companionBoards = [board]
   await useSettingsStore.getState().addCompanionBoard(board.boardId)
@@ -158,6 +200,7 @@ test('adding and removing auto-start boards reloads native association membershi
 test('master auto-start switch is independent from configured boards', async () => {
   const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
   const board = { boardId: 'board-a', name: 'Thor', bleId: 'AA:BB' }
+  await useSettingsStore.getState().load()
   companionBoards = [board]
 
   await useSettingsStore.getState().setCompanionPresence(true)

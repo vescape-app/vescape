@@ -65,7 +65,7 @@ beforeEach(async () => {
 test('new boards default to Molicel P50B 20S2P preset battery config', async () => {
   const { DEFAULT_BATTERY_CONFIG, useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV' })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
 
   expect(board.batteryConfig).toEqual(DEFAULT_BATTERY_CONFIG)
   expect(upsertBoard).toHaveBeenCalledWith(
@@ -73,10 +73,21 @@ test('new boards default to Molicel P50B 20S2P preset battery config', async () 
   )
 })
 
+test('failed selected Board save preserves active Board', async () => {
+  const { useBoardStore } = await import('@/modules/board/store/boardStore')
+  useBoardStore.setState({ activeBoardId: 'board-1' })
+  setSelectedBoard.mockImplementationOnce(() => {
+    throw new Error('storage unavailable')
+  })
+
+  expect(() => useBoardStore.getState().setActiveBoard('board-2')).toThrow()
+  expect(useBoardStore.getState().activeBoardId).toBe('board-1')
+})
+
 test('new boards start unlinked (no Board Link)', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV' })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV' })
 
   expect(board.link).toBeNull()
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ link: null }))
@@ -85,7 +96,7 @@ test('new boards start unlinked (no Board Link)', async () => {
 test('new boards can be created with a draft Board Link', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore
+  const board = await useBoardStore
     .getState()
     .addBoard({ name: 'ADV', link: { bleId: 'AA:BB', transport: 36 } })
 
@@ -98,7 +109,7 @@ test('new boards can be created with a draft Board Link', async () => {
 test('new boards retain a preallocated id used during Board Link finalization', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
 
-  const board = useBoardStore.getState().addBoard({ id: 'probe-board', name: 'ADV' })
+  const board = await useBoardStore.getState().addBoard({ id: 'probe-board', name: 'ADV' })
 
   expect(board.id).toBe('probe-board')
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ id: 'probe-board' }))
@@ -128,7 +139,7 @@ test('new boards can use manual battery config', async () => {
   const { useBoardStore } = await import('@/modules/board/store/boardStore')
   const batteryConfig = { mode: 'manual' as const, minVoltage: 60, maxVoltage: 84 }
 
-  const board = useBoardStore.getState().addBoard({ name: 'ADV', batteryConfig })
+  const board = await useBoardStore.getState().addBoard({ name: 'ADV', batteryConfig })
 
   expect(board.batteryConfig).toEqual(batteryConfig)
   expect(upsertBoard).toHaveBeenCalledWith(expect.objectContaining({ batteryConfig }))

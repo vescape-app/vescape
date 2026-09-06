@@ -42,7 +42,7 @@ import { useThemeStore } from '@/hooks/useTheme'
 import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
 import { MapThemeCoordinator } from '@/screens/MapThemeCoordinator'
-import { RecordingStorageFailureBanner } from '@/modules/board/components/RecordingStorageFailureBanner'
+import { AppStorageFailureBanner } from '@/screens/AppStorageFailureBanner'
 
 const clerkPublishableKey = requireClerkPublishableKey()
 
@@ -231,7 +231,7 @@ function RootLayout() {
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />
-          <RecordingStorageFailureBanner top={insets.top + 8} />
+          <AppStorageFailureBanner top={insets.top + 8} />
           <View
             pointerEvents="box-none"
             style={{

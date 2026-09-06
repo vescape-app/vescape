@@ -168,7 +168,7 @@ internal final class TelemetryRepository {
     let boardId = options["boardId"] as? String
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the frames read below.
-    let windowMs = socWindowMs()
+    let windowMs = try socWindowMs()
     return try pool.read { db in
       batteryEstimator.ensureLoaded()
       let configs = try historyBatteryConfigs(db)
@@ -225,10 +225,10 @@ internal final class TelemetryRepository {
   /// identifier now that samples carry the Board id (ADR 0028), so a re-linked Board keeps its
   /// config across its whole history.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `batteryConfigByBoard`
-  internal func batteryConfigByBoard() -> [String: [String: Any]] {
+  internal func batteryConfigByBoard() throws -> [String: [String: Any]] {
     batteryEstimator.ensureLoaded()
     var result: [String: [String: Any]] = [:]
-    for board in AppDataRepository.shared.getBoards() {
+    for board in try AppDataRepository.shared.getBoards() {
       guard
         let id = board["id"] as? String,
         let config = board["batteryConfig"] as? [String: Any]
@@ -239,8 +239,8 @@ internal final class TelemetryRepository {
   }
 
   /// SoC median window length from app settings (seconds → ms), defaulting to Android's 20 s.
-  internal func socWindowMs() -> Int64 {
-    Int64(telemetryInt(AppDataRepository.shared.getSettings()["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
+  internal func socWindowMs() throws -> Int64 {
+    Int64(telemetryInt(try AppDataRepository.shared.getSettings()["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
   }
 
   // MARK: - Favorites (ADR 0029)

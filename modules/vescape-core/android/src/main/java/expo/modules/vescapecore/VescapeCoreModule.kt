@@ -522,8 +522,13 @@ class VescapeCoreModule : Module() {
       CoreForegroundService.currentRemoteTiltState()
     }
     Function("setSelectedBoard") { boardId: String? ->
+      try {
+        runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("setting_save", "write_failed", error)
+        throw error
+      }
       ManualDisconnectAutoStartGate.clear(context.applicationContext)
-      runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
       companionPresence.refreshForSelectedBoard()
     }
     Function("setDebugRecordingEnabled") { enabled: Boolean ->
@@ -926,15 +931,30 @@ class VescapeCoreModule : Module() {
       runBlocking { TelemetryRepository.get(context.applicationContext).clearAll() }
     }
     AsyncFunction("getBoards") {
-      runBlocking { AppDataRepository.get(context.applicationContext).getBoards() }
+      try {
+        runBlocking { AppDataRepository.get(context.applicationContext).getBoards() }
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("boards_read", error)
+        throw error
+      }
     }
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).upsertBoard(board)
-      CoreForegroundService.reloadBoardData()
-      connectSavedBoardLink(board["id"] as? String)
+      try {
+        AppDataRepository.get(context.applicationContext).upsertBoard(board)
+        CoreForegroundService.reloadBoardData()
+        connectSavedBoardLink(board["id"] as? String)
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("board_save", "write_failed", error)
+        throw error
+      }
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->
-      AppDataRepository.get(context.applicationContext).deleteBoard(id)
+      try {
+        AppDataRepository.get(context.applicationContext).deleteBoard(id)
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("board_delete", "write_failed", error)
+        throw error
+      }
     }
     AsyncFunction("getAlertRules") { boardId: String ->
       runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) }
@@ -1022,7 +1042,12 @@ class VescapeCoreModule : Module() {
       recomputeNavigation(appCtx)
     }
     AsyncFunction("getSettings") {
-      runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
+      try {
+        runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("settings_read", error)
+        throw error
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshLegalPolicy`
     // @parity /modules/vescape-core/src/index.ts `refreshLegalPolicy`
@@ -1065,7 +1090,12 @@ class VescapeCoreModule : Module() {
       }
     }
     AsyncFunction("updateSetting") Coroutine { key: String, value: Any? ->
-      AppDataRepository.get(context.applicationContext).updateSetting(key, value)
+      try {
+        AppDataRepository.get(context.applicationContext).updateSetting(key, value)
+      } catch (error: Exception) {
+        RecordingStorageFailure.report("setting_save", "write_failed", error)
+        throw error
+      }
       if (key == "liveHistoryLimit") {
         CoreForegroundService.setLiveHistoryLimit(value as? Number)
       }
@@ -1270,8 +1300,13 @@ key == "wearAutoLaunchOnConnect" ||
 
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
+    try {
+      AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
+    } catch (error: Exception) {
+      RecordingStorageFailure.report("setting_save", "write_failed", error)
+      throw error
+    }
     ManualDisconnectAutoStartGate.clear(appCtx)
-    AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
     companionPresence.refreshForSelectedBoard()
     val config = buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
     CoreForegroundService.startBoardSession(

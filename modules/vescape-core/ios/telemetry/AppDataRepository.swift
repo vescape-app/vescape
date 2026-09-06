@@ -32,6 +32,13 @@ final class AppDataRepository {
 
   private var writer: (any DatabaseWriter)? { dbWriter ?? TelemetryDatabase.pool }
 
+  private enum StorageUnavailable: Error { case databaseNotOpen }
+
+  private func boardSettingsPersistence() throws -> BoardSettingsPersistence {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    return BoardSettingsPersistence(writer: writer)
+  }
+
   private init(dbWriter: (any DatabaseWriter)? = nil) {
     self.dbWriter = dbWriter
   }
@@ -79,48 +86,25 @@ final class AppDataRepository {
 
   /// Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getBoards`
-  func getBoards() -> [[String: Any?]] {
-    read([]) { db in
-      let boards = try Row.fetchAll(
-        db,
-        sql: """
-          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
-          WHERE deleted_at IS NULL ORDER BY created_at ASC
-          """
-      )
-      let settings = try Row.fetchAll(db, sql: "SELECT board_id, key, value_json FROM board_settings")
-      var byBoard: [String: [(String, String)]] = [:]
-      for row in settings {
-        let boardId: String = row["board_id"]
-        byBoard[boardId, default: []].append((row["key"], row["value_json"]))
-      }
-      return boards.map { Self.composeBoard($0, settings: byBoard[$0["id"]] ?? []) }
-    }
+  func getBoards() throws -> [[String: Any?]] {
+    let persistence = try boardSettingsPersistence()
+    let boards = try persistence.liveBoards()
+    let settings = try persistence.boardSettings(ids: boards.map(\.id))
+    let byBoard = Dictionary(grouping: settings, by: \.boardId)
+    return boards.map { Self.composeBoard($0, settings: byBoard[$0.id, default: []].map { ($0.key, $0.valueJson) }) }
   }
 
   /// Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
   /// that act on a Board rather than describe one check `deletedAt` and refuse.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getBoard`
-  func getBoard(_ id: String) -> [String: Any?]? {
-    read(nil) { db in
-      guard let board = try Row.fetchOne(
-        db,
-        sql: """
-          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
-          WHERE id = ? LIMIT 1
-          """,
-        arguments: [id]
-      ) else { return nil }
-      let settings = try Row.fetchAll(
-        db,
-        sql: "SELECT key, value_json FROM board_settings WHERE board_id = ?",
-        arguments: [id]
-      ).map { ($0["key"] as String, $0["value_json"] as String) }
-      return Self.composeBoard(board, settings: settings)
-    }
+  func getBoard(_ id: String) throws -> [String: Any?]? {
+    let persistence = try boardSettingsPersistence()
+    guard let board = try persistence.board(id: id) else { return nil }
+    let settings = try persistence.boardSettings(ids: [id]).map { ($0.key, $0.valueJson) }
+    return Self.composeBoard(board, settings: settings)
   }
 
-  func upsertBoard(_ board: [String: Any?]) {
+  func upsertBoard(_ board: [String: Any?]) throws {
     guard let id = board["id"] as? String else { return }
     let name = board["name"] as? String ?? ""
     let createdAt = Self.longValue(board["createdAt"] ?? nil) ?? nowMs()
@@ -142,28 +126,16 @@ final class AppDataRepository {
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
     let updatedAt = nowMs()
 
-    write { db in
-      // An existing tombstone survives the write, so an ordinary upsert can never resurrect a
-      // deleted Board — deletion is terminal (ADR 0027). Only `deleteBoard` stamps a new one.
-      let deletedAt = try Int64.fetchOne(db, sql: "SELECT deleted_at FROM boards WHERE id = ?", arguments: [id])
-      try db.execute(
-        sql: """
-          INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at, deleted_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-          """,
-        arguments: [id, name, bleId, transport, createdAt, deletedAt]
-      )
-      for (key, value) in settings {
-        guard let value, let json = Self.encodeJson(value) else {
-          try db.execute(sql: "DELETE FROM board_settings WHERE board_id = ? AND key = ?", arguments: [id, key])
-          continue
-        }
-        try db.execute(
-          sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
-          arguments: [id, key, json, updatedAt]
-        )
-      }
+    let encoded = settings.compactMap { key, value -> PersistedBoardSetting? in
+      guard let value, let json = Self.encodeJson(value) else { return nil }
+      return PersistedBoardSetting(boardId: id, key: key, valueJson: json, updatedAt: updatedAt)
     }
+    let deletedKeys = settings.compactMap { key, value in value == nil || Self.encodeJson(value!) == nil ? key : nil }
+    try boardSettingsPersistence().upsertBoard(
+      PersistedBoard(id: id, name: name, bleId: bleId, transport: transport, createdAt: createdAt, deletedAt: nil),
+      settings: encoded,
+      deletedKeys: deletedKeys
+    )
     notifyDataChanged(.boards)
   }
 
@@ -172,47 +144,27 @@ final class AppDataRepository {
   ///
   /// A Board that is not there (or already deleted) is left alone.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `deleteBoardWithSettings`
-  func deleteBoard(_ id: String) {
+  func deleteBoard(_ id: String) throws {
     let deletedAt = nowMs()
-    write { db in
-      try db.execute(sql: "DELETE FROM board_settings WHERE board_id = ?", arguments: [id])
-      try db.execute(sql: "DELETE FROM board_warnings WHERE board_id = ?", arguments: [id])
-      // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
-      try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
-      try db.execute(
-        sql: "UPDATE boards SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
-        arguments: [deletedAt, id]
-      )
-    }
-    BoardConfigStore.shared.clear(boardId: id)
+    try boardSettingsPersistence().tombstoneBoard(id: id, deletedAt: deletedAt)
     notifyDataChanged(.boards)
   }
 
   /// Persist the last Battery SoC Estimate per board so it survives full app kill (#152). Written as
   /// the `lastBattery` board setting; `upsertBoard` never touches this key, so board edits keep it.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastBattery`
-  func updateLastBattery(boardId: String, percent: Double, voltage: Double?, atMs: Int64) {
+  func updateLastBattery(boardId: String, percent: Double, voltage: Double?, atMs: Int64) throws {
     let value: [String: Any] = ["percent": percent, "voltage": voltage ?? NSNull(), "at": atMs]
     guard let json = Self.encodeJson(value) else { return }
-    write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
-        arguments: [boardId, "lastBattery", json, atMs]
-      )
-    }
+    try boardSettingsPersistence().saveBoardSetting(PersistedBoardSetting(boardId: boardId, key: "lastBattery", valueJson: json, updatedAt: atMs))
     notifyDataChanged(.boards)
   }
 
   /// Dedicated native Legal Mode write; generic Board upserts cannot bypass enable validation.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLegalMode`
-  func updateLegalMode(boardId: String, enabled: Bool) {
+  func updateLegalMode(boardId: String, enabled: Bool) throws {
     guard let json = Self.encodeJson(["enabled": enabled]) else { return }
-    write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO board_settings (board_id, key, value_json, updated_at) VALUES (?, ?, ?, ?)",
-        arguments: [boardId, "legalMode", json, self.nowMs()]
-      )
-    }
+    try boardSettingsPersistence().saveBoardSetting(PersistedBoardSetting(boardId: boardId, key: "legalMode", valueJson: json, updatedAt: nowMs()))
     notifyDataChanged(.boards)
   }
 
@@ -242,6 +194,23 @@ final class AppDataRepository {
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
       "deletedAt": row["deleted_at"] as Int64?,
+    ]
+  }
+
+  private static func composeBoard(_ board: PersistedBoard, settings: [(String, String)]) -> [String: Any?] {
+    var values: [String: Any] = [:]
+    for (key, json) in settings {
+      if let decoded = decodeBoardSetting(key: key, json: json) { values[key] = decoded }
+    }
+    let link = BoardLinkPersistence.compose(bleId: board.bleId, storedTransport: board.transport, values: values)
+    return [
+      "id": board.id, "name": board.name, "description": values["description"],
+      "createdAt": board.createdAt, "batteryConfig": values["batteryConfig"],
+      "lastBattery": values["lastBattery"], "dismissedWarnings": values["dismissedWarnings"],
+      "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
+      "alertPreset": values["alertPreset"], "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
+      "matchBoardConfig": values["matchBoardConfig"], "legalMode": values["legalMode"] ?? ["enabled": false],
+      "link": link, "deletedAt": board.deletedAt,
     ]
   }
 
@@ -483,13 +452,13 @@ final class AppDataRepository {
   static let directionPointLatitudeKey = "directionPointLatitude"
   static let directionPointLongitudeKey = "directionPointLongitude"
 
-  func setDirectionPoint(latitude: Double?, longitude: Double?) {
-    updateSetting(Self.directionPointLatitudeKey, rawValue: latitude)
-    updateSetting(Self.directionPointLongitudeKey, rawValue: longitude)
+  func setDirectionPoint(latitude: Double?, longitude: Double?) throws {
+    try updateSetting(Self.directionPointLatitudeKey, rawValue: latitude)
+    try updateSetting(Self.directionPointLongitudeKey, rawValue: longitude)
   }
 
-  func getDirectionPoint() -> (latitude: Double, longitude: Double)? {
-    let settings = getSettings()
+  func getDirectionPoint() throws -> (latitude: Double, longitude: Double)? {
+    let settings = try getSettings()
     guard
       let latitude = Self.doubleValue(settings[Self.directionPointLatitudeKey] ?? nil),
       let longitude = Self.doubleValue(settings[Self.directionPointLongitudeKey] ?? nil)
@@ -562,23 +531,12 @@ final class AppDataRepository {
 
   // MARK: - Settings
 
-  func getSettings() -> [String: Any?] {
-    let rows: [String: Any] = read([:]) { db in
-      var stored: [String: Any] = [:]
-      for row in try Row.fetchAll(db, sql: "SELECT key, value_json FROM app_settings") {
-        let key: String = row["key"]
-        // Native-owned; JS gets the Navigation through `onNavigation`, never here — and the path
-        // is large besides. (Android's projection is a typed whitelist, so it drops these keys
-        // without an exclusion.)
-        guard key != Self.navigationPathKey, key != Self.navigationProfileKey else { continue }
-        if let decoded = Self.decodeJson(row["value_json"]) { stored[key] = decoded }
-      }
-      return stored
-    }
-    var merged = Self.defaultSettings
-    for (key, value) in rows { merged[key] = value }
+  func getSettings() throws -> [String: Any?] {
+    var merged = try boardSettingsPersistence().settings(defaults: Self.defaultSettings)
+    merged.removeValue(forKey: Self.navigationPathKey)
+    merged.removeValue(forKey: Self.navigationProfileKey)
     if merged["movingSpeedThresholdKmh"] == nil {
-      if let legacy = rows["avgSpeedCutoffKmh"] ?? rows["movingAvgSpeedThresholdKmh"] {
+      if let legacy = merged["avgSpeedCutoffKmh"] ?? merged["movingAvgSpeedThresholdKmh"] {
         merged["movingSpeedThresholdKmh"] = legacy
       }
     }
@@ -587,21 +545,17 @@ final class AppDataRepository {
 
   /// Persist both coordinates together so readers cannot observe a mixed position.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastGpsLocation`
-  func updateLastGpsLocation(latitude: Double, longitude: Double) {
+  func updateLastGpsLocation(latitude: Double, longitude: Double) throws {
     guard let lat = Self.encodeJson(latitude), let lon = Self.encodeJson(longitude) else { return }
     let updatedAt = nowMs()
-    write { db in
-      for (key, value) in [("lastGpsLatitude", lat), ("lastGpsLongitude", lon)] {
-        try db.execute(
-          sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-          arguments: [key, value, updatedAt]
-        )
-      }
-    }
+    try boardSettingsPersistence().saveSettings([
+      PersistedAppSetting(key: "lastGpsLatitude", valueJson: lat, updatedAt: updatedAt),
+      PersistedAppSetting(key: "lastGpsLongitude", valueJson: lon, updatedAt: updatedAt),
+    ])
     notifyDataChanged(.settings)
   }
 
-  func updateSetting(_ key: String, rawValue: Any?) {
+  func updateSetting(_ key: String, rawValue: Any?) throws {
     // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
     // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the
     // profile through `setNavigationProfile`, never by writing these rows.
@@ -611,7 +565,7 @@ final class AppDataRepository {
     else { return }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
-      write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
+      try boardSettingsPersistence().deleteSetting(key)
       notifyDataChanged(.settings)
       return
     }
@@ -653,30 +607,21 @@ final class AppDataRepository {
       value = rawValue
     }
     guard let json = Self.encodeJson(value) else { return }
-    write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: [key, json, updatedAt]
-      )
-    }
+    try boardSettingsPersistence().saveSetting(PersistedAppSetting(key: key, valueJson: json, updatedAt: updatedAt))
     notifyDataChanged(.settings)
   }
 
   /// Persist only the resolved jurisdiction reference; policy values stay in the shared catalog.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLegalPolicy`
-  func updateLegalPolicy(jurisdictionCode: String?) {
+  func updateLegalPolicy(jurisdictionCode: String?) throws {
     let code = jurisdictionCode?.trimmingCharacters(in: .whitespaces).uppercased()
     let value = code.flatMap { $0.count == 2 ? ["jurisdictionCode": $0] : nil }
-    write { db in
-      guard let value, let json = Self.encodeJson(value) else {
-        try db.execute(sql: "DELETE FROM app_settings WHERE key = 'legalPolicy'")
-        return
-      }
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: ["legalPolicy", json, self.nowMs()]
-      )
+    guard let value, let json = Self.encodeJson(value) else {
+      try boardSettingsPersistence().deleteSetting("legalPolicy")
+      notifyDataChanged(.settings)
+      return
     }
+    try boardSettingsPersistence().saveSetting(PersistedAppSetting(key: "legalPolicy", valueJson: json, updatedAt: nowMs()))
     notifyDataChanged(.settings)
   }
 

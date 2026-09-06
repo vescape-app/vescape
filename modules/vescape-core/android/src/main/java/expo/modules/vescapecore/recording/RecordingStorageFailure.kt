@@ -115,6 +115,10 @@ internal object RecordingStorageFailure {
         reporter.report(operation, "query_failed", error)
     }
 
+    fun report(operation: String, category: String, error: Throwable) {
+        reporter.report(operation, category, error)
+    }
+
     fun value(): RecordingStorageFailureKind? = current
 
     internal fun classify(error: Throwable): RecordingStorageFailureKind = when (error) {

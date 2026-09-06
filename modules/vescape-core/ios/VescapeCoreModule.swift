@@ -465,9 +465,14 @@ public class VescapeCoreModule: Module {
     }
 
     Function("setSelectedBoard") { (boardId: String?) in
-      self.clearManualDisconnectAutoStartGate()
-      self.selectedBoardId = boardId
-      self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+      do {
+        try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+        self.clearManualDisconnectAutoStartGate()
+        self.selectedBoardId = boardId
+      } catch {
+        RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
+        throw error
+      }
     }
 
     AsyncFunction("setCompanionPresenceEnabled") { (enabled: Bool, promise: Promise) in
@@ -539,9 +544,15 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("selectBoard") { (boardId: String, promise: Promise) in
-      self.clearManualDisconnectAutoStartGate()
-      self.selectedBoardId = boardId
-      self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+      do {
+        try self.appData.updateSetting("selectedBoardId", rawValue: boardId)
+        self.clearManualDisconnectAutoStartGate()
+        self.selectedBoardId = boardId
+      } catch {
+        RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not select Board")
+        return
+      }
       guard let config = self.connectConfig(boardId: boardId) else {
         promise.reject("NO_LINK", "Board has no Board Link: \(boardId)")
         return
@@ -965,19 +976,33 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("getBoards") { (promise: Promise) in
-      promise.resolve(self.appData.getBoards())
+      do { promise.resolve(try self.appData.getBoards()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "boards_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read Boards")
+      }
     }
 
     AsyncFunction("upsertBoard") { (board: [String: Any], promise: Promise) in
-      self.appData.upsertBoard(board)
-      self.coordinator.reloadBoardDataForActiveBoard()
-      self.connectSavedBoardLink(boardId: board["id"] as? String)
-      promise.resolve(nil)
+      do {
+        try self.appData.upsertBoard(board)
+        self.coordinator.reloadBoardDataForActiveBoard()
+        self.connectSavedBoardLink(boardId: board["id"] as? String)
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "board_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Board")
+      }
     }
 
     AsyncFunction("deleteBoard") { (id: String, promise: Promise) in
-      self.appData.deleteBoard(id)
-      promise.resolve(nil)
+      do {
+        try self.appData.deleteBoard(id)
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "board_delete", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not delete Board")
+      }
     }
 
     AsyncFunction("getAlertRules") { (boardId: String, promise: Promise) in
@@ -1117,13 +1142,23 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("getSettings") { (promise: Promise) in
-      promise.resolve(self.appData.getSettings())
+      do { promise.resolve(try self.appData.getSettings()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "settings_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read settings")
+      }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `refreshLegalPolicy`
     // @parity /modules/vescape-core/src/index.ts `refreshLegalPolicy`
     AsyncFunction("refreshLegalPolicy") { (promise: Promise) in
-      let settings = self.appData.getSettings()
+      let settings: [String: Any?]
+      do { settings = try self.appData.getSettings() }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "legal_policy_settings_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read settings")
+        return
+      }
       let latitude = settings["lastGpsLatitude"] as? Double
       let longitude = settings["lastGpsLongitude"] as? Double
       Task {
@@ -1132,16 +1167,28 @@ public class VescapeCoreModule: Module {
         } else {
           nil
         }
-        self.appData.updateLegalPolicy(jurisdictionCode: countryCode)
-        self.coordinator.reloadAlertRules()
-        promise.resolve(nil)
+        do {
+          try self.appData.updateLegalPolicy(jurisdictionCode: countryCode)
+          self.coordinator.reloadAlertRules()
+          promise.resolve(nil)
+        } catch {
+          RecordingStorageFailure.report(operation: "legal_policy_save", category: "write_failed", error: error)
+          promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Legal Policy")
+        }
       }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setLegalMode`
     // @parity /modules/vescape-core/src/index.ts `setLegalMode`
     AsyncFunction("setLegalMode") { (boardId: String, enabled: Bool, promise: Promise) in
-      guard self.appData.getBoard(boardId) != nil else {
+      let board: [String: Any?]?
+      do { board = try self.appData.getBoard(boardId) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "legal_mode_board_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read Board")
+        return
+      }
+      guard board != nil else {
         promise.reject("BOARD_NOT_FOUND", "Board not found: \(boardId)")
         return
       }
@@ -1150,7 +1197,13 @@ public class VescapeCoreModule: Module {
           promise.reject(code, message)
           return
         }
-        let settings = self.appData.getSettings()
+        let settings: [String: Any?]
+        do { settings = try self.appData.getSettings() }
+        catch {
+          RecordingStorageFailure.reportRead(operation: "legal_mode_settings_read", error: error)
+          promise.reject("APP_STORAGE_READ_FAILED", "Could not read settings")
+          return
+        }
         let jurisdictionCode =
           ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
         guard let jurisdictionCode, self.legalPolicyCatalog.speeds(countryCode: jurisdictionCode) != nil else {
@@ -1158,9 +1211,14 @@ public class VescapeCoreModule: Module {
           return
         }
       }
-      self.appData.updateLegalMode(boardId: boardId, enabled: enabled)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      do {
+        try self.appData.updateLegalMode(boardId: boardId, enabled: enabled)
+        self.coordinator.reloadAlertRules()
+        promise.resolve(nil)
+      } catch {
+        RecordingStorageFailure.report(operation: "legal_mode_save", category: "write_failed", error: error)
+        promise.reject("APP_STORAGE_WRITE_FAILED", "Could not save Legal Mode")
+      }
     }
 
     // JS sends the raw setting value (bool/number/string/object/null), matching Android's
@@ -1169,7 +1227,11 @@ public class VescapeCoreModule: Module {
     // an off-thread `AsyncFunction` that would touch a live `JavaScriptValue` on a worker queue.
     // `appData.updateSetting` treats `NSNull` (JS null/undefined) as a delete.
     Function("updateSetting") { (key: String, value: JavaScriptValue) in
-      self.appData.updateSetting(key, rawValue: value.getAny())
+      do { try self.appData.updateSetting(key, rawValue: value.getAny()) }
+      catch {
+        RecordingStorageFailure.report(operation: "setting_save", category: "write_failed", error: error)
+        throw error
+      }
       if [
         "liveHistoryLimit",
         "movingSpeedThresholdKmh",
@@ -1525,11 +1587,16 @@ public class VescapeCoreModule: Module {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
   private func liveState() -> [String: Any?] {
     RecordingStorageFailure.initialize()
-    let settings = appData.getSettings()
+    let storedSelectedBoardId: Any?
+    do { storedSelectedBoardId = try appData.getSettings()["selectedBoardId"] ?? nil }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "live_state_settings_read", error: error)
+      storedSelectedBoardId = nil
+    }
     return [
       "board": [
         "phase": coordinator.phase.rawValue,
-        "selectedBoardId": selectedBoardId ?? (settings["selectedBoardId"] ?? nil),
+        "selectedBoardId": selectedBoardId ?? storedSelectedBoardId,
         "connectedBoardId": coordinator.connectedBoardId,
         "bleId": coordinator.bleId,
         "name": coordinator.boardName,
@@ -1654,7 +1721,12 @@ public class VescapeCoreModule: Module {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `navigationOrigin`
   private func navigationOrigin() -> (latitude: Double, longitude: Double)? {
     if let live = coordinator.riderPosition() { return live }
-    let settings = appData.getSettings()
+    let settings: [String: Any?]
+    do { settings = try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "navigation_origin_settings_read", error: error)
+      return nil
+    }
     guard let latitude = settings["lastGpsLatitude"] as? Double,
           let longitude = settings["lastGpsLongitude"] as? Double
     else { return nil }

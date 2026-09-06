@@ -170,6 +170,95 @@ try historyPool.write { db in try db.drop(table: "telemetry_minute_buckets") }
 do { _ = try profile.getProfileStatsSnapshot([:]); throw Failure(description: "profile query failure became empty") } catch is DatabaseError {}
 try historyPool.close()
 try FileManager.default.removeItem(at: historyURL)
+
+let boardFixtureURL = root.appendingPathComponent("shared/board-settings-persistence-contract.json")
+let boardFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: boardFixtureURL)) as! [String: Any]
+try require(boardFixture["scenario"] as? String == "board-settings-close-reopen", "unknown Board/settings scenario")
+let boardValues = boardFixture["board"] as! [String: Any]
+let settingValues = boardFixture["setting"] as! [String: Any]
+let boardURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-board-settings-\(UUID().uuidString).db")
+var boardQueue: DatabaseQueue? = try DatabaseQueue(path: boardURL.path)
+try TelemetryDatabase.migrator.migrate(boardQueue!)
+var boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let contractBoardId = boardValues["id"] as! String
+let contractCreatedAt = Int64(int(boardValues["createdAt"]))
+try boardPersistence.upsertBoard(
+  PersistedBoard(id: contractBoardId, name: boardValues["name"] as! String, bleId: "AA:BB", transport: "direct", createdAt: contractCreatedAt, deletedAt: nil),
+  settings: [PersistedBoardSetting(boardId: contractBoardId, key: "description", valueJson: "\"\(boardValues["description"] as! String)\"", updatedAt: contractCreatedAt)],
+  deletedKeys: []
+)
+try boardQueue!.write { db in
+  try db.execute(sql: "INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES (?, ?, ?, ?)", arguments: ["delete-rollback", "1.0", "{}", contractCreatedAt])
+  try db.execute(sql: "INSERT INTO board_config_change_notices (board_id, detected_at, diffs_json) VALUES (?, ?, ?)", arguments: ["delete-rollback", contractCreatedAt, "[]"])
+}
+try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["valueJson"] as! String, updatedAt: contractCreatedAt))
+try boardPersistence.upsertBoard(
+  PersistedBoard(id: contractBoardId, name: boardValues["renamed"] as! String, bleId: "AA:BB", transport: "direct", createdAt: contractCreatedAt, deletedAt: nil),
+  settings: [], deletedKeys: []
+)
+try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["updatedValueJson"] as! String, updatedAt: contractCreatedAt + 1))
+try boardQueue!.close()
+boardQueue = try DatabaseQueue(path: boardURL.path)
+boardPersistence = BoardSettingsPersistence(writer: boardQueue!)
+let reopenedBoards = try boardPersistence.liveBoards()
+let reopenedBoardSettings = try boardPersistence.boardSettings(ids: [contractBoardId])
+let reopenedSettings = try boardPersistence.settings()
+try require(reopenedBoards.first?.name == boardValues["renamed"] as? String, "Board rename/reopen")
+try require(reopenedBoardSettings.first?.valueJson == "\"\(boardValues["description"] as! String)\"", "Board setting reopen")
+try require(reopenedSettings.first { $0.key == settingValues["key"] as! String }?.valueJson == settingValues["updatedValueJson"] as? String, "setting update/reopen")
+try boardPersistence.deleteSetting(settingValues["key"] as! String)
+let absentSettings = try boardPersistence.settings()
+try require(absentSettings.isEmpty, "absent setting must remain absent for default projection")
+let defaultedSettings = try boardPersistence.settings(defaults: [settingValues["key"] as! String: "system"])
+try require(defaultedSettings[settingValues["key"] as! String] as? String == "system", "absent setting default")
+try boardPersistence.saveSetting(PersistedAppSetting(key: settingValues["key"] as! String, valueJson: settingValues["malformedValueJson"] as! String, updatedAt: contractCreatedAt + 2))
+do { _ = try boardPersistence.settings(defaults: [settingValues["key"] as! String: "system"]); throw Failure(description: "malformed setting became default") } catch is CocoaError {}
+try boardPersistence.deleteSetting(settingValues["key"] as! String)
+try boardPersistence.tombstoneBoard(id: contractBoardId, deletedAt: contractCreatedAt + 2)
+let liveAfterDelete = try boardPersistence.liveBoards()
+let tombstone = try boardPersistence.board(id: contractBoardId)
+let boardSettingsAfterDelete = try boardPersistence.boardSettings(ids: [contractBoardId])
+try require(liveAfterDelete.isEmpty, "tombstoned Board visible")
+try require(tombstone?.id == contractBoardId, "tombstone identity lost")
+try require(boardSettingsAfterDelete.isEmpty, "tombstone retained settings")
+try boardQueue!.write { db in
+  try db.execute(sql: "CREATE TRIGGER fail_board_setting BEFORE INSERT ON board_settings BEGIN SELECT RAISE(FAIL, 'deterministic failure'); END")
+}
+do {
+  try boardPersistence.upsertBoard(
+    PersistedBoard(id: "rollback", name: "Must Roll Back", bleId: nil, transport: nil, createdAt: contractCreatedAt, deletedAt: nil),
+    settings: [PersistedBoardSetting(boardId: "rollback", key: "description", valueJson: "\"fail\"", updatedAt: contractCreatedAt)],
+    deletedKeys: []
+  )
+  throw Failure(description: "failed Board save reported success")
+} catch is DatabaseError {}
+let rolledBackBoard = try boardPersistence.board(id: "rollback")
+try require(rolledBackBoard == nil, "failed Board transaction did not roll back")
+try boardQueue!.write { db in
+  try db.execute(sql: "DROP TRIGGER fail_board_setting")
+  try db.execute(sql: "CREATE TRIGGER fail_board_tombstone BEFORE UPDATE ON boards WHEN NEW.deleted_at IS NOT NULL BEGIN SELECT RAISE(FAIL, 'late delete failure'); END")
+}
+try boardPersistence.upsertBoard(
+  PersistedBoard(id: "delete-rollback", name: "Keep", bleId: nil, transport: nil, createdAt: contractCreatedAt, deletedAt: nil),
+  settings: [PersistedBoardSetting(boardId: "delete-rollback", key: "description", valueJson: "\"keep\"", updatedAt: contractCreatedAt)],
+  deletedKeys: []
+)
+do { try boardPersistence.tombstoneBoard(id: "delete-rollback", deletedAt: contractCreatedAt + 3); throw Failure(description: "failed Board delete reported success") } catch is DatabaseError {}
+let deleteRollbackBoard = try boardPersistence.board(id: "delete-rollback")
+let deleteRollbackSettings = try boardPersistence.boardSettings(ids: ["delete-rollback"])
+try require(deleteRollbackBoard?.deletedAt == nil, "failed Board delete kept tombstone")
+try require(deleteRollbackSettings.count == 1, "failed Board delete removed settings")
+let preservedConfig = try boardQueue!.read { db in try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id = ?", arguments: ["delete-rollback"]) }
+let preservedNotice = try boardQueue!.read { db in try String.fetchOne(db, sql: "SELECT diffs_json FROM board_config_change_notices WHERE board_id = ?", arguments: ["delete-rollback"]) }
+try require(preservedConfig == "{}", "failed Board delete removed config values")
+try require(preservedNotice == "[]", "failed Board delete removed config notice")
+try boardQueue!.write { db in
+  try db.execute(sql: "DROP TRIGGER fail_board_tombstone")
+  try db.drop(table: "app_settings")
+}
+do { _ = try boardPersistence.settings(); throw Failure(description: "settings query failure became defaults") } catch is DatabaseError {}
+try boardQueue!.close()
+try FileManager.default.removeItem(at: boardURL)
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

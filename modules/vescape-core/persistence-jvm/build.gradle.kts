@@ -16,6 +16,7 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/alerts/AlertDefaults.kt",
       "expo/modules/vescapecore/telemetry/TelemetryEntities.kt",
       "expo/modules/vescapecore/telemetry/TelemetryDao.kt",
+      "expo/modules/vescapecore/telemetry/BoardSettingsPersistence.kt",
       "expo/modules/vescapecore/telemetry/RecordingPersistence.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt",
       "expo/modules/vescapecore/telemetry/PersistenceDefaults.kt",
@@ -36,7 +37,7 @@ dependencies {
   implementation("androidx.room:room-runtime:2.8.4")
   implementation("androidx.sqlite:sqlite-bundled:2.6.2")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+  implementation("org.json:json:20231013")
   ksp("androidx.room:room-compiler:2.8.4")
   testImplementation("junit:junit:4.13.2")
-  testImplementation("org.json:json:20231013")
 }

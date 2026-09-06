@@ -109,7 +109,11 @@ struct AppDataNavigationStore: NavigationStore {
   }
 
   func directionPoint() async -> (latitude: Double, longitude: Double)? {
-    repository.getDirectionPoint()
+    do { return try repository.getDirectionPoint() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
+      return nil
+    }
   }
 
   func loadProfile() async -> NavigationProfile? {

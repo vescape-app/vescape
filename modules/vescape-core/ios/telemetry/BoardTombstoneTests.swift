@@ -23,8 +23,8 @@ final class BoardTombstoneTests: XCTestCase {
     queue = nil
   }
 
-  private func seedBoard(_ id: String = "board-1") {
-    repo.upsertBoard([
+  private func seedBoard(_ id: String = "board-1") throws {
+    try repo.upsertBoard([
       "id": id,
       "name": "ADV",
       "createdAt": Int64(1000),
@@ -53,7 +53,7 @@ final class BoardTombstoneTests: XCTestCase {
     XCTAssertNotNil(deletedAt, "boards is missing deleted_at")
     XCTAssertFalse(deletedAt?.isNotNull ?? true, "deleted_at must be nullable — null means alive")
 
-    seedBoard()
+    try seedBoard()
     XCTAssertNil(try self.deletedAt("board-1"), "a fresh Board must start alive")
   }
 
@@ -66,15 +66,15 @@ final class BoardTombstoneTests: XCTestCase {
   // MARK: Delete
 
   func testDeleteKeepsTheRowAndStampsDeletedAt() throws {
-    seedBoard()
+    try seedBoard()
 
-    repo.deleteBoard("board-1")
+    try repo.deleteBoard("board-1")
 
     XCTAssertNotNil(try deletedAt("board-1"), "delete removed the row instead of tombstoning it")
   }
 
   func testDeleteStillRemovesBoardConfiguration() throws {
-    seedBoard()
+    try seedBoard()
     repo.upsertAlertRule([
       "boardId": "board-1",
       "id": "rule-1",
@@ -93,7 +93,7 @@ final class BoardTombstoneTests: XCTestCase {
       )
     }
 
-    repo.deleteBoard("board-1")
+    try repo.deleteBoard("board-1")
 
     XCTAssertEqual(try rowCount("board_settings", boardId: "board-1"), 0, "board settings survived")
     XCTAssertEqual(try rowCount("board_warnings", boardId: "board-1"), 0, "board warnings survived")
@@ -102,7 +102,7 @@ final class BoardTombstoneTests: XCTestCase {
 
   /// The reason the tombstone exists: history is what the delete must not take with it.
   func testDeleteLeavesTelemetryAndTuneProfilesUntouched() throws {
-    seedBoard()
+    try seedBoard()
     try queue.write { db in
       try db.execute(
         sql: """
@@ -112,7 +112,7 @@ final class BoardTombstoneTests: XCTestCase {
       )
     }
 
-    repo.deleteBoard("board-1")
+    try repo.deleteBoard("board-1")
 
     XCTAssertEqual(try rowCount("tune_profiles", boardId: "board-1"), 1, "tune profiles were deleted")
   }
@@ -120,22 +120,22 @@ final class BoardTombstoneTests: XCTestCase {
   // MARK: Reads
 
   func testTombstonedBoardLeavesTheRiderFacingListButStaysResolvableById() throws {
-    seedBoard()
-    seedBoard("board-2")
+    try seedBoard()
+    try seedBoard("board-2")
 
-    repo.deleteBoard("board-1")
+    try repo.deleteBoard("board-1")
 
-    XCTAssertEqual(repo.getBoards().compactMap { $0["id"] as? String }, ["board-2"])
-    XCTAssertNotNil(repo.getBoard("board-1"), "history can no longer name the deleted Board")
+    XCTAssertEqual(try repo.getBoards().compactMap { $0["id"] as? String }, ["board-2"])
+    XCTAssertNotNil(try repo.getBoard("board-1"), "history can no longer name the deleted Board")
   }
 
   func testUpsertNeverResurrectsATombstonedBoard() throws {
-    seedBoard()
-    repo.deleteBoard("board-1")
+    try seedBoard()
+    try repo.deleteBoard("board-1")
 
-    seedBoard()
+    try seedBoard()
 
     XCTAssertNotNil(try deletedAt("board-1"), "an upsert cleared the tombstone")
-    XCTAssertTrue(repo.getBoards().isEmpty, "a resurrected Board came back to the list")
+    XCTAssertTrue(try repo.getBoards().isEmpty, "a resurrected Board came back to the list")
   }
 }

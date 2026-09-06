@@ -18,12 +18,12 @@ internal struct ProfileStatsMonth: Equatable, Hashable {
 internal final class ProfileStatsRepository {
   static let shared = ProfileStatsRepository()
   private let poolProvider: () throws -> DatabasePool
-  private let gapMsProvider: () -> Int64
+  private let gapMsProvider: () throws -> Int64
 
   internal init(
     poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
-    gapMsProvider: @escaping () -> Int64 = {
-      let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
+    gapMsProvider: @escaping () throws -> Int64 = {
+      let minutes = telemetryInt(try AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
       return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
     }
   ) {
@@ -34,7 +34,7 @@ internal final class ProfileStatsRepository {
   /// Lifetime, available months, and selected-month stats from one read/grouping pass.
   /// @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot`
   func getProfileStatsSnapshot(_ options: [String: Any]) throws -> [String: Any?] {
-    let gapMs = gapMsProvider()
+    let gapMs = try gapMsProvider()
     let pool = try poolProvider()
     return try pool.read { db in
       let buckets = try Row.fetchAll(db, sql: "SELECT * FROM telemetry_minute_buckets ORDER BY bucket_start_ms ASC")

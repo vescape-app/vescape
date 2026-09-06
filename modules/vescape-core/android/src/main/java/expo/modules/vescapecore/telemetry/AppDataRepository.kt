@@ -171,6 +171,7 @@ private fun Any?.asStringKeyMap(): Map<String, Any?>? = when (this) {
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift
 class AppDataRepository private constructor(private val context: Context) {
   private val dao = TelemetryDatabase.get(context).telemetryDao()
+  private val boardSettings = BoardSettingsPersistence(dao)
 
   /** Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
    *  sync without an app restart. Every mutating method below funnels through here — new writes get
@@ -181,28 +182,26 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getBoards(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    val boards = dao.getBoards()
+    val boards = boardSettings.getBoards()
     val settingsByBoard =
-      if (boards.isEmpty()) emptyMap() else dao.getBoardSettings(boards.map { it.id }).groupBy { it.boardId }
+      if (boards.isEmpty()) emptyMap() else boardSettings.getBoardSettings(boards.map { it.id }).groupBy { it.boardId }
     boards.map { it.toMap(settingsByBoard[it.id].orEmpty()) }
   }
 
   suspend fun getBoard(id: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    dao.getBoard(id)?.toMap(dao.getBoardSettings(id))
+    boardSettings.getBoard(id)?.toMap(boardSettings.getBoardSettings(id))
   }
 
   suspend fun upsertBoard(board: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
     val boardId = board.getString("id")
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
-    dao.upsertBoardWithSettings(board.toBoardEntity(), settings, deletedKeys)
+    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
   /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteBoardWithSettings(id, System.currentTimeMillis())
-    dao.deleteBoardConfigValues(id)
-    dao.deleteBoardConfigChangeNotice(id)
+    boardSettings.deleteBoard(id, System.currentTimeMillis())
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
@@ -405,7 +404,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getTypedSettings(): AppSettings = withContext(Dispatchers.IO) {
-    val rows = dao.getAllAppSettings()
+    val rows = boardSettings.getSettings()
     val map = rows.associateBy { it.key }
     val badKeys = mutableListOf<String>()
 
@@ -1000,12 +999,6 @@ internal fun encodeSettingJson(value: Any?): String {
   return s.substring(1, s.length - 1)
 }
 
-internal fun decodeSettingJson(json: String): Any? {
-  val obj = JSONObject("{\"v\":$json}")
-  val v = obj.get("v")
-  return jsonValue(v)
-}
-
 fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "boardId" to boardId,
   "id" to id,
@@ -1091,23 +1084,6 @@ private fun String.toJsonMap(): Map<String, Any?> {
     result[key] = jsonValue(json.get(key))
   }
   return result
-}
-
-private fun jsonValue(value: Any?): Any? {
-  return when (value) {
-    JSONObject.NULL -> null
-    is JSONObject -> {
-      val result = mutableMapOf<String, Any?>()
-      val keys = value.keys()
-      while (keys.hasNext()) {
-        val key = keys.next()
-        result[key] = jsonValue(value.get(key))
-      }
-      result
-    }
-    is JSONArray -> List(value.length()) { index -> jsonValue(value.get(index)) }
-    else -> value
-  }
 }
 
 fun PrivacyZoneEntity.toMap(): Map<String, Any?> = mapOf(

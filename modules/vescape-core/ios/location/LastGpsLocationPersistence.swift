@@ -23,9 +23,13 @@ final class LastGpsLocationPersistence {
     guard location.precise else { return }
     let now = nowMs()
     guard now - lastGpsPersistedAt >= LAST_GPS_PERSIST_INTERVAL_MS else { return }
-    lastGpsPersistedAt = now
     queue.async { [appData] in
-      appData.updateLastGpsLocation(latitude: location.latitude, longitude: location.longitude)
+      do {
+        try appData.updateLastGpsLocation(latitude: location.latitude, longitude: location.longitude)
+        self.lastGpsPersistedAt = now
+      } catch {
+        RecordingStorageFailure.report(operation: "last_gps_save", category: "write_failed", error: error)
+      }
     }
   }
 }

@@ -16,6 +16,101 @@ import org.junit.Assert.assertTrue
 /** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
   @Test
+  fun boardAndSettingsSurviveReopenAndFailuresStayExplicit(): Unit = runBlocking {
+    val fixture = JSONObject(
+      checkNotNull(javaClass.classLoader?.getResource("board-settings-persistence-contract.json")).readText(),
+    )
+    assertEquals("board-settings-close-reopen", fixture.getString("scenario"))
+    val board = fixture.getJSONObject("board")
+    val setting = fixture.getJSONObject("setting")
+    val path = Files.createTempFile("vescape-board-settings", ".db")
+    Files.deleteIfExists(path)
+    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+
+    var db = open()
+    var persistence = BoardSettingsPersistence(db.telemetryDao())
+    val boardId = board.getString("id")
+    val createdAt = board.getLong("createdAt")
+    persistence.upsertBoard(
+      BoardEntity(boardId, board.getString("name"), "AA:BB", createdAt),
+      listOf(BoardSettingEntity(boardId, "description", JSONObject.quote(board.getString("description")), createdAt)),
+      emptyList(),
+    )
+    db.telemetryDao().upsertBoardConfigValues(BoardConfigValuesEntity("delete-rollback", "1.0", "{}", createdAt))
+    db.telemetryDao().upsertBoardConfigChangeNotice(BoardConfigChangeNoticeEntity("delete-rollback", createdAt, "[]"))
+    persistence.upsertSetting(AppSettingEntity(setting.getString("key"), setting.getString("valueJson"), createdAt))
+    persistence.upsertBoard(BoardEntity(boardId, board.getString("renamed"), "AA:BB", createdAt), emptyList(), emptyList())
+    persistence.upsertSetting(AppSettingEntity(setting.getString("key"), setting.getString("updatedValueJson"), createdAt + 1))
+    db.close()
+
+    db = open()
+    persistence = BoardSettingsPersistence(db.telemetryDao())
+    assertEquals(board.getString("renamed"), persistence.getBoards().single().name)
+    assertEquals(JSONObject.quote(board.getString("description")), persistence.getBoardSettings(boardId).single().valueJson)
+    assertEquals(setting.getString("updatedValueJson"), persistence.getSettings().single { it.key == setting.getString("key") }.valueJson)
+    persistence.deleteSetting(setting.getString("key"))
+    assertTrue(persistence.getSettings().none { it.key == setting.getString("key") })
+    assertEquals("system", persistence.getSettings(mapOf(setting.getString("key") to "system"))[setting.getString("key")])
+    persistence.upsertSetting(AppSettingEntity(setting.getString("key"), setting.getString("malformedValueJson"), createdAt + 2))
+    var malformedFailed = false
+    try { persistence.getSettings(mapOf(setting.getString("key") to "system")) } catch (_: Exception) { malformedFailed = true }
+    assertTrue(malformedFailed)
+    persistence.deleteSetting(setting.getString("key"))
+    persistence.deleteBoard(boardId, createdAt + 2)
+    assertTrue(persistence.getBoards().isEmpty())
+    assertEquals(boardId, persistence.getBoard(boardId)?.id)
+    assertTrue(persistence.getBoardSettings(boardId).isEmpty())
+    db.close()
+
+    var connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("CREATE TRIGGER fail_board_setting BEFORE INSERT ON board_settings BEGIN SELECT RAISE(FAIL, 'deterministic failure'); END")
+    connection.close()
+    db = open()
+    persistence = BoardSettingsPersistence(db.telemetryDao())
+    var saveFailed = false
+    try {
+      persistence.upsertBoard(
+        BoardEntity("rollback", "Must Roll Back", null, createdAt),
+        listOf(BoardSettingEntity("rollback", "description", "\"fail\"", createdAt)),
+        emptyList(),
+      )
+    } catch (_: Exception) { saveFailed = true }
+    assertTrue(saveFailed)
+    assertEquals(null, persistence.getBoard("rollback"))
+    db.close()
+    connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TRIGGER fail_board_setting")
+    connection.execSQL("CREATE TRIGGER fail_board_tombstone BEFORE INSERT ON boards WHEN NEW.deleted_at IS NOT NULL BEGIN SELECT RAISE(FAIL, 'late delete failure'); END")
+    connection.close()
+    db = open()
+    persistence = BoardSettingsPersistence(db.telemetryDao())
+    persistence.upsertBoard(
+      BoardEntity("delete-rollback", "Keep", null, createdAt),
+      listOf(BoardSettingEntity("delete-rollback", "description", "\"keep\"", createdAt)),
+      emptyList(),
+    )
+    var deleteFailed = false
+    try { persistence.deleteBoard("delete-rollback", createdAt + 3) } catch (_: Exception) { deleteFailed = true }
+    assertTrue(deleteFailed)
+    assertEquals("Keep", persistence.getBoards().single().name)
+    assertEquals(1, persistence.getBoardSettings("delete-rollback").size)
+    assertEquals("{}", db.telemetryDao().getBoardConfigValues("delete-rollback", "1.0")?.valuesJson)
+    assertEquals("[]", db.telemetryDao().getBoardConfigChangeNotice("delete-rollback")?.diffsJson)
+    db.close()
+    connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TRIGGER fail_board_tombstone")
+    connection.execSQL("DROP TABLE app_settings")
+    connection.close()
+    db = open()
+    persistence = BoardSettingsPersistence(db.telemetryDao())
+    var readFailed = false
+    try { persistence.getSettings() } catch (_: Exception) { readFailed = true }
+    assertTrue(readFailed)
+    db.close()
+    Files.deleteIfExists(path)
+  }
+
+  @Test
   fun historyReadsDistinguishEmptyCurrentPagedAndFailure(): Unit = runBlocking {
     val contract = JSONObject(
       checkNotNull(javaClass.classLoader?.getResource("history-read-contract.json")).readText(),
