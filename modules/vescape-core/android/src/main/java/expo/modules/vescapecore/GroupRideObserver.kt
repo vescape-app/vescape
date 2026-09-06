@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit
  *
  * Wire protocol: vescape-server `docs/group-ride/PROTOCOL.md`. All state is touched on the
  * main thread ([handler]); OkHttp callbacks hop back onto it before mutating anything.
+ *
+ * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift
  */
 internal class GroupRideObserver(
     private val handler: Handler,
@@ -465,7 +467,6 @@ internal class GroupRideObserver(
     }
 
     // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
-    // TODO(iOS parity): no iOS peer — Group Ride is not ported yet.
     private fun emitConnection(state: String) {
         emit("onGroupRideConnection", mapOf("state" to state))
     }
@@ -492,12 +493,16 @@ internal class GroupRideObserver(
     }
 }
 
-/** The Rider's shared map target (their direction Map Point). */
+/**
+ * The Rider's shared map target (their direction Map Point).
+ * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `TargetPoint`
+ */
 internal data class TargetPoint(
     val lat: Double,
     val lng: Double,
 )
 
+/** @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `RiderPresence` */
 internal data class RiderPresence(
     val lat: Double,
     val lng: Double,

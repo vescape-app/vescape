@@ -48,9 +48,9 @@ export function ClerkAccountScreen() {
   return (
     <View style={styles.container}>
       {networkState.isInternetReachable === false ? (
-        <WifiSlashIcon size={40} color={theme.palette.slate.textMuted} weight="duotone" />
+        <WifiSlashIcon size={40} color={theme.neutral.textMuted} weight="duotone" />
       ) : (
-        <UserCircleIcon size={48} color={theme.palette.slate.textMuted} weight="duotone" />
+        <UserCircleIcon size={48} color={theme.neutral.textMuted} weight="duotone" />
       )}
       <Text style={styles.title}>{user?.fullName ?? 'Vescape account'}</Text>
       <Text style={styles.detail}>{user?.primaryEmailAddress?.emailAddress ?? 'Signed in'}</Text>
@@ -81,19 +81,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     padding: 32,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 18,
     fontWeight: '700',
   },
   detail: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
   },
   message: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',

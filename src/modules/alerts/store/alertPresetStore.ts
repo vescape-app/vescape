@@ -5,16 +5,18 @@ import {
   ALERT_PRESET_FALLBACK_LEVEL,
   ALERT_PRESET_METRICS,
   ALERT_PRESET_SOURCE,
-  generateAlertPresetRules,
+  resolvedAlertPresetRules,
   isPresetAlertRule,
   presetAlertRuleId,
   type AlertPresetLevel,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
+import { readBoardConfigBases } from '@/modules/alerts/lib/boardConfigBases'
 import { materializePresetRules } from '@/modules/alerts/lib/customAlertRules'
 import {
   boardAlertPresetSelection,
   boardHasBatteryConfig,
+  boardMatchBoardConfig,
   boardTopSpeedKmh,
 } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
@@ -40,6 +42,8 @@ interface AlertPresetActions {
   regenerateSpeed(boardId?: string): Promise<void>
   /** Regenerate every metric's preset rules for a Board (used after add-board setup). */
   regenerateAll(boardId?: string): Promise<void>
+  /** Opt one metric's preset in or out of following the board's own configuration. */
+  setMatchBoardConfig(metric: AlertPresetMetric, enabled: boolean, boardId?: string): Promise<void>
 }
 
 // Serialize rule churn so an interleaved Board Top Speed change, level change or customize can't
@@ -66,9 +70,13 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
     const board = targetBoard(boardId)
     if (!board) return
     // Expand the outgoing level before overwriting it — that expansion *is* the rider's set.
+    // Matched rules included: taking ownership must not silently move a threshold, so the outgoing
+    // level expands under the same options regeneration used, config match and all.
     const seed = materializePresetRules(metric, boardAlertPresetSelection(board)[metric], {
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      matchBoardConfig: boardMatchBoardConfig(board),
+      configBases: readBoardConfigBases(),
     })
     // Level first: a crash after this leaves stale preset rules a retry cleans up, whereas the
     // reverse order would leave the metric silent while its level still claims a preset.
@@ -106,6 +114,13 @@ export const useAlertPresetStore = create<AlertPresetState & AlertPresetActions>
 
   async regenerateAll(boardId) {
     for (const metric of ALERT_PRESET_METRICS) await get().regenerate(metric, boardId)
+  },
+  async setMatchBoardConfig(metric, enabled, boardId) {
+    const board = targetBoard(boardId)
+    if (!board) return
+    const match = { ...boardMatchBoardConfig(board), [metric]: enabled }
+    await useBoardStore.getState().updateBoard({ ...board, matchBoardConfig: match })
+    await get().regenerate(metric, board.id)
   },
 }))
 
@@ -159,9 +174,15 @@ async function regenerateMetric(
 
   set({ syncing: true })
   try {
-    const specs = generateAlertPresetRules(metric, boardAlertPresetSelection(board)[metric], {
+    // A matched rule persists its offset and native re-resolves it, but its `threshold` column is
+    // still read by every consumer that has no config in hand (the HUD gauge, chart lines), so it
+    // is written resolved. A rule whose anchor does not resolve is not written at all — a
+    // placeholder threshold would draw a marker at a value the board will never act on.
+    const specs = resolvedAlertPresetRules(metric, boardAlertPresetSelection(board)[metric], {
       boardTopSpeedKmh: boardTopSpeedKmh(board),
       hasBatteryConfig: boardHasBatteryConfig(board),
+      matchBoardConfig: boardMatchBoardConfig(board),
+      configBases: readBoardConfigBases(),
     })
 
     // Delete-then-upsert scoped to this metric's preset rules, so other metrics' preset rules and
@@ -177,6 +198,7 @@ async function regenerateMetric(
         controlId: spec.controlId,
         threshold: spec.threshold,
         thresholdMax: spec.thresholdMax,
+        thresholdRule: spec.thresholdRule,
         enabled: true,
         soundType: spec.soundType,
         repeatEverySeconds: spec.repeatEverySeconds,

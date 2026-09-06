@@ -1,7 +1,7 @@
 /**
- * Tunnels the device's `localhost:<port>` to this machine when `EXPO_PUBLIC_SERVER_URL`
- * points at a local Vescape server (../vescape-server). No-op for a remote server, so it is
- * safe to run unconditionally before `expo run:android`.
+ * Tunnels the device's localhost ports to this machine. Metro always uses 8081; the Vescape API
+ * port is added when `EXPO_PUBLIC_SERVER_URL` points at a local server (../vescape-server).
+ * Safe to run repeatedly before `expo run:android` or after clearing local development state.
  */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1'])
 
@@ -34,8 +34,9 @@ async function connectedDevices(): Promise<string[]> {
     .map(([serial]) => serial!)
 }
 
-const port = localPort(process.env.EXPO_PUBLIC_SERVER_URL)
-if (port === null) process.exit(0)
+const ports = new Set([8081])
+const serverPort = localPort(process.env.EXPO_PUBLIC_SERVER_URL)
+if (serverPort !== null) ports.add(serverPort)
 
 let devices: string[]
 try {
@@ -46,6 +47,8 @@ try {
 }
 
 for (const serial of devices) {
-  await adb('-s', serial, 'reverse', `tcp:${port}`, `tcp:${port}`)
-  console.log(`Reversed ${serial} localhost:${port} -> host:${port}`)
+  for (const port of ports) {
+    await adb('-s', serial, 'reverse', `tcp:${port}`, `tcp:${port}`)
+    console.log(`Reversed ${serial} localhost:${port} -> host:${port}`)
+  }
 }

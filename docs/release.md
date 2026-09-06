@@ -40,9 +40,37 @@ promote  → open → production
            validates 1.1.2.md, flips v1.1.2 to latest
 ```
 
+## Released App Versions
+
+The server's App Status `latest` is not hand-edited. Once a version reaches production, this
+repository tells the server which marketing version that store now serves — the store
+credentials stay here, and no Play or App Store Connect key ever reaches the server
+(`../vescape-server/docs/adr/0012-released-app-versions-are-pushed-not-polled.md`).
+
+- **Android** — automatic, at the end of `promote-production.yml`, after Play succeeds. A
+  failed push does not fail the release; the version is live either way.
+- **iOS** — manual. Nothing here releases to the App Store: `fastlane ios release` ships to
+  TestFlight and stages a draft, and a human hits Release in App Store Connect. Run
+  **Record Released App Version** from the Actions tab once it is live.
+
+The server reports the **lowest** version across the platforms pushed so far, so a Rider is
+never told to update to a build their store does not have yet. That also means iOS lagging
+behind holds `latest` back until it is recorded — which is the point.
+
+Needs `VESCAPE_INTERNAL_API_KEY` in this repository's `production` environment, matching the
+server's `INTERNAL_API_KEY`.
+
+## Production rollout
+
+Every production promotion goes to 100% at once. Staged rollout — percentages, halt, resume,
+advance — was removed deliberately; the only production operations are `promote` and `status`.
+
 ## Pieces
 
-- `scripts/release/` — release CLI (`prepare`, internal dispatch, promote, production rollout controls).
+- `scripts/release/` — release CLI (`prepare`, internal dispatch, promote, production status).
+- `scripts/release/releasedVersion.ts` — tells the server a store now serves a version.
 - `scripts/release-notes/` — codex authoring, validation, and the bundler that compiles `release-notes/*.md` into `src/modules/release/generated/releaseNotes.ts`.
 - `.github/workflows/release-android.yml` — internal build + Play upload from an immutable commit.
-- `.github/workflows/promote-open.yml`, `promote-production.yml` — track promotion and rollout.
+- `.github/workflows/promote-open.yml`, `promote-production.yml` — track promotion.
+- `.github/workflows/record-released-version.yml` — manual Released App Version push (iOS, and
+  the Android retry path).

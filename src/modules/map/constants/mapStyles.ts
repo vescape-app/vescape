@@ -5,7 +5,7 @@ import { theme } from '@/constants/theme'
 export const MAP_DEFAULTS = {
   fallbackCoordinate: [15.0, 54.0] as [number, number],
   fallbackZoom: 3.2,
-  persistedGpsFallbackZoom: 11,
+  persistedGpsFallbackZoom: 13,
   maxZoom: 19,
   defaultPitch: 30,
   activePitch: 45,
@@ -21,6 +21,7 @@ export const MAP_DEFAULTS = {
   markerInactiveColor: theme.palette.slate.light,
   trailColor: theme.palette.violet.color,
   trailWidth: 3,
+  navigationWidth: 5,
   accuracyFillColor: theme.alpha(theme.palette.violet.color, 0.12),
   trailGradientStart: theme.alpha(theme.palette.violet.color, 0),
   trailGradientEnd: theme.alpha(theme.palette.violet.color, 0.85),

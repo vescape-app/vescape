@@ -11,7 +11,7 @@ export interface MapPointMediaAsset {
   mediaType: 'photo' | 'video'
 }
 
-export type PickedMapPointMediaAsset = {
+export interface PickedMapPointMediaAsset {
   id: string
   uri: string
   filename: string

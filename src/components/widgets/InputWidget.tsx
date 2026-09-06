@@ -5,7 +5,10 @@ import { CheckIcon, PencilSimpleIcon } from 'phosphor-react-native'
 
 import { Input } from '@/components/forms/Input'
 import { TextPromptModal } from '@/components/modals/TextPromptModal'
-import { widgetSurface, type WidgetSize } from '@/components/widgets/widgetSurface'
+import {
+  useResolvedSecondaryWidgetSurface,
+  type WidgetSize,
+} from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 
 interface InputWidgetProps {
@@ -18,8 +21,6 @@ interface InputWidgetProps {
   accessibilityLabel?: string
   /** Optional visual rendered at the leading edge of a row input. */
   leading?: ReactNode
-  /** Optional control rendered at the widget's trailing edge, before the edit button. */
-  accessory?: ReactNode
   /** Optional content shown below the input while the row is being edited. */
   editingContent?: ReactNode
   /** Keep the row editor open when the input loses focus, so inline controls remain usable. */
@@ -40,10 +41,10 @@ function RowInput({
   onCommit,
   accessibilityLabel,
   leading,
-  accessory,
   editingContent,
   commitOnBlur = true,
 }: InputWidgetProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
 
@@ -58,7 +59,7 @@ function RowInput({
   }
 
   return (
-    <View style={[styles.widget, editing ? styles.widgetEditing : styles.widgetRow]}>
+    <View style={[surface, editing ? styles.widgetEditing : styles.widgetRow]}>
       <View style={styles.headerRow}>
         {leading}
         <View style={styles.content}>
@@ -71,7 +72,7 @@ function RowInput({
                 onBlur={commitOnBlur ? commit : undefined}
                 onSubmitEditing={commit}
                 placeholder={placeholder}
-                placeholderTextColor={theme.palette.slate.textMuted}
+                placeholderTextColor={theme.control.textMuted}
                 returnKeyType="done"
                 maxLength={maxLength}
                 autoFocus
@@ -85,7 +86,6 @@ function RowInput({
             )}
           </View>
         </View>
-        {accessory}
         <Pressable
           onPress={editing ? commit : startEdit}
           hitSlop={10}
@@ -95,7 +95,7 @@ function RowInput({
           {editing ? (
             <CheckIcon size={18} color={theme.palette.green.color} weight="bold" />
           ) : (
-            <PencilSimpleIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+            <PencilSimpleIcon size={18} color={theme.control.textMuted} weight="bold" />
           )}
         </Pressable>
       </View>
@@ -114,14 +114,14 @@ function SquareInput({
   onCommit,
   accessibilityLabel,
   leading,
-  accessory,
 }: InputWidgetProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const [open, setOpen] = useState(false)
 
   return (
     <>
       <Pressable
-        style={({ pressed }) => [styles.widget, styles.widgetSquare, pressed && styles.pressed]}
+        style={({ pressed }) => [surface, styles.widgetSquare, pressed && styles.pressed]}
         onPress={() => setOpen(true)}
         accessibilityLabel={accessibilityLabel ?? `Edit ${label}`}
       >
@@ -131,7 +131,6 @@ function SquareInput({
           <Text style={styles.value} numberOfLines={2}>
             {value?.trim() || placeholder}
           </Text>
-          {accessory}
         </View>
       </Pressable>
       <TextPromptModal
@@ -151,9 +150,6 @@ function SquareInput({
 }
 
 const styles = StyleSheet.create({
-  widget: {
-    ...widgetSurface,
-  },
   widgetRow: {
     padding: 16,
   },
@@ -173,7 +169,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   pressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   text: {
     minWidth: 0,
@@ -187,14 +183,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   value: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 17,
     fontWeight: '700',
     flex: 1,

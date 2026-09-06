@@ -92,8 +92,7 @@ export function useBoardConnection() {
       router.push({ pathname: routes.editBoardLink, params: { boardId: activeBoard.id } })
       return
     }
-    const activeBoardId = activeBoard.id
-    void connect(activeBoardId)
+    void connect(activeBoard.id)
   }, [activeBoard, connect])
 
   return {

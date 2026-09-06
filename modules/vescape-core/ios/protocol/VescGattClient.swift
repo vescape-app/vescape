@@ -15,6 +15,13 @@ internal protocol VescGattListener: AnyObject {
   func onGattDisconnected(intentional: Bool, message: String)
   func onGattFailure(code: String, message: String)
   func onGattFrameChunk(_ chunk: [UInt8])
+  /// CoreBluetooth handed the session central's state back after the app was relaunched into the
+  /// background (ADR 0034). `peripheralIds` are the peripherals iOS restored — empty when the link
+  /// died while the process was dead, which is a resume through the normal reconnect path.
+  ///
+  /// @platform-diff No Android peer: its `CoreForegroundService` keeps the process alive, so there
+  /// is nothing to restore.
+  func onGattRestored(peripheralIds: [String])
 }
 
 /// Transport seam under `BoardSessionController` (ADR 0024): everything the controller calls on
@@ -48,7 +55,25 @@ internal final class VescGattClient: NSObject, SessionTransport {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `recorder`
   var recorder: (() -> SessionRecorder?)?
   private weak var listener: VescGattListener?
-  private lazy var central = CBCentralManager(delegate: self, queue: nil)
+  /// Stable across app versions on purpose: iOS keys the preserved central state on this string, so
+  /// changing it throws away every in-flight restoration. Only the Board Session client passes it;
+  /// the Board Probe's client (`BoardTransportDetector`) stays bare — probing never needs
+  /// resurrection, and two centrals may not share one restore identifier.
+  static let sessionRestoreIdentifier = "com.vescape.core.session-central"
+  private let restoreIdentifier: String?
+  private lazy var central: CBCentralManager = {
+    guard let restoreIdentifier else { return CBCentralManager(delegate: self, queue: nil) }
+    return CBCentralManager(
+      delegate: self,
+      queue: nil,
+      options: [CBCentralManagerOptionRestoreIdentifierKey: restoreIdentifier]
+    )
+  }()
+  /// Peripherals handed back by `willRestoreState`, held until the coordinator adopts one.
+  private var restoredPeripherals: [CBPeripheral] = []
+  /// Adoption requested before the central reported `.poweredOn` (restoration delivers
+  /// `willRestoreState` first), completed from `centralManagerDidUpdateState`.
+  private var pendingRestoreAdoptId: UUID?
 
   private var peripheral: CBPeripheral?
   private var txChar: CBCharacteristic?
@@ -75,8 +100,10 @@ internal final class VescGattClient: NSObject, SessionTransport {
   /// rescan windows don't tear that scan down during their idle gaps.
   private var reconnectTargetScan = false
 
-  init(listener: VescGattListener) {
+  /// `restoreIdentifier` opts this client's central into CoreBluetooth state restoration (ADR 0034).
+  init(listener: VescGattListener, restoreIdentifier: String? = nil) {
     self.listener = listener
+    self.restoreIdentifier = restoreIdentifier
     super.init()
     _ = central // Kick off state updates so poweredOn arrives before first use.
   }
@@ -146,7 +173,52 @@ internal final class VescGattClient: NSObject, SessionTransport {
 
   func disconnect() {
     lastConnectId = nil
+    restoredPeripherals = []
+    pendingRestoreAdoptId = nil
     clear(markIntentional: true)
+  }
+
+  // MARK: - State restoration (#378)
+
+  /// Adopt a peripheral CoreBluetooth restored into this launch as the session's link. The GATT
+  /// subscriptions survived the process death, but this object graph did not: the delegate is
+  /// re-set and services re-discovered so `txChar` and the frame callbacks exist again.
+  ///
+  /// Returns false when the id is not among the restored peripherals, which routes the coordinator
+  /// to a normal persistent connect instead.
+  @discardableResult
+  func adoptRestored(peripheralId: String) -> Bool {
+    guard
+      let uuid = UUID(uuidString: peripheralId),
+      let restored = restoredPeripherals.first(where: { $0.identifier == uuid })
+    else { return false }
+    restoredPeripherals = []
+    intentionalDisconnect = false
+    readyResolved = false
+    txChar = nil
+    pendingNotifyEnables = 0
+    lastConnectId = uuid
+    peripheral = restored
+    restored.delegate = self
+    guard central.state == .poweredOn else {
+      // Restoration delivers `willRestoreState` before the first state update; finish once the
+      // radio reports in, or CoreBluetooth silently drops the discovery/connect.
+      pendingRestoreAdoptId = uuid
+      return true
+    }
+    resumeAdopted(restored)
+    return true
+  }
+
+  private func resumeAdopted(_ peripheral: CBPeripheral) {
+    guard peripheral === self.peripheral else { return }
+    if peripheral.state == .connected {
+      listener?.onGattConnected()
+      peripheral.discoverServices([VescGattUUIDs.service])
+    } else {
+      // Restored but dropped since: persistent connect keeps retrying on its own.
+      central.connect(peripheral, options: nil)
+    }
   }
 
   // MARK: - Reconnect (#58)
@@ -267,10 +339,20 @@ extension VescGattClient: CBCentralManagerDelegate {
         pendingReconnect = false
         reconnect()
       }
+      if let adoptId = pendingRestoreAdoptId {
+        pendingRestoreAdoptId = nil
+        if let peripheral, peripheral.identifier == adoptId {
+          resumeAdopted(peripheral)
+        }
+      }
     case .poweredOff:
       if isDiscoveryScanning || pendingDiscoveryScan {
         listener?.onScanFailure("Bluetooth is off")
       }
+      // A restored session waiting to adopt its peripheral is not a failed connect: failing it here
+      // would tear the session down and drop the durable resume marker, so a later power-on could
+      // never finish the adoption. Radio off is a pause; the adoption stays deferred (ADR 0034).
+      if pendingRestoreAdoptId != nil { return }
       if peripheral != nil || connectTargetId != nil || pendingConnectId != nil {
         listener?.onGattFailure(code: "BLE_OFF", message: "Bluetooth is off")
       }
@@ -279,6 +361,19 @@ extension VescGattClient: CBCentralManagerDelegate {
     default:
       break
     }
+  }
+
+  /// iOS relaunched the app (headlessly, on a board notification) and is handing the session
+  /// central's preserved state back. Peripherals are retained and their delegate re-set here; the
+  /// decision of what to do with them — rebuild the Board Session, or fall back to a normal
+  /// reconnect when none came back — belongs to the coordinator (ADR 0034).
+  func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+    let peripherals = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+    for peripheral in peripherals {
+      peripheral.delegate = self
+    }
+    restoredPeripherals = peripherals
+    listener?.onGattRestored(peripheralIds: peripherals.map { $0.identifier.uuidString })
   }
 
   func centralManager(

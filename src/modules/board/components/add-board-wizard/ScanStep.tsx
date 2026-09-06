@@ -50,7 +50,7 @@ export function ScanStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Pro
 }
 
 function LinkStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
-  const link = useBoardLink(wizard.bleId || null)
+  const link = useBoardLink(wizard.bleId || null, wizard.boardId)
 
   return (
     <ScrollView
@@ -72,10 +72,11 @@ function LinkStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
         actions={
           link.phase === 'picking' ? (
             <Button
-              style={styles.upgradeButton}
               label="Save link"
+              variant="tune"
               icon={CheckCircleIcon}
-              disabled={link.selectedLink == null}
+              disabled={link.selectedLink == null || link.isFinalizing}
+              loading={link.isFinalizing}
               onPress={() => {
                 if (link.selectedLink) wizard.onDeviceProbed(link.selectedLink)
               }}
@@ -84,8 +85,8 @@ function LinkStep({ wizard, onLinkActiveStepIndexChange, scrollRef }: Props) {
           ) : link.phase === 'failed' ? (
             <>
               <Button
-                style={styles.upgradeButton}
                 label="Retry"
+                variant="tune"
                 icon={WifiHighIcon}
                 onPress={link.retry}
                 testID="add-board-link-retry"
@@ -209,7 +210,7 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
             {isScanning && <ActivityIndicator color={theme.palette.sky.color} size="small" />}
             <SignalIcon
               size={14}
-              color={isScanning ? theme.palette.sky.color : theme.palette.slate.textMuted}
+              color={isScanning ? theme.palette.sky.color : theme.neutral.textMuted}
               weight="bold"
             />
             <Text style={styles.scanStatus}>
@@ -259,9 +260,9 @@ function ScanSelectStep({ wizard }: { wizard: UseAddBoardWizard }) {
                 hitSlop={8}
               >
                 {showOther ? (
-                  <CaretDownIcon size={12} color={theme.palette.slate.textMuted} weight="bold" />
+                  <CaretDownIcon size={12} color={theme.neutral.textMuted} weight="bold" />
                 ) : (
-                  <CaretRightIcon size={12} color={theme.palette.slate.textMuted} weight="bold" />
+                  <CaretRightIcon size={12} color={theme.neutral.textMuted} weight="bold" />
                 )}
                 <Text style={styles.otherDevicesLabel}>Other devices ({otherDevices.length})</Text>
               </Pressable>
@@ -374,7 +375,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 20,
     fontWeight: '800',
   },
@@ -388,12 +389,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   scanStatus: {
-    color: theme.palette.slate.textSecondary,
+    flex: 1,
+    minWidth: 0,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
   emptyHint: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     textAlign: 'center',
     marginTop: 32,
     fontSize: 13,
@@ -405,7 +408,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   otherDevicesLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     fontWeight: '600',
   },

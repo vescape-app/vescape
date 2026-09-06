@@ -12,10 +12,9 @@ import {
 const markdown = new MarkdownIt('default', { html: true })
 const ROOT = join(import.meta.dir, '../..')
 export const RELEASE_NOTES_DIRECTORY = join(ROOT, 'release-notes')
-export const GENERATED_RELEASE_NOTES_FILE = join(
-  ROOT,
-  'src/modules/release/generated/releaseNotes.ts',
-)
+export const GENERATED_RELEASE_NOTES_PATH = 'src/modules/release/generated/releaseNotes.ts'
+export const GENERATED_RELEASE_NOTES_FILE = join(ROOT, GENERATED_RELEASE_NOTES_PATH)
+const OXFMT_BINARY = join(ROOT, 'node_modules/.bin/oxfmt')
 
 export interface CanonicalReleaseNote extends BundledReleaseNote {
   fileName: string
@@ -31,7 +30,7 @@ export function validateReleaseMarkdown(source: string, label = 'Release note'):
     ),
   )
   if (unsupported) throw new Error(`${label} uses unsupported Markdown (${unsupported.type})`)
-  const allowedSections = ['New', 'Improved', 'Fixed']
+  const allowedSections = ['New', 'Improved', 'Fixed', 'Watch']
   const sections = tokens.flatMap((token, index) => {
     if (token.type !== 'heading_open') return []
     const name = tokens[index + 1]?.type === 'inline' ? tokens[index + 1].content.trim() : ''
@@ -43,7 +42,7 @@ export function validateReleaseMarkdown(source: string, label = 'Release note'):
   if (new Set(sections).size !== sections.length) throw new Error(`${label} repeats a section`)
   const indexes = sections.map((section) => allowedSections.indexOf(section))
   if (indexes.some((index, position) => position > 0 && index <= indexes[position - 1])) {
-    throw new Error(`${label} sections must be ordered New, Improved, Fixed`)
+    throw new Error(`${label} sections must be ordered New, Improved, Fixed, Watch`)
   }
 }
 
@@ -90,8 +89,29 @@ export async function readCanonicalReleaseNotes(): Promise<CanonicalReleaseNote[
   )
 }
 
+/**
+ * The generated module is committed, so its bytes must survive a formatter pass. Formatting here
+ * keeps oxfmt the single style authority and stops `release-notes:check` from drifting the moment
+ * anything else formats the file.
+ */
+async function formatGenerated(source: string): Promise<string> {
+  const child = Bun.spawn([OXFMT_BINARY, `--stdin-filepath=${GENERATED_RELEASE_NOTES_FILE}`], {
+    cwd: ROOT,
+    stdin: new TextEncoder().encode(source),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  if (exitCode !== 0) throw new Error(`Cannot format bundled release notes: ${stderr.trim()}`)
+  return stdout
+}
+
 export async function expectedBundledReleaseNotes(): Promise<string> {
-  return compileReleaseNotes(await readCanonicalReleaseNotes())
+  return formatGenerated(compileReleaseNotes(await readCanonicalReleaseNotes()))
 }
 
 export async function buildReleaseNotes(): Promise<void> {

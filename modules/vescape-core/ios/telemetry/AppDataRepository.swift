@@ -26,9 +26,20 @@ final class AppDataRepository {
   /// `CoreForegroundService.emitEvent` static — a module-owned emit the repo funnels through.
   static var onDataChanged: ((String) -> Void)?
 
-  private var pool: DatabasePool? { TelemetryDatabase.pool }
+  /// Test seam, mirroring `TuneProfileStore(dbWriter:)` / `BoardWarningStore(dbWriter:)`: nil in the
+  /// app so every access follows the shared pool (including a hot-swap after a restore).
+  private let dbWriter: (any DatabaseWriter)?
 
-  private init() {}
+  private var writer: (any DatabaseWriter)? { dbWriter ?? TelemetryDatabase.pool }
+
+  private init(dbWriter: (any DatabaseWriter)? = nil) {
+    self.dbWriter = dbWriter
+  }
+
+  /// In-memory instance for DB-backed tests. The app always uses `shared`.
+  static func forTesting(dbWriter: any DatabaseWriter) -> AppDataRepository {
+    AppDataRepository(dbWriter: dbWriter)
+  }
 
   /// Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
   /// sync without an app restart. Every mutating method below funnels through here — new writes get
@@ -44,9 +55,9 @@ final class AppDataRepository {
   /// `boards` was missing a column read on screen exactly like a rider with no boards, so log it:
   /// a swallowed error still gets to say what it was.
   private func read<T>(_ fallback: T, _ body: (Database) throws -> T) -> T {
-    guard let pool else { return fallback }
+    guard let writer else { return fallback }
     do {
-      return try pool.read(body)
+      return try writer.read(body)
     } catch {
       NSLog("[vescape] AppDataRepository read failed: \(error)")
       return fallback
@@ -54,9 +65,9 @@ final class AppDataRepository {
   }
 
   private func write(_ body: @escaping (Database) throws -> Void) {
-    guard let pool else { return }
+    guard let writer else { return }
     do {
-      try pool.write(body)
+      try writer.write(body)
     } catch {
       NSLog("[vescape] AppDataRepository write failed: \(error)")
     }
@@ -66,11 +77,16 @@ final class AppDataRepository {
 
   // MARK: - Boards
 
+  /// Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getBoards`
   func getBoards() -> [[String: Any?]] {
     read([]) { db in
       let boards = try Row.fetchAll(
         db,
-        sql: "SELECT id, name, ble_id, transport, created_at FROM boards ORDER BY created_at ASC"
+        sql: """
+          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
+          WHERE deleted_at IS NULL ORDER BY created_at ASC
+          """
       )
       let settings = try Row.fetchAll(db, sql: "SELECT board_id, key, value_json FROM board_settings")
       var byBoard: [String: [(String, String)]] = [:]
@@ -82,11 +98,17 @@ final class AppDataRepository {
     }
   }
 
+  /// Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
+  /// that act on a Board rather than describe one check `deletedAt` and refuse.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getBoard`
   func getBoard(_ id: String) -> [String: Any?]? {
     read(nil) { db in
       guard let board = try Row.fetchOne(
         db,
-        sql: "SELECT id, name, ble_id, transport, created_at FROM boards WHERE id = ? LIMIT 1",
+        sql: """
+          SELECT id, name, ble_id, transport, created_at, deleted_at FROM boards
+          WHERE id = ? LIMIT 1
+          """,
         arguments: [id]
       ) else { return nil }
       let settings = try Row.fetchAll(
@@ -112,17 +134,24 @@ final class AppDataRepository {
       ("batteryConfig", Self.normalizeBatteryConfig(board["batteryConfig"] ?? nil)),
       ("dismissedWarnings", Self.normalizeDismissedWarnings(board["dismissedWarnings"] ?? nil)),
       ("topSpeedKmh", Self.topSpeedKmh(board["topSpeedKmh"] ?? nil)),
-      ("alertPreset", Self.normalizeAlertPreset(board["alertPreset"] ?? nil)),
+      ("alertPreset", Self.normalizeMetricBag(board["alertPreset"] ?? nil)),
       ("alertPresetsOnboarded", board["alertPresetsOnboarded"] as? Bool),
+      ("matchBoardConfig", Self.normalizeMetricBag(board["matchBoardConfig"] ?? nil)),
       // Legal Mode changes only through the dedicated native intent.
     ] + linkSettings.filter { $0.0 != "transport" }
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
     let updatedAt = nowMs()
 
     write { db in
+      // An existing tombstone survives the write, so an ordinary upsert can never resurrect a
+      // deleted Board — deletion is terminal (ADR 0027). Only `deleteBoard` stamps a new one.
+      let deletedAt = try Int64.fetchOne(db, sql: "SELECT deleted_at FROM boards WHERE id = ?", arguments: [id])
       try db.execute(
-        sql: "INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at) VALUES (?, ?, ?, ?, ?)",
-        arguments: [id, name, bleId, transport, createdAt]
+        sql: """
+          INSERT OR REPLACE INTO boards (id, name, ble_id, transport, created_at, deleted_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+          """,
+        arguments: [id, name, bleId, transport, createdAt, deletedAt]
       )
       for (key, value) in settings {
         guard let value, let json = Self.encodeJson(value) else {
@@ -138,13 +167,24 @@ final class AppDataRepository {
     notifyDataChanged(.boards)
   }
 
+  /// The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).
+  /// Telemetry and Tune Profiles are untouched — both outlive the Board.
+  ///
+  /// A Board that is not there (or already deleted) is left alone.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `deleteBoardWithSettings`
   func deleteBoard(_ id: String) {
+    let deletedAt = nowMs()
     write { db in
       try db.execute(sql: "DELETE FROM board_settings WHERE board_id = ?", arguments: [id])
+      try db.execute(sql: "DELETE FROM board_warnings WHERE board_id = ?", arguments: [id])
       // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
       try db.execute(sql: "DELETE FROM alerts WHERE board_id = ?", arguments: [id])
-      try db.execute(sql: "DELETE FROM boards WHERE id = ?", arguments: [id])
+      try db.execute(
+        sql: "UPDATE boards SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
+        arguments: [deletedAt, id]
+      )
     }
+    BoardConfigStore.shared.clear(boardId: id)
     notifyDataChanged(.boards)
   }
 
@@ -198,8 +238,10 @@ final class AppDataRepository {
       "topSpeedKmh": values["topSpeedKmh"] ?? defaultTopSpeedKmh,
       "alertPreset": values["alertPreset"],
       "alertPresetsOnboarded": values["alertPresetsOnboarded"] ?? false,
+      "matchBoardConfig": values["matchBoardConfig"] ?? nil,
       "legalMode": values["legalMode"] ?? ["enabled": false],
       "link": link,
+      "deletedAt": row["deleted_at"] as Int64?,
     ]
   }
 
@@ -223,9 +265,11 @@ final class AppDataRepository {
     case "topSpeedKmh":
       return topSpeedKmh(raw)
     case "alertPreset":
-      return normalizeAlertPreset(raw)
+      return normalizeMetricBag(raw)
     case "alertPresetsOnboarded":
       return raw as? Bool
+    case "matchBoardConfig":
+      return normalizeMetricBag(raw)
     case "legalMode":
       return normalizeLegalMode(raw)
     default:
@@ -233,10 +277,11 @@ final class AppDataRepository {
     }
   }
 
-  /// Durable Alert Preset per-metric level selection bag. JS owns behavior; native persists it as an
-  /// opaque object. Non-object/empty payloads normalize away (row removed).
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeAlertPreset`
-  private static func normalizeAlertPreset(_ raw: Any?) -> [String: Any]? {
+  /// A durable per-metric Alert Preset bag — the level selection, and which metrics match the
+  /// board's own configuration. JS owns behavior; native persists each as an opaque object.
+  /// Non-object/empty payloads normalize away (row removed).
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `normalizeMetricBag`
+  private static func normalizeMetricBag(_ raw: Any?) -> [String: Any]? {
     guard let map = raw as? [String: Any], !map.isEmpty else { return nil }
     return map
   }
@@ -279,6 +324,10 @@ final class AppDataRepository {
           "controlId": row["control_id"] as String,
           "threshold": row["threshold"] as Double,
           "thresholdMax": row["threshold_max"] as Double?,
+          "thresholdRule": (row["threshold_kind"] as String? == "config-relative") ? [
+            "kind": "config-relative", "fieldId": row["config_field_id"] as String?,
+            "thresholdOffset": row["threshold_offset"] as Double?, "thresholdMaxOffset": row["threshold_max_offset"] as Double?
+          ] : ["kind": "fixed"],
           "enabled": (row["enabled"] as Int64) != 0,
           "soundType": row["sound_type"] as String,
           "createdAt": row["created_at"] as Int64,
@@ -307,6 +356,10 @@ final class AppDataRepository {
           controlId: row["control_id"] as String,
           threshold: row["threshold"] as Double,
           thresholdMax: row["threshold_max"] as Double?,
+          thresholdKind: row["threshold_kind"] as String? ?? "fixed",
+          configFieldId: row["config_field_id"] as String?,
+          thresholdOffset: row["threshold_offset"] as Double?,
+          thresholdMaxOffset: row["threshold_max_offset"] as Double?,
           enabled: (row["enabled"] as Int64) != 0,
           soundType: row["sound_type"] as String,
           createdAt: row["created_at"] as Int64,
@@ -332,13 +385,18 @@ final class AppDataRepository {
     let repeatEverySeconds = normalizedAlertRepeatSeconds(Self.doubleValue(rule["repeatEverySeconds"] ?? nil))
     let beepCount = normalizedAlertBeepCount(Self.longValue(rule["beepCount"] ?? nil).map { Int($0) })
     let source = rule["source"] as? String
+    let thresholdRule = rule["thresholdRule"] as? [String: Any]
+    let thresholdKind = thresholdRule?["kind"] as? String ?? "fixed"
+    let configFieldId = thresholdRule?["fieldId"] as? String
+    let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
+    let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
     write { db in
       try db.execute(
         sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, threshold_kind, config_field_id, threshold_offset, threshold_max_offset)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source]
+        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source, thresholdKind, configFieldId, thresholdOffset, thresholdMaxOffset]
       )
     }
   }
@@ -430,13 +488,90 @@ final class AppDataRepository {
     updateSetting(Self.directionPointLongitudeKey, rawValue: longitude)
   }
 
+  func getDirectionPoint() -> (latitude: Double, longitude: Double)? {
+    let settings = getSettings()
+    guard
+      let latitude = Self.doubleValue(settings[Self.directionPointLatitudeKey] ?? nil),
+      let longitude = Self.doubleValue(settings[Self.directionPointLongitudeKey] ?? nil)
+    else { return nil }
+    return (latitude, longitude)
+  }
+
+  // MARK: - Navigation
+
+  /// The rider's stored Navigation, as the opaque JSON its own codec writes. Deliberately excluded
+  /// from `getSettings` below: it is native-owned, JS receives it through `onNavigation` instead,
+  /// and it is by far the largest value here (~14 KB for a long path) so it must not ride along on
+  /// every settings read.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationPath`
+  static let navigationPathKey = "navigationPath"
+
+  func getNavigationPath() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationPathKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationPath(_ json: String?) {
+    let key = Self.navigationPathKey
+    guard let json, let encoded = Self.encodeJson(json) else {
+      write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
+      return
+    }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [key, encoded, updatedAt]
+      )
+    }
+  }
+
+  /// The rider's last chosen Navigation Profile, as its wire string. App data rather than a
+  /// user-facing setting: nothing in the settings UI shows it, the rider only ever moves it by
+  /// switching profile while looking at a path.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationProfile`
+  static let navigationProfileKey = "navigationProfile"
+
+  func getNavigationProfile() -> String? {
+    read(nil) { db in
+      try String.fetchOne(
+        db,
+        sql: "SELECT value_json FROM app_settings WHERE key = ?",
+        arguments: [Self.navigationProfileKey]
+      )
+    }
+    .flatMap { Self.decodeJson($0) as? String }
+  }
+
+  func setNavigationProfile(_ profile: String) {
+    guard let encoded = Self.encodeJson(profile) else { return }
+    let updatedAt = nowMs()
+    write { db in
+      try db.execute(
+        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+        arguments: [Self.navigationProfileKey, encoded, updatedAt]
+      )
+    }
+  }
+
   // MARK: - Settings
 
   func getSettings() -> [String: Any?] {
     let rows: [String: Any] = read([:]) { db in
       var stored: [String: Any] = [:]
       for row in try Row.fetchAll(db, sql: "SELECT key, value_json FROM app_settings") {
-        if let decoded = Self.decodeJson(row["value_json"]) { stored[row["key"]] = decoded }
+        let key: String = row["key"]
+        // Native-owned; JS gets the Navigation through `onNavigation`, never here — and the path
+        // is large besides. (Android's projection is a typed whitelist, so it drops these keys
+        // without an exclusion.)
+        guard key != Self.navigationPathKey, key != Self.navigationProfileKey else { continue }
+        if let decoded = Self.decodeJson(row["value_json"]) { stored[key] = decoded }
       }
       return stored
     }
@@ -450,9 +585,30 @@ final class AppDataRepository {
     return Self.normalizeSettings(merged)
   }
 
+  /// Persist both coordinates together so readers cannot observe a mixed position.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastGpsLocation`
+  func updateLastGpsLocation(latitude: Double, longitude: Double) {
+    guard let lat = Self.encodeJson(latitude), let lon = Self.encodeJson(longitude) else { return }
+    let updatedAt = nowMs()
+    write { db in
+      for (key, value) in [("lastGpsLatitude", lat), ("lastGpsLongitude", lon)] {
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
+          arguments: [key, value, updatedAt]
+        )
+      }
+    }
+    notifyDataChanged(.settings)
+  }
+
   func updateSetting(_ key: String, rawValue: Any?) {
     // Legal Policy is native-owned. JS can request refresh through the dedicated intent.
-    guard key != "legalPolicy", key != "legalMode" else { return }
+    // The Navigation is native-owned too: JS moves the path by setting a Direction Point and the
+    // profile through `setNavigationProfile`, never by writing these rows.
+    guard
+      key != "legalPolicy", key != "legalMode",
+      key != Self.navigationPathKey, key != Self.navigationProfileKey
+    else { return }
     let updatedAt = nowMs()
     guard let rawValue, !(rawValue is NSNull) else {
       write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
@@ -472,9 +628,16 @@ final class AppDataRepository {
     } else if key == "satelliteImagerySaturation" {
       guard let saturation = Self.satelliteImagerySaturation(rawValue) else { return }
       value = saturation
+    } else if key == "themeMode" {
+      guard let mode = Self.themeMode(rawValue) else { return }
+      value = mode
     } else if key == "boardWarningsEnabled" {
       // Strict Bool (Android rejects non-Boolean too): the board-warnings kill switch must never
       // persist a malformed value that reads back truthy.
+      guard let flag = rawValue as? Bool else { return }
+      value = flag
+    } else if key == "vescFaultCollectionEnabled" {
+      // Strict Bool, same reasoning as the board-warnings switch above.
       guard let flag = rawValue as? Bool else { return }
       value = flag
     } else if key == "boardMoveStrengthPercent" {
@@ -529,6 +692,7 @@ final class AppDataRepository {
     "autoRecording": true,
     "companionPresenceEnabled": false,
     "boardWarningsEnabled": true,
+    "vescFaultCollectionEnabled": true,
     "companionPresenceCooldownMinutes": 60,
     // @platform-diff Auto close is Android-only behavior (iOS forbids programmatic app exit);
     // the keys exist here only so getSettings() returns the full settings shape.
@@ -547,6 +711,7 @@ final class AppDataRepository {
     "rideSplitGapMinutes": DEFAULT_RIDE_SPLIT_GAP_MINUTES,
     "freeSpinMaxSpeedDeltaKmh": DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH,
     "freeSpinStationaryBoardCapKmh": DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH,
+    "themeMode": "system",
     "satelliteOverlayEnabled": true,
     "satelliteImageryOpacity": 0.2,
     "satelliteMapImageryOpacity": 1.0,
@@ -570,6 +735,7 @@ final class AppDataRepository {
     var normalized = settings
     normalized["liveHistoryLimit"] =
       liveHistoryLimitMinutes(settings["liveHistoryLimit"]) ?? defaultSettings["liveHistoryLimit"]
+    normalized["themeMode"] = themeMode(settings["themeMode"]) ?? defaultSettings["themeMode"]
     normalized["satelliteImageryOpacity"] =
       satelliteImageryOpacity(settings["satelliteImageryOpacity"]) ?? defaultSettings["satelliteImageryOpacity"]
     normalized["satelliteMapImageryOpacity"] =
@@ -643,6 +809,11 @@ final class AppDataRepository {
   static func satelliteImagerySaturation(_ value: Any?) -> Double? {
     guard let saturation = doubleValue(value), saturation.isFinite else { return nil }
     return min(1, max(-1, saturation))
+  }
+
+  static func themeMode(_ value: Any?) -> String? {
+    guard let mode = value as? String else { return nil }
+    return ["system", "light", "dark", "sun"].contains(mode) ? mode : nil
   }
 
   static func liveHistoryLimitMinutes(_ value: Any?) -> Int? {

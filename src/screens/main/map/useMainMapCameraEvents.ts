@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { distanceMeters } from '@/helpers/mapGeometry'
+import type { MapCameraControllerState } from '@/modules/map/lib/cameraController'
 import type { CameraEngine } from '@/modules/map/lib/cameraEngine/engine'
 import { getLiveFollowCameraProfile, getPitchForZoom } from '@/modules/map/lib/cameraProfiles'
 import { shouldPreserveLiveFollowGesture } from '@/modules/map/lib/cameraGestureState'
@@ -18,6 +19,7 @@ import type { GpsFix } from '@/screens/main/map/cameraControlTypes'
 
 export function useMainMapCameraEvents({
   cameraRef,
+  controllerStateRef,
   currentCameraRef,
   engine,
   previewPanActiveRef,
@@ -39,6 +41,7 @@ export function useMainMapCameraEvents({
   setFollowGps,
   setFollowZoomLevel,
   onCameraSettled,
+  onWatchRouteSpanChange,
   onHeadingChange,
   repositionOffscreenIndicatorsForCamera,
   scheduleOffscreenMapIndicatorRefresh,
@@ -49,6 +52,7 @@ export function useMainMapCameraEvents({
   setLoadedStyleSignature,
 }: {
   cameraRef: RefObject<Camera | null>
+  controllerStateRef: RefObject<MapCameraControllerState>
   currentCameraRef: RefObject<CameraSnapshot | null>
   engine: CameraEngine
   previewPanActiveRef: RefObject<boolean>
@@ -70,6 +74,8 @@ export function useMainMapCameraEvents({
   setFollowGps: (follow: boolean) => void
   setFollowZoomLevel: (zoom: number) => void
   onCameraSettled: (latitude: number, longitude: number, zoom: number) => void
+  /** Wrist route scale, per camera frame and once more when the map comes to rest. */
+  onWatchRouteSpanChange: (latitude: number, zoom: number) => void
   onHeadingChange: (heading: number) => void
   repositionOffscreenIndicatorsForCamera: (camera: CameraSnapshot) => void
   scheduleOffscreenMapIndicatorRefresh: () => void
@@ -79,34 +85,38 @@ export function useMainMapCameraEvents({
   setCameraZoom: Dispatch<SetStateAction<number>>
   setLoadedStyleSignature: Dispatch<SetStateAction<string | null>>
 }) {
-  const styleReloadCameraRef = useRef<CameraSnapshot | null>(null)
+  const styleReloadPendingRef = useRef(false)
   const previousMapStyleKeyRef = useRef(mapStyleKey)
-  const gestureActiveRef = useRef(false)
 
   useEffect(() => {
     if (previousMapStyleKeyRef.current === mapStyleKey) return
     previousMapStyleKeyRef.current = mapStyleKey
-    styleReloadCameraRef.current = currentCameraRef.current
-  }, [currentCameraRef, mapStyleKey])
+    styleReloadPendingRef.current = true
+  }, [mapStyleKey])
 
   const handleMapLoaded = useCallback(() => {
     setLoadedStyleSignature(mapStyleSignature)
-    const styleReloadCamera = styleReloadCameraRef.current
-    styleReloadCameraRef.current = null
-    if (styleReloadCamera && gestureActiveRef.current) return
+    if (styleReloadPendingRef.current) {
+      // The native map survived this style swap. Its camera and the camera engine are already in
+      // sync; restoring the snapshot from the old remount flow briefly removed follow padding.
+      styleReloadPendingRef.current = false
+      return
+    }
+    // Whatever the controller last decided still stands; a style load is not a reason to hand the
+    // camera back to live follow when the rider is looking at the weather, a route, or a ride.
     const camera =
       historyActive && historyPreview
         ? getHistoryPreviewCamera(historyPreview)
-        : (styleReloadCamera ?? getLiveFollowCamera())
+        : controllerStateRef.current.mode.kind === 'liveFollow' || currentCameraRef.current == null
+          ? getLiveFollowCamera()
+          : currentCameraRef.current
     const initialHeading =
       'heading' in camera && typeof camera.heading === 'number'
         ? camera.heading
         : historyActive
           ? 0
           : followHeadingDeg
-    const initialPitch = styleReloadCamera
-      ? styleReloadCamera.pitch
-      : getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
+    const initialPitch = getPitchForZoom(camera.zoomLevel, perspectiveEnabled)
     cameraRef.current?.setCamera({
       ...camera,
       heading: initialHeading,
@@ -123,6 +133,8 @@ export function useMainMapCameraEvents({
     })
   }, [
     cameraRef,
+    controllerStateRef,
+    currentCameraRef,
     engine,
     followHeadingDeg,
     getHistoryPreviewCamera,
@@ -139,7 +151,6 @@ export function useMainMapCameraEvents({
       properties: { center: number[]; zoom: number; heading: number; pitch: number }
       gestures: { isGestureActive: boolean }
     }) => {
-      gestureActiveRef.current = state.gestures.isGestureActive
       const [longitude, latitude] = state.properties.center
       const automaticHeadingFollow =
         followGps && headingFollowMode && !state.gestures.isGestureActive
@@ -149,6 +160,7 @@ export function useMainMapCameraEvents({
         heading: state.properties.heading,
         pitch: state.properties.pitch,
       } satisfies CameraSnapshot
+      onWatchRouteSpanChange(latitude, state.properties.zoom)
       // The reveal gesture writes the camera and drives the engine itself; its
       // echoes arrive a frame late and would only add phantom velocity.
       const previewPanActive = previewPanActiveRef.current
@@ -237,6 +249,7 @@ export function useMainMapCameraEvents({
       historyActive,
       mode,
       onHeadingChange,
+      onWatchRouteSpanChange,
       mediaAssetCount,
       perspectiveEnabled,
       phoneHeadingMode,
@@ -259,8 +272,15 @@ export function useMainMapCameraEvents({
     if (camera) {
       const [longitude, latitude] = camera.centerCoordinate
       onCameraSettled(latitude, longitude, camera.zoomLevel)
+      onWatchRouteSpanChange(latitude, camera.zoomLevel)
     }
-  }, [currentCameraRef, onCameraSettled, scheduleOffscreenMapIndicatorRefresh, setCameraHeading])
+  }, [
+    currentCameraRef,
+    onCameraSettled,
+    onWatchRouteSpanChange,
+    scheduleOffscreenMapIndicatorRefresh,
+    setCameraHeading,
+  ])
 
   return { handleMapLoaded, handleCameraChanged, handleMapIdle }
 }

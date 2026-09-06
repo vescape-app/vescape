@@ -19,11 +19,11 @@ interface TelemetryDao {
     SELECT * FROM metric_exclusion_ranges
     WHERE start_ms <= :toMs
       AND end_ms >= :fromMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY start_ms ASC
     """,
   )
-  suspend fun getExclusions(fromMs: Long, toMs: Long, deviceId: String?): List<MetricExclusionRangeEntity>
+  suspend fun getExclusions(fromMs: Long, toMs: Long, boardId: String?): List<MetricExclusionRangeEntity>
 
   @Query("DELETE FROM metric_exclusion_ranges WHERE start_ms <= :toMs AND end_ms >= :fromMs")
   suspend fun deleteExclusionsRange(fromMs: Long, toMs: Long): Int
@@ -37,7 +37,7 @@ interface TelemetryDao {
   @Query(
     """
     SELECT * FROM metric_exclusion_ranges
-    WHERE device_id = :deviceId
+    WHERE board_id = :boardId
       AND reason = :reason
       AND end_ms >= :startMs - :mergeGapMs
     ORDER BY end_ms DESC
@@ -45,7 +45,7 @@ interface TelemetryDao {
     """,
   )
   suspend fun getMergeableExclusionRange(
-    deviceId: String,
+    boardId: String,
     reason: String,
     startMs: Long,
     mergeGapMs: Long,
@@ -88,13 +88,13 @@ interface TelemetryDao {
   @Update
   suspend fun updateBucket(bucket: TelemetryMinuteBucketEntity)
 
-  @Query("SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms = :bucketStartMs AND device_id = :deviceId LIMIT 1")
-  suspend fun getBucket(bucketStartMs: Long, deviceId: String): TelemetryMinuteBucketEntity?
+  @Query("SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms = :bucketStartMs AND board_id = :boardId LIMIT 1")
+  suspend fun getBucket(bucketStartMs: Long, boardId: String): TelemetryMinuteBucketEntity?
 
   @Transaction
   suspend fun upsertBuckets(buckets: Collection<TelemetryMinuteBucketEntity>) {
     for (bucket in buckets) {
-      val existing = getBucket(bucket.bucketStartMs, bucket.deviceId)
+      val existing = getBucket(bucket.bucketStartMs, bucket.boardId)
       if (existing == null) {
         insertBucket(bucket)
       } else {
@@ -118,9 +118,9 @@ interface TelemetryDao {
 
   @Transaction
   suspend fun upsertExclusionRanges(exclusions: List<MetricExclusionRangeEntity>) {
-    for (exclusion in exclusions.sortedWith(compareBy({ it.deviceId }, { it.reason }, { it.startMs }))) {
+    for (exclusion in exclusions.sortedWith(compareBy({ it.boardId }, { it.reason }, { it.startMs }))) {
       val existing = getMergeableExclusionRange(
-        exclusion.deviceId,
+        exclusion.boardId,
         exclusion.reason,
         exclusion.startMs,
         METRIC_EXCLUSION_RANGE_MERGE_GAP_MS,
@@ -141,7 +141,7 @@ interface TelemetryDao {
   @Query(
     """
     SELECT * FROM telemetry_minute_buckets
-    WHERE (:deviceId IS NULL OR device_id = :deviceId)
+    WHERE (:boardId IS NULL OR board_id = :boardId)
       AND bucket_start_ms <= :beforeMs
       AND bucket_start_ms >= :fromMs
       AND bucket_start_ms <= :toMs
@@ -154,7 +154,7 @@ interface TelemetryDao {
     fromMs: Long,
     toMs: Long,
     beforeMs: Long,
-    deviceId: String?,
+    boardId: String?,
     limit: Int,
   ): List<TelemetryMinuteBucketEntity>
 
@@ -166,18 +166,18 @@ interface TelemetryDao {
     SELECT * FROM telemetry_markers
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY occurred_at_ms ASC
     """,
   )
-  suspend fun getMarkers(fromMs: Long, toMs: Long, deviceId: String?): List<TelemetryMarkerEntity>
+  suspend fun getMarkers(fromMs: Long, toMs: Long, boardId: String?): List<TelemetryMarkerEntity>
 
   @Query(
     """
     SELECT * FROM diagnostic_events
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY occurred_at_ms DESC
     LIMIT :limit
     """,
@@ -185,7 +185,7 @@ interface TelemetryDao {
   suspend fun getDiagnosticEvents(
     fromMs: Long,
     toMs: Long,
-    deviceId: String?,
+    boardId: String?,
     limit: Int,
   ): List<DiagnosticEventEntity>
 
@@ -193,7 +193,7 @@ interface TelemetryDao {
     """
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms <= :fromMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
       AND (flags & :keyframeFlag) != 0
     ORDER BY captured_at_ms DESC
     LIMIT 1
@@ -201,7 +201,7 @@ interface TelemetryDao {
   )
   suspend fun getLatestKeyframeBefore(
     fromMs: Long,
-    deviceId: String?,
+    boardId: String?,
     keyframeFlag: Int = TELEMETRY_FLAG_KEYFRAME,
   ): TelemetryFrameEntity?
 
@@ -210,30 +210,30 @@ interface TelemetryDao {
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
-      AND (:deviceId IS NULL OR device_id = :deviceId)
+      AND (:boardId IS NULL OR board_id = :boardId)
     ORDER BY captured_at_ms ASC
     LIMIT :limit
     """,
   )
-  suspend fun getFrames(fromMs: Long, toMs: Long, deviceId: String?, limit: Int): List<TelemetryFrameEntity>
+  suspend fun getFrames(fromMs: Long, toMs: Long, boardId: String?, limit: Int): List<TelemetryFrameEntity>
 
   @Query(
     """
-    SELECT DISTINCT device_id FROM telemetry_frames
+    SELECT DISTINCT board_id FROM telemetry_frames
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
-      AND device_id IS NOT NULL
-    ORDER BY device_id ASC
+      AND board_id IS NOT NULL
+    ORDER BY board_id ASC
     """,
   )
-  suspend fun getDeviceIdsInRange(fromMs: Long, toMs: Long): List<String>
+  suspend fun getBoardIdsInRange(fromMs: Long, toMs: Long): List<String>
 
   @Query(
     """
     SELECT * FROM telemetry_frames
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
-      AND device_id = :deviceId
+      AND board_id = :boardId
     ORDER BY captured_at_ms ASC
     LIMIT 1
     """,
@@ -241,7 +241,7 @@ interface TelemetryDao {
   suspend fun getFirstFrameInRange(
     fromMs: Long,
     toMs: Long,
-    deviceId: String,
+    boardId: String,
   ): TelemetryFrameEntity?
 
   @Query("SELECT COUNT(*) FROM telemetry_frames")
@@ -284,12 +284,12 @@ interface TelemetryDao {
     WHERE captured_at_ms >= :fromMs
       AND captured_at_ms <= :toMs
       AND (
-        (:deviceId IS NOT NULL AND device_id = :deviceId)
-        OR (:deviceId IS NULL AND device_id IS NULL)
+        (:boardId IS NOT NULL AND board_id = :boardId)
+        OR (:boardId IS NULL AND board_id IS NULL)
       )
     """,
   )
-  suspend fun deleteFramesRange(fromMs: Long, toMs: Long, deviceId: String?): Int
+  suspend fun deleteFramesRange(fromMs: Long, toMs: Long, boardId: String?): Int
 
   @Query(
     """
@@ -297,28 +297,29 @@ interface TelemetryDao {
     WHERE occurred_at_ms >= :fromMs
       AND occurred_at_ms <= :toMs
       AND (
-        (:deviceId IS NOT NULL AND device_id = :deviceId)
-        OR (:deviceId IS NULL AND device_id IS NULL)
+        (:boardId IS NOT NULL AND board_id = :boardId)
+        OR (:boardId IS NULL AND board_id IS NULL)
       )
     """,
   )
-  suspend fun deleteMarkersRange(fromMs: Long, toMs: Long, deviceId: String?): Int
+  suspend fun deleteMarkersRange(fromMs: Long, toMs: Long, boardId: String?): Int
 
   @Query(
     """
     DELETE FROM telemetry_minute_buckets
     WHERE last_sample_at_ms >= :fromMs
       AND first_sample_at_ms <= :toMs
-      AND device_id = :bucketDeviceId
+      AND board_id = :bucketBoardId
     """,
   )
-  suspend fun deleteBucketsRange(fromMs: Long, toMs: Long, bucketDeviceId: String): Int
+  suspend fun deleteBucketsRange(fromMs: Long, toMs: Long, bucketBoardId: String): Int
 
+  /** Every telemetry table keys on [boardId] (ADR 0028). Null means "every Board". */
   @Transaction
-  suspend fun deleteRange(fromMs: Long, toMs: Long, deviceId: String?): Int {
-    val frames = deleteFramesRange(fromMs, toMs, deviceId)
-    deleteMarkersRange(fromMs, toMs, deviceId)
-    deleteBucketsRange(fromMs, toMs, deviceId ?: UNKNOWN_TELEMETRY_DEVICE_ID)
+  suspend fun deleteRange(fromMs: Long, toMs: Long, boardId: String?): Int {
+    val frames = deleteFramesRange(fromMs, toMs, boardId)
+    deleteMarkersRange(fromMs, toMs, boardId)
+    deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
     deleteExclusionsRange(fromMs, toMs)
     return frames
   }
@@ -368,14 +369,39 @@ interface TelemetryDao {
     clearExclusions()
   }
 
-  @Query("SELECT * FROM boards ORDER BY created_at ASC")
+  /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
+  @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")
   suspend fun getBoards(): List<BoardEntity>
 
+  /**
+   * Resolves tombstones too, deliberately: Ride History still has to name a deleted Board. Callers
+   * that act on a Board rather than describe one check [BoardEntity.deletedAt] and refuse.
+   */
   @Query("SELECT * FROM boards WHERE id = :id LIMIT 1")
   suspend fun getBoard(id: String): BoardEntity?
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
-  suspend fun upsertBoard(board: BoardEntity)
+  suspend fun insertBoardRow(board: BoardEntity)
+
+  @Query("SELECT deleted_at FROM boards WHERE id = :id")
+  suspend fun getBoardDeletedAt(id: String): Long?
+
+  /**
+   * An existing tombstone survives the write, so an ordinary upsert can never resurrect a deleted
+   * Board — deletion is terminal (ADR 0027). Only [deleteBoardWithSettings] stamps a new one.
+   */
+  @Transaction
+  suspend fun upsertBoard(board: BoardEntity) {
+    insertBoardRow(board.copy(deletedAt = board.deletedAt ?: getBoardDeletedAt(board.id)))
+  }
+
+  /**
+   * Every Board including tombstones, for Ride History name resolution. Names are looked up on read
+   * rather than denormalized onto telemetry rows (ADR 0028), so a rename retroactively relabels the
+   * history and a deleted Board is still nameable.
+   */
+  @Query("SELECT id, name FROM boards")
+  suspend fun getBoardNames(): List<BoardNameRow>
 
   @Query("SELECT * FROM board_settings WHERE board_id = :boardId")
   suspend fun getBoardSettings(boardId: String): List<BoardSettingEntity>
@@ -399,16 +425,20 @@ interface TelemetryDao {
   @Query("DELETE FROM board_settings WHERE board_id = :boardId")
   suspend fun deleteBoardSettings(boardId: String)
 
-  @Query("DELETE FROM boards WHERE id = :id")
-  suspend fun deleteBoard(id: String)
-
+  /**
+   * The Rider-facing delete: configuration goes, the Board row stays as a tombstone (ADR 0027).
+   * Telemetry and Tune Profiles are untouched — both outlive the Board.
+   *
+   * An unknown or already-tombstoned id is a no-op.
+   */
   @Transaction
-  suspend fun deleteBoardWithSettings(id: String) {
+  suspend fun deleteBoardWithSettings(id: String, deletedAt: Long) {
+    val board = getBoard(id)?.takeIf { it.deletedAt == null } ?: return
     deleteBoardSettings(id)
     deleteBoardWarnings(id)
     // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
     deleteAlertRules(id)
-    deleteBoard(id)
+    insertBoardRow(board.copy(deletedAt = deletedAt))
   }
 
   @Query("SELECT * FROM alerts WHERE board_id = :boardId ORDER BY created_at ASC")
@@ -562,6 +592,144 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
+  // `deleteBoardWithSettings`: fault evidence outlives the Board record.
+  // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift
+
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId ORDER BY occurred_at DESC, rowid DESC")
+  suspend fun getVescFaults(boardId: String): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_occurrences ORDER BY board_id ASC, occurred_at DESC, rowid DESC")
+  suspend fun getAllVescFaults(): List<VescFaultOccurrenceEntity>
+
+  @Query("SELECT * FROM vesc_fault_occurrences WHERE id = :id LIMIT 1")
+  suspend fun getVescFault(id: String): VescFaultOccurrenceEntity?
+
+  /** Newest still-open occurrence for a Board — rehydrates coordinator state after restart. */
+  @Query(
+    "SELECT * FROM vesc_fault_occurrences WHERE board_id = :boardId AND cleared_at IS NULL " +
+      "ORDER BY occurred_at DESC, rowid DESC LIMIT 1",
+  )
+  suspend fun getOpenVescFault(boardId: String): VescFaultOccurrenceEntity?
+
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertVescFault(fault: VescFaultOccurrenceEntity): Long
+
+  @Query(
+    "UPDATE vesc_fault_occurrences SET last_observed_at = :lastObservedAt, cleared_at = :clearedAt WHERE id = :id",
+  )
+  suspend fun updateVescFaultLifecycle(
+    id: String,
+    lastObservedAt: Long,
+    clearedAt: Long?,
+  )
+
+  /**
+   * Insert-or-advance. Deliberately not a `REPLACE` upsert: that rewrites `dismissed` from the
+   * caller's in-memory snapshot, so a stale heartbeat could un-dismiss what the rider just
+   * acknowledged. Dismissal has its own statement.
+   */
+  @Transaction
+  suspend fun upsertVescFault(fault: VescFaultOccurrenceEntity) {
+    if (insertVescFault(fault) == -1L) {
+      updateVescFaultLifecycle(fault.id, fault.lastObservedAtMs, fault.clearedAtMs)
+    }
+  }
+
+  @Query("UPDATE vesc_fault_occurrences SET dismissed = :dismissed WHERE id = :id")
+  suspend fun setVescFaultDismissed(id: String, dismissed: Boolean): Int
+
+  // VESC Fault Captures — one self-contained window of decoded Board samples per occurrence. Append
+  // only, no GPS, and outside every Ride History retention/pruning path.
+  // @parity /modules/vescape-core/ios/faults/VescFaultCaptureStore.swift
+
+  @Upsert
+  suspend fun upsertVescFaultCapture(capture: VescFaultCaptureEntity)
+
+  @Query("SELECT * FROM vesc_fault_captures WHERE occurrence_id = :occurrenceId LIMIT 1")
+  suspend fun getVescFaultCapture(occurrenceId: String): VescFaultCaptureEntity?
+
+  @Insert
+  suspend fun insertVescFaultCaptureSamples(samples: List<VescFaultCaptureSampleEntity>)
+
+  @Query(
+    "SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = :occurrenceId " +
+      "ORDER BY captured_at ASC, id ASC",
+  )
+  suspend fun getVescFaultCaptureSamples(occurrenceId: String): List<VescFaultCaptureSampleEntity>
+
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId AND refloat_base_version = :refloatBaseVersion LIMIT 1")
+  suspend fun getBoardConfigValues(boardId: String, refloatBaseVersion: String): BoardConfigValuesEntity?
+
+  @Query("SELECT * FROM board_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestBoardConfigValues(boardId: String): BoardConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigValues(values: BoardConfigValuesEntity)
+
+  @Query("DELETE FROM board_config_values WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigValues(boardId: String)
+
+  @Query("SELECT * FROM motor_config_values WHERE board_id = :boardId ORDER BY captured_at DESC LIMIT 1")
+  suspend fun getLatestMotorConfigValues(boardId: String): MotorConfigValuesEntity?
+
+  @Upsert
+  suspend fun upsertMotorConfigValues(values: MotorConfigValuesEntity)
+
+  @Query("DELETE FROM motor_config_values WHERE board_id = :boardId")
+  suspend fun deleteMotorConfigValues(boardId: String)
+
+  /**
+   * Same baseline-then-notice transaction as [replaceBaselineAndNotice], for motor config. Both
+   * configs write into one notice row per Board: a rider does not care which subsystem a setting
+   * lives in, only that their board changed while Vescape was away.
+   */
+  @Transaction
+  suspend fun replaceMotorBaselineAndNotice(
+    values: MotorConfigValuesEntity,
+    buildNotice: (MotorConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?,
+  ): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getLatestMotorConfigValues(values.boardId), getBoardConfigChangeNotice(values.boardId))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertMotorConfigValues(values)
+    return notice
+  }
+
+  @Query("SELECT * FROM board_config_change_notices WHERE board_id = :boardId LIMIT 1")
+  suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNoticeEntity?
+
+  @Upsert
+  suspend fun upsertBoardConfigChangeNotice(notice: BoardConfigChangeNoticeEntity)
+
+  @Query("DELETE FROM board_config_change_notices WHERE board_id = :boardId")
+  suspend fun deleteBoardConfigChangeNotice(boardId: String)
+
+  @Transaction
+  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion))
+    if (notice != null) upsertBoardConfigChangeNotice(notice)
+    upsertBoardConfigValues(values)
+    return notice
+  }
+
+  /**
+   * Patch a few fields of the stored baseline in one transaction, leaving every other field and the
+   * row's `capturedAt` alone.
+   *
+   * A runtime command that mutates config on the board has to teach the baseline about it, but it
+   * holds a snapshot taken when the session read ran — writing that whole snapshot back would undo a
+   * fresh read that landed in between and resurrect its stale values as the comparison base.
+   */
+  @Transaction
+  suspend fun patchBoardConfigValues(
+    boardId: String,
+    refloatBaseVersion: String,
+    patch: (BoardConfigValuesEntity) -> BoardConfigValuesEntity,
+  ) {
+    val row = getBoardConfigValues(boardId, refloatBaseVersion) ?: return
+    upsertBoardConfigValues(patch(row))
+  }
+
   // Favorites — durable pins over Ride History (ADR 0029). Deleting a row only unpins; telemetry
   // inside the range is never touched here.
   // @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift
@@ -610,7 +778,6 @@ interface TelemetryDao {
 
 private fun TelemetryMinuteBucketEntity.merge(next: TelemetryMinuteBucketEntity): TelemetryMinuteBucketEntity {
   return copy(
-    deviceName = next.deviceName ?: deviceName,
     sampleCount = sampleCount + next.sampleCount,
     firstSampleAtMs = minOf(firstSampleAtMs, next.firstSampleAtMs),
     lastSampleAtMs = maxOf(lastSampleAtMs, next.lastSampleAtMs),
@@ -628,7 +795,6 @@ private fun TelemetryMinuteBucketEntity.merge(next: TelemetryMinuteBucketEntity)
     batteryUsedWhMilli = batteryUsedWhMilli + next.batteryUsedWhMilli,
     batteryRegenWhMilli = batteryRegenWhMilli + next.batteryRegenWhMilli,
     maxDutyAbsPermille = maxOf(maxDutyAbsPermille, next.maxDutyAbsPermille),
-    faultCount = faultCount + next.faultCount,
     firstOdometerCm = when {
       firstOdometerCm == null -> next.firstOdometerCm
       next.firstOdometerCm == null -> firstOdometerCm

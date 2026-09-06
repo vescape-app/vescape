@@ -17,6 +17,8 @@ function fix(overrides: Partial<LocationEvent> = {}): LocationEvent {
     altitudeM: null,
     speedMps: 3,
     bearingDeg: 91,
+    courseDeg: 91,
+    courseSourceTimestamp: 18_000,
     precise: true,
     ...overrides,
   }

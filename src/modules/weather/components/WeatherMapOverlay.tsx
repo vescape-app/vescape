@@ -1,14 +1,13 @@
 import { ArrowLeftIcon, ArrowsClockwiseIcon } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
+import { refreshWeather } from 'vescape-core'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { IconButton } from '@/components/base/IconButton'
-import { theme } from '@/constants/theme'
 import { WeatherHourlyStrip } from '@/modules/weather/components/WeatherHourlyStrip'
 import { WeatherPill } from '@/modules/weather/components/WeatherPill'
 import { WeatherRadarTimeline } from '@/modules/weather/components/WeatherRadarTimeline'
 import { useRainViewerRadarStore } from '@/modules/weather/store/rainViewerRadarStore'
-import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 
 interface WeatherMapOverlayProps {
   visible: boolean
@@ -16,22 +15,12 @@ interface WeatherMapOverlayProps {
   top: number
   /** Just below the mode tabs, where the expanded forecast pill sits. */
   pillTop: number
-  location: { latitude: number; longitude: number } | null
   onExit: () => void
-  onRefreshForecast: () => void
 }
 
 /** Everything the map shows in weather mode: forecast pill, radar timeline and the hourly strip. */
-export function WeatherMapOverlay({
-  visible,
-  top,
-  pillTop,
-  location,
-  onExit,
-  onRefreshForecast,
-}: WeatherMapOverlayProps) {
+export function WeatherMapOverlay({ visible, top, pillTop, onExit }: WeatherMapOverlayProps) {
   const insets = useSafeAreaInsets()
-  const forecastLoading = useWeatherStore((s) => s.loading)
   const radarLoading = useRainViewerRadarStore((s) => s.loading)
   const refreshRadar = useRainViewerRadarStore((s) => s.fetch)
 
@@ -51,14 +40,14 @@ export function WeatherMapOverlay({
       <IconButton
         icon={ArrowsClockwiseIcon}
         onPress={() => {
-          onRefreshForecast()
+          refreshWeather()
           refreshRadar(true)
         }}
-        loading={forecastLoading || radarLoading}
+        loading={radarLoading}
         style={[styles.weatherRefreshButton, { top }]}
       />
       <View pointerEvents="none" style={[styles.weatherExpandedPill, { top: pillTop }]}>
-        <WeatherPill location={location} expanded onPress={() => undefined} />
+        <WeatherPill expanded onPress={() => undefined} />
       </View>
       <View
         style={[
@@ -90,8 +79,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   weatherRefreshButton: {
     position: 'absolute',

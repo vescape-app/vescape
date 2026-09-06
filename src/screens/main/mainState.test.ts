@@ -13,8 +13,8 @@ const sessions = [session('newest', 3000), session('middle', 2000), session('old
 function session(id: string, startAtMs: number): HistorySession {
   return {
     id,
-    deviceId: 'dev-1',
-    deviceName: 'ADV',
+    boardId: 'dev-1',
+    boardName: 'ADV',
     startAtMs,
     endAtMs: startAtMs + 60_000,
     movingStartAtMs: startAtMs,
@@ -27,7 +27,6 @@ function session(id: string, startAtMs: number): HistorySession {
     sampleCount: 20,
     gpsPointCount: 20,
     preciseGpsPointCount: 18,
-    faultCount: 0,
     maxTempMosfet: null,
     maxTempMotor: null,
     maxDuty: 0.5,
@@ -42,6 +41,7 @@ function session(id: string, startAtMs: number): HistorySession {
     minLongitude: null,
     maxLongitude: null,
     boundaryBefore: 'none',
+    routePoints: [],
   }
 }
 

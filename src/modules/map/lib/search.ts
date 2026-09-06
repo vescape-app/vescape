@@ -1,4 +1,9 @@
 import { MAPBOX_ACCESS_TOKEN } from '@/config/mapy'
+import { distanceMeters } from '@/helpers/mapGeometry'
+
+const SEARCH_FETCH_LIMIT = '10'
+const SEARCH_RESULT_LIMIT = 5
+const LOCAL_RESULT_RADIUS_METERS = 150_000
 
 export interface MapSearchResult {
   id: string
@@ -6,6 +11,7 @@ export interface MapSearchResult {
   subtitle: string
   latitude: number
   longitude: number
+  category: string | null
 }
 
 export interface MapReverseGeocodeResult {
@@ -25,6 +31,8 @@ interface MapboxGeocodingFeature {
     name?: string
     full_address?: string
     place_formatted?: string
+    poi_category?: unknown
+    maki?: unknown
   }
 }
 
@@ -56,6 +64,18 @@ function getFeatureSubtitle(feature: MapboxGeocodingFeature) {
     : fullAddress || place || feature.place_name || 'Mapbox result'
 }
 
+export function getMapSearchCategory(properties: MapboxGeocodingFeature['properties'], title = '') {
+  const categories = properties?.poi_category
+  const categoryWords = Array.isArray(categories)
+    ? categories.filter((value): value is string => typeof value === 'string')
+    : []
+  const maki = typeof properties?.maki === 'string' ? properties.maki.replaceAll('-', ' ') : null
+  const classification = [...categoryWords, ...(maki && maki !== 'marker' ? [maki] : []), title]
+    .filter(Boolean)
+    .join(' ')
+  return classification || null
+}
+
 function toMapSearchResult(feature: MapboxGeocodingFeature): MapSearchResult | null {
   const coordinate = getFeatureCoordinates(feature)
   if (!coordinate) return null
@@ -69,12 +89,27 @@ function toMapSearchResult(feature: MapboxGeocodingFeature): MapSearchResult | n
     subtitle: getFeatureSubtitle(feature),
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
+    category: getMapSearchCategory(feature.properties, getFeatureTitle(feature)),
   }
 }
 
 interface SearchMapResultsOptions {
   proximity?: { latitude: number; longitude: number } | null
   signal?: AbortSignal
+}
+
+export function prioritizeNearbySearchResults(
+  results: MapSearchResult[],
+  proximity: { latitude: number; longitude: number } | null | undefined,
+) {
+  if (!proximity) return results.slice(0, SEARCH_RESULT_LIMIT)
+  const nearby: MapSearchResult[] = []
+  const distant: MapSearchResult[] = []
+  for (const result of results) {
+    const group = distanceMeters(proximity, result) <= LOCAL_RESULT_RADIUS_METERS ? nearby : distant
+    group.push(result)
+  }
+  return [...nearby, ...distant].slice(0, SEARCH_RESULT_LIMIT)
 }
 
 export async function searchMapResults(query: string, options: SearchMapResultsOptions = {}) {
@@ -85,7 +120,7 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
   const params = new URLSearchParams({
     q: normalized,
     access_token: MAPBOX_ACCESS_TOKEN,
-    limit: '5',
+    limit: SEARCH_FETCH_LIMIT,
   })
   if (options.proximity) {
     params.set('proximity', `${options.proximity.longitude},${options.proximity.latitude}`)
@@ -99,7 +134,8 @@ export async function searchMapResults(query: string, options: SearchMapResultsO
   }
 
   const data = (await response.json()) as MapboxGeocodingResponse
-  return (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
+  const results = (data.features ?? []).map(toMapSearchResult).filter((result) => result != null)
+  return prioritizeNearbySearchResults(results, options.proximity)
 }
 
 export async function reverseGeocodeMapCoordinate(

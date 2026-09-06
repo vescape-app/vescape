@@ -27,6 +27,7 @@ interface BoardState {
 interface BoardActions {
   load: () => Promise<void>
   addBoard: (data: {
+    id?: string
     name: string
     kind?: BoardKind
     description?: string
@@ -79,6 +80,7 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
   },
 
   addBoard({
+    id,
     name,
     kind,
     description,
@@ -89,11 +91,12 @@ export const useBoardStore = create<BoardState & BoardActions>((set, get) => ({
     alertPresetsOnboarded,
   }) {
     const board: Board = {
-      id: generateId(),
+      id: id ?? generateId(),
       name,
       kind: kind ?? 'vesc',
       description: description ?? null,
       createdAt: Date.now(),
+      deletedAt: null,
       // `null` means the board supplies SoC directly (original OneWheel).
       batteryConfig: batteryConfig === undefined ? DEFAULT_BATTERY_CONFIG : batteryConfig,
       topSpeedKmh,

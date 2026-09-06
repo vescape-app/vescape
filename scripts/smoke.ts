@@ -13,17 +13,24 @@
  *   bun run smoke --no-build           # reuse the smoke build already installed
  *   bun run smoke --flow 03-history    # one flow, against the installed build
  *   bun run smoke --device R5CT        # skip the picker
+ *   bun run smoke --platform ios       # the same flows on a Release simulator build
  *
- * Android only, like the E2E suite it sits beside: the flows are driven over adb, and iOS has no
- * equivalent path that does not go through a simulator build. The screenshot run covers iOS because
- * the store requires it to.
+ * Both platforms run the same flow files through the same `CaptureDriver` the screenshot run uses:
+ * a flow that needs platform-specific steps belongs in a sub-flow, not in a second flow set.
  */
 import { readdirSync } from 'fs'
 import { basename, join } from 'path'
 
 import { applicationId } from '../src/config/appVariant.ts'
 import { createAndroidDriver } from './lib/androidCapture.ts'
-import { CommandFailed, ROOT, runOrDie, type CaptureDriver } from './lib/captureDriver.ts'
+import {
+  CommandFailed,
+  ROOT,
+  runOrDie,
+  type CaptureDriver,
+  type CapturePlatform,
+} from './lib/captureDriver.ts'
+import { createIosDriver } from './lib/iosCapture.ts'
 
 const FLOWS_DIR = join(ROOT, 'e2e', 'flows', 'smoke')
 const BOOT_FLOW = join(ROOT, 'e2e', 'flows', 'fixture', '_boot.yaml')
@@ -32,14 +39,26 @@ const BOOT_FLOW = join(ROOT, 'e2e', 'flows', 'fixture', '_boot.yaml')
 const DEFAULT_REPLAY = 'replay-thor301.jsonl'
 
 interface Args {
+  platform: CapturePlatform
   device: string | null
   flow: string | null
   build: boolean
   replay: string
 }
 
+function parsePlatform(value: string): CapturePlatform {
+  if (value === 'android' || value === 'ios') return value
+  throw new Error(`Unknown platform "${value}"; expected android or ios`)
+}
+
 function readArgs(argv: string[]): Args {
-  const args: Args = { device: null, flow: null, build: true, replay: DEFAULT_REPLAY }
+  const args: Args = {
+    platform: 'android',
+    device: null,
+    flow: null,
+    build: true,
+    replay: DEFAULT_REPLAY,
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
@@ -49,7 +68,8 @@ function readArgs(argv: string[]): Args {
       index += 1
       return value
     }
-    if (arg === '--device') args.device = next()
+    if (arg === '--platform') args.platform = parsePlatform(next())
+    else if (arg === '--device') args.device = next()
     else if (arg === '--flow') args.flow = next()
     else if (arg === '--replay') args.replay = next()
     else if (arg === '--no-build') args.build = false
@@ -95,7 +115,10 @@ async function runFlow(path: string, driver: CaptureDriver): Promise<void> {
 }
 
 async function main(args: Args): Promise<void> {
-  const driver = await createAndroidDriver(args.device, args.replay, 'smoke')
+  const driver =
+    args.platform === 'ios'
+      ? await createIosDriver(args.device, args.replay, 'smoke')
+      : await createAndroidDriver(args.device, args.replay, 'smoke')
   const flows = selectFlows(args.flow)
 
   console.log(`\nSmoke · ${driver.deviceLabel}`)

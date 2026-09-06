@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.palette.slate.surface,
-    borderColor: theme.palette.slate.border,
+    backgroundColor: theme.neutral.surface,
+    borderColor: theme.neutral.border,
   },
 })

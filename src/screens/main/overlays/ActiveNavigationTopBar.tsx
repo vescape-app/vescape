@@ -1,6 +1,6 @@
-import { createElement, useCallback, useMemo, useRef, useState } from 'react'
+import { createElement, type ReactNode, useCallback, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native'
-import { CaretDownIcon, PowerIcon, XIcon } from 'phosphor-react-native'
+import { XIcon, type Icon } from 'phosphor-react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   interpolate,
@@ -11,26 +11,19 @@ import Animated, {
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
-import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
-import type { MapPinKind } from '@/modules/map-points/constants/mapPoints'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface ActiveNavigationTopBarProps {
+  boardPill: ReactNode
+  maxWidth: number
   boardName: string
   connected: boolean
   targetTitle: string
-  targetKind: MapPinKind
+  targetIcon: Icon
   distanceLabel: string
   riderColor: string
-  activeBoardId: string | null
-  canDisconnect: boolean
-  onBoardPress: () => void
-  onDisconnect: () => void
+  onNavigationPress: () => void
   onCancel: () => void
-}
-
-function BoardWarnings({ activeBoardId }: { activeBoardId: string | null }) {
-  return activeBoardId ? <BoardWarningControl boardId={activeBoardId} /> : null
 }
 
 function compactBoardName(name: string, availableWidth: number) {
@@ -40,82 +33,45 @@ function compactBoardName(name: string, availableWidth: number) {
   return `${name.slice(0, Math.max(3, maxChars - 1))}…`
 }
 
-function NavigationBoardPill({
+function CompactBoardPill({
   name,
   connected,
   availableWidth,
-  expanded,
-  activeBoardId,
-  canDisconnect,
   onPress,
-  onDisconnect,
 }: {
   name: string
   connected: boolean
   availableWidth: number
-  expanded: boolean
-  activeBoardId: string | null
-  canDisconnect: boolean
   onPress: () => void
-  onDisconnect: () => void
 }) {
-  const label = expanded ? name : compactBoardName(name, availableWidth)
+  const label = compactBoardName(name, availableWidth)
   return (
-    <View
-      style={[
-        styles.boardPill,
-        expanded && styles.boardPillExpanded,
-        !label && styles.boardPillDotOnly,
-      ]}
-    >
-      <Pressable accessibilityLabel="Board selector" onPress={onPress} style={styles.boardIdentity}>
+    <View style={[styles.boardPill, !label && styles.boardPillDotOnly]}>
+      <Pressable
+        accessibilityLabel={`${name}, board selector`}
+        onPress={onPress}
+        style={styles.boardIdentity}
+      >
         <View
           style={[
             styles.statusDot,
             {
-              backgroundColor: connected
-                ? theme.palette.green.color
-                : theme.palette.slate.textMuted,
+              backgroundColor: connected ? theme.palette.green.color : theme.control.textMuted,
             },
           ]}
         />
         {label ? (
-          <Text numberOfLines={1} style={[styles.boardName, expanded && styles.boardNameExpanded]}>
+          <Text numberOfLines={1} style={styles.boardName}>
             {label}
           </Text>
         ) : null}
-        {expanded ? (
-          <CaretDownIcon size={11} color={theme.palette.slate.textMuted} weight="bold" />
-        ) : null}
       </Pressable>
-      {expanded && canDisconnect ? (
-        <>
-          <View style={styles.divider} />
-          <Pressable
-            accessibilityLabel="Disconnect board"
-            onPress={onDisconnect}
-            style={styles.boardAction}
-            testID="board-disconnect-button"
-          >
-            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
-          </Pressable>
-        </>
-      ) : null}
-      {expanded ? <BoardWarnings activeBoardId={activeBoardId} /> : null}
     </View>
   )
 }
 
-function TargetIcon({
-  kind,
-  color,
-  size = 16,
-}: {
-  kind: MapPinKind
-  color: string
-  size?: number
-}) {
-  return createElement(getMapPointKindIcon(kind), { size, color, weight: 'bold' })
+function TargetIcon({ icon, color, size = 16 }: { icon: Icon; color: string; size?: number }) {
+  return createElement(icon, { size, color, weight: 'bold' })
 }
 
 function CancelButton({ color, onPress }: { color: string; onPress: () => void }) {
@@ -128,25 +84,25 @@ function CancelButton({ color, onPress }: { color: string; onPress: () => void }
       }}
       style={styles.cancel}
     >
-      <XIcon size={12} color={color} weight="bold" />
+      <XIcon size={22} color={color} weight="bold" />
     </Pressable>
   )
 }
 
 export function ActiveNavigationTopBar({
+  boardPill,
+  maxWidth,
   boardName,
   connected,
   targetTitle,
-  targetKind,
+  targetIcon,
   distanceLabel,
   riderColor,
-  activeBoardId,
-  canDisconnect,
-  onBoardPress,
-  onDisconnect,
+  onNavigationPress,
   onCancel,
 }: ActiveNavigationTopBarProps) {
   const { width } = useWindowDimensions()
+  const neutral = useResolvedNeutralColors()
   const [navigationPrimary, setNavigationPrimary] = useState(true)
   const navigationPrimaryRef = useRef(true)
   const gestureTriggeredRef = useRef(false)
@@ -154,6 +110,7 @@ export function ActiveNavigationTopBar({
   const boardTextWidth = Math.max(0, width - 300)
   const targetTint = theme.alpha(riderColor, 0.12)
   const targetBorder = theme.alpha(riderColor, 0.7)
+  const targetPillWidth = Math.min(176, maxWidth)
 
   const navigationSwapStyle = useAnimatedStyle(() => ({
     opacity: interpolate(swapProgress.value, [0, 1], [0.78, 1]),
@@ -211,17 +168,32 @@ export function ActiveNavigationTopBar({
           {navigationPrimary ? (
             <Pressable
               accessibilityLabel={`Navigation target: ${targetTitle}`}
-              onPress={() => swapPrimary(false)}
+              onPress={onNavigationPress}
               style={[
                 styles.targetPill,
-                { borderColor: targetBorder, backgroundColor: targetTint },
+                {
+                  width: targetPillWidth,
+                  borderColor: targetBorder,
+                  backgroundColor: neutral.surfaceDeep,
+                },
               ]}
             >
-              <View style={[styles.targetIcon, { borderColor: targetBorder }]}>
-                <TargetIcon kind={targetKind} color={riderColor} />
+              <View
+                style={[
+                  styles.targetIcon,
+                  {
+                    borderColor: targetBorder,
+                    backgroundColor: neutral.surface,
+                  },
+                ]}
+              >
+                <TargetIcon icon={targetIcon} color={riderColor} />
               </View>
               <View style={styles.targetCopy}>
-                <Text numberOfLines={1} style={styles.targetTitle}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.targetTitle, { color: theme.neutral.textPrimary }]}
+                >
                   {targetTitle}
                 </Text>
                 <Text style={[styles.distance, { color: riderColor }]}>{distanceLabel}</Text>
@@ -237,7 +209,7 @@ export function ActiveNavigationTopBar({
                 { borderColor: targetBorder, backgroundColor: targetTint },
               ]}
             >
-              <TargetIcon kind={targetKind} color={riderColor} size={12} />
+              <TargetIcon icon={targetIcon} color={riderColor} size={12} />
               <Text style={[styles.navigationMiniDistance, { color: riderColor }]}>
                 {distanceLabel}
               </Text>
@@ -245,22 +217,16 @@ export function ActiveNavigationTopBar({
           )}
         </Animated.View>
         <Animated.View pointerEvents="auto" style={[styles.swapItem, boardSwapStyle]}>
-          <NavigationBoardPill
-            name={boardName}
-            connected={connected}
-            availableWidth={navigationPrimary ? boardTextWidth : 130}
-            expanded={!navigationPrimary}
-            activeBoardId={activeBoardId}
-            canDisconnect={canDisconnect}
-            onPress={() => {
-              if (navigationPrimary) {
-                swapPrimary(false)
-                return
-              }
-              onBoardPress()
-            }}
-            onDisconnect={onDisconnect}
-          />
+          {navigationPrimary ? (
+            <CompactBoardPill
+              name={boardName}
+              connected={connected}
+              availableWidth={boardTextWidth}
+              onPress={() => swapPrimary(false)}
+            />
+          ) : (
+            boardPill
+          )}
         </Animated.View>
       </View>
     </GestureDetector>
@@ -287,18 +253,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   boardPillDotOnly: {
     width: 28,
     paddingHorizontal: 0,
-  },
-  boardPillExpanded: {
-    height: 38,
-    minWidth: 112,
-    maxWidth: 190,
-    borderRadius: 19,
   },
   boardIdentity: {
     height: '100%',
@@ -315,19 +275,12 @@ const styles = StyleSheet.create({
   },
   boardName: {
     maxWidth: 52,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '800',
   },
-  boardNameExpanded: {
-    maxWidth: 128,
-    color: theme.palette.slate.textPrimary,
-    fontSize: 13,
-  },
   targetPill: {
     height: 38,
-    minWidth: 166,
-    maxWidth: 280,
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 19,
@@ -341,15 +294,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 15,
     borderWidth: 1,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.control.backgroundPressed,
   },
   targetCopy: {
     flex: 1,
+    flexShrink: 1,
     minWidth: 0,
-    paddingHorizontal: 8,
+    paddingLeft: 8,
+    paddingRight: 0,
   },
   targetTitle: {
-    color: theme.palette.slate.textPrimary,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -360,19 +314,9 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   cancel: {
-    width: 30,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: theme.palette.slate.border,
-  },
-  boardAction: {
-    width: 32,
+    width: 38,
     height: 38,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

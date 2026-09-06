@@ -12,16 +12,21 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     faultAdc2: Double? = 2.0,
     tiltbackLv: Double? = 45.0,
     tiltbackHv: Double? = 64.5,
-    tiltbackDuty: Double? = 0.80,
-    movingFaultDisabled: Bool? = false
-  ) -> ConfigSafetyValues {
-    ConfigSafetyValues(
-      faultAdc1: faultAdc1,
-      faultAdc2: faultAdc2,
-      tiltbackLv: tiltbackLv,
-      tiltbackHv: tiltbackHv,
-      tiltbackDuty: tiltbackDuty,
-      movingFaultDisabled: movingFaultDisabled
+    tiltbackDuty: Double? = 0.80
+  ) -> BoardConfigValues {
+    var map: [String: Any] = [:]
+    map[ConfigSafetyDetector.faultAdc1Id] = faultAdc1
+    map[ConfigSafetyDetector.faultAdc2Id] = faultAdc2
+    map[ConfigSafetyDetector.tiltbackLvId] = tiltbackLv
+    map[ConfigSafetyDetector.tiltbackHvId] = tiltbackHv
+    map[ConfigSafetyDetector.tiltbackDutyId] = tiltbackDuty
+    return BoardConfigValues(
+      boardId: "board",
+      refloatBaseVersion: "2.0",
+      capturedAtMs: 0,
+      freshness: .fresh,
+      values: map,
+      writeBase: nil
     )
   }
 
@@ -45,14 +50,14 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     XCTAssertEqual(obj["bound"] as? Double, bound, file: file, line: line)
   }
 
-  func testUsesPerCellVoltageResolvesFromFirmware() {
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 6.05 · hw · cfg"), true)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 6.10"), true)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 7.00"), true)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 6.02"), false)
-    XCTAssertEqual(ConfigSafetyDetector.usesPerCellVoltage("FW 5.03"), false)
-    XCTAssertNil(ConfigSafetyDetector.usesPerCellVoltage(nil))
-    XCTAssertNil(ConfigSafetyDetector.usesPerCellVoltage("unknown"))
+  func testSupportsPerCellVoltageResolvesFromFirmware() {
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 6.05 · hw · cfg"), true)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 6.10"), true)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 7.00"), true)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 6.02"), false)
+    XCTAssertEqual(ConfigSafetyDetector.supportsPerCellVoltage("FW 5.03"), false)
+    XCTAssertNil(ConfigSafetyDetector.supportsPerCellVoltage(nil))
+    XCTAssertNil(ConfigSafetyDetector.supportsPerCellVoltage("unknown"))
   }
 
   func testAllSafeReportsEveryKindClean() {
@@ -65,7 +70,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
         .lvPushbackLow,
         .hvPushbackHigh,
         .dutyPushbackHigh,
-        .movingFaultDisabled,
       ]
     )
   }
@@ -128,6 +132,26 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     assertPayload(hv, param: "tiltback_hv", value: 4.5, bound: 4.3)
   }
 
+  func testPerCellCapableFirmwareStillAcceptsPackVoltageThresholds() {
+    // Refloat 1.2+ keeps legacy pack totals valid. It treats only values below 10 V as per-cell.
+    let clean = ConfigSafetyDetector.evaluate(
+      values(tiltbackLv: 57.0, tiltbackHv: 81.7),
+      seriesCount: 19,
+      perCell: true
+    )
+    XCTAssertNil(finding(clean, .lvPushbackLow))
+    XCTAssertNil(finding(clean, .hvPushbackHigh))
+    XCTAssertTrue(clean.cleanKinds.contains(.lvPushbackLow))
+    XCTAssertTrue(clean.cleanKinds.contains(.hvPushbackHigh))
+
+    let high = ConfigSafetyDetector.evaluate(
+      values(tiltbackLv: 57.0, tiltbackHv: 82.0),
+      seriesCount: 19,
+      perCell: true
+    )
+    assertPayload(finding(high, .hvPushbackHigh), param: "tiltback_hv", value: 82.0, bound: 81.7)
+  }
+
   func testPerCellRulesSkippedWithoutSeriesCountInPackMode() {
     // Pack mode, dangerous LV/HV values, but no series count — the two rules must report nothing.
     let report = ConfigSafetyDetector.evaluate(values(tiltbackLv: 10.0, tiltbackHv: 90.0), seriesCount: nil, perCell: false)
@@ -147,7 +171,6 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     XCTAssertFalse(report.cleanKinds.contains(.lvPushbackLow))
     XCTAssertFalse(report.cleanKinds.contains(.hvPushbackHigh))
     XCTAssertTrue(report.cleanKinds.contains(.dutyPushbackHigh))
-    XCTAssertTrue(report.cleanKinds.contains(.movingFaultDisabled))
   }
 
   func testDutyPushbackHighFiresOverLimit() {
@@ -155,12 +178,5 @@ final class ConfigSafetyDetectorTests: XCTestCase {
     let f = finding(report, .dutyPushbackHigh)
     XCTAssertEqual(f?.severity, .warn)
     assertPayload(f, param: "tiltback_duty", value: 0.9, bound: 0.85)
-  }
-
-  func testMovingFaultDisabledFiresWhenOn() {
-    let report = ConfigSafetyDetector.evaluate(values(movingFaultDisabled: true), seriesCount: 15, perCell: false)
-    let f = finding(report, .movingFaultDisabled)
-    XCTAssertEqual(f?.severity, .warn)
-    assertPayload(f, param: "fault_moving_fault_disabled", value: 1.0, bound: 0.0)
   }
 }

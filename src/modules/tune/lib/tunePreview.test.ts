@@ -935,7 +935,7 @@ describe('Tune Preview longitudinal response', () => {
       }
 
       expect(crossingFrame).not.toBeNull()
-      expect(crossingFrame as number).toBeLessThan(120)
+      expect(crossingFrame!).toBeLessThan(120)
       expect(state.syntheticSpeedKmh).toBeLessThan(-1)
       expect(state.erpm).toBeLessThan(0)
       expect(state.groundTravelMeters).toBeLessThan(0)

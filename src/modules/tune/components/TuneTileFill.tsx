@@ -3,13 +3,14 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import { Canvas, LinearGradient, Rect, RoundedRect, vec } from '@shopify/react-native-skia'
 
 import { theme } from '@/constants/theme'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface TuneTileFillProps {
   fraction: number | null
   color?: string
-  fillHeightRatio?: number
 }
 
+const FILL_HEIGHT_RATIO = 0.42
 const LINE_THICKNESS = 2
 const MARKER_WIDTH = 3
 const MARKER_Y_OFFSET = 1
@@ -19,11 +20,9 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-export function TuneTileFill({
-  fraction,
-  color = theme.palette.sky.color,
-  fillHeightRatio = 0.42,
-}: TuneTileFillProps) {
+export function TuneTileFill({ fraction, color = theme.palette.sky.color }: TuneTileFillProps) {
+  const neutral = useResolvedNeutralColors()
+  const resolvedColor = useResolvedColor(color)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout
@@ -31,7 +30,7 @@ export function TuneTileFill({
   }, [])
 
   const normalized = fraction == null ? 0 : clamp01(fraction)
-  const fillHeight = size.height * clamp01(fillHeightRatio)
+  const fillHeight = size.height * FILL_HEIGHT_RATIO
   const fillY = size.height - fillHeight
   const trackX = TRACK_INSET
   const trackWidth = Math.max(0, size.width - TRACK_INSET * 2)
@@ -53,10 +52,10 @@ export function TuneTileFill({
                 start={vec(0, fillY)}
                 end={vec(0, size.height)}
                 colors={[
-                  theme.alpha(color, 0),
-                  theme.alpha(color, 0.12),
-                  theme.alpha(color, 0.12),
-                  theme.alpha(color, 0.3),
+                  theme.alpha(resolvedColor, 0),
+                  theme.alpha(resolvedColor, 0.12),
+                  theme.alpha(resolvedColor, 0.12),
+                  theme.alpha(resolvedColor, 0.3),
                 ]}
                 positions={[0, 0.35, 0.75, 1]}
               />
@@ -68,7 +67,7 @@ export function TuneTileFill({
             width={trackWidth}
             height={LINE_THICKNESS}
             r={LINE_THICKNESS / 2}
-            color={theme.palette.slate.border}
+            color={neutral.border}
           />
           {fillWidth > 0 ? (
             <RoundedRect
@@ -77,7 +76,7 @@ export function TuneTileFill({
               width={fillWidth}
               height={LINE_THICKNESS}
               r={LINE_THICKNESS / 2}
-              color={color}
+              color={resolvedColor}
             />
           ) : null}
           {fraction != null ? (
@@ -86,7 +85,7 @@ export function TuneTileFill({
               y={lineY - markerHeight + MARKER_Y_OFFSET}
               width={MARKER_WIDTH}
               height={markerHeight + LINE_THICKNESS - MARKER_Y_OFFSET}
-              color={color}
+              color={resolvedColor}
             />
           ) : null}
         </Canvas>

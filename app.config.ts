@@ -3,6 +3,16 @@ import pkg from './package.json' with { type: 'json' }
 import { applicationId, isDevelopmentApp } from './src/config/appVariant.ts'
 import { androidVersionCode } from './src/helpers/version.ts'
 
+// Without a team ID, prebuild happily writes an Xcode project with no DEVELOPMENT_TEAM and the
+// failure only surfaces minutes later as "Signing for X requires a development team". Expo loads
+// .env.local automatically, so the fix is a line there — say so at the point of failure.
+const appleTeamId = process.env.APPLE_TEAM_ID
+if (!appleTeamId) {
+  console.warn(
+    'APPLE_TEAM_ID is not set — the generated iOS project will not be signable. Add APPLE_TEAM_ID to .env.local before prebuilding for a device.',
+  )
+}
+
 const config: ExpoConfig = {
   name: isDevelopmentApp ? 'vescape dev' : 'vescape',
   slug: 'vescape',
@@ -14,15 +24,20 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: false,
     bundleIdentifier: applicationId,
+    // CFBundleVersion. Prebuild bakes this literal into Info.plist, so Xcode build settings cannot
+    // override it later — the release workflow must pass VERSION_CODE (run number) at prebuild time.
+    buildNumber: process.env.VERSION_CODE ?? '1',
     // Required by @bacons/apple-targets to sign the ride-activity widget extension. Account-specific
     // 10-char Apple Developer team ID — set APPLE_TEAM_ID at prebuild/build time (EAS secret / .env).
-    appleTeamId: process.env.APPLE_TEAM_ID,
+    appleTeamId,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSBluetoothAlwaysUsageDescription:
         'Allow Vescape to connect to your board over Bluetooth for live telemetry, alerts, and ride recording.',
       NSLocationWhenInUseUsageDescription:
         'Allow Vescape to use your location for live maps, ride recording, and reconnect support while you ride.',
+      NSMotionUsageDescription:
+        'Allow Vescape to use device motion to determine your phone heading and orient the live ride map.',
       UIBackgroundModes: ['bluetooth-central', 'location', 'audio'],
       // Board Session status surface — native-driven Live Activity (peer of Android's persistent
       // foreground notification). See targets/ride-activity + plugins/withLiveActivityAttributes.
@@ -74,6 +89,14 @@ const config: ExpoConfig = {
         // source-map upload additionally needs SENTRY_AUTH_TOKEN.
         organization: process.env.SENTRY_ORG,
         project: process.env.SENTRY_PROJECT,
+        // `sentry.gradle` (applied by this plugin) only uploads the JS bundle and its source
+        // maps. NDK debug files need the separate Sentry Android Gradle Plugin, without which
+        // every native frame in a segfault stays `?` — including our own vescape-core code
+        // (VESCAPE-1D). React Native's own prebuilt .so files ship stripped, so frames inside
+        // RN/Hermes stay unresolved either way.
+        experimental_android: {
+          enableAndroidGradlePlugin: true,
+        },
       },
     ],
     [
@@ -106,6 +129,7 @@ const config: ExpoConfig = {
           minSdkVersion: 30,
         },
         ios: {
+          // Clerk's native iOS SDK requires 17.0. Keep app, pods, and widget aligned.
           deploymentTarget: '17.0',
         },
       },
@@ -130,6 +154,7 @@ const config: ExpoConfig = {
     './plugins/withSentryNativeInit',
     './plugins/withAndroidSigningConfig',
     './plugins/withServerOrigin',
+    './plugins/withMapboxToken',
   ],
   experiments: {
     typedRoutes: true,

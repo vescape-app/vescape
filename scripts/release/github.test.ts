@@ -25,7 +25,7 @@ describe('release workflow dispatch', () => {
   test('pins the trusted definition to main and passes source separately', () => {
     const sha = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01'
     const requestId = '7f787fe8-4a30-4fcf-a3b1-4a9dd8606e38'
-    expect(createDispatchPayload(sha, requestId)).toEqual({
+    expect(createDispatchPayload(sha, requestId, 'main')).toEqual({
       ref: 'main',
       inputs: { source_sha: sha.toLowerCase(), request_id: requestId },
     })
@@ -404,7 +404,6 @@ describe('release workflow dispatch', () => {
         { manifest: release, open, openPromotionRunId: 304 },
         'promote',
         requestId,
-        10,
       ),
     ).toEqual({
       ref: 'main',
@@ -417,17 +416,15 @@ describe('release workflow dispatch', () => {
         marketing_version: '0.83.1',
         phone_code: '100000042',
         wear_code: '1100000042',
-        rollout_percentage: '10',
       },
     })
     expect(() =>
       createProductionDispatchPayload(
         { manifest: release, open, openPromotionRunId: 304 },
-        'advance',
+        'advance' as never,
         requestId,
-        101,
       ),
-    ).toThrow('Rollout percentage')
+    ).toThrow('Invalid production operation')
   })
 
   test('correlates exact production run title', () => {

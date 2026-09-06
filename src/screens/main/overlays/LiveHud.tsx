@@ -1,8 +1,12 @@
 import { StyleSheet } from 'react-native'
+import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated'
 
 import { DualGaugeIndicator } from '@/modules/board/components/DualGaugeIndicator'
+import { GpsStatusPill } from '@/modules/board/components/GpsStatusPill'
+import { useGpsStatusBadge } from '@/modules/board/hooks/useGpsStatusBadge'
+import { routes } from '@/navigation/routes'
 
 interface LiveHudProps {
   revealProgress?: SharedValue<number>
@@ -10,6 +14,8 @@ interface LiveHudProps {
 
 export function LiveHud({ revealProgress }: LiveHudProps) {
   const insets = useSafeAreaInsets()
+  // Hangs under the gauges: it qualifies the speed and distance they are showing.
+  const gpsBadge = useGpsStatusBadge()
   const revealStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: revealProgress ? -52 * revealProgress.value : 0 }],
   }))
@@ -20,7 +26,19 @@ export function LiveHud({ revealProgress }: LiveHudProps) {
       pointerEvents="box-none"
     >
       <Animated.View style={revealStyle}>
-        <DualGaugeIndicator compact transparent />
+        <DualGaugeIndicator
+          compact
+          transparent
+          footer={
+            gpsBadge ? (
+              <GpsStatusPill
+                badge={gpsBadge}
+                // The badge says what is wrong; Navigation diagnostics says why.
+                onPress={() => router.push(routes.settingsNavigationDiagnostic)}
+              />
+            ) : null
+          }
+        />
       </Animated.View>
     </Animated.View>
   )

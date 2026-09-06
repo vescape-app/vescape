@@ -28,7 +28,18 @@ describe('getGpsPuckBearing', () => {
     ).toBe(170)
   })
 
-  test('hides the arrow for an approximate fix', () => {
+  test('hides the arrow for an approximate fix in GPS heading mode', () => {
+    expect(
+      getGpsPuckBearing({
+        orientationMode: 'gpsHeading',
+        approximateFix: true,
+        phoneHeadingDeg: 42,
+        gpsBearingDeg: 170,
+      }),
+    ).toBeNull()
+  })
+
+  test('keeps the compass arrow for an approximate fix', () => {
     expect(
       getGpsPuckBearing({
         orientationMode: 'northUp',
@@ -36,6 +47,6 @@ describe('getGpsPuckBearing', () => {
         phoneHeadingDeg: 42,
         gpsBearingDeg: 170,
       }),
-    ).toBeNull()
+    ).toBe(42)
   })
 })

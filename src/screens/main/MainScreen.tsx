@@ -1,19 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { ActivityIndicator, View, StyleSheet } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 
 import { VescapeWordmark } from '@/components/base/VescapeWordmark'
 import { MainMap, type MainMapHandle } from '@/screens/main/map/MainMap'
-import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMapIndicators'
 import { MainOverlays } from '@/screens/main/overlays/MainOverlays'
 import { useMainScreenController } from '@/screens/main/useMainScreenController'
-import type { MapPointPatch } from 'vescape-core'
+import { useMainScreenMapTargets } from '@/screens/main/useMainScreenMapTargets'
 
 import type { Board } from '@/modules/board/store/boardStore'
-import { theme } from '@/constants/theme'
-import { getMapPointKindLabel } from '@/modules/map-points/constants/mapPoints'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { reverseGeocodeMapCoordinate } from '@/modules/map/lib/search'
+import { theme } from '@/constants/theme'
 
 interface MainScreenProps {
   activeBoard: Board | undefined
@@ -29,9 +26,9 @@ interface MainScreenProps {
 
 function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenController>) {
   return {
-    enterHistoryMode: controller.enterHistoryMode,
     selectedSession: controller.selectedSession,
     sessionSamples: controller.sessionSamples,
+    sessionChartSamples: controller.sessionChartSamples,
     sessionGpsSamples: controller.sessionGpsSamples,
     sessionMarkers: controller.sessionMarkers,
     nextRide: controller.nextRide,
@@ -70,9 +67,9 @@ function buildHistoryOverlayProps(controller: ReturnType<typeof useMainScreenCon
     selectPreviousRide: controller.selectPreviousRide,
     selectNextRide: controller.selectNextRide,
     selectRide: controller.selectRide,
+    selectFavoriteRide: controller.selectFavoriteRide,
     exitHistory: controller.exitHistory,
     removeSession: controller.removeSession,
-    onSeek: controller.onSeek,
     setActiveHistoryMapMetric: controller.setActiveHistoryMapMetric,
     mediaHistory: controller.mediaHistory,
     openMedia: controller.openMedia,
@@ -118,262 +115,29 @@ export function MainScreen({
     if (controller.mode === 'telemetry' && controller.mapOrientationMode === 'phoneHeading') return
     selectorHeading.set(cameraHeading.value)
   }, [cameraHeading, controller.mapOrientationMode, controller.mode, selectorHeading])
-  const [offscreenMapIndicators, setOffscreenMapIndicators] = useState<
-    OffscreenMapIndicatorState[]
-  >([])
-  const [selectedNavigationTarget, setSelectedNavigationTarget] = useState<MapSelection | null>(
-    null,
-  )
-  const [longPressMapTarget, setLongPressMapTarget] = useState<MapSelection | null>(null)
-  const [activeNavigationTarget, setActiveNavigationTarget] = useState<MapSelection | null>(null)
-  const dismissMapSelector = controller.dismissMapSelector
-  const mapInteractionHandlerRef = useRef<(selection?: MapSelection) => boolean | void>(() => {})
-  const handleMapInteraction = useCallback(() => {
-    dismissMapSelector()
-    mapInteractionHandlerRef.current()
-  }, [dismissMapSelector])
+  const targets = useMainScreenMapTargets(controller, mapRef)
   const {
-    setDirectionPoint,
-    clearSelectedMapPoints,
-    removeMapPoint,
-    clearDirectionPoint,
-    updateMapPoint,
-    setMapPointReaction,
-    selectMapPoint,
-    toggleMapPointSelection,
-  } = controller
-  const handleLongPressTarget = useCallback((target: { latitude: number; longitude: number }) => {
-    setLongPressMapTarget({
-      type: 'coordinate',
-      id: `long-press-${target.longitude.toFixed(6)}-${target.latitude.toFixed(6)}`,
-      latitude: target.latitude,
-      longitude: target.longitude,
-      title: 'Dropped pin',
-      subtitle: null,
-      loadingDetails: true,
-    })
-  }, [])
-  const handleRawMapPress = useCallback((selection: MapSelection) => {
-    return mapInteractionHandlerRef.current(selection) === true
-  }, [])
-  const handleMapPress = useCallback(
-    (selection: MapSelection) => {
-      handleMapInteraction()
-      clearSelectedMapPoints()
-      setSelectedNavigationTarget(selection)
-    },
-    [clearSelectedMapPoints, handleMapInteraction],
+    offscreenMapIndicators,
+    selectedNavigationTarget,
+    activeNavigationTarget: detailedActiveNavigationTarget,
+    longPressMapTarget,
+    mapInteractionHandlerRef,
+  } = targets
+  const activeNavigationTarget = useMemo<MapSelection | null>(
+    () =>
+      detailedActiveNavigationTarget ??
+      (controller.directionPoint
+        ? {
+            type: 'coordinate',
+            id: `direction-${controller.directionPoint.latitude}-${controller.directionPoint.longitude}`,
+            latitude: controller.directionPoint.latitude,
+            longitude: controller.directionPoint.longitude,
+            title: 'Direction point',
+            subtitle: null,
+          }
+        : null),
+    [controller.directionPoint, detailedActiveNavigationTarget],
   )
-  const handleSelectNavigationTarget = useCallback(
-    (selection: MapSelection) => {
-      if (selection.type === 'mapPoint') {
-        selectMapPoint(selection.id)
-      } else {
-        clearSelectedMapPoints()
-      }
-      setSelectedNavigationTarget(selection)
-    },
-    [clearSelectedMapPoints, selectMapPoint],
-  )
-  const handleToggleMapPointSelection = useCallback(
-    (id: string) => {
-      const selected = controller.selectedMapPointId !== id
-      const point = controller.mapPoints.find((candidate) => candidate.id === id)
-      toggleMapPointSelection(id)
-      if (!selected || !point) {
-        setSelectedNavigationTarget(null)
-        return
-      }
-      setSelectedNavigationTarget({
-        type: 'mapPoint',
-        id: point.id,
-        latitude: point.latitude,
-        longitude: point.longitude,
-        title: point.name?.trim() || getMapPointKindLabel(point.category),
-        subtitle: point.description ?? null,
-        point,
-      })
-    },
-    [controller.mapPoints, controller.selectedMapPointId, toggleMapPointSelection],
-  )
-  const handleRemoveMapPoint = useCallback(
-    (id: string) => {
-      setSelectedNavigationTarget((current) =>
-        current?.type === 'mapPoint' && current.id === id ? null : current,
-      )
-      setActiveNavigationTarget((current) =>
-        current?.type === 'mapPoint' && current.point.id === id ? null : current,
-      )
-      void removeMapPoint(id)
-    },
-    [removeMapPoint],
-  )
-  const handleSetMapPointReaction = useCallback(
-    (id: string, reaction: 'up' | 'down' | null) => {
-      void setMapPointReaction(id, reaction).then((point) => {
-        if (!point) return
-        setSelectedNavigationTarget((current) =>
-          current?.type === 'mapPoint' && current.id === id
-            ? {
-                ...current,
-                point,
-                title: point.name || getMapPointKindLabel(point.category),
-                subtitle: point.description ?? null,
-              }
-            : current,
-        )
-      })
-    },
-    [setMapPointReaction],
-  )
-  const handleUpdateMapPoint = useCallback(
-    async (id: string, patch: MapPointPatch) => {
-      const point = await updateMapPoint(id, patch)
-      if (!point) return null
-      const nextSelection: MapSelection = {
-        type: 'mapPoint',
-        id: point.id,
-        latitude: point.latitude,
-        longitude: point.longitude,
-        title: point.name || getMapPointKindLabel(point.category),
-        subtitle: point.description ?? null,
-        point,
-      }
-      setSelectedNavigationTarget((current) =>
-        current?.type === 'mapPoint' && current.id === id ? nextSelection : current,
-      )
-      setActiveNavigationTarget((current) =>
-        current?.type === 'mapPoint' && current.point.id === id
-          ? {
-              ...current,
-              title: nextSelection.title,
-              subtitle: nextSelection.subtitle,
-              point,
-            }
-          : current,
-      )
-      return point
-    },
-    [updateMapPoint],
-  )
-  const handleClearDirectionPoint = useCallback(() => {
-    setActiveNavigationTarget(null)
-    void clearDirectionPoint()
-  }, [clearDirectionPoint])
-  const handleDismissSelectedTarget = useCallback(() => {
-    clearSelectedMapPoints()
-    setSelectedNavigationTarget(null)
-  }, [clearSelectedMapPoints])
-
-  useEffect(() => {
-    if (controller.mode !== 'telemetry') return
-    const frame = requestAnimationFrame(() => {
-      clearSelectedMapPoints()
-      setSelectedNavigationTarget(null)
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [clearSelectedMapPoints, controller.mode])
-
-  const handleOffscreenIndicatorPress = useCallback(
-    (indicator: OffscreenMapIndicatorState) => {
-      controller.dismissMapSelector()
-      setSelectedNavigationTarget(null)
-      if (indicator.type === 'gps') {
-        mapRef.current?.recenterLive({ resetPadding: true })
-        return
-      }
-      controller.handleMapFocus()
-      mapRef.current?.focusCoordinate(indicator.coordinate.value)
-    },
-    [controller],
-  )
-  const navigateToTarget = useCallback(
-    async (target: MapSelection) => {
-      await setDirectionPoint(target.latitude, target.longitude)
-      setActiveNavigationTarget({
-        ...target,
-        id: `direction-${target.id}`,
-        title: target.type === 'coordinate' ? 'Direction point' : target.title,
-      })
-      clearSelectedMapPoints()
-      setSelectedNavigationTarget(null)
-      controller.exitMapFocus()
-    },
-    [clearSelectedMapPoints, controller, setDirectionPoint],
-  )
-  const handleNavigateSelectedTarget = useCallback(async () => {
-    if (!selectedNavigationTarget) return
-    await navigateToTarget(selectedNavigationTarget)
-  }, [navigateToTarget, selectedNavigationTarget])
-  const handleNavigateTarget = useCallback(
-    async (target: MapSelection) => {
-      await navigateToTarget(target)
-    },
-    [navigateToTarget],
-  )
-
-  useEffect(() => {
-    if (!selectedNavigationTarget?.loadingDetails) return
-    const abortController = new AbortController()
-    const { id, latitude, longitude, type } = selectedNavigationTarget
-    void reverseGeocodeMapCoordinate(latitude, longitude, { signal: abortController.signal })
-      .then((details) => {
-        if (!details) {
-          setSelectedNavigationTarget((current) =>
-            current?.id === id && current.type === type
-              ? { ...current, loadingDetails: false }
-              : current,
-          )
-          return
-        }
-        setSelectedNavigationTarget((current) =>
-          current?.id === id && current.type === type
-            ? {
-                ...current,
-                title: current.type === 'coordinate' ? details.title : current.title,
-                subtitle: current.subtitle ?? details.subtitle,
-                loadingDetails: false,
-              }
-            : current,
-        )
-      })
-      .catch(() => {
-        if (abortController.signal.aborted) return
-        setSelectedNavigationTarget((current) =>
-          current?.id === id && current.type === type
-            ? { ...current, loadingDetails: false }
-            : current,
-        )
-      })
-    return () => abortController.abort()
-  }, [selectedNavigationTarget])
-
-  useEffect(() => {
-    if (!activeNavigationTarget?.loadingDetails) return
-    const abortController = new AbortController()
-    const { id, latitude, longitude, type } = activeNavigationTarget
-    void reverseGeocodeMapCoordinate(latitude, longitude, { signal: abortController.signal })
-      .then((details) => {
-        setActiveNavigationTarget((current) =>
-          current?.id === id && current.type === type
-            ? {
-                ...current,
-                subtitle: current.subtitle ?? details?.subtitle ?? null,
-                loadingDetails: false,
-              }
-            : current,
-        )
-      })
-      .catch(() => {
-        if (abortController.signal.aborted) return
-        setActiveNavigationTarget((current) =>
-          current?.id === id && current.type === type
-            ? { ...current, loadingDetails: false }
-            : current,
-        )
-      })
-    return () => abortController.abort()
-  }, [activeNavigationTarget])
 
   // Grouped MainMap props are memoized so the memo'd map does not re-render on every
   // MainScreen render just because a fresh object literal was handed to it.
@@ -434,7 +198,7 @@ export function MainScreen({
       points: controller.mapPoints,
       selectedId: controller.selectedMapPointId,
       hiddenCategories: controller.hiddenMapPointCategories,
-      onToggleSelection: handleToggleMapPointSelection,
+      onToggleSelection: targets.handleToggleMapPointSelection,
       onCameraSettled: controller.refreshNearbyMapPoints,
     }),
     [
@@ -442,7 +206,7 @@ export function MainScreen({
       controller.mapPoints,
       controller.refreshNearbyMapPoints,
       controller.selectedMapPointId,
-      handleToggleMapPointSelection,
+      targets.handleToggleMapPointSelection,
     ],
   )
 
@@ -473,12 +237,12 @@ export function MainScreen({
         onPerspectiveChange={controller.setPerspectiveEnabled}
         onHeadingChange={handleHeadingChange}
         onPhoneHeadingChange={handlePhoneHeadingChange}
-        onLongPressTarget={handleLongPressTarget}
-        onMapInteraction={handleMapInteraction}
-        onRawMapPress={handleRawMapPress}
-        onMapPress={handleMapPress}
+        onLongPressTarget={targets.handleLongPressTarget}
+        onMapInteraction={targets.handleMapInteraction}
+        onRawMapPress={targets.handleRawMapPress}
+        onMapPress={targets.handleMapPress}
         onEnterMapMode={controller.handleMapFocus}
-        onOffscreenMapIndicatorsChange={setOffscreenMapIndicators}
+        onOffscreenMapIndicatorsChange={targets.setOffscreenMapIndicators}
         directionPoint={controller.directionPoint}
         activeNavigationTarget={activeNavigationTarget}
         selectedNavigationTarget={selectedNavigationTarget}
@@ -509,27 +273,27 @@ export function MainScreen({
           setMapSelector: controller.setMapSelector,
           enterMapFocus: controller.handleMapFocus,
           exitMapFocus: controller.exitMapFocus,
+          cancelMapFocus: controller.cancelMapFocus,
           enterWeather: controller.enterWeatherMode,
           exitWeather: controller.exitWeatherMode,
           enterLegalLimits: controller.enterLegalLimitsMode,
           exitLegalLimits: controller.exitLegalLimitsMode,
-          refreshWeather: controller.refreshWeather,
           weatherLocation: controller.liveLocations.at(-1) ?? controller.latestApproximateLocation,
           directionPoint: controller.directionPoint,
           activeNavigationTarget,
           selectedNavigationTarget,
           longPressMapTarget,
-          onLongPressMapTargetHandled: () => setLongPressMapTarget(null),
-          onSelectNavigationTarget: handleSelectNavigationTarget,
-          onNavigateTarget: handleNavigateTarget,
-          onNavigateSelectedTarget: handleNavigateSelectedTarget,
-          onCancelNavigation: handleClearDirectionPoint,
-          onDismissSelectedTarget: handleDismissSelectedTarget,
-          updateMapPoint: handleUpdateMapPoint,
-          setMapPointReaction: handleSetMapPointReaction,
-          onRemoveMapPoint: handleRemoveMapPoint,
+          onLongPressMapTargetHandled: () => targets.setLongPressMapTarget(null),
+          onSelectNavigationTarget: targets.handleSelectNavigationTarget,
+          onNavigateTarget: targets.handleNavigateTarget,
+          onNavigateSelectedTarget: targets.handleNavigateSelectedTarget,
+          onCancelNavigation: targets.handleClearDirectionPoint,
+          onDismissSelectedTarget: targets.handleDismissSelectedTarget,
+          updateMapPoint: targets.handleUpdateMapPoint,
+          setMapPointReaction: targets.handleSetMapPointReaction,
+          onRemoveMapPoint: targets.handleRemoveMapPoint,
           offscreenMapIndicators,
-          onOffscreenIndicatorPress: handleOffscreenIndicatorPress,
+          onOffscreenIndicatorPress: targets.handleOffscreenIndicatorPress,
         }}
         history={buildHistoryOverlayProps(controller)}
       />
@@ -540,7 +304,7 @@ export function MainScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.bg,
   },
   empty: {
     flex: 1,

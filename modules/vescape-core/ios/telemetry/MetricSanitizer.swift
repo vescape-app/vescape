@@ -34,7 +34,7 @@ internal struct SanitizedSample {
 }
 
 internal struct MetricExclusionRange {
-  let deviceId: String
+  let boardId: String
   let reason: String
   let startMs: Int64
   let endMs: Int64
@@ -48,7 +48,7 @@ internal struct SanitizationResult {
 
 private struct MetricExclusionSample {
   let capturedAtMs: Int64
-  let deviceId: String
+  let boardId: String
   let reason: String
 }
 
@@ -80,12 +80,12 @@ internal func sanitizeTelemetrySamples(
         excludedFromMaxDuty: freeSpin
       )
     )
-    let deviceId = point.deviceId ?? ""
+    let boardId = point.boardId ?? ""
     if lowSpeed {
-      exclusionSamples.append(MetricExclusionSample(capturedAtMs: point.capturedAtMs, deviceId: deviceId, reason: EXCLUSION_REASON_LOW_SPEED))
+      exclusionSamples.append(MetricExclusionSample(capturedAtMs: point.capturedAtMs, boardId: boardId, reason: EXCLUSION_REASON_LOW_SPEED))
     }
     if freeSpin {
-      exclusionSamples.append(MetricExclusionSample(capturedAtMs: point.capturedAtMs, deviceId: deviceId, reason: EXCLUSION_REASON_FREE_SPIN))
+      exclusionSamples.append(MetricExclusionSample(capturedAtMs: point.capturedAtMs, boardId: boardId, reason: EXCLUSION_REASON_FREE_SPIN))
     }
   }
   return SanitizationResult(samples: sanitized, exclusions: collapseExclusionSamples(exclusionSamples))
@@ -142,7 +142,7 @@ private func nearestPreciseGps(
 private func collapseExclusionSamples(_ samples: [MetricExclusionSample]) -> [MetricExclusionRange] {
   guard !samples.isEmpty else { return [] }
   let sorted = samples.sorted {
-    if $0.deviceId != $1.deviceId { return $0.deviceId < $1.deviceId }
+    if $0.boardId != $1.boardId { return $0.boardId < $1.boardId }
     if $0.reason != $1.reason { return $0.reason < $1.reason }
     return $0.capturedAtMs < $1.capturedAtMs
   }
@@ -153,11 +153,11 @@ private func collapseExclusionSamples(_ samples: [MetricExclusionSample]) -> [Me
   var count = 1
 
   func flush() {
-    ranges.append(MetricExclusionRange(deviceId: current.deviceId, reason: current.reason, startMs: start, endMs: end, sampleCount: count))
+    ranges.append(MetricExclusionRange(boardId: current.boardId, reason: current.reason, startMs: start, endMs: end, sampleCount: count))
   }
 
   for sample in sorted.dropFirst() {
-    if sample.deviceId == current.deviceId && sample.reason == current.reason && sample.capturedAtMs - end <= EXCLUSION_RANGE_MERGE_GAP_MS {
+    if sample.boardId == current.boardId && sample.reason == current.reason && sample.capturedAtMs - end <= EXCLUSION_RANGE_MERGE_GAP_MS {
       end = sample.capturedAtMs
       count += 1
     } else {

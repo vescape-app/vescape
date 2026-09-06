@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { BmsEvent, BmsSeriesFrame } from 'vescape-core'
 import {
@@ -7,10 +7,15 @@ import {
   type DerivedValue,
   type SharedValue,
 } from 'react-native-reanimated'
+import { BatteryVerticalHighIcon, BatteryWarningVerticalIcon } from 'phosphor-react-native'
+
+import { Placeholder } from '@/components/base/Placeholder'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Text } from '@/components/base/Text'
 
 import {
   cellBarScale,
+  cellSpreadTone,
   summarizeBms,
   summarizeBmsWindow,
   type BmsSummary,
@@ -25,8 +30,10 @@ import {
 import { useCanvasSize } from '@/hooks/useCanvasSize'
 import { useRenderRateWarning } from '@/hooks/useRenderRateWarning'
 import { useBleStore } from '@/modules/board/store/bleStore'
+import { telemetry } from '@/modules/board/constants/telemetry'
 import { useBoardStore } from '@/modules/board/store/boardStore'
-import { theme } from '@/constants/theme'
+import { resolveAdaptiveColor, theme } from '@/constants/theme'
+import { useThemeStore } from '@/hooks/useTheme'
 
 function formatWindowLabel(windowMs: number | null | undefined): string {
   if (!windowMs) return 'WINDOW'
@@ -143,12 +150,20 @@ export function BmsCellVoltages({
   if (groupCount === 0) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>CELL GROUPS</Text>
-        <Text style={styles.empty}>
-          {bmsLinked
-            ? 'No smart-BMS data yet.'
-            : 'No smart-BMS detected. Re-link a board with a BMS over CAN.'}
-        </Text>
+        <SectionHeader
+          icon={BatteryVerticalHighIcon}
+          color={CELL_SECTION_COLOR}
+          title="Cell balance"
+        />
+        <Placeholder
+          icon={BatteryWarningVerticalIcon}
+          description={
+            bmsLinked
+              ? 'Waiting for the first cell reading from the smart BMS.'
+              : 'No smart BMS detected. Re-link a board with a BMS on the CAN bus to see per-cell voltages.'
+          }
+          style={styles.placeholder}
+        />
       </View>
     )
   }
@@ -186,14 +201,33 @@ export function BmsCellVoltagesView({
   )
 }
 
-function statColor(tone: 'min' | 'max' | 'neutral' | 'spread'): string {
+function statColor(tone: 'min' | 'max' | 'neutral'): string {
   return tone === 'min'
     ? theme.status.warning.text
     : tone === 'max'
       ? theme.palette.yellow.text
-      : tone === 'spread'
-        ? theme.palette.green.text
-        : theme.palette.slate.textPrimary
+      : theme.palette.slate.textPrimary
+}
+
+/**
+ * Spread readouts carry their own severity: a spread is only good news while it is small, so the
+ * colour has to track the number rather than label the row. Tiers are the native detector's, so the
+ * readout turns amber and red at exactly the spreads that raise the `cell-spread` Board Warning.
+ */
+function useSpreadColor(spread: DerivedValue<number | null>): DerivedValue<string> {
+  const appearance = useThemeStore((state) => state.resolvedTheme)
+  const ramp = useMemo(
+    () => ({
+      ok: resolveAdaptiveColor(theme.palette.green.text, appearance) as string,
+      warn: resolveAdaptiveColor(theme.status.warning.text, appearance) as string,
+      critical: resolveAdaptiveColor(theme.status.error.text, appearance) as string,
+    }),
+    [appearance],
+  )
+  return useDerivedValue(() => {
+    const v = spread.value
+    return v == null ? ramp.ok : ramp[cellSpreadTone(v)]
+  })
 }
 
 interface BmsCellCardProps {
@@ -242,22 +276,30 @@ function BmsCellCard({ groupCount, summary, windowStats, windowLabel }: BmsCellC
     return stats?.worstGroupIndex == null ? '--' : `G${stats.worstGroupIndex + 1}`
   })
 
+  const spreadColor = useSpreadColor(useDerivedValue(() => summary.value?.spread ?? null))
+  const peakSpreadColor = useSpreadColor(
+    useDerivedValue(() => windowStats.value?.peakSpread ?? null),
+  )
+
   const summaryStats: BmsStatValue[] = [
-    { text: spreadText, color: statColor('spread') },
+    { text: spreadText, color: spreadColor },
     { text: minText, color: statColor('min') },
     { text: avgText, color: statColor('neutral') },
     { text: maxText, color: statColor('max') },
   ]
   const windowStatValues: BmsStatValue[] = [
-    { text: peakSpreadText, color: statColor('spread') },
+    { text: peakSpreadText, color: peakSpreadColor },
     { text: worstGroupText, color: statColor('min') },
   ]
 
   return (
     <View style={styles.container} onLayout={onLayout}>
-      <View style={styles.header}>
-        <Text style={styles.title}>CELL GROUPS · {groupCount}S</Text>
-      </View>
+      <SectionHeader
+        icon={BatteryVerticalHighIcon}
+        color={CELL_SECTION_COLOR}
+        title="Cell balance"
+        description={`${groupCount}S pack`}
+      />
       <StatBlock labels={['Δ SPREAD', 'MIN', 'AVG', 'MAX']} values={summaryStats} width={size.w} />
       <StatBlock
         labels={[`PEAK Δ (${windowLabel})`, 'WORST GROUP']}
@@ -294,25 +336,15 @@ function StatBlock({
   )
 }
 
+/** The section is the pack's, so it wears the pack's colour. */
+const CELL_SECTION_COLOR = telemetry.battVoltage.color
+
 const styles = StyleSheet.create({
   container: {
     gap: 12,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: {
-    color: theme.palette.slate.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  empty: {
-    color: theme.palette.slate.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
+  placeholder: {
+    paddingVertical: 18,
   },
   statBlock: {
     gap: 2,

@@ -73,9 +73,9 @@ export function LegalLimitsMapOverlay({ visible, top, onExit }: LegalLimitsMapOv
         ]}
       >
         {listVisible ? (
-          <CaretDownIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+          <CaretDownIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
         ) : (
-          <CaretUpIcon size={18} color={theme.palette.slate.textSecondary} weight="bold" />
+          <CaretUpIcon size={18} color={theme.neutral.textSecondary} weight="bold" />
         )}
         <Text style={styles.legalListToggleLabel}>{listVisible ? 'HIDE LIST' : 'SHOW LIST'}</Text>
       </Pressable>
@@ -149,8 +149,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     zIndex: 32,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
   },
   legalLegend: {
     position: 'absolute',
@@ -173,10 +171,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   legalLegendText: {
-    color: theme.palette.mono.white,
+    color: theme.neutral.textPrimary,
     fontSize: 9,
     fontWeight: '800',
-    textShadowColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    textShadowColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
@@ -190,15 +188,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 21,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    borderColor: theme.neutral.border,
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     zIndex: 31,
   },
   legalListTogglePressed: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surface,
   },
   legalListToggleLabel: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -211,9 +209,9 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingHorizontal: 14,
     gap: 8,
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
     borderTopWidth: 1,
-    borderTopColor: theme.palette.slate.border,
+    borderTopColor: theme.neutral.border,
     zIndex: 30,
   },
   legalListContent: {
@@ -237,19 +235,19 @@ const styles = StyleSheet.create({
   },
   legalCountryName: {
     flex: 1.1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
   },
   legalCountryStatus: {
     flex: 0.9,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },
   legalCountrySpeed: {
     width: 56,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '900',
     textAlign: 'right',

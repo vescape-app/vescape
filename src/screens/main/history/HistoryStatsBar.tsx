@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { HistorySession } from '@/modules/history/store/historyStore'
 import { rideDurationMs } from '@/modules/history/lib/sessions'
 import { interaction, theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 interface HistoryStatsBarProps {
   session: HistorySession
@@ -60,8 +61,8 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
                 <CompactStat key={item.key} item={item} />
               ))}
               <View style={styles.toggleCell}>
-                <View style={styles.expandedToggle}>
-                  <CaretUpIcon size={16} color={theme.palette.slate.textSecondary} weight="bold" />
+                <View style={styles.toggle}>
+                  <CaretUpIcon size={16} color={theme.control.icon} weight="bold" />
                 </View>
               </View>
             </View>
@@ -69,6 +70,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
               {secondaryStats.map((item) => (
                 <CompactStat key={item.key} item={item} />
               ))}
+              <View style={styles.toggleCell} />
             </View>
           </View>
         ) : (
@@ -78,7 +80,7 @@ export function HistoryStatsBar({ session }: HistoryStatsBarProps) {
             ))}
             <View style={styles.toggleCell}>
               <View style={styles.toggle}>
-                <CaretDownIcon size={16} color={theme.palette.slate.textSecondary} weight="bold" />
+                <CaretDownIcon size={16} color={theme.control.icon} weight="bold" />
               </View>
             </View>
           </View>
@@ -95,7 +97,9 @@ interface CompactStatProps {
 function CompactStat({ item }: CompactStatProps) {
   const IconComponent = item.icon
   return (
-    <View style={styles.compactCell} pointerEvents="none">
+    // Flows assert on the id, not the label: `compactLabel` is uppercased by `textTransform`, and
+    // iOS reports the rendered text where Android reports the source string.
+    <View testID={`history-stat-${item.key}`} style={styles.compactCell} pointerEvents="none">
       <Text style={styles.compactLabel} numberOfLines={1} adjustsFontSizeToFit>
         {item.label}
       </Text>
@@ -124,6 +128,13 @@ function sessionToStats(session: HistorySession): StatItem[] {
       accent: theme.palette.sky.color,
     },
     {
+      key: 'rideTime',
+      label: 'Time',
+      ...formatDuration(rideDurationMs(session)),
+      icon: ClockCountdownIcon,
+      accent: theme.palette.purple.color,
+    },
+    {
       key: 'topSpeed',
       label: 'Top Speed',
       value: formatSpeed(session.maxSpeedKmh),
@@ -132,27 +143,20 @@ function sessionToStats(session: HistorySession): StatItem[] {
       accent: theme.telemetry.speed,
     },
     {
+      key: 'avgSpeed',
+      label: 'Avg Speed',
+      value: formatSpeed(session.avgSpeedKmh),
+      unit: 'km/h',
+      icon: RepeatIcon,
+      accent: theme.palette.sky.light,
+    },
+    {
       key: 'maxDuty',
       label: 'Max Duty',
       value: formatDuty(session.maxDuty),
       unit: '%',
       icon: LightningIcon,
       accent: theme.telemetry.duty,
-    },
-    {
-      key: 'rideTime',
-      label: 'Time',
-      ...formatDuration(rideDurationMs(session)),
-      icon: ClockCountdownIcon,
-      accent: theme.palette.purple.color,
-    },
-    {
-      key: 'avgSpeed',
-      label: 'Avg Speed',
-      value: formatSpeed(session.avgSpeedKmh),
-      unit: 'km/h',
-      icon: RepeatIcon,
-      accent: theme.palette.teal.color,
     },
     {
       key: 'mosfetTemp',
@@ -199,12 +203,15 @@ function formatCount(value: number): string {
 }
 
 function formatDistance(valueM: number | null): Pick<StatItem, 'value' | 'unit'> {
-  if (valueM == null) return { value: '-' }
+  if (valueM == null) return { value: DASH }
   if (valueM < 1000) return { value: String(Math.round(valueM)), unit: 'm' }
   return { value: (valueM / 1000).toFixed(1), unit: 'km' }
 }
 
 function formatDuration(valueMs: number): Pick<StatItem, 'value' | 'unit'> {
+  // A zoomed window is often shorter than a minute, and "1 min" for eight seconds of riding is
+  // a wrong number rather than a rounded one.
+  if (valueMs < 60_000) return { value: String(Math.max(1, Math.round(valueMs / 1000))), unit: 's' }
   const totalMinutes = Math.max(1, Math.round(valueMs / 60_000))
   if (totalMinutes < 60) return { value: String(totalMinutes), unit: 'min' }
   const hours = Math.floor(totalMinutes / 60)
@@ -219,7 +226,7 @@ function formatSpeed(valueKmh: number): string {
 }
 
 function formatTemp(value: number | null): Pick<StatItem, 'value' | 'unit'> {
-  if (value == null) return { value: '-' }
+  if (value == null) return { value: DASH }
   return { value: String(Math.round(value)), unit: '°C' }
 }
 
@@ -229,7 +236,9 @@ function formatDuty(value: number): string {
 
 function formatWh(value: number): Pick<StatItem, 'value' | 'unit'> {
   if (value < 1) return { value: (value * 1000).toFixed(0), unit: 'mWh' }
-  return { value: value.toFixed(1), unit: 'Wh' }
+  // Whole watt-hours: the cell is one line of a five-across bar, and the decimal was the digit
+  // that pushed the number into shrinking to fit.
+  return { value: String(Math.round(value)), unit: 'Wh' }
 }
 
 const styles = StyleSheet.create({
@@ -243,7 +252,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   compactValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontFamily: 'monospace',
     fontSize: 13,
     fontWeight: '700',
@@ -252,7 +261,7 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   compactUnit: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 9,
     fontWeight: '800',
     lineHeight: 11,
@@ -260,7 +269,7 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   compactLabel: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 8,
     fontWeight: '700',
     textAlign: 'left',
@@ -293,10 +302,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   expandedPanel: {
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
-    borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    borderRadius: 12,
+    backgroundColor: theme.alpha(theme.palette.mono.black, 0),
     paddingTop: 0,
     paddingBottom: 8,
     paddingLeft: 10,
@@ -323,14 +329,8 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.control.background,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-  },
-  expandedToggle: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: theme.control.border,
   },
 })

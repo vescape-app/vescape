@@ -3,7 +3,7 @@ import type { GroupRideSummary } from 'vescape-core'
 import { distanceMeters } from '@/helpers/mapGeometry'
 
 /** Discovery radius for nearby Group Rides. Rides farther than this are filtered out. */
-export const NEARBY_RADIUS_M = 20_000
+export const NEARBY_RADIUS_M = 40_000
 
 export interface NearbyRide {
   ride: GroupRideSummary

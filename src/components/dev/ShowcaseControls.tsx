@@ -17,8 +17,8 @@ export function ToggleRow({ label, value, onToggle }: ToggleRowProps) {
       <Switch
         value={value}
         onValueChange={onToggle}
-        trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
-        thumbColor={value ? theme.palette.sky.color : theme.palette.slate.textMuted}
+        trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
+        thumbColor={value ? theme.palette.sky.color : theme.neutral.textMuted}
         style={styles.toggleSwitch}
       />
     </View>
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     minHeight: 28,
   },
   label: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     fontFamily: 'monospace',
@@ -107,25 +107,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
   },
   chipActive: {
     backgroundColor: theme.palette.sky.border,
     borderColor: theme.palette.sky.color,
   },
   chipText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 10,
     fontWeight: '700',
     fontFamily: 'monospace',
   },
   chipTextActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   valueDisplay: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     fontFamily: 'monospace',

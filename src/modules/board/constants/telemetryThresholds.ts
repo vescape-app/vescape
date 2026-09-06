@@ -52,7 +52,10 @@ export const TELEMETRY_LEVEL_COLOR: Record<TelemetryLevel, string> = {
   critical: theme.status.error.color,
 }
 
-type TieredThreshold = { warning: number; critical: number }
+interface TieredThreshold {
+  warning: number
+  critical: number
+}
 
 function tierLevel(
   value: number | null | undefined,

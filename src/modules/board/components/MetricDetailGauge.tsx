@@ -4,7 +4,7 @@ import type { SharedValue } from 'react-native-reanimated'
 import { SpeakerHighIcon, StopIcon } from 'phosphor-react-native'
 
 import { Button } from '@/components/base/Button'
-import { type DualGaugeAlert } from '@/components/charts/gaugeAlert'
+import type { DualGaugeAlert } from '@/components/charts/gaugeAlert'
 import { useAlertTest } from '@/modules/alerts/hooks/useAlertTest'
 import { buildMetricAlertRuleSnapshot } from '@/modules/alerts/lib/alertTest'
 import { SingleGauge } from '@/modules/board/components/SingleGauge'
@@ -84,9 +84,9 @@ export function MetricDetailGauge({
       hotRange={hotRange}
       headerRight={
         <Button
-          label={alertTest.running ? 'Stop test' : 'Run test'}
+          label={alertTest.running ? 'Stop' : 'Preview'}
           icon={alertTest.running ? StopIcon : SpeakerHighIcon}
-          variant="secondary"
+          variant="caution"
           size="sm"
           disabled={!alertTest.canRun}
           onPress={alertTest.running ? alertTest.stop : alertTest.start}

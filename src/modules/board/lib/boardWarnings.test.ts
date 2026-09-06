@@ -87,17 +87,11 @@ describe('parseWarningDetail', () => {
     ])
   })
 
-  test('boolean config kinds render no numeric rows', () => {
+  test('the footpad config kind renders no numeric rows', () => {
     expect(
       parseWarningDetail(
         'footpad-disabled',
         '{"param":"fault_adc1/fault_adc2","value":1,"bound":0}',
-      ),
-    ).toEqual([])
-    expect(
-      parseWarningDetail(
-        'moving-fault-disabled',
-        '{"param":"fault_moving_fault_disabled","value":1,"bound":0}',
       ),
     ).toEqual([])
   })

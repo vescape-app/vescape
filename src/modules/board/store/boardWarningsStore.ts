@@ -1,6 +1,7 @@
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import { addBoardWarningsListener, getBoardWarnings, type BoardWarning } from 'vescape-core'
+import { omitKey } from '@/helpers/records'
 
 /** Stable empty slice so `warningsByBoard[id] ?? EMPTY_WARNINGS` selectors don't churn references. */
 export const EMPTY_WARNINGS: BoardWarning[] = []
@@ -33,13 +34,10 @@ export const useBoardWarningsStore = create<BoardWarningsState>((set) => ({
   warningsByBoard: {},
   replaceBoard: (boardId, warnings) =>
     set((state) => {
-      const next = { ...state.warningsByBoard }
       if (warnings.length === 0) {
-        delete next[boardId]
-      } else {
-        next[boardId] = warnings
+        return { warningsByBoard: omitKey(state.warningsByBoard, boardId) }
       }
-      return { warningsByBoard: next }
+      return { warningsByBoard: { ...state.warningsByBoard, [boardId]: warnings } }
     }),
   replaceAll: (warnings) => set({ warningsByBoard: groupByBoard(warnings) }),
   clear: () => set({ warningsByBoard: {} }),

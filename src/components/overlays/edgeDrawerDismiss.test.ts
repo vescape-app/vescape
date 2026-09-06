@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   COMMIT_FRACTION,
   DRAWER_INITIAL_OPEN_FRACTION,
+  edgeDrawerContentResizeOffset,
   edgeDrawerDismissOpacity,
   edgeDrawerOnScreenPixels,
   edgeDrawerRestoreOffset,
@@ -170,5 +171,61 @@ describe('edgeDrawerScrollEndAction', () => {
       const action = edgeDrawerScrollEndAction({ fullyHidden: false, visibleFraction: fraction })
       expect(['close', 'restore', 'stay-open']).toContain(action)
     }
+  })
+})
+
+describe('edgeDrawerContentResizeOffset', () => {
+  const height = 900
+
+  test('absorbs growth so the drawer stays put instead of fading', () => {
+    const offset = edgeDrawerContentResizeOffset({
+      offset: 500,
+      previousRange: 500,
+      range: 700,
+      height,
+    })
+    expect(offset).toBe(700)
+    expect(edgeDrawerVisibleFraction({ offset, range: 700, height, opensFromTop: false })).toBe(1)
+  })
+
+  test('follows growth that arrives one frame at a time', () => {
+    let offset = 500
+    let range = 500
+    for (const grown of [520, 560, 620, 690]) {
+      offset = edgeDrawerContentResizeOffset({ offset, previousRange: range, range: grown, height })
+      range = grown
+      expect(edgeDrawerVisibleFraction({ offset, range, height, opensFromTop: false })).toBe(1)
+    }
+  })
+
+  test('leaves shrinking content to the native clamp', () => {
+    expect(
+      edgeDrawerContentResizeOffset({ offset: 700, previousRange: 900, range: 700, height }),
+    ).toBe(700)
+  })
+
+  test('an opaque drawer stays at or above the fully opaque resting offset', () => {
+    const range = 900
+    const previousRange = 800
+    const offset = edgeDrawerContentResizeOffset({
+      offset: edgeDrawerRestoreOffset(previousRange, height, false),
+      previousRange,
+      range,
+      height,
+    })
+    expect(offset).toBeGreaterThanOrEqual(edgeDrawerRestoreOffset(range, height, false))
+    expect(edgeDrawerVisibleFraction({ offset, range, height, opensFromTop: false })).toBe(1)
+  })
+
+  test('a drawer mid dismissal drag is not snapped back up under the finger', () => {
+    const offset = edgeDrawerContentResizeOffset({
+      offset: 100,
+      previousRange: 800,
+      range: 900,
+      height,
+    })
+    // Growth absorbed so the drag does not jump, but no pull back to the opaque mark.
+    expect(offset).toBe(200)
+    expect(offset).toBeLessThan(edgeDrawerRestoreOffset(900, height, false))
   })
 })

@@ -72,6 +72,23 @@ object WatchDiagnostics {
         event(if (active) "receiver on" else "receiver off")
     }
 
+    /** Emulator replay is a dev path, so its state is worth naming: the gauges are not showing a real ride. */
+    fun recordReplay(fixture: String, sampleCount: Int) {
+        event("replay $fixture ($sampleCount samples)")
+    }
+
+    fun recordReplayError(fixture: String, error: Exception) {
+        event("replay $fixture failed: ${error.message}", warn = true)
+    }
+
+    /**
+     * Radar is the one thing the wrist fetches itself, so its failures are not the phone's and must
+     * not read like a dead link.
+     */
+    fun recordRadarFailure() {
+        event("radar fetch failed", warn = true)
+    }
+
     private fun event(text: String, warn: Boolean = false) {
         if (warn) Log.w(TAG, text) else Log.d(TAG, text)
         val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())

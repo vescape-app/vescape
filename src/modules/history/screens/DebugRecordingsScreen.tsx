@@ -61,17 +61,18 @@ export function DebugRecordingsScreen() {
           <SettingsRow
             icon={RecordIcon}
             iconWeight="fill"
-            iconColor={theme.status.error.color}
+            iconColor={theme.status.warning.color}
             label="Record future sessions"
             hint="Applies to every new board session until disabled"
             right={
               <Switch
                 value={debug.enabled}
                 onValueChange={debug.setEnabled}
-                trackColor={{ false: theme.palette.slate.border, true: theme.status.error.border }}
-                thumbColor={
-                  debug.enabled ? theme.status.error.color : theme.palette.slate.textMuted
-                }
+                trackColor={{
+                  false: theme.neutral.border,
+                  true: theme.status.warning.border,
+                }}
+                thumbColor={debug.enabled ? theme.status.warning.color : theme.neutral.textMuted}
               />
             }
           />
@@ -140,7 +141,7 @@ export function DebugRecordingsScreen() {
                 <SettingsRow
                   key={fixture.name}
                   icon={PackageIcon}
-                  iconColor={theme.palette.slate.textSecondary}
+                  iconColor={theme.neutral.textSecondary}
                   label={fixture.name}
                   hint={`bundled · ${formatBytes(fixture.sizeBytes)}`}
                   right={replayButton(fixture.name)}
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 16,
     gap: 8,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   rowActions: {
     flexDirection: 'row',
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   emptyText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 20,

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+
+import { reactNativeStub } from '../../testSetup'
 import type { AppDataChangedEvent } from 'vescape-core'
 
 const actualVescapeCore = await import('@/../modules/vescape-core/src/index')
@@ -23,7 +25,10 @@ const appStateAdd = mock((_event: string, cb: (state: string) => void) => {
   return { remove: appStateRemove }
 })
 
-mock.module('react-native', () => ({ AppState: { addEventListener: appStateAdd } }))
+mock.module('react-native', () => ({
+  ...reactNativeStub,
+  AppState: { addEventListener: appStateAdd },
+}))
 mock.module('expo-file-system', () => ({
   Directory: class {
     exists = true

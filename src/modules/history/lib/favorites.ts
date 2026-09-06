@@ -10,11 +10,23 @@ export function favoriteRangeForSession(
   return window ?? { startMs: session.startAtMs, endMs: session.endAtMs }
 }
 
-/** Seed trim handles visibly inside the ride so their draggable direction is obvious. */
+/**
+ * Seed trim handles visibly inside the ride so their draggable direction is obvious.
+ *
+ * When the chart is zoomed, seed inside the visible window instead of the whole ride: handles
+ * seeded off-screen read as a broken control, and a zoom is the rider pointing at the stretch
+ * they mean to keep.
+ */
 export function initialFavoriteTrimRangeForSession(
   session: Pick<HistorySession, 'movingStartAtMs' | 'movingEndAtMs' | 'startAtMs' | 'endAtMs'>,
+  visible?: { startMs: number; endMs: number } | null,
 ): { startMs: number; endMs: number } {
-  const range = favoriteRangeForSession(session)
+  const ride = favoriteRangeForSession(session)
+  const startMs = visible
+    ? Math.max(ride.startMs, Math.min(visible.startMs, ride.endMs))
+    : ride.startMs
+  const endMs = visible ? Math.min(ride.endMs, Math.max(visible.endMs, ride.startMs)) : ride.endMs
+  const range = endMs > startMs ? { startMs, endMs } : ride
   const inset = (range.endMs - range.startMs) * 0.15
   return { startMs: range.startMs + inset, endMs: range.endMs - inset }
 }
@@ -41,9 +53,9 @@ export function findSessionFavorite(
  * chart, map route and stats bar — instead of a parallel implementation.
  *
  * The pinned summary wins over anything derivable from buckets: it was computed from raw samples at
- * creation and is exact for a range that cuts a bucket in half. Only what the row cannot carry
- * (geography, the buckets to read, the recording device) is derived from the overlapping buckets.
- * Favorite identity stays separate from the recording device so each can be presented consistently.
+ * creation and is exact for a range that cuts a bucket in half. Native also projects the route
+ * from the pinned range, so the card never depends on whichever History page JS currently holds.
+ * Remaining telemetry detail comes from overlapping buckets when the Favorite is opened.
  */
 export function favoriteToSession(
   favorite: Favorite,
@@ -52,12 +64,21 @@ export function favoriteToSession(
   const spanned = blocks
     .filter((block) => block.startAtMs <= favorite.endMs && block.endAtMs >= favorite.startMs)
     .sort((a, b) => a.startAtMs - b.startAtMs)
-  const latitudes = spanned.map((block) => block.firstLatitude).filter(isFinitePoint)
-  const longitudes = spanned.map((block) => block.firstLongitude).filter(isFinitePoint)
+  const routePoints =
+    favorite.routePoints.length > 0
+      ? favorite.routePoints
+      : spanned
+          .filter((block) => block.firstLatitude != null && block.firstLongitude != null)
+          .map((block) => ({
+            latitude: block.firstLatitude!,
+            longitude: block.firstLongitude!,
+          }))
+  const latitudes = routePoints.map((point) => point.latitude).filter(isFinitePoint)
+  const longitudes = routePoints.map((point) => point.longitude).filter(isFinitePoint)
   return {
     id: favoriteSessionId(favorite.id),
-    deviceId: spanned.find((block) => block.deviceId != null)?.deviceId ?? null,
-    deviceName: favorite.boardName ?? spanned[0]?.deviceName ?? '',
+    boardId: spanned.find((block) => block.boardId != null)?.boardId ?? null,
+    boardName: favorite.boardName ?? spanned[0]?.boardName ?? '',
     startAtMs: favorite.startMs,
     endAtMs: favorite.endMs,
     // A Favorite is already a trimmed span: it is its own Moving Window, so the chart and the title
@@ -85,8 +106,8 @@ export function favoriteToSession(
     maxLatitude: maxOrNull(latitudes),
     minLongitude: minOrNull(longitudes),
     maxLongitude: maxOrNull(longitudes),
-    faultCount: sum(spanned.map((block) => block.faultCount)),
     boundaryBefore: 'none',
+    routePoints,
   }
 }
 

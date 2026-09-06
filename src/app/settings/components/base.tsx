@@ -13,22 +13,26 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowsClockwiseIcon,
+  CheckIcon,
   CubeIcon,
   FadersIcon,
   GearSixIcon,
+  BellRingingIcon,
   GhostIcon,
+  ScalesIcon,
+  SpeakerHighIcon,
   TrashIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native'
 
 import { Banner } from '@/components/base/Banner'
 import { TickText } from '@/components/base/TickText'
-import { type MonoValueAlign } from '@/components/base/MonoValue'
+import type { MonoValueAlign } from '@/components/base/MonoValue'
 import { IconHero } from '@/components/settings/IconHero'
 import { Button } from '@/components/base/Button'
 import { IconButton } from '@/components/base/IconButton'
+import { SectionHeader } from '@/components/base/SectionHeader'
 import { Placeholder } from '@/components/base/Placeholder'
-import { ScreenTitle } from '@/components/base/ScreenTitle'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { theme, type MonoWeight } from '@/constants/theme'
@@ -167,9 +171,8 @@ function ButtonShowcase() {
       }
     >
       <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button
-            style={{ flex: 1 }}
             label="Primary"
             variant="primary"
             onPress={() => {}}
@@ -177,7 +180,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Secondary"
             variant="secondary"
             onPress={() => {}}
@@ -185,7 +187,6 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
             label="Tune"
             variant="tune"
             icon={FadersIcon}
@@ -194,7 +195,30 @@ function ButtonShowcase() {
             disabled={disabled}
           />
           <Button
-            style={{ flex: 1 }}
+            label="Dynamic accent"
+            icon={FadersIcon}
+            accent={theme.palette.pink.color}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
+            label="Enabled"
+            variant="success"
+            icon={CheckIcon}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
+            label="Preview"
+            variant="caution"
+            icon={SpeakerHighIcon}
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
+          <Button
             label="Delete"
             variant="destructive"
             onPress={() => {}}
@@ -224,6 +248,15 @@ function ButtonShowcase() {
             loading={loading}
             disabled={disabled}
           />
+          <Button
+            style={{ flex: 1 }}
+            label="Ride"
+            variant="groupRide"
+            size="sm"
+            onPress={() => {}}
+            loading={loading}
+            disabled={disabled}
+          />
         </View>
       </View>
     </ShowcaseCard>
@@ -233,7 +266,12 @@ function ButtonShowcase() {
 function PlaceholderShowcase() {
   const [showTitle, setShowTitle] = useState(true)
   const [showAction, setShowAction] = useState(true)
-  const [color, setColor] = useState<string>(theme.palette.slate.textMuted)
+  const [colorKey, setColorKey] = useState<'muted' | 'sky' | 'error'>('muted')
+  const color = {
+    muted: theme.palette.slate.textMuted,
+    sky: theme.palette.sky.color,
+    error: theme.status.error.color,
+  }[colorKey]
 
   return (
     <ShowcaseCard
@@ -244,23 +282,19 @@ function PlaceholderShowcase() {
           <ToggleRow label="showAction" value={showAction} onToggle={setShowAction} />
           <ChipRow
             label="iconColor"
-            options={[
-              theme.palette.slate.textMuted,
-              theme.palette.sky.color,
-              theme.status.error.color,
-            ]}
-            selected={color}
-            onSelect={setColor}
+            options={['muted', 'sky', 'error']}
+            selected={colorKey}
+            onSelect={(value) => setColorKey(value as typeof colorKey)}
           />
         </>
       }
     >
       <View style={{ height: 220 }}>
         <Placeholder
+          iconColor={color}
           icon={GhostIcon}
           title={showTitle ? 'No data yet' : undefined}
           description="Connect board to start streaming telemetry"
-          iconColor={color}
           action={
             showAction ? (
               <Button label="Get started" size="lg" icon={ArrowRightIcon} onPress={() => {}} />
@@ -300,23 +334,21 @@ function BannerShowcase() {
   )
 }
 
-function ScreenTitleShowcase() {
-  return (
-    <ShowcaseCard name="ScreenTitle">
-      <ScreenTitle title="Dashboard" />
-    </ShowcaseCard>
-  )
-}
-
 function TickTextShowcase() {
   const [weight, setWeight] = useState<MonoWeight>('700')
   const [align, setAlign] = useState<MonoValueAlign>('right')
+  const [empty, setEmpty] = useState(false)
   const value = useSharedValue<number | null>(0)
 
   useEffect(() => {
+    if (empty) {
+      cancelAnimation(value)
+      value.value = null
+      return
+    }
     value.value = withRepeat(withTiming(42.7, { duration: 3000, easing: Easing.linear }), -1, true)
     return () => cancelAnimation(value)
-  }, [value])
+  }, [empty, value])
 
   return (
     <ShowcaseCard
@@ -335,6 +367,7 @@ function TickTextShowcase() {
             selected={align}
             onSelect={(v) => setAlign(v as MonoValueAlign)}
           />
+          <ToggleRow label="no value (unit placeholder)" value={empty} onToggle={setEmpty} />
         </>
       }
     >
@@ -364,19 +397,33 @@ function TickTextShowcase() {
   )
 }
 
+function SectionHeaderShowcase() {
+  return (
+    <ShowcaseCard name="SectionHeader">
+      <SectionHeader icon={BellRingingIcon} color={theme.palette.yellow.color} title="Alerts" />
+      <SectionHeader
+        icon={ScalesIcon}
+        title="Cell balance"
+        description="20S pack"
+        right={<Button label="Preview" variant="caution" size="sm" onPress={() => {}} />}
+      />
+    </ShowcaseCard>
+  )
+}
+
 export default function BaseComponentsPage() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={CubeIcon}
-          description="Button, IconButton, Banner, Placeholder, ScreenTitle, TickText."
+          description="Button, IconButton, SectionHeader, Banner, Placeholder, TickText."
         />
         <IconButtonShowcase />
         <ButtonShowcase />
+        <SectionHeaderShowcase />
         <PlaceholderShowcase />
         <BannerShowcase />
-        <ScreenTitleShowcase />
         <TickTextShowcase />
       </ScrollView>
     </SafeAreaView>
@@ -384,12 +431,12 @@ export default function BaseComponentsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   tickBox: {
     gap: 6,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 6,
     padding: 8,
   },

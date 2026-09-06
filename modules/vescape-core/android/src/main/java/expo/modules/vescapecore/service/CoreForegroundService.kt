@@ -16,11 +16,14 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
+import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.TelemetryRepository
+import expo.modules.vescapecore.watch.WatchLightsSwitch
+import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
@@ -220,6 +223,24 @@ class CoreForegroundService : Service() {
             service.controller.consumePendingConfigRead()
         }
 
+        /** This Board Session's Board Config Values in bridge shape, or null when none are held. */
+        fun getBoardConfigValues(): Map<String, Any?>? = instance?.controller?.boardConfigValuesMap()
+
+        fun getMotorConfigValues(): Map<String, Any?>? = instance?.controller?.motorConfigValuesMap()
+
+        fun readVescFaultLog(
+            boardId: String,
+            onSuccess: (String) -> Unit,
+            onError: (String, String) -> Unit,
+        ) {
+            val service = instance
+            if (service == null) {
+                onError("VESC_FAULT_LOG_BOARD_NOT_CONNECTED", "Matching Board must be connected")
+                return
+            }
+            service.controller.readVescFaultLog(boardId, onSuccess, onError)
+        }
+
         fun setRemoteTilt(value: Int): Boolean = instance?.controller?.setRemoteTilt(value) ?: false
 
         fun lockRemoteTilt(value: Int): Boolean = instance?.controller?.lockRemoteTilt(value) ?: false
@@ -229,9 +250,30 @@ class CoreForegroundService : Service() {
 
         fun stopRemoteTilt(): Boolean = instance?.controller?.stopRemoteTilt() ?: false
 
+        fun setBoardLights(enabled: Boolean, headlightsEnabled: Boolean): Boolean =
+            instance?.controller?.setBoardLights(enabled, headlightsEnabled) ?: false
+
+        fun lightsEventBody(): Map<String, Any?> =
+            instance?.controller?.lightsEventBody() ?: mapOf("enabled" to null, "headlightsEnabled" to null)
+
         fun startBoardMove(input: Int): Boolean = instance?.controller?.startBoardMove(input) ?: false
 
         fun stopBoardMove(): Boolean = instance?.controller?.stopBoardMove() ?: false
+
+        /** Wrist Board Move tick (ADR-0033). Dropped when no session is running — nothing to move. */
+        fun watchMove(direction: Int) {
+            instance?.controller?.watchMove(direction)
+        }
+
+        /** Wrist light edit (ADR-0033). Dropped when no session is running — nothing to state. */
+        internal fun watchLights(switch: WatchLightsSwitch, on: Boolean) {
+            instance?.controller?.watchLights(switch, on)
+        }
+
+        /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
+        internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
+            instance?.controller?.watchMirrorWakeLevel(level)
+        }
 
         fun pushProfileToBoard(
             context: Context,
@@ -339,16 +381,6 @@ class CoreForegroundService : Service() {
             instance?.controller?.updateGroupRideIdentity(riderId, riderName, riderColor)
         }
 
-        /**
-         * Offer a compass reading to whatever Debug Recording is running. No service, no session or
-         * no active recorder means it is simply dropped — JS pushes these unconditionally while the
-         * map's heading layer is live, and native is the one that knows whether anything is
-         * recording.
-         */
-        fun recordPhoneHeading(context: Context, headingDeg: Double) {
-            instance?.controller?.recordPhoneHeading(headingDeg)
-        }
-
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {
             RecordingCoordinator.requestTelemetryRecording(enabled)
             instance?.controller?.setTelemetryRecordingEnabled(enabled)
@@ -357,6 +389,10 @@ class CoreForegroundService : Service() {
 
         fun setBmsSeriesFocused(focused: Boolean) {
             instance?.controller?.setBmsSeriesFocused(focused)
+        }
+
+        fun setFocusedSeriesMetrics(metrics: List<String>) {
+            instance?.controller?.setFocusedSeriesMetrics(metrics)
         }
 
         fun setLiveHistoryLimit(limit: Number?) {
@@ -419,6 +455,9 @@ class CoreForegroundService : Service() {
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
+        /** Live rider position for Navigation; null while the service is not up. */
+        fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
+
         private fun idleState(repository: AppDataRepository): Map<String, Any?> {
             val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }
             return mapOf(
@@ -436,7 +475,11 @@ class CoreForegroundService : Service() {
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(
-                    "phase" to "idle",
+                    // A GPS start claimed before the service exists is arming, not idle: the
+                    // monitor that will report `active` is created with the service.
+                    // @platform-diff Android defers GPS arming to the foreground service; iOS has
+                    // no serviceless window, its monitor reports `starting` itself.
+                    "phase" to if (pendingGpsStart) "starting" else "idle",
                     "latestFix" to null,
                     "latestApproximateFix" to null,
                     "latestPreciseFix" to null,

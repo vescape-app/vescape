@@ -39,7 +39,7 @@ export function PrevNextSelector({
         disabled={previousDisabled}
         onPress={onPrevious}
         testID={previousTestID}
-        icon={<CaretLeftIcon size={22} color={theme.palette.slate.textSecondary} weight="bold" />}
+        icon={<CaretLeftIcon size={22} color={theme.control.icon} weight="bold" />}
       />
       <View style={styles.divider} />
       {selectControl ? (
@@ -64,7 +64,7 @@ export function PrevNextSelector({
         disabled={nextDisabled}
         onPress={onNext}
         testID={nextTestID}
-        icon={<CaretRightIcon size={22} color={theme.palette.slate.textSecondary} weight="bold" />}
+        icon={<CaretRightIcon size={22} color={theme.control.icon} weight="bold" />}
       />
     </View>
   )
@@ -111,8 +111,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 27,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    borderColor: theme.control.border,
+    backgroundColor: theme.control.background,
     overflow: 'hidden',
   },
   navButton: {
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     height: 24,
-    backgroundColor: theme.palette.slate.border,
+    backgroundColor: theme.control.divider,
   },
   select: {
     flex: 1,
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   selectText: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.control.text,
     fontSize: 13,
     fontWeight: '800',
   },

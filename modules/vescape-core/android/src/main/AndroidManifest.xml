@@ -33,6 +33,16 @@
         <action android:name="android.companion.CompanionDeviceService"/>
       </intent-filter>
     </service>
+    <!-- Wrist -> phone commands (ADR-0033). Manifest-declared so a wrist press reaches the Board
+         Session with no phone UI running. The path filter keeps every other Wear message out. -->
+    <service
+      android:name=".watch.WatchCommandListenerService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED"/>
+        <data android:scheme="wear" android:host="*" android:pathPrefix="/command"/>
+      </intent-filter>
+    </service>
     <provider
       android:name=".service.AutoConnectProvider"
       android:authorities="${applicationId}.auto-connect"

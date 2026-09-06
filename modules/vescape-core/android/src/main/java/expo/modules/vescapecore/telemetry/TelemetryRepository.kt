@@ -32,6 +32,9 @@ private const val DEFAULT_SAMPLE_LIMIT = 2_000
 // bridge cost so a long/garbage session can't OOM the app. At 2 Hz persistence
 // this covers ~2 h 46 min of riding before a read truncates. See recordTelemetry.
 private const val MAX_SAMPLE_LIMIT = 20_000
+/** Bottom history chart overview; full samples remain available for map and chart screen. */
+// @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `HISTORY_CHART_OVERVIEW_SAMPLES`
+private const val HISTORY_CHART_OVERVIEW_SAMPLES = 600
 // Write gate: minimum spacing between persisted detail frames (2 Hz), shrinking DB
 // growth ~8x. Minute buckets are aggregated from the full-rate stream separately
 // (see pendingBucketStates), so avg/energy/peaks stay exact; live display and the
@@ -44,7 +47,7 @@ private const val MIN_PERSIST_INTERVAL_MS = 500L
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
  */
-private const val SAMPLE_COLUMN_COUNT = 25
+private const val SAMPLE_COLUMN_COUNT = 23
 
 data class TelemetryLocationCapture(
   val latitude: Double,
@@ -60,11 +63,9 @@ data class TelemetryLocationCapture(
 data class TelemetryCapture(
   val capturedAtMs: Long,
   val elapsedRealtimeMs: Long,
-  val deviceId: String?,
-  val deviceName: String,
+  /** Owning Board (`boards.id`) — what every telemetry table is keyed on (ADR 0028). */
+  val boardId: String?,
   val canId: Int?,
-  val hasFault: Boolean,
-  val faultCode: Int,
   val pitch: Double,
   val roll: Double,
   val balancePitch: Double,
@@ -140,8 +141,7 @@ class TelemetryRepository private constructor(context: Context) {
 
   fun recordMarker(
     type: String,
-    deviceId: String?,
-    deviceName: String?,
+    boardId: String?,
     message: String? = null,
     gapMs: Long? = null,
     occurredAtMs: Long = System.currentTimeMillis(),
@@ -151,8 +151,7 @@ class TelemetryRepository private constructor(context: Context) {
       occurredAtMs = occurredAtMs,
       elapsedRealtimeMs = elapsedRealtimeMs,
       type = type,
-      deviceId = deviceId,
-      deviceName = deviceName,
+      boardId = boardId,
       message = message,
       gapMs = gapMs,
     )
@@ -170,8 +169,7 @@ class TelemetryRepository private constructor(context: Context) {
       eventName = eventName,
       operation = properties["operation"] as? String,
       phase = properties["phase"] as? String,
-      deviceId = properties["ble_id"] as? String,
-      deviceName = properties["board_nickname"] as? String,
+      boardId = properties["board_id"] as? String,
       message = properties["message"] as? String,
       propertiesJson = JSONObject(sanitizeDiagnosticProperties(properties)).toString(),
     )
@@ -202,11 +200,11 @@ class TelemetryRepository private constructor(context: Context) {
       while (pendingBucketStates.size > MAX_PENDING_FRAMES) pendingBucketStates.removeFirst()
 
       // 2 Hz persistence gate for the stored detail trace only. Keep keyframes
-      // (delta-chain anchors / gaps) and fault frames; otherwise keep one frame per
+      // (delta-chain anchors / gaps); otherwise keep one frame per
       // MIN_PERSIST_INTERVAL_MS. Gated frames leave lastState/lastHistoryAtMs untouched
       // so the next persisted delta chains against the last persisted state.
       val sinceKept = lastHistoryAtMs?.let { capture.capturedAtMs - it }
-      val persist = keyframe || capture.hasFault || sinceKept == null || sinceKept >= MIN_PERSIST_INTERVAL_MS
+      val persist = keyframe || sinceKept == null || sinceKept >= MIN_PERSIST_INTERVAL_MS
       if (persist) {
         pending.addLast(PendingFrame(current.toFrame(previous, keyframe), current))
         if (gap) {
@@ -215,8 +213,7 @@ class TelemetryRepository private constructor(context: Context) {
               occurredAtMs = capture.capturedAtMs,
               elapsedRealtimeMs = capture.elapsedRealtimeMs,
               type = "gap",
-              deviceId = capture.deviceId,
-              deviceName = capture.deviceName,
+              boardId = capture.boardId,
               message = null,
               gapMs = gapMs,
             ),
@@ -282,17 +279,20 @@ class TelemetryRepository private constructor(context: Context) {
       query.fromMs,
       query.toMs,
       query.beforeMs,
-      query.deviceId,
+      query.boardId,
       query.limit,
     )
     if (buckets.isEmpty()) return@withContext emptyList()
     val markerFrom = buckets.minOf { it.bucketStartMs } - GAP_BOUNDARY_MS
     val markerTo = buckets.maxOf { it.bucketStartMs } + TELEMETRY_BUCKET_SIZE_MS
-    val markers = dao.getMarkers(markerFrom, markerTo, query.deviceId)
+    val markers = dao.getMarkers(markerFrom, markerTo, query.boardId)
+    val boardNames = boardNamesById()
     buckets.map { bucket ->
       val marker = markers.lastOrNull {
+        // An all-Boards read leaves the marker query unscoped, so the bucket has to claim its own.
         it.occurredAtMs >= bucket.firstSampleAtMs - 5_000L &&
-          it.occurredAtMs <= bucket.firstSampleAtMs + 1_000L
+          it.occurredAtMs <= bucket.firstSampleAtMs + 1_000L &&
+          (it.boardId ?: "") == bucket.boardId
       }
       val avgAbsSpeed = if (bucket.sampleCount > 0) {
         bucket.sumAbsSpeedCentiKmh.toDouble() / bucket.sampleCount / 100.0
@@ -312,12 +312,12 @@ class TelemetryRepository private constructor(context: Context) {
       val maxGpsSpeedKmh = bucket.maxGpsSpeedCentiMps?.let { it / 100.0 * 3.6 }
       val distanceM = distanceDeltaM(bucket) ?: bucket.gpsDistanceCm.takeIf { it > 0L }?.let { it / 100.0 }
       mapOf(
-        "id" to "${bucket.deviceId}:${bucket.bucketStartMs}",
+        "id" to "${bucket.boardId}:${bucket.bucketStartMs}",
         "startAtMs" to bucket.firstSampleAtMs,
         "endAtMs" to bucket.lastSampleAtMs,
         "bucketStartMs" to bucket.bucketStartMs,
-        "deviceId" to bucket.deviceId.ifBlank { null },
-        "deviceName" to (bucket.deviceName ?: UNKNOWN_TELEMETRY_DEVICE_NAME),
+        "boardId" to bucket.boardId.ifBlank { null },
+        "boardName" to (boardNames[bucket.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME),
         "sampleCount" to bucket.sampleCount,
         "gpsPointCount" to bucket.gpsPointCount,
         "preciseGpsPointCount" to bucket.preciseGpsPointCount,
@@ -329,7 +329,6 @@ class TelemetryRepository private constructor(context: Context) {
         "maxMotorCurrent" to bucket.maxMotorCurrentAbsMa / 1000.0,
         "maxBatteryCurrent" to bucket.maxBatteryCurrentAbsMa / 1000.0,
         "maxDuty" to bucket.maxDutyAbsPermille / 1000.0,
-        "faultCount" to bucket.faultCount,
         "distanceDeltaM" to distanceM,
         "gpsDistanceM" to bucket.gpsDistanceCm.takeIf { it > 0L }?.let { it / 100.0 },
         "maxTempMosfet" to bucket.maxTempMosfetDeciC?.let { it / 10.0 },
@@ -350,8 +349,8 @@ class TelemetryRepository private constructor(context: Context) {
   suspend fun getSamples(options: Map<String, Any?>): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val query = SampleQueryOptions.from(options)
     smoothedSampleMaps(
-      getSampleStates(query.fromMs, query.toMs, query.deviceId, query.limit),
-      batteryConfigByDevice(),
+      getSampleStates(query.fromMs, query.toMs, query.boardId, query.limit),
+      batteryConfigByBoard(),
     )
   }
 
@@ -366,12 +365,17 @@ class TelemetryRepository private constructor(context: Context) {
   ): List<Map<String, Any?>> {
     val windowMs = AppDataRepository.get(appContext).getTypedSettings().socEstimateWindowSeconds * 1000L
     val windows = HashMap<String?, SocMedianWindow>()
+    val boardNames = boardNamesById()
     return samples.map { sample ->
       val estimate = deriveBatteryPercent(sample.state, configs)?.let {
-        windows.getOrPut(sample.state.deviceId) { SocMedianWindow(windowMs) }
+        windows.getOrPut(sample.state.boardId) { SocMedianWindow(windowMs) }
           .median(it, sample.state.capturedAtMs)
       }
-      sample.state.toSampleMap(sample.id, estimate)
+      sample.state.toSampleMap(
+        sample.id,
+        boardNames[sample.state.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME,
+        estimate,
+      )
     }
   }
 
@@ -380,31 +384,37 @@ class TelemetryRepository private constructor(context: Context) {
    * little-endian Float64 lanes packed row-major into one direct ByteBuffer, returned as a JSI
    * ArrayBuffer. This replaces ~25 per-field JSI conversions × N samples (the dominant history-load
    * cost) with a single buffer transfer; JS rebuilds TelemetrySample objects locally. Nullable
-   * numeric lanes use NaN as the null sentinel; deviceId/deviceName are dictionary-encoded.
+   * numeric lanes use NaN as the null sentinel; the Board id and name are dictionary-encoded.
    *
    * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `sampleColumns`
    */
   private suspend fun smoothedSampleColumns(
     samples: List<HistoryTelemetryState>,
     configs: Map<String, Map<String, Any?>>,
+    boardNames: Map<String, String>,
   ): Map<String, Any?> {
     val windowMs = AppDataRepository.get(appContext).getTypedSettings().socEstimateWindowSeconds * 1000L
     val windows = HashMap<String?, SocMedianWindow>()
-    val deviceIds = ArrayList<String?>()
-    val deviceNames = ArrayList<String>()
-    val deviceIndex = HashMap<String?, Int>()
+    val boardIds = ArrayList<String?>()
+    val names = ArrayList<String>()
+    val boardIndex = HashMap<String?, Int>()
     val buffer = ByteBuffer
       .allocateDirect(samples.size * SAMPLE_COLUMN_COUNT * 8)
       .order(ByteOrder.LITTLE_ENDIAN)
-    for (sample in samples) {
+    val overviewIndices = evenlySpacedIndices(samples.size, HISTORY_CHART_OVERVIEW_SAMPLES)
+    val overviewBuffer = ByteBuffer
+      .allocateDirect(overviewIndices.size * SAMPLE_COLUMN_COUNT * 8)
+      .order(ByteOrder.LITTLE_ENDIAN)
+    var overviewCursor = 0
+    for ((sampleIndex, sample) in samples.withIndex()) {
       val s = sample.state
       val estimate = deriveBatteryPercent(s, configs)?.let {
-        windows.getOrPut(s.deviceId) { SocMedianWindow(windowMs) }.median(it, s.capturedAtMs)
+        windows.getOrPut(s.boardId) { SocMedianWindow(windowMs) }.median(it, s.capturedAtMs)
       }
-      val di = deviceIndex.getOrPut(s.deviceId) {
-        deviceIds.add(s.deviceId)
-        deviceNames.add(s.deviceName ?: UNKNOWN_TELEMETRY_DEVICE_NAME)
-        deviceIds.size - 1
+      val di = boardIndex.getOrPut(s.boardId) {
+        boardIds.add(s.boardId)
+        names.add(boardNames[s.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME)
+        boardIds.size - 1
       }
       buffer
         .putDouble(sample.id.toDouble())
@@ -428,40 +438,66 @@ class TelemetryRepository private constructor(context: Context) {
         .putDouble(s.odometerCm?.let { it / 100.0 } ?: Double.NaN)
         .putDouble(s.tempMosfetDeciC?.let { it / 10.0 } ?: Double.NaN)
         .putDouble(s.tempMotorDeciC?.let { it / 10.0 } ?: Double.NaN)
-        .putDouble(if (s.hasFault) 1.0 else 0.0)
-        .putDouble(s.faultCode.toDouble())
         .putDouble(s.location?.latitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
         .putDouble(s.location?.longitudeE7?.let { it / 10_000_000.0 } ?: Double.NaN)
+      if (overviewCursor < overviewIndices.size && overviewIndices[overviewCursor] == sampleIndex) {
+        val rowStart = sampleIndex * SAMPLE_COLUMN_COUNT * 8
+        val row = buffer.duplicate().apply {
+          position(rowStart)
+          limit(rowStart + SAMPLE_COLUMN_COUNT * 8)
+        }.slice()
+        overviewBuffer.put(row)
+        overviewCursor += 1
+      }
     }
     return mapOf(
       "boardColumns" to NativeArrayBuffer.wrap(buffer),
       "boardCount" to samples.size,
-      "boardDevices" to deviceIds,
-      "boardDeviceNames" to deviceNames,
+      "boardIds" to boardIds,
+      "boardNames" to names,
+      "chartColumns" to NativeArrayBuffer.wrap(overviewBuffer),
+      "chartCount" to overviewIndices.size,
     )
   }
 
-  /** bleId (telemetry deviceId) -> the board's normalized battery config. */
-  private suspend fun batteryConfigByDevice(): Map<String, Map<String, Any?>> {
+  private fun evenlySpacedIndices(count: Int, limit: Int): IntArray {
+    if (count <= limit) return IntArray(count) { it }
+    val denominator = limit - 1L
+    return IntArray(limit) { index ->
+      ((index * (count - 1L) + denominator / 2L) / denominator).toInt()
+    }
+  }
+
+  /**
+   * `boards.id` -> the Board's normalized battery config. Keyed on the Board rather than its BLE
+   * identifier now that samples carry the Board id (ADR 0028), so a re-linked Board keeps its
+   * config across its whole history.
+   */
+  private suspend fun batteryConfigByBoard(): Map<String, Map<String, Any?>> {
     BatterySocEstimator.ensureInitialized(appContext)
     val result = mutableMapOf<String, Map<String, Any?>>()
     for (board in AppDataRepository.get(appContext).getBoards()) {
-      @Suppress("UNCHECKED_CAST")
-      val link = board["link"] as? Map<String, Any?> ?: continue
-      val bleId = link["bleId"] as? String ?: continue
+      val id = board["id"] as? String ?: continue
       @Suppress("UNCHECKED_CAST")
       val config = board["batteryConfig"] as? Map<String, Any?> ?: continue
-      result[bleId] = config
+      result[id] = config
     }
     return result
   }
+
+  /**
+   * `boards.id` -> Board name, tombstones included: Ride History still has to name a Board the
+   * Rider deleted (ADR 0027), and resolving on read is what makes a rename retroactive.
+   */
+  private suspend fun boardNamesById(): Map<String, String> =
+    dao.getBoardNames().associate { it.id to it.name }
 
   /** Derive IR-compensated battery % on read, mirroring the live native path. */
   private fun deriveBatteryPercent(
     state: FullTelemetryState,
     configs: Map<String, Map<String, Any?>>,
   ): Double? {
-    val config = state.deviceId?.let { configs[it] } ?: return null
+    val config = state.boardId?.let { configs[it] } ?: return null
     return BatterySocEstimator.estimateBatteryPercent(
       state.batteryVoltageMv / 1000.0,
       config,
@@ -472,12 +508,12 @@ class TelemetryRepository private constructor(context: Context) {
   private suspend fun getSampleStates(
     fromMs: Long,
     toMs: Long,
-    deviceId: String?,
+    boardId: String?,
     limit: Int,
   ): List<HistoryTelemetryState> {
-    val keyframe = dao.getLatestKeyframeBefore(fromMs, deviceId)
+    val keyframe = dao.getLatestKeyframeBefore(fromMs, boardId)
     val start = keyframe?.capturedAtMs ?: fromMs
-    val frames = dao.getFrames(start, toMs, deviceId, limit + 1)
+    val frames = dao.getFrames(start, toMs, boardId, limit + 1)
     var state: FullTelemetryState? = null
     val samples = mutableListOf<HistoryTelemetryState>()
     for (frame in frames) {
@@ -492,12 +528,13 @@ class TelemetryRepository private constructor(context: Context) {
 
   suspend fun getRange(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
     val query = SampleQueryOptions.from(options)
-    val samples = getSampleStates(query.fromMs, query.toMs, query.deviceId, query.limit)
-    val configs = batteryConfigByDevice()
-    smoothedSampleColumns(samples, configs) + mapOf(
-      "gpsSamples" to samples.toGpsSampleMaps(),
-      "markers" to dao.getMarkers(query.fromMs, query.toMs, query.deviceId).map { it.toMap() },
-      "exclusions" to dao.getExclusions(query.fromMs, query.toMs, query.deviceId).map { it.toMap() },
+    val samples = getSampleStates(query.fromMs, query.toMs, query.boardId, query.limit)
+    val configs = batteryConfigByBoard()
+    val boardNames = boardNamesById()
+    smoothedSampleColumns(samples, configs, boardNames) + mapOf(
+      "gpsSamples" to samples.toGpsSampleMaps(boardNames),
+      "markers" to dao.getMarkers(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
+      "exclusions" to dao.getExclusions(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
     )
   }
 
@@ -513,7 +550,7 @@ class TelemetryRepository private constructor(context: Context) {
 
   suspend fun getDiagnosticEvents(options: Map<String, Any?>): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val query = DiagnosticQueryOptions.from(options)
-    dao.getDiagnosticEvents(query.fromMs, query.toMs, query.deviceId, query.limit).map { it.toMap() }
+    dao.getDiagnosticEvents(query.fromMs, query.toMs, query.boardId, query.limit).map { it.toMap() }
   }
 
   suspend fun clearDiagnosticEvents() = withContext(Dispatchers.IO) {
@@ -529,9 +566,9 @@ class TelemetryRepository private constructor(context: Context) {
     flushNow()
     val requested = TelemetryTimeRange(query.fromMs, query.toMs)
     val protected = favoriteTelemetryRanges()
-    promoteProtectedRangeStarts(protected, query.deviceId)
+    promoteProtectedRangeStarts(protected, query.boardId)
     val deleted = subtractProtectedTelemetryRanges(requested, protected).sumOf { range ->
-      dao.deleteRange(range.startMs, range.endMs, query.deviceId)
+      dao.deleteRange(range.startMs, range.endMs, query.boardId)
     }
     deleted
   }
@@ -547,7 +584,27 @@ class TelemetryRepository private constructor(context: Context) {
   suspend fun getFavorites(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     favoriteMediaStore.reconcileAll()
     val boardNames = dao.getBoards().associate { it.id to it.name }
-    dao.getFavorites().map { it.toMap(boardNames[it.boardId]) }
+    dao.getFavorites().map { favorite ->
+      favorite.toMap(boardNames[favorite.boardId], favoriteRoutePoints(favorite))
+    }
+  }
+
+  /** Coarse native route projection for Favorite cards, independent of JS history pagination. */
+  private suspend fun favoriteRoutePoints(favorite: FavoriteEntity): List<Map<String, Double>> {
+    val fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
+    return dao.getHistoryBuckets(
+      fromMs = fromBucketMs,
+      toMs = favorite.endMs,
+      beforeMs = favorite.endMs,
+      boardId = null,
+      limit = Int.MAX_VALUE,
+    ).asReversed()
+      .filter { it.firstSampleAtMs <= favorite.endMs && it.lastSampleAtMs >= favorite.startMs }
+      .mapNotNull { bucket ->
+        val latitude = bucket.firstLatitudeE7 ?: return@mapNotNull null
+        val longitude = bucket.firstLongitudeE7 ?: return@mapNotNull null
+        mapOf("latitude" to latitude / 1e7, "longitude" to longitude / 1e7)
+      }
   }
 
   /**
@@ -561,17 +618,12 @@ class TelemetryRepository private constructor(context: Context) {
     val range = favoriteRange(options) ?: return@withContext null
     val startMs = range.startMs
     val endMs = range.endMs
-    val deviceId = options["deviceId"] as? String
+    val boardId = options["boardId"] as? String
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val states = getSampleStates(startMs, endMs, deviceId, Int.MAX_VALUE)
+    val states = getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE)
     val summary = favoriteSummary(states)
-    val boards = dao.getBoards()
-    // The ble id is a transport key — it changes on re-link and differs per install — so the
-    // Favorite keeps the durable `boards.id` instead.
-    // @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `boardId`
-    val boardId = deviceId?.let { ble -> boards.firstOrNull { it.bleId == ble }?.id }
     val nowMs = System.currentTimeMillis()
     val favorite = FavoriteEntity(
       id = UUID.randomUUID().toString(),
@@ -590,7 +642,10 @@ class TelemetryRepository private constructor(context: Context) {
       batteryUsedWhMilli = summary.batteryUsedWhMilli,
     )
     dao.insertFavorite(favorite)
-    favorite.toMap(boards.firstOrNull { it.id == boardId }?.name)
+    favorite.toMap(
+      boardId?.let { boardNamesById()[it] },
+      favoriteRoutePoints(favorite),
+    )
   }
 
   /**
@@ -607,11 +662,11 @@ class TelemetryRepository private constructor(context: Context) {
     val range = favoriteRange(options) ?: return@withContext null
     val startMs = range.startMs
     val endMs = range.endMs
-    val deviceId = options["deviceId"] as? String
+    val boardId = options["boardId"] as? String
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val summary = favoriteSummary(getSampleStates(startMs, endMs, deviceId, Int.MAX_VALUE))
+    val summary = favoriteSummary(getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE))
     val updated = existing.copy(
       name = name,
       startMs = startMs,
@@ -626,7 +681,10 @@ class TelemetryRepository private constructor(context: Context) {
       batteryUsedWhMilli = summary.batteryUsedWhMilli,
     )
     if (dao.updateFavorite(updated) == 0) return@withContext null
-    updated.toMap(dao.getBoards().firstOrNull { it.id == updated.boardId }?.name)
+    updated.toMap(
+      dao.getBoards().firstOrNull { it.id == updated.boardId }?.name,
+      favoriteRoutePoints(updated),
+    )
   }
 
   /**
@@ -736,7 +794,7 @@ class TelemetryRepository private constructor(context: Context) {
     if (protected.isEmpty()) {
       dao.clearAll()
     } else {
-      promoteProtectedRangeStarts(protected, deviceId = null)
+      promoteProtectedRangeStarts(protected, boardId = null)
       val requested = TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)
       for (range in subtractProtectedTelemetryRanges(requested, protected)) {
         dao.deleteRangeAllDevices(range.startMs, range.endMs)
@@ -773,24 +831,24 @@ class TelemetryRepository private constructor(context: Context) {
    */
   private suspend fun promoteProtectedRangeStarts(
     protected: Collection<TelemetryTimeRange>,
-    deviceId: String?,
+    boardId: String?,
   ) {
     for (range in protected) {
-      val devices = if (deviceId != null) {
-        listOf(deviceId)
+      val boards = if (boardId != null) {
+        listOf(boardId)
       } else {
-        dao.getDeviceIdsInRange(range.startMs, range.endMs)
+        dao.getBoardIdsInRange(range.startMs, range.endMs)
       }
-      for (protectedDeviceId in devices) {
+      for (protectedBoardId in boards) {
         val firstFrame = dao.getFirstFrameInRange(
           range.startMs,
           range.endMs,
-          protectedDeviceId,
+          protectedBoardId,
         ) ?: continue
         val first = getSampleStates(
           range.startMs,
           firstFrame.capturedAtMs,
-          protectedDeviceId,
+          protectedBoardId,
           Int.MAX_VALUE,
         ).firstOrNull { it.id == firstFrame.id } ?: continue
         dao.updateFrame(first.state.toFrame(previous = null, keyframe = true).copy(id = first.id))
@@ -890,7 +948,7 @@ private data class HistoryQueryOptions(
   val fromMs: Long,
   val toMs: Long,
   val beforeMs: Long,
-  val deviceId: String?,
+  val boardId: String?,
   val limit: Int,
 ) {
   companion object {
@@ -900,7 +958,7 @@ private data class HistoryQueryOptions(
         fromMs = options.long("fromMs") ?: 0L,
         toMs = toMs,
         beforeMs = options.long("cursorBeforeMs") ?: toMs,
-        deviceId = options["deviceId"] as? String,
+        boardId = options["boardId"] as? String,
         limit = (options.int("limit") ?: DEFAULT_HISTORY_LIMIT).coerceIn(1, 500),
       )
     }
@@ -910,7 +968,7 @@ private data class HistoryQueryOptions(
 private data class DiagnosticQueryOptions(
   val fromMs: Long,
   val toMs: Long,
-  val deviceId: String?,
+  val boardId: String?,
   val limit: Int,
 ) {
   companion object {
@@ -919,7 +977,7 @@ private data class DiagnosticQueryOptions(
       return DiagnosticQueryOptions(
         fromMs = options.long("fromMs") ?: 0L,
         toMs = toMs,
-        deviceId = options["deviceId"] as? String,
+        boardId = options["boardId"] as? String,
         limit = (options.int("limit") ?: 200).coerceIn(1, 1_000),
       )
     }
@@ -929,7 +987,7 @@ private data class DiagnosticQueryOptions(
 private data class SampleQueryOptions(
   val fromMs: Long,
   val toMs: Long,
-  val deviceId: String?,
+  val boardId: String?,
   val limit: Int,
 ) {
   companion object {
@@ -937,7 +995,7 @@ private data class SampleQueryOptions(
       SampleQueryOptions(
         fromMs = options.requiredLong("fromMs"),
         toMs = options.requiredLong("toMs"),
-        deviceId = options["deviceId"] as? String,
+        boardId = options["boardId"] as? String,
         limit = (options.int("limit") ?: DEFAULT_SAMPLE_LIMIT).coerceIn(1, MAX_SAMPLE_LIMIT),
       )
   }
@@ -946,7 +1004,7 @@ private data class SampleQueryOptions(
 private data class RangeMutationOptions(
   val fromMs: Long,
   val toMs: Long,
-  val deviceId: String?,
+  val boardId: String?,
 ) {
   companion object {
     fun from(options: Map<String, Any?>): RangeMutationOptions {
@@ -956,7 +1014,7 @@ private data class RangeMutationOptions(
       return RangeMutationOptions(
         fromMs = fromMs,
         toMs = toMs,
-        deviceId = options["deviceId"] as? String,
+        boardId = options["boardId"] as? String,
       )
     }
   }
@@ -970,11 +1028,8 @@ internal data class HistoryTelemetryState(
 internal data class FullTelemetryState(
   val capturedAtMs: Long,
   val elapsedRealtimeMs: Long,
-  val deviceId: String?,
-  val deviceName: String?,
+  val boardId: String?,
   val canId: Int?,
-  val hasFault: Boolean,
-  val faultCode: Int,
   val speedCentiKmh: Int,
   val batteryVoltageMv: Int,
   val motorCurrentMa: Int,
@@ -1007,14 +1062,12 @@ internal data class FullTelemetryState(
     val includeLocation = keyframe || locationChanged(previous?.location, location)
     if (includeLocation) mask2 = mask2 or TELEMETRY_MASK2_LOCATION
     val flags = (if (keyframe) TELEMETRY_FLAG_KEYFRAME else 0) or
-      (if (hasFault) TELEMETRY_FLAG_HAS_FAULT else 0) or
       (if (location != null) TELEMETRY_FLAG_HAS_LOCATION else 0)
 
     return TelemetryFrameEntity(
       capturedAtMs = capturedAtMs,
       elapsedRealtimeMs = elapsedRealtimeMs,
-      deviceId = deviceId,
-      deviceName = deviceName,
+      boardId = boardId,
       canId = canId,
       flags = flags,
       changedMask1 = 0,
@@ -1036,7 +1089,6 @@ internal data class FullTelemetryState(
       odometerCm = if (include(changedBy(previous?.odometerCm, odometerCm, 25), TELEMETRY_MASK_ODOMETER)) odometerCm else null,
       tempMosfetDeciC = if (include(changedBy(previous?.tempMosfetDeciC, tempMosfetDeciC, 5), TELEMETRY_MASK_TEMP_MOSFET)) tempMosfetDeciC else null,
       tempMotorDeciC = if (include(changedBy(previous?.tempMotorDeciC, tempMotorDeciC, 5), TELEMETRY_MASK_TEMP_MOTOR)) tempMotorDeciC else null,
-      faultCode = if (include(previous?.faultCode != faultCode, TELEMETRY_MASK_FAULT_CODE)) faultCode else null,
       latitudeE7 = if (includeLocation) location?.latitudeE7 else null,
       longitudeE7 = if (includeLocation) location?.longitudeE7 else null,
       gpsSpeedCentiMps = if (includeLocation) location?.gpsSpeedCentiMps else null,
@@ -1047,11 +1099,12 @@ internal data class FullTelemetryState(
     ).copy(changedMask1 = mask1, changedMask2 = mask2)
   }
 
-  fun toSampleMap(id: Long, batteryPercent: Double? = null): Map<String, Any?> = mapOf(
+  /** Board name is resolved by the caller from `boards`, never read off the row (ADR 0028). */
+  fun toSampleMap(id: Long, boardName: String?, batteryPercent: Double? = null): Map<String, Any?> = mapOf(
     "id" to id,
     "capturedAtMs" to capturedAtMs,
-    "deviceId" to deviceId,
-    "deviceName" to (deviceName ?: UNKNOWN_TELEMETRY_DEVICE_NAME),
+    "boardId" to boardId,
+    "boardName" to boardName,
     "speedKmh" to speedCentiKmh / 100.0,
     "batteryVoltage" to batteryVoltageMv / 1000.0,
     "batteryPercent" to batteryPercent,
@@ -1070,22 +1123,18 @@ internal data class FullTelemetryState(
     "odometer" to odometerCm?.let { it / 100.0 },
     "tempMosfet" to tempMosfetDeciC?.let { it / 10.0 },
     "tempMotor" to tempMotorDeciC?.let { it / 10.0 },
-    "hasFault" to hasFault,
-    "faultCode" to faultCode,
     "latitude" to location?.latitudeE7?.let { it / 10_000_000.0 },
     "longitude" to location?.longitudeE7?.let { it / 10_000_000.0 },
   )
 
   fun toBucketPoint(): BucketTelemetryPoint = BucketTelemetryPoint(
     capturedAtMs = capturedAtMs,
-    deviceId = deviceId,
-    deviceName = deviceName,
+    boardId = boardId,
     speedCentiKmh = speedCentiKmh,
     batteryVoltageMv = batteryVoltageMv,
     motorCurrentMa = motorCurrentMa,
     batteryCurrentMa = batteryCurrentMa,
     dutyPermille = dutyPermille,
-    hasFault = hasFault,
     odometerCm = odometerCm,
     tempMosfetDeciC = tempMosfetDeciC,
     tempMotorDeciC = tempMotorDeciC,
@@ -1098,11 +1147,8 @@ internal data class FullTelemetryState(
     fun from(capture: TelemetryCapture): FullTelemetryState = FullTelemetryState(
       capturedAtMs = capture.capturedAtMs,
       elapsedRealtimeMs = capture.elapsedRealtimeMs,
-      deviceId = capture.deviceId,
-      deviceName = capture.deviceName,
+      boardId = capture.boardId,
       canId = capture.canId,
-      hasFault = capture.hasFault,
-      faultCode = capture.faultCode,
       speedCentiKmh = (capture.speed * 100.0).roundToInt(),
       batteryVoltageMv = (capture.batteryVoltage * 1000.0).roundToInt(),
       motorCurrentMa = (capture.motorCurrent * 1000.0).roundToInt(),
@@ -1140,7 +1186,6 @@ internal data class FullTelemetryState(
       val switchState = pick(frame.switchState, base?.switchState) ?: return null
       val adc1 = pick(frame.adc1Milli, base?.adc1Milli) ?: return null
       val adc2 = pick(frame.adc2Milli, base?.adc2Milli) ?: return null
-      val faultCode = pick(frame.faultCode, base?.faultCode) ?: 0
       val location = if ((frame.changedMask2 and TELEMETRY_MASK2_LOCATION) != 0) {
         ScaledLocation.fromFrame(frame)
       } else {
@@ -1149,11 +1194,8 @@ internal data class FullTelemetryState(
       return FullTelemetryState(
         capturedAtMs = frame.capturedAtMs,
         elapsedRealtimeMs = frame.elapsedRealtimeMs,
-        deviceId = frame.deviceId ?: base?.deviceId,
-        deviceName = frame.deviceName ?: base?.deviceName,
+        boardId = frame.boardId ?: base?.boardId,
         canId = frame.canId ?: base?.canId,
-        hasFault = (frame.flags and TELEMETRY_FLAG_HAS_FAULT) != 0,
-        faultCode = faultCode,
         speedCentiKmh = speed,
         batteryVoltageMv = voltage,
         motorCurrentMa = motorCurrent,
@@ -1242,15 +1284,14 @@ private fun TelemetryMarkerEntity.toMap(): Map<String, Any?> = mapOf(
   "id" to id,
   "occurredAtMs" to occurredAtMs,
   "type" to type,
-  "deviceId" to deviceId,
-  "deviceName" to deviceName,
+  "boardId" to boardId,
   "message" to message,
   "gapMs" to gapMs,
 )
 
 private fun MetricExclusionRangeEntity.toMap(): Map<String, Any?> = mapOf(
   "id" to id,
-  "deviceId" to deviceId.ifBlank { null },
+  "boardId" to boardId,
   "reason" to reason,
   "startMs" to startMs,
   "endMs" to endMs,
@@ -1275,8 +1316,7 @@ private fun DiagnosticEventEntity.toMap(): Map<String, Any?> = mapOf(
   "eventName" to eventName,
   "operation" to operation,
   "phase" to phase,
-  "deviceId" to deviceId,
-  "deviceName" to deviceName,
+  "boardId" to boardId,
   "message" to message,
   "propertiesJson" to propertiesJson,
 )

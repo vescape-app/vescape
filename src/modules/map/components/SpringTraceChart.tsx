@@ -4,6 +4,7 @@ import Svg, { Polyline } from 'react-native-svg'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 export interface SpringTraceSample {
   t: number
@@ -66,9 +67,9 @@ export function SpringTraceChart({
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.readout}>
-          <Text style={styles.position}>{last ? format(last.position) : '-'}</Text>
+          <Text style={styles.position}>{last ? format(last.position) : DASH}</Text>
           <Text style={styles.separator}> / </Text>
-          <Text style={styles.target}>{last ? format(last.target) : '-'}</Text>
+          <Text style={styles.target}>{last ? format(last.target) : DASH}</Text>
         </Text>
       </View>
       <View

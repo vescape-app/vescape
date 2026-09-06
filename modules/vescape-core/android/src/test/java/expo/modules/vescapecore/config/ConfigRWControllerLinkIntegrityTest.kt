@@ -3,8 +3,6 @@ package expo.modules.vescapecore.config
 import expo.modules.vescapecore.connection.BoardPhase
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.service.SessionConfig
-
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
 import expo.modules.vescapecore.runtime.LinkIntegrity
 import expo.modules.vescapecore.runtime.TestScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +51,7 @@ class ConfigRWControllerLinkIntegrityTest {
             override fun captureDiagnostic(name: String, properties: Map<String, Any?>) = Unit
             override fun diagnosticProperties(config: SessionConfig?, category: String) = emptyMap<String, Any?>()
             override fun dumpDebugBytes(xmlBytes: ByteArray, configBytes: ByteArray) = Unit
-            override fun evaluateConfigSafety(values: ConfigSafetyValues) = Unit
+            override fun onBoardConfigValues(values: BoardConfigValues, origin: BoardConfigOperationOrigin) = Unit
         },
     )
 

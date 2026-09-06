@@ -2,8 +2,8 @@ import type { AlertRule } from 'vescape-core'
 
 import { generateId } from '@/helpers/id'
 import {
-  generateAlertPresetRules,
   isPresetAlertRule,
+  resolvedAlertPresetRules,
   type AlertPresetLevel,
   type AlertPresetMetric,
   type GenerateAlertPresetRulesOptions,
@@ -27,6 +27,9 @@ export type DraftAlertRule = Omit<AlertRule, 'boardId'>
  * metric to `custom` never changes what the board says out loud. Ids are fresh and `source` is
  * absent by construction: reusing the deterministic `preset:<metric>:<i>` ids would let the next
  * regeneration overwrite or delete rules the rider now owns.
+ *
+ * A matched preset is frozen at what it resolves to right now — that is what taking ownership
+ * means: the rule stops following the board.
  */
 export function materializePresetRules(
   metric: AlertPresetMetric,
@@ -34,7 +37,9 @@ export function materializePresetRules(
   options: GenerateAlertPresetRulesOptions = {},
 ): DraftAlertRule[] {
   const createdAt = Date.now()
-  return generateAlertPresetRules(metric, level, options).map((spec) => ({
+  // Resolved only: a dormant matched rule has no threshold to hand over, and freezing its
+  // placeholder would give the rider a fixed rule at a value the board never acts on.
+  return resolvedAlertPresetRules(metric, level, options).map((spec) => ({
     id: generateId(),
     controlId: spec.controlId,
     threshold: spec.threshold,

@@ -1,5 +1,5 @@
 import type Mapbox from '@rnmapbox/maps'
-import { useCallback, useEffect, useRef, useState, type ElementRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentRef, type RefObject } from 'react'
 
 import {
   applyOffscreenIndicatorDrafts,
@@ -29,7 +29,7 @@ export function useOffscreenMapIndicators({
   trackedPoints,
   enabled,
 }: {
-  mapViewRef: RefObject<ElementRef<typeof Mapbox.MapView> | null>
+  mapViewRef: RefObject<ComponentRef<typeof Mapbox.MapView> | null>
   currentCameraRef: RefObject<CameraSnapshot | null>
   mapLayout: MapLayout
   trackedPoints: TrackedMapPoint[]
@@ -60,7 +60,6 @@ export function useOffscreenMapIndicators({
   }, [publish])
 
   const update = useCallback(() => {
-    const camera = currentCameraRef.current
     const mapView = mapViewRef.current
     if (
       mapView == null ||
@@ -85,6 +84,10 @@ export function useOffscreenMapIndicators({
     )
       .then((projectedPoints) => {
         if (projectionRequestRef.current !== requestId) return
+        // Read the camera after the native projection resolves: a snapshot taken before the await
+        // is a frame or more old, and re-projecting against it drags the indicators back to a
+        // heading the map has already left.
+        const camera = currentCameraRef.current
         const next = projectedPoints.flatMap((trackedPoint) => {
           const [x, y] = trackedPoint.point
           if (typeof x !== 'number' || typeof y !== 'number') return []

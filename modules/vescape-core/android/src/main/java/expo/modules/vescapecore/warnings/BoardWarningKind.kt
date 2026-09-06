@@ -19,7 +19,20 @@ enum class BoardWarningKind(val wire: String) {
   LV_PUSHBACK_LOW("lv-pushback-low"),
   HV_PUSHBACK_HIGH("hv-pushback-high"),
   DUTY_PUSHBACK_HIGH("duty-pushback-high"),
-  MOVING_FAULT_DISABLED("moving-fault-disabled"),
+  ;
+
+  companion object {
+    /**
+     * Kinds this app once emitted and no longer does. Their slug stays durable in the warnings table,
+     * so a retired kind would otherwise sit on a rider's board forever: nothing evaluates it, so
+     * nothing ever reports it clean. Every config evaluation clears them instead.
+     *
+     * `moving-fault-disabled` flagged Refloat's "Disable Moving Faults" as unsafe. It is a deliberate
+     * mitigation on boards with unreliable footpad sensors, so the warning said nothing a rider could
+     * act on.
+     */
+    val RETIRED_WIRE = listOf("moving-fault-disabled")
+  }
 }
 
 /**

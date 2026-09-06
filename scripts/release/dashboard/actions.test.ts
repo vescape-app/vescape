@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { availableActions, type ActionId } from './actions'
+import { availableActions, defaultActionIndex, type ActionId } from './actions'
 import { initialReleaseState, type ProductionRow, type ReleaseState, type TrackRow } from './state'
 
 const ids = (state: ReleaseState): ActionId[] => availableActions(state).map((action) => action.id)
@@ -10,8 +10,6 @@ const production = (overrides: Partial<ProductionRow> = {}): ProductionRow => ({
   wear: 1389,
   detail: 'promoted',
   runId: 10,
-  rolloutPercentage: 25,
-  halted: false,
   openPromotionRunId: 99,
   age: '2h ago',
   ...overrides,
@@ -34,7 +32,7 @@ const state = (overrides: Partial<ReleaseState> = {}): ReleaseState => ({
 
 describe('availableActions', () => {
   test('offers only entry points when nothing is recorded yet', () => {
-    expect(ids(state())).toEqual(['watch', 'build', 'prepare', 'refresh'])
+    expect(ids(state())).toEqual(['prepare', 'watch', 'build', 'refresh'])
   })
 
   test('offers open promotion once an internal build is not on open', () => {
@@ -59,29 +57,15 @@ describe('availableActions', () => {
     ).not.toContain('promote-open')
   })
 
-  test('offers advance and halt while a staged rollout is live', () => {
-    const available = ids(state({ production: production() }))
-    expect(available).toContain('advance')
-    expect(available).toContain('halt')
-    expect(available).not.toContain('resume')
+  test('offers a live status refresh once something is on production', () => {
+    expect(ids(state({ production: production() }))).toContain('status')
   })
 
-  test('offers resume instead of advance while halted', () => {
-    const available = ids(state({ production: production({ halted: true }) }))
-    expect(available).toContain('resume')
-    expect(available).not.toContain('advance')
-    expect(available).not.toContain('halt')
+  test('offers no production action before anything reaches production', () => {
+    expect(ids(state())).not.toContain('status')
   })
 
-  test('offers no rollout controls at full rollout', () => {
-    const available = ids(state({ production: production({ rolloutPercentage: 100 }) }))
-    expect(available).not.toContain('advance')
-    expect(available).not.toContain('halt')
-    expect(available).not.toContain('resume')
-    expect(available).toContain('status')
-  })
-
-  test('puts the running release first so Enter watches it', () => {
+  test('leads with preparing but preselects a running release so Enter watches it', () => {
     const running = state({
       activeRun: {
         id: 5,
@@ -94,8 +78,11 @@ describe('availableActions', () => {
       pendingInternal: 1,
       internal: internal(),
     })
-    const [first] = availableActions(running)
-    expect(first.id).toBe('watch')
-    expect(first.label).toContain('#42')
+    const actions = availableActions(running)
+    expect(actions[0]?.id).toBe('prepare')
+    const preselected = actions[defaultActionIndex(actions, running)]
+    expect(preselected?.id).toBe('watch')
+    expect(preselected?.label).toContain('#42')
+    expect(defaultActionIndex(availableActions(state()), state())).toBe(0)
   })
 })

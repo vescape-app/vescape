@@ -10,7 +10,7 @@ so there is nothing extra to remember:
 
 ```bash
 bun run ios       # native:sync ios && expo run:ios --device
-bun run android   # native:sync android && expo run:android --device
+bun run android   # device picker (phones only) -> native:sync android && expo run:android
 bun run native:sync ios   # sync only, no app run
 ```
 

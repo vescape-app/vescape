@@ -11,7 +11,7 @@ import {
 import { StyleSheet, View } from 'react-native'
 
 import { Text } from '@/components/base/Text'
-import { widgetSurface } from '@/components/widgets/widgetSurface'
+import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
 import { theme } from '@/constants/theme'
 import {
   getLegalLimitCountryDetail,
@@ -38,6 +38,7 @@ interface AlertRowProps {
 }
 
 export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   const detail = getLegalLimitCountryDetail(country)
   const statusColor = LEGAL_ROAD_STATUS_COLORS[country.status]
   const StatusIcon = LEGAL_LIMIT_STATUS_ICONS[country.status]
@@ -46,7 +47,7 @@ export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsPr
   return (
     <View style={styles.container}>
       <View style={styles.badgeGrid}>
-        <View style={[styles.badge, { borderColor: theme.alpha(statusColor, 0.6) }]}>
+        <View style={[surface, styles.badge, { borderColor: theme.alpha(statusColor, 0.6) }]}>
           <View style={styles.badgeIcon}>
             <StatusIcon size={17} color={statusColor} weight="fill" />
           </View>
@@ -55,7 +56,7 @@ export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsPr
             <Text style={styles.badgeValue}>{LEGAL_ROAD_STATUS_LABELS[country.status]}</Text>
           </View>
         </View>
-        <View style={[styles.badge, styles.speedBadge]}>
+        <View style={[surface, styles.badge, styles.speedBadge]}>
           <View style={styles.speedBadgeMain}>
             <View style={styles.badgeIcon}>
               <GaugeIcon size={17} color={theme.palette.sky.text} weight="fill" />
@@ -83,7 +84,7 @@ export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsPr
         </View>
       ) : null}
 
-      <View style={styles.sourceCard}>
+      <View style={[surface, styles.sourceCard]}>
         <Text style={styles.sourceLabel}>Checked</Text>
         <Text style={styles.sourceValue}>{country.checkedAt}</Text>
         <Text style={styles.sourceLabel}>Source</Text>
@@ -96,9 +97,11 @@ export function LegalLimitCountryDetails({ country }: LegalLimitCountryDetailsPr
 }
 
 function AlertRow({ color, text }: AlertRowProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   return (
     <View
       style={[
+        surface,
         styles.alertRow,
         {
           borderColor: theme.alpha(color, 0.6),
@@ -114,10 +117,11 @@ function AlertRow({ color, text }: AlertRowProps) {
 }
 
 function DetailRow({ icon: IconComponent, title, body }: DetailRowProps) {
+  const surface = useResolvedSecondaryWidgetSurface()
   return (
-    <View style={styles.detailRow}>
+    <View style={[surface, styles.detailRow]}>
       <View style={styles.detailIcon}>
-        <IconComponent size={16} color={theme.palette.slate.textPrimary} weight="fill" />
+        <IconComponent size={16} color={theme.neutral.textPrimary} weight="fill" />
       </View>
       <View style={styles.detailText}>
         <Text style={styles.detailTitle}>{title}</Text>
@@ -136,7 +140,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   badge: {
-    ...widgetSurface,
     flex: 1,
     minHeight: 70,
     padding: 10,
@@ -166,27 +169,26 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   badgeLabel: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   badgeValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '900',
   },
   badgeCaption: {
     flex: 1,
     minWidth: 0,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 10,
     fontWeight: '700',
     lineHeight: 13,
     textAlign: 'right',
   },
   alertRow: {
-    ...widgetSurface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -202,7 +204,7 @@ const styles = StyleSheet.create({
   },
   alertText: {
     flex: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
     lineHeight: 17,
@@ -211,7 +213,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailRow: {
-    ...widgetSurface,
     flexDirection: 'row',
     gap: 10,
     padding: 11,
@@ -229,29 +230,28 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   detailTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '900',
   },
   detailBody: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 17,
   },
   sourceCard: {
-    ...widgetSurface,
     padding: 11,
     gap: 4,
   },
   sourceLabel: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 10,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   sourceValue: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
   },

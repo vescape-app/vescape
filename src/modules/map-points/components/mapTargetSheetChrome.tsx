@@ -1,13 +1,18 @@
 import { MapPinIcon, ThumbsDownIcon, ThumbsUpIcon, XIcon, type Icon } from 'phosphor-react-native'
 import { createElement, type ReactNode } from 'react'
 import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import Animated, { Keyframe } from 'react-native-reanimated'
 import type { MapPoint } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
+import { useResolvedNeutralColors } from '@/hooks/useTheme'
 import { MapPointMediaPreview } from '@/modules/map-points/components/MapPointMediaPreview'
 import { mapSheetStyles } from '@/modules/map-points/components/mapSheetStyles'
-import { getMapPointKindIcon } from '@/modules/map-points/constants/mapPointIcons'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 import {
   getMapPointKindColor,
   getMapPointKindLabel,
@@ -28,14 +33,20 @@ export interface MapTargetSheetAction {
   onPress: () => void
 }
 
+const MAP_TARGET_ENTERING = new Keyframe({
+  0: { opacity: 0, transform: [{ translateY: 16 }] },
+  100: { opacity: 1, transform: [{ translateY: 0 }] },
+}).duration(140)
+
 export function MapTargetSheetFrame({
   target,
   bottom,
   header,
   fallbackColor = theme.map.target,
-  fallbackTextColor = theme.palette.slate.textPrimary,
+  fallbackTextColor = theme.neutral.textPrimary,
   onDismiss,
   onFocusTarget,
+  animateEntrance = false,
   children,
 }: {
   target: MapSelection
@@ -45,25 +56,33 @@ export function MapTargetSheetFrame({
   fallbackTextColor?: string
   onDismiss?: () => void
   onFocusTarget?: () => void
+  animateEntrance?: boolean
   children: ReactNode
 }) {
-  const isMapPoint = target.type === 'mapPoint'
-  const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
-  const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
-  const icon = createElement(isMapPoint ? getMapPointKindIcon(target.point.category) : MapPinIcon, {
-    size: 18,
-    color: textColor,
-    weight: 'duotone',
-  })
+  const neutral = useResolvedNeutralColors()
   const headerContent = (
     <>
-      <View style={[mapSheetStyles.mapTargetIcon, { borderColor: color }]}>{icon}</View>
+      <MapTargetIdentityIcon
+        target={target}
+        fallbackColor={fallbackColor}
+        fallbackTextColor={fallbackTextColor}
+      />
       <View style={mapSheetStyles.mapTargetTitleBlock}>{header}</View>
     </>
   )
 
   return (
-    <View style={[styles.sheet, { bottom }]}>
+    <Animated.View
+      entering={animateEntrance ? MAP_TARGET_ENTERING : undefined}
+      style={[
+        styles.sheet,
+        {
+          bottom,
+          backgroundColor: theme.alpha(neutral.surfaceDeep, 0.85),
+          borderColor: theme.alpha(neutral.textSecondary, 0.3),
+        },
+      ]}
+    >
       <View style={styles.header}>
         {onFocusTarget ? (
           <Pressable
@@ -84,18 +103,55 @@ export function MapTargetSheetFrame({
             onPress={onDismiss}
             style={({ pressed }) => [styles.close, pressed && mapSheetStyles.mapTargetClosePressed]}
           >
-            <XIcon size={20} color={theme.palette.slate.textSecondary} weight="bold" />
+            <XIcon size={20} color={theme.neutral.textSecondary} weight="bold" />
           </Pressable>
         ) : null}
       </View>
       {children}
+    </Animated.View>
+  )
+}
+
+export function MapTargetIdentityIcon({
+  target,
+  fallbackColor = theme.map.target,
+  fallbackTextColor = theme.neutral.textPrimary,
+}: {
+  target: MapSelection
+  fallbackColor?: string
+  fallbackTextColor?: string
+}) {
+  const neutral = useResolvedNeutralColors()
+  const isMapPoint = target.type === 'mapPoint'
+  const color = isMapPoint ? getMapPointKindColor(target.point.category) : fallbackColor
+  const textColor = isMapPoint ? getMapPointKindTextColor(target.point.category) : fallbackTextColor
+  const IconComponent = isMapPoint
+    ? getMapPointKindIcon(target.point.category)
+    : target.type === 'place'
+      ? getPlaceCategoryIcon(target.category)
+      : MapPinIcon
+
+  return (
+    <View
+      style={[
+        mapSheetStyles.mapTargetIcon,
+        { backgroundColor: neutral.surfaceDeep, borderColor: color },
+      ]}
+    >
+      {createElement(IconComponent, { size: 18, color: textColor, weight: 'duotone' })}
     </View>
   )
 }
 
+export function getMapTargetDisplayTitle(target: MapSelection) {
+  return target.type === 'mapPoint'
+    ? target.point.name?.trim() || getMapPointKindLabel(target.point.category)
+    : target.title
+}
+
 export function MapTargetReadHeader({ target }: { target: MapSelection }) {
   if (target.type === 'mapPoint') {
-    const title = target.point.name?.trim() || getMapPointKindLabel(target.point.category)
+    const title = getMapTargetDisplayTitle(target)
     const created = new Date(target.point.createdAt).toLocaleDateString()
     return (
       <>
@@ -134,13 +190,23 @@ export function MapTargetEditHeader({
   name: string
   onChangeName: (name: string) => void
 }) {
+  const neutral = useResolvedNeutralColors()
+
   return (
     <TextInput
       value={name}
       onChangeText={onChangeName}
       placeholder={getMapPointKindLabel(point.category)}
-      placeholderTextColor={theme.palette.slate.textMuted}
-      style={[styles.input, styles.nameInput]}
+      placeholderTextColor={neutral.textMuted}
+      style={[
+        styles.input,
+        styles.nameInput,
+        {
+          backgroundColor: theme.alpha(neutral.bg, 0.75),
+          borderColor: theme.alpha(neutral.textSecondary, 0.3),
+          color: neutral.textPrimary,
+        },
+      ]}
       accessibilityLabel="Map feature name"
     />
   )
@@ -182,7 +248,21 @@ export function MapTargetActionRow({ children }: { children: ReactNode }) {
   return <View style={styles.actionRow}>{children}</View>
 }
 
-export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetAction }) {
+/**
+ * A sheet action button. `compact` is the same button at side-action weight, giving the row's width
+ * to the action the rider is most likely to want; `iconOnly` drops to the icon alone, for actions
+ * whose icon is unambiguous and whose label would otherwise crowd the one that matters. The label
+ * still exists — it stays the accessibility name.
+ */
+export function MapTargetPrimaryAction({
+  action,
+  compact = false,
+  iconOnly = false,
+}: {
+  action: MapTargetSheetAction
+  compact?: boolean
+  iconOnly?: boolean
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -190,21 +270,30 @@ export function MapTargetPrimaryAction({ action }: { action: MapTargetSheetActio
       onPress={action.onPress}
       style={({ pressed }) => [
         styles.actionButton,
+        compact ? styles.actionButtonCompact : styles.actionButtonLead,
+        iconOnly && styles.actionButtonIconOnly,
         { backgroundColor: action.bgColor, borderColor: action.borderColor },
         pressed && mapSheetStyles.mapTargetNavigatePressed,
       ]}
     >
-      <action.Icon size={18} color={action.textColor} weight="bold" />
-      <Text style={[mapSheetStyles.mapTargetNavigateText, { color: action.textColor }]}>
-        {action.label}
-      </Text>
+      <action.Icon size={compact ? 18 : 18} color={action.color} weight="bold" />
+      {iconOnly ? null : (
+        <Text
+          style={[
+            mapSheetStyles.mapTargetNavigateText,
+            compact && styles.actionLabelCompact,
+            { color: action.textColor },
+          ]}
+        >
+          {action.label}
+        </Text>
+      )}
     </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
   actionButton: {
-    flex: 1,
     minWidth: 0,
     height: 46,
     borderRadius: 23,
@@ -215,6 +304,25 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.green.bg,
     borderWidth: 1,
     borderColor: theme.palette.green.border,
+  },
+  actionButtonLead: {
+    flex: 2,
+  },
+  actionButtonCompact: {
+    flex: 1,
+    height: 42,
+    gap: 6,
+  },
+  /** A square button: it holds an icon, so it must not stretch with the row it sits in. */
+  actionButtonIconOnly: {
+    flex: 0,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    gap: 0,
+  },
+  actionLabelCompact: {
+    fontSize: 12,
   },
   actionRow: {
     flexDirection: 'row',
@@ -252,10 +360,7 @@ const styles = StyleSheet.create({
     minHeight: 42,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.bg, 0.75),
     paddingHorizontal: 12,
-    color: theme.palette.slate.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -263,7 +368,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   metaText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -279,11 +384,13 @@ const styles = StyleSheet.create({
     right: 12,
     zIndex: 45,
     gap: 12,
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 22,
+    borderCurve: 'continuous',
     borderWidth: 1,
     borderColor: theme.alpha(theme.palette.slate.light, 0.3),
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.85),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.85),
   },
   voteCount: {
     flexDirection: 'row',

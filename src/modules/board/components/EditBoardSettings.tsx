@@ -6,10 +6,12 @@ import {
   LightningIcon,
   LinkIcon,
   TrashIcon,
-  WarningIcon,
+  EngineIcon,
+  WarningDiamondIcon,
 } from 'phosphor-react-native'
 import type { BoardLink } from 'vescape-core'
 
+import { BoardNameField } from '@/modules/board/components/BoardNameField'
 import { BoardSettingRow } from '@/modules/board/components/BoardSettingRow'
 import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
@@ -21,7 +23,8 @@ import type { BatterySummary } from '@/modules/board/lib/boardSetup'
 
 interface EditBoardSettingsProps {
   name: string
-  description: string
+  nameSaving?: boolean
+  onSaveName: (name: string) => Promise<void> | void
   link: BoardLink | null
   linkSaving?: boolean
   keepMissingBatteryConfig: boolean
@@ -34,6 +37,11 @@ interface EditBoardSettingsProps {
   /** Anchor for the warnings drawer, wrapped around the warnings row. */
   warningsAnchorRef: RefObject<View | null>
   onOpenWarnings: () => void
+  /** VESC Fault Occurrence count. The row is always offered, so an empty fault log is findable. */
+  faultCount: number
+  /** Anchor for the faults drawer, wrapped around the faults row. */
+  faultsAnchorRef: RefObject<View | null>
+  onOpenFaults: () => void
   onOpenBattery: () => void
   onLink: () => void
   onRelink: () => void
@@ -43,7 +51,8 @@ interface EditBoardSettingsProps {
 
 export function EditBoardSettings({
   name,
-  description,
+  nameSaving = false,
+  onSaveName,
   link,
   linkSaving = false,
   keepMissingBatteryConfig,
@@ -53,6 +62,9 @@ export function EditBoardSettings({
   warningCounts,
   warningsAnchorRef,
   onOpenWarnings,
+  faultCount,
+  faultsAnchorRef,
+  onOpenFaults,
   onOpenBattery,
   onLink,
   onRelink,
@@ -63,18 +75,18 @@ export function EditBoardSettings({
     <>
       <IconHero
         icon={LightningIcon}
-        title={name.trim() || 'Unnamed board'}
-        description={description.trim() || 'No description'}
         iconSize={48}
         iconColor={theme.palette.sky.color}
         iconWeight="duotone"
-      />
+      >
+        <BoardNameField name={name} saving={nameSaving} onSave={onSaveName} />
+      </IconHero>
 
       {showBatteryConfig ? (
         <SettingsCard>
           <BoardSettingRow
             icon={BatteryChargingIcon}
-            iconColor={theme.palette.yellow.text}
+            iconColor={theme.settingsIcon.battery}
             label={keepMissingBatteryConfig ? 'Not configured' : batterySummary.title}
             value={batterySummary.value}
             hint={batterySummary.hint}
@@ -97,8 +109,8 @@ export function EditBoardSettings({
               {link ? (
                 <>
                   <Button
-                    style={styles.upgradeButton}
                     label="Re-link"
+                    variant="tune"
                     size="sm"
                     loading={linkSaving}
                     onPress={onRelink}
@@ -132,7 +144,7 @@ export function EditBoardSettings({
         <View ref={warningsAnchorRef} collapsable={false}>
           <SettingsCard>
             <BoardSettingRow
-              icon={WarningIcon}
+              icon={EngineIcon}
               iconColor={theme.status.caution.color}
               label="Warnings"
               value={formatWarningCounts(warningCounts)}
@@ -142,6 +154,19 @@ export function EditBoardSettings({
           </SettingsCard>
         </View>
       )}
+
+      <View ref={faultsAnchorRef} collapsable={false}>
+        <SettingsCard>
+          <BoardSettingRow
+            icon={WarningDiamondIcon}
+            iconColor={theme.status.caution.color}
+            label="VESC faults"
+            value={faultCount > 0 ? `${faultCount} recorded` : 'None recorded'}
+            onPress={onOpenFaults}
+            testID="edit-board-faults-row"
+          />
+        </SettingsCard>
+      </View>
 
       <Pressable
         style={({ pressed }) => [styles.removeSection, pressed && styles.removeSectionPressed]}
@@ -167,9 +192,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  upgradeButton: {
-    backgroundColor: theme.status.upgrade.color,
   },
   removeSection: {
     marginTop: 24,

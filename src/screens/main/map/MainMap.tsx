@@ -1,7 +1,12 @@
 import Mapbox from '@rnmapbox/maps'
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Animated, View } from 'react-native'
-import type { LocationEvent, MapPoint, MapPointCategory } from 'vescape-core'
+import { View } from 'react-native'
+import {
+  setWatchRouteSpanM,
+  type LocationEvent,
+  type MapPoint,
+  type MapPointCategory,
+} from 'vescape-core'
 
 import type { DirectionPoint } from '@/modules/map/store/mapStore'
 
@@ -16,7 +21,6 @@ import type { MediaHistoryAsset } from '@/modules/history/lib/mediaHistory'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
 import type { HistoryMetricKey } from '@/modules/history/lib/metricColorScale'
 import { getGpsPuckBearing } from '@/modules/map/lib/gpsPuckHeading'
-import { usePhoneHeadingAdapter } from '@/screens/main/map/usePhoneHeadingAdapter'
 import type {
   HistoryGpsSample,
   HistoryMarker,
@@ -32,14 +36,21 @@ import type { OffscreenMapIndicatorState } from '@/screens/main/map/offscreenMap
 import { MapLoadingPlaceholder, MapUnavailable } from '@/screens/main/map/MainMapOverlays'
 import { MainMapScene } from '@/screens/main/map/MainMapScene'
 import { useLiveMapModel } from '@/screens/main/map/useLiveMapModel'
+import { useMainScreenStore } from '@/screens/main/mainScreenStore'
+import { useChartZoomRoute } from '@/screens/main/map/useChartZoomRoute'
 import { useMainMapCameraEvents } from '@/screens/main/map/useMainMapCameraEvents'
 import { useMainMapFocusActions } from '@/screens/main/map/useMainMapFocusActions'
 import { useMapOverlaySelection } from '@/screens/main/map/useMapOverlaySelection'
 import { useMapPressHandlers } from '@/screens/main/map/useMapPressHandlers'
+import { useMapRevealAnimation } from '@/screens/main/map/useMapRevealAnimation'
+import { useMapStyleLoadGuard } from '@/screens/main/map/useMapStyleLoadGuard'
+import { useMapSettledSignal } from '@/screens/main/map/useMapSettledSignal'
 import { useMapViewport } from '@/screens/main/map/useMapViewport'
 import { useNavigationDiagnosticsSync } from '@/screens/main/map/useNavigationDiagnosticsSync'
+import { useNavigationPathFraming } from '@/screens/main/map/useNavigationPathFraming'
 import { useOffscreenMapIndicators } from '@/screens/main/map/useOffscreenMapIndicators'
 import { useResolvedMapStyle } from '@/screens/main/map/useResolvedMapStyle'
+import { watchRouteSpanMeters } from '@/modules/map/lib/nearbyRadius'
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN)
 
@@ -112,7 +123,7 @@ interface MainMapProps {
   onPhoneHeadingChange: (heading: number | null) => void
   onLongPressTarget: (target: { latitude: number; longitude: number }) => void
   onMapInteraction: () => void
-  onRawMapPress: (selection: MapSelection) => boolean | void
+  onRawMapPress: (selection: MapSelection) => boolean | undefined
   onMapPress: (selection: MapSelection) => void
   onEnterMapMode: () => void
   onOffscreenMapIndicatorsChange: (indicators: OffscreenMapIndicatorState[]) => void
@@ -158,8 +169,6 @@ export const MainMap = memo(
     const selectedMapPointId = mapPointProps.selectedId
     const hiddenMapPointCategories = mapPointProps.hiddenCategories
 
-    const mapRevealedRef = useRef(false)
-    const [mapOpacity] = useState(() => new Animated.Value(0))
     const [cameraReady, setCameraReady] = useState(false)
     const [loadedStyleSignature, setLoadedStyleSignature] = useState<string | null>(null)
     const {
@@ -174,6 +183,25 @@ export const MainMap = memo(
     const [cameraZoom, setCameraZoom] = useState<number>(MAP_DEFAULTS.fallbackZoom)
     const { mapViewRef, mapLayout, handleMapLayout, getViewfinderCoordinateFromMap } =
       useMapViewport()
+    const lastWatchRouteSpanRef = useRef<number | null>(null)
+    const syncWatchRouteSpan = useCallback(
+      (latitude: number, zoom: number) => {
+        const spanM = watchRouteSpanMeters(zoom, latitude, mapLayout.width)
+        const previous = lastWatchRouteSpanRef.current
+        if (spanM === previous) return
+        if (spanM != null && previous != null && Math.abs(spanM - previous) / previous < 0.02) {
+          return
+        }
+        // Sent on every camera frame on purpose: this only writes a native field, and the value
+        // travels on the next Watch Frame. Throttling here would just hand the wrist a coarser
+        // step to ease over, which reads as jerk rather than as a saving.
+        lastWatchRouteSpanRef.current = spanM
+        setWatchRouteSpanM(spanM)
+      },
+      [mapLayout.width],
+    )
+
+    useEffect(() => () => setWatchRouteSpanM(null), [])
     const {
       gpsFix,
       cameraFix,
@@ -181,7 +209,7 @@ export const MainMap = memo(
       accuracyShape,
       approximateGpsPuckActive,
       directionBearingDeg,
-      retainedGpsBearing,
+      retainedGpsBearingSourceTimestamp,
       riderFocusRows,
       mapRiders,
       trackedMapPoints,
@@ -199,16 +227,16 @@ export const MainMap = memo(
       directionPoint,
     })
 
-    const mapStyle = useResolvedMapStyle({
-      mapStyleKey: styleProps.mapStyleKey,
-      mode,
-      satelliteOverlayEnabled: styleProps.satelliteOverlayEnabled,
-      satelliteImageryOpacity: styleProps.satelliteImageryOpacity,
-      satelliteMapImageryOpacity: styleProps.satelliteMapImageryOpacity,
-      satelliteImagerySaturation: styleProps.satelliteImagerySaturation,
-      hideTelemetryMapDetails: styleProps.hideTelemetryMapDetails,
-      loadedStyleSignature,
-    })
+    const chartZoomRoute = useChartZoomRoute(history.gpsSamples)
+    // The panel covers the bottom of the map and grows as the rider opens metrics; the route is
+    // framed into what is left, so opening one reframes rather than hiding half the ride.
+    const historyPanelHeight = useMainScreenStore((s) => s.historyPanelHeight)
+    const cameraViewport = useMemo(
+      () => ({ ...mapLayout, bottomInset: historyActive ? historyPanelHeight : undefined }),
+      [historyActive, historyPanelHeight, mapLayout],
+    )
+
+    const mapStyle = useResolvedMapStyle({ ...styleProps, mode, loadedStyleSignature })
 
     const settingsLoaded = useSettingsStore((s) => s.loaded)
     const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
@@ -229,7 +257,6 @@ export const MainMap = memo(
     const [phoneHeadingStatus, setPhoneHeadingStatus] = useState<PhoneHeadingStatus | 'idle'>(
       'idle',
     )
-    const phoneHeadingAdapter = usePhoneHeadingAdapter()
     const headingFollowMode = gpsHeadingMode || phoneHeadingMode
     useRenderRateWarning('MainMap')
     const followHeadingDeg = gpsHeadingMode
@@ -249,6 +276,7 @@ export const MainMap = memo(
 
     const {
       cameraRef,
+      controllerStateRef,
       currentCameraRef,
       engine,
       previewPanActiveRef,
@@ -258,6 +286,7 @@ export const MainMap = memo(
       stopCameraAnimation,
       setFollowZoomLevel,
       recenterLive,
+      fitRoute,
       getLiveFollowCamera,
       getHistoryPreviewCamera,
     } = useCameraControls({
@@ -265,11 +294,9 @@ export const MainMap = memo(
       cameraFix,
       persistedFallback,
       perspectiveEnabled,
-      mapViewport: mapLayout,
+      mapViewport: cameraViewport,
       mapOrientationMode,
       heading: {
-        gpsMode: headingFollowMode,
-        phoneMode: phoneHeadingMode,
         phoneReady: phoneHeadingStatus === 'ready',
         getFollowDeg: getFollowHeadingDeg,
         resetOnRecenter: mapOrientationMode !== 'freeRotate',
@@ -280,6 +307,7 @@ export const MainMap = memo(
         preview: historyPreview,
         previewRoute: history.previewRoute,
         rideRoute,
+        focusRoute: chartZoomRoute,
       },
       follow: {
         updatesEnabled: !(phoneHeadingMode && mode === 'map'),
@@ -317,26 +345,21 @@ export const MainMap = memo(
       },
       [engine],
     )
+    /**
+     * The compass never moves the edge indicators itself. It only retargets the camera spring, so
+     * its heading runs ahead of the heading the map is actually drawn with; repositioning from both
+     * left the indicators alternating between the predicted and the real angle every frame. The
+     * camera-changed echo is the single writer, and the indicators lag exactly as much as the map.
+     */
     const handlePhoneHeadingChange = useCallback(
       (headingDeg: number | null) => {
         phoneHeadingDegRef.current = headingDeg
         onPhoneHeadingChange(headingDeg)
 
         if (headingDeg == null || !phoneHeadingMode || !followGps) return
-        const currentCamera = currentCameraRef.current
-        if (!currentCamera) return
-
-        repositionOffscreenIndicatorsForCamera({ ...currentCamera, heading: headingDeg })
         scheduleOffscreenMapIndicatorRefresh()
       },
-      [
-        currentCameraRef,
-        followGps,
-        onPhoneHeadingChange,
-        phoneHeadingMode,
-        repositionOffscreenIndicatorsForCamera,
-        scheduleOffscreenMapIndicatorRefresh,
-      ],
+      [followGps, onPhoneHeadingChange, phoneHeadingMode, scheduleOffscreenMapIndicatorRefresh],
     )
     const { handleOffscreenIndicatorPress, handleFocusDirectionPoint } = useMainMapFocusActions({
       engine,
@@ -350,9 +373,17 @@ export const MainMap = memo(
       onMapInteraction,
     })
 
+    const { mapOpacity } = useMapRevealAnimation({
+      settingsLoaded,
+      cameraReady,
+      setCameraReady,
+      centerCoordinate: gpsCamera.centerCoordinate,
+    })
+
     useNavigationDiagnosticsSync({
       gpsFix,
-      retainedGpsBearing,
+      courseDeg: directionBearingDeg,
+      courseSourceTimestamp: retainedGpsBearingSourceTimestamp,
       phoneHeadingDegRef,
       phoneHeadingStatus,
       gpsPinBearingDeg,
@@ -360,25 +391,9 @@ export const MainMap = memo(
       mapOrientationMode,
     })
 
-    useEffect(() => {
-      if (mapRevealedRef.current) return
-      mapOpacity.setValue(0)
-      setCameraReady(false)
-    }, [gpsCamera.centerCoordinate, mapOpacity])
-
-    useEffect(() => {
-      if (!settingsLoaded || !cameraReady) return
-      Animated.timing(mapOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        mapRevealedRef.current = true
-      })
-    }, [cameraReady, mapOpacity, settingsLoaded])
-
     const { handleMapLoaded, handleCameraChanged, handleMapIdle } = useMainMapCameraEvents({
       cameraRef,
+      controllerStateRef,
       currentCameraRef,
       engine,
       previewPanActiveRef,
@@ -400,6 +415,7 @@ export const MainMap = memo(
       setFollowGps,
       setFollowZoomLevel,
       onCameraSettled: mapPointProps.onCameraSettled,
+      onWatchRouteSpanChange: syncWatchRouteSpan,
       onHeadingChange,
       repositionOffscreenIndicatorsForCamera,
       scheduleOffscreenMapIndicatorRefresh,
@@ -410,6 +426,20 @@ export const MainMap = memo(
       setLoadedStyleSignature,
     })
 
+    const {
+      mapStyleLoading,
+      mapLoadFailed,
+      handleStyleLoaded,
+      handleStyleLoadError,
+      retryStyleLoad,
+      styleRetryNonce,
+    } = useMapStyleLoadGuard({
+      mapStyleKey: styleProps.mapStyleKey,
+      styleSignature: mapStyle.styleSignature,
+      loadedStyleSignature,
+      onStyleLoaded: handleMapLoaded,
+    })
+
     const { handleMapPress, handleLongPress, suppressNextMapPress } = useMapPressHandlers({
       mapViewRef,
       enabled: mode === 'map' && !historyActive,
@@ -418,6 +448,8 @@ export const MainMap = memo(
       onMapInteraction,
       onLongPressTarget,
     })
+
+    useNavigationPathFraming({ active: mode === 'map' && !historyActive, fitRoute })
 
     const handleTouchStart = useCallback(() => {
       onMapInteraction()
@@ -432,17 +464,11 @@ export const MainMap = memo(
 
     // Mapbox gives Maestro no idle signal, so a screenshot flow would otherwise have to guess with a
     // sleep and can catch a half-drawn map. Publish the map's own idle event as a waitable marker.
-    const [mapSettled, setMapSettled] = useState(false)
-    useEffect(() => {
-      if (captureMode) setMapSettled(false)
-    }, [mode])
-    const handleIdle = useCallback(
-      (...args: Parameters<typeof handleMapIdle>) => {
-        handleMapIdle(...args)
-        if (captureMode) setMapSettled(true)
-      },
-      [handleMapIdle],
-    )
+    const { mapSettled, handleIdle } = useMapSettledSignal({
+      enabled: captureMode,
+      mode,
+      onMapIdle: handleMapIdle,
+    })
 
     if (!MAPBOX_ACCESS_TOKEN) {
       return <MapUnavailable />
@@ -465,7 +491,12 @@ export const MainMap = memo(
           cameraRef={cameraRef}
           mapStyle={mapStyle}
           rotationLocked={rotationLocked}
-          onDidFinishLoadingMap={handleMapLoaded}
+          onDidFinishLoadingStyle={handleStyleLoaded}
+          onMapLoadingError={handleStyleLoadError}
+          mapLoading={mapStyleLoading}
+          mapLoadFailed={mapLoadFailed}
+          onRetryStyleLoad={retryStyleLoad}
+          styleRetryNonce={styleRetryNonce}
           onPress={handleMapPress}
           onLongPress={handleLongPress}
           onMapIdle={handleIdle}
@@ -475,10 +506,8 @@ export const MainMap = memo(
           gpsHeadingMode={gpsHeadingMode}
           phoneHeadingMode={phoneHeadingMode}
           followGps={followGps}
-          approximateGpsPuckActive={approximateGpsPuckActive}
           accuracyFix={accuracyFix}
           onPhoneFollowHeading={handlePhoneFollowHeading}
-          phoneHeadingAdapter={phoneHeadingAdapter}
           onPhoneHeadingChange={handlePhoneHeadingChange}
           onPhoneHeadingStatusChange={setPhoneHeadingStatus}
           mode={mode}

@@ -9,7 +9,27 @@
 
 import { mock } from 'bun:test'
 
-mock.module('react-native', () => ({}))
+/**
+ * Baseline `react-native` surface. A test needing more (AppState, …) must spread this rather
+ * than replace it — `mock.module` is global, so a bare override strips these for every file
+ * loaded after it.
+ */
+export const reactNativeStub = {
+  // Tests run without a scheduler, so deferred work resolves immediately.
+  InteractionManager: {
+    runAfterInteractions: (task: () => void) => {
+      task()
+      return { cancel: () => {} }
+    },
+  },
+  // Stores that re-pull on foreground subscribe at module scope; nothing changes state in tests.
+  AppState: {
+    currentState: 'active',
+    addEventListener: (_event: string, _cb: unknown) => ({ remove: () => {} }),
+  },
+}
+
+mock.module('react-native', () => ({ ...reactNativeStub }))
 
 mock.module('react-native-reanimated', () => ({
   makeMutable: <T>(value: T) => ({ value }),

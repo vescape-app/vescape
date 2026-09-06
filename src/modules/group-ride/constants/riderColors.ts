@@ -1,4 +1,4 @@
-import { palette } from '@/constants/theme'
+import { accentColors } from '@/constants/theme'
 
 /**
  * Curated marker-color choices a Rider can pick from. Palette-sourced and kept
@@ -6,18 +6,18 @@ import { palette } from '@/constants/theme'
  * (today: the Group Ride map markers other Riders see).
  */
 export const riderColorOptions: readonly string[] = [
-  palette.sky.color,
-  palette.cyan.color,
-  palette.teal.color,
-  palette.groupRide.color,
-  palette.green.color,
-  palette.beige.color,
-  palette.yellow.color,
-  palette.amber.color,
-  palette.orange.color,
-  palette.red.color,
-  palette.pink.color,
-  palette.fuchsia.color,
-  palette.purple.color,
-  palette.violet.color,
+  accentColors.dark.sky.color,
+  accentColors.dark.cyan.color,
+  accentColors.dark.teal.color,
+  accentColors.dark.groupRide.color,
+  accentColors.dark.green.color,
+  accentColors.dark.beige.color,
+  accentColors.dark.yellow.color,
+  accentColors.dark.amber.color,
+  accentColors.dark.orange.color,
+  accentColors.dark.red.color,
+  accentColors.dark.pink.color,
+  accentColors.dark.fuchsia.color,
+  accentColors.dark.purple.color,
+  accentColors.dark.violet.color,
 ]

@@ -6,30 +6,24 @@ import { useShallow } from 'zustand/react/shallow'
 import { exitApp } from 'vescape-core'
 
 import type { MainMapHandle } from '@/screens/main/map/MainMap'
+import { useMainScreenHistoryNavigation } from '@/screens/main/useMainScreenHistoryNavigation'
 import { useMainScreenStore } from '@/screens/main/mainScreenStore'
-import {
-  getLatestSession,
-  getNextRideSession,
-  getPreviousRideSession,
-} from '@/screens/main/mainState'
+import { getNextRideSession, getPreviousRideSession } from '@/screens/main/mainState'
 import { useBleStore } from '@/modules/board/store/bleStore'
-import { useHistoryStore, type HistorySession } from '@/modules/history/store/historyStore'
+import { useHistoryStore } from '@/modules/history/store/historyStore'
 import { useHistoryFavorites } from '@/screens/main/history/useHistoryFavorites'
 import { useMapStore } from '@/modules/map/store/mapStore'
 import { useMapPointStore } from '@/modules/map-points/store/mapPointStore'
 import { useMapContributionReady } from '@/modules/profile/hooks/useMapContributionReady'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { useWeatherStore } from '@/modules/weather/store/weatherStore'
 import { useFavoriteMedia } from '@/modules/history/hooks/useMediaHistory'
 import type { MediaAssetInput } from '@/modules/history/lib/mediaHistory'
 import { getHistoryPreviewRoute } from '@/modules/history/lib/previewRoute'
+import { themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
 
 interface UseMainScreenControllerArgs {
   mapRef: RefObject<MainMapHandle | null>
 }
-
-const TARGET_INITIAL_HISTORY_SESSIONS = 12
-const MAX_HISTORY_PREFETCH_PAGES = 8
 
 export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs) {
   const backPressedOnce = useRef(false)
@@ -49,7 +43,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     setMapSelector,
     dismissMapSelector,
     setPerspectiveEnabled,
-    setSeekTimeMs,
     setActiveHistoryMapMetric,
   } = useMainScreenStore(
     useShallow((s) => ({
@@ -67,16 +60,11 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       setMapSelector: s.setMapSelector,
       dismissMapSelector: s.dismissMapSelector,
       setPerspectiveEnabled: s.setPerspectiveEnabled,
-      setSeekTimeMs: s.setSeekTimeMs,
       setActiveHistoryMapMetric: s.setActiveHistoryMapMetric,
     })),
   )
   const liveLocations = useBleStore((s) => s.liveLocationHistory)
   const latestApproximateLocation = useBleStore((s) => s.latestApproximateLocation)
-  const fetchWeather = useWeatherStore((s) => s.fetch)
-  const refreshWeather = useWeatherStore((s) => s.refresh)
-  const lastGpsLatitude = useSettingsStore((s) => s.lastGpsLatitude)
-  const lastGpsLongitude = useSettingsStore((s) => s.lastGpsLongitude)
   const mapStyleKey = useSettingsStore((s) => s.mapStyleKey)
   const satelliteOverlayEnabled = useSettingsStore((s) => s.satelliteOverlayEnabled)
   const satelliteImageryOpacity = useSettingsStore((s) => s.satelliteImageryOpacity)
@@ -90,13 +78,13 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     sessions,
     selectedSession,
     sessionSamples,
+    sessionChartSamples,
     sessionGpsSamples,
     sessionMarkers,
     loadingSession,
     loading: historyLoading,
     hasMore: historyHasMore,
     error: historyError,
-    loadInitial,
     loadMore,
     selectSession,
     removeSelectedSession,
@@ -106,13 +94,13 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
       sessions: s.sessions,
       selectedSession: s.selectedSession,
       sessionSamples: s.sessionSamples,
+      sessionChartSamples: s.sessionChartSamples,
       sessionGpsSamples: s.sessionGpsSamples,
       sessionMarkers: s.sessionMarkers,
       loadingSession: s.loadingSession,
       loading: s.loading,
       hasMore: s.hasMore,
       error: s.error,
-      loadInitial: s.loadInitial,
       loadMore: s.loadMore,
       selectSession: s.selectSession,
       removeSelectedSession: s.removeSelectedSession,
@@ -180,19 +168,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     void reloadMapPoints()
   }, [canContribute, reloadMapPoints])
 
-  useEffect(() => {
-    setSeekTimeMs(null)
-  }, [selectedSession, setSeekTimeMs])
-
-  useEffect(() => {
-    const loc = liveLocations.at(-1) ?? latestApproximateLocation
-    const lat = loc?.latitude ?? lastGpsLatitude
-    const lon = loc?.longitude ?? lastGpsLongitude
-    if (lat != null && lon != null) {
-      void fetchWeather(lat, lon)
-    }
-  }, [liveLocations, latestApproximateLocation, lastGpsLatitude, lastGpsLongitude, fetchWeather])
-
   const weatherActive = mode === 'weather'
   const legalLimitsActive = mode === 'legalLimits'
   const historyActive = mode === 'history'
@@ -228,6 +203,12 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     mapRef.current?.recenterLive()
   }, [enterTelemetry, mapRef])
 
+  // An accidental reveal undone mid-pinch: back to telemetry without touching the camera, which
+  // the pinch is still driving.
+  const cancelMapFocus = useCallback(() => {
+    enterTelemetry()
+  }, [enterTelemetry])
+
   const enterWeatherMode = useCallback(() => {
     enterWeather()
     mapRef.current?.focusWeather()
@@ -248,87 +229,24 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     requestAnimationFrame(() => mapRef.current?.recenterLive())
   }, [enterTelemetry, mapRef])
 
-  const exitHistory = useCallback(() => {
-    setOpenMediaAssetId(null)
-    historyFavorites.resetHistoryFavorites()
-    void selectSession(null)
-    enterTelemetry()
-    requestAnimationFrame(() =>
-      mapRef.current?.recenterLive({ resetPadding: true, animationDuration: 0 }),
-    )
-  }, [enterTelemetry, historyFavorites, mapRef, selectSession])
-
-  const loadOlderHistoryPages = useCallback(
-    async (targetSessionCount = TARGET_INITIAL_HISTORY_SESSIONS) => {
-      let pagesLoaded = 0
-      while (
-        useHistoryStore.getState().hasMore &&
-        useHistoryStore.getState().sessions.length < targetSessionCount &&
-        pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
-      ) {
-        await useHistoryStore.getState().loadMore()
-        pagesLoaded += 1
-      }
-    },
-    [],
-  )
-
-  const enterHistoryMode = useCallback(async () => {
-    enterHistory()
-    void historyFavorites.loadFavorites()
-    await loadInitial()
-    await loadOlderHistoryPages()
-    if (useMainScreenStore.getState().mode !== 'history') return
-    const latest = getLatestSession(useHistoryStore.getState().sessions)
-    if (latest) {
-      await selectSession(latest)
-    }
-  }, [enterHistory, historyFavorites, loadInitial, loadOlderHistoryPages, selectSession])
-
-  const selectPreviousRide = useCallback(async () => {
-    setOpenMediaAssetId(null)
-    let previous = getPreviousRideSession(
-      useHistoryStore.getState().sessions,
-      useHistoryStore.getState().selectedSession,
-    )
-    let pagesLoaded = 0
-    while (
-      !previous &&
-      useHistoryStore.getState().hasMore &&
-      pagesLoaded < MAX_HISTORY_PREFETCH_PAGES
-    ) {
-      await useHistoryStore.getState().loadMore()
-      previous = getPreviousRideSession(
-        useHistoryStore.getState().sessions,
-        useHistoryStore.getState().selectedSession,
-      )
-      pagesLoaded += 1
-    }
-    if (previous) await selectSession(previous)
-  }, [selectSession])
-
-  const selectNextRide = useCallback(async () => {
-    setOpenMediaAssetId(null)
-    const next = getNextRideSession(
-      useHistoryStore.getState().sessions,
-      useHistoryStore.getState().selectedSession,
-    )
-    if (next) await selectSession(next)
-  }, [selectSession])
-
-  const removeSession = useCallback(() => {
-    void removeSelectedSession()
-  }, [removeSelectedSession])
-
-  const selectRide = useCallback(
-    (session: HistorySession) => {
-      setOpenMediaAssetId(null)
-      setHistorySheetVisible(false)
-      void selectSession(session)
-      enterHistory()
-    },
-    [enterHistory, selectSession, setHistorySheetVisible],
-  )
+  const historyNavigation = useMainScreenHistoryNavigation({
+    mapRef,
+    enterHistory,
+    enterTelemetry,
+    historyFavorites,
+    selectSession,
+    removeSelectedSession,
+    setHistorySheetVisible,
+    setOpenMediaAssetId,
+  })
+  const {
+    exitHistory,
+    selectPreviousRide,
+    selectNextRide,
+    removeSession,
+    selectRide,
+    selectFavoriteRide,
+  } = historyNavigation
 
   const handleMapFocus = useCallback(() => {
     if (mode === 'map') return
@@ -340,6 +258,10 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
 
   const setMapStyleKey = useCallback(
     (key: typeof mapStyleKey) => {
+      // A basemap with an explicit appearance is the rider picking a theme, so it persists as one.
+      // Satellite has no opinion and leaves the configured mode alone.
+      const override = themeOverrideForMapStyle(key)
+      if (override) void setSetting('themeMode', override)
       void setSetting('mapStyleKey', key)
     },
     [setSetting],
@@ -438,6 +360,7 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     sessions,
     selectedSession,
     sessionSamples,
+    sessionChartSamples,
     sessionGpsSamples,
     sessionMarkers,
     mediaHistory,
@@ -460,19 +383,18 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
     loadMoreHistory: loadMore,
     selectPreviousRide,
     selectNextRide,
-    enterHistoryMode,
     exitHistory,
     removeSession,
     selectRide,
+    selectFavoriteRide,
     weatherActive,
     enterWeatherMode,
     exitWeatherMode,
     enterLegalLimitsMode,
     exitLegalLimitsMode,
-    refreshWeather,
     handleMapFocus,
     exitMapFocus,
-    onSeek: setSeekTimeMs,
+    cancelMapFocus,
     activeHistoryMapMetric,
     setActiveHistoryMapMetric,
   }

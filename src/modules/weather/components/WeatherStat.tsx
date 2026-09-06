@@ -1,5 +1,6 @@
 import { DropIcon } from 'phosphor-react-native'
 import { StyleSheet, View } from 'react-native'
+import type { WeatherIconSlug } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
@@ -8,10 +9,8 @@ import { theme } from '@/constants/theme'
 type WeatherStatSize = 'sm' | 'md'
 
 interface WeatherStatProps {
-  code: number
+  icon: WeatherIconSlug
   temperature: number
-  hour: number
-  isNight: boolean
   precipProbability?: number | null
   size?: WeatherStatSize
   /** Override the weather icon tint. Defaults to muted secondary text. */
@@ -25,28 +24,18 @@ const SIZES: Record<WeatherStatSize, { icon: number; temp: number; drop: number 
 
 /** Inline icon + temperature + precipitation. Shared atom for the top bar and pill. */
 export function WeatherStat({
-  code,
+  icon,
   temperature,
-  hour,
-  isNight,
   precipProbability,
   size = 'sm',
-  iconColor = theme.palette.slate.textSecondary,
+  iconColor = theme.neutral.textSecondary,
 }: WeatherStatProps) {
   const dims = SIZES[size]
-  const tempColor =
-    size === 'md' ? theme.palette.slate.textPrimary : theme.palette.slate.textSecondary
+  const tempColor = size === 'md' ? theme.neutral.textPrimary : theme.neutral.textSecondary
 
   return (
     <View style={styles.row}>
-      <WeatherIcon
-        code={code}
-        hour={hour}
-        isNight={isNight}
-        size={dims.icon}
-        color={iconColor}
-        weight="duotone"
-      />
+      <WeatherIcon icon={icon} size={dims.icon} color={iconColor} weight="duotone" />
       <Text style={[styles.temp, { color: tempColor, fontSize: dims.temp }]}>{temperature}°</Text>
       {precipProbability != null && precipProbability > 0 && (
         <>

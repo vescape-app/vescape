@@ -218,8 +218,6 @@ class NotificationPresenterTest {
         dutyCycle: Double = 0.0,
         batteryVoltage: Double = 0.0,
     ): RefloatTelemetry = RefloatTelemetry(
-        hasFault = false,
-        faultCode = 0,
         pitch = 0.0,
         roll = 0.0,
         balancePitch = 0.0,
@@ -237,6 +235,8 @@ class NotificationPresenterTest {
         odometer = null,
         tempMosfet = null,
         tempMotor = null,
+        hasFault = false,
+        faultCode = 0,
         avgLatency = null,
         pullRateHz = null,
         lastPacketAt = 0L,

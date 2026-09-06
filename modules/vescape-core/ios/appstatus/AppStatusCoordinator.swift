@@ -9,6 +9,23 @@ typealias AppStatusTransport = (
   _ onResult: @escaping (Data?) -> Void
 ) -> Void
 
+/// The slice of App Status the Group Ride relay socket gates on. Split out so the observer can be
+/// exercised without a live coordinator, exactly like Android's `OnlineCapability`.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatusCoordinator.kt `OnlineCapability`
+protocol OnlineCapability: AnyObject {
+  /// True while online work (Group Ride) is denied — Online Block or App Block. Unknown fails open.
+  var onlineBlocked: Bool { get }
+
+  /// Installed marketing version to stamp on app-originated requests (WebSocket upgrades included).
+  var appVersion: String { get }
+
+  /// Ask for a fresh App Status now — e.g. after a server version rejection (426).
+  func refresh()
+
+  /// Observe App Status changes; returns a remover. Invoked on the main thread.
+  func addListener(_ listener: @escaping () -> Void) -> () -> Void
+}
+
 /// Process-owned App Status truth. Native reads the installed marketing version, fetches
 /// `GET /api/app-status` on every foreground, and keeps the last **successful** result for the life
 /// of the process.
@@ -22,7 +39,7 @@ typealias AppStatusTransport = (
 /// Main-thread affine: lifecycle hooks call in on the main thread and the URLSession transport hops
 /// back there before touching state.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatusCoordinator.kt
-final class AppStatusCoordinator {
+final class AppStatusCoordinator: OnlineCapability {
   /// Public App Status route on the Vescape server.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatusCoordinator.kt `APP_STATUS_PATH`
   static let appStatusPath = "/api/app-status"
@@ -71,8 +88,27 @@ final class AppStatusCoordinator {
   /// Last successful App Status for this process, or `nil` while none has been fetched.
   private(set) var current: AppStatus?
 
-  /// Notified on every state change so the module can mirror it to JS.
-  var onChange: ((AppStatus?) -> Void)?
+  /// Notified on every state change so multiple process-scoped consumers stay in sync — the JS
+  /// mirror (module) and the Group Ride online gate ([OnlineCapability]). Unlike the JS module, the
+  /// gate can outlive the foreground runtime, so it subscribes here rather than through JS.
+  private var listeners: [Int: (AppStatus?) -> Void] = [:]
+  private var nextListenerToken = 0
+
+  var onlineBlocked: Bool { current?.version.status.blocksOnline ?? false }
+
+  var appVersion: String { installedVersion }
+
+  /// Register a full-status listener (used by the JS mirror); returns a remover.
+  func addChangeListener(_ listener: @escaping (AppStatus?) -> Void) -> () -> Void {
+    nextListenerToken += 1
+    let token = nextListenerToken
+    listeners[token] = listener
+    return { [weak self] in self?.listeners.removeValue(forKey: token) }
+  }
+
+  func addListener(_ listener: @escaping () -> Void) -> () -> Void {
+    addChangeListener { _ in listener() }
+  }
 
   private let installedVersion: String
   private let baseUrl: String
@@ -118,7 +154,7 @@ final class AppStatusCoordinator {
     }
     current = status
     applyDeviceTokenState(body)
-    onChange?(status)
+    listeners.values.forEach { $0(status) }
   }
 
   private func applyDeviceTokenState(_ body: Data) {

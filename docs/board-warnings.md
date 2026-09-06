@@ -76,13 +76,12 @@ not a data reset — manual clear exists for that). Toggling takes effect live, 
 
 | Slug                      | Title                          | Severity            | Scope                    | Detector                        | Trigger                                                                                                                                                                                                                                                                                                                 |
 | ------------------------- | ------------------------------ | ------------------- | ------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cell-spread`             | Cell voltage spread            | `warn` → `critical` | telemetry (continuous)   | `CellSpreadDetector`            | Smart-BMS cell-group voltage spread (`max − min` across valid groups, ≥ 2 groups) stays at or above the warn threshold for a sustained window; peak sustained spread escalates to critical. Thresholds are field-tuned detector constants (`WARN_THRESHOLD_V` 0.10 V, `CRITICAL_THRESHOLD_V` 0.25 V, `SUSTAIN_MS` 3 s). |
+| `cell-spread`             | Cell voltage spread            | `warn` → `critical` | telemetry (continuous)   | `CellSpreadDetector`            | Smart-BMS cell-group voltage spread (`max − min` across valid groups, ≥ 2 groups) stays at or above the warn threshold for a sustained window; peak sustained spread escalates to critical. Thresholds are field-tuned detector constants (`WARN_THRESHOLD_V` 0.20 V, `CRITICAL_THRESHOLD_V` 0.50 V, `SUSTAIN_MS` 3 s). |
 | `battery-config-mismatch` | Battery config mismatch        | `warn`              | telemetry (continuous)   | `BatteryConfigMismatchDetector` | Smart-BMS cell count, stable across 3 consecutive frames, disagrees with the board's configured battery **series count**. Missing series count → skipped, not clean.                                                                                                                                                    |
 | `footpad-disabled`        | Footpad sensor disabled        | `critical`          | config (post-link-trust) | `ConfigSafetyDetector`          | Both footpad ADC switch voltages are 0 (`fault_adc1 == 0` **and** `fault_adc2 == 0`) — the footpad switch is disabled entirely. See [safety.md](./safety.md#fault-disengagement-board-turns-off).                                                                                                                       |
-| `lv-pushback-low`         | Low-voltage pushback too low   | `critical`          | config (post-link-trust) | `ConfigSafetyDetector`          | `tiltback_lv` below the safe minimum in the firmware's voltage units (per-cell `3.0 V`, or `× series` in pack mode). Unit resolution + defaults: see [safety.md](./safety.md#pushbacks-nose-lifts-to-warn-the-rider). Rule skipped when the unit mode / series count is unknown.                                        |
-| `hv-pushback-high`        | High-voltage pushback too high | `warn`              | config (post-link-trust) | `ConfigSafetyDetector`          | `tiltback_hv` above the safe maximum in the firmware's voltage units (per-cell `4.3 V`, or `× series` in pack mode). Same unit resolution as LV; see [safety.md](./safety.md#pushbacks-nose-lifts-to-warn-the-rider).                                                                                                   |
+| `lv-pushback-low`         | Low-voltage pushback too low   | `critical`          | config (post-link-trust) | `ConfigSafetyDetector`          | `tiltback_lv` below the safe minimum in its config units (below `10 V` means per-cell on supported firmware; otherwise pack total). Unit resolution + defaults: see [safety.md](./safety.md#pushbacks-nose-lifts-to-warn-the-rider). Rule skipped when firmware capability / required series count is unknown.          |
+| `hv-pushback-high`        | High-voltage pushback too high | `warn`              | config (post-link-trust) | `ConfigSafetyDetector`          | `tiltback_hv` above the safe maximum in its config units (below `10 V` means per-cell on supported firmware; otherwise pack total). Same unit resolution as LV; see [safety.md](./safety.md#pushbacks-nose-lifts-to-warn-the-rider).                                                                                    |
 | `duty-pushback-high`      | Duty pushback too high         | `warn`              | config (post-link-trust) | `ConfigSafetyDetector`          | `tiltback_duty` above the safe maximum (`DUTY_MAX` 0.85 fraction). VESC max duty is 0.95; see [safety.md](./safety.md#pushbacks-nose-lifts-to-warn-the-rider).                                                                                                                                                          |
-| `moving-fault-disabled`   | Moving-fault protection off    | `warn`              | config (post-link-trust) | `ConfigSafetyDetector`          | `fault_moving_fault_disabled` is enabled — moving faults are turned off, weakening fault protection while riding. See [safety.md](./safety.md#fault-disengagement-board-turns-off).                                                                                                                                     |
 
 ## Payload shapes
 
@@ -115,16 +114,16 @@ until a kind opts into bespoke detail text.
 | `bmsCellCount`     | number (int) | Stable cell count reported by the smart BMS. |
 | `configuredSeries` | number (int) | Board's configured battery series count.     |
 
-### Config-scoped kinds — `footpad-disabled`, `lv-pushback-low`, `hv-pushback-high`, `duty-pushback-high`, `moving-fault-disabled`
+### Config-scoped kinds — `footpad-disabled`, `lv-pushback-low`, `hv-pushback-high`, `duty-pushback-high`
 
-All five share one payload shape:
+All four share one payload shape:
 
 ```json
 { "param": "tiltback_lv", "value": 42.0, "bound": 45.0 }
 ```
 
-| Field   | Type   | Meaning                                                                                                                      |
-| ------- | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `param` | string | The offending Refloat config parameter. `footpad-disabled` reports the pair `"fault_adc1/fault_adc2"`.                       |
-| `value` | number | The parameter's current value, 4 dp. Boolean rules encode enabled as `1` (e.g. `moving-fault-disabled`, `footpad-disabled`). |
-| `bound` | number | The safe bound the value violated (in the same units), 4 dp. `0` for the boolean/pair rules.                                 |
+| Field   | Type   | Meaning                                                                                                |
+| ------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| `param` | string | The offending Refloat config parameter. `footpad-disabled` reports the pair `"fault_adc1/fault_adc2"`. |
+| `value` | number | The parameter's current value, 4 dp. `footpad-disabled` encodes the disabled pair as `1`.              |
+| `bound` | number | The safe bound the value violated (in the same units), 4 dp. `0` for the pair rule.                    |

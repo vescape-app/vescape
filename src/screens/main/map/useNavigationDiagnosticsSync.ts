@@ -8,7 +8,8 @@ import { useNavigationDiagnosticsStore } from '@/modules/map/store/navigationDia
 
 export function useNavigationDiagnosticsSync({
   gpsFix,
-  retainedGpsBearing,
+  courseDeg,
+  courseSourceTimestamp,
   phoneHeadingDegRef,
   phoneHeadingStatus,
   gpsPinBearingDeg,
@@ -16,7 +17,8 @@ export function useNavigationDiagnosticsSync({
   mapOrientationMode,
 }: {
   gpsFix: LocationEvent | null
-  retainedGpsBearing: { bearingDeg: number; sourceTimestamp: number } | null
+  courseDeg: number | null
+  courseSourceTimestamp: number | null
   phoneHeadingDegRef: RefObject<number | null>
   phoneHeadingStatus: PhoneHeadingStatus | 'idle'
   gpsPinBearingDeg: number | null
@@ -28,8 +30,8 @@ export function useNavigationDiagnosticsSync({
   useEffect(() => {
     updateNavigationDiagnostics({
       gpsFix,
-      retainedGpsBearingDeg: retainedGpsBearing?.bearingDeg ?? null,
-      retainedGpsBearingAt: retainedGpsBearing?.sourceTimestamp ?? null,
+      retainedGpsBearingDeg: courseDeg,
+      retainedGpsBearingAt: courseSourceTimestamp,
       phoneHeadingDeg: phoneHeadingDegRef.current,
       phoneHeadingStatus,
       activeDisplayHeadingDeg: gpsPinBearingDeg,
@@ -37,7 +39,7 @@ export function useNavigationDiagnosticsSync({
       fallbackReason: getNavigationFallbackReason({
         mapOrientationMode,
         gpsFix,
-        retainedGpsBearingDeg: retainedGpsBearing?.bearingDeg ?? null,
+        retainedGpsBearingDeg: courseDeg,
         phoneHeadingDeg: phoneHeadingDegRef.current,
         phoneHeadingStatus,
       }),
@@ -49,8 +51,8 @@ export function useNavigationDiagnosticsSync({
     mapOrientationMode,
     phoneHeadingDegRef,
     phoneHeadingStatus,
-    retainedGpsBearing?.bearingDeg,
-    retainedGpsBearing?.sourceTimestamp,
+    courseDeg,
+    courseSourceTimestamp,
     updateNavigationDiagnostics,
   ])
 }

@@ -17,14 +17,12 @@ const productionManifest = (
   sourceSha: 'a'.repeat(40),
   marketingVersion: '1.7.1',
   operation: 'promote',
-  requestedRolloutPercentage: 25,
   phone: {
     versionCode: 1388,
     sourceTrack: 'beta',
     targetTrack: 'production',
     status: 'promoted',
-    playStatus: 'inProgress',
-    rolloutPercentage: 25,
+    playStatus: 'completed',
     ...overrides,
   },
   wear: {
@@ -32,8 +30,7 @@ const productionManifest = (
     sourceTrack: 'wear:beta',
     targetTrack: 'wear:production',
     status: 'promoted',
-    playStatus: 'inProgress',
-    rolloutPercentage: 25,
+    playStatus: 'completed',
   },
   githubRelease: 'released',
 })
@@ -63,16 +60,16 @@ describe('pendingCount', () => {
 })
 
 describe('productionRow', () => {
-  test('carries the recorded rollout percentage', () => {
-    expect(productionRow(productionManifest(), 11).rolloutPercentage).toBe(25)
-  })
+  test('carries the exact artifact pair a status refresh must target', () => {
+    const row = productionRow(productionManifest(), 11)
 
-  test('reads halted from the artifact status', () => {
-    expect(productionRow(productionManifest({ status: 'halted' }), 11).halted).toBe(true)
-  })
-
-  test('reads halted from live Play status even when the operation succeeded', () => {
-    expect(productionRow(productionManifest({ playStatus: 'halted' }), 11).halted).toBe(true)
+    expect(row).toMatchObject({
+      marketingVersion: '1.7.1',
+      phone: 1388,
+      wear: 1389,
+      detail: 'promoted',
+      openPromotionRunId: 9,
+    })
   })
 })
 

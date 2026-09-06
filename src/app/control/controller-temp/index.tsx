@@ -1,21 +1,35 @@
 import { useMemo } from 'react'
 
-import { computeAutoRange } from '@/components/charts/chartMath'
+import { computeAutoRangeFromValues } from '@/components/charts/chartMath'
+import { MotorConfigSection } from '@/modules/board/components/MotorConfigSection'
 import { ControlDetailLayout } from '@/modules/board/components/ControlDetailLayout'
-import { MetricDetailChart } from '@/modules/board/components/MetricDetailChart'
-import { toTelemetryChartPoints } from '@/modules/board/components/metricDetailData'
+import { LiveChartStack } from '@/modules/board/components/LiveChartStack'
+import { toChartSeries, toLiveChart } from '@/modules/board/components/metricDetailData'
+import { CONTROLLER_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { liveSelectors, useLiveMetric } from '@/modules/board/hooks/useLiveMetric'
 import { useLiveWindowMs } from '@/modules/settings/store/settingsStore'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
 
 const cfg = telemetry.controllerTemp
+const CHART_HEIGHT = 120
 
 export default function ControllerTempScreen() {
   const controllerTemp = useLiveMetric(liveSelectors.controllerTemp)
   const windowMs = useLiveWindowMs()
-  const points = useMemo(() => toTelemetryChartPoints(controllerTemp), [controllerTemp])
-  const range = useMemo(() => computeAutoRange(points, { baseline: cfg.chartRange }), [points])
+
+  const charts = useMemo(() => {
+    const data = toChartSeries(controllerTemp, windowMs)
+    return [
+      toLiveChart({
+        key: 'controllerTemp',
+        metric: cfg,
+        data,
+        range: computeAutoRangeFromValues(data.vs, { baseline: cfg.chartRange }),
+        height: CHART_HEIGHT,
+      }),
+    ]
+  }, [controllerTemp, windowMs])
 
   return (
     <ControlDetailLayout
@@ -24,7 +38,8 @@ export default function ControllerTempScreen() {
       unit={cfg.unit}
       liveValue={liveTelemetryRuntime.values.controllerTemp}
     >
-      <MetricDetailChart metric={cfg} points={points} range={range} windowMs={windowMs} />
+      <LiveChartStack charts={charts} />
+      <MotorConfigSection rows={CONTROLLER_TEMP_CONFIG_ROWS} />
     </ControlDetailLayout>
   )
 }

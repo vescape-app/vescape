@@ -15,8 +15,8 @@ function gps(id: number, capturedAtMs: number, latitude = 52, longitude = 21): H
   return {
     id,
     capturedAtMs,
-    deviceId: 'board',
-    deviceName: 'Board',
+    boardId: 'board',
+    boardName: 'Board',
     latitude,
     longitude,
     speedMps: null,
@@ -44,8 +44,7 @@ function marker(occurredAtMs: number, type: HistoryMarker['type']): HistoryMarke
     id: occurredAtMs,
     occurredAtMs,
     type,
-    deviceId: null,
-    deviceName: null,
+    boardId: null,
     message: null,
     gapMs: null,
   }

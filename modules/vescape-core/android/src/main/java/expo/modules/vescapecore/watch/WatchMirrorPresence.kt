@@ -20,6 +20,14 @@ import kotlinx.coroutines.launch
 internal const val WATCH_MIRROR_CAPABILITY = "vescape_watch_mirror"
 
 /**
+ * Declared only by wrist builds that report a [WatchMirrorWakeLevel]. Phone and watch ship as
+ * separate Play tracks and update independently, so the wake gate has to be opt-in per wrist build:
+ * without this, a phone that updated first would gate on a level an older wrist never sends and
+ * leave its Mirror permanently blank. Delete once the minimum supported wrist build sends one.
+ */
+internal const val WATCH_MIRROR_WAKE_CAPABILITY = "vescape_watch_mirror_wake"
+
+/**
  * Re-query cadence: a quick burst right after session start (the window where the watch link is
  * most likely still settling), then a slow steady heartbeat. The CapabilityClient listener stays
  * the instant path; this only backstops missed events.
@@ -54,21 +62,36 @@ internal class WatchMirrorPresence(
     var present: Boolean = false
         private set
 
+    /** Whether the reachable wrist build reports a wake level, and can therefore be gated on one. */
+    @Volatile
+    var reportsWakeLevel: Boolean = false
+        private set
+
     private var refreshJob: Job? = null
 
     private val listener = CapabilityClient.OnCapabilityChangedListener { info ->
+        if (info.name == WATCH_MIRROR_WAKE_CAPABILITY) {
+            reportsWakeLevel = info.nodes.isNotEmpty()
+            return@OnCapabilityChangedListener
+        }
         update(info.nodes.isNotEmpty(), source = "listener")
     }
 
     fun start() {
         if (refreshJob?.isActive == true) return
         capabilityClient.addListener(listener, WATCH_MIRROR_CAPABILITY)
+        capabilityClient.addListener(listener, WATCH_MIRROR_WAKE_CAPABILITY)
         refreshJob = scope.launch(Dispatchers.IO) {
             var attempt = 0
             while (isActive) {
                 val capabilityPresent = runCatching {
                     Tasks.await(
                         capabilityClient.getCapability(WATCH_MIRROR_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
+                    )
+                }.getOrNull()?.nodes?.isNotEmpty() ?: false
+                reportsWakeLevel = runCatching {
+                    Tasks.await(
+                        capabilityClient.getCapability(WATCH_MIRROR_WAKE_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
                     )
                 }.getOrNull()?.nodes?.isNotEmpty() ?: false
                 val next = capabilityPresent || debugReachableWearNode()
@@ -84,7 +107,9 @@ internal class WatchMirrorPresence(
         refreshJob?.cancel()
         refreshJob = null
         runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_CAPABILITY) }
+        runCatching { capabilityClient.removeListener(listener, WATCH_MIRROR_WAKE_CAPABILITY) }
         present = false
+        reportsWakeLevel = false
     }
 
     private fun update(next: Boolean, source: String, force: Boolean = false) {

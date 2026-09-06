@@ -135,12 +135,12 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 20,
     fontWeight: '800',
   },
   description: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,

@@ -46,6 +46,20 @@ export function fmtPercent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`
 }
 
+/**
+ * Format a ride length in seconds as "8 min", "1 h 20 min" or "< 1 min" — how long something takes,
+ * not how long ago it was. Rounds up to the whole minute, because a route that takes forty seconds
+ * is a minute of riding and never zero.
+ */
+export function fmtRideDuration(seconds: number): string {
+  const totalMinutes = Math.ceil(Math.max(0, seconds) / 60)
+  if (totalMinutes < 1) return '< 1 min'
+  if (totalMinutes < 60) return `${totalMinutes} min`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`
+}
+
 /** Format elapsed time since a timestamp, e.g. "5m ago", "2h ago", "3d ago". */
 export function fmtTimeAgo(atMs: number, nowMs = Date.now()): string {
   const diffMin = Math.max(0, Math.floor((nowMs - atMs) / 60_000))

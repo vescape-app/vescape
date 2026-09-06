@@ -26,8 +26,6 @@ data class RefloatTelemetry(
     val location: LocationSnapshot?,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
-        "hasFault" to hasFault,
-        "faultCode" to faultCode,
         "pitch" to pitch,
         "roll" to roll,
         "balancePitch" to balancePitch,
@@ -93,6 +91,12 @@ data class BmsTelemetry(
     )
 }
 
+/**
+ * One GPS fix as everything downstream sees it.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
+ * @parity /modules/vescape-core/src/index.ts `LocationEvent`
+ */
 data class LocationSnapshot(
     val latitude: Double,
     val longitude: Double,
@@ -102,6 +106,13 @@ data class LocationSnapshot(
     val altitudeM: Double?,
     val timestamp: Long,
     val precise: Boolean,
+    /**
+     * The reliable course from [expo.modules.vescapecore.location.GpsCourseDeriver], not the raw
+     * [bearingDeg]. Null on approximate fixes and wherever a snapshot is rebuilt from storage.
+     */
+    val courseDeg: Double? = null,
+    /** The fix [courseDeg] was derived from; older than [timestamp] while a course is retained. */
+    val courseSourceTimestamp: Long? = null,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "latitude" to latitude,
@@ -112,6 +123,8 @@ data class LocationSnapshot(
         "altitudeM" to altitudeM,
         "timestamp" to timestamp,
         "precise" to precise,
+        "courseDeg" to courseDeg,
+        "courseSourceTimestamp" to courseSourceTimestamp,
     )
 }
 

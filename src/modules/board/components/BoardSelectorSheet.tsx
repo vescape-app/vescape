@@ -60,7 +60,7 @@ export function BoardSelectorSheet({
             <View style={[styles.boardIcon, isActive && styles.boardIconActive]}>
               <LightningIcon
                 size={16}
-                color={isActive ? theme.palette.sky.color : theme.palette.slate.textMuted}
+                color={isActive ? theme.palette.sky.color : theme.neutral.textMuted}
                 weight={isActive ? 'fill' : 'regular'}
               />
             </View>
@@ -74,7 +74,7 @@ export function BoardSelectorSheet({
                   decimals={0}
                   unit=" Hz"
                   size={PULL_RATE_FONT_SIZE}
-                  color={theme.palette.slate.textMuted}
+                  color={theme.neutral.textMuted}
                 />
               )}
             </View>
@@ -89,7 +89,7 @@ export function BoardSelectorSheet({
               }}
               hitSlop={8}
             >
-              <PencilSimpleIcon size={15} color={theme.palette.slate.textDim} weight="bold" />
+              <PencilSimpleIcon size={15} color={theme.neutral.textDim} weight="bold" />
             </Pressable>
           </Pressable>
         )
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   sectionTitle: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   boardRowActive: {
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   boardRowPressed: {
     backgroundColor: interaction.pressedBg,
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: theme.palette.slate.surface,
+    backgroundColor: theme.neutral.surfaceDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -156,12 +156,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   boardName: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 14,
     fontWeight: '600',
   },
   boardNameActive: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   addRow: {
     flexDirection: 'row',
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',

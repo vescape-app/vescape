@@ -24,6 +24,8 @@ let iosRoot = URL(fileURLWithPath: #filePath)
 /// depends on those files. Everything else in the tree is compiled and testable here.
 let expoOwnedSources: Set<String> = [
   "VescapeCoreModule.swift",
+  // `ExpoAppDelegateSubscriber`, the launch hook for CoreBluetooth state restoration.
+  "connection/VescapeLaunchSubscriber.swift",
   // `NativeArrayBuffer` for the columnar Ride History payload.
   "telemetry/TelemetryRangePayload.swift",
 ]

@@ -1,4 +1,5 @@
 import type { BoardWarning, BoardWarningKind, BoardWarningSeverity } from 'vescape-core'
+import { DASH } from '@/helpers/format'
 
 /**
  * Rider-facing titles per Board Warning kind. Keyed by the exhaustive `BoardWarningKind` union, so adding a
@@ -11,7 +12,6 @@ const WARNING_TITLES: Record<BoardWarningKind, string> = {
   'lv-pushback-low': 'Low-voltage pushback too low',
   'hv-pushback-high': 'High-voltage pushback too high',
   'duty-pushback-high': 'Duty pushback too high',
-  'moving-fault-disabled': 'Moving-fault protection off',
 }
 
 /**
@@ -31,8 +31,6 @@ const WARNING_DESCRIPTIONS: Record<BoardWarningKind, string> = {
     'High-voltage pushback starts above the safe maximum, so braking on a full charge can overcharge the battery without warning.',
   'duty-pushback-high':
     'Duty pushback starts above the safe maximum, leaving too little motor headroom before a nosedive.',
-  'moving-fault-disabled':
-    'Fault detection while moving is turned off, weakening protection against sensor faults during a ride.',
 }
 
 /**
@@ -62,7 +60,7 @@ export interface WarningDetailEntry {
 /**
  * Bespoke value/bound rendering for the config-scoped kinds sharing the `{ param, value, bound }`
  * payload shape (see docs/board-warnings.md). Maps the raw numbers to unit-labelled "current vs safe
- * limit" rows. Boolean rules (footpad, moving-fault) render no numeric rows — the description says it all.
+ * limit" rows. `footpad-disabled` renders no numeric rows — the description says it all.
  */
 const CONFIG_DETAIL: Partial<
   Record<BoardWarningKind, { boundLabel: string; format: (n: number) => string }>
@@ -71,7 +69,6 @@ const CONFIG_DETAIL: Partial<
   'hv-pushback-high': { boundLabel: 'Safe maximum', format: fmtVolts },
   'duty-pushback-high': { boundLabel: 'Safe maximum', format: fmtDutyPercent },
   'footpad-disabled': { boundLabel: '', format: () => '' },
-  'moving-fault-disabled': { boundLabel: '', format: () => '' },
 }
 
 /**
@@ -122,7 +119,7 @@ function humanizeKey(key: string): string {
 }
 
 function formatValue(value: unknown): string {
-  if (value == null) return '—'
+  if (value == null) return DASH
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3)
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   return String(value)

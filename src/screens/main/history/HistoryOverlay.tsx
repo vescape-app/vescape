@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Favorite, HistoryGpsSample, HistoryMarker } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
@@ -18,14 +17,14 @@ import type {
   TelemetrySample,
 } from '@/modules/history/store/historyStore'
 import { HistoryControls } from '@/screens/main/history/HistoryControls'
-import { HistoryMapLoading } from '@/screens/main/history/HistoryMapLoading'
 import { HistoryRideDetail } from '@/screens/main/history/HistoryRideDetail'
 import type { HistoryTab } from '@/screens/main/mainScreenStore'
-import { STRIP_CONTENT_HEIGHT } from '@/screens/main/overlays/BottomTelemetryStrip'
+import { useAboveStripBottom } from '@/screens/main/overlays/BottomTelemetryStrip'
 
 export interface MainHistoryOverlayProps {
   selectedSession: HistorySession | null
   sessionSamples: TelemetrySample[]
+  sessionChartSamples: TelemetrySample[]
   sessionGpsSamples: HistoryGpsSample[]
   sessionMarkers: HistoryMarker[]
   nextRide: HistorySession | null
@@ -65,9 +64,9 @@ export interface MainHistoryOverlayProps {
   selectPreviousRide: () => Promise<void>
   selectNextRide: () => Promise<void>
   selectRide: (session: HistorySession) => void
+  selectFavoriteRide: (favoriteId: string, session: HistorySession) => void
   exitHistory: () => void
   removeSession: () => void
-  onSeek: (timeMs: number) => void
   setActiveHistoryMapMetric: (metric: HistoryMetricKey) => void
   mediaHistory: {
     assets: MediaHistoryAsset[]
@@ -96,7 +95,6 @@ export function HistoryOverlay({
   panelHeight,
   onPanelHeightChange,
 }: HistoryOverlayProps) {
-  const insets = useSafeAreaInsets()
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false)
   const listButtonRef = useRef<View>(null)
   const busy =
@@ -104,7 +102,7 @@ export function HistoryOverlay({
     history.historyLoading ||
     history.favoritesLoading ||
     history.favoritesSaving
-  const aboveStripBottom = STRIP_CONTENT_HEIGHT + Math.max(insets.bottom * 0.5, 8) + 8
+  const aboveStripBottom = useAboveStripBottom()
   const favoriteMode = history.historyTab === 'favorites'
   const detailSession =
     history.historyTab === 'history' || history.openFavorite ? history.selectedSession : null
@@ -133,7 +131,7 @@ export function HistoryOverlay({
 
       {visible && !detailSession && (
         <>
-          {busy ? <HistoryMapLoading /> : <HistoryEmptyState favoriteMode={favoriteMode} />}
+          {!busy && <HistoryEmptyState favoriteMode={favoriteMode} />}
           <HistoryControls
             loading={busy}
             tab={history.historyTab}
@@ -155,7 +153,6 @@ export function HistoryOverlay({
         visible={history.historySheetVisible}
         triggerRef={listButtonRef}
         favoriteMode={favoriteMode}
-        blocks={history.blocks}
         sessions={favoriteMode ? history.favoriteSessions : history.sessions}
         favorites={favoriteMode ? history.favorites : []}
         selectedSessionId={history.selectedSession?.id ?? null}

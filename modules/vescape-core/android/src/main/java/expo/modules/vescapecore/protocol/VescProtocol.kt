@@ -14,17 +14,167 @@ internal const val COMM_FW_VERSION = 0
 internal const val COMM_FORWARD_CAN = 34
 internal const val COMM_CUSTOM_APP_DATA = 36
 internal const val COMM_BMS_GET_VALUES = 96
+internal const val COMM_GET_MCCONF = 14
 internal const val COMM_GET_CUSTOM_CONFIG_XML = 92
 internal const val COMM_GET_CUSTOM_CONFIG = 93
 internal const val COMM_SET_CUSTOM_CONFIG = 95
 internal const val COMM_PING_CAN = 62
 internal const val COMM_SET_CHUCK_DATA = 35
+
+/**
+ * Read-only terminal request. Vescape only ever sends the fixed literal [VESC_FAULTS_TERMINAL_COMMAND];
+ * the command byte is deliberately not exposed with a caller-supplied string anywhere.
+ */
+internal const val COMM_TERMINAL_CMD = 20
+
+/** Controller terminal output. Multi-frame, with no explicit completion frame. */
+internal const val COMM_PRINT = 21
 internal const val REFLOAT_MAGIC = 101
 internal const val REFLOAT_GET_INFO = 0
 internal const val REFLOAT_GET_ALLDATA = 10
 internal const val REFLOAT_RC_MOVE = 7
 internal const val REFLOAT_REMOTE = 15
+internal const val REFLOAT_LIGHTS_CONTROL = 20
+
+/**
+ * `LIGHTS_CONTROL` on Refloat 1.1 and older, where it still lived in the unstable range the enum
+ * documents as "commands above 200 can change protocol at any time". Refloat 1.2.0 promoted it
+ * to [REFLOAT_LIGHTS_CONTROL] and widened the mask, so the two ids are two different wire formats.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REFLOAT_LIGHTS_CONTROL_LEGACY`
+ */
+internal const val REFLOAT_LIGHTS_CONTROL_LEGACY = 202
 private const val REFLOAT_FAULT_MODE = 69
+
+/**
+ * The one and only terminal command Vescape sends. VESC's `faults` command prints the controller's
+ * retained in-memory fault register and mutates nothing. Keeping it a private constant behind
+ * [buildFaultsTerminalCommand] is what stops this from becoming a generic command surface.
+ */
+private const val VESC_FAULTS_TERMINAL_COMMAND = "faults"
+
+/**
+ * Frames the read-only `faults` terminal request for the Board Link's transport, so a CAN-forwarded
+ * Refloat Board asks the same controller the Board Link proved.
+ *
+ * There is intentionally **no** string parameter: the payload is fixed.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildFaultsTerminalCommand`
+ */
+internal fun buildFaultsTerminalCommand(transport: BoardTransport): ByteArray =
+    transport.frame(
+        byteArrayOf(COMM_TERMINAL_CMD.toByte()) + VESC_FAULTS_TERMINAL_COMMAND.toByteArray(Charsets.US_ASCII),
+    )
+
+/**
+ * Which light switches a `LIGHTS_CONTROL` request addresses: bit 0 the lights as a whole, bit 1 the
+ * headlights. Firmware only applies the bits the mask names; both are always named so a write states
+ * the complete light state rather than editing one switch against whatever the board had.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `LIGHTS_CONTROL_MASK`
+ */
+private const val LIGHTS_CONTROL_MASK = 0x3
+
+/** Board lights as the board reports them back on its `LIGHTS_CONTROL` echo. */
+internal data class BoardLightsState(val enabled: Boolean, val headlightsEnabled: Boolean)
+
+/**
+ * Which `LIGHTS_CONTROL` wire format the board speaks. The command was renumbered and its mask
+ * widened in Refloat 1.2.0, and firmware silently drops an unknown command id — a board on the
+ * wrong generation answers nothing at all, which is indistinguishable from a dead link.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `BoardLightsGeneration`
+ */
+internal enum class BoardLightsGeneration {
+    /** Refloat 1.0–1.1: command 202, one mask byte, writing straight to the stored config. */
+    Legacy,
+
+    /** Refloat 1.2+: command 20, `uint32` mask, writing a runtime override. */
+    Current;
+
+    companion object {
+        /**
+         * Resolves the generation from a normalized Refloat base version such as `"1.2.0"`.
+         * Unknown or unparseable versions fall back to [Current]: a wrong guess only means the
+         * board ignores the command, matching [BoardMoveGeneration.forBaseVersion].
+         */
+        fun forBaseVersion(baseVersion: String?): BoardLightsGeneration {
+            val parts = baseVersion?.split('.') ?: return Current
+            val major = parts.getOrNull(0)?.toIntOrNull() ?: return Current
+            val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            return if (major > 1 || (major == 1 && minor >= 2)) Current else Legacy
+        }
+    }
+}
+
+/**
+ * Builds the Refloat lights switch: states the LEDs and the headlights, each on or off.
+ *
+ * On [BoardLightsGeneration.Current] the write is runtime only — firmware applies it live and never
+ * writes config, so a power cycle restores the board's own setting. It is sticky for the rest of
+ * that power cycle: firmware marks the runtime value as overriding the configured one, so later
+ * config changes to the lights stop taking effect live. On [BoardLightsGeneration.Legacy] there is
+ * no runtime layer; firmware assigns the in-memory config directly, so the switch reads back as the
+ * board's configured value until something saves or restores config.
+ *
+ * A board with its LEDs configured off still accepts the command and echoes back `enabled` — the
+ * flag flips, there is just nothing to light up. `GET_INFO` capabilities bit 0 is how a client
+ * knows not to offer the switch at all.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `buildLightsControlCommand`
+ */
+internal fun buildLightsControlCommand(
+    transport: BoardTransport,
+    generation: BoardLightsGeneration,
+    enabled: Boolean,
+    headlightsEnabled: Boolean,
+): ByteArray {
+    val value = (if (enabled) 0x1 else 0) or (if (headlightsEnabled) 0x2 else 0)
+    val payload = when (generation) {
+        BoardLightsGeneration.Current -> byteArrayOf(
+            COMM_CUSTOM_APP_DATA.toByte(),
+            REFLOAT_MAGIC.toByte(),
+            REFLOAT_LIGHTS_CONTROL.toByte(),
+            // mask, uint32 big-endian
+            0,
+            0,
+            0,
+            LIGHTS_CONTROL_MASK.toByte(),
+            value.toByte(),
+        )
+
+        BoardLightsGeneration.Legacy -> byteArrayOf(
+            COMM_CUSTOM_APP_DATA.toByte(),
+            REFLOAT_MAGIC.toByte(),
+            REFLOAT_LIGHTS_CONTROL_LEGACY.toByte(),
+            // mask, a single byte before Refloat 1.2.0
+            LIGHTS_CONTROL_MASK.toByte(),
+            value.toByte(),
+        )
+    }
+    return transport.frame(payload)
+}
+
+/**
+ * Decodes the board's `LIGHTS_CONTROL` echo, the authoritative answer to what the switch did.
+ * Returns `null` for any payload that is not one, including the CAN-forwarded form.
+ *
+ * @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `parseLightsControlResponse`
+ */
+internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
+    val body = when {
+        payload.size >= 4 && (payload[0].toInt() and 0xff) == COMM_CUSTOM_APP_DATA -> payload
+        payload.size >= 6 && (payload[0].toInt() and 0xff) == COMM_FORWARD_CAN -> payload.copyOfRange(2, payload.size)
+        else -> return null
+    }
+    if (body.size < 4) return null
+    if ((body[1].toInt() and 0xff) != REFLOAT_MAGIC) return null
+    val command = body[2].toInt() and 0xff
+    // Both generations echo the same status byte under their own command id.
+    if (command != REFLOAT_LIGHTS_CONTROL && command != REFLOAT_LIGHTS_CONTROL_LEGACY) return null
+    val bits = body[3].toInt() and 0xff
+    return BoardLightsState(enabled = bits and 0x1 != 0, headlightsEnabled = bits and 0x2 != 0)
+}
 
 /** Neutral position of the remote-tilt slider (0..255). */
 internal const val REMOTE_TILT_CENTER = 128
@@ -83,8 +233,14 @@ internal const val BOARD_MOVE_INPUT_MAX = 127
 /** Motor current a full-scale `RC_MOVE` request asks for, in tenths of an amp. */
 private const val RC_MOVE_CURRENT_MAX_DECIAMPS = 60
 
-/** `RC_MOVE` runs for `time` firmware steps of ~1s; the controller re-sends before it lapses. */
-private const val RC_MOVE_TIME_STEPS = 1
+/**
+ * How long one `RC_MOVE` request runs. `time` is not seconds: firmware runs the
+ * request for `time * 100` control-loop steps, and that loop ticks at ~832 Hz,
+ * so one unit is only ~120 ms. Eight units cover ~1s, which outlives the
+ * controller's repeat tick — a request that lapses before its re-send lands is
+ * exactly what makes the motor stutter.
+ */
+private const val RC_MOVE_TIME_STEPS = 8
 
 /**
  * Builds a Board Move command: motor output while the board is disengaged, not

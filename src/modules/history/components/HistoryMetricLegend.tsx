@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native'
 
+import { ChartGestureHint } from '@/components/charts/ChartGestureHint'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 
@@ -7,9 +8,7 @@ export function HistoryMetricLegend() {
   return (
     <View style={styles.metricLegend}>
       <View style={styles.metricLegendItem}>
-        <View
-          style={[styles.metricLegendLine, { backgroundColor: theme.palette.slate.textSecondary }]}
-        />
+        <View style={[styles.metricLegendLine, { backgroundColor: theme.neutral.textSecondary }]} />
         <Text style={styles.metricLegendText} numberOfLines={1}>
           Low speed
         </Text>
@@ -20,6 +19,13 @@ export function HistoryMetricLegend() {
           Free spin
         </Text>
       </View>
+      <View style={styles.metricLegendItem}>
+        <View style={[styles.metricLegendLine, { backgroundColor: theme.palette.red.color }]} />
+        <Text style={styles.metricLegendText} numberOfLines={1}>
+          No GPS
+        </Text>
+      </View>
+      <ChartGestureHint compact />
     </View>
   )
 }
@@ -46,7 +52,7 @@ const styles = StyleSheet.create({
     borderRadius: 0.5,
   },
   metricLegendText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 8,
     fontWeight: '600',
   },

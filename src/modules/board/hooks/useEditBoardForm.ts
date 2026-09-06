@@ -12,11 +12,6 @@ import type { Board } from '@/modules/board/store/boardStore'
 
 type SaveKind = 'info' | 'battery' | 'link'
 
-export interface BoardInfoDraft {
-  name: string
-  description: string
-}
-
 export interface BoardBatteryDraft {
   batteryMode: BatteryMode
   cellPresetId: string
@@ -36,7 +31,6 @@ export function useEditBoardForm({
   const boardRef = useRef<Board | undefined>(board)
   const syncedBoardIdRef = useRef<string | null>(null)
   const [name, setName] = useState(board?.name ?? '')
-  const [description, setDescription] = useState(board?.description ?? '')
   const [battery, setBattery] = useState(() => batteryDraftFromConfig(board?.batteryConfig))
   const [batteryTouched, setBatteryTouched] = useState(false)
   const [saving, setSaving] = useState<SaveKind | null>(null)
@@ -46,17 +40,13 @@ export function useEditBoardForm({
     if (!board || syncedBoardIdRef.current === board.id) return
 
     setName(board.name)
-    setDescription(board.description ?? '')
     setBattery(batteryDraftFromConfig(board.batteryConfig))
     setBatteryTouched(false)
     syncedBoardIdRef.current = board.id
   }, [board])
 
   const saveBoard = useCallback(
-    async (
-      patch: Partial<Pick<Board, 'name' | 'description' | 'batteryConfig' | 'link'>>,
-      kind: SaveKind,
-    ) => {
+    async (patch: Partial<Pick<Board, 'name' | 'batteryConfig' | 'link'>>, kind: SaveKind) => {
       const current = boardRef.current
       if (!current) return
       const next = { ...current, ...patch }
@@ -95,17 +85,10 @@ export function useEditBoardForm({
     battery.parallelCount,
   )
 
-  const saveInfo = useCallback(
-    async (value: BoardInfoDraft) => {
-      setName(value.name)
-      setDescription(value.description)
-      await saveBoard(
-        {
-          name: value.name.trim(),
-          description: value.description.trim() || null,
-        },
-        'info',
-      )
+  const saveName = useCallback(
+    async (value: string) => {
+      setName(value)
+      await saveBoard({ name: value.trim() }, 'info')
     },
     [saveBoard],
   )
@@ -137,12 +120,11 @@ export function useEditBoardForm({
 
   return {
     name,
-    description,
     battery,
     batterySummary,
     keepMissingBatteryConfig,
     saving,
-    saveInfo,
+    saveName,
     saveBattery,
     unlink,
   }

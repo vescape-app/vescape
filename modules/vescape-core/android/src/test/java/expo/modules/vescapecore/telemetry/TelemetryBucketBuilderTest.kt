@@ -11,42 +11,36 @@ class TelemetryBucketBuilderTest {
       telemetryPoints = listOf(
         BucketTelemetryPoint(
           capturedAtMs = 125_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = -1_200,
           batteryVoltageMv = 77_500,
           motorCurrentMa = -2_500,
           batteryCurrentMa = 1_200,
           dutyPermille = -300,
-          hasFault = false,
-          odometerCm = 10_000L,
+            odometerCm = 10_000L,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 130_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 1_600,
           batteryVoltageMv = 77_100,
           motorCurrentMa = 3_500,
           batteryCurrentMa = -1_400,
           dutyPermille = 350,
-          hasFault = true,
           odometerCm = 10_420L,
         ),
       ),
       locationPoints = listOf(
         BucketLocationPoint(
           capturedAtMs = 131_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           precise = true,
           distanceFromPreviousCm = 230L,
           gpsSpeedCentiMps = 1_250,
         ),
         BucketLocationPoint(
           capturedAtMs = 132_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           precise = false,
           distanceFromPreviousCm = null,
           gpsSpeedCentiMps = 900,
@@ -55,12 +49,10 @@ class TelemetryBucketBuilderTest {
     ).single()
 
     assertEquals(120_000L, buckets.bucketStartMs)
-    assertEquals("board-1", buckets.deviceId)
-    assertEquals("ADV2", buckets.deviceName)
+    assertEquals("board-1", buckets.boardId)
     assertEquals(2, buckets.sampleCount)
     assertEquals(2, buckets.gpsPointCount)
     assertEquals(1, buckets.preciseGpsPointCount)
-    assertEquals(1, buckets.faultCount)
     assertEquals(2_800L, buckets.sumAbsSpeedCentiKmh)
     assertEquals(2, buckets.movingSpeedSampleCount)
     assertEquals(2_800L, buckets.sumMovingAbsSpeedCentiKmh)
@@ -84,8 +76,7 @@ class TelemetryBucketBuilderTest {
       locationPoints = listOf(
         BucketLocationPoint(
           capturedAtMs = 65_000L,
-          deviceId = null,
-          deviceName = null,
+          boardId = null,
           precise = true,
           distanceFromPreviousCm = null,
           gpsSpeedCentiMps = null,
@@ -102,46 +93,40 @@ class TelemetryBucketBuilderTest {
       telemetryPoints = listOf(
         BucketTelemetryPoint(
           capturedAtMs = 10_000L,
-          deviceId = "a",
-          deviceName = "A",
+          boardId = "a",
           speedCentiKmh = 100,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 70_000L,
-          deviceId = "a",
-          deviceName = "A",
+          boardId = "a",
           speedCentiKmh = 200,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 10_000L,
-          deviceId = "b",
-          deviceName = "B",
+          boardId = "b",
           speedCentiKmh = 300,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
       ),
       locationPoints = emptyList(),
     )
 
     assertEquals(setOf(0L to "a", 60_000L to "a", 0L to "b"), buckets.map {
-      it.bucketStartMs to it.deviceId
+      it.bucketStartMs to it.boardId
     }.toSet())
   }
 
@@ -151,41 +136,35 @@ class TelemetryBucketBuilderTest {
       telemetryPoints = listOf(
         BucketTelemetryPoint(
           capturedAtMs = 0L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 499,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = true,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 1_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = -500,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = false,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 2_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 1_200,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = false,
         ),
       ),
@@ -205,15 +184,13 @@ class TelemetryBucketBuilderTest {
       telemetryPoints = listOf(
         BucketTelemetryPoint(
           capturedAtMs = 0L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 100,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromAvgSpeed = true,
         ),
       ),
@@ -231,39 +208,33 @@ class TelemetryBucketBuilderTest {
       telemetryPoints = listOf(
         BucketTelemetryPoint(
           capturedAtMs = 0L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 0,
           batteryVoltageMv = 50_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 10_000,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = 0L,
+            odometerCm = 0L,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 3_600L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 0,
           batteryVoltageMv = 50_000,
           motorCurrentMa = 0,
           batteryCurrentMa = -5_000,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = 10L,
+            odometerCm = 10L,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 7_200L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 0,
           batteryVoltageMv = 50_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 0,
-          hasFault = false,
-          odometerCm = 20L,
+            odometerCm = 20L,
         ),
       ),
       locationPoints = emptyList(),
@@ -279,29 +250,25 @@ class TelemetryBucketBuilderTest {
       telemetryPoints = listOf(
         BucketTelemetryPoint(
           capturedAtMs = 0L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 5000,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 900,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
           excludedFromMaxSpeed = true,
           excludedFromMaxDuty = true,
         ),
         BucketTelemetryPoint(
           capturedAtMs = 1_000L,
-          deviceId = "board-1",
-          deviceName = "ADV2",
+          boardId = "board-1",
           speedCentiKmh = 2000,
           batteryVoltageMv = 70_000,
           motorCurrentMa = 0,
           batteryCurrentMa = 0,
           dutyPermille = 400,
-          hasFault = false,
-          odometerCm = null,
+            odometerCm = null,
         ),
       ),
       locationPoints = emptyList(),

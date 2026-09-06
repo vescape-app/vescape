@@ -39,6 +39,24 @@ appId: ${APP_ID}
 - extendedWaitUntil:
     visible: 'Speed'
     timeout: 15000
+
+# Change the persisted preset, leave the screen, then reopen it. The second selected-state
+# assertion is the contract: the alert rules and their board setting survived navigation and were
+# loaded again rather than merely remaining in component state.
+- tapOn:
+    id: alert-level-speed-off
+- assertVisible: 'Off, selected'
+- runFlow: ../fixture/_home.yaml
+
+- tapOn:
+    id: gauge-speed
+- extendedWaitUntil:
+    visible: 'Off, selected'
+    timeout: 15000
+# Restore the fixture's normal preset so later flows and screenshots keep their canonical setup.
+- tapOn:
+    id: alert-level-speed-normal
+- assertVisible: 'Normal, selected'
 - runFlow: ../fixture/_home.yaml
 
 - tapOn:

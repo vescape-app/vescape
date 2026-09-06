@@ -8,7 +8,38 @@ const stages = [
   'Publish release manifest',
 ] as const
 
+/**
+ * Typical minutes per job, measured over the successful Internal Release runs of Aug 2026.
+ * `Build signed artifacts once` dominates and is the one that varies (11–19 min).
+ */
+const stageMinutes: Record<(typeof stages)[number], number> = {
+  'Release gates': 2.5,
+  'Build signed artifacts once': 12,
+  'Upload phone internal': 2.2,
+  'Upload Wear internal': 1,
+  'Publish release manifest': 0.3,
+}
+
 const terminal = (job: WorkflowJob | undefined) => job?.status === 'completed'
+
+/** Minutes already spent in a job that is still running; queued jobs have not started. */
+function elapsedMinutes(job: WorkflowJob | undefined, now: number): number {
+  if (job?.status !== 'in_progress') return 0
+  const started = Date.parse(job.started_at ?? '')
+  return Number.isFinite(started) ? Math.max(0, (now - started) / 60_000) : 0
+}
+
+/** Budget left across unfinished jobs, widened to the spread the real runs show. */
+function remainingEstimate(byName: Map<string, WorkflowJob>, now: number): string {
+  const left = stages.reduce((total, stage) => {
+    const job = byName.get(stage)
+    if (terminal(job)) return total
+    return total + Math.max(0.2, stageMinutes[stage] - elapsedMinutes(job, now))
+  }, 0)
+  if (left <= 0) return 'done'
+  if (left < 2) return 'under 2 min'
+  return `about ${Math.round(left * 0.9)}–${Math.round(left * 1.6)} min`
+}
 
 export interface InternalReleaseProgress {
   bar: string
@@ -20,7 +51,10 @@ export interface InternalReleaseProgress {
   stages: Array<{ name: string; state: 'done' | 'active' | 'failed' | 'skipped' | 'waiting' }>
 }
 
-export function internalReleaseProgress(jobs: WorkflowJob[]): InternalReleaseProgress {
+export function internalReleaseProgress(
+  jobs: WorkflowJob[],
+  now = Date.now(),
+): InternalReleaseProgress {
   const byName = new Map(jobs.map((job) => [job.name, job]))
   const completed = stages.filter((stage) => terminal(byName.get(stage))).length
   const width = 24
@@ -31,17 +65,7 @@ export function internalReleaseProgress(jobs: WorkflowJob[]): InternalReleasePro
   const currentStep = currentJob?.steps.find((step) => step.status === 'in_progress')
   const current =
     currentJob?.name ?? (completed === stages.length ? 'Finished' : 'Waiting for runner')
-  const nextIncomplete = stages.findIndex((stage) => !terminal(byName.get(stage)))
-  const remaining =
-    nextIncomplete <= 0
-      ? 'about 30–60 min'
-      : nextIncomplete === 1
-        ? 'about 20–45 min'
-        : nextIncomplete <= 3
-          ? 'about 5–15 min'
-          : nextIncomplete === 4
-            ? 'about 1–3 min'
-            : 'done'
+  const remaining = remainingEstimate(byName, now)
 
   return {
     bar: `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`,

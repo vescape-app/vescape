@@ -15,7 +15,15 @@ enum BoardWarningKind: String, CaseIterable {
   case lvPushbackLow = "lv-pushback-low"
   case hvPushbackHigh = "hv-pushback-high"
   case dutyPushbackHigh = "duty-pushback-high"
-  case movingFaultDisabled = "moving-fault-disabled"
+
+  /// Kinds this app once emitted and no longer does. Their slug stays durable in the warnings table,
+  /// so a retired kind would otherwise sit on a rider's board forever: nothing evaluates it, so
+  /// nothing ever reports it clean. Every config evaluation clears them instead.
+  ///
+  /// `moving-fault-disabled` flagged Refloat's "Disable Moving Faults" as unsafe. It is a deliberate
+  /// mitigation on boards with unreliable footpad sensors, so the warning said nothing a rider could
+  /// act on.
+  static let retiredWire = ["moving-fault-disabled"]
 }
 
 /// Two-level severity, fixed at detection time. Unknown wire values normalize to `warn`. Lives here in

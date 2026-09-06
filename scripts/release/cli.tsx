@@ -37,7 +37,7 @@ import {
   verifyGhAuthentication,
   verifyRemoteCommit,
 } from './github'
-import { publishGithubPrerelease } from './githubPrerelease'
+import { publishGithubRelease } from './githubRelease'
 import { internalReleaseProgress, workflowElapsed } from './progress'
 import {
   bumpMarketingVersion,
@@ -46,9 +46,9 @@ import {
   verifyReleasePreparationReady,
 } from './prepare'
 import { Dashboard } from './dashboard/Dashboard'
-import { availableActions, type ActionId } from './dashboard/actions'
+import { availableActions, defaultActionIndex, type ActionId } from './dashboard/actions'
 import { initialReleaseState, loadReleaseState, type ReleaseState } from './dashboard/state'
-import { Confirm, Hint, Menu, Rule } from './ui'
+import { Confirm, Hint, isEnter, Menu, Rule } from './ui'
 import {
   productionFields,
   promotionFields,
@@ -66,7 +66,6 @@ type Phase =
   | 'checking'
   | 'candidate'
   | 'production-candidate'
-  | 'production-percentage'
   | 'confirm'
   | 'promote-confirm'
   | 'production-confirm'
@@ -84,7 +83,8 @@ const versionBumps: ReadonlyArray<{ bump: VersionBump; label: string }> = [
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
-const CONFIRM_INDEX = 1
+const CONFIRM_INDEX = 0
+const CANCEL_INDEX = 1
 
 export interface ReleaseCliOptions {
   initialPhase?: 'dashboard' | 'build-source'
@@ -122,7 +122,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [clock, setClock] = useState(Date.now())
   const [currentVersion, setCurrentVersion] = useState('')
   const [bumpIndex, setBumpIndex] = useState(1)
-  const [rolloutInput, setRolloutInput] = useState('10')
   const [run, setRun] = useState<{ id: number; url: string } | null>(null)
   const [iosRun, setIosRun] = useState<{ id: number; url: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -152,6 +151,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   useEffect(() => {
     if (initialPhase === 'dashboard') loadDashboard()
+    // Preparation already fixed the commit to build; asking for it again answers nothing.
+    else if (initialSourceRef) void prepare()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -173,6 +174,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   }, [phase, sourceRef])
 
   const actions = availableActions(releaseState)
+
+  const activeRunId = releaseState.activeRun?.id ?? null
+  useEffect(() => {
+    if (phase === 'dashboard') setIndex(defaultActionIndex(actions, releaseState))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRunId])
 
   const prepareVersionMenu = async () => {
     goto('checking')
@@ -267,17 +274,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     const next = { ...basePlan, candidate, notesPath }
     setProductionPlan(next)
     setStatus('')
-    if (next.operation === 'promote' || next.operation === 'advance') {
-      setRolloutInput(String(next.rolloutPercentage ?? 10))
-      goto('production-percentage')
-    } else {
-      goto('production-confirm')
-    }
+    goto('production-confirm', CANCEL_INDEX)
   }
 
   /**
-   * Rollout controls act on whatever is already on production, so only `promote` needs the
-   * candidate picker; the rest resolve the candidate from the recorded production version.
+   * A status refresh reads whatever is already on production, so only `promote` needs the
+   * candidate picker; `status` resolves its candidate from the recorded production version.
    */
   const prepareProduction = async (operation: ProductionOperation) => {
     goto('checking')
@@ -299,7 +301,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         notesPath: '',
         tracks,
         operation,
-        rolloutPercentage: 10,
       }
       if (operation === 'promote') {
         setProductionCandidates(available)
@@ -315,8 +316,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       if (!target)
         throw new Error(
           live
-            ? `No open-tested manifest matches the exact artifacts on production (open promotion run ${live.openPromotionRunId}); cannot target the live rollout`
-            : 'Nothing is recorded on production; cannot target a live rollout',
+            ? `No open-tested manifest matches the exact artifacts on production (open promotion run ${live.openPromotionRunId}); cannot target the live release`
+            : 'Nothing is recorded on production; cannot target a live release',
         )
       await applyProductionCandidate(basePlan, target)
     } catch (caught) {
@@ -333,18 +334,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     } catch (caught) {
       fail(caught)
     }
-  }
-
-  const confirmProductionPercentage = () => {
-    if (!productionPlan) return
-    const percentage = Number(rolloutInput)
-    if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
-      setError('Rollout percentage must be greater than 0 and at most 100')
-      goto('error')
-      return
-    }
-    setProductionPlan({ ...productionPlan, rolloutPercentage: percentage })
-    goto('production-confirm')
   }
 
   const prepareInternalRuns = async () => {
@@ -380,9 +369,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     const outcome = releaseOutcome(manifest)
     if (outcome.kind === 'success') {
-      setStatus(`Publishing v${manifest.marketingVersion} GitHub prerelease…`)
-      const githubRelease = await publishGithubPrerelease(repo, manifest)
-      setStatus(`Internal ready · GitHub prerelease ${githubRelease}`)
+      setStatus('Internal ready')
     } else if (outcome.kind === 'partial') {
       setStatus(`${outcome.succeeded} uploaded; ${outcome.failed} failed`)
       setRetryRunId(workflowRun.id)
@@ -429,8 +416,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
 
   const dispatch = async (confirmedPlan: Plan) => {
     goto('dispatching')
-    setStatus(`Dispatching trusted Android and iOS workflows from ${confirmedPlan.workflowRef}…`)
+    setStatus(`Publishing the v${confirmedPlan.marketingVersion} GitHub release…`)
     try {
+      const githubRelease = await publishGithubRelease(confirmedPlan.repo, confirmedPlan)
+      setStatus(
+        `GitHub release ${githubRelease} · dispatching Android and iOS workflows from ${confirmedPlan.workflowRef}…`,
+      )
       const payload = createDispatchPayload(
         confirmedPlan.sourceSha,
         confirmedPlan.requestId,
@@ -509,9 +500,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           confirmedPlan.candidate,
           confirmedPlan.operation,
           confirmedPlan.requestId,
-          confirmedPlan.operation === 'promote' || confirmedPlan.operation === 'advance'
-            ? confirmedPlan.rolloutPercentage
-            : undefined,
           confirmedPlan.workflowRef,
         ),
       )
@@ -530,7 +518,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         await sleep(10_000)
         workflowRun = await getWorkflowRun(confirmedPlan.repo, workflowRun.id)
       }
-      setStatus('Reading exact production rollout state…')
+      setStatus('Reading exact production release state…')
       const manifest = await downloadProductionManifest(workflowRun.id)
       setStatus(productionSummary(manifest))
       if (
@@ -550,9 +538,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     if (id === 'watch') void prepareInternalRuns()
     else if (id === 'promote-open') void preparePromotion()
     else if (id === 'promote-production') void prepareProduction('promote')
-    else if (id === 'advance') void prepareProduction('advance')
-    else if (id === 'halt') void prepareProduction('halt')
-    else if (id === 'resume') void prepareProduction('resume')
     else if (id === 'status') void prepareProduction('status')
     else if (id === 'build') gotoBuildSource()
     else if (id === 'prepare') void prepareVersionMenu()
@@ -566,10 +551,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   }
 
   useInput((input, key) => {
+    const enter = isEnter(input, key)
     if (phase === 'dashboard') {
       if (releaseState.loading && !releaseState.error) return
       moveIndex(key, actions.length)
-      if (key.return && actions[index]) startAction(actions[index].id)
+      if (enter && actions[index]) startAction(actions[index].id)
       else if (key.escape) {
         finish({ kind: 'exit' })
         exit()
@@ -578,7 +564,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'version-bump') {
       moveIndex(key, versionBumps.length)
-      if (key.return) {
+      if (enter) {
         setBumpIndex(index)
         goto('version-confirm')
       } else if (key.escape) loadDashboard()
@@ -586,7 +572,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'version-confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX) {
           finish({ kind: 'prepare', bump: versionBumps[bumpIndex].bump })
           exit()
@@ -595,14 +581,14 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     if (phase === 'build-source') {
-      if (key.return) {
+      if (enter) {
         if (sourcePreview) void prepare()
       } else if (key.escape) loadDashboard()
       else if (key.backspace || key.delete) {
         setSourceRefEdited(true)
         setSourceRef((value) => (sourceRefEdited ? value.slice(0, -1) : ''))
       } else if (input && !key.ctrl && !key.meta) {
-        // Buffered stdin can deliver control characters (bare LF does not set key.return)
+        // Keep other buffered control characters out of the source ref.
         const typed = input.replace(/[^\w./-]/g, '')
         if (typed) {
           setSourceRefEdited(true)
@@ -613,32 +599,25 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'candidate') {
       moveIndex(key, candidates.length)
-      if (key.return) void confirmPromotionCandidate(index)
+      if (enter) void confirmPromotionCandidate(index)
       else if (key.escape) loadDashboard()
       return
     }
     if (phase === 'internal-runs') {
       moveIndex(key, internalRuns.length)
-      if (key.return) void resumeInternalRun(index)
+      if (enter) void resumeInternalRun(index)
       else if (key.escape) loadDashboard()
       return
     }
     if (phase === 'production-candidate') {
       moveIndex(key, productionCandidates.length)
-      if (key.return) void confirmProductionCandidate(index)
+      if (enter) void confirmProductionCandidate(index)
       else if (key.escape) loadDashboard()
-      return
-    }
-    if (phase === 'production-percentage') {
-      if (key.return) confirmProductionPercentage()
-      else if (key.escape) loadDashboard()
-      else if (key.backspace || key.delete) setRolloutInput((value) => value.slice(0, -1))
-      else if (/^[0-9.]$/.test(input)) setRolloutInput((value) => value + input)
       return
     }
     if (phase === 'confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX && plan) void dispatch(plan)
         else gotoBuildSource()
       } else if (key.escape) gotoBuildSource()
@@ -646,7 +625,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'promote-confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX && promotionPlan) void promote(promotionPlan)
         else goto('candidate')
       } else if (key.escape) goto('candidate')
@@ -654,7 +633,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
     if (phase === 'production-confirm') {
       moveIndex(key, 2)
-      if (key.return) {
+      if (enter) {
         if (index === CONFIRM_INDEX && productionPlan) void runProduction(productionPlan)
         else loadDashboard()
       } else if (key.escape) loadDashboard()
@@ -674,7 +653,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       return
     }
     if (phase === 'complete' || phase === 'error') {
-      if (key.return || key.escape) loadDashboard()
+      if (enter || key.escape) loadDashboard()
       else if (input === 'q') {
         finish({ kind: 'exit' })
         exit()
@@ -725,10 +704,11 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             },
             {
               label: 'Next steps',
-              value: 'notes → commit dev → merge into main → push → Android + iOS internal build',
+              value:
+                'notes → commit dev → fast-forward main → push → GitHub release → Android + iOS internal build',
             },
           ]}
-          note="No Play upload, tag, GitHub Release, or production mutation happens yet."
+          note="No Play upload or production mutation happens yet."
           confirmLabel="Prepare and push this release candidate"
           index={index}
         />
@@ -797,17 +777,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             index={index}
           />
           <Hint>Only successful exact open-promotion manifests · ↑/↓ · Enter · Esc cancels</Hint>
-        </Box>
-      )}
-      {phase === 'production-percentage' && productionPlan && (
-        <Box flexDirection="column">
-          <Text bold>
-            {productionPlan.operation === 'promote' ? 'Initial rollout' : 'Advance rollout'}
-          </Text>
-          <Text>
-            Percentage: <Text color="yellow">{rolloutInput || ' '}%</Text>
-          </Text>
-          <Hint>Type percentage 0–100 · Enter continues · Esc cancels</Hint>
         </Box>
       )}
       {plan && phase === 'confirm' && (

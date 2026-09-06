@@ -3,6 +3,10 @@ import type { EventSubscription } from 'expo-modules-core'
 import type {
   AppSettings,
   Board,
+  BoardInput,
+  BoardCandidate,
+  BoardLink,
+  CompanionPresenceBoard,
   BoardProbeProgressEvent,
   BoardProbeResult,
   DeviceFoundEvent,
@@ -12,6 +16,8 @@ import type {
   LiveStateEvent,
   MetricExclusion,
   PrivacyZone,
+  RideHistoryPage,
+  RideHistorySession,
   TelemetryEvent,
   TelemetryHistoryEvent,
   TelemetryHistoryOptions,
@@ -45,6 +51,7 @@ const telemetryHistoryListeners = new Set<(event: TelemetryHistoryEvent) => void
 const boardProbeProgressListeners = new Set<(event: BoardProbeProgressEvent) => void>()
 
 const e2eBoards: Board[] = []
+const e2eCompanionBoardIds = new Set<string>()
 
 const e2eSettings: AppSettings = {
   liveHistoryLimit: 1000,
@@ -59,6 +66,7 @@ const e2eSettings: AppSettings = {
   freeSpinMaxSpeedDeltaKmh: 3,
   freeSpinStationaryBoardCapKmh: 1,
   rideSplitGapMinutes: 30,
+  themeMode: 'system',
   mapStyleKey: 'onedark',
   satelliteOverlayEnabled: true,
   satelliteImageryOpacity: 0.2,
@@ -73,12 +81,14 @@ const e2eSettings: AppSettings = {
   connectionSoundsEnabled: true,
   companionPresenceEnabled: false,
   boardWarningsEnabled: true,
+  vescFaultCollectionEnabled: true,
   companionPresenceCooldownMinutes: 60,
   autoCloseEnabled: false,
   autoCloseDelayMinutes: 15,
   telemetryPollRateHz: 20,
-  wearMirrorIntervalMs: 500,
+  wearPushRateHz: 4,
   wearAutoLaunchOnConnect: true,
+  wearNavArrowEnabled: false,
   riderId: null,
   riderName: null,
   riderColor: null,
@@ -108,8 +118,6 @@ function makeTelemetry(): TelemetryEvent {
   const now = Date.now()
   const wobble = Math.sin(now / 1000)
   return {
-    hasFault: false,
-    faultCode: 0,
     pitch: wobble * 3,
     roll: wobble,
     balancePitch: wobble * 2,
@@ -265,7 +273,7 @@ function stopBoardSession(): void {
 // ---------------------------------------------------------------------------
 // Telemetry history fake storage
 // ---------------------------------------------------------------------------
-const SAMPLE_COLUMN_COUNT = 25
+const SAMPLE_COLUMN_COUNT = 23
 
 let nextHistorySampleId = 1
 let nextHistoryGpsId = 1
@@ -297,8 +305,8 @@ function getTelemetryHistory(options: TelemetryHistoryOptions): TelemetryMinuteB
   if (options.toMs != null) {
     buckets = buckets.filter((b) => b.startAtMs <= options.toMs!)
   }
-  if (options.deviceId != null) {
-    buckets = buckets.filter((b) => b.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    buckets = buckets.filter((b) => b.boardId === options.boardId)
   }
   if (options.cursorBeforeMs != null) {
     buckets = buckets.filter((b) => b.bucketStartMs < options.cursorBeforeMs!)
@@ -309,23 +317,71 @@ function getTelemetryHistory(options: TelemetryHistoryOptions): TelemetryMinuteB
   return buckets
 }
 
+function getRideHistoryPage(options: { limit?: number; cursorBeforeMs?: number }): RideHistoryPage {
+  const buckets = getTelemetryHistory({ cursorBeforeMs: options.cursorBeforeMs }).sort(
+    (a, b) => b.startAtMs - a.startAtMs,
+  )
+  const sessions: RideHistorySession[] = buckets.map((bucket) => ({
+    id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
+    boardId: bucket.boardId,
+    boardName: bucket.boardName,
+    startAtMs: bucket.startAtMs,
+    endAtMs: bucket.endAtMs,
+    movingStartAtMs: bucket.firstMovingAtMs,
+    movingEndAtMs: bucket.lastMovingAtMs,
+    blockIds: [bucket.id],
+    blockCount: 1,
+    sampleCount: bucket.sampleCount,
+    gpsPointCount: bucket.gpsPointCount,
+    preciseGpsPointCount: bucket.preciseGpsPointCount,
+    distanceM: bucket.distanceDeltaM ?? bucket.gpsDistanceM,
+    maxSpeedKmh: bucket.maxAbsSpeedKmh,
+    avgSpeedKmh: bucket.avgSpeedKmh,
+    maxTempMosfet: bucket.maxTempMosfet,
+    maxTempMotor: bucket.maxTempMotor,
+    maxDuty: bucket.maxDuty,
+    batteryUsedWh: bucket.batteryUsedWh,
+    batteryRegenWh: bucket.batteryRegenWh,
+    firstLatitude: bucket.firstLatitude,
+    firstLongitude: bucket.firstLongitude,
+    centerLatitude: bucket.firstLatitude,
+    centerLongitude: bucket.firstLongitude,
+    minLatitude: bucket.firstLatitude,
+    maxLatitude: bucket.firstLatitude,
+    minLongitude: bucket.firstLongitude,
+    maxLongitude: bucket.firstLongitude,
+    boundaryBefore: bucket.boundaryBefore,
+    routePoints:
+      bucket.firstLatitude != null && bucket.firstLongitude != null
+        ? [{ latitude: bucket.firstLatitude, longitude: bucket.firstLongitude }]
+        : [],
+  }))
+  const limit = Math.max(1, options.limit ?? 10)
+  const page = sessions.slice(0, limit)
+  return {
+    sessions: page,
+    hasMore: sessions.length > page.length,
+    nextCursorBeforeMs: sessions.length > page.length ? (page.at(-1)?.startAtMs ?? null) : null,
+  }
+}
+
 function encodeBoardSamples(samples: TelemetrySample[]): {
   boardColumns: ArrayBuffer
   boardCount: number
-  boardDevices: (string | null)[]
-  boardDeviceNames: string[]
+  boardIds: (string | null)[]
+  boardNames: string[]
 } {
   const lanes = new Float64Array(samples.length * SAMPLE_COLUMN_COUNT)
-  const boardDevices: (string | null)[] = []
-  const boardDeviceNames: string[] = []
+  const boardIds: (string | null)[] = []
+  const boardNames: string[] = []
   const deviceIndexMap = new Map<string | null, number>()
-  function deviceIndex(deviceId: string | null, deviceName: string): number {
-    const key = `${deviceId ?? ''}:${deviceName}`
+  function boardIndex(boardId: string | null, boardName: string): number {
+    const key = `${boardId ?? ''}:${boardName}`
     let index = deviceIndexMap.get(key)
     if (index == null) {
-      index = boardDevices.length
-      boardDevices.push(deviceId)
-      boardDeviceNames.push(deviceName)
+      index = boardIds.length
+      boardIds.push(boardId)
+      boardNames.push(boardName)
       deviceIndexMap.set(key, index)
     }
     return index
@@ -336,7 +392,7 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
     const o = i * SAMPLE_COLUMN_COUNT
     lanes[o + 0] = s.id
     lanes[o + 1] = s.capturedAtMs
-    lanes[o + 2] = deviceIndex(s.deviceId, s.deviceName)
+    lanes[o + 2] = boardIndex(s.boardId, s.boardName)
     lanes[o + 3] = s.speedKmh
     lanes[o + 4] = s.batteryVoltage
     lanes[o + 5] = s.batteryPercent ?? NaN
@@ -355,30 +411,28 @@ function encodeBoardSamples(samples: TelemetrySample[]): {
     lanes[o + 18] = s.odometer ?? NaN
     lanes[o + 19] = s.tempMosfet ?? NaN
     lanes[o + 20] = s.tempMotor ?? NaN
-    lanes[o + 21] = s.hasFault ? 1 : 0
-    lanes[o + 22] = s.faultCode
-    lanes[o + 23] = s.latitude ?? NaN
-    lanes[o + 24] = s.longitude ?? NaN
+    lanes[o + 21] = s.latitude ?? NaN
+    lanes[o + 22] = s.longitude ?? NaN
   }
 
   return {
     boardColumns: lanes.buffer,
     boardCount: samples.length,
-    boardDevices,
-    boardDeviceNames,
+    boardIds,
+    boardNames,
   }
 }
 
 function getHistoryRange(options: {
   fromMs: number
   toMs: number
-  deviceId?: string
+  boardId?: string
   limit?: number
 }): {
   boardColumns: ArrayBuffer
   boardCount: number
-  boardDevices: (string | null)[]
-  boardDeviceNames: string[]
+  boardIds: (string | null)[]
+  boardNames: string[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
   exclusions: MetricExclusion[]
@@ -386,8 +440,8 @@ function getHistoryRange(options: {
   let samples = historySamples.filter(
     (s) => s.capturedAtMs >= options.fromMs && s.capturedAtMs <= options.toMs,
   )
-  if (options.deviceId != null) {
-    samples = samples.filter((s) => s.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    samples = samples.filter((s) => s.boardId === options.boardId)
   }
   if (options.limit != null && options.limit > 0) {
     samples = samples.slice(0, options.limit)
@@ -396,15 +450,15 @@ function getHistoryRange(options: {
   let gps = historyGps.filter(
     (g) => g.capturedAtMs >= options.fromMs && g.capturedAtMs <= options.toMs,
   )
-  if (options.deviceId != null) {
-    gps = gps.filter((g) => g.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    gps = gps.filter((g) => g.boardId === options.boardId)
   }
 
   let markers = historyMarkers.filter(
     (m) => m.occurredAtMs >= options.fromMs && m.occurredAtMs <= options.toMs,
   )
-  if (options.deviceId != null) {
-    markers = markers.filter((m) => m.deviceId === options.deviceId)
+  if (options.boardId != null) {
+    markers = markers.filter((m) => m.boardId === options.boardId)
   }
 
   const encoded = encodeBoardSamples(samples)
@@ -440,7 +494,7 @@ interface RideSeed {
   startLongitude: number
 }
 
-function seedHistoryData(deviceId: string, deviceName: string): void {
+function seedHistoryData(boardId: string, boardName: string): void {
   clearTelemetryHistory()
   const now = Date.now()
 
@@ -476,7 +530,7 @@ function seedHistoryData(deviceId: string, deviceName: string): void {
   ]
 
   for (const ride of rides) {
-    addHistoryRide(now + ride.startOffsetMs, ride.durationMs, ride, deviceId, deviceName)
+    addHistoryRide(now + ride.startOffsetMs, ride.durationMs, ride, boardId, boardName)
   }
 }
 
@@ -484,8 +538,8 @@ function addHistoryRide(
   rideStartMs: number,
   durationMs: number,
   ride: RideSeed,
-  deviceId: string,
-  deviceName: string,
+  boardId: string,
+  boardName: string,
 ): void {
   const rideEndMs = rideStartMs + durationMs
   const sampleCount = 60
@@ -496,8 +550,8 @@ function addHistoryRide(
     startAtMs: rideStartMs,
     endAtMs: rideEndMs,
     bucketStartMs: rideStartMs,
-    deviceId,
-    deviceName,
+    boardId,
+    boardName,
     sampleCount,
     gpsPointCount,
     preciseGpsPointCount: gpsPointCount,
@@ -509,7 +563,6 @@ function addHistoryRide(
     maxMotorCurrent: 12,
     maxBatteryCurrent: -5,
     maxDuty: 0.25,
-    faultCount: 0,
     distanceDeltaM: ride.distanceM,
     gpsDistanceM: ride.distanceM,
     maxTempMosfet: ride.maxTempMosfet,
@@ -530,8 +583,8 @@ function addHistoryRide(
     historySamples.push({
       id: nextHistorySampleId++,
       capturedAtMs: t,
-      deviceId,
-      deviceName,
+      boardId,
+      boardName,
       speedKmh: ride.avgSpeedKmh * 0.6 + progress * (ride.maxSpeedKmh - ride.avgSpeedKmh * 0.6),
       batteryVoltage: 75.6 - progress * 1.6,
       batteryPercent: 75 - progress * 2,
@@ -550,8 +603,6 @@ function addHistoryRide(
       odometer: 1234 + progress * ride.distanceM,
       tempMosfet: ride.maxTempMosfet - 2 + progress * 2,
       tempMotor: ride.maxTempMotor - 2 + progress * 2,
-      hasFault: false,
-      faultCode: 0,
       latitude: ride.startLatitude + progress * 0.01,
       longitude: ride.startLongitude + progress * 0.01,
     })
@@ -562,8 +613,8 @@ function addHistoryRide(
     historyGps.push({
       id: nextHistoryGpsId++,
       capturedAtMs: rideStartMs + progress * durationMs,
-      deviceId,
-      deviceName,
+      boardId,
+      boardName,
       latitude: ride.startLatitude + progress * 0.01,
       longitude: ride.startLongitude + progress * 0.01,
       speedMps: 5 + progress * 5,
@@ -580,8 +631,7 @@ function addHistoryRide(
     id: nextHistoryMarkerId++,
     occurredAtMs: rideStartMs,
     type: 'connected',
-    deviceId,
-    deviceName,
+    boardId,
     message: null,
     gapMs: null,
   })
@@ -589,8 +639,7 @@ function addHistoryRide(
     id: nextHistoryMarkerId++,
     occurredAtMs: rideEndMs,
     type: 'disconnected',
-    deviceId,
-    deviceName,
+    boardId,
     message: null,
     gapMs: null,
   })
@@ -628,6 +677,22 @@ export const e2eFake = {
       outcome: 'resolved',
       transport: 'direct',
       candidates: [{ transport: 'direct', hasBms: false }],
+    }
+  },
+
+  finalizeBoardLink(bleId: string, candidate: BoardCandidate): BoardLink {
+    return {
+      linkVersion: 4,
+      bleId,
+      transport: candidate.transport,
+      hasBms: candidate.hasBms,
+      ...(candidate.vescFirmwareVersion != null && {
+        vescFirmwareVersion: candidate.vescFirmwareVersion,
+      }),
+      ...(candidate.refloatVersion != null && { refloatVersion: candidate.refloatVersion }),
+      ...(candidate.refloatBaseVersion != null && {
+        refloatBaseVersion: candidate.refloatBaseVersion,
+      }),
     }
   },
 
@@ -683,12 +748,17 @@ export const e2eFake = {
     return [...e2eBoards]
   },
 
-  upsertBoard(board: Board): void {
+  upsertBoard(board: BoardInput): void {
     const index = e2eBoards.findIndex((b) => b.id === board.id)
+    // A tombstone survives an upsert, like native — only a delete stamps one.
+    const stored: Board = {
+      ...board,
+      deletedAt: index >= 0 ? e2eBoards[index].deletedAt : null,
+    }
     if (index >= 0) {
-      e2eBoards[index] = board
+      e2eBoards[index] = stored
     } else {
-      e2eBoards.push(board)
+      e2eBoards.push(stored)
     }
   },
 
@@ -698,6 +768,25 @@ export const e2eFake = {
 
   updateSetting(key: string, value: unknown): void {
     ;(e2eSettings as unknown as Record<string, unknown>)[key] = value
+  },
+
+  getCompanionPresenceBoards(): CompanionPresenceBoard[] {
+    if (!e2eSettings.companionPresenceEnabled) return []
+    return e2eBoards.flatMap((board) =>
+      e2eCompanionBoardIds.has(board.id) && board.link
+        ? [{ boardId: board.id, name: board.name, bleId: board.link.bleId }]
+        : [],
+    )
+  },
+
+  addCompanionPresenceBoard(boardId: string): void {
+    e2eCompanionBoardIds.add(boardId)
+    e2eSettings.companionPresenceEnabled = true
+  },
+
+  /** Native keeps the master switch on at zero boards (the "nothing armed" state) — mirror that. */
+  removeCompanionPresenceBoard(boardId: string): void {
+    e2eCompanionBoardIds.delete(boardId)
   },
 
   setLegalMode(boardId: string, enabled: boolean): void {
@@ -713,6 +802,7 @@ export const e2eFake = {
         name: 'E2E Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -734,6 +824,7 @@ export const e2eFake = {
         name: 'E2E History Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -756,6 +847,7 @@ export const e2eFake = {
         name: 'E2E Privacy Board',
         description: 'Seeded by Maestro',
         createdAt: Date.now(),
+        deletedAt: null,
         batteryConfig: {
           mode: 'preset',
           cellPresetId: 'molicel:21700:p50b',
@@ -786,6 +878,8 @@ export const e2eFake = {
   },
 
   getTelemetryHistory,
+
+  getRideHistoryPage,
 
   getHistoryRange,
 

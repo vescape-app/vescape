@@ -17,7 +17,7 @@ export const mapSheetStyles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   mapTargetNavigatePressed: {
     opacity: 0.55,
@@ -29,13 +29,13 @@ export const mapSheetStyles = StyleSheet.create({
   },
   mapTargetSubtitle: {
     marginTop: 2,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
     lineHeight: 16,
   },
   mapTargetTitle: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '900',
   },

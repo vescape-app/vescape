@@ -5,6 +5,12 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 
+/**
+ * Process-start trigger for auto-connect: a `ContentProvider` is created before `Application` hands
+ * off to anything else, so this runs with no JS runtime in sight.
+ *
+ * @parity /modules/vescape-core/ios/connection/VescapeLaunchSubscriber.swift
+ */
 class AutoConnectProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         context?.applicationContext?.let(CoreForegroundService::autoConnectSelectedBoard)

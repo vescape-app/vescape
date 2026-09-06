@@ -20,7 +20,9 @@ Pass `--sha=<ref>` or `--version=<x.y.z>` only when overriding the defaults. The
 - Put safety-related changes first within the relevant section and explain their rider impact plainly.
 - Omit internal refactors, dependency churn, test-only work, release plumbing, and developer tooling unless riders experience a direct change.
 - Use concise Markdown only: headings, paragraphs, and lists. Do not use HTML, code blocks, images, tables, or a document-level title.
-- Use only `## New`, `## Improved`, and `## Fixed`, in that order. Omit empty sections. The app supplies the document-level version context.
+- Use only `## New`, `## Improved`, `## Fixed`, and `## Watch`, in that order. Omit empty sections. The app supplies the document-level version context.
+- Put every wrist-facing change under `## Watch`, whatever its kind — new wrist feature, wrist improvement, or wrist fix. The phone sections describe the phone app only, so a change that riders experience on the watch never appears twice.
+- A change that riders experience on both surfaces belongs in the phone section, with a `## Watch` bullet only when the wrist behavior is distinct.
 - Focus on important rider-visible outcomes. Do not inventory every small change.
 - Combine related changes into one coherent bullet. For example, summarize multiple Alert changes under their most important rider outcome, adding only essential supporting detail.
 - Lead each section with its most important change. Add smaller bullets only when they communicate a distinct rider-visible outcome.

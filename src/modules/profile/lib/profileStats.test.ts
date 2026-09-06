@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { DASH } from '@/helpers/format'
 import {
   formatDistance,
   formatDuration,
@@ -10,7 +11,7 @@ import {
 
 describe('profile stat formatting', () => {
   test('formats distance in meters and kilometers', () => {
-    expect(formatDistance(null)).toBe('-')
+    expect(formatDistance(null)).toBe(DASH)
     expect(formatDistance(800)).toBe('800 m')
     expect(formatDistance(12_345)).toBe('12.3 km')
   })
@@ -22,7 +23,7 @@ describe('profile stat formatting', () => {
   })
 
   test('formats energy', () => {
-    expect(formatEnergy(null)).toBe('-')
+    expect(formatEnergy(null)).toBe(DASH)
     expect(formatEnergy(42.4)).toBe('42 Wh')
     expect(formatEnergy(1234)).toBe('1.2 kWh')
   })

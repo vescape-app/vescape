@@ -132,7 +132,7 @@ export function MapPointMediaPreview({
   if (assets.length === 0) {
     return (
       <View style={styles.empty}>
-        <ImagesSquareIcon size={24} color={theme.palette.slate.textMuted} weight="duotone" />
+        <ImagesSquareIcon size={24} color={theme.neutral.textMuted} weight="duotone" />
         <Text style={styles.emptyText}>Add photos and videos for this feature.</Text>
       </View>
     )
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   emptyText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
   tile: {
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   tilePressed: {
     opacity: 0.55,
@@ -224,13 +224,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
   },
   viewerContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   media: {
     ...StyleSheet.absoluteFill,
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   position: {
     position: 'absolute',
     bottom: 12,
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 12,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
@@ -271,6 +271,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.8),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.8),
   },
 })

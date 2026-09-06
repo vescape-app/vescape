@@ -1,6 +1,10 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { buildReleaseNotes, validateReleaseMarkdown } from '../release-notes/bundler'
+import {
+  buildReleaseNotes,
+  GENERATED_RELEASE_NOTES_PATH,
+  validateReleaseMarkdown,
+} from '../release-notes/bundler'
 import { resolveEditorCommand } from '../release-notes/editor'
 import { selectPrompt } from '../release-notes/prompt'
 
@@ -74,7 +78,7 @@ export function assertReleasePreparationStatus({
     (bump) => bumpMarketingVersion(baseVersion, bump) === workingVersion,
   )
   const notesPath = releaseNotesPath(workingVersion)
-  const expected = new Set(['package.json', notesPath])
+  const expected = new Set(['package.json', notesPath, GENERATED_RELEASE_NOTES_PATH])
   const isExactDraft =
     isNextVersion &&
     changedPaths.includes('package.json') &&
@@ -136,8 +140,8 @@ function releaseNotesDependencies(): ReleaseNotesDependencies {
     read: (path) => readFile(path, 'utf8'),
     select: async () =>
       selectPrompt('Prepare release notes', [
-        { value: 'draft', label: 'Draft with Codex', shortcut: 'd' },
-        { value: 'skip', label: 'Skip for now', shortcut: 's' },
+        { value: 'draft', label: 'Draft with Codex' },
+        { value: 'skip', label: 'Skip for now' },
       ] as const),
     author: async (version) => {
       const author = await command(
@@ -223,7 +227,7 @@ export async function prepareReleaseCandidate(
 
   const status = await checked('git', ['status', '--porcelain'], 'Cannot inspect release changes')
   const changedPaths = parsePorcelainPaths(status)
-  const expected = new Set(['package.json', notesPath])
+  const expected = new Set(['package.json', notesPath, GENERATED_RELEASE_NOTES_PATH])
   const unexpected = changedPaths.filter((path) => !expected.has(path))
   if (unexpected.length > 0) {
     throw new Error(`Unexpected release changes: ${unexpected.join(', ')}`)
@@ -234,17 +238,22 @@ export async function prepareReleaseCandidate(
 
   const pathsToStage = ['package.json']
   if (changedPaths.includes(notesPath)) pathsToStage.push(notesPath)
+  if (changedPaths.includes(GENERATED_RELEASE_NOTES_PATH)) {
+    pathsToStage.push(GENERATED_RELEASE_NOTES_PATH)
+  }
   await checked('git', ['add', ...pathsToStage], 'Cannot stage release candidate')
-  await checked('git', ['commit', '-m', marketingVersion], 'Cannot commit release candidate')
+  await checked(
+    'git',
+    ['commit', '-m', `release: ${marketingVersion}`],
+    'Cannot commit release candidate',
+  )
   try {
     await checked('git', ['checkout', 'main'], 'Cannot switch to main')
-    await checked(
-      'git',
-      ['merge', 'dev', '--no-ff', '-m', `release: ${marketingVersion}`],
-      'Cannot merge dev into main',
-    )
-    await checked('git', ['checkout', 'dev'], 'Cannot switch back to dev')
-    await checked('git', ['merge', '--ff-only', 'main'], 'Cannot align dev with main')
+    try {
+      await checked('git', ['merge', '--ff-only', 'dev'], 'Cannot fast-forward main to dev')
+    } finally {
+      await checked('git', ['checkout', 'dev'], 'Cannot switch back to dev')
+    }
     await checked(
       'git',
       ['push', '--atomic', 'origin', 'dev', 'main'],
@@ -252,10 +261,7 @@ export async function prepareReleaseCandidate(
     )
   } catch (error) {
     const branch = await command('git', ['branch', '--show-current'])
-    if (branch.stdout === 'main') {
-      await command('git', ['merge', '--abort'])
-      await command('git', ['checkout', 'dev'])
-    }
+    if (branch.stdout === 'main') await command('git', ['checkout', 'dev'])
     throw error
   }
   const sourceSha = (

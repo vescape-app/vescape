@@ -15,6 +15,7 @@ import {
   isEditableNumberField,
   type BasicSliderItem,
 } from '@/modules/tune/lib/sliderDefinitions'
+import { DASH } from '@/helpers/format'
 import {
   DEFAULT_TUNE_PROFILE_COLOR,
   DEFAULT_TUNE_PROFILE_ICON,
@@ -53,8 +54,8 @@ export function useTuneModals(
   const showFieldInfo = useCallback((field: RefloatConfigField) => {
     const limits =
       field.min != null || field.max != null
-        ? `\n\nRange: ${field.min != null ? formatTuneValue(field.min) : '-'} to ${
-            field.max != null ? formatTuneValue(field.max) : '-'
+        ? `\n\nRange: ${field.min != null ? formatTuneValue(field.min) : DASH} to ${
+            field.max != null ? formatTuneValue(field.max) : DASH
           }${field.unit ? ` ${field.unit}` : ''}`
         : ''
     const units = field.unit ? `\nUnit: ${field.unit}` : ''

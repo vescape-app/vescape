@@ -5,6 +5,7 @@ import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
+import expo.modules.vescapecore.weather.WeatherCoordinator
 import expo.modules.vescapecore.auth.NativeAuthCoordinator
 import expo.modules.vescapecore.service.BoardProbeAutoStartGate
 import expo.modules.vescapecore.connection.BoardTransport
@@ -18,8 +19,14 @@ import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
 import expo.modules.vescapecore.service.SessionConfig
 import expo.modules.vescapecore.connection.TransportDetection
+import expo.modules.vescapecore.connection.PendingLinkConnect
 import expo.modules.vescapecore.connection.buildSessionConfig
 
+import expo.modules.vescapecore.navigation.NavigationController
+import expo.modules.vescapecore.navigation.NavigationProfile
+import expo.modules.vescapecore.watch.WatchRouteMirror
+import expo.modules.vescapecore.faults.VescFaultCaptureCoordinator
+import expo.modules.vescapecore.faults.VescFaultCoordinator
 import expo.modules.vescapecore.warnings.BoardWarningRegistry
 import expo.modules.vescapecore.warnings.BoardWarningSeverity
 import android.annotation.SuppressLint
@@ -47,6 +54,7 @@ import expo.modules.vescapecore.ow.OwGattClient
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DatabaseBackupManager
 import expo.modules.vescapecore.telemetry.ProfileStatsRepository
+import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
@@ -56,7 +64,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "VescapeCore"
 private const val SCAN_RETRY_LIMIT = 3
@@ -107,6 +117,7 @@ class VescapeCoreModule : Module() {
   private val mainHandler = Handler(Looper.getMainLooper())
   private var activeProbe: ActiveBoardProbe? = null
   private var owClient: OwGattClient? = null
+  private val completedProbes = ConcurrentHashMap<String, TransportDetection.Result>()
   private var previewAlertFeedback: AlertFeedback? = null
   /** UI alert tests own feedback + evaluator state separate from the live Board Session. */
   private var alertTestFeedback: AlertFeedback? = null
@@ -148,11 +159,11 @@ class VescapeCoreModule : Module() {
       "onLiveState",
       "onLiveTick",
       "onLiveSeries",
+      "onFocusedSeries",
       "onTelemetryHistory",
       "onBms",
       "onBmsSeries",
       "onLocation",
-      "onReplayPhoneHeading",
       "onTelemetryRebuildProgress",
       "onBoardProbeProgress",
       "onGroupRideConnection",
@@ -165,10 +176,18 @@ class VescapeCoreModule : Module() {
       "onGroupRideError",
       "onAppDataChanged",
       "onBoardWarnings",
+      "onVescFaults",
+      "onBoardConfigValues",
+      "onMotorConfigValues",
+      "onBoardConfigChangeNotice",
+      "onBoardLights",
       "onAppStatus",
       // TODO(iOS parity): OneWheel PoC is Android-only for now.
       "onOwState",
       "onOwCharacteristic",
+      "onNavigation",
+      "onRouteProgress",
+      "onWeather",
     )
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
@@ -179,6 +198,32 @@ class VescapeCoreModule : Module() {
     appStatusUnsub = AppStatusCoordinator.get(context).addChangeListener { status ->
       if (shouldEmitToFrontend("onAppStatus")) {
         sendEvent("onAppStatus", mapOf("status" to status?.toMap()))
+      }
+    }
+
+    // Navigation is native-owned; JS only renders the coordinates it is handed. Push every change,
+    // including the clear to `null` (late subscribers replay below and through `getNavigation`).
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendNavigation`
+    // @parity /modules/vescape-core/src/index.ts `NavigationEvent`
+    NavigationController.get(context).onChange = { navigation ->
+      if (shouldEmitToFrontend("onNavigation")) {
+        sendEvent(
+          "onNavigation",
+          mapOf(
+            "navigation" to navigation?.toMap(),
+            "computing" to NavigationController.get(context).computing,
+          ),
+        )
+      }
+    }
+
+    // Route Progress rides its own event rather than `onNavigation`: it changes on every GPS Fix,
+    // and re-sending the whole coordinate array at ~1 Hz to move one number would be absurd.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendRouteProgress`
+    // @parity /modules/vescape-core/src/index.ts `RouteProgressEvent`
+    NavigationController.get(context).onProgressChange = { progress ->
+      if (shouldEmitToFrontend("onRouteProgress")) {
+        sendEvent("onRouteProgress", mapOf("progress" to progress?.toMap()))
       }
     }
 
@@ -199,6 +244,22 @@ class VescapeCoreModule : Module() {
       }
     }
 
+    // Same full-slice mirror for VESC Fault Occurrences; separate channel, separate JS store.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `sendVescFaults`
+    // @parity /modules/vescape-core/src/index.ts `VescFaultsEvent`
+    VescFaultCoordinator.get(context).onChange = { boardId, faults ->
+      if (shouldEmitToFrontend("onVescFaults")) {
+        mainHandler.post {
+          if (shouldEmitToFrontend("onVescFaults")) {
+            sendEvent(
+              "onVescFaults",
+              mapOf("boardId" to boardId, "faults" to faults.map { it.toMap() }),
+            )
+          }
+        }
+      }
+    }
+
     OnStartObserving("onDevice") { startObserving("onDevice") }
     OnStopObserving("onDevice") { stopObserving("onDevice") }
     OnStartObserving("onError") { startObserving("onError") }
@@ -209,6 +270,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onLiveTick") { stopObserving("onLiveTick") }
     OnStartObserving("onLiveSeries") { startObserving("onLiveSeries") }
     OnStopObserving("onLiveSeries") { stopObserving("onLiveSeries") }
+    OnStartObserving("onFocusedSeries") { startObserving("onFocusedSeries") }
+    OnStopObserving("onFocusedSeries") { stopObserving("onFocusedSeries") }
     OnStartObserving("onTelemetryHistory") { startObserving("onTelemetryHistory") }
     OnStopObserving("onTelemetryHistory") { stopObserving("onTelemetryHistory") }
     OnStartObserving("onBms") { startObserving("onBms") }
@@ -242,6 +305,32 @@ class VescapeCoreModule : Module() {
       CoroutineScope(Dispatchers.IO).launch { BoardWarningRegistry.get(context).emitSnapshot() }
     }
     OnStopObserving("onBoardWarnings") { stopObserving("onBoardWarnings") }
+
+    OnStartObserving("onVescFaults") {
+      startObserving("onVescFaults")
+      CoroutineScope(Dispatchers.IO).launch { VescFaultCoordinator.get(context).emitSnapshot() }
+    }
+    OnStopObserving("onVescFaults") { stopObserving("onVescFaults") }
+    OnStartObserving("onBoardConfigValues") {
+      startObserving("onBoardConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onBoardConfigValues", mapOf("values" to CoreForegroundService.getBoardConfigValues()))
+    }
+    OnStopObserving("onBoardConfigValues") { stopObserving("onBoardConfigValues") }
+    OnStartObserving("onMotorConfigValues") {
+      startObserving("onMotorConfigValues")
+      // Late subscriber: replay the held values (or the null) so JS is immediately consistent.
+      sendEvent("onMotorConfigValues", mapOf("values" to CoreForegroundService.getMotorConfigValues()))
+    }
+    OnStopObserving("onMotorConfigValues") { stopObserving("onMotorConfigValues") }
+    OnStartObserving("onBoardConfigChangeNotice") { startObserving("onBoardConfigChangeNotice") }
+    OnStopObserving("onBoardConfigChangeNotice") { stopObserving("onBoardConfigChangeNotice") }
+    OnStartObserving("onBoardLights") {
+      startObserving("onBoardLights")
+      // Late subscriber: replay what the board last said, so a drawer opened mid-session is right.
+      sendEvent("onBoardLights", CoreForegroundService.lightsEventBody())
+    }
+    OnStopObserving("onBoardLights") { stopObserving("onBoardLights") }
     OnStartObserving("onAppStatus") {
       startObserving("onAppStatus")
       sendEvent("onAppStatus", mapOf("status" to AppStatusCoordinator.get(context).current?.toMap()))
@@ -251,6 +340,34 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onOwState") { stopObserving("onOwState") }
     OnStartObserving("onOwCharacteristic") { startObserving("onOwCharacteristic") }
     OnStopObserving("onOwCharacteristic") { stopObserving("onOwCharacteristic") }
+    OnStartObserving("onNavigation") {
+      startObserving("onNavigation")
+      // Late subscriber: replay the current Navigation so JS is immediately consistent.
+      sendEvent(
+        "onNavigation",
+        mapOf(
+          "navigation" to NavigationController.get(context).current?.toMap(),
+          "computing" to NavigationController.get(context).computing,
+        ),
+      )
+    }
+    OnStopObserving("onNavigation") { stopObserving("onNavigation") }
+    OnStartObserving("onRouteProgress") {
+      startObserving("onRouteProgress")
+      // Late subscriber: replay the current Route Progress rather than making JS wait a fix for it.
+      sendEvent(
+        "onRouteProgress",
+        mapOf("progress" to NavigationController.get(context).currentProgress?.toMap()),
+      )
+    }
+    OnStopObserving("onRouteProgress") { stopObserving("onRouteProgress") }
+    OnStartObserving("onWeather") {
+      startObserving("onWeather")
+      // Late subscriber: replay the known forecast. Nothing here triggers a fetch — the coordinator
+      // is fed by GPS Fixes, and a screen opening is not a reason to spend a request.
+      sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
+    }
+    OnStopObserving("onWeather") { stopObserving("onWeather") }
 
     OnCreate {
       // Cold start: fetch App Status before JS asks. A foreground event arriving right after is
@@ -277,6 +394,9 @@ class VescapeCoreModule : Module() {
       // module reachable (mirrors iOS OnDestroy nulling `onChange`). A fresh module re-attaches in
       // its own definition().
       BoardWarningRegistry.get(context).onChange = null
+      VescFaultCoordinator.get(context).onChange = null
+      NavigationController.get(context).onChange = null
+      NavigationController.get(context).onProgressChange = null
       appStatusUnsub?.invoke()
       appStatusUnsub = null
       previewAlertFeedback?.release()
@@ -296,6 +416,7 @@ class VescapeCoreModule : Module() {
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startGroupRideObserve`
     Function("startGroupRideObserve") { serverUrl: String ->
       CoreForegroundService.startGroupRideObserve(context.applicationContext, serverUrl)
     }
@@ -314,12 +435,15 @@ class VescapeCoreModule : Module() {
     Function("updateGroupRideIdentity") { riderId: String, riderName: String, riderColor: String? ->
       CoreForegroundService.updateGroupRideIdentity(context.applicationContext, riderId, riderName, riderColor)
     }
-    Function("recordPhoneHeading") { headingDeg: Double ->
-      CoreForegroundService.recordPhoneHeading(context.applicationContext, headingDeg)
+    Function("setWatchRouteSpanM") { spanM: Double? ->
+      WatchRouteMirror.viewportSpanM = spanM
     }
     Function("setTelemetryRecordingEnabled") { enabled: Boolean -> setTelemetryRecordingEnabled(enabled) }
     Function("setBmsSeriesFocused") { focused: Boolean ->
       CoreForegroundService.setBmsSeriesFocused(focused)
+    }
+    Function("setFocusedSeriesMetrics") { metrics: List<String> ->
+      CoreForegroundService.setFocusedSeriesMetrics(metrics)
     }
     Function("reloadAlertRules") {
       CoreForegroundService.reloadAlertRules(context.applicationContext)
@@ -363,6 +487,14 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getAppStatus`
     Function("getAppStatus") {
       AppStatusCoordinator.get(context).current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getWeather`
+    Function("getWeather") {
+      WeatherCoordinator.get().current?.toMap()
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `refreshWeather`
+    Function("refreshWeather") {
+      WeatherCoordinator.get().refresh()
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `provisionDeviceCredential`
     AsyncFunction("provisionDeviceCredential") Coroutine {
@@ -489,17 +621,34 @@ class VescapeCoreModule : Module() {
     AsyncFunction("setCompanionPresenceEnabled") { enabled: Boolean, promise: Promise ->
       companionPresence.setEnabled(enabled, promise)
     }
+    AsyncFunction("getCompanionPresenceBoards") Coroutine { ->
+      companionPresence.getBoards()
+    }
+    AsyncFunction("addCompanionPresenceBoard") { boardId: String, promise: Promise ->
+      companionPresence.addBoard(boardId, promise)
+    }
+    AsyncFunction("removeCompanionPresenceBoard") { boardId: String, promise: Promise ->
+      companionPresence.removeBoard(boardId, promise)
+    }
     AsyncFunction("stopBoard") { promise: Promise ->
       stopBoardSession(promise)
     }
     AsyncFunction("probeBoardLink") Coroutine { bleId: String, probeId: String ->
       probeBoardLink(bleId, probeId)
     }
+    AsyncFunction("finalizeBoardLink") Coroutine {
+        probeId: String, boardId: String, bleId: String, candidate: Map<String, Any?> ->
+      finalizeBoardLink(probeId, boardId, bleId, candidate)
+    }
     Function("cancelBoardProbe") { probeId: String ->
       cancelActiveProbe(probeId, "js_cancelled")
     }
     AsyncFunction("getTelemetryHistory") Coroutine { options: Map<String, Any?> ->
       TelemetryRepository.get(context.applicationContext).getHistory(options)
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideHistoryPage`
+    AsyncFunction("getRideHistoryPage") Coroutine { options: Map<String, Any?> ->
+      RideHistoryRepository.get(context.applicationContext).getPage(options)
     }
     AsyncFunction("getTelemetrySamples") Coroutine { options: Map<String, Any?> ->
       TelemetryRepository.get(context.applicationContext).getSamples(options)
@@ -516,6 +665,89 @@ class VescapeCoreModule : Module() {
     AsyncFunction("getBoardWarnings") Coroutine { ->
       BoardWarningRegistry.get(context).allWarnings().map { it.toMap() }
     }
+
+    /**
+     * VESC Fault Occurrences across every Board — the JS foreground catch-up pull.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaults`
+     * @parity /modules/vescape-core/src/index.ts `getVescFaults`
+     */
+    AsyncFunction("getVescFaults") Coroutine { ->
+      VescFaultCoordinator.get(context).allFaults().map { it.toMap() }
+    }
+
+    /**
+     * Occurrence-level dismissal. Never deletes the occurrence — the evidence outlives the badge.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setVescFaultDismissed`
+     * @parity /modules/vescape-core/src/index.ts `setVescFaultDismissed`
+     */
+    AsyncFunction("setVescFaultDismissed") Coroutine { id: String, dismissed: Boolean ->
+      VescFaultCoordinator.get(context).setDismissed(id, dismissed)
+    }
+
+    /**
+     * The VESC Fault Capture owned by one occurrence: window metadata plus every decoded Board
+     * sample retained before detection. Null when no capture was saved. Independent of Ride History.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getVescFaultCapture`
+     * @parity /modules/vescape-core/src/index.ts `getVescFaultCapture`
+     */
+    AsyncFunction("getVescFaultCapture") Coroutine { occurrenceId: String ->
+      val captures = VescFaultCaptureCoordinator.get(context)
+      captures.capture(occurrenceId)?.let { capture ->
+        capture.toMap() + mapOf("samples" to captures.samples(occurrenceId).map { it.toMap() })
+      }
+    }
+    /** Manual, ephemeral VESC `faults` terminal output for a connected, stopped Board.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `readVescFaultLog`
+     * @parity /modules/vescape-core/src/index.ts `readVescFaultLog`
+     */
+    AsyncFunction("readVescFaultLog") { boardId: String, promise: Promise ->
+      mainHandler.post {
+        CoreForegroundService.readVescFaultLog(
+          boardId,
+          onSuccess = { promise.resolve(it) },
+          onError = { code, message -> promise.reject(code, message, null) },
+        )
+      }
+    }
+    /**
+     * This Board Session's Board Config Values, decoded map + freshness only. The write base stays
+     * native (ADR 0035).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getBoardConfigValues") {
+      CoreForegroundService.getBoardConfigValues()
+    }
+    /**
+     * This Board Session's Motor Config Values — the decoded MCCONF map plus its signature. Read-only
+     * permanently: there is no write base and no encoder (ADR 0036).
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getMotorConfigValues") {
+      CoreForegroundService.getMotorConfigValues()
+    }
+
+    /**
+     * Last Known Motor Config Values for a Board with no Board Session.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownMotorConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `MotorConfigValues`
+     */
+    AsyncFunction("getLastKnownMotorConfigValues") Coroutine { boardId: String ->
+      AppDataRepository.get(context).getLatestMotorConfigValues(boardId)?.toBridgeMap()
+    }
+
+    /**
+     * Last Known Board Config Values for a Board with no Board Session — the values survive a
+     * disconnect even though the session object does not.
+     * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getLastKnownBoardConfigValues`
+     * @parity /modules/vescape-core/src/index.ts `BoardConfigValues`
+     */
+    AsyncFunction("getLastKnownBoardConfigValues") Coroutine { boardId: String ->
+      AppDataRepository.get(context).getLatestBoardConfigValues(boardId)?.toBridgeMap()
+    }
+    AsyncFunction("getBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).getBoardConfigChangeNotice(boardId)?.toMap() }
+    AsyncFunction("dismissBoardConfigChangeNotice") Coroutine { boardId: String -> AppDataRepository.get(context).dismissBoardConfigChangeNotice(boardId) }
     AsyncFunction("clearBoardWarning") Coroutine { boardId: String, kind: String ->
       BoardWarningRegistry.get(context).clearWarning(boardId, kind)
     }
@@ -567,6 +799,9 @@ class VescapeCoreModule : Module() {
     AsyncFunction("stopRemoteTilt") {
       CoreForegroundService.stopRemoteTilt()
     }
+    AsyncFunction("setBoardLights") { enabled: Boolean, headlightsEnabled: Boolean ->
+      CoreForegroundService.setBoardLights(enabled, headlightsEnabled)
+    }
     AsyncFunction("startBoardMove") { input: Int ->
       CoreForegroundService.startBoardMove(input)
     }
@@ -608,14 +843,9 @@ class VescapeCoreModule : Module() {
     AsyncFunction("saveProfile") Coroutine { profileId: String, fields: Map<String, Any?> ->
       AppDataRepository.get(context.applicationContext).saveProfile(profileId, fields)
     }
-    AsyncFunction("getTotalProfileStats") {
-      runBlocking { ProfileStatsRepository.get(context.applicationContext).getTotalProfileStats() }
-    }
-    AsyncFunction("getMonthlyProfileStats") Coroutine { options: Map<String, Any?> ->
-      ProfileStatsRepository.get(context.applicationContext).getMonthlyProfileStats(options)
-    }
-    AsyncFunction("getProfileStatMonths") {
-      runBlocking { ProfileStatsRepository.get(context.applicationContext).getProfileStatMonths() }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getProfileStatsSnapshot`
+    AsyncFunction("getProfileStatsSnapshot") Coroutine { options: Map<String, Any?> ->
+      ProfileStatsRepository.get(context.applicationContext).getProfileStatsSnapshot(options)
     }
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.
@@ -679,6 +909,7 @@ class VescapeCoreModule : Module() {
     AsyncFunction("upsertBoard") Coroutine { board: Map<String, Any?> ->
       AppDataRepository.get(context.applicationContext).upsertBoard(board)
       CoreForegroundService.reloadBoardData()
+      connectSavedBoardLink(board["id"] as? String)
     }
     AsyncFunction("deleteBoard") Coroutine { id: String ->
       AppDataRepository.get(context.applicationContext).deleteBoard(id)
@@ -736,8 +967,37 @@ class VescapeCoreModule : Module() {
     // Ride presence can read it while JS is gone.
     AsyncFunction("setDirectionPoint") Coroutine { latitude: Double?, longitude: Double? ->
       val appCtx = context.applicationContext
-      AppDataRepository.get(appCtx).setDirectionPoint(latitude, longitude)
+      val repository = AppDataRepository.get(appCtx)
+      repository.setDirectionPoint(latitude, longitude)
       CoreForegroundService.reloadGroupRideTarget(appCtx)
+
+      // A Navigation belongs to exactly one Direction Point: setting one asks for a path, clearing
+      // one ends it. The Directions call runs off the promise so the pin lands immediately.
+      val navigation = NavigationController.get(appCtx)
+      if (latitude == null || longitude == null) {
+        navigation.clear()
+      } else {
+        val origin = navigationOrigin(repository)
+        navigation.setTarget(latitude, longitude, origin?.first, origin?.second)
+      }
+    }
+    // Rider-initiated only: nothing in the app calls this on a timer, on reconnect, or on a new
+    // fix. It recomputes from where the rider is *now*, not from where the pin was first dropped —
+    // by then they have usually ridden somewhere with signal, or somewhere a path exists.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `recomputeNavigation`
+    // @parity /modules/vescape-core/src/index.ts `recomputeNavigation`
+    AsyncFunction("recomputeNavigation") Coroutine { ->
+      recomputeNavigation(context.applicationContext)
+    }
+    // Switching the Navigation Profile is two things at once: the choice sticks as app data, and the
+    // path is computed again under it. The stored profile moves even with no Direction Point set —
+    // the rider chose, and the next Navigation honours it.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setNavigationProfile`
+    // @parity /modules/vescape-core/src/index.ts `setNavigationProfile`
+    AsyncFunction("setNavigationProfile") Coroutine { profile: String ->
+      val appCtx = context.applicationContext
+      NavigationController.get(appCtx).selectProfile(NavigationProfile.fromWire(profile))
+      recomputeNavigation(appCtx)
     }
     AsyncFunction("getSettings") {
       runBlocking { AppDataRepository.get(context.applicationContext).getSettings() }
@@ -795,9 +1055,13 @@ class VescapeCoreModule : Module() {
         key == "freeSpinStationaryBoardCapKmh" ||
         key == "socEstimateWindowSeconds" ||
         key == "telemetryPollRateHz" ||
-        key == "wearMirrorIntervalMs" ||
+        key == "wearPushRateHz" ||
 key == "wearAutoLaunchOnConnect" ||
-        key == "boardWarningsEnabled"
+        key == "wearNavArrowEnabled" ||
+        // Mirrored to the wrist by WatchSettingsPusher, which runs off the applied settings.
+        key == "riderColor" ||
+        key == "boardWarningsEnabled" ||
+        key == "vescFaultCollectionEnabled"
       ) {
         CoreForegroundService.reloadTelemetrySettings(context.applicationContext)
       }
@@ -993,6 +1257,36 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.startGpsMonitoring(context.applicationContext)
   }
 
+  /**
+   * Start the real Board Session for a Board Link the rider just saved. Linking already proved the
+   * connect over a throwaway probe session and dropped it (`finalizeBoardLink`), so without this the
+   * rider lands back on a disconnected app until the next process start. Only the Board that proved
+   * a link reconnects, so ordinary Board edits — a rename, a battery config — never disturb a live
+   * session.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `connectSavedBoardLink`
+   */
+  private suspend fun connectSavedBoardLink(boardId: String?) {
+    if (boardId == null || !PendingLinkConnect.consume(boardId)) return
+    if (BoardProbeAutoStartGate.isActive()) return
+    val appCtx = context.applicationContext
+    // The probe teardown looks like a manual disconnect to the gate. Saving a link is the opposite
+    // intent, so the suppression must not outlive it.
+    ManualDisconnectAutoStartGate.clear(appCtx)
+    val config = try {
+      buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
+    } catch (error: Throwable) {
+      Log.w(TAG, "Board Link saved but session config failed: ${error.message}")
+      return
+    }
+    CoreForegroundService.startBoardSession(
+      appCtx,
+      config,
+      onSuccess = {},
+      onError = { _, message -> sendEvent("onError", mapOf("message" to message)) },
+    )
+  }
+
   private suspend fun selectBoard(boardId: String) {
     val appCtx = context.applicationContext
     ManualDisconnectAutoStartGate.clear(appCtx)
@@ -1083,6 +1377,7 @@ key == "wearAutoLaunchOnConnect" ||
           onComplete = {
             if (activeProbe === active) {
               activeProbe = null
+              completedProbes[probeId] = it
               result.complete(it)
             }
           },
@@ -1097,17 +1392,110 @@ key == "wearAutoLaunchOnConnect" ||
         detector.start()
       }
       return probeResultToBridge(result.await())
+    } catch (error: Throwable) {
+      completedProbes.remove(probeId)
+      throw error
     } finally {
       BoardProbeAutoStartGate.leave()
     }
   }
 
   private fun cancelActiveProbe(probeId: String?, reason: String) {
+    PendingLinkConnect.clear()
+    if (probeId != null) completedProbes.remove(probeId)
     val active = activeProbe ?: return
     if (probeId != null && active.id != probeId) return
     activeProbe = null
     active.detector?.cancel(reason)
     active.result.completeExceptionally(IllegalStateException("PROBE_CANCELLED: Board Probe cancelled"))
+  }
+
+  /**
+   * Finalize only a candidate returned by this native probe; config persistence precedes v4.
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `finalizeBoardLink`
+   * @parity /modules/vescape-core/src/index.ts `finalizeBoardLink`
+   */
+  private suspend fun finalizeBoardLink(
+    probeId: String,
+    boardId: String,
+    bleId: String,
+    rawCandidate: Map<String, Any?>,
+  ): Map<String, Any?> {
+    val result = completedProbes[probeId] ?: error("PROBE_NOT_FOUND: Board Probe is no longer finalizable")
+    val transport = BoardTransport.fromBridge(rawCandidate["transport"])
+      ?: error("PROBE_CANDIDATE_INVALID: Invalid Board Transport")
+    val candidate = result.candidates.firstOrNull { it.transport == transport }
+      ?: error("PROBE_CANDIDATE_UNVERIFIED: Candidate was not confirmed by this Board Probe")
+    val baseVersion = candidate.refloatBaseVersion
+      ?: error("PROBE_CONFIG_IDENTITY_MISSING: Refloat Tune Compatibility is required")
+    // The config read runs over a real Board Session — the same path rides use — so linking proves
+    // the production connect, not just the probe's own detection client.
+    sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "session", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+    val appCtx = context.applicationContext
+    val repo = AppDataRepository.get(appCtx)
+    val previousCapturedAt = repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE
+    val previousMotorCapturedAt = repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE
+    val connected = CompletableDeferred<Unit>()
+    CoreForegroundService.startBoardSession(
+      appCtx,
+      SessionConfig(
+        appBoardId = boardId,
+        deviceId = bleId,
+        deviceName = "Board Probe",
+        transport = transport,
+        linkVersion = 4,
+        hasBms = candidate.hasBms,
+        vescFirmwareVersion = candidate.vescFirmwareVersion,
+        refloatVersion = candidate.refloatVersion,
+        refloatBaseVersion = baseVersion,
+        pollIntervalMs = 100,
+        recordingEnabled = false,
+        telemetryRecordingEnabled = false,
+        autoReconnect = false,
+      ),
+      onSuccess = { connected.complete(Unit) },
+      onError = { code, message -> connected.completeExceptionally(IllegalStateException("$code: $message")) },
+    )
+    try {
+      connected.await()
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+      if (!awaitUntil(120) { (repo.getBoardConfigValues(boardId, baseVersion)?.capturedAtMs ?: Long.MIN_VALUE) > previousCapturedAt }) {
+        error("PROBE_CONFIG_TIMEOUT: Full Refloat config was not acquired")
+      }
+      // Motor config is read after the Refloat read completes, so it is waited for separately rather
+      // than in the same loop. A board whose MCCONF signature no layout carries never lands a row and
+      // fails the link here — deliberate: a Board Link is only offered once every config it will show
+      // is proven readable.
+      sendEvent("onBoardProbeProgress", mapOf("probeId" to probeId, "step" to "motor-config", "elapsedMs" to 0, "transport" to BoardTransport.toBridge(transport)))
+      if (!awaitUntil(80) { (repo.getLatestMotorConfigValues(boardId)?.capturedAtMs ?: Long.MIN_VALUE) > previousMotorCapturedAt }) {
+        error("PROBE_MOTOR_CONFIG_TIMEOUT: VESC motor config was not acquired — this firmware may not be supported yet")
+      }
+      // The probe stays finalizable: the rider may still switch transports, and each pick
+      // acquires config for its own candidate before the link can be saved.
+      PendingLinkConnect.arm(boardId)
+      return mapOf(
+        "linkVersion" to 4,
+        "bleId" to bleId,
+        "transport" to BoardTransport.toBridge(transport),
+        "hasBms" to candidate.hasBms,
+        "vescFirmwareVersion" to candidate.vescFirmwareVersion,
+        "refloatVersion" to candidate.refloatVersion,
+        "refloatBaseVersion" to baseVersion,
+      )
+    } finally {
+      val stopped = CompletableDeferred<Unit>()
+      CoreForegroundService.stopBoardSession(appCtx) { stopped.complete(Unit) }
+      stopped.await()
+    }
+  }
+
+  /** Poll [condition] every 250 ms up to [attempts] times; false when it never held. */
+  private suspend fun awaitUntil(attempts: Int, condition: suspend () -> Boolean): Boolean {
+    repeat(attempts) {
+      if (condition()) return true
+      delay(250)
+    }
+    return false
   }
 
   private fun probeResultToBridge(result: TransportDetection.Result): Map<String, Any?> {
@@ -1141,6 +1529,40 @@ key == "wearAutoLaunchOnConnect" ||
     CoreForegroundService.stopBoardSession(context.applicationContext) {
       promise.resolve(null)
     }
+  }
+
+  /**
+   * Asks for the path again, to the Direction Point the rider already has and from where they are
+   * now. A no-op with no Direction Point: there is nothing to compute a path to.
+   */
+  private suspend fun recomputeNavigation(appContext: Context) {
+    val repository = AppDataRepository.get(appContext)
+    val directionPoint = repository.getDirectionPoint() ?: return
+    val origin = navigationOrigin(repository)
+    NavigationController.get(appContext).recompute(
+      directionPoint.first,
+      directionPoint.second,
+      origin?.first,
+      origin?.second,
+    )
+  }
+
+  /**
+   * Where a path starts: the rider's live fix, however weak, falling back to the last GPS position
+   * written to app data only when the phone has produced nothing at all this run.
+   *
+   * The stored row is a survivor of the last session — persisted at most every 30s and only from a
+   * precise fix — so on a cold start indoors it is easily yesterday's position kilometres away. A
+   * live approximate fix is the rider; the stored one only claims to be.
+   *
+   * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `navigationOrigin`
+   */
+  private suspend fun navigationOrigin(repository: AppDataRepository): Pair<Double, Double>? {
+    CoreForegroundService.currentRiderPosition()?.let { return it.latitude to it.longitude }
+    val settings = repository.getTypedSettings()
+    val latitude = settings.lastGpsLatitude ?: return null
+    val longitude = settings.lastGpsLongitude ?: return null
+    return latitude to longitude
   }
 
   private suspend fun reloadPrivacyZonesIntoRecorder(appContext: Context) {

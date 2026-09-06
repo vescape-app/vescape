@@ -9,7 +9,7 @@ import {
   type AlertPresetMetric,
   type AlertPresetSelection,
 } from '@/modules/alerts/lib/alertPresets'
-import { type DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
+import type { DraftAlertSetup } from '@/modules/alerts/hooks/useMetricAlerts'
 import { DEFAULT_BOARD_TOP_SPEED_KMH } from '@/modules/alerts/lib/boardAlertSettings'
 import { useAlertPresetStore } from '@/modules/alerts/store/alertPresetStore'
 import { useAlertsStore } from '@/modules/alerts/store/alertsStore'
@@ -22,6 +22,7 @@ import {
   parseVoltage,
 } from '@/modules/board/lib/boardSetup'
 import { useBoardStore } from '@/modules/board/store/boardStore'
+import { generateId } from '@/helpers/id'
 
 /** The wizard's buffered alert setup for every preset metric, flushed onto the Board on save. */
 export type DraftAlertSetupBag = Record<AlertPresetMetric, DraftAlertSetup>
@@ -48,6 +49,7 @@ export type WizardStepId = (typeof WIZARD_STEPS)[number]
 type PairPhase = 'select' | 'probing' | 'onewheel'
 
 interface AddBoardWizardState {
+  boardId: string
   step: number
   stepId: WizardStepId
   /** Active steps for this run. */
@@ -106,6 +108,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   )
 
   const [step, setStep] = useState(0)
+  const [boardId] = useState(generateId)
   const [pairPhase, setPairPhase] = useState<PairPhase>('select')
   const [boardKind, setBoardKind] = useState<BoardKind>('vesc')
   const [bleId, setBleId] = useState('')
@@ -213,6 +216,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
             manualMaxVoltage,
           )
     const board = addBoard({
+      id: boardId,
       name: name.trim(),
       kind: boardKind,
       description: description.trim() || undefined,
@@ -239,6 +243,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
   }
 
   return {
+    boardId,
     step,
     stepId: steps[step] ?? steps[steps.length - 1]!,
     steps,

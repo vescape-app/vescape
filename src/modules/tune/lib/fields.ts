@@ -1,5 +1,9 @@
+import { DASH } from '@/helpers/format'
+import type { BoardConfigFieldId } from 'vescape-core'
+
 interface AppTuneFieldDefinition {
-  id: string
+  /** Refloat schema field id, typed against the named set so a typo cannot reach a slider. */
+  id: BoardConfigFieldId
   label: string
   unit: string | null
   min: number
@@ -165,14 +169,18 @@ export const APP_TUNE_GROUPS: AppTuneGroupDefinition[] = [
   },
 ]
 
-export const APP_TUNE_FIELD_BY_ID = new Map(
+/**
+ * Field ids are typed where they are *authored*; lookups stay string-keyed because the ids come back
+ * from native groups and stored profiles at runtime, where any id is possible.
+ */
+export const APP_TUNE_FIELD_BY_ID = new Map<string, AppTuneFieldDefinition>(
   APP_TUNE_GROUPS.flatMap((group) => group.fields.map((field) => [field.id, field])),
 )
 
 export function formatTuneValue(value: number | boolean | string): string {
   if (typeof value === 'boolean') return value ? 'On' : 'Off'
   if (typeof value === 'string') return value
-  if (!Number.isFinite(value)) return '-'
+  if (!Number.isFinite(value)) return DASH
   if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString()
   return Number.isInteger(value)
     ? value.toFixed(0)

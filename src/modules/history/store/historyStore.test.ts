@@ -3,6 +3,8 @@ import { beforeEach, expect, mock, test } from 'bun:test'
 import type {
   HistoryGpsSample,
   HistoryMarker,
+  RideHistoryPage,
+  RideHistorySession,
   TelemetryMinuteBucket,
   TelemetrySample,
   TelemetrySummary,
@@ -20,7 +22,55 @@ const summary: TelemetrySummary = {
 }
 
 const getTelemetryHistory = mock(async () => [] as TelemetryMinuteBucket[])
-type HistoryRangeResult = {
+const getRideHistoryPage = mock(async () => ridePage([]))
+
+function ridePage(buckets: TelemetryMinuteBucket[], hasMore = false): RideHistoryPage {
+  return {
+    sessions: buckets.map(sessionFromBucket),
+    hasMore,
+    nextCursorBeforeMs: hasMore ? Math.min(...buckets.map((item) => item.bucketStartMs)) : null,
+  }
+}
+
+function sessionFromBucket(bucket: TelemetryMinuteBucket): RideHistorySession {
+  const point =
+    bucket.firstLatitude != null && bucket.firstLongitude != null
+      ? [{ latitude: bucket.firstLatitude, longitude: bucket.firstLongitude }]
+      : []
+  return {
+    id: `${bucket.boardId ?? 'unknown'}:${bucket.startAtMs}:${bucket.endAtMs}`,
+    boardId: bucket.boardId,
+    boardName: bucket.boardName,
+    startAtMs: bucket.startAtMs,
+    endAtMs: bucket.endAtMs,
+    movingStartAtMs: bucket.firstMovingAtMs,
+    movingEndAtMs: bucket.lastMovingAtMs,
+    blockIds: [bucket.id],
+    blockCount: 1,
+    sampleCount: bucket.sampleCount,
+    gpsPointCount: bucket.gpsPointCount,
+    preciseGpsPointCount: bucket.preciseGpsPointCount,
+    distanceM: bucket.distanceDeltaM ?? bucket.gpsDistanceM,
+    maxSpeedKmh: bucket.maxAbsSpeedKmh,
+    avgSpeedKmh: bucket.avgSpeedKmh,
+    maxTempMosfet: bucket.maxTempMosfet,
+    maxTempMotor: bucket.maxTempMotor,
+    maxDuty: bucket.maxDuty,
+    batteryUsedWh: bucket.batteryUsedWh,
+    batteryRegenWh: bucket.batteryRegenWh,
+    firstLatitude: bucket.firstLatitude,
+    firstLongitude: bucket.firstLongitude,
+    centerLatitude: bucket.firstLatitude,
+    centerLongitude: bucket.firstLongitude,
+    minLatitude: bucket.firstLatitude,
+    maxLatitude: bucket.firstLatitude,
+    minLongitude: bucket.firstLongitude,
+    maxLongitude: bucket.firstLongitude,
+    boundaryBefore: bucket.boundaryBefore,
+    routePoints: point,
+  }
+}
+interface HistoryRangeResult {
   boardSamples: TelemetrySample[]
   gpsSamples: HistoryGpsSample[]
   markers: HistoryMarker[]
@@ -63,6 +113,7 @@ const wait = mock(async () => {})
 const vescBleMock = {
   ...actualVescapeCore,
   getTelemetryHistory,
+  getRideHistoryPage,
   getHistoryRange,
   getTelemetrySummary,
   clearTelemetryHistory,
@@ -77,6 +128,8 @@ mock.module('@/helpers/wait', () => ({ wait }))
 
 beforeEach(async () => {
   getTelemetryHistory.mockClear()
+  getRideHistoryPage.mockClear()
+  getRideHistoryPage.mockImplementation(async () => ridePage([]))
   getHistoryRange.mockClear()
   getTelemetrySummary.mockClear()
   clearTelemetryHistory.mockClear()
@@ -89,7 +142,6 @@ beforeEach(async () => {
   useHistoryStore.setState({
     blocks: [],
     sessions: [],
-    liveBlocks: [],
     selectedBlock: null,
     selectedSession: null,
     samples: [],
@@ -97,8 +149,6 @@ beforeEach(async () => {
     sessionSamples: [],
     sessionGpsSamples: [],
     sessionMarkers: [],
-    liveSamples: [],
-    liveGpsSamples: [],
     markers: [],
     summary: null,
     loading: false,
@@ -107,6 +157,7 @@ beforeEach(async () => {
     sessionTruncated: false,
     error: undefined,
     hasMore: true,
+    nextCursorBeforeMs: null,
   })
 })
 
@@ -128,17 +179,19 @@ test('removes selected session from history and selects next ride', async () => 
   })
   getTelemetryHistory.mockResolvedValueOnce([newest, selected, oldest])
   getTelemetryHistory.mockResolvedValueOnce([newest, oldest])
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([newest, selected, oldest]))
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([newest, oldest]))
 
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
   await useHistoryStore.getState().loadInitial()
   await useHistoryStore.getState().selectSession(useHistoryStore.getState().sessions[1])
-  await (useHistoryStore.getState() as any).removeSelectedSession()
+  await useHistoryStore.getState().removeSelectedSession()
 
   expect(deleteTelemetryRange).toHaveBeenCalledWith({
     fromMs: selected.startAtMs,
     toMs: selected.endAtMs,
-    deviceId: selected.deviceId,
+    boardId: selected.boardId,
   })
   expect(useHistoryStore.getState().blocks.map((b) => b.id)).toEqual(['newest', 'oldest'])
   expect(useHistoryStore.getState().sessions.map((s) => s.id)).toHaveLength(2)
@@ -153,6 +206,9 @@ test('selects ride immediately while loading its full route', async () => {
     id: 'current',
     startAtMs: 5_000_000,
     endAtMs: 5_060_000,
+    // Known geography, so selecting it takes one range call and no GPS preview.
+    firstLatitude: 52,
+    firstLongitude: 18,
   })
   const next = block({
     id: 'next',
@@ -165,6 +221,7 @@ test('selects ride immediately while loading its full route', async () => {
   })
   const currentSample = sample({ id: 10, capturedAtMs: current.startAtMs })
   getTelemetryHistory.mockResolvedValueOnce([current, next])
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([current, next]))
   getHistoryRange.mockResolvedValueOnce({
     boardSamples: [currentSample],
     gpsSamples: [],
@@ -192,19 +249,14 @@ test('selects ride immediately while loading its full route', async () => {
   expect(useHistoryStore.getState().selectedSession?.id).toBe(
     useHistoryStore.getState().sessions[1].id,
   )
-  expect(useHistoryStore.getState().sessionSamples).toEqual([
-    expect.objectContaining({
-      capturedAtMs: next.startAtMs,
-      deviceId: next.deviceId,
-      latitude: next.firstLatitude,
-      longitude: next.firstLongitude,
-    }),
-  ])
+  // Samples never outlive the ride they belong to: the charts would otherwise rebuild the whole
+  // previous dataset against the new ride's bounds while the real samples are still loading.
+  expect(useHistoryStore.getState().sessionSamples).toEqual([])
   await Promise.resolve()
   expect(getHistoryRange).toHaveBeenLastCalledWith({
     fromMs: next.startAtMs,
     toMs: next.endAtMs,
-    deviceId: next.deviceId,
+    boardId: next.boardId,
     limit: next.sampleCount + 1,
   })
 
@@ -215,8 +267,8 @@ test('selects ride immediately while loading its full route', async () => {
     gpsSamples: Array.from({ length: next.gpsPointCount }, (_, index) => ({
       id: index + 1,
       capturedAtMs: next.startAtMs + index,
-      deviceId: next.deviceId,
-      deviceName: next.deviceName,
+      boardId: next.boardId,
+      boardName: next.boardName,
       latitude: 51 + index * 0.001,
       longitude: 17 + index * 0.001,
       speedMps: null,
@@ -249,6 +301,7 @@ test('loads the full route immediately but keeps loading visible for at least 15
   })
   const fullSample = sample({ id: 42, capturedAtMs: ride.startAtMs + 1 })
   getTelemetryHistory.mockResolvedValueOnce([ride])
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([ride]))
   getHistoryRange.mockResolvedValueOnce({
     boardSamples: [fullSample],
     gpsSamples: [],
@@ -271,7 +324,7 @@ test('loads the full route immediately but keeps loading visible for at least 15
   expect(wait).toHaveBeenCalledWith(150)
   expect(getHistoryRange).toHaveBeenCalledTimes(1)
   expect(useHistoryStore.getState().loadingSession).toBe(true)
-  expect(useHistoryStore.getState().sessionSamples[0]?.id).toBe(0)
+  expect(useHistoryStore.getState().sessionSamples).toEqual([])
 
   finishMinimumLoading()
   await select
@@ -293,8 +346,8 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
   const previewGps: HistoryGpsSample = {
     id: 1,
     capturedAtMs: ride.startAtMs,
-    deviceId: ride.deviceId,
-    deviceName: ride.deviceName,
+    boardId: ride.boardId,
+    boardName: ride.boardName,
     latitude: 51,
     longitude: 17,
     speedMps: null,
@@ -323,8 +376,8 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
   const select = useHistoryStore.getState().selectSession({
-    deviceId: ride.deviceId,
-    deviceName: ride.deviceName,
+    boardId: ride.boardId,
+    boardName: ride.boardName,
     boundaryBefore: ride.boundaryBefore,
     startAtMs: ride.startAtMs,
     endAtMs: ride.endAtMs,
@@ -351,15 +404,15 @@ test('loads a small GPS preview when selected ride has no bucket coordinate', as
     maxLatitude: null,
     minLongitude: null,
     maxLongitude: null,
-    faultCount: ride.faultCount,
-    id: `${ride.deviceId}:${ride.startAtMs}:${ride.endAtMs}`,
+    routePoints: [],
+    id: `${ride.boardId}:${ride.startAtMs}:${ride.endAtMs}`,
   })
   await Promise.resolve()
 
   expect(getHistoryRange).toHaveBeenNthCalledWith(1, {
     fromMs: ride.startAtMs,
     toMs: ride.endAtMs,
-    deviceId: ride.deviceId,
+    boardId: ride.boardId,
     limit: 240,
   })
   expect(getHistoryRange).toHaveBeenCalledTimes(1)
@@ -405,23 +458,19 @@ test('loads older history pages and merges sessions', async () => {
     endAtMs: 1_060_000,
   })
   getTelemetryHistory.mockResolvedValueOnce([newest, oldestLoaded])
-  getTelemetryHistory.mockResolvedValueOnce([older])
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([newest, oldestLoaded], true))
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([older]))
 
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
   await useHistoryStore.getState().loadInitial()
-  useHistoryStore.setState({ hasMore: true })
   await useHistoryStore.getState().loadMore()
 
-  expect((getTelemetryHistory.mock.calls as any[])[1][0]).toEqual({
-    limit: 100,
-    cursorBeforeMs: oldestLoaded.bucketStartMs - 1,
+  expect((getRideHistoryPage.mock.calls as unknown[][])[1][0]).toEqual({
+    limit: 10,
+    cursorBeforeMs: oldestLoaded.bucketStartMs,
   })
-  expect(useHistoryStore.getState().blocks.map((b) => b.id)).toEqual([
-    'newest',
-    'oldest-loaded',
-    'older',
-  ])
+  expect(useHistoryStore.getState().blocks.map((b) => b.id)).toEqual(['newest', 'oldest-loaded'])
   expect(useHistoryStore.getState().sessions.map((s) => s.blockIds)).toEqual([
     ['newest'],
     ['oldest-loaded'],
@@ -430,40 +479,39 @@ test('loads older history pages and merges sessions', async () => {
   expect(useHistoryStore.getState().hasMore).toBe(false)
 })
 
-test('keeps selected session addressable when older page expands it', async () => {
-  const newest = block({
-    id: 'newest',
-    startAtMs: 9_000_000,
-    endAtMs: 9_060_000,
-  })
-  const partial = block({
-    id: 'partial',
-    startAtMs: 5_000_000,
-    endAtMs: 5_060_000,
-  })
-  const olderSameRide = block({
-    id: 'older-same-ride',
-    startAtMs: 4_960_000,
-    endAtMs: 4_999_000,
-  })
-  getTelemetryHistory.mockResolvedValueOnce([newest, partial])
-  getTelemetryHistory.mockResolvedValueOnce([olderSameRide])
+test('loads complete ride pages without changing an already visible ride', async () => {
+  const newest = block({ id: 'newest', startAtMs: 10_000_000 })
+  const middle = block({ id: 'middle', startAtMs: 5_000_000 })
+  const older = Array.from({ length: 10 }, (_, index) =>
+    block({ id: `older-${index}`, startAtMs: 4_000_000 - index * 2_000_000 }),
+  )
+  getTelemetryHistory.mockResolvedValueOnce([newest, middle])
+  getRideHistoryPage.mockResolvedValueOnce(ridePage([newest, middle], true))
+  getRideHistoryPage.mockResolvedValueOnce(ridePage(older))
 
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
   await useHistoryStore.getState().loadInitial()
-  useHistoryStore.setState({
-    hasMore: true,
-    selectedSession: useHistoryStore.getState().sessions[1],
-  })
-  await useHistoryStore.getState().loadMore()
+  const visibleBefore = useHistoryStore
+    .getState()
+    .sessions.map(({ id, startAtMs, endAtMs }) => ({ id, startAtMs, endAtMs }))
 
-  expect(useHistoryStore.getState().sessions).toHaveLength(2)
-  expect(useHistoryStore.getState().selectedSession?.startAtMs).toBe(4_960_000)
-  expect(useHistoryStore.getState().selectedSession?.endAtMs).toBe(5_060_000)
+  expect(visibleBefore).toHaveLength(2)
+  useHistoryStore.setState({ selectedSession: useHistoryStore.getState().sessions[1] })
+  const selectedBefore = useHistoryStore.getState().selectedSession
+
+  await useHistoryStore.getState().loadMore()
+  const visibleAfter = useHistoryStore
+    .getState()
+    .sessions.map(({ id, startAtMs, endAtMs }) => ({ id, startAtMs, endAtMs }))
+
+  expect(getRideHistoryPage).toHaveBeenCalledTimes(2)
+  expect(visibleAfter.slice(0, visibleBefore.length)).toEqual(visibleBefore)
+  expect(visibleAfter.length - visibleBefore.length).toBeGreaterThanOrEqual(10)
+  expect(useHistoryStore.getState().selectedSession).toEqual(selectedBefore)
 })
 
-test('clearHistory invalidates an in-flight live refresh', async () => {
+test('clearHistory invalidates an in-flight recent refresh', async () => {
   const stale = block({
     id: 'stale',
     startAtMs: 1_000_000,
@@ -479,12 +527,28 @@ test('clearHistory invalidates an in-flight live refresh', async () => {
   getTelemetryHistory.mockResolvedValueOnce([])
   const { useHistoryStore } = await import('@/modules/history/store/historyStore')
 
-  const refresh = useHistoryStore.getState().refreshLive()
+  const refresh = useHistoryStore.getState().refreshRecent()
   await Promise.resolve()
   await useHistoryStore.getState().clearHistory()
   resolveRefresh([stale])
   await refresh
 
   expect(useHistoryStore.getState().blocks).toEqual([])
-  expect(useHistoryStore.getState().liveBlocks).toEqual([])
+})
+
+test('refreshRecent follows the growing ride and clears a stale error', async () => {
+  const started = block({ id: 'live', startAtMs: 2_000_000, endAtMs: 2_060_000 })
+  const grown = block({ id: 'live', startAtMs: 2_000_000, endAtMs: 2_180_000 })
+  getRideHistoryPage.mockImplementation(async () => ridePage([started]))
+  const { useHistoryStore } = await import('@/modules/history/store/historyStore')
+  await useHistoryStore.getState().loadInitial()
+  const selected = useHistoryStore.getState().sessions[0]
+  useHistoryStore.setState({ selectedSession: selected, error: 'stale failure' })
+
+  getRideHistoryPage.mockImplementation(async () => ridePage([grown]))
+  await useHistoryStore.getState().refreshRecent()
+
+  expect(useHistoryStore.getState().selectedSession?.endAtMs).toBe(2_180_000)
+  expect(useHistoryStore.getState().selectedSession?.id).not.toBe(selected.id)
+  expect(useHistoryStore.getState().error).toBeUndefined()
 })

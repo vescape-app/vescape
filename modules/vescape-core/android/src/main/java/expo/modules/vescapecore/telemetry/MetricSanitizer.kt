@@ -40,7 +40,7 @@ internal fun AppSettings.toMetricSanitizerConfig(): MetricSanitizerConfig =
 internal data class SanitizedSample(
   val index: Int,
   val capturedAtMs: Long,
-  val deviceId: String?,
+  val boardId: String?,
   val excludedFromAvgSpeed: Boolean,
   val excludedFromMaxSpeed: Boolean,
   val excludedFromMaxDuty: Boolean,
@@ -86,7 +86,7 @@ internal fun sanitizeTelemetrySamples(
       SanitizedSample(
         index = index,
         capturedAtMs = point.capturedAtMs,
-        deviceId = point.deviceId,
+        boardId = point.boardId,
         excludedFromAvgSpeed = results.any { it.excludedFromAvgSpeed },
         excludedFromMaxSpeed = results.any { it.excludedFromMaxSpeed },
         excludedFromMaxDuty = results.any { it.excludedFromMaxDuty },
@@ -101,9 +101,9 @@ internal fun sanitizeTelemetrySamples(
 internal fun collapseExclusionSamples(samples: List<MetricExclusionSample>): List<MetricExclusionRangeEntity> {
   if (samples.isEmpty()) return emptyList()
   val ranges = mutableListOf<MetricExclusionRangeEntity>()
-  val sorted = samples.sortedWith(compareBy({ it.deviceId }, { it.reason }, { it.capturedAtMs }))
+  val sorted = samples.sortedWith(compareBy({ it.boardId }, { it.reason }, { it.capturedAtMs }))
 
-  var deviceId = sorted.first().deviceId
+  var boardId = sorted.first().boardId
   var reason = sorted.first().reason
   var startMs = sorted.first().capturedAtMs
   var endMs = startMs
@@ -112,7 +112,7 @@ internal fun collapseExclusionSamples(samples: List<MetricExclusionSample>): Lis
   fun flush() {
     ranges.add(
       MetricExclusionRangeEntity(
-        deviceId = deviceId,
+        boardId = boardId,
         reason = reason,
         startMs = startMs,
         endMs = endMs,
@@ -122,7 +122,7 @@ internal fun collapseExclusionSamples(samples: List<MetricExclusionSample>): Lis
   }
 
   for (sample in sorted.drop(1)) {
-    val sameRange = sample.deviceId == deviceId &&
+    val sameRange = sample.boardId == boardId &&
       sample.reason == reason &&
       sample.capturedAtMs - endMs <= METRIC_EXCLUSION_RANGE_MERGE_GAP_MS
     if (sameRange) {
@@ -130,7 +130,7 @@ internal fun collapseExclusionSamples(samples: List<MetricExclusionSample>): Lis
       sampleCount++
     } else {
       flush()
-      deviceId = sample.deviceId
+      boardId = sample.boardId
       reason = sample.reason
       startMs = sample.capturedAtMs
       endMs = sample.capturedAtMs

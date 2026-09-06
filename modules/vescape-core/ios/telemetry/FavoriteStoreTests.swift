@@ -175,6 +175,7 @@ final class FavoriteStoreTests: XCTestCase {
   }
 
   func testBridgeMapConvertsStoredIntegersToRiderUnits() {
+    let routePoints = [["latitude": 52.0, "longitude": 21.0]]
     let map = makeFavorite(
       id: "fav-1",
       startMs: 1_000,
@@ -188,13 +189,14 @@ final class FavoriteStoreTests: XCTestCase {
         maxSpeedCentiKmh: 3_000,
         batteryUsedWhMilli: 12_500
       )
-    ).toMap(boardName: "Onewheel")
+    ).toMap(boardName: "Onewheel", routePoints: routePoints)
 
     XCTAssertEqual(map["boardName"] as? String, "Onewheel")
     XCTAssertEqual(map["distanceM"] as? Double, 2_500.0)
     XCTAssertEqual(map["avgSpeedKmh"] as? Double, 15.0)
     XCTAssertEqual(map["maxSpeedKmh"] as? Double, 30.0)
     XCTAssertEqual(map["batteryUsedWh"] as? Double, 12.5)
+    XCTAssertEqual(map["routePoints"] as? [[String: Double]], routePoints)
   }
 
   /// A range with no odometer readings has no distance to report — the bridge must send `nil`
@@ -301,14 +303,12 @@ final class FavoriteStoreTests: XCTestCase {
       let offset = Int64(index) * intervalMs
       return BucketTelemetryPoint(
         capturedAtMs: startMs + offset,
-        deviceId: "board-1",
-        deviceName: "VESC Board",
+        boardId: "board-1",
         speedCentiKmh: speedCentiKmh,
         batteryVoltageMv: 50_000,
         motorCurrentMa: 10_000,
         batteryCurrentMa: 5_000,
         dutyPermille: 400,
-        hasFault: false,
         odometerCm: (startMs + offset) / 10,
         tempMosfetDeciC: nil,
         tempMotorDeciC: nil,

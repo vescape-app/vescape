@@ -403,10 +403,12 @@ export function getLegalLimitCountryDetail(
   return LEGAL_LIMIT_COUNTRY_DETAILS[country.code] ?? null
 }
 
-export function legalStatusColorExpression() {
+export function legalStatusColorExpression(
+  colors: Record<LegalRoadStatus, string> = LEGAL_ROAD_STATUS_COLORS,
+) {
   const expression: unknown[] = ['match', ['get', 'iso_3166_1_alpha_3']]
   for (const country of LEGAL_LIMIT_COUNTRIES) {
-    expression.push(country.alpha3, LEGAL_ROAD_STATUS_COLORS[country.status])
+    expression.push(country.alpha3, colors[country.status])
   }
   expression.push('transparent')
   return expression

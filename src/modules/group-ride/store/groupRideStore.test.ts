@@ -1,14 +1,16 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
+import type { NearbyRide } from '@/modules/group-ride/lib/nearby'
+import type { RosterRider } from '@/modules/group-ride/lib/roster'
 
 type Listener<T> = (event: T) => void
 
 const connectionListeners: Listener<{ state: string }>[] = []
-const snapshotListeners: Listener<{ rides: any[] }>[] = []
-const createdListeners: Listener<{ ride: any }>[] = []
-const updatedListeners: Listener<{ ride: any }>[] = []
+const snapshotListeners: Listener<{ rides: unknown[] }>[] = []
+const createdListeners: Listener<{ ride: unknown }>[] = []
+const updatedListeners: Listener<{ ride: unknown }>[] = []
 const endedListeners: Listener<{ rideId: string }>[] = []
 const joinedListeners: Listener<{ rideId: string | null }>[] = []
-const rosterListeners: Listener<{ rideId: string | null; riders: any[] }>[] = []
+const rosterListeners: Listener<{ rideId: string | null; riders: unknown[] }>[] = []
 const errorListeners: Listener<{ message: string }>[] = []
 const locationListeners: Listener<{ latitude: number; longitude: number }>[] = []
 
@@ -34,17 +36,17 @@ function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
 mock.module('vescape-core', () => ({
   addGroupRideConnectionListener: (listener: Listener<{ state: string }>) =>
     subscribe(connectionListeners, listener),
-  addGroupRideSnapshotListener: (listener: Listener<{ rides: any[] }>) =>
+  addGroupRideSnapshotListener: (listener: Listener<{ rides: unknown[] }>) =>
     subscribe(snapshotListeners, listener),
-  addGroupRideCreatedListener: (listener: Listener<{ ride: any }>) =>
+  addGroupRideCreatedListener: (listener: Listener<{ ride: unknown }>) =>
     subscribe(createdListeners, listener),
-  addGroupRideUpdatedListener: (listener: Listener<{ ride: any }>) =>
+  addGroupRideUpdatedListener: (listener: Listener<{ ride: unknown }>) =>
     subscribe(updatedListeners, listener),
   addGroupRideEndedListener: (listener: Listener<{ rideId: string }>) =>
     subscribe(endedListeners, listener),
   addGroupRideJoinedListener: (listener: Listener<{ rideId: string | null }>) =>
     subscribe(joinedListeners, listener),
-  addGroupRideRosterListener: (listener: Listener<{ rideId: string | null; riders: any[] }>) =>
+  addGroupRideRosterListener: (listener: Listener<{ rideId: string | null; riders: unknown[] }>) =>
     subscribe(rosterListeners, listener),
   addGroupRideErrorListener: (listener: Listener<{ message: string }>) =>
     subscribe(errorListeners, listener),
@@ -134,11 +136,11 @@ test('online block clears stale ride state and marks the connection blocked', as
   useGroupRideStore.setState({
     connection: 'connected',
     rides: [ride('r1')],
-    nearby: [{ ride: ride('r1'), distanceM: 10 }] as any,
+    nearby: [{ ride: ride('r1'), distanceM: 10 }] as unknown as NearbyRide[],
     badge: true,
     activeRideId: 'r1',
     roster: [{ id: 'x', name: 'X', color: null, presence: null, stale: false, lastSeen: 1 }],
-    rosterRows: [{ id: 'x' }] as any,
+    rosterRows: [{ id: 'x' }] as unknown as RosterRider[],
     error: 'boom',
   })
 

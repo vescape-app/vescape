@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { theme } from '@/constants/theme'
+import { accentColors } from '@/constants/theme'
 import type { TelemetrySample } from '@/modules/history/store/historyStore'
 
 import {
@@ -16,7 +16,7 @@ describe('metricColorScale', () => {
 
     expect(getMetricRampColor(39, range)).toBe('#000000')
     expect(getMetricRampColor(40, range)).toBe('#000000')
-    expect(getMetricRampColor(50, range)).toBe(theme.status.error.color)
+    expect(getMetricRampColor(50, range)).toBe(accentColors.dark.red.color)
   })
 
   test('keeps threshold config in one editable place', () => {

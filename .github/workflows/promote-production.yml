@@ -10,10 +10,10 @@ on:
         required: true
         type: string
       operation:
-        description: Production rollout operation
+        description: Production operation
         required: true
         type: choice
-        options: [promote, status, halt, resume, advance]
+        options: [promote, status]
       open_promotion_run_id:
         description: Open-promotion run proving both exact artifacts
         required: true
@@ -38,10 +38,6 @@ on:
         description: Exact Wear Play version code
         required: true
         type: string
-      rollout_percentage:
-        description: Explicit percentage for promote or advance; zero otherwise
-        required: true
-        type: string
 
 permissions:
   actions: read
@@ -59,11 +55,10 @@ env:
   PHONE_VERSION_CODE: ${{ inputs.phone_code }}
   WEAR_VERSION_CODE: ${{ inputs.wear_code }}
   PRODUCTION_OPERATION: ${{ inputs.operation }}
-  ROLLOUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
 
 jobs:
   production:
-    name: Exact production rollout and GitHub Release
+    name: Exact production release and GitHub Release
     runs-on: blacksmith-2vcpu-ubuntu-2404
     environment: production
     steps:
@@ -80,12 +75,7 @@ jobs:
           [[ "$MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]
           [[ "$PHONE_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
           [[ "$WEAR_VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
-          [[ "$PRODUCTION_OPERATION" =~ ^(promote|status|halt|resume|advance)$ ]]
-          if [[ "$PRODUCTION_OPERATION" =~ ^(promote|advance)$ ]]; then
-            awk -v value="$ROLLOUT_PERCENTAGE" 'BEGIN { exit !(value > 0 && value <= 100) }'
-          else
-            test "$ROLLOUT_PERCENTAGE" = 0
-          fi
+          [[ "$PRODUCTION_OPERATION" =~ ^(promote|status)$ ]]
           git fetch origin main
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
           test "$(git show "$SOURCE_SHA:package.json" | jq -r .version)" = "$MARKETING_VERSION"
@@ -144,7 +134,7 @@ jobs:
         if: steps.phone.outcome != 'success'
         run: |
           jq -n --argjson code "$PHONE_VERSION_CODE" --arg source "$PHONE_OPEN_TRACK" --arg target "$PHONE_PRODUCTION_TRACK" \
-            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed",playStatus:null,rolloutPercentage:null}' > phone-result.json
+            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed",playStatus:null}' > phone-result.json
       - name: Apply Wear production operation
         id: wear
         continue-on-error: true
@@ -155,7 +145,7 @@ jobs:
         if: steps.wear.outcome != 'success'
         run: |
           jq -n --argjson code "$WEAR_VERSION_CODE" --arg source "$WEAR_OPEN_TRACK" --arg target "$WEAR_PRODUCTION_TRACK" \
-            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed",playStatus:null,rolloutPercentage:null}' > wear-result.json
+            '{versionCode:$code,sourceTrack:$source,targetTrack:$target,status:"failed",playStatus:null}' > wear-result.json
       - name: Flip existing GitHub prerelease to latest release
         id: github_release
         if: inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success'
@@ -177,6 +167,20 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           MARKETING_VERSION: ${{ inputs.marketing_version }}
+      # After Play, because the server must never advertise a version the store is not serving.
+      # Not fatal: the version is live either way, and the push can be repeated by hand from
+      # .github/workflows/record-released-version.yml.
+      - uses: oven-sh/setup-bun@v2
+        if: ${{ inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success' }}
+        with:
+          bun-version: latest
+      - name: Tell the server Android now serves this version
+        if: ${{ inputs.operation == 'promote' && steps.phone.outcome == 'success' && steps.wear.outcome == 'success' }}
+        continue-on-error: true
+        run: bun run scripts/release/releasedVersion.ts android "$MARKETING_VERSION"
+        env:
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+          INTERNAL_API_KEY: ${{ secrets.VESCAPE_INTERNAL_API_KEY }}
       - name: Record GitHub finalization state
         if: always()
         run: |
@@ -194,19 +198,16 @@ jobs:
       - name: Publish precise production result
         if: always()
         run: |
-          REQUESTED=null
-          if test "$ROLLOUT_PERCENTAGE" != 0; then REQUESTED="$ROLLOUT_PERCENTAGE"; fi
           jq -n \
             --arg request_id "$REQUEST_ID" \
             --argjson open_run_id "$OPEN_PROMOTION_RUN_ID" \
             --arg source_sha "$SOURCE_SHA" \
             --arg version "$MARKETING_VERSION" \
             --arg operation "$PRODUCTION_OPERATION" \
-            --argjson requested "$REQUESTED" \
             --slurpfile phone phone-result.json \
             --slurpfile wear wear-result.json \
             --rawfile github github-release-status.txt \
-            '{schemaVersion:1,requestId:$request_id,openPromotionRunId:$open_run_id,sourceSha:$source_sha,marketingVersion:$version,operation:$operation,requestedRolloutPercentage:$requested,phone:$phone[0],wear:$wear[0],githubRelease:($github|rtrimstr("\n"))}' \
+            '{schemaVersion:1,requestId:$request_id,openPromotionRunId:$open_run_id,sourceSha:$source_sha,marketingVersion:$version,operation:$operation,phone:$phone[0],wear:$wear[0],githubRelease:($github|rtrimstr("\n"))}' \
             > production-manifest.json
         env:
           REQUEST_ID: ${{ inputs.request_id }}

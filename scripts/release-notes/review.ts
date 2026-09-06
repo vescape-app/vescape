@@ -28,10 +28,10 @@ export async function reviewReleaseNoteDraft(options: {
     while (true) {
       preview(result.markdown)
       const choice = await selectPrompt('Review release-note draft', [
-        { value: 'accept', label: 'Accept canonical notes', shortcut: 'a' },
-        { value: 'revise', label: 'Revise with Codex', shortcut: 'r' },
-        { value: 'edit', label: `Edit in ${options.editorCommand[0]}`, shortcut: 'e' },
-        { value: 'discard', label: 'Discard draft', shortcut: 'd' },
+        { value: 'accept', label: 'Accept canonical notes' },
+        { value: 'revise', label: 'Revise with Codex' },
+        { value: 'edit', label: `Edit in ${options.editorCommand[0]}` },
+        { value: 'discard', label: 'Discard draft' },
       ] as const)
 
       if (choice === 'discard') {

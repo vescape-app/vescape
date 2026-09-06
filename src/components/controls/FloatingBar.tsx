@@ -1,9 +1,16 @@
-import type { Icon } from 'phosphor-react-native'
-import type { ReactNode } from 'react'
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native'
+import { CaretRightIcon, XIcon, type Icon } from 'phosphor-react-native'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { ActivityIndicator, Pressable, StyleSheet, View, type TextLayoutEvent } from 'react-native'
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
 import { interaction, theme } from '@/constants/theme'
+import { useResolvedColor } from '@/hooks/useTheme'
 
 interface FloatingBarFrameProps {
   bottomOffset?: number
@@ -12,8 +19,8 @@ interface FloatingBarFrameProps {
 
 export interface FloatingStatusPillAction {
   kind: 'action'
+  icon: Icon
   text: string
-  buttonText: string
   bg: string
   border: string
   textColor: string
@@ -24,6 +31,7 @@ export interface FloatingStatusPillAction {
 
 export interface FloatingStatusPillSpinner {
   kind: 'spinner'
+  icon?: Icon
   text: string
   color: string
   onPress: () => void
@@ -32,6 +40,12 @@ export interface FloatingStatusPillSpinner {
 }
 
 export type FloatingStatusPillModel = FloatingStatusPillAction | FloatingStatusPillSpinner
+
+const STATUS_TRANSITION = { duration: 220, easing: Easing.out(Easing.cubic) } as const
+const STATUS_MIN_WIDTH = 170
+const STATUS_MAX_TEXT_WIDTH = 180
+const SPINNER_FIXED_WIDTH = 88
+const ACTION_FIXED_WIDTH = 78
 
 interface FloatingActionPillProps {
   icon: Icon
@@ -52,39 +66,123 @@ export function FloatingBarFrame({ bottomOffset = 16, children }: FloatingBarFra
 }
 
 export function FloatingStatusPill({ pill }: { pill: FloatingStatusPillModel }) {
-  if (pill.kind === 'spinner') {
-    return (
-      <View style={[styles.pill, { borderColor: `${pill.color}55` }]} testID={pill.testID}>
-        <ActivityIndicator size="small" color={pill.color} />
-        <Text style={[styles.pillText, { color: pill.color }]} numberOfLines={1}>
+  const accent = pill.kind === 'spinner' ? pill.color : pill.buttonBg
+  const resolvedAccent = useResolvedColor(accent)
+  const resolvedShellBackground = useResolvedColor(
+    pill.kind === 'spinner' ? theme.control.background : pill.bg,
+  )
+  const resolvedShellBorder = useResolvedColor(
+    pill.kind === 'spinner' ? theme.alpha(pill.color, 0.3) : pill.border,
+  )
+  const resolvedIconBackground = useResolvedColor(theme.alpha(accent, 0.12))
+  const resolvedIconBorder = useResolvedColor(theme.alpha(accent, 0.7))
+  const shellBackground = useSharedValue(resolvedShellBackground)
+  const shellBorder = useSharedValue(resolvedShellBorder)
+  const iconBackground = useSharedValue(resolvedIconBackground)
+  const iconBorder = useSharedValue(resolvedIconBorder)
+  const shellWidth = useSharedValue(STATUS_MIN_WIDTH)
+  const measuredTargetWidth = useRef(STATUS_MIN_WIDTH)
+
+  useEffect(() => {
+    shellBackground.value = withTiming(resolvedShellBackground, STATUS_TRANSITION)
+    shellBorder.value = withTiming(resolvedShellBorder, STATUS_TRANSITION)
+    iconBackground.value = withTiming(resolvedIconBackground, STATUS_TRANSITION)
+    iconBorder.value = withTiming(resolvedIconBorder, STATUS_TRANSITION)
+  }, [
+    iconBackground,
+    iconBorder,
+    resolvedIconBackground,
+    resolvedIconBorder,
+    resolvedShellBackground,
+    resolvedShellBorder,
+    shellBackground,
+    shellBorder,
+  ])
+
+  const shellColorStyle = useAnimatedStyle(() => ({
+    backgroundColor: shellBackground.value,
+    borderColor: shellBorder.value,
+    width: shellWidth.value,
+  }))
+  const iconColorStyle = useAnimatedStyle(() => ({
+    backgroundColor: iconBackground.value,
+    borderColor: iconBorder.value,
+  }))
+  const handleTextLayout = useCallback(
+    (event: TextLayoutEvent) => {
+      const measuredWidth = Math.min(
+        STATUS_MAX_TEXT_WIDTH,
+        Math.ceil(event.nativeEvent.lines[0]?.width ?? 0),
+      )
+      const fixedWidth = pill.kind === 'spinner' ? SPINNER_FIXED_WIDTH : ACTION_FIXED_WIDTH
+      const targetWidth = Math.max(STATUS_MIN_WIDTH, measuredWidth + fixedWidth)
+
+      if (targetWidth === measuredTargetWidth.current) return
+
+      measuredTargetWidth.current = targetWidth
+      shellWidth.value = withTiming(targetWidth, STATUS_TRANSITION)
+    },
+    [pill.kind, shellWidth],
+  )
+  const StatusIcon = pill.icon
+  const content =
+    pill.kind === 'spinner' ? (
+      <Pressable
+        accessibilityLabel="Cancel"
+        style={({ pressed }) => [styles.pillContent, pressed && styles.statusActionPressed]}
+        android_ripple={interaction.ripple}
+        onPress={pill.onPress}
+        testID={pill.cancelTestID ?? pill.testID}
+      >
+        <Animated.View style={[styles.statusIcon, iconColorStyle]}>
+          {StatusIcon ? (
+            <StatusIcon size={17} color={resolvedAccent} weight="duotone" />
+          ) : (
+            <ActivityIndicator size="small" color={resolvedAccent} />
+          )}
+        </Animated.View>
+        <Text style={[styles.pillText, { color: resolvedAccent }]} numberOfLines={1}>
           {pill.text}
         </Text>
-        <Pressable
-          style={styles.pillButton}
-          android_ripple={interaction.ripple}
-          onPress={pill.onPress}
-          testID={pill.cancelTestID}
-        >
-          <Text style={styles.pillButtonText}>Cancel</Text>
-        </Pressable>
-      </View>
+        <View style={styles.cancelButton} pointerEvents="none">
+          <XIcon size={18} color={resolvedAccent} weight="bold" />
+        </View>
+      </Pressable>
+    ) : (
+      <Pressable
+        style={({ pressed }) => [
+          styles.pillContent,
+          styles.statusActionContent,
+          pressed && styles.statusActionPressed,
+        ]}
+        android_ripple={interaction.ripple}
+        onPress={pill.onPress}
+        testID={pill.testID}
+      >
+        <Animated.View style={[styles.statusIcon, iconColorStyle]}>
+          {StatusIcon ? <StatusIcon size={17} color={resolvedAccent} weight="duotone" /> : null}
+        </Animated.View>
+        <Text style={[styles.pillText, { color: pill.textColor }]} numberOfLines={1}>
+          {pill.text}
+        </Text>
+        <View style={styles.actionChevron} pointerEvents="none">
+          <CaretRightIcon size={16} color={resolvedAccent} weight="bold" />
+        </View>
+      </Pressable>
     )
-  }
 
   return (
-    <Pressable
-      style={[styles.pill, { backgroundColor: pill.bg, borderColor: pill.border }]}
-      android_ripple={interaction.ripple}
-      onPress={pill.onPress}
-      testID={pill.testID}
-    >
-      <Text style={[styles.pillText, { color: pill.textColor }]} numberOfLines={1}>
+    <View style={styles.pillHost}>
+      <Text
+        style={styles.textMeasure}
+        numberOfLines={1}
+        onTextLayout={handleTextLayout}
+        pointerEvents="none"
+      >
         {pill.text}
       </Text>
-      <View style={[styles.pillButton, { backgroundColor: pill.buttonBg }]}>
-        <Text style={styles.pillButtonText}>{pill.buttonText}</Text>
-      </View>
-    </Pressable>
+      <Animated.View style={[styles.pillShell, shellColorStyle]}>{content}</Animated.View>
+    </View>
   )
 }
 
@@ -97,17 +195,22 @@ export function FloatingActionPill({
   disabled = false,
   testID,
 }: FloatingActionPillProps) {
-  const iconColor = paused
-    ? theme.status.warning.color
-    : active
-      ? theme.palette.slate.textPrimary
-      : theme.status.error.color
+  // Resolved through the theme store rather than left as adaptive tokens: this pill floats over the
+  // map, where the native trait collection can still report the system appearance and render the
+  // wrong palette. On a filled surface the readable foreground is the status `text` token, not
+  // `color`, which is tuned for the app background.
+  const status = paused ? theme.status.warning : theme.status.error
+  const filled = active || paused
+  const accent = useResolvedColor(status.color)
+  const surface = useResolvedColor(status.bg)
+  const foreground = useResolvedColor(filled ? status.text : status.color)
+
   return (
     <Pressable
       style={[
         styles.actionPill,
-        active && styles.actionPillActive,
-        paused && styles.actionPillPaused,
+        { borderColor: accent },
+        filled && { backgroundColor: surface },
         disabled && styles.disabled,
       ]}
       android_ripple={interaction.ripple}
@@ -115,16 +218,8 @@ export function FloatingActionPill({
       onPress={onPress}
       testID={testID}
     >
-      <IconComp size={22} color={iconColor} weight="fill" />
-      <Text
-        style={[
-          styles.actionPillText,
-          active && styles.actionPillTextActive,
-          paused && styles.actionPillTextPaused,
-        ]}
-      >
-        {label}
-      </Text>
+      <IconComp size={22} color={foreground} weight="fill" />
+      <Text style={[styles.actionPillText, { color: foreground }]}>{label}</Text>
     </Pressable>
   )
 }
@@ -139,39 +234,71 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    paddingLeft: 14,
-    paddingRight: 4,
-    borderRadius: 22,
+  pillHost: {
+    alignSelf: 'center',
+    height: 38,
+  },
+  pillShell: {
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1,
     overflow: 'hidden',
-    gap: 10,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    shadowColor: theme.palette.mono.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: theme.control.background,
+    borderColor: theme.control.border,
+  },
+  pillContent: {
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 4,
+    paddingRight: 44,
   },
   pillText: {
+    width: STATUS_MAX_TEXT_WIDTH,
+    flexShrink: 0,
     fontSize: 12,
     fontWeight: '700',
-    maxWidth: 180,
   },
-  pillButton: {
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+  textMeasure: {
+    position: 'absolute',
+    width: STATUS_MAX_TEXT_WIDTH,
+    opacity: 0,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statusActionContent: {
+    paddingRight: 34,
+  },
+  statusActionPressed: {
+    opacity: 0.72,
+  },
+  statusIcon: {
+    width: 30,
+    height: 30,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+    borderWidth: 1,
+  },
+  cancelButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pillButtonText: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 12,
-    fontWeight: '800',
+  actionChevron: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionPill: {
     flexDirection: 'row',
@@ -182,29 +309,13 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: theme.status.error.color,
     overflow: 'hidden',
     gap: 8,
   },
-  actionPillActive: {
-    backgroundColor: theme.status.error.bg,
-    borderColor: theme.status.error.color,
-  },
-  actionPillPaused: {
-    backgroundColor: theme.status.warning.bg,
-    borderColor: theme.status.warning.color,
-  },
-  actionPillTextPaused: {
-    color: theme.status.warning.color,
-  },
   actionPillText: {
-    color: theme.status.error.color,
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 1,
-  },
-  actionPillTextActive: {
-    color: theme.palette.slate.textPrimary,
   },
   disabled: {
     opacity: 0.45,

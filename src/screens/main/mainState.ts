@@ -30,7 +30,7 @@ export function findSessionIndex(sessions: HistorySession[], selected: HistorySe
 
   return sessions.findIndex(
     (session) =>
-      session.deviceId === selected.deviceId &&
+      session.boardId === selected.boardId &&
       session.startAtMs <= selected.endAtMs &&
       session.endAtMs >= selected.startAtMs,
   )

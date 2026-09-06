@@ -20,7 +20,7 @@ function ride(id: string, lat: number, lng: number): GroupRideSummary {
 describe('nearbyRides', () => {
   test('keeps rides within the radius and drops the rest', () => {
     const close = ride('close', 50.0625, 19.945) // ~600m
-    const far = ride('far', 50.3, 20.5) // well over 20km
+    const far = ride('far', 50.3, 20.5) // well over 40km
 
     const result = nearbyRides([close, far], OWN)
 

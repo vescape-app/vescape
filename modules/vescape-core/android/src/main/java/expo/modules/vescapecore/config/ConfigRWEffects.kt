@@ -1,5 +1,4 @@
 package expo.modules.vescapecore.config
-import expo.modules.vescapecore.warnings.ConfigSafetyValues
 
 internal sealed class ConfigRWEffect {
     data class SendFrame(val payload: ByteArray) : ConfigRWEffect()
@@ -14,7 +13,7 @@ internal sealed class ConfigRWEffect {
     data class EmitReadComplete(
         val snapshot: RefloatConfigSnapshot,
         val resumePolling: Boolean,
-        val safety: ConfigSafetyValues?,
+        val boardConfigValues: BoardConfigValues?,
     ) : ConfigRWEffect()
 
     data class EmitReadFailure(
@@ -28,7 +27,7 @@ internal sealed class ConfigRWEffect {
     data class EmitWriteComplete(
         val snapshot: RefloatConfigSnapshot,
         val resumePolling: Boolean,
-        val safety: ConfigSafetyValues?,
+        val boardConfigValues: BoardConfigValues?,
     ) : ConfigRWEffect()
 
     data class EmitWriteFailure(

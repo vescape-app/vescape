@@ -169,3 +169,87 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 - No board telemetry on phone: no Board Session, so there is no Watch Frame source.
 
 The watch switches to `DISCONNECTED` when no Watch Frame arrives for about three watch ticks.
+
+## Always-On (Ambient)
+
+Ambient is not a separate screen. `FrameLayout` draws the same arcs in the same places with an
+`AmbientMode` (`watch/wearos/.../Ambient.kt`), so waking the wrist is a state change on a live tree
+rather than a swap between two layouts — the pagers stay mounted, parked on the gauges with their
+gestures off, and the idle clock never restarts.
+
+Colour says how current a reading is:
+
+| Lane                      | Ambient                                        |
+| ------------------------- | ---------------------------------------------- |
+| Battery, motor/ctrl temps | `AmbientText` — exact at the tick              |
+| Speed, duty               | `DimText` — last reading, may be a tick behind |
+| Clock, forecast, nav      | shown, dimmed                                  |
+| Route lanes (`NavRoute`)  | skipped — it animates its zoom                 |
+| Any lane, stream stopped  | dash, empty arc                                |
+
+Ambient draws flat strokes only: no gradient wedges, since the fills are lit pixels. The panel flags
+come from the ambient callback, never assumed — `deviceHasLowBitAmbient` switches readouts to pure
+white, and `burnInProtectionRequired` walks the centre content around a small square once a minute.
+
+The wrist repaints every `AMBIENT_REFRESH_INTERVAL_MS` (10 s), matched to the phone's 5 s ambient
+push (`WATCH_FRAME_AMBIENT_INTERVAL_MS`, linked by `@parity`). A slower tick saves no radio wake and
+only ages what is on screen.
+
+## Dev Modes On The Emulator
+
+Both are gated by `DevGate` — a debuggable build on an emulator, never a real watch or a release
+build — and both are entered explicitly, so an ordinary emulator launch still mirrors its paired
+phone like hardware.
+
+Fixture replay feeds a recorded ride into `TelemetryState` on the same path a phone push takes, so
+the visuals can be worked on without a board, a phone, or a ride:
+
+```bash
+bun run wear:replay
+```
+
+Forced ambient renders the always-on layout without power-cycling the screen between screenshots:
+
+```bash
+adb -s <serial> shell am start -S -n app.vescape.dev/app.vescape.wear.MainActivity --es replay ride --ez ambient true
+```
+
+`-S` because a running activity keeps the intent it was started with. `--es replay sweep` walks every
+lane's full range instead of replaying the ride. Add `--ez lowBit true` or `--ez burnIn true` to
+render for those panels. Screenshot with `adb -s <serial> exec-out screencap -p > shot.png`.
+
+The emulator renders ambient at full brightness with normal colour, so it answers layout questions
+only. Readability belongs to a physical watch, entered the real way: enable Settings → Display →
+Always-on screen, then `adb shell input keyevent 26`.
+
+## Phone → Watch Channels
+
+Three channels, split by how often the data changes:
+
+| Path         | Transport            | Cadence             | Payload                                       |
+| ------------ | -------------------- | ------------------- | --------------------------------------------- |
+| `/telemetry` | `MessageClient`      | every watch tick    | Watch Frame: packed Float32 lanes, positional |
+| `/route`     | Data Layer item      | per route change    | encoded polyline, versioned binary            |
+| `/settings`  | Data Layer `DataMap` | per settings change | rider settings, key-value                     |
+
+`MessageClient` drops undelivered sends, which is right for a frame that is stale in 250 ms and wrong
+for cold state — hence the Data Layer for the other two, where the last value stays on the watch
+across a disconnect and is read again on every watch app start.
+
+`/settings` is a `DataMap` rather than a packed frame because settings accrete one at a time: an
+unknown key is ignored by an older watch, and a key an older phone never sends leaves the watch on
+its own default. That is what makes it the place to put the next mirrored setting, and why it needs
+no version byte the way `/route` and the Watch Frame do.
+
+Adding a mirrored setting:
+
+1. Field on `WatchSettings` + key constant, both sides (`modules/vescape-core/.../watch/WatchSettings.kt`
+   and `watch/wearos/.../WatchSettings.kt`, linked by `@parity`).
+2. Map it in `AppSettings.toWatchSettings()`; put it in `WatchSettingsPusher`.
+3. Read it in `MainActivity.readSettings`.
+4. If the setting is written from JS, add its key to the `updateSetting` reload list in
+   `VescapeCoreModule.kt` — the pusher runs off applied settings, so without that the watch only sees
+   the change at the next service start.
+
+The rider colour is the first of these: pick a colour on the phone and the wrist route, chevron and
+rider dot follow it. The Wear Mirror is Android-only, so none of this has an iOS peer.

@@ -9,7 +9,7 @@ internal data class MetricSanitizationContext(
 
 internal data class MetricExclusionSample(
   val capturedAtMs: Long,
-  val deviceId: String,
+  val boardId: String,
   val reason: String,
 )
 

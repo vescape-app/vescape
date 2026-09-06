@@ -1,69 +1,58 @@
 import { ArrowDownIcon, ArrowUpIcon, DropIcon, SunHorizonIcon } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
+import type { WeatherIconSlug } from 'vescape-core'
 import { Text } from '@/components/base/Text'
 
 import { WeatherIcon } from '@/modules/weather/components/WeatherIcon'
 import { WeatherStat } from '@/modules/weather/components/WeatherStat'
 import { interaction, theme } from '@/constants/theme'
-import {
-  parseHourLabel,
-  weatherCodeToColor,
-  weatherCodeToLabel,
-} from '@/modules/weather/lib/weather'
+import { formatHour, weatherIconColor } from '@/modules/weather/lib/weather'
 
 interface WeatherPillProps {
-  code: number
+  icon: WeatherIconSlug
   temperature: number
-  hour: number
-  isNight: boolean
+  label: string
   precipProbability?: number | null
-  sunrise?: string | null
-  sunset?: string | null
+  /** Minutes since local midnight; both present or the sun times are hidden. */
+  sunriseMinuteOfDay?: number | null
+  sunsetMinuteOfDay?: number | null
   expanded?: boolean
   onPress?: () => void
 }
 
 /** Map weather summary. Collapsed pill or expanded panel with sun times. */
 export function WeatherPill({
-  code,
+  icon,
   temperature,
-  hour,
-  isNight,
+  label,
   precipProbability,
-  sunrise,
-  sunset,
+  sunriseMinuteOfDay,
+  sunsetMinuteOfDay,
   expanded,
   onPress,
 }: WeatherPillProps) {
-  const iconColor = weatherCodeToColor(code, hour, isNight)
+  const iconColor = weatherIconColor(icon)
 
   if (expanded) {
     return (
       <View style={styles.expanded}>
-        <WeatherIcon
-          code={code}
-          hour={hour}
-          isNight={isNight}
-          size={28}
-          color={iconColor}
-          weight="duotone"
-        />
+        <WeatherIcon icon={icon} size={28} color={iconColor} weight="duotone" />
         <View style={styles.expandedDetails}>
           <View style={styles.expandedText}>
             <Text style={styles.expandedTemp}>{temperature}°</Text>
-            <Text style={styles.expandedLabel}>{weatherCodeToLabel(code)}</Text>
+            <Text style={styles.expandedLabel}>{label}</Text>
           </View>
-          {sunrise && sunset && (
+          {sunriseMinuteOfDay != null && sunsetMinuteOfDay != null && (
             <View style={styles.sunTimes}>
               <View style={styles.sunTime}>
                 <SunHorizonIcon size={14} color={theme.weather.sun} weight="duotone" />
                 <ArrowUpIcon size={10} color={theme.weather.sun} weight="bold" />
-                <Text style={styles.sunTimeText}>{parseHourLabel(sunrise)}</Text>
+                <Text style={styles.sunTimeText}>{formatHour(sunriseMinuteOfDay)}</Text>
               </View>
               <View style={styles.sunTime}>
                 <SunHorizonIcon size={14} color={theme.weather.moonPartly} weight="duotone" />
                 <ArrowDownIcon size={10} color={theme.weather.moonPartly} weight="bold" />
-                <Text style={styles.sunTimeText}>{parseHourLabel(sunset)}</Text>
+                <Text style={styles.sunTimeText}>{formatHour(sunsetMinuteOfDay)}</Text>
               </View>
             </View>
           )}
@@ -81,10 +70,8 @@ export function WeatherPill({
   return (
     <Pressable style={styles.pill} onPress={onPress} android_ripple={interaction.rippleBorderless}>
       <WeatherStat
-        code={code}
+        icon={icon}
         temperature={temperature}
-        hour={hour}
-        isNight={isNight}
         precipProbability={precipProbability}
         size="md"
         iconColor={iconColor}
@@ -97,7 +84,7 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -120,12 +107,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   expandedTemp: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 22,
     fontWeight: '700',
   },
   expandedLabel: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -138,7 +125,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   sunTimeText: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
   },

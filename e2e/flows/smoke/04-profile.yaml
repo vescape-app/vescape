@@ -1,0 +1,38 @@
+# Profile stats from the restored fixture database.
+#
+# The fixture currently contains one calendar month. Reselecting that month still runs the native
+# monthly query and verifies the selector-to-load path; the all-time labels assert that the initial
+# native total/month queries both completed and rendered their result grids.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: history-button
+- extendedWaitUntil:
+    visible:
+      id: history-stats-details
+    timeout: 15000
+- tapOn:
+    id: history-stats-details
+
+- extendedWaitUntil:
+    visible:
+      id: profile-stats-section
+    timeout: 30000
+- assertVisible: 'All time'
+- assertVisible: 'Monthly'
+- assertVisible: 'Distance'
+- assertVisible: 'Rides'
+- assertVisible: 'Ride time'
+- assertVisible: 'Top speed'
+
+- tapOn:
+    id: profile-month-select
+- tapOn:
+    id: profile-month-select-option-2026-8
+- extendedWaitUntil:
+    notVisible:
+      id: profile-month-loading
+    timeout: 30000
+- assertVisible: 'August 2026'
+
+- runFlow: ../fixture/_home.yaml

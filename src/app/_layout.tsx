@@ -14,24 +14,34 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { configureReanimatedLogger } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { Text } from '@/components/base/Text'
+import { DevBadge } from '@/modules/diagnostics/components/DevBadge'
 import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBoundary'
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
-import { isDevelopmentApp } from '@/config/appVariant'
-import { showDevControls } from '@/config/env'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
+import { startAlertPresetConfigSync } from '@/modules/alerts/lib/alertPresetConfigSync'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
 import { useSessionFixtures } from '@/bootstrap/sessionFixtures'
+import { startBoardConfigValuesSync } from '@/modules/board/store/boardConfigValuesStore'
+import { startMotorConfigValuesSync } from '@/modules/board/store/motorConfigValuesStore'
+import { startBoardConfigChangeNoticeSync } from '@/modules/board/store/boardConfigChangeNoticeStore'
+import { BoardConfigChangeNoticeModal } from '@/modules/board/components/BoardConfigChangeNoticeModal'
+import { startTuneSnapshotSessionSync } from '@/modules/tune/store/tuneSnapshotStore'
 import { startBoardWarningsSync } from '@/modules/board/store/boardWarningsStore'
+import { startVescFaultsSync } from '@/modules/board/store/vescFaultsStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ReleaseSurfaces } from '@/modules/release/components/ReleaseSurfaces'
+import { startNavigationSync } from '@/modules/map/store/mapStore'
 import { startAppStatusSync } from '@/modules/release/store/appStatusStore'
+import { startWeatherSync } from '@/modules/weather/store/weatherStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
-import { theme } from '@/constants/theme'
+import { ThemeController } from '@/modules/settings/components/ThemeController'
+import { useThemeStore } from '@/hooks/useTheme'
+import { neutralColors, theme } from '@/constants/theme'
 import { DeviceAuthSync } from '@/modules/profile/components/DeviceAuthSync'
+import { MapThemeCoordinator } from '@/screens/MapThemeCoordinator'
 
 const clerkPublishableKey = requireClerkPublishableKey()
 
@@ -39,49 +49,6 @@ function requireClerkPublishableKey(): string {
   const key = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
   if (!key) throw new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not configured')
   return key
-}
-
-function DevelopmentBadge() {
-  const insets = useSafeAreaInsets()
-  if (!isDevelopmentApp || !showDevControls) return null
-
-  return (
-    <View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: Math.max(2, insets.top - 6),
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        alignItems: 'center',
-      }}
-    >
-      <View
-        style={{
-          paddingHorizontal: 5,
-          paddingVertical: 1,
-          borderWidth: 1,
-          borderColor: theme.status.warning.color,
-          borderRadius: 999,
-          backgroundColor: theme.status.warning.bg,
-        }}
-      >
-        <Text
-          style={{
-            color: theme.status.warning.text,
-            fontSize: 8,
-            lineHeight: 10,
-            fontWeight: '800',
-            letterSpacing: 0.6,
-            textTransform: 'uppercase',
-          }}
-        >
-          dev
-        </Text>
-      </View>
-    </View>
-  )
 }
 
 // Keep the native splash visible until Raleway loads so there is no font-flash
@@ -96,6 +63,9 @@ configureReanimatedLogger({ strict: false })
 initSentry()
 
 function RootLayout() {
+  const insets = useSafeAreaInsets()
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const resolvedNeutral = neutralColors[resolvedTheme]
   const [fontsLoaded, fontError] = useFonts({
     'Raleway-300': require('../../assets/fonts/Raleway-300.ttf'),
     'Raleway-400': require('../../assets/fonts/Raleway-400.ttf'),
@@ -125,14 +95,30 @@ function RootLayout() {
     useGroupRideStore.getState().startObserving()
     const stopAppDataSync = startAppDataSync()
     const stopBoardWarningsSync = startBoardWarningsSync()
+    const stopVescFaultsSync = startVescFaultsSync()
+    const stopBoardConfigValuesSync = startBoardConfigValuesSync()
+    const stopMotorConfigValuesSync = startMotorConfigValuesSync()
+    const stopBoardConfigChangeNoticeSync = startBoardConfigChangeNoticeSync()
+    const stopTuneSnapshotSessionSync = startTuneSnapshotSessionSync()
     const stopAlertsBoardSync = startAlertsBoardSync()
+    const stopAlertPresetConfigSync = startAlertPresetConfigSync()
     const stopAppStatusSync = startAppStatusSync()
+    const stopNavigationSync = startNavigationSync()
+    const stopWeatherSync = startWeatherSync()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
       stopBoardWarningsSync()
+      stopVescFaultsSync()
+      stopBoardConfigValuesSync()
+      stopMotorConfigValuesSync()
+      stopBoardConfigChangeNoticeSync()
+      stopTuneSnapshotSessionSync()
       stopAlertsBoardSync()
+      stopAlertPresetConfigSync()
       stopAppStatusSync()
+      stopNavigationSync()
+      stopWeatherSync()
     }
   }, [fixturesReady])
 
@@ -150,26 +136,29 @@ function RootLayout() {
       __experimental_resourceCache={resourceCache}
     >
       <DeviceAuthSync />
+      <BoardConfigChangeNoticeModal />
       <DiagnosticErrorBoundary>
         <GestureHandlerRootView style={{ flex: 1 }}>
+          <ThemeController />
+          <MapThemeCoordinator />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: theme.palette.slate.bg },
-              headerTintColor: theme.palette.slate.textPrimary,
+              headerStyle: { backgroundColor: resolvedNeutral.bg },
+              headerTintColor: resolvedNeutral.textPrimary,
               headerTitleStyle: { fontFamily: theme.font('600'), fontSize: 14 },
               headerTitleAlign: 'center',
               headerShadowVisible: false,
               headerLeft: () => <HeaderBackButton />,
               headerLeftContainerStyle: { paddingLeft: 10 },
               headerRightContainerStyle: { paddingRight: 10 },
-              cardStyle: { backgroundColor: theme.palette.slate.bg },
+              cardStyle: { backgroundColor: resolvedNeutral.bg },
             }}
           >
             <Stack.Screen name={stackScreens.home} options={{ headerShown: false }} />
             <Stack.Screen name={stackScreens.profileStats} options={{ title: 'Profile stats' }} />
-            {/* Clerk's native views render their own header — a second Expo header
-                would duplicate the back/dismiss layer. */}
-            <Stack.Screen name={stackScreens.signIn} options={{ headerShown: false }} />
+            {/* Clerk's own dismiss control is off (its native header carries system
+                Liquid Glass); the JS header owns back/dismiss instead. */}
+            <Stack.Screen name={stackScreens.signIn} options={{ title: 'Sign in' }} />
             <Stack.Screen name={stackScreens.account} options={{ headerShown: false }} />
             <Stack.Screen name={stackScreens.settings} options={{ title: 'Settings' }} />
             <Stack.Screen name={stackScreens.settingsDev} options={{ title: 'Dev' }} />
@@ -180,6 +169,10 @@ function RootLayout() {
             <Stack.Screen
               name={stackScreens.settingsComponents}
               options={{ title: 'Components' }}
+            />
+            <Stack.Screen
+              name={stackScreens.settingsComponentsTheme}
+              options={{ title: 'Theme foundations' }}
             />
             <Stack.Screen
               name={stackScreens.settingsNavigationDiagnostic}
@@ -210,6 +203,7 @@ function RootLayout() {
               name={stackScreens.settingsLiveTelemetry}
               options={{ title: 'Live telemetry' }}
             />
+            <Stack.Screen name={stackScreens.settingsVisuals} options={{ title: 'Appearance' }} />
             <Stack.Screen name={stackScreens.settingsMap} options={{ title: 'Map' }} />
             <Stack.Screen name={stackScreens.settingsWatch} options={{ title: 'Watch' }} />
             <Stack.Screen name={stackScreens.settingsHistory} options={{ title: 'History' }} />
@@ -224,6 +218,7 @@ function RootLayout() {
               name={stackScreens.devMapPlayground}
               options={{ title: 'Camera playground' }}
             />
+            <Stack.Screen name={stackScreens.historyCharts} options={{ headerShown: false }} />
             <Stack.Screen name={stackScreens.controlBatteryRaw} options={{ title: 'Raw BMS' }} />
             <Stack.Screen name={stackScreens.tune} options={{ title: 'Tune' }} />
             <Stack.Screen name={stackScreens.tuneHistory} options={{ title: 'Tune History' }} />
@@ -231,11 +226,26 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.addBoard} options={{ title: 'Add Board' }} />
             <Stack.Screen name={stackScreens.editBoard} options={{ title: 'Edit Board' }} />
             <Stack.Screen name={stackScreens.editBoardLink} options={{ title: 'Board Link' }} />
+            <Stack.Screen name={stackScreens.editBoardConfig} options={{ title: 'Board Config' }} />
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />
-          <DevelopmentBadge />
-          <StatusBar style="light" />
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              // DevBadge owns 8px of real top hit padding; offset it so the visible pill stays put.
+              top: Math.max(2, insets.top - 6) - 8,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 100,
+              alignItems: 'center',
+            }}
+          >
+            <DevBadge />
+          </View>
+          <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
         </GestureHandlerRootView>
       </DiagnosticErrorBoundary>
     </ClerkProvider>

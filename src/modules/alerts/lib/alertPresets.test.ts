@@ -4,7 +4,9 @@ import {
   ALERT_PRESET_ACTIVE_LEVELS,
   ALERT_PRESET_GEIGER_SOUND_TYPE,
   ALERT_PRESET_LEVELS,
+  describeAlertPreset,
   generateAlertPresetRules,
+  resolvedAlertPresetRules,
   normalizeAlertPresetSelection,
   type AlertPresetMetric,
 } from '@/modules/alerts/lib/alertPresets'
@@ -194,4 +196,82 @@ test('custom survives a selection round-trip', () => {
     battery: 'custom',
     speed: 'off',
   })
+})
+
+test('matched duty persists offsets while preview resolves fraction to percentage points', () => {
+  const rules = generateAlertPresetRules('duty', 'safe', {
+    matchBoardConfig: { duty: true },
+    configBases: { refloat: { tiltback_duty: 0.82 } },
+  })
+  expect(rules[0]).toMatchObject({
+    threshold: 67,
+    thresholdMax: 82,
+    thresholdRule: {
+      kind: 'config-relative',
+      fieldId: 'tiltback_duty',
+      thresholdOffset: -15,
+      thresholdMaxOffset: 0,
+    },
+  })
+  // tiltback_duty 1.0 means the board never pushes back: the rule persists its relationship but
+  // resolves to nothing, so no threshold reaches a gauge or a sound.
+  const disabled = generateAlertPresetRules('duty', 'normal', {
+    matchBoardConfig: { duty: true },
+    configBases: { refloat: { tiltback_duty: 1 } },
+  })
+  expect(disabled[0]).toMatchObject({ resolved: false, thresholdMax: null })
+  expect(disabled[0]?.thresholdRule).toMatchObject({ fieldId: 'tiltback_duty' })
+  expect(
+    resolvedAlertPresetRules('duty', 'normal', {
+      matchBoardConfig: { duty: true },
+      configBases: { refloat: { tiltback_duty: 1 } },
+    }),
+  ).toEqual([])
+})
+
+test('matched temperature ladders anchor to the board throttle point', () => {
+  const rules = generateAlertPresetRules('controller-temp', 'safe', {
+    matchBoardConfig: { 'controller-temp': true },
+    configBases: { motor: { l_temp_fet_start: 90 } },
+  })
+  expect(rules.map((rule) => rule.threshold)).toEqual([70, 80, 90])
+  expect(rules[2]).toMatchObject({
+    repeatEverySeconds: 10,
+    thresholdMax: null,
+    thresholdRule: { kind: 'config-relative', fieldId: 'l_temp_fet_start', thresholdOffset: 0 },
+  })
+  // No motor config read yet: the ladder keeps its relationships and shows nothing.
+  expect(
+    resolvedAlertPresetRules('controller-temp', 'safe', {
+      matchBoardConfig: { 'controller-temp': true },
+    }),
+  ).toEqual([])
+})
+
+test('describes a geiger range as a ramp with a ceiling', () => {
+  expect(describeAlertPreset('duty', 'normal')).toBe(
+    'Ticks like a Geiger counter from 80%, faster the deeper you go, solid tone at 90%.',
+  )
+})
+
+test('describes a temperature ladder and its repeating top rung', () => {
+  expect(describeAlertPreset('controller-temp', 'normal')).toBe(
+    'Speaks the temperature at 75° and 85°. The last step repeats every 10 s while you stay above it.',
+  )
+})
+
+test('battery speaks charge left, not temperature', () => {
+  expect(describeAlertPreset('battery', 'minimal', { hasBatteryConfig: true })).toBe(
+    'Speaks the charge left at 20%, 10% and 5%.',
+  )
+})
+
+test('off and custom describe themselves', () => {
+  expect(describeAlertPreset('speed', 'off')).toBe('No sound from this metric.')
+  expect(describeAlertPreset('speed', 'custom')).toBe('Your own rules — edit them below.')
+})
+
+test('no description for a metric guarded away', () => {
+  expect(describeAlertPreset('speed', 'normal')).toBeNull()
+  expect(describeAlertPreset('battery', 'normal')).toBeNull()
 })

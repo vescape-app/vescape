@@ -11,6 +11,7 @@ import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.buildLiveState
+import expo.modules.vescapecore.location.GpsPhase
 import expo.modules.vescapecore.ow.OwFrame
 import expo.modules.vescapecore.ow.OwGattClient
 import expo.modules.vescapecore.ow.OwPhase
@@ -277,7 +278,7 @@ internal class OwSessionController(
         lastTelemetryAt = pipeline.lastTelemetryAt.takeIf { it > 0L },
         recentTelemetry = if (includeRecent) pipeline.recentSnapshot() else emptyList(),
         // GPS stays VESC-session-owned for now; OneWheel rides record without location.
-        gpsActive = false,
+        gpsPhase = GpsPhase.Idle,
         latestLocation = null,
         latestPreciseLocation = null,
         recentLocations = emptyList(),

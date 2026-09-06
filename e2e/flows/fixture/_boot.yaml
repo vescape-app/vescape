@@ -10,6 +10,12 @@
 appId: ${APP_ID}
 ---
 - launchApp
+# iOS 26 shows the location prompt on first launch even after `simctl privacy grant`, and a system
+# alert owns the whole hierarchy: every assertion below it fails with the app running fine
+# underneath. Optional, so Android — where the runner grants permissions outright — skips it.
+- tapOn:
+    text: 'Allow While Using App'
+    optional: true
 - extendedWaitUntil:
     visible:
       id: battery-bar

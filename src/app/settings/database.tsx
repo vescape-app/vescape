@@ -39,7 +39,7 @@ export default function DatabaseSettingsScreen() {
                   db.rebuildState === 'running' && styles.rebuildButtonDisabled,
                   db.rebuildState === 'done' && styles.rebuildButtonDone,
                 ]}
-                onPress={db.handleRebuildBuckets}
+                onPress={() => void db.handleRebuildBuckets()}
                 disabled={db.rebuildState === 'running'}
               >
                 {db.rebuildState === 'done' && (
@@ -101,7 +101,7 @@ export default function DatabaseSettingsScreen() {
                 variant="destructive"
                 loading={db.restoreState === 'running'}
                 disabled={db.backupState === 'running' || db.rebuildState === 'running'}
-                onPress={() => db.setRestoreConfirmVisible(true)}
+                onPress={() => void db.handleRestoreDatabase()}
               />
             }
           />
@@ -110,11 +110,11 @@ export default function DatabaseSettingsScreen() {
       <ConfirmModal
         visible={db.restoreConfirmVisible}
         title="Restore database"
-        message="Current database will be replaced by selected backup. App keeps a temporary rollback copy during restore and restores old database if restore fails."
-        confirmLabel="Choose backup"
+        message={`Current database will be replaced by ${db.pendingRestoreName ?? 'the selected backup'}. App keeps a temporary rollback copy during restore and restores old database if restore fails.`}
+        confirmLabel="Restore"
         destructive
-        onConfirm={() => void db.handleRestoreDatabase()}
-        onCancel={() => db.setRestoreConfirmVisible(false)}
+        onConfirm={() => void db.handleConfirmRestore()}
+        onCancel={db.cancelRestore}
       />
     </SafeAreaView>
   )
@@ -123,16 +123,16 @@ export default function DatabaseSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,
     gap: 8,
   },
   rebuildButton: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderWidth: 1,
-    borderColor: theme.palette.slate.border,
+    borderColor: theme.neutral.border,
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.palette.green.bg,
   },
   rebuildButtonText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   rebuildProgressTrack: {
     flex: 1,
     height: 3,
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
     borderRadius: 999,
     overflow: 'hidden',
   },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   rebuildProgressText: {
     minWidth: 44,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
     textAlign: 'right',

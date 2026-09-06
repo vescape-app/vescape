@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { type LayoutChangeEvent } from 'react-native'
+import type { LayoutChangeEvent } from 'react-native'
 
 /**
  * Measured size of a canvas host view. Skia canvases do not grow to their

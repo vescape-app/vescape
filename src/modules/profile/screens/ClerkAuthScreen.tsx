@@ -26,9 +26,9 @@ export function ClerkAuthScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Clerk owns the only visible dismiss control — the Expo header is hidden
-          for this route in src/app/_layout.tsx. */}
-      <AuthView mode="signInOrUp" isDismissible onDismiss={leaveAuth} />
+      {/* Dismiss lives in the JS header (src/app/_layout.tsx); Clerk's native
+          dismiss is disabled so no system-styled header chrome is rendered. */}
+      <AuthView mode="signInOrUp" isDismissible={false} onDismiss={leaveAuth} />
     </View>
   )
 }
@@ -36,6 +36,6 @@ export function ClerkAuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
 })

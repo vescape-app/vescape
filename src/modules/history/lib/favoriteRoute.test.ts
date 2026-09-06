@@ -7,8 +7,8 @@ function gps(capturedAtMs: number, longitude: number): HistoryGpsSample {
   return {
     id: capturedAtMs,
     capturedAtMs,
-    deviceId: 'board',
-    deviceName: 'Board',
+    boardId: 'board',
+    boardName: 'Board',
     longitude,
     latitude: longitude,
     speedMps: null,

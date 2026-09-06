@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import { Text } from '@/components/base/Text'
 import { MarkerView, PointAnnotation } from '@rnmapbox/maps'
-import { type Icon } from 'phosphor-react-native'
-import { theme } from '@/constants/theme'
+import type { Icon } from 'phosphor-react-native'
+import { useResolvedColor, useResolvedNeutralColors } from '@/hooks/useTheme'
 
 interface MapPinProps {
   id: string
@@ -10,7 +10,6 @@ interface MapPinProps {
   color: string
   icon?: Icon
   iconColor?: string
-  bearingDeg?: number | null
   selected?: boolean
   navigationActive?: boolean
   expandSelected?: boolean
@@ -55,13 +54,16 @@ export function MapPin({
   color,
   icon: IconComponent,
   iconColor,
-  bearingDeg,
   selected = false,
   navigationActive = false,
   expandSelected = false,
   label,
   onSelected,
 }: MapPinProps) {
+  const neutral = useResolvedNeutralColors()
+  const resolvedColor = useResolvedColor(color)
+  const resolvedIconColor = useResolvedColor(iconColor ?? color)
+
   if (IconComponent) {
     if (selected && expandSelected && label) {
       const metrics = MAP_PIN_ICON_METRICS.expanded
@@ -69,13 +71,21 @@ export function MapPin({
         <MarkerView coordinate={coordinate} allowOverlap>
           <View style={styles.selectedMapPoint}>
             <Pressable
-              style={[styles.iconPin, iconPinStyle(metrics, color), styles.iconPinExpanded]}
+              style={[
+                styles.iconPin,
+                iconPinStyle(metrics, resolvedColor),
+                styles.iconPinExpanded,
+                { backgroundColor: neutral.surface },
+              ]}
               onPress={onSelected}
             >
-              <IconComponent size={metrics.iconSize} color={iconColor ?? color} weight="bold" />
+              <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
             </Pressable>
-            <View style={styles.selectedMapPointExtension}>
-              <Text numberOfLines={1} style={styles.selectedMapPointLabel}>
+            <View style={[styles.selectedMapPointExtension, { backgroundColor: neutral.surface }]}>
+              <Text
+                numberOfLines={1}
+                style={[styles.selectedMapPointLabel, { color: neutral.textPrimary }]}
+              >
                 {label}
               </Text>
             </View>
@@ -89,7 +99,14 @@ export function MapPin({
       : selected
         ? MAP_PIN_ICON_METRICS.selected
         : MAP_PIN_ICON_METRICS.default
-    const annotationKey = getIconAnnotationKey(id, selected, navigationActive, color, iconColor)
+    const annotationKey = getIconAnnotationKey(
+      id,
+      selected,
+      navigationActive,
+      resolvedColor,
+      resolvedIconColor,
+      neutral.surface,
+    )
     return (
       <PointAnnotation key={annotationKey} id={id} coordinate={coordinate} onSelected={onSelected}>
         {/* collapsable={false}: on iOS New Arch (Fabric) a layout-only wrapper is
@@ -100,35 +117,12 @@ export function MapPin({
           <View
             style={[
               styles.iconPin,
-              iconPinStyle(metrics, color),
+              iconPinStyle(metrics, resolvedColor),
               selected && styles.iconPinSelected,
+              { backgroundColor: neutral.surface },
             ]}
           >
-            <IconComponent size={metrics.iconSize} color={iconColor ?? color} weight="bold" />
-          </View>
-        </View>
-      </PointAnnotation>
-    )
-  }
-
-  if (bearingDeg != null) {
-    return (
-      <PointAnnotation id={id} coordinate={coordinate} onSelected={onSelected}>
-        {/* collapsable={false}: see icon branch above (rnmapbox #3682). */}
-        <View collapsable={false} style={[styles.pin, { borderColor: color }]}>
-          <View style={[styles.directionArrow, { transform: [{ rotate: `${bearingDeg}deg` }] }]}>
-            <View
-              style={[styles.directionWing, styles.directionWingOutline, styles.directionWingLeft]}
-            />
-            <View
-              style={[styles.directionWing, styles.directionWingOutline, styles.directionWingRight]}
-            />
-            <View
-              style={[styles.directionWing, styles.directionWingLeft, { borderColor: color }]}
-            />
-            <View
-              style={[styles.directionWing, styles.directionWingRight, { borderColor: color }]}
-            />
+            <IconComponent size={metrics.iconSize} color={resolvedIconColor} weight="bold" />
           </View>
         </View>
       </PointAnnotation>
@@ -136,10 +130,18 @@ export function MapPin({
   }
 
   return (
-    <PointAnnotation id={id} coordinate={coordinate} onSelected={onSelected}>
+    <PointAnnotation
+      key={`${id}-${resolvedColor}-${neutral.surface}`}
+      id={id}
+      coordinate={coordinate}
+      onSelected={onSelected}
+    >
       {/* collapsable={false}: see icon branch above (rnmapbox #3682). */}
-      <View collapsable={false} style={[styles.pin, { borderColor: color }]}>
-        <View style={[styles.pinCore, { backgroundColor: color }]} />
+      <View
+        collapsable={false}
+        style={[styles.pin, { backgroundColor: neutral.surface, borderColor: resolvedColor }]}
+      >
+        <View style={[styles.pinCore, { backgroundColor: resolvedColor }]} />
       </View>
     </PointAnnotation>
   )
@@ -151,8 +153,9 @@ function getIconAnnotationKey(
   navigationActive: boolean,
   color: string,
   iconColor: string | undefined,
+  surfaceColor: string,
 ) {
-  return `${id}-${navigationActive ? 'navigation' : selected ? 'selected' : 'default'}-${color}-${iconColor ?? color}`
+  return `${id}-${navigationActive ? 'navigation' : selected ? 'selected' : 'default'}-${color}-${iconColor ?? color}-${surfaceColor}`
 }
 
 function iconPinStyle(
@@ -177,17 +180,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 16,
     borderWidth: 3,
-    backgroundColor: theme.palette.slate.textPrimary,
   },
   iconPin: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
-    shadowColor: theme.palette.slate.surfaceDeep,
-    shadowOpacity: 0.22,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
   },
   iconPinFrame: {
     width: 40,
@@ -196,16 +192,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconPinSelected: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    shadowOpacity: 0.36,
-    shadowRadius: 5,
-    elevation: 6,
+    opacity: 1,
     zIndex: 2,
   },
-  iconPinExpanded: {
-    shadowRadius: 7,
-    elevation: 8,
-  },
+  iconPinExpanded: {},
   selectedMapPoint: {
     width: 42,
     height: 42,
@@ -226,12 +216,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 18,
     borderBottomLeftRadius: 6,
     borderBottomRightRadius: 18,
-    backgroundColor: theme.palette.slate.surfaceDeep,
     zIndex: 1,
   },
   selectedMapPointLabel: {
     flexShrink: 1,
-    color: theme.palette.slate.textPrimary,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -239,32 +227,5 @@ const styles = StyleSheet.create({
     width: 11,
     height: 11,
     borderRadius: 5.5,
-  },
-  directionArrow: {
-    width: 27,
-    height: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  directionWing: {
-    position: 'absolute',
-    top: 2,
-    width: 3,
-    height: 20,
-    borderRadius: 1.5,
-    borderLeftWidth: 4,
-  },
-  directionWingOutline: {
-    top: 0,
-    height: 24,
-    borderRadius: 2.5,
-    borderLeftWidth: 7,
-    borderColor: theme.palette.mono.white,
-  },
-  directionWingLeft: {
-    transform: [{ translateX: -4.5 }, { rotate: '28deg' }],
-  },
-  directionWingRight: {
-    transform: [{ translateX: 4.5 }, { rotate: '-28deg' }],
   },
 })

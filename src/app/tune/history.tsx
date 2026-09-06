@@ -4,13 +4,14 @@ import { Text } from '@/components/base/Text'
 import { useRouter } from 'expo-router'
 import { ArrowCounterClockwiseIcon } from 'phosphor-react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { type TuneHistoryEntry, type TuneProfileFieldValue } from 'vescape-core'
+import type { TuneHistoryEntry, TuneProfileFieldValue } from 'vescape-core'
 
 import { ConfirmModal } from '@/components/modals/ConfirmModal'
 import { Button } from '@/components/base/Button'
 import { APP_TUNE_FIELD_BY_ID, formatTuneValue } from '@/modules/tune/lib/fields'
 import { useTuneProfileStore } from '@/modules/tune/store/tuneProfileStore'
 import { theme } from '@/constants/theme'
+import { DASH } from '@/helpers/format'
 
 interface HistoryFieldDiff {
   fieldId: string
@@ -44,9 +45,9 @@ function diffHistoryEntries(
       fieldId: key,
       label,
       oldValue:
-        ov != null && ov !== '' ? String(typeof ov === 'number' ? formatTuneValue(ov) : ov) : '–',
+        ov != null && ov !== '' ? String(typeof ov === 'number' ? formatTuneValue(ov) : ov) : DASH,
       newValue:
-        nv != null && nv !== '' ? String(typeof nv === 'number' ? formatTuneValue(nv) : nv) : '–',
+        nv != null && nv !== '' ? String(typeof nv === 'number' ? formatTuneValue(nv) : nv) : DASH,
     })
   }
   return diffs
@@ -137,10 +138,10 @@ export default function TuneHistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   empty: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 24,
@@ -154,7 +155,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.palette.slate.surface,
+    borderBottomColor: theme.neutral.surface,
     gap: 10,
   },
   entryInfo: {
@@ -162,12 +163,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   entryDate: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   entryDetail: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   diffLine: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },

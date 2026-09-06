@@ -271,12 +271,10 @@ function run(command: string[], options: { cwd?: string; env?: Record<string, st
   }
 }
 
-function main() {
-  const platform = process.argv[2] as Platform | undefined
-  if (!platform || !PLATFORMS.includes(platform)) {
-    console.error(`Usage: bun run scripts/native-sync.ts <${PLATFORMS.join('|')}>`)
-    process.exit(1)
-  }
+function syncPlatform(platform: Platform) {
+  // Android compiles these generated module resources directly. Keep them beside copy:shared's
+  // generated assets, but never make an iOS sync perform Android-only work.
+  if (platform === 'android') run(['bun', 'run', 'theme:android'])
 
   const steps = planSync({
     platform,
@@ -322,6 +320,16 @@ function main() {
   // Fingerprint the post-sync tree: prebuild can rewrite its own inputs (lockfile, package.json).
   writeCache(platform, readState(platform))
   console.log(`\nnative-sync ${platform}: synced`)
+}
+
+function main() {
+  const requested = process.argv[2] as Platform | undefined
+  if (requested && !PLATFORMS.includes(requested)) {
+    console.error(`Usage: bun run scripts/native-sync.ts [${PLATFORMS.join('|')}]`)
+    process.exit(1)
+  }
+
+  for (const platform of requested ? [requested] : PLATFORMS) syncPlatform(platform)
 }
 
 if (import.meta.main) {

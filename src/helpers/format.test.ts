@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { dutyPercent, fmtCompactCount, fmtDutyPercent, fmtTimeAgo } from './format'
+import { dutyPercent, fmtCompactCount, fmtDutyPercent, fmtRideDuration, fmtTimeAgo } from './format'
 
 describe('dutyPercent', () => {
   test('hides ReFloat idle quantization', () => {
@@ -45,5 +45,18 @@ describe('fmtCompactCount', () => {
   test('never renders a negative or fractional count', () => {
     expect(fmtCompactCount(-5)).toBe('0')
     expect(fmtCompactCount(3.7)).toBe('4')
+  })
+})
+
+describe('fmtRideDuration', () => {
+  test('rounds up so a short ride is never zero minutes', () => {
+    expect(fmtRideDuration(0)).toBe('< 1 min')
+    expect(fmtRideDuration(40)).toBe('1 min')
+    expect(fmtRideDuration(3540)).toBe('59 min')
+  })
+
+  test('drops the empty minutes on a whole hour', () => {
+    expect(fmtRideDuration(3600)).toBe('1 h')
+    expect(fmtRideDuration(4800)).toBe('1 h 20 min')
   })
 })

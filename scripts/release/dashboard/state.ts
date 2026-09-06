@@ -42,10 +42,8 @@ export function relativeAge(createdAt: string | null, now = Date.now()): string 
 }
 
 export interface ProductionRow extends TrackRow {
-  rolloutPercentage: number | null
-  halted: boolean
   /**
-   * Identifies the exact artifact pair on production. Rollout controls must target this, not a
+   * Identifies the exact artifact pair on production. A status refresh must target this, not a
    * marketing version — a rebuild of the same version carries different version codes.
    */
   openPromotionRunId: number
@@ -119,15 +117,12 @@ export function productionRow(
   runId: number,
   age: string | null = null,
 ): ProductionRow {
-  const halted = manifest.phone.status === 'halted' || manifest.phone.playStatus === 'halted'
   return {
     marketingVersion: manifest.marketingVersion,
     phone: manifest.phone.versionCode,
     wear: manifest.wear.versionCode,
     detail: manifest.phone.status,
     runId,
-    rolloutPercentage: manifest.phone.rolloutPercentage,
-    halted,
     openPromotionRunId: manifest.openPromotionRunId,
     age,
   }
@@ -162,7 +157,7 @@ export function unreleasedPrereleases(
 
 /**
  * A truncated scan renders the track as if it were never published, which would silently hide
- * its rollout controls. Say so instead of showing an empty row as fact.
+ * the version actually on it. Say so instead of showing an empty row as fact.
  */
 export function truncationAlerts(scans: ReadonlyArray<[string, boolean]>): string[] {
   return scans

@@ -7,6 +7,11 @@ import Foundation
 /// match Android byte-for-byte so recordings replay on either platform:
 /// `{"t":<ms>,"kind":"meta"|"ble-chunk"|"location"|"session-state",...}`.
 ///
+/// Lines are appended from several threads — BLE chunks arrive on the CoreBluetooth callback
+/// queue, phone heading comes from JS on the module queue — so every write holds `writeLock`.
+/// Without it two `write()` calls interleave on the shared handle and emit a concatenated line,
+/// which breaks replay of the whole recording.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `SessionRecorder`
 internal final class SessionRecorder {
   private let store: DebugRecordingStore
@@ -15,6 +20,7 @@ internal final class SessionRecorder {
   private let pollIntervalMs: Int
   private let startedAt: Int64
   private var handle: FileHandle?
+  private let writeLock = NSLock()
   let fileURL: URL
 
   /// Fails (returns nil) when the recording file cannot be created or opened, so callers never
@@ -52,19 +58,6 @@ internal final class SessionRecorder {
       ("startedAt", startedAt),
     ])
     recordState("recording-started")
-  }
-
-  /// The phone's compass bearing, pushed down from JS — the sensor is read there, so native cannot
-  /// observe it on its own. Recorded so a replay can drive the heading cone and Compass follow off
-  /// the real measured rotation instead of a stand-in derived from GPS course.
-  ///
-  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/SessionRecorder.kt `recordPhoneHeading`
-  func recordPhoneHeading(_ headingDeg: Double) {
-    write([
-      ("t", elapsed()),
-      ("kind", "phone-heading"),
-      ("headingDeg", headingDeg),
-    ])
   }
 
   func recordState(_ status: String, extra: [(String, Any?)] = []) {
@@ -108,6 +101,8 @@ internal final class SessionRecorder {
 
   func finish(status: String) {
     recordState(status)
+    writeLock.lock()
+    defer { writeLock.unlock() }
     try? handle?.close()
     handle = nil
   }
@@ -115,8 +110,10 @@ internal final class SessionRecorder {
   private func elapsed() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) - startedAt }
 
   private func write(_ fields: [(String, Any?)]) {
-    guard let handle, let data = (Self.jsonLine(fields) + "\n").data(using: .utf8) else { return }
-    handle.write(data)
+    guard let data = (Self.jsonLine(fields) + "\n").data(using: .utf8) else { return }
+    writeLock.lock()
+    defer { writeLock.unlock() }
+    handle?.write(data)
   }
 
   /// Serialize one recording line with stable field order. `nil` values are omitted, matching

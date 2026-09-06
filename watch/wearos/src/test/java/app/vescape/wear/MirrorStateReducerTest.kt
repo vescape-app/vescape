@@ -21,7 +21,7 @@ class MirrorStateReducerTest {
         val disconnected = MirrorStateReducer.reduce(
             staleFrame,
             lastFrameAtMs = 1_500L,
-            nowMs = 1_500L + MIRROR_DISCONNECTED_TIMEOUT_MS + 1L,
+            nowMs = 1_500L + mirrorDisconnectedTimeoutMs(null) + 1L,
         )
         assertEquals(MirrorStatus.DISCONNECTED, disconnected.status)
         assertNull(disconnected.frame)
@@ -32,19 +32,31 @@ class MirrorStateReducerTest {
     }
 
     @Test
-    fun `fresh waiting frame is WAITING without renderable frame, timed-out waiting is disconnected`() {
+    fun `fresh legacy waiting frame remains renderable, timed-out waiting is disconnected`() {
         val waitingFrame = frame(stale = true).copy(waiting = true)
 
         val waiting = MirrorStateReducer.reduce(waitingFrame, lastFrameAtMs = 1_000L, nowMs = 1_000L)
         assertEquals(MirrorStatus.WAITING, waiting.status)
-        assertNull(waiting.frame)
+        assertNull(waiting.frame?.speed)
+        assertNull(waiting.frame?.duty)
 
         val timedOut = MirrorStateReducer.reduce(
             waitingFrame,
             lastFrameAtMs = 1_000L,
-            nowMs = 1_000L + MIRROR_DISCONNECTED_TIMEOUT_MS + 1L,
+            nowMs = 1_000L + mirrorDisconnectedTimeoutMs(null) + 1L,
         )
         assertEquals(MirrorStatus.DISCONNECTED, timedOut.status)
+    }
+
+    @Test
+    fun `the disconnect window follows the observed push cadence`() {
+        // Default cadence when nothing has been observed yet, and its own floor.
+        assertEquals(750L, mirrorDisconnectedTimeoutMs(null))
+        assertEquals(750L, mirrorDisconnectedTimeoutMs(50L))
+        // A rider-chosen slower cadence widens the window instead of pinning the mirror offline.
+        assertEquals(3_000L, mirrorDisconnectedTimeoutMs(1_000L))
+        // A long stall cannot widen it without bound.
+        assertEquals(30_000L, mirrorDisconnectedTimeoutMs(600_000L))
     }
 
     @Test

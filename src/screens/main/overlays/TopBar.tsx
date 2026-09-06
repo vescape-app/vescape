@@ -1,31 +1,24 @@
-import { forwardRef, useRef, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
-import { Text } from '@/components/base/Text'
+import { useRef, useState } from 'react'
+import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import {
   ArrowFatLinesUpIcon,
   BroadcastIcon,
   ArrowsClockwiseIcon,
-  CaretDownIcon,
   GearSixIcon,
-  PencilSimpleIcon,
-  PowerIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { BoardSelectorSheet } from '@/modules/board/components/BoardSelectorSheet'
-import { EdgeDrawer } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { IconButton } from '@/components/base/IconButton'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
-import { BoardWarningControl } from '@/modules/board/components/BoardWarningControl'
-import { ReplayBadge } from '@/modules/board/components/ReplayBadge'
+import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
-import { isNightAtTime } from '@/modules/weather/lib/weather'
 import { routes } from '@/navigation/routes'
-import { showDevControls } from '@/config/env'
 import type { Board } from '@/modules/board/store/boardStore'
 import { useGroupRideStore } from '@/modules/group-ride/store/groupRideStore'
 import { useWeatherStore } from '@/modules/weather/store/weatherStore'
@@ -35,11 +28,15 @@ import { settingsTriggerState } from '@/screens/main/overlays/settingsTrigger'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useBackupSlot } from '@/modules/profile/hooks/useBackupSlot'
 import type { MapSelection } from '@/modules/map/lib/mapSelection'
-import { distanceMeters } from '@/helpers/mapGeometry'
 import { DASH, fmtDistance } from '@/helpers/format'
+import { useMapStore } from '@/modules/map/store/mapStore'
 import { useRiderStore } from '@/modules/group-ride/store/riderStore'
 import { ActiveNavigationTopBar } from '@/screens/main/overlays/ActiveNavigationTopBar'
 import { WeatherSidePill } from '@/screens/main/overlays/WeatherSidePill'
+import {
+  getMapPointKindIcon,
+  getPlaceCategoryIcon,
+} from '@/modules/map-points/constants/mapPointIcons'
 
 interface TopBarProps {
   boards: Board[]
@@ -51,85 +48,9 @@ interface TopBarProps {
   onDisconnect: () => void
   onWeatherPress?: () => void
   activeNavigationTarget: MapSelection | null
-  currentLocation: { latitude: number; longitude: number } | null
+  onNavigationPress: () => void
   onCancelNavigation: () => void
 }
-
-interface BoardPillProps {
-  activeBoardId: string | null
-  activeBoard: Board | undefined
-  bleStatus: string
-  isReplay: boolean
-  onOpenSelector: () => void
-  onDisconnect: () => void
-}
-
-/** The board identity pill: selector, edit, disconnect and the Board Warning control. */
-const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
-  { activeBoardId, activeBoard, bleStatus, isReplay, onOpenSelector, onDisconnect },
-  ref,
-) {
-  const canDisconnect =
-    bleStatus === 'connected' ||
-    bleStatus === 'stale' ||
-    bleStatus === 'reconnecting' ||
-    bleStatus === 'rescanning' ||
-    bleStatus === 'waiting_for_telemetry'
-  const name = activeBoard?.name ?? 'No board'
-  const statusColor =
-    bleStatus === 'connected'
-      ? theme.palette.green.color
-      : bleStatus === 'error'
-        ? theme.status.error.color
-        : theme.palette.slate.textSecondary
-
-  return (
-    <View ref={ref} style={styles.pill}>
-      <Pressable
-        style={styles.boardButton}
-        onPress={onOpenSelector}
-        testID="board-selector-trigger"
-        accessibilityLabel="Board selector"
-      >
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        {isReplay && showDevControls && <ReplayBadge />}
-        <Text style={styles.boardText} numberOfLines={1}>
-          {name}
-        </Text>
-        <CaretDownIcon size={12} color={theme.palette.slate.textSecondary} weight="bold" />
-      </Pressable>
-      <View style={styles.divider} />
-      <Pressable
-        style={[styles.plugButton, !activeBoard && styles.iconRoundDisabled]}
-        disabled={!activeBoard}
-        onPress={() => {
-          if (!activeBoard) return
-          router.push({ pathname: routes.editBoard, params: { boardId: activeBoard.id } })
-        }}
-        testID="board-edit-button"
-      >
-        <PencilSimpleIcon
-          size={14}
-          color={activeBoard ? theme.palette.slate.textPrimary : theme.palette.slate.textMuted}
-          weight="bold"
-        />
-      </Pressable>
-      {canDisconnect && (
-        <>
-          <View style={styles.divider} />
-          <Pressable
-            style={styles.plugButton}
-            onPress={onDisconnect}
-            testID="board-disconnect-button"
-          >
-            <PowerIcon size={15} color={theme.status.error.color} weight="bold" />
-          </Pressable>
-        </>
-      )}
-      {activeBoardId && <BoardWarningControl boardId={activeBoardId} />}
-    </View>
-  )
-})
 
 export function TopBar({
   boards,
@@ -141,10 +62,12 @@ export function TopBar({
   onDisconnect,
   onWeatherPress,
   activeNavigationTarget,
-  currentLocation,
+  onNavigationPress,
   onCancelNavigation,
 }: TopBarProps) {
   const insets = useSafeAreaInsets()
+  const { width } = useWindowDimensions()
+  const boardPillMaxWidth = width - 116
   const pillRef = useRef<View>(null)
   const socialRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -152,13 +75,16 @@ export function TopBar({
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const riderColor = useRiderStore((s) => s.riderColor) ?? theme.palette.green.color
+  const routeProgress = useMapStore((s) => s.routeProgress)
 
   const isReplay = useBleStore((s) => isReplayBoardId(s.connectedId))
+  const connectedId = useBleStore((s) => s.connectedId)
+  // Faults belong to whichever board the live session writes under — a replay's synthetic board
+  // while it plays, the selected board otherwise.
+  const sessionBoardId = isReplay ? connectedId : activeBoardId
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
-  const weatherCode = useWeatherStore((s) => s.weatherCode)
-  const weatherTemp = useWeatherStore((s) => s.temperature)
-  const weatherPrecip = useWeatherStore((s) => s.precipitationProbability)
+  const weather = useWeatherStore((s) => s.weather)
   const appStatus = useAppStatusStore((s) => s.status)
   const availableUpdate = selectAvailableUpdate(appStatus)
   // A Release Policy warning escalates the gear itself; a merely newer version stays a quiet dot.
@@ -170,19 +96,17 @@ export function TopBar({
     updateAvailable: availableUpdate !== null,
     backup,
   })
-  const sunrise = useWeatherStore((s) => s.sunrise)
-  const sunset = useWeatherStore((s) => s.sunset)
-  const hasWeather = weatherCode != null && weatherTemp != null
-  const now = new Date()
-  const isNight = isNightAtTime(now.getHours(), now.getMinutes(), sunrise, sunset)
-  const navigationTargetKind =
+  const navigationTargetIcon =
     activeNavigationTarget?.type === 'mapPoint'
-      ? activeNavigationTarget.point.category
-      : 'direction'
+      ? getMapPointKindIcon(activeNavigationTarget.point.category)
+      : activeNavigationTarget?.type === 'place'
+        ? getPlaceCategoryIcon(activeNavigationTarget.category)
+        : getMapPointKindIcon('direction')
+  // Along the path, from native. A straight line here claimed 679 m for a ride that is 2 km around
+  // the river; the dash while native has no Route Progress is the honest answer, not a reason to
+  // fall back to one.
   const navigationDistance =
-    activeNavigationTarget && currentLocation
-      ? fmtDistance(distanceMeters(currentLocation, activeNavigationTarget))
-      : DASH
+    routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
 
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
@@ -200,32 +124,38 @@ export function TopBar({
         {activeNavigationTarget ? (
           <View ref={pillRef} collapsable={false}>
             <ActiveNavigationTopBar
+              boardPill={
+                <ConnectedBoardPill
+                  maxWidth={boardPillMaxWidth}
+                  activeBoardId={activeBoardId}
+                  activeBoard={activeBoard}
+                  bleStatus={bleStatus}
+                  isReplay={isReplay}
+                  sessionBoardId={sessionBoardId}
+                  onOpenSelector={() => setSelectorOpen(true)}
+                  onDisconnect={onDisconnect}
+                />
+              }
+              maxWidth={Math.min(boardPillMaxWidth, 240)}
               boardName={activeBoard?.name ?? 'No board'}
               connected={bleStatus === 'connected' || bleStatus === 'stale'}
-              activeBoardId={activeBoardId}
-              canDisconnect={
-                bleStatus === 'connected' ||
-                bleStatus === 'stale' ||
-                bleStatus === 'reconnecting' ||
-                bleStatus === 'rescanning' ||
-                bleStatus === 'waiting_for_telemetry'
-              }
               targetTitle={activeNavigationTarget.title}
-              targetKind={navigationTargetKind}
+              targetIcon={navigationTargetIcon}
               distanceLabel={navigationDistance}
               riderColor={riderColor}
-              onBoardPress={() => setSelectorOpen(true)}
-              onDisconnect={onDisconnect}
+              onNavigationPress={onNavigationPress}
               onCancel={onCancelNavigation}
             />
           </View>
         ) : (
-          <BoardPill
+          <ConnectedBoardPill
             ref={pillRef}
+            maxWidth={boardPillMaxWidth}
             activeBoardId={activeBoardId}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
             isReplay={isReplay}
+            sessionBoardId={sessionBoardId}
             onOpenSelector={() => setSelectorOpen(true)}
             onDisconnect={onDisconnect}
           />
@@ -252,13 +182,11 @@ export function TopBar({
           />
         </View>
       </View>
-      {hasWeather ? (
+      {weather ? (
         <WeatherSidePill
-          code={weatherCode!}
-          temperature={weatherTemp!}
-          precipProbability={weatherPrecip ?? null}
-          hour={now.getHours()}
-          isNight={isNight}
+          icon={weather.icon}
+          temperature={weather.temperatureC}
+          precipProbability={weather.precipitationProbability}
           verticalOffset={insets.top / 2}
           onPress={onWeatherPress}
         />
@@ -273,7 +201,7 @@ export function TopBar({
         backdropTestID="social-drawer-backdrop"
         onClose={() => setSocialOpen(false)}
       >
-        <SocialSheet onNavigate={() => setSocialOpen(false)} />
+        <SocialSheet />
       </EdgeDrawer>
 
       <EdgeDrawer
@@ -321,9 +249,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  iconRoundDisabled: {
-    opacity: 0.4,
-  },
   iconRight: {
     position: 'absolute',
     top: 0,
@@ -333,46 +258,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 10,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: theme.palette.slate.border,
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    overflow: 'hidden',
-  },
-  boardButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
-    minHeight: 38,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  boardText: {
-    color: theme.palette.slate.textPrimary,
-    fontSize: 13,
-    fontWeight: '800',
-    maxWidth: 120,
-    flexShrink: 1,
-  },
-  divider: {
-    width: 1,
-    height: 20,
-    backgroundColor: theme.palette.slate.border,
-  },
-  plugButton: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 })

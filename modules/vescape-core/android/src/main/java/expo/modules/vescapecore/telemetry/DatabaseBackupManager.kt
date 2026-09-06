@@ -159,6 +159,7 @@ object DatabaseBackupManager {
     TelemetryRepository.resetForDatabaseSwap()
     AppDataRepository.resetForDatabaseSwap()
     ProfileStatsRepository.resetForDatabaseSwap()
+    RideHistoryRepository.resetForDatabaseSwap()
     TelemetryDatabase.closeAndReset()
   }
 

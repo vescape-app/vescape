@@ -9,6 +9,12 @@ enum AppVersionStatus: String {
   case updateWarning = "update-warning"
   case onlineBlocked = "online-blocked"
   case appBlocked = "app-blocked"
+
+  /// Whether this outcome denies online work (Group Ride and future backup/sync). Online Block and
+  /// App Block both deny it; `current` and `update-warning` permit it. No TS peer: only the native
+  /// Group Ride gate consumes it, and JS learns of a block via the `blocked` observe state.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `blocksOnline`
+  var blocksOnline: Bool { self == .onlineBlocked || self == .appBlocked }
 }
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `CommunityMessageType`

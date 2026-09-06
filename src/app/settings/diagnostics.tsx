@@ -1,7 +1,12 @@
 import { ScrollView, StyleSheet, Switch } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ListIcon, WarningIcon } from 'phosphor-react-native'
+import {
+  EngineIcon,
+  ListIcon,
+  NavigationArrowIcon,
+  WarningDiamondIcon,
+} from 'phosphor-react-native'
 
 import { routes } from '@/navigation/routes'
 import { theme } from '@/constants/theme'
@@ -12,19 +17,20 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export default function DiagnosticsSettingsScreen() {
   const boardWarningsEnabled = useSettingsStore((s) => s.boardWarningsEnabled)
+  const vescFaultCollectionEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)
   const set = useSettingsStore((s) => s.set)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
-          icon={WarningIcon}
-          description="Board health checks that watch telemetry and flag problems while you ride."
+          icon={EngineIcon}
+          description="Board health checks that watch telemetry and flag problems while you ride, plus live GPS and heading evidence."
         />
 
         <SettingsCard>
           <SettingsRow
-            icon={WarningIcon}
+            icon={EngineIcon}
             iconColor={theme.status.warning.color}
             label="Board warnings"
             hint="Master switch — off stops all detection and hides warnings"
@@ -32,9 +38,25 @@ export default function DiagnosticsSettingsScreen() {
               <Switch
                 value={boardWarningsEnabled}
                 onValueChange={(v) => void set('boardWarningsEnabled', v)}
-                trackColor={{ false: theme.palette.slate.border, true: theme.palette.sky.border }}
+                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
                 thumbColor={
-                  boardWarningsEnabled ? theme.palette.sky.color : theme.palette.slate.textMuted
+                  boardWarningsEnabled ? theme.palette.sky.color : theme.neutral.textMuted
+                }
+              />
+            }
+          />
+          <SettingsRow
+            icon={WarningDiamondIcon}
+            iconColor={theme.status.caution.color}
+            label="VESC fault collection"
+            hint="Record live Refloat faults. Controller log loads when the fault drawer opens"
+            right={
+              <Switch
+                value={vescFaultCollectionEnabled}
+                onValueChange={(v) => void set('vescFaultCollectionEnabled', v)}
+                trackColor={{ false: theme.neutral.border, true: theme.palette.sky.border }}
+                thumbColor={
+                  vescFaultCollectionEnabled ? theme.palette.sky.color : theme.neutral.textMuted
                 }
               />
             }
@@ -46,6 +68,13 @@ export default function DiagnosticsSettingsScreen() {
             hint="Browse locally persisted diagnostic events"
             onPress={() => router.push(routes.settingsDiagnosticEvents)}
           />
+          <SettingsRow
+            icon={NavigationArrowIcon}
+            iconColor={theme.palette.sky.color}
+            label="Navigation diagnostics"
+            hint="Live map heading, GPS, and fallback evidence"
+            onPress={() => router.push(routes.settingsNavigationDiagnostic)}
+          />
         </SettingsCard>
       </ScrollView>
     </SafeAreaView>
@@ -55,7 +84,7 @@ export default function DiagnosticsSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.palette.slate.bg,
+    backgroundColor: theme.neutral.bg,
   },
   content: {
     padding: 16,

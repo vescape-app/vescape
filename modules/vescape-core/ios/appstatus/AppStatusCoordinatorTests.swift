@@ -85,7 +85,7 @@ final class AppStatusCoordinatorTests: XCTestCase {
     let transport = RecordingTransport()
     let coordinator = coordinator(transport)
     var changes = 0
-    coordinator.onChange = { _ in changes += 1 }
+    _ = coordinator.addChangeListener { _ in changes += 1 }
 
     XCTAssertNil(coordinator.current)
     coordinator.refresh()
@@ -109,7 +109,7 @@ final class AppStatusCoordinatorTests: XCTestCase {
     let transport = RecordingTransport()
     let coordinator = coordinator(transport)
     var seen: [AppVersionStatus?] = []
-    coordinator.onChange = { seen.append($0?.version.status) }
+    _ = coordinator.addChangeListener { seen.append($0?.version.status) }
 
     coordinator.refresh()
     transport.resolveAll(statusBody("online-blocked"))

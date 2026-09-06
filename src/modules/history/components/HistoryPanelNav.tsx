@@ -1,4 +1,10 @@
-import { CaretDownIcon, CloudArrowUpIcon, ImagesSquareIcon, StarIcon } from 'phosphor-react-native'
+import {
+  CaretDownIcon,
+  ChartLineIcon,
+  CloudArrowUpIcon,
+  ImagesSquareIcon,
+  StarIcon,
+} from 'phosphor-react-native'
 import type { RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 
@@ -12,7 +18,7 @@ import { formatRideMeta, formatRideTime } from '@/modules/history/lib/rideFormat
 interface HistoryPanelNavProps {
   titleStartMs: number
   titleEndMs: number
-  deviceName: string
+  boardName: string
   title?: string
   subtitle?: string
   canPrevious: boolean
@@ -30,12 +36,14 @@ interface HistoryPanelNavProps {
   onOpenMediaDrawer: () => void
   onToggleFavorite: () => void
   onOpenShareInfo: () => void
+  /** Ride mode only: the full-screen charts page. A Favorite is about its route and media. */
+  onOpenCharts: () => void
 }
 
 export function HistoryPanelNav({
   titleStartMs,
   titleEndMs,
-  deviceName,
+  boardName,
   title,
   subtitle,
   canPrevious,
@@ -53,9 +61,10 @@ export function HistoryPanelNav({
   onOpenMediaDrawer,
   onToggleFavorite,
   onOpenShareInfo,
+  onOpenCharts,
 }: HistoryPanelNavProps) {
   const primaryLabel = title ?? formatRideTime(titleStartMs, titleEndMs)
-  const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, deviceName)
+  const secondaryLabel = subtitle ?? formatRideMeta(titleStartMs, titleEndMs, boardName)
 
   return (
     <View style={styles.navControls}>
@@ -76,7 +85,15 @@ export function HistoryPanelNav({
               </View>
             ) : null}
           </>
-        ) : null}
+        ) : (
+          <IconButton
+            icon={ChartLineIcon}
+            onPress={onOpenCharts}
+            size="lg"
+            testID="history-open-charts"
+            accessibilityLabel="Full screen charts"
+          />
+        )}
       </View>
       <PrevNextSelector
         label={primaryLabel}
@@ -96,8 +113,13 @@ export function HistoryPanelNav({
             android_ripple={interaction.ripple}
             onPress={onOpenList}
           >
-            <HistoryRideLabel title={primaryLabel} subtitle={secondaryLabel} compact />
-            <CaretDownIcon size={12} color={theme.palette.slate.textSecondary} weight="bold" />
+            <HistoryRideLabel
+              title={primaryLabel}
+              subtitle={secondaryLabel}
+              compact
+              tone="control"
+            />
+            <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
           </Pressable>
         }
       />

@@ -1,6 +1,6 @@
 import type { RefloatConfigSnapshot } from 'vescape-core'
 
-export type TuneCompatibilityIssue = {
+export interface TuneCompatibilityIssue {
   message: string
   reason: 'missing-version' | 'unsupported-version'
 }

@@ -75,7 +75,7 @@ export function MediaHistoryGallery({
     <View style={styles.container}>
       {assets.length === 0 && unmatched.length === 0 ? (
         <View style={styles.empty}>
-          <ImagesSquareIcon size={28} color={theme.palette.slate.textMuted} weight="duotone" />
+          <ImagesSquareIcon size={28} color={theme.neutral.textMuted} weight="duotone" />
           <Text style={styles.emptyText}>
             Add photos and videos captured during this Favorite to see them on the map.
           </Text>
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   emptyText: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   tile: {
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: theme.palette.slate.surfaceDeep,
+    backgroundColor: theme.neutral.surfaceDeep,
   },
   tilePressed: {
     opacity: 0.55,
@@ -147,16 +147,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.alpha(theme.palette.slate.surfaceDeep, 0.6),
+    backgroundColor: theme.alpha(theme.neutral.surfaceDeep, 0.6),
   },
   sectionTitle: {
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 12,
     fontWeight: '800',
     marginTop: 4,
   },
   note: {
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     fontSize: 11,
     fontWeight: '600',
     textAlign: 'center',

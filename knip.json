@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "tags": ["-lintignore"],
   "ignoreBinaries": ["maestro", "adb", "awk"],
-  "ignoreDependencies": ["sharp", "expo-font"],
+  "ignoreDependencies": ["sharp", "expo-font", "@phosphor-icons/core"],
   "ignore": ["scripts/**/*", ".agents/**/*", ".claude/**/*", "app.config.ts", "targets/**/*"],
   "ignoreExportsUsedInFile": true,
   "workspaces": {

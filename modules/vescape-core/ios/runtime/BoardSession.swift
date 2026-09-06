@@ -11,7 +11,7 @@ final class BoardSession {
   private(set) var isActive = true
   private(set) var linkIntegrity: LinkIntegrity = .unknown
   private(set) var linkIntegrityProbeStarted = false
-  private var observations = LinkIdentity(linkVersion: 3)
+  private var observations = LinkIdentity(linkVersion: 4)
 
   init(id: Int64) {
     self.id = id
@@ -28,6 +28,15 @@ final class BoardSession {
 
   func markOutdatedIfIncomplete(expected: LinkIdentity) -> LinkIntegrity {
     if !expected.isComplete { linkIntegrity = .outdated }
+    return linkIntegrity
+  }
+
+  /// The probe ran but never proved the link either way. Nothing here says the board changed, only
+  /// that trust could not be established, so this resolves to `outdated` — the state whose CTA asks
+  /// the rider to re-link. A `checking` that never ends is a dead end: commands stay blocked and no
+  /// warning offers a way out.
+  func markCheckTimedOut() -> LinkIntegrity {
+    if linkIntegrity == .checking { linkIntegrity = .outdated }
     return linkIntegrity
   }
 
@@ -116,7 +125,7 @@ struct LinkIdentity {
   // refloatBaseVersion is derived from refloatVersion and may be absent for malformed or unknown
   // version strings, so it is not required here; matches/mismatches still compare it when present.
   var isComplete: Bool {
-    linkVersion == 3 &&
+    linkVersion == 4 &&
       hasBms != nil &&
       !(firmware?.isEmpty ?? true) &&
       !(refloatVersion?.isEmpty ?? true)

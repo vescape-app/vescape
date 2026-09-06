@@ -14,42 +14,42 @@ const ROLES = [
     sample: 'Dashboard',
     size: 20,
     weight: '700',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   {
     role: 'Row label',
     sample: 'Board name',
     size: 15,
     weight: '600',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
   {
     role: 'Row hint',
     sample: 'Tap to edit',
     size: 12,
     weight: '500',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
   {
     role: 'Section title',
     sample: 'GENERAL',
     size: 13,
     weight: '700',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
   {
     role: 'Metadata',
     sample: 'v0.76.0',
     size: 12,
     weight: '500',
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
   },
   {
     role: 'Stepper value',
     sample: '12.5',
     size: 15,
     weight: '700',
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
   },
 ] as const
 
@@ -110,7 +110,7 @@ export default function TypographyComponentsPage() {
               <Text
                 key={row}
                 style={{
-                  color: theme.palette.slate.textPrimary,
+                  color: theme.neutral.textPrimary,
                   fontSize: 24,
                   fontWeight: '700',
                   fontVariant: ['tabular-nums'],
@@ -138,7 +138,7 @@ export default function TypographyComponentsPage() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.palette.slate.bg },
+  container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 12, paddingBottom: 40 },
   col: { gap: 8 },
   roleRow: {
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   roleName: {
     fontSize: 12,
     fontWeight: '500',
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
   },
   weightRow: {
     flexDirection: 'row',
@@ -159,11 +159,11 @@ const styles = StyleSheet.create({
   weightLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
     width: 36,
   },
   hint: {
     fontSize: 12,
-    color: theme.palette.slate.textMuted,
+    color: theme.neutral.textMuted,
   },
 })

@@ -2,16 +2,17 @@ import { expect, test } from 'bun:test'
 
 import { telemetry, telemetryByControlId } from '@/modules/board/constants/telemetry'
 
-test('formatWithUnit omits spacing for unitless metrics', () => {
-  expect(telemetry.footpadAdc1.formatWithUnit(1.23456)).toBe('1.235')
+test('telemetry values use a space before their unit', () => {
+  expect(telemetry.footpadAdc1.formatWithUnit(1.23456)).toBe('1.235 V')
 })
 
 test('speed formatting uses absolute rounded values', () => {
   expect(telemetry.speed.formatWithUnit(-12.4)).toBe('12 km/h')
 })
 
-test('battery voltage formatting uses compact unit and single decimal', () => {
-  expect(telemetry.battVoltage.formatWithUnit(81.94)).toBe('81.9V')
+test('battery telemetry uses configured decimals', () => {
+  expect(telemetry.battVoltage.formatWithUnit(81.94)).toBe('81.9 V')
+  expect(telemetry.batteryPercent.formatWithUnit(81.94)).toBe('82 %')
 })
 
 test('control id lookup resolves alert-enabled metrics', () => {

@@ -84,36 +84,33 @@ describe('production manifest', () => {
     sourceSha: 'a'.repeat(40),
     marketingVersion: '0.83.1',
     operation: 'promote' as const,
-    requestedRolloutPercentage: 10,
     phone: {
       versionCode: 100_000_042,
       sourceTrack: 'beta',
       targetTrack: 'production',
       status: 'promoted' as const,
-      playStatus: 'inProgress',
-      rolloutPercentage: 10,
+      playStatus: 'completed',
     },
     wear: {
       versionCode: 1_100_000_042,
       sourceTrack: 'wear:beta',
       targetTrack: 'wear:production',
       status: 'already-production' as const,
-      playStatus: 'inProgress',
-      rolloutPercentage: 10,
+      playStatus: 'completed',
     },
     githubRelease: 'released' as const,
   }
 
-  test('parses exact staged rollout and GitHub state', () => {
+  test('parses exact production and GitHub state', () => {
     expect(parseProductionManifest(production)).toEqual(production)
-    expect(() =>
-      parseProductionManifest({ ...production, requestedRolloutPercentage: 101 }),
-    ).toThrow('invalid shape')
+    expect(() => parseProductionManifest({ ...production, operation: 'advance' })).toThrow(
+      'invalid shape',
+    )
   })
 
   test('renders partial retry state precisely', () => {
     expect(productionSummary(production)).toBe(
-      'phone 100000042: promoted @ 10% · Wear 1100000042: already-production @ 10% · GitHub released',
+      'phone 100000042: promoted · Wear 1100000042: already-production · GitHub released',
     )
   })
 })

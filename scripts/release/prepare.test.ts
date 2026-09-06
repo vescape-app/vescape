@@ -48,6 +48,21 @@ describe('release candidate version bump', () => {
     ).not.toThrow()
   })
 
+  test('allows resuming a draft whose notes were already bundled', () => {
+    expect(() =>
+      assertReleasePreparationStatus({
+        baseVersion: '0.83.1',
+        workingVersion: '0.83.2',
+        changedPaths: [
+          'package.json',
+          'release-notes/0.83.2.md',
+          'src/modules/release/generated/releaseNotes.ts',
+        ],
+        noteExists: true,
+      }),
+    ).not.toThrow()
+  })
+
   test('rejects unrelated changes while resuming a release draft', () => {
     expect(() =>
       assertReleasePreparationStatus({
