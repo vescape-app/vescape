@@ -11,9 +11,96 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 /** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
+  @Test
+  fun historyReadsDistinguishEmptyCurrentPagedAndFailure(): Unit = runBlocking {
+    val contract = JSONObject(
+      checkNotNull(javaClass.classLoader?.getResource("history-read-contract.json")).readText(),
+    )
+    assertEquals("precomputed-history-reads", contract.getString("scenario"))
+    val expected = contract.getJSONObject("expected")
+    val gapMs = contract.getLong("gapMs")
+    val path = Files.createTempFile("vescape-history-read", ".db")
+    Files.deleteIfExists(path)
+    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+
+    var db = open()
+    val emptyPage = readRideHistoryPage(db.telemetryDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
+    assertEquals(expected.getInt("emptySessionCount"), (emptyPage["sessions"] as List<*>).size)
+    val emptyStats = readProfileStatsSnapshot(db.telemetryDao(), emptyMap(), gapMs)
+    assertEquals(expected.getInt("emptyRideCount"), (emptyStats["total"] as Map<*, *>)["rideCount"])
+
+    val recording = JSONObject(
+      checkNotNull(javaClass.classLoader?.getResource("recording-persistence-contract.json")).readText(),
+    )
+    val boardId = recording.getString("boardId")
+    val samples = recording.getJSONArray("samples")
+    val points = (0 until samples.length()).map { index ->
+      val sample = samples.getJSONObject(index)
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
+        sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
+    }
+    val current = buildTelemetryBuckets(points, emptyList()).single()
+    val nextPoints = points.map { point ->
+      point.copy(capturedAtMs = point.capturedAtMs + 60_000L, odometerCm = point.odometerCm?.plus(100L))
+    }
+    val currentNext = buildTelemetryBuckets(nextPoints, emptyList()).single()
+    val offset = contract.getLong("olderRideOffsetMs")
+    val older = current.copy(
+      bucketStartMs = current.bucketStartMs - offset,
+      firstSampleAtMs = current.firstSampleAtMs - offset,
+      lastSampleAtMs = current.lastSampleAtMs - offset,
+      firstMovingAtMs = current.firstMovingAtMs?.minus(offset),
+      lastMovingAtMs = current.lastMovingAtMs?.minus(offset),
+    )
+    RecordingPersistence(db.telemetryDao()).commit(emptyList(), listOf(current, currentNext, older), emptyList())
+    assertEquals(3, db.telemetryDao().getAllHistoryBucketsAsc().size)
+    assertEquals(2, (readRideHistoryPage(db.telemetryDao(), mapOf("limit" to 50), gapMs)["sessions"] as List<*>).size)
+    val first = readRideHistoryPage(db.telemetryDao(), mapOf("limit" to contract.getInt("pageSize")), gapMs)
+    assertEquals(expected.getInt("firstPageSessionCount"), (first["sessions"] as List<*>).size)
+    assertEquals(expected.getBoolean("firstPageHasMore"), first["hasMore"])
+    val firstSession = (first["sessions"] as List<Map<String, Any?>>).single()
+    assertEquals(expected.getLong("currentStartAtMs"), firstSession["startAtMs"])
+    assertEquals(expected.getLong("currentEndAtMs"), firstSession["endAtMs"])
+    assertEquals(expected.getInt("currentSampleCount"), firstSession["sampleCount"])
+    assertEquals(expected.getDouble("currentDistanceM"), firstSession["distanceM"])
+    val second = readRideHistoryPage(
+      db.telemetryDao(),
+      mapOf("limit" to contract.getInt("pageSize"), "cursorBeforeMs" to first["nextCursorBeforeMs"]),
+      gapMs,
+    )
+    assertEquals(expected.getInt("secondPageSessionCount"), (second["sessions"] as List<*>).size)
+    assertEquals(expected.getBoolean("secondPageHasMore"), second["hasMore"])
+    assertEquals(older.firstSampleAtMs, (second["sessions"] as List<Map<String, Any?>>).single()["startAtMs"])
+    val stats = readProfileStatsSnapshot(db.telemetryDao(), emptyMap(), gapMs)
+    val total = stats["total"] as Map<*, *>
+    assertEquals(expected.getInt("profileRideCount"), total["rideCount"])
+    assertEquals(expected.getLong("profileRideTimeMs"), total["rideTimeMs"])
+    assertEquals(expected.getDouble("profileDistanceM"), total["distanceM"])
+    assertEquals(expected.getDouble("profileTopSpeedKmh"), total["topSpeedKmh"])
+    assertEquals(expected.getDouble("profileAvgSpeedKmh"), total["avgSpeedKmh"])
+    assertEquals(expected.getInt("profileMonthCount"), (stats["months"] as List<*>).size)
+    assertEquals(expected.getInt("selectedYear"), (stats["selectedMonth"] as Map<*, *>)["year"])
+    assertEquals(expected.getInt("selectedMonth"), (stats["selectedMonth"] as Map<*, *>)["month"])
+
+    db.close()
+    val connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TABLE telemetry_minute_buckets")
+    connection.close()
+    db = open()
+    var pageFailed = false
+    try { readRideHistoryPage(db.telemetryDao(), emptyMap(), gapMs) } catch (_: Exception) { pageFailed = true }
+    assertTrue(pageFailed)
+    var profileFailed = false
+    try { readProfileStatsSnapshot(db.telemetryDao(), emptyMap(), gapMs) } catch (_: Exception) { profileFailed = true }
+    assertTrue(profileFailed)
+    db.close()
+    Files.deleteIfExists(path)
+  }
+
   @Test
   fun failedTransactionRollsBackAndStopsIngestion(): Unit = runBlocking {
     val path = Files.createTempFile("vescape-recording-failure", ".db")

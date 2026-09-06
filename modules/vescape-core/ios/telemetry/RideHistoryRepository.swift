@@ -58,19 +58,31 @@ internal struct RideSessionAggregate {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt
 internal final class RideHistoryRepository {
   static let shared = RideHistoryRepository()
-  private var pool: DatabasePool? { TelemetryDatabase.pool }
-  private init() {}
+  private let poolProvider: () throws -> DatabasePool
+  private let gapMsProvider: () -> Int64
+
+  internal init(
+    poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
+    gapMsProvider: @escaping () -> Int64 = {
+      let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
+      return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
+    }
+  ) {
+    self.poolProvider = poolProvider
+    self.gapMsProvider = gapMsProvider
+  }
 
   /// @parity /modules/vescape-core/src/index.ts `RideHistoryPage`
-  func getPage(_ options: [String: Any]) -> [String: Any?] {
+  func getPage(_ options: [String: Any]) throws -> [String: Any?] {
     let limit = min(maxRidePageSize, max(1, telemetryInt(options["limit"]) ?? 10))
     var beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? Int64.max
-    let gapMs = rideSplitGapMs()
-    guard let pool else { return ["sessions": [], "hasMore": false, "nextCursorBeforeMs": nil] }
-    // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
-    // relabels the whole Ride History. Read up front: GRDB forbids a nested `read` on the pool.
-    let boardNames = TelemetryRepository.boardNamesById()
-    return (try? pool.read { db in
+    let gapMs = gapMsProvider()
+    let pool = try poolProvider()
+    return try pool.read { db in
+      // Names resolve from `boards` on read, never off the bucket row (ADR 0028).
+      let boardNames = try Row.fetchAll(db, sql: "SELECT id, name FROM boards").reduce(into: [String: String]()) {
+        $0[$1["id"] as String] = $1["name"] as String
+      }
       var buckets: [Row] = []
       var complete: [RideSessionAggregate] = []
       var hasOlderBuckets = true
@@ -105,13 +117,9 @@ internal final class RideHistoryRepository {
         "hasMore": hasMore,
         "nextCursorBeforeMs": hasMore ? page.last?.firstBucketStartMs : nil,
       ]
-    }) ?? ["sessions": [], "hasMore": false, "nextCursorBeforeMs": nil]
+    }
   }
 
-  private func rideSplitGapMs() -> Int64 {
-    let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
-    return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
-  }
 }
 
 /// Buckets arrive newest-first, so the only ride that may still grow backwards is the OLDEST one in

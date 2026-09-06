@@ -12,18 +12,18 @@ private let HISTORY_CHART_OVERVIEW_SAMPLES = 600
 // the SPM test target (`bun run test:ios`) compile and exercise them.
 
 extension TelemetryRepository {
-  func getRange(_ options: [String: Any]) -> [String: Any?] {
+  func getRange(_ options: [String: Any]) throws -> [String: Any?] {
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
-    guard let pool else { return emptyRangePayload() }
+    let pool = try TelemetryDatabase.requirePool()
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the range read below.
     let configs = batteryConfigByBoard()
     let boardNames = Self.boardNamesById()
     let windowMs = socWindowMs()
-    return (try? pool.read { db -> [String: Any?] in
+    return try pool.read { db -> [String: Any?] in
       let sampleRows = try Row.fetchAll(
         db,
         sql: """
@@ -62,7 +62,7 @@ extension TelemetryRepository {
           "exclusions": exclusions,
         ]
       )
-    }) ?? emptyRangePayload()
+    }
   }
 }
 

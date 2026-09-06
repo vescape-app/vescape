@@ -5,6 +5,15 @@ struct Failure: Error, CustomStringConvertible {
   let description: String
 }
 
+// The production repositories' default app adapter is not used by this host runner.
+final class AppDataRepository {
+  static let shared = AppDataRepository()
+  func getSettings() -> [String: Any?] { [:] }
+}
+
+func telemetryInt(_ raw: Any?) -> Int? { (raw as? NSNumber)?.intValue }
+func telemetryLong(_ raw: Any?) -> Int64? { (raw as? NSNumber)?.int64Value }
+
 let started = Date()
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let fixtureURL = root.appendingPathComponent("shared/recording-persistence-contract.json")
@@ -84,6 +93,79 @@ try queue!.read { db in
 }
 try queue!.close()
 try FileManager.default.removeItem(at: databaseURL)
+
+let historyFixtureURL = root.appendingPathComponent("shared/history-read-contract.json")
+let historyFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: historyFixtureURL)) as! [String: Any]
+try require(historyFixture["scenario"] as? String == "precomputed-history-reads", "unknown history scenario")
+let historyExpected = historyFixture["expected"] as! [String: Any]
+let gapMs = Int64(int(historyFixture["gapMs"]))
+let historyURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-history-\(UUID().uuidString).db")
+let historyPool = try DatabasePool(path: historyURL.path)
+try TelemetryDatabase.migrator.migrate(historyPool)
+let history = RideHistoryRepository(poolProvider: { historyPool }, gapMsProvider: { gapMs })
+let profile = ProfileStatsRepository(poolProvider: { historyPool }, gapMsProvider: { gapMs })
+let emptyPage = try history.getPage(["limit": int(historyFixture["pageSize"])])
+try require((emptyPage["sessions"] as! [[String: Any?]]).count == int(historyExpected["emptySessionCount"]), "empty history")
+let emptyStats = try profile.getProfileStatsSnapshot([:])
+try require((emptyStats["total"] as! [String: Any?])["rideCount"] as! Int == int(historyExpected["emptyRideCount"]), "empty profile")
+
+let current = buildTelemetryBuckets(points).first!
+let nextPoints = samples.map { sample in
+  BucketTelemetryPoint(
+    capturedAtMs: Int64(int(sample["capturedAtMs"])) + 60_000, boardId: boardId,
+    speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: int(sample["batteryVoltageMv"]),
+    motorCurrentMa: 5_000, batteryCurrentMa: 2_000, dutyPermille: 200,
+    odometerCm: Int64(int(sample["odometerCm"])) + 100, tempMosfetDeciC: 300, tempMotorDeciC: 350,
+    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
+    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+  )
+}
+let currentNext = buildTelemetryBuckets(nextPoints).first!
+let offset = Int64(int(historyFixture["olderRideOffsetMs"]))
+let olderPoints = samples.map { sample in
+  BucketTelemetryPoint(
+    capturedAtMs: Int64(int(sample["capturedAtMs"])) - offset, boardId: boardId,
+    speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: int(sample["batteryVoltageMv"]),
+    motorCurrentMa: 5_000, batteryCurrentMa: 2_000, dutyPermille: 200,
+    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 350,
+    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
+    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+  )
+}
+let older = buildTelemetryBuckets(olderPoints).first!
+try historyPool.write { db in
+  for bucket in [current, currentNext, older] {
+    try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
+  }
+}
+let firstPage = try history.getPage(["limit": int(historyFixture["pageSize"])])
+try require((firstPage["sessions"] as! [[String: Any?]]).count == int(historyExpected["firstPageSessionCount"]), "first page count")
+try require(firstPage["hasMore"] as? Bool == historyExpected["firstPageHasMore"] as? Bool, "first page hasMore")
+let currentSession = (firstPage["sessions"] as! [[String: Any?]]).first!
+try require(currentSession["startAtMs"] as? Int64 == Int64(int(historyExpected["currentStartAtMs"])), "current start")
+try require(currentSession["endAtMs"] as? Int64 == Int64(int(historyExpected["currentEndAtMs"])), "current end")
+try require(currentSession["sampleCount"] as? Int == int(historyExpected["currentSampleCount"]), "current samples")
+try require(currentSession["distanceM"] as? Double == historyExpected["currentDistanceM"] as? Double, "current distance")
+let secondPage = try history.getPage(["limit": int(historyFixture["pageSize"]), "cursorBeforeMs": firstPage["nextCursorBeforeMs"] as Any])
+try require((secondPage["sessions"] as! [[String: Any?]]).count == int(historyExpected["secondPageSessionCount"]), "second page count")
+try require(secondPage["hasMore"] as? Bool == historyExpected["secondPageHasMore"] as? Bool, "second page hasMore")
+try require((secondPage["sessions"] as! [[String: Any?]]).first?["startAtMs"] as? Int64 == older.firstSampleAtMs, "older ride")
+let populatedStats = try profile.getProfileStatsSnapshot([:])
+let total = populatedStats["total"] as! [String: Any?]
+try require(total["rideCount"] as! Int == int(historyExpected["profileRideCount"]), "profile ride count")
+try require(total["rideTimeMs"] as! Int64 == Int64(int(historyExpected["profileRideTimeMs"])), "profile ride time")
+try require(total["distanceM"] as? Double == historyExpected["profileDistanceM"] as? Double, "profile distance")
+try require(total["topSpeedKmh"] as? Double == historyExpected["profileTopSpeedKmh"] as? Double, "profile top speed")
+try require(total["avgSpeedKmh"] as? Double == historyExpected["profileAvgSpeedKmh"] as? Double, "profile average speed")
+try require((populatedStats["months"] as! [[String: Int]]).count == int(historyExpected["profileMonthCount"]), "profile months")
+let selectedMonth = populatedStats["selectedMonth"] as! [String: Int]
+try require(selectedMonth["year"] == int(historyExpected["selectedYear"]), "selected year")
+try require(selectedMonth["month"] == int(historyExpected["selectedMonth"]), "selected month")
+try historyPool.write { db in try db.drop(table: "telemetry_minute_buckets") }
+do { _ = try history.getPage([:]); throw Failure(description: "history query failure became empty") } catch is DatabaseError {}
+do { _ = try profile.getProfileStatsSnapshot([:]); throw Failure(description: "profile query failure became empty") } catch is DatabaseError {}
+try historyPool.close()
+try FileManager.default.removeItem(at: historyURL)
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

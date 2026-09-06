@@ -40,6 +40,20 @@ that Sentry received an event. A release-device delivery check must trigger the 
 recording write failure, copy the returned Sentry event id, and confirm that exact event in the
 production project without adding sample, location, SQL, or argument data.
 
+## History read contract
+
+Issue #466 extends `bun run test:persistence` with the shared
+`modules/vescape-core/shared/history-read-contract.json` scenario. Both real databases execute the
+production Ride History and Profile stats read paths against an empty database, a two-bucket current
+ride plus a gap-separated older ride, and a deterministically broken bucket table. The runners assert
+the same paging, timing, distance, speed, duration, and month results; a query failure must throw
+instead of becoming a valid empty result.
+
+Native bridge adapters reject failed history reads and report one sanitized Sentry event per read
+operation with `query_failed`. Read failures do not enter Ride Recording failure state or close its
+write gate. JS clears previously loaded history/profile values and uses the existing error surfaces;
+recovery guidance remains an app restart.
+
 ## Implementation issues
 
 - #461 — Test recording across hosts

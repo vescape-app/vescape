@@ -578,20 +578,36 @@ public class VescapeCoreModule: Module {
     // MARK: Telemetry history
 
     AsyncFunction("getTelemetryHistory") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getHistory(options))
+      do { promise.resolve(try TelemetryRepository.shared.getHistory(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_buckets_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRideHistoryPage`
     AsyncFunction("getRideHistoryPage") { (options: [String: Any], promise: Promise) in
-      promise.resolve(RideHistoryRepository.shared.getPage(options))
+      do { promise.resolve(try RideHistoryRepository.shared.getPage(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_page_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
 
     AsyncFunction("getTelemetrySamples") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getSamples(options))
+      do { promise.resolve(try TelemetryRepository.shared.getSamples(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_samples_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
 
     AsyncFunction("getHistoryRange") { (options: [String: Any], promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getRange(options))
+      do { promise.resolve(try TelemetryRepository.shared.getRange(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_range_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
 
     Function("reportUiError") { (message: String, source: String?, stack: String?) in
@@ -718,7 +734,11 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("getTelemetrySummary") { (promise: Promise) in
-      promise.resolve(TelemetryRepository.shared.getSummary())
+      do { promise.resolve(try TelemetryRepository.shared.getSummary()) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "history_summary_read", error: error)
+        promise.reject("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
 
     AsyncFunction("getDatabaseSizeBytes") { () -> Int in
@@ -871,7 +891,11 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getProfileStatsSnapshot`
     AsyncFunction("getProfileStatsSnapshot") { (options: [String: Any], promise: Promise) in
-      promise.resolve(ProfileStatsRepository.shared.getProfileStatsSnapshot(options))
+      do { promise.resolve(try ProfileStatsRepository.shared.getProfileStatsSnapshot(options)) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "profile_stats_read", error: error)
+        promise.reject("ERR_PROFILE_STATS_READ", "Could not load profile stats", error)
+      }
     }
 
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps

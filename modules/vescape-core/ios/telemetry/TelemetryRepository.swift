@@ -116,11 +116,9 @@ internal final class TelemetryRepository {
     }
   }
 
-  func getSummary() -> [String: Any?] {
-    guard let pool else {
-      return ["sampleCount": 0, "gpsPointCount": 0, "firstAtMs": nil, "lastAtMs": nil, "droppedPendingSamples": 0]
-    }
-    return (try? pool.read { db in
+  func getSummary() throws -> [String: Any?] {
+    let pool = try TelemetryDatabase.requirePool()
+    return try pool.read { db in
       [
         "sampleCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") ?? 0,
         "gpsPointCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE latitude_e7 IS NOT NULL") ?? 0,
@@ -128,18 +126,18 @@ internal final class TelemetryRepository {
         "lastAtMs": try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
         "droppedPendingSamples": 0,
       ]
-    }) ?? ["sampleCount": 0, "gpsPointCount": 0, "firstAtMs": nil, "lastAtMs": nil, "droppedPendingSamples": 0]
+    }
   }
 
-  func getHistory(_ options: [String: Any]) -> [[String: Any?]] {
+  func getHistory(_ options: [String: Any]) throws -> [[String: Any?]] {
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? toMs
     let limit = min(500, max(1, telemetryInt(options["limit"]) ?? DEFAULT_HISTORY_LIMIT))
     let boardId = options["boardId"] as? String
-    guard let pool else { return [] }
+    let pool = try TelemetryDatabase.requirePool()
     let boardNames = Self.boardNamesById()
-    return (try? pool.read { db in
+    return try pool.read { db in
       let rows = try Row.fetchAll(
         db,
         sql: """
@@ -159,11 +157,11 @@ internal final class TelemetryRepository {
         arguments: [markerFrom, markerTo, boardId, boardId]
       )
       return rows.map { historyMap($0, markers: markers, boardNames: boardNames) }
-    }) ?? []
+    }
   }
 
-  func getSamples(_ options: [String: Any]) -> [[String: Any?]] {
-    guard let pool else { return [] }
+  func getSamples(_ options: [String: Any]) throws -> [[String: Any?]] {
+    let pool = try TelemetryDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
@@ -173,7 +171,7 @@ internal final class TelemetryRepository {
     let configs = batteryConfigByBoard()
     let boardNames = Self.boardNamesById()
     let windowMs = socWindowMs()
-    return (try? pool.read { db in
+    return try pool.read { db in
       let rows = try Row.fetchAll(
         db,
         sql: """
@@ -186,7 +184,7 @@ internal final class TelemetryRepository {
       )
       let percents = self.batteryPercents(rows, configs: configs, windowMs: windowMs)
       return zip(rows, percents).map { sampleMap($0.0, batteryPercent: $0.1, boardNames: boardNames) }
-    }) ?? []
+    }
   }
 
   // MARK: - Battery SoC on read (ADR-0016)

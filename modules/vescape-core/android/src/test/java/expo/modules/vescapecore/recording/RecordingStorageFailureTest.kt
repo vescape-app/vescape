@@ -39,13 +39,23 @@ class RecordingStorageFailureTest {
   @Test fun `report is sanitized and emitted once per episode`() {
     val reports = mutableListOf<RecordingFailureReport>()
     val reporter = RecordingFailureReporter(reports::add)
-    reporter.report(RecordingStorageFailureKind.FullDisk, SQLiteFullException("private SQL and args"))
-    reporter.report(RecordingStorageFailureKind.FullDisk, SQLiteFullException("again"))
+    reporter.report("recording_commit", "full_disk", SQLiteFullException("private SQL and args"))
+    reporter.report("recording_commit", "full_disk", SQLiteFullException("again"))
     assertEquals(1, reports.size)
     assertEquals(
       RecordingFailureReport("recording_commit", "full_disk", "SQLiteFullException"),
       reports.single(),
     )
+  }
+
+  @Test fun `different read operations each report once without recording labels`() {
+    val reports = mutableListOf<RecordingFailureReport>()
+    val reporter = RecordingFailureReporter(reports::add)
+    reporter.report("history_page_read", "query_failed", SQLiteException("private"))
+    reporter.report("history_page_read", "query_failed", SQLiteException("again"))
+    reporter.report("profile_stats_read", "query_failed", SQLiteException("private"))
+    assertEquals(listOf("history_page_read", "profile_stats_read"), reports.map { it.operation })
+    assertEquals(listOf("query_failed", "query_failed"), reports.map { it.category })
   }
 
   @Test fun `write gate stops ingestion and reports once`() {

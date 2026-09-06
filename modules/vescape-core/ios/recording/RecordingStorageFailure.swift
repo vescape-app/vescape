@@ -29,16 +29,15 @@ internal struct RecordingFailureReport: Equatable {
 
 internal final class RecordingFailureReporter {
   private let lock = NSLock()
-  private var reported = false
+  private var reported: Set<String> = []
   private let sink: (RecordingFailureReport) -> Void
 
   init(sink: @escaping (RecordingFailureReport) -> Void) { self.sink = sink }
 
-  func report(kind: RecordingStorageFailureKind, error: Error) {
+  func report(operation: String, category: String, error: Error) {
     lock.lock(); defer { lock.unlock() }
-    guard !reported else { return }
-    reported = true
-    sink(.init(operation: "recording_commit", category: kind.rawValue, errorType: String(describing: type(of: error))))
+    guard reported.insert(operation).inserted else { return }
+    sink(.init(operation: operation, category: category, errorType: String(describing: type(of: error))))
   }
 }
 
@@ -80,7 +79,7 @@ internal enum RecordingStorageFailure {
   private static var startupChecked = false
   private static let reporter = RecordingFailureReporter { report in
 #if canImport(Sentry)
-    SentrySDK.capture(message: "Ride Recording persistence failed") { scope in
+    SentrySDK.capture(message: "Local persistence operation failed") { scope in
       scope.setTag(value: report.operation, key: "persistence.operation")
       scope.setTag(value: report.category, key: "persistence.category")
       scope.setExtra(value: report.errorType, key: "persistence.error_type")
@@ -131,8 +130,13 @@ internal enum RecordingStorageFailure {
     let resolved = resolveRecordingFailureKind(current: current, incoming: kind)
     current = resolved
     if resolved != .writeFailed { UserDefaults.standard.set(resolved.rawValue, forKey: key) }
-    reporter.report(kind: resolved, error: error)
+    reporter.report(operation: "recording_commit", category: resolved.rawValue, error: error)
     return resolved
+  }
+
+  /// Reports a failed read without changing the recording gate or durable failure state.
+  static func reportRead(operation: String, error: Error) {
+    reporter.report(operation: operation, category: "query_failed", error: error)
   }
 
   static func classify(_ error: Error) -> RecordingStorageFailureKind {

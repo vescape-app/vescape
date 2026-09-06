@@ -28,12 +28,11 @@ internal fun resolveRecordingFailureKind(
 internal data class RecordingFailureReport(val operation: String, val category: String, val errorType: String)
 
 internal class RecordingFailureReporter(private val sink: (RecordingFailureReport) -> Unit) {
-    private var reported = false
+    private val reported = mutableSetOf<String>()
 
-    @Synchronized fun report(kind: RecordingStorageFailureKind, error: Throwable) {
-        if (reported) return
-        reported = true
-        sink(RecordingFailureReport("recording_commit", kind.wireValue, error.javaClass.simpleName))
+    @Synchronized fun report(operation: String, category: String, error: Throwable) {
+        if (!reported.add(operation)) return
+        sink(RecordingFailureReport(operation, category, error.javaClass.simpleName))
     }
 }
 
@@ -52,7 +51,7 @@ internal object RecordingStorageFailure {
             scope.setTag("persistence.operation", report.operation)
             scope.setTag("persistence.category", report.category)
             scope.setExtra("persistence.error_type", report.errorType)
-            Sentry.captureMessage("Ride Recording persistence failed")
+            Sentry.captureMessage("Local persistence operation failed")
         }
     }
 
@@ -107,8 +106,13 @@ internal object RecordingStorageFailure {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_KIND, resolved.wireValue).apply()
         }
-        reporter.report(resolved, error)
+        reporter.report("recording_commit", resolved.wireValue, error)
         return resolved
+    }
+
+    /** Reports a failed read without changing the recording gate or durable failure state. */
+    fun reportRead(operation: String, error: Throwable) {
+        reporter.report(operation, "query_failed", error)
     }
 
     fun value(): RecordingStorageFailureKind? = current

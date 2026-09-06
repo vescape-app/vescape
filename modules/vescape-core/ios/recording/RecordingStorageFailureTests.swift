@@ -24,9 +24,19 @@ final class RecordingStorageFailureTests: XCTestCase {
   func testReportIsSanitizedAndEmittedOncePerEpisode() {
     var reports: [RecordingFailureReport] = []
     let reporter = RecordingFailureReporter { reports.append($0) }
-    reporter.report(kind: .fullDisk, error: DatabaseError(resultCode: .SQLITE_FULL, message: "private SQL and args"))
-    reporter.report(kind: .fullDisk, error: DatabaseError(resultCode: .SQLITE_FULL, message: "again"))
+    reporter.report(operation: "recording_commit", category: "full_disk", error: DatabaseError(resultCode: .SQLITE_FULL, message: "private SQL and args"))
+    reporter.report(operation: "recording_commit", category: "full_disk", error: DatabaseError(resultCode: .SQLITE_FULL, message: "again"))
     XCTAssertEqual(reports, [.init(operation: "recording_commit", category: "full_disk", errorType: "DatabaseError")])
+  }
+
+  func testDifferentReadOperationsEachReportOnceWithoutRecordingLabels() {
+    var reports: [RecordingFailureReport] = []
+    let reporter = RecordingFailureReporter { reports.append($0) }
+    reporter.report(operation: "history_page_read", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
+    reporter.report(operation: "history_page_read", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
+    reporter.report(operation: "profile_stats_read", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
+    XCTAssertEqual(reports.map(\.operation), ["history_page_read", "profile_stats_read"])
+    XCTAssertEqual(reports.map(\.category), ["query_failed", "query_failed"])
   }
 
   func testWriteGateStopsIngestionAndReportsOnce() {

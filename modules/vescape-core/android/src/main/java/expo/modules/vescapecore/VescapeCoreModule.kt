@@ -14,6 +14,7 @@ import expo.modules.vescapecore.service.CompanionPresence
 import expo.modules.vescapecore.service.CompanionRestartGate
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.recording.DebugRecordingStore
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.replay.ReplayRecordings
 import expo.modules.vescapecore.diagnostics.DiagnosticReporter
 import expo.modules.vescapecore.service.ManualDisconnectAutoStartGate
@@ -60,6 +61,7 @@ import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import expo.modules.vescapecore.location.LegalPolicyResolver
 import expo.modules.vescapecore.location.LegalPolicyCatalog
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -632,20 +634,46 @@ class VescapeCoreModule : Module() {
       cancelActiveProbe(probeId, "js_cancelled")
     }
     AsyncFunction("getTelemetryHistory") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).getHistory(options)
+      try { TelemetryRepository.get(context.applicationContext).getHistory(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_buckets_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRideHistoryPage`
     AsyncFunction("getRideHistoryPage") Coroutine { options: Map<String, Any?> ->
-      RideHistoryRepository.get(context.applicationContext).getPage(options)
+      try {
+        RideHistoryRepository.get(context.applicationContext).getPage(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_page_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getTelemetrySamples") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).getSamples(options)
+      try { TelemetryRepository.get(context.applicationContext).getSamples(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_samples_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getHistoryRange") Coroutine { options: Map<String, Any?> ->
-      TelemetryRepository.get(context.applicationContext).getRange(options)
+      try { TelemetryRepository.get(context.applicationContext).getRange(options) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_range_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getTelemetrySummary") {
-      runBlocking { TelemetryRepository.get(context.applicationContext).getSummary() }
+      try { runBlocking { TelemetryRepository.get(context.applicationContext).getSummary() } }
+      catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("history_summary_read", error)
+        throw CodedException("ERR_HISTORY_READ", "Could not load ride history", error)
+      }
     }
     AsyncFunction("getDiagnosticEvents") Coroutine { options: Map<String, Any?> ->
       TelemetryRepository.get(context.applicationContext).getDiagnosticEvents(options)
@@ -833,7 +861,13 @@ class VescapeCoreModule : Module() {
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getProfileStatsSnapshot`
     AsyncFunction("getProfileStatsSnapshot") Coroutine { options: Map<String, Any?> ->
-      ProfileStatsRepository.get(context.applicationContext).getProfileStatsSnapshot(options)
+      try {
+        ProfileStatsRepository.get(context.applicationContext).getProfileStatsSnapshot(options)
+      } catch (error: CancellationException) { throw error }
+      catch (error: Exception) {
+        RecordingStorageFailure.reportRead("profile_stats_read", error)
+        throw CodedException("ERR_PROFILE_STATS_READ", "Could not load profile stats", error)
+      }
     }
     // Favorites (ADR 0029). JS supplies only the range and an optional name; identity, timestamps
     // and the denormalized summary are native.

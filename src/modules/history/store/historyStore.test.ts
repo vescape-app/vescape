@@ -161,6 +161,27 @@ beforeEach(async () => {
   })
 })
 
+test('failed initial read clears prior history instead of presenting it as current', async () => {
+  const prior = block({ id: 'prior', startAtMs: 1_000, endAtMs: 2_000 })
+  getRideHistoryPage.mockRejectedValueOnce(new Error('Could not load ride history'))
+  const { useHistoryStore } = await import('@/modules/history/store/historyStore')
+  useHistoryStore.setState({
+    blocks: [prior],
+    sessions: [sessionFromBucket(prior)],
+    summary,
+  })
+
+  await useHistoryStore.getState().loadInitial()
+
+  expect(useHistoryStore.getState()).toMatchObject({
+    blocks: [],
+    sessions: [],
+    summary: null,
+    loading: false,
+    error: 'Could not load ride history',
+  })
+})
+
 test('removes selected session from history and selects next ride', async () => {
   const newest = block({
     id: 'newest',

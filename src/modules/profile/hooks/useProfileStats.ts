@@ -60,6 +60,10 @@ export function useProfileStats(active = true) {
       setMonthly(resolvedSnapshot.monthly)
       loadedRef.current = true
     } catch (err) {
+      setTotal(EMPTY_PROFILE_STATS)
+      setMonthly(EMPTY_PROFILE_STATS)
+      setMonths([])
+      loadedRef.current = false
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
@@ -82,6 +86,10 @@ export function useProfileStats(active = true) {
       setMonths(snapshot.months)
       setMonthly(snapshot.monthly)
     } catch (err) {
+      setTotal(EMPTY_PROFILE_STATS)
+      setMonthly(EMPTY_PROFILE_STATS)
+      setMonths([])
+      loadedRef.current = false
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setMonthLoading(false)
@@ -98,7 +106,7 @@ export function useProfileStats(active = true) {
     error,
     refresh,
     selectMonth,
-    /** True until native has answered once — nothing recorded yet reads the same as no data. */
+    /** Successful zero-ride result; callers render `error` first when the read failed. */
     empty: total.rideCount === 0,
   }
 }
