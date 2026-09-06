@@ -126,12 +126,16 @@ object ReplaySceneParser {
     }
 }
 
-object ReplayGate {
+/**
+ * The gate every emulator-only dev mode passes through: fixture replay, and the forced ambient
+ * rendering the always-on layout is worked on with. A real watch and a release build have neither.
+ */
+object DevGate {
     /**
-     * Replay is an explicit emulator dev mode, entered by `bun run wear:replay`. A normal emulator
-     * launch listens to its paired phone like a real watch instead of silently replacing those
-     * frames with a fixture. Emulator detection reads [Build] rather than `ro.kernel.qemu`, which
-     * is not readable from the SDK.
+     * A dev mode is explicit and never inferred: `bun run wear:replay` asks for one, and a normal
+     * emulator launch listens to its paired phone like a real watch instead of silently replacing
+     * those frames with a fixture. Emulator detection reads [Build] rather than `ro.kernel.qemu`,
+     * which is not readable from the SDK.
      */
     fun isEnabled(context: Context, requested: Boolean): Boolean =
         requested && isDebuggable(context) && isEmulator()

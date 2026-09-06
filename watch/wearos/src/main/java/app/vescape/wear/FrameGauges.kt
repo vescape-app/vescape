@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -48,6 +49,13 @@ import kotlin.math.sin
  * navigation overlay ([NavPointer]) on top whenever the phone is sending a destination. [muted] dims
  * every value so a frozen (stale) reading is never shown as live.
  *
+ * [ambient] is the always-on rendering of this same layout, not a second one: see [AmbientMode] for
+ * which lanes keep their reading there and which stay an empty skeleton.
+ *
+ * [showReadouts] strips every value out of the shell — heroes, curved temps, battery percent — and
+ * leaves the arcs, the clock and the forecast. A stalled stream has nothing to put in them but
+ * dashes, and a ring of dashes is noise around the one thing worth reading: why it stalled.
+ *
  * This layout is pinned at the root of the mirror, over both pagers: the rim arcs are permanent
  * furniture and never move, whatever page the rider swipes to. It draws above the pages so the
  * forecast readout can be tapped at all; that readout is the only thing here that takes pointer
@@ -70,12 +78,24 @@ internal fun FrameLayout(
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
+    ambient: AmbientMode = AmbientOff,
+    showReadouts: Boolean = true,
 ) {
-    val speedColor = if (muted || frame.speed == null) DimText else SpeedColor
-    val dutyColor = if (muted || frame.duty == null) DimText else DutyColor
-    val battColor = if (muted || frame.battery == null) DimText else batteryColor(frame.battery)
-    val motorColor = if (muted || frame.motorTemp == null) DimText else MotorTempColor
-    val ctrlColor = if (muted || frame.ctrlTemp == null) DimText else CtrlTempColor
+    // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
+    // exactly the ones that have stopped arriving, so ambient empties every lane instead.
+    val ambientBlind = ambient.active && muted
+    val speedColor = ambient.skeleton(if (muted || frame.speed == null) DimText else SpeedColor)
+    val dutyColor = ambient.skeleton(if (muted || frame.duty == null) DimText else DutyColor)
+    // Low battery keeps its warning colour into ambient: it is the one reading a glance must not
+    // mistake for ordinary state. A low-bit panel cannot render it, so there it falls back to tint.
+    val battColor = when {
+        muted || frame.battery == null -> ambient.skeleton(DimText)
+        ambient.active && !ambient.lowBit && frame.battery < BATTERY_WARNING_PERCENT -> WarningColor
+        else -> ambient.readout(batteryColor(frame.battery))
+    }
+    val motorColor = laneColor(ambient, frame.motorTemp, muted, MotorTempColor)
+    val ctrlColor = laneColor(ambient, frame.ctrlTemp, muted, CtrlTempColor)
+    val offset = ambient.burnInOffset()
 
     // Readouts leave for any focus mode; the nav stack survives nav focus alone.
     val readoutFocus = { maxOf(focus(), controlFocus(), weatherFocus()) }
@@ -86,8 +106,9 @@ internal fun FrameLayout(
     val hasNav = navBearing != null && navDistance != null
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Bottom layer: route ahead + rider dot, under every gauge and readout.
-        if (hasNav) {
+        // Bottom layer: route ahead + rider dot, under every gauge and readout. Ambient skips it:
+        // the lanes animate their zoom, and a moving map is the most expensive thing on the panel.
+        if (hasNav && !ambient.active) {
             Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = navStackAlpha() }) {
                 NavRoute(frame = frame, muted = muted, navFocus = focus)
             }
@@ -97,15 +118,17 @@ internal fun FrameLayout(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = size.minDimension / 2f - GAUGE_RIM_INSET.toPx()
             val center = Offset(size.width / 2f, size.height / 2f)
-            val speedFrac = ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
-            val dutyFrac = ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
-            val battFrac = ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
-            val motorFrac = tempFraction(frame.motorTemp)
-            val ctrlFrac = tempFraction(frame.ctrlTemp)
+            // Every lane keeps its last reading in ambient; a frame that has stopped arriving
+            // empties all of them at once.
+            val speedFrac = if (ambientBlind) 0f else ((frame.speed ?: 0.0) / SPEED_MAX).toFloat().coerceIn(0f, 1f)
+            val dutyFrac = if (ambientBlind) 0f else ((frame.duty ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
+            val battFrac = if (ambientBlind) 0f else ((frame.battery ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
+            val motorFrac = if (ambientBlind) 0f else tempFraction(frame.motorTemp)
+            val ctrlFrac = if (ambientBlind) 0f else tempFraction(frame.ctrlTemp)
             // Read in the draw scope, so a drag repaints the arcs without recomposing them.
             // The wedge fills recede on a focused page: the rim lines still carry the values, but
             // their glow stops competing with whatever took the centre of the circle.
-            val glowDim = dimGlow(readoutFocus())
+            val glowDim = ambient.glow(dimGlow(readoutFocus()))
             val motorGlow = (0.08f + 0.40f * motorFrac) * glowDim
             val ctrlGlow = (0.08f + 0.40f * ctrlFrac) * glowDim
             val battGlow = (0.06f + 0.20f * battFrac) * glowDim
@@ -127,7 +150,7 @@ internal fun FrameLayout(
             NavPointer(
                 bearingDeg = navBearing!!,
                 distanceM = navDistance!!,
-                muted = muted,
+                muted = muted || ambient.active,
                 focus = focus,
                 stackAlpha = navStackAlpha,
             )
@@ -139,26 +162,32 @@ internal fun FrameLayout(
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
         // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
-        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp), "MOTOR", motorColor, readoutFocus)
-        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp), "CTRL", ctrlColor, readoutFocus)
+        if (showReadouts) {
+            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
+            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+        }
 
         // ── Top: wall clock at the rim gap, forecast under it ──
         // Its own stack, so the heroes below never move when the forecast appears or disappears.
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .offset(offset.x, offset.y)
                 .padding(top = 8.dp)
                 .graphicsLayer { alpha = fadeOut(readoutFocus()) },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            WatchClock(color = if (muted) DimText else SecondaryText)
-            WeatherReadout(muted = muted, onClick = onWeatherClick)
+            // Both survive ambient unchanged: the mirror hides the system clock, and a forecast is
+            // the slowest-moving thing on the screen.
+            WatchClock(color = ambient.readout(if (muted) DimText else SecondaryText))
+            WeatherReadout(muted = muted || ambient.active, onClick = onWeatherClick)
         }
 
         // ── Speed + duty: pinned to the rim, not stacked under the clock ──
-        Row(
+        if (showReadouts) Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .offset(offset.x, offset.y)
                 .fillMaxWidth()
                 .padding(start = 32.dp, end = 32.dp, top = HERO_TOP_INSET)
                 .graphicsLayer {
@@ -172,18 +201,21 @@ internal fun FrameLayout(
                 },
             verticalAlignment = Alignment.Bottom,
         ) {
-            LargeGaugeValue(Modifier.weight(1f), frame.speed?.let { format(it, 0) } ?: DASH, "km/h", speedColor)
-            LargeGaugeValue(Modifier.weight(1f), frame.duty?.let { format(it, 0) } ?: DASH, "%", dutyColor)
+            // Ambient keeps the slots, the sizes and the units, and only drains the colour, so
+            // waking lights the numbers where they already were instead of rebuilding the screen.
+            LargeGaugeValue(Modifier.weight(1f), heroValue(frame.speed, ambientBlind), "km/h", speedColor)
+            LargeGaugeValue(Modifier.weight(1f), heroValue(frame.duty, ambientBlind), "%", dutyColor)
         }
 
         // ── Bottom: battery % above the bottom gauge ──
-        Text(
+        if (showReadouts) Text(
             // Same size as the curved temp values so the three secondary readouts match.
-            text = frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
+            text = if (ambientBlind) DASH else frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
             style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
             color = battColor,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .offset(offset.x, offset.y)
                 .padding(bottom = 16.dp)
                 .graphicsLayer {
                     val f = readoutFocus()
@@ -229,17 +261,6 @@ private fun NavAbsentHint(focus: () -> Float, stackAlpha: () -> Float) {
             modifier = Modifier.padding(top = 4.dp),
         )
     }
-}
-
-/** Ambient rendering of a frame: a single dim speed hero. */
-@Composable
-internal fun AmbientLayout(frame: WatchFrame) {
-    Text(
-        text = frame.speed?.let { format(it, 0) } ?: DASH,
-        style = MaterialTheme.typography.display1,
-        color = AmbientText,
-        textAlign = TextAlign.Center,
-    )
 }
 
 /**
@@ -338,13 +359,26 @@ private fun LargeGaugeValue(modifier: Modifier, value: String, unit: String, col
 
 private fun format(value: Double, decimals: Int): String = String.format("%.${decimals}f", value)
 
-private fun temp(value: Double?): String = value?.let { "${format(it, 0)}°" } ?: DASH
+private fun temp(value: Double?, blind: Boolean = false): String =
+    if (blind) DASH else value?.let { "${format(it, 0)}°" } ?: DASH
+
+private fun heroValue(value: Double?, blind: Boolean): String =
+    if (blind) DASH else value?.let { format(it, 0) } ?: DASH
 
 private fun batteryColor(value: Double?): Color = when {
     value == null -> SecondaryText
-    value < 20.0 -> WarningColor
+    value < BATTERY_WARNING_PERCENT -> WarningColor
     else -> BatteryColor
 }
+
+private const val BATTERY_WARNING_PERCENT = 20.0
+
+/**
+ * A lane's colour. Ambient only tints as a [readout] what it actually has: an absent or frozen lane
+ * is a [skeleton] there, so a missing reading never renders brighter than a real one.
+ */
+private fun laneColor(ambient: AmbientMode, value: Double?, muted: Boolean, color: Color): Color =
+    if (muted || value == null) ambient.skeleton(DimText) else ambient.readout(color)
 
 // Top rim gauges: 90° quarter-circles, small gap at top center. Battery: shallow bottom arc.
 private const val TOP_GAP = 2f

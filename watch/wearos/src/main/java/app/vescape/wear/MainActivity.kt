@@ -31,11 +31,11 @@ class MainActivity : ComponentActivity() {
     private val frameReplayer by lazy { FrameReplayer(this) }
     private val ongoingActivityController by lazy { OngoingActivityController(this) }
     private val commandSender by lazy { CommandSender(this) }
-    private val isAmbient = mutableStateOf(false)
+    private val ambient = mutableStateOf(AmbientOff)
     private val wakeHeartbeat = Handler(Looper.getMainLooper())
     private val ambientObserver = AmbientLifecycleObserver(this, AmbientCallback())
     private val replayEnabled by lazy {
-        ReplayGate.isEnabled(this, intent?.hasExtra("replay") == true)
+        DevGate.isEnabled(this, intent?.hasExtra("replay") == true)
     }
     private val requestPostNotifications = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -150,10 +150,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             MirrorScreen(
                 sender = commandSender,
-                isAmbient = isAmbient.value,
+                ambient = ambient.value,
                 onRequestClose = { finishAndRemoveTask() },
             )
         }
+        forceAmbientWhenRequested()
         startOngoingActivityWhenAllowed()
     }
 
@@ -210,6 +211,25 @@ class MainActivity : ComponentActivity() {
     private fun replayFixture(): String =
         if (intent?.getStringExtra("replay") == "sweep") REPLAY_FIXTURE_SWEEP else REPLAY_FIXTURE_RIDE
 
+    /**
+     * Emulator-only: render as if the watch were in ambient, without asking the emulator to actually
+     * go always-on. The real path stays the only one on hardware — this exists because iterating on
+     * the always-on layout otherwise means power-cycling the screen between every screenshot.
+     *
+     * `adb shell am start -S -n <pkg>/app.vescape.wear.MainActivity --ez ambient true`
+     * (`-S` because a running instance keeps its original intent). Combines with `--es replay`, so
+     * the ambient layout can be watched against a recorded ride or the full lane sweep. The panel
+     * flags are the pessimistic pair: whatever survives here survives a real low-bit, burn-in screen.
+     */
+    private fun forceAmbientWhenRequested() {
+        if (!DevGate.isEnabled(this, intent?.getBooleanExtra("ambient", false) == true)) return
+        ambient.value = AmbientMode(
+            active = true,
+            lowBit = intent?.getBooleanExtra("lowBit", false) == true,
+            burnInProtection = intent?.getBooleanExtra("burnIn", false) == true,
+        )
+    }
+
     override fun onDestroy() {
         lifecycle.removeObserver(ambientObserver)
         wakeHeartbeat.removeCallbacksAndMessages(null)
@@ -238,18 +258,26 @@ class MainActivity : ComponentActivity() {
     private fun publishWakeLevel() {
         wakeHeartbeat.removeCallbacksAndMessages(null)
         if (replayEnabled) return
-        commandSender.sendWakeLevel(if (isAmbient.value) WakeLevel.AMBIENT else WakeLevel.ACTIVE)
+        commandSender.sendWakeLevel(if (ambient.value.active) WakeLevel.AMBIENT else WakeLevel.ACTIVE)
         wakeHeartbeat.postDelayed(::publishWakeLevel, WAKE_LEVEL_HEARTBEAT_MS)
     }
 
     private inner class AmbientCallback : AmbientLifecycleObserver.AmbientLifecycleCallback {
         override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
-            isAmbient.value = true
+            // The panel's own limits, not assumptions: a screen that cannot hold a colour palette
+            // and one that needs its pixels moved are both rendered for, and neither is guessed at.
+            ambient.value = AmbientMode(
+                active = true,
+                lowBit = ambientDetails.deviceHasLowBitAmbient,
+                burnInProtection = ambientDetails.burnInProtectionRequired,
+            )
+            phoneLinkMonitor.setAmbient(true)
             publishWakeLevel()
         }
 
         override fun onExitAmbient() {
-            isAmbient.value = false
+            ambient.value = AmbientOff
+            phoneLinkMonitor.setAmbient(false)
             publishWakeLevel()
         }
     }
