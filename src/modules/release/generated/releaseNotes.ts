@@ -2,6 +2,11 @@ import type { BundledReleaseNote } from '../lib/releaseNotes'
 
 export const bundledReleaseNotes = [
   {
+    version: '0.92.1',
+    markdown:
+      '## Fixed\n\n- Fixed ride recording on iOS so new rides save correctly and appear in ride history.\n\n## Watch\n\n- Wear OS always-on mode now keeps the full gauge layout visible, including battery and motor/controller temperatures, with readings refreshing every 10 seconds. Speed and duty are dimmed to indicate delayed readings, and stale telemetry clears instead of leaving frozen values on screen. Low battery keeps its warning color on supported displays.\n- Clearer connection messages distinguish a disconnected phone, a missing or outdated phone app, and a disconnected board, with guidance on what to do next.\n',
+  },
+  {
     version: '0.92.0',
     markdown:
       '## New\n\n- View animated rain radar on your watch, centered around your location with 50 km and 100 km range guides and a timeline of the last two hours.\n- Control your board’s lights and headlight independently from your watch on compatible Refloat firmware.\n- A status below the live gauges now clearly shows when GPS is starting, searching, weak, lost, off, or blocked, with quick access to navigation diagnostics.\n\n## Improved\n\n- Speed, duty, battery, and temperature gauges now stay pinned around the watch face while you use weather, navigation, Board Move, light controls, or diagnostics.\n- Rain radar in the app now adds labeled range rings, frames the full 100 km view, and resumes playback after you scrub the timeline.\n\n## Fixed\n\n- On iPhone, GPS now continues after a board disconnect and remembers your last precise location between app launches.\n',
