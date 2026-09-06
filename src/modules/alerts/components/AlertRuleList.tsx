@@ -45,9 +45,9 @@ export function AlertRuleList({
     setEditRule(null)
   }
 
-  const handleSave = (draft: AlertRuleDraft) => {
-    if (editRule) controller.updateRule(editRule.id, draft)
-    else controller.addRule(draft)
+  const handleSave = async (draft: AlertRuleDraft) => {
+    if (editRule) await controller.updateRule(editRule.id, draft)
+    else await controller.addRule(draft)
     closeForm()
   }
 
@@ -63,7 +63,7 @@ export function AlertRuleList({
             setEditRule(rule)
             setFormVisible(true)
           }}
-          onToggle={() => controller.toggleRule(rule.id)}
+          onToggle={() => void controller.toggleRule(rule.id).catch(() => {})}
           onDelete={() => setDeleteTarget(rule)}
         />
       ))}
@@ -73,6 +73,8 @@ export function AlertRuleList({
           No alerts yet — get notified when this crosses a threshold
         </Text>
       ) : null}
+
+      {controller.error ? <Text style={styles.errorText}>{controller.error}</Text> : null}
 
       <View style={styles.addButtonRow} ref={addButtonRef} collapsable={false}>
         <Button
@@ -104,8 +106,8 @@ export function AlertRuleList({
         message="Remove this alert? This cannot be undone."
         confirmLabel="Delete"
         destructive
-        onConfirm={() => {
-          if (deleteTarget) controller.removeRule(deleteTarget.id)
+        onConfirm={async () => {
+          if (deleteTarget) await controller.removeRule(deleteTarget.id)
           setDeleteTarget(null)
         }}
         onCancel={() => setDeleteTarget(null)}
@@ -251,6 +253,11 @@ const styles = StyleSheet.create({
   },
   emptyHintText: {
     color: theme.neutral.textMuted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: theme.status.error.color,
     fontSize: 12,
     fontWeight: '500',
   },

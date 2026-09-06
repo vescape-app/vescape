@@ -171,6 +171,7 @@ private fun Any?.asStringKeyMap(): Map<String, Any?>? = when (this) {
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift
 class AppDataRepository private constructor(private val context: Context) {
   private val dao = TelemetryDatabase.get(context).telemetryDao()
+  private val tuneAlerts = TuneAlertPersistence(dao)
   private val boardSettings = BoardSettingsPersistence(dao)
 
   /** Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
@@ -377,7 +378,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    dao.getAlertRules(boardId).map { it.toMap() }
+    tuneAlerts.alertRules(boardId).map { it.toMap() }
   }
 
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
@@ -387,16 +388,16 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
-    dao.upsertAlertRule(rule.toAlertRuleEntity())
+    tuneAlerts.saveAlert(rule.toAlertRuleEntity())
   }
 
   suspend fun setAlertRuleEnabled(boardId: String, id: String, enabled: Boolean): Unit =
     withContext(Dispatchers.IO) {
-      dao.setAlertRuleEnabled(boardId, id, enabled)
+      tuneAlerts.setAlertEnabled(boardId, id, enabled)
     }
 
   suspend fun deleteAlertRule(boardId: String, id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteAlertRule(boardId, id)
+    tuneAlerts.deleteAlert(boardId, id)
   }
 
   suspend fun getSettings(): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -676,11 +677,11 @@ class AppDataRepository private constructor(private val context: Context) {
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
   suspend fun getTuneProfiles(boardId: String, refloatBaseVersion: String?): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val compatibility = validRefloatBaseVersion(refloatBaseVersion) ?: return@withContext emptyList()
-    dao.getTuneProfilesByBoard(boardId, compatibility).map { it.toMap() }
+    tuneAlerts.profiles(boardId, compatibility).map { it.toMap() }
   }
 
   suspend fun getTuneProfile(id: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    dao.getTuneProfile(id)?.toMap()
+    tuneAlerts.profile(id)?.toMap()
   }
 
   suspend fun createProfile(
@@ -707,15 +708,7 @@ class AppDataRepository private constructor(private val context: Context) {
         createdAt = now,
         updatedAt = now,
       )
-      dao.upsertTuneProfile(profile)
-      dao.insertTuneHistoryEntry(
-        TuneHistoryEntryEntity(
-          profileId = profile.id,
-          fieldsJson = fieldsJson,
-          createdAt = now,
-        ),
-      )
-      profile.toMap()
+      tuneAlerts.createProfile(profile).toMap()
     }
 
   suspend fun renameProfile(
@@ -735,7 +728,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getProfileHistory(profileId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    dao.getTuneHistoryEntries(profileId).map { it.toMap() }
+    tuneAlerts.history(profileId).map { it.toMap() }
   }
 
   suspend fun rollbackProfile(profileId: String, historyEntryId: Long): Map<String, Any?> =
@@ -759,20 +752,12 @@ class AppDataRepository private constructor(private val context: Context) {
         createdAt = now,
         updatedAt = now,
       )
-      dao.upsertTuneProfile(copy)
-      dao.insertTuneHistoryEntry(
-        TuneHistoryEntryEntity(
-          profileId = copy.id,
-          fieldsJson = copy.fieldsJson,
-          createdAt = now,
-        ),
-      )
-      copy.toMap()
+      tuneAlerts.createProfile(copy).toMap()
     }
 
   suspend fun saveProfile(profileId: String, fields: Map<String, Any?>): Map<String, Any?> =
     withContext(Dispatchers.IO) {
-      dao.saveTuneProfile(
+      tuneAlerts.saveProfile(
         profileId = profileId,
         fieldsJson = fields.toJsonObject().toString(),
         updatedAt = System.currentTimeMillis(),

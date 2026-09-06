@@ -10,6 +10,7 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.withLegalModeOverlay
 import expo.modules.vescapecore.location.LegalPolicyCatalog
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
@@ -3124,11 +3125,11 @@ private var wearAutoLaunchOnConnect = true
             if (!CoreForegroundService.isLatestAlertRulesGeneration(generation)) return
             alertCoordinator.replaceRules(rules)
             Log.d(VESC_SESSION_TAG, "Loaded ${rules.size} alert rule(s)")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load alert rules: ${e.message}")
-            if (CoreForegroundService.isLatestAlertRulesGeneration(generation)) {
-                alertCoordinator.replaceRules(emptyList())
-            }
+            RecordingStorageFailure.reportRead("enabled_alert_rules_read", e)
         }
     }
 

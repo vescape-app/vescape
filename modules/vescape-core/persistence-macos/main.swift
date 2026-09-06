@@ -352,6 +352,58 @@ try require(FileManager.default.fileExists(atPath: preservedMedia.path), "failed
 try FileManager.default.removeItem(at: mediaRoot)
 try favoriteQueue!.close()
 try FileManager.default.removeItem(at: favoriteURL)
+
+let tuneURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-tune-contract-\(UUID().uuidString).db")
+let tuneAlertFixtureURL = root.appendingPathComponent("shared/tune-alert-persistence-contract.json")
+let tuneAlertFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: tuneAlertFixtureURL)) as! [String: Any]
+try require(tuneAlertFixture["scenario"] as? String == "tune-history-alert-close-reopen-rollback", "unknown Tune/Alert scenario")
+let tuneAlertBoardId = tuneAlertFixture["boardId"] as! String
+let tuneValues = tuneAlertFixture["profile"] as! [String: Any]
+let alertValues = tuneAlertFixture["alert"] as! [String: Any]
+let tuneAlertExpected = tuneAlertFixture["expected"] as! [String: Any]
+var tuneQueue: DatabaseQueue? = try DatabaseQueue(path: tuneURL.path)
+try TelemetryDatabase.migrator.migrate(tuneQueue!)
+var tuneStore = TuneProfileStore(dbWriter: tuneQueue!)
+let tune = try tuneStore.createProfile(boardId: tuneAlertBoardId, name: tuneValues["name"] as! String, fields: ["kp": 1], refloatBaseVersion: tuneValues["refloatBaseVersion"] as! String)
+let tuneId = tune["id"] as! String
+_ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 2])
+var alertPersistence = AlertRulePersistence(writer: tuneQueue!)
+try alertPersistence.save(PersistedAlertRule(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, controlId: alertValues["controlId"] as! String, threshold: alertValues["threshold"] as! Double, thresholdMax: nil, enabled: true, soundType: alertValues["soundType"] as! String, createdAt: 1, repeatEverySeconds: nil, beepCount: 1, source: alertValues["source"] as? String, thresholdKind: "fixed", configFieldId: nil, thresholdOffset: nil, thresholdMaxOffset: nil))
+try alertPersistence.setEnabled(boardId: tuneAlertBoardId, id: alertValues["id"] as! String, enabled: false)
+try tuneQueue!.close()
+tuneQueue = try DatabaseQueue(path: tuneURL.path)
+tuneStore = TuneProfileStore(dbWriter: tuneQueue!)
+alertPersistence = AlertRulePersistence(writer: tuneQueue!)
+let reopenedTune = try tuneStore.getTuneProfile(tuneId)
+let reopenedTuneHistory = try tuneStore.getProfileHistory(tuneId)
+try require(reopenedTune?["boardId"] as? String == tuneAlertBoardId, "Tune Profile ownership/reopen")
+try require((reopenedTune?["fields"] as? [String: Any])?["kp"] as? Int == 2, "Tune Profile values/reopen")
+try require(reopenedTuneHistory.count == int(tuneAlertExpected["historyCount"]), "Tune History/reopen")
+let reopenedAlerts = try alertPersistence.rules(boardId: tuneAlertBoardId)
+try require(reopenedAlerts.count == int(tuneAlertExpected["alertCount"]), "Alert count/reopen")
+try require(reopenedAlerts.first?.id == alertValues["id"] as? String, "Alert identity/reopen")
+try require(reopenedAlerts.first?.enabled == tuneAlertExpected["alertEnabled"] as? Bool, "Alert update/reopen")
+let absentTune = try tuneStore.getTuneProfile("absent")
+try require(absentTune == nil, "absent Tune Profile")
+try tuneQueue!.write { db in
+  try db.execute(sql: "CREATE TRIGGER fail_tune_update BEFORE UPDATE ON tune_profiles BEGIN SELECT RAISE(FAIL, 'late Tune failure'); END")
+}
+do { _ = try tuneStore.saveProfile(profileId: tuneId, fields: ["kp": 3]); throw Failure(description: "failed Tune save reported success") } catch is DatabaseError {}
+let historyAfterFailedSave = try tuneStore.getProfileHistory(tuneId)
+try require(historyAfterFailedSave.count == int(tuneAlertExpected["historyCount"]), "failed Tune save retained history row")
+try tuneQueue!.write { db in
+  try db.execute(sql: "DROP TRIGGER fail_tune_update")
+  try db.execute(sql: "UPDATE tune_profiles SET fields_json = 'not-json' WHERE id = ?", arguments: [tuneId])
+}
+var malformedTuneFailed = false
+do { _ = try tuneStore.getTuneProfile(tuneId) } catch { malformedTuneFailed = true }
+try require(malformedTuneFailed, "malformed Tune became empty")
+try tuneQueue!.write { db in try db.drop(table: "alerts") }
+var alertQueryFailed = false
+do { _ = try alertPersistence.rules(boardId: tuneAlertBoardId) } catch { alertQueryFailed = true }
+try require(alertQueryFailed, "Alert query failure became empty")
+try tuneQueue!.close()
+try FileManager.default.removeItem(at: tuneURL)
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

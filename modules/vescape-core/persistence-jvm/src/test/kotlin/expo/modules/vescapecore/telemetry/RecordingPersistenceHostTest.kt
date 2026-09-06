@@ -16,6 +16,65 @@ import org.junit.Assert.assertTrue
 /** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
   @Test
+  fun tuneHistoryAndBoardAlertsSurviveReopenAndRollbackAtomically(): Unit = runBlocking {
+    val fixture = JSONObject(checkNotNull(javaClass.classLoader?.getResource("tune-alert-persistence-contract.json")).readText())
+    assertEquals("tune-history-alert-close-reopen-rollback", fixture.getString("scenario"))
+    val boardId = fixture.getString("boardId")
+    val profileValues = fixture.getJSONObject("profile")
+    val alertValues = fixture.getJSONObject("alert")
+    val expected = fixture.getJSONObject("expected")
+    val path = Files.createTempFile("vescape-tune-alert-contract", ".db")
+    Files.deleteIfExists(path)
+    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    val profile = TuneProfileEntity(profileValues.getString("id"), boardId, profileValues.getString("refloatBaseVersion"), profileValues.getString("name"), fieldsJson = profileValues.getString("initialFieldsJson"), createdAt = 1, updatedAt = 1)
+    var db = open()
+    var dao = db.telemetryDao()
+    var persistence = TuneAlertPersistence(dao)
+    persistence.createProfile(profile)
+    persistence.saveProfile(profile.id, profileValues.getString("updatedFieldsJson"), 2)
+    persistence.saveAlert(AlertRuleEntity(boardId, alertValues.getString("id"), alertValues.getString("controlId"), alertValues.getDouble("threshold"), null, enabled = true, soundType = alertValues.getString("soundType"), createdAt = 1, source = alertValues.getString("source")))
+    persistence.setAlertEnabled(boardId, alertValues.getString("id"), false)
+    db.close()
+
+    db = open(); dao = db.telemetryDao(); persistence = TuneAlertPersistence(dao)
+    assertEquals(profileValues.getString("updatedFieldsJson"), dao.getTuneProfile(profile.id)?.fieldsJson)
+    assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
+    assertEquals(alertValues.getString("id"), persistence.alertRules(boardId).single().id)
+    assertEquals(expected.getBoolean("alertEnabled"), persistence.alertRules(boardId).single().enabled)
+    assertEquals(null, persistence.profile("absent"))
+    db.close()
+
+    var connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("CREATE TRIGGER fail_tune_update BEFORE UPDATE ON tune_profiles BEGIN SELECT RAISE(FAIL, 'late tune failure'); END")
+    connection.close()
+    db = open(); dao = db.telemetryDao(); persistence = TuneAlertPersistence(dao)
+    var failed = false
+    try { persistence.saveProfile(profile.id, profileValues.getString("failedFieldsJson"), 3) } catch (_: Exception) { failed = true }
+    assertTrue(failed)
+    assertEquals(profileValues.getString("updatedFieldsJson"), dao.getTuneProfile(profile.id)?.fieldsJson)
+    assertEquals(expected.getInt("historyCount"), dao.getTuneHistoryEntries(profile.id).size)
+    db.close()
+    connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TRIGGER fail_tune_update")
+    connection.execSQL("UPDATE tune_profiles SET fields_json = 'not-json' WHERE id = '${profile.id}'")
+    connection.close()
+    db = open(); persistence = TuneAlertPersistence(db.telemetryDao())
+    var malformedFailed = false
+    try { persistence.profile(profile.id) } catch (_: Exception) { malformedFailed = true }
+    assertTrue(malformedFailed)
+    db.close()
+    connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TABLE alerts")
+    connection.close()
+    db = open(); persistence = TuneAlertPersistence(db.telemetryDao())
+    var queryFailed = false
+    try { persistence.alertRules(boardId) } catch (_: Exception) { queryFailed = true }
+    assertTrue(queryFailed)
+    db.close()
+    Files.deleteIfExists(path)
+  }
+
+  @Test
   fun favoriteCreateRenameTrimDeleteAndReopen(): Unit = runBlocking {
     val contract = JSONObject(checkNotNull(javaClass.classLoader?.getResource("favorite-persistence-contract.json")).readText())
     assertEquals("favorite-create-rename-trim-delete-reopen", contract.getString("scenario"))

@@ -75,7 +75,7 @@ final class BoardTombstoneTests: XCTestCase {
 
   func testDeleteStillRemovesBoardConfiguration() throws {
     try seedBoard()
-    repo.upsertAlertRule([
+    try repo.upsertAlertRule([
       "boardId": "board-1",
       "id": "rule-1",
       "controlId": "speed",

@@ -8,6 +8,7 @@ import {
   upsertAlertRule,
 } from 'vescape-core'
 import { generateId } from '@/helpers/id'
+import { errorMessage } from '@/helpers/error'
 
 export type { AlertSoundType } from 'vescape-core'
 
@@ -19,6 +20,7 @@ interface AlertsState {
    */
   boardId: string | null
   rules: AlertRule[]
+  error: string | null
 }
 
 /**
@@ -38,8 +40,8 @@ export interface AlertRuleDraft {
 interface AlertsActions {
   /** Bind the store to a Board and load its rules. `null` clears to an empty rule set. */
   load(boardId: string | null): Promise<void>
-  add(controlId: string, draft: AlertRuleDraft): void
-  update(id: string, draft: AlertRuleDraft): void
+  add(controlId: string, draft: AlertRuleDraft): Promise<void>
+  update(id: string, draft: AlertRuleDraft): Promise<void>
   upsert(rule: AlertRule): Promise<void>
   setEnabled(id: string, enabled: boolean): Promise<void>
   toggle(id: string): Promise<void>
@@ -53,22 +55,28 @@ let loadGeneration = 0
 export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => ({
   boardId: null,
   rules: [],
+  error: null,
 
   async load(boardId) {
     const request = ++loadGeneration
+    const previous = get()
     // Clear immediately on bind so the UI never shows the previous Board's rules as the new Board's
     // (their deterministic preset ids overlap, so a stray toggle/delete would target the wrong rows).
-    set({ boardId, rules: [] })
+    set({ boardId, rules: previous.boardId === boardId ? previous.rules : [], error: null })
     if (!boardId) return
     try {
       const rules = await getAlertRules(boardId)
-      if (request === loadGeneration && get().boardId === boardId) set({ rules })
-    } catch {
-      if (request === loadGeneration && get().boardId === boardId) set({ rules: [] })
+      if (request === loadGeneration && get().boardId === boardId) set({ rules, error: null })
+    } catch (error) {
+      if (request === loadGeneration && get().boardId === boardId) {
+        set({ error: errorMessage(error, 'Unable to load Alert Rules.') })
+      }
+      throw error
     }
   },
 
-  add(controlId, draft) {
+  async add(controlId, draft) {
+    set({ error: null })
     const boardId = get().boardId
     if (!boardId) return
     const rule: AlertRule = {
@@ -79,20 +87,40 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
       createdAt: Date.now(),
       ...draft,
     }
-    set((s) => ({ rules: [...s.rules, rule] }))
-    void upsertAlertRule(rule)
+    try {
+      await upsertAlertRule(rule)
+    } catch (error) {
+      set({ error: errorMessage(error, 'Unable to save Alert Rule.') })
+      throw error
+    }
+    if (get().boardId === boardId) set((s) => ({ rules: [...s.rules, rule] }))
   },
 
-  update(id, draft) {
+  async update(id, draft) {
+    set({ error: null })
     const rule = get().rules.find((r) => r.id === id)
     if (!rule) return
     const updated = { ...rule, ...draft }
-    set((s) => ({ rules: s.rules.map((r) => (r.id === id ? updated : r)) }))
-    void upsertAlertRule(updated)
+    try {
+      await upsertAlertRule(updated)
+    } catch (error) {
+      set({ error: errorMessage(error, 'Unable to save Alert Rule.') })
+      throw error
+    }
+    if (get().boardId === rule.boardId) {
+      set((s) => ({ rules: s.rules.map((r) => (r.id === id ? updated : r)) }))
+    }
   },
 
   async upsert(rule) {
-    // Only reflect the rule locally when it belongs to the bound Board; always persist natively.
+    set({ error: null })
+    try {
+      await upsertAlertRule(rule)
+    } catch (error) {
+      set({ error: errorMessage(error, 'Unable to save Alert Rule.') })
+      throw error
+    }
+    // Only reflect the durable rule locally when it belongs to the bound Board.
     if (rule.boardId === get().boardId) {
       set((s) => {
         const exists = s.rules.some((r) => r.id === rule.id)
@@ -101,14 +129,21 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
         }
       })
     }
-    await upsertAlertRule(rule)
   },
 
   async setEnabled(id, enabled) {
+    set({ error: null })
     const boardId = get().boardId
     if (!boardId) return
-    set((s) => ({ rules: s.rules.map((r) => (r.id === id ? { ...r, enabled } : r)) }))
-    await setAlertRuleEnabled(boardId, id, enabled)
+    try {
+      await setAlertRuleEnabled(boardId, id, enabled)
+    } catch (error) {
+      set({ error: errorMessage(error, 'Unable to save Alert Rule.') })
+      throw error
+    }
+    if (get().boardId === boardId) {
+      set((s) => ({ rules: s.rules.map((r) => (r.id === id ? { ...r, enabled } : r)) }))
+    }
   },
 
   async toggle(id) {
@@ -118,9 +153,15 @@ export const useAlertsStore = create<AlertsState & AlertsActions>((set, get) => 
   },
 
   async remove(id) {
+    set({ error: null })
     const boardId = get().boardId
     if (!boardId) return
-    set((s) => ({ rules: s.rules.filter((r) => r.id !== id) }))
-    await deleteAlertRule(boardId, id)
+    try {
+      await deleteAlertRule(boardId, id)
+    } catch (error) {
+      set({ error: errorMessage(error, 'Unable to delete Alert Rule.') })
+      throw error
+    }
+    if (get().boardId === boardId) set((s) => ({ rules: s.rules.filter((r) => r.id !== id) }))
   },
 }))

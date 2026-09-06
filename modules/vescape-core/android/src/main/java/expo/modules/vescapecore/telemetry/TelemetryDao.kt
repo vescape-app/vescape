@@ -511,6 +511,13 @@ interface TelemetryDao {
   @Insert
   suspend fun insertTuneHistoryEntry(entry: TuneHistoryEntryEntity): Long
 
+  @Transaction
+  suspend fun createTuneProfile(profile: TuneProfileEntity, historyEntry: TuneHistoryEntryEntity): TuneProfileEntity {
+    upsertTuneProfile(profile)
+    insertTuneHistoryEntry(historyEntry)
+    return getTuneProfile(profile.id) ?: throw IllegalStateException("Tune Profile disappeared during save: ${profile.id}")
+  }
+
   // `id` breaks ties: a save and a rollback can land in the same millisecond, and without a
   // monotonic tiebreaker `created_at DESC` alone returns them in insertion order — oldest first —
   // which is the opposite of what Tune History shows.

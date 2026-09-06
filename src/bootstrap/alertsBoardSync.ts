@@ -11,11 +11,17 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
  */
 export function startAlertsBoardSync(): () => void {
   let current = useBoardStore.getState().activeBoardId
-  void useAlertsStore.getState().load(current)
+  void useAlertsStore
+    .getState()
+    .load(current)
+    .catch(() => {})
   return useBoardStore.subscribe((state) => {
     if (state.activeBoardId !== current) {
       current = state.activeBoardId
-      void useAlertsStore.getState().load(current)
+      void useAlertsStore
+        .getState()
+        .load(current)
+        .catch(() => {})
     }
   })
 }

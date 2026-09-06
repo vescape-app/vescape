@@ -788,8 +788,11 @@ internal final class BoardSessionController: VescGattListener {
     let jurisdictionCode =
       ((settings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let speeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
+    let alertRules: [AlertRule]
+    do { alertRules = try appData.getEnabledAlertRules(boardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
-      appData.getEnabledAlertRules(boardId),
+      alertRules,
       boardId: boardId,
       enabled: enabled,
       warningSpeedKmh: speeds?.warningSpeedKmh,
@@ -1191,8 +1194,11 @@ internal final class BoardSessionController: VescGattListener {
     let jurisdictionCode =
       ((sessionSettings["legalPolicy"] ?? nil) as? [String: Any])?["jurisdictionCode"] as? String
     let legalSpeeds = jurisdictionCode.flatMap(legalPolicyCatalog.speeds)
+    let alertRules: [AlertRule]
+    do { alertRules = try appData.getEnabledAlertRules(config.appBoardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "enabled_alert_rules_read", error: error); return }
     alertCoordinator.replaceRules(withLegalModeOverlay(
-      appData.getEnabledAlertRules(config.appBoardId),
+      alertRules,
       boardId: config.appBoardId,
       enabled: legalModeEnabled,
       warningSpeedKmh: legalSpeeds?.warningSpeedKmh,
@@ -2646,7 +2652,10 @@ internal final class BoardSessionController: VescGattListener {
       captureDiagnostic: { [weak self] name, properties in
         self?.recordConnectionDiagnostic(name, operation: "config_rw", message: properties["message"] as? String ?? name, extra: properties)
       },
-      loadProfile: { profileId in TuneProfileStore.shared.getTuneProfile(profileId) },
+      loadProfile: { profileId in
+        do { return try TuneProfileStore.shared.getTuneProfile(profileId) }
+        catch { RecordingStorageFailure.reportRead(operation: "board_tune_profile_read", error: error); throw error }
+      },
       onBoardConfigValues: { [weak self] values, origin in self?.onBoardConfigValues(values, origin: origin) }
     )
   }

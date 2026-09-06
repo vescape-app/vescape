@@ -147,7 +147,13 @@ internal final class ConfigRWController {
       )
       return
     }
-    guard let profile = connection.loadProfile(profileId) else {
+    let loadedProfile: [String: Any?]?
+    do { loadedProfile = try connection.loadProfile(profileId) }
+    catch {
+      onError(RefloatConfigErrorCode.CONFIG_READ_FAILED.rawValue, "Tune profile could not be loaded")
+      return
+    }
+    guard let profile = loadedProfile else {
       onError(RefloatConfigErrorCode.PROFILE_NOT_FOUND.rawValue, "Tune profile not found: \(profileId)")
       return
     }
@@ -650,7 +656,7 @@ internal struct ConfigRWConnection {
   let startPolling: () -> Void
   let sendPayload: ([UInt8]) -> Bool
   let captureDiagnostic: (String, [String: Any?]) -> Void
-  let loadProfile: (String) -> [String: Any?]?
+  let loadProfile: (String) throws -> [String: Any?]?
   /// Hand the freshly decoded Board Config Values to the session controller, which holds them as the
   /// session's config truth, caches them, and runs warning evaluation.
   let onBoardConfigValues: (BoardConfigValues, BoardConfigOperationOrigin) -> Void

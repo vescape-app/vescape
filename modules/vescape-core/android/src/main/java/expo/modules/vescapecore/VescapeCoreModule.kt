@@ -838,31 +838,49 @@ class VescapeCoreModule : Module() {
       )
     }
     AsyncFunction("getTuneProfiles") Coroutine { boardId: String, refloatBaseVersion: String? ->
-      AppDataRepository.get(context.applicationContext).getTuneProfiles(boardId, refloatBaseVersion)
+      try { AppDataRepository.get(context.applicationContext).getTuneProfiles(boardId, refloatBaseVersion) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_profiles_read", error); throw error }
     }
     AsyncFunction("getTuneProfile") Coroutine { profileId: String ->
-      AppDataRepository.get(context.applicationContext).getTuneProfile(profileId)
+      try { AppDataRepository.get(context.applicationContext).getTuneProfile(profileId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_profile_read", error); throw error }
     }
     AsyncFunction("createProfile") Coroutine { boardId: String, name: String, icon: String, color: String, fields: Map<String, Any?>, refloatBaseVersion: String ->
-      AppDataRepository.get(context.applicationContext).createProfile(boardId, name, icon, color, fields, refloatBaseVersion)
+      try { AppDataRepository.get(context.applicationContext).createProfile(boardId, name, icon, color, fields, refloatBaseVersion) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_create", "write_failed", error); throw error }
     }
     AsyncFunction("renameProfile") Coroutine { profileId: String, name: String, icon: String, color: String ->
-      AppDataRepository.get(context.applicationContext).renameProfile(profileId, name, icon, color)
+      try { AppDataRepository.get(context.applicationContext).renameProfile(profileId, name, icon, color) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_rename", "write_failed", error); throw error }
     }
     AsyncFunction("deleteProfile") Coroutine { profileId: String ->
-      AppDataRepository.get(context.applicationContext).deleteProfile(profileId)
+      try { AppDataRepository.get(context.applicationContext).deleteProfile(profileId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_delete", "write_failed", error); throw error }
     }
     AsyncFunction("getProfileHistory") Coroutine { profileId: String ->
-      AppDataRepository.get(context.applicationContext).getProfileHistory(profileId)
+      try { AppDataRepository.get(context.applicationContext).getProfileHistory(profileId) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("tune_history_read", error); throw error }
     }
     AsyncFunction("rollbackProfile") Coroutine { profileId: String, historyEntryId: Double ->
-      AppDataRepository.get(context.applicationContext).rollbackProfile(profileId, historyEntryId.toLong())
+      try { AppDataRepository.get(context.applicationContext).rollbackProfile(profileId, historyEntryId.toLong()) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_rollback", "write_failed", error); throw error }
     }
     AsyncFunction("copyProfileToBoard") Coroutine { profileId: String, targetBoardId: String, newName: String ->
-      AppDataRepository.get(context.applicationContext).copyProfileToBoard(profileId, targetBoardId, newName)
+      try { AppDataRepository.get(context.applicationContext).copyProfileToBoard(profileId, targetBoardId, newName) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_copy", "write_failed", error); throw error }
     }
     AsyncFunction("saveProfile") Coroutine { profileId: String, fields: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).saveProfile(profileId, fields)
+      try { AppDataRepository.get(context.applicationContext).saveProfile(profileId, fields) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { if (error !is IllegalArgumentException && error !is IllegalStateException) RecordingStorageFailure.report("tune_profile_save", "write_failed", error); throw error }
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getProfileStatsSnapshot`
     AsyncFunction("getProfileStatsSnapshot") Coroutine { options: Map<String, Any?> ->
@@ -992,19 +1010,23 @@ class VescapeCoreModule : Module() {
       }
     }
     AsyncFunction("getAlertRules") { boardId: String ->
-      runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) }
+      try { runBlocking { AppDataRepository.get(context.applicationContext).getAlertRules(boardId) } }
+      catch (error: Throwable) { RecordingStorageFailure.reportRead("alert_rules_read", error); throw error }
     }
     AsyncFunction("upsertAlertRule") Coroutine { rule: Map<String, Any?> ->
-      AppDataRepository.get(context.applicationContext).upsertAlertRule(rule)
-      CoreForegroundService.reloadAlertRules(context.applicationContext)
+      try { AppDataRepository.get(context.applicationContext).upsertAlertRule(rule); CoreForegroundService.reloadAlertRules(context.applicationContext) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_rule_save", "write_failed", error); throw error }
     }
     AsyncFunction("setAlertRuleEnabled") Coroutine { boardId: String, id: String, enabled: Boolean ->
-      AppDataRepository.get(context.applicationContext).setAlertRuleEnabled(boardId, id, enabled)
-      CoreForegroundService.reloadAlertRules(context.applicationContext)
+      try { AppDataRepository.get(context.applicationContext).setAlertRuleEnabled(boardId, id, enabled); CoreForegroundService.reloadAlertRules(context.applicationContext) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_rule_enable", "write_failed", error); throw error }
     }
     AsyncFunction("deleteAlertRule") Coroutine { boardId: String, id: String ->
-      AppDataRepository.get(context.applicationContext).deleteAlertRule(boardId, id)
-      CoreForegroundService.reloadAlertRules(context.applicationContext)
+      try { AppDataRepository.get(context.applicationContext).deleteAlertRule(boardId, id); CoreForegroundService.reloadAlertRules(context.applicationContext) }
+      catch (error: CancellationException) { throw error }
+      catch (error: Throwable) { RecordingStorageFailure.report("alert_rule_delete", "write_failed", error); throw error }
     }
     AsyncFunction("getPrivacyZones") {
       runBlocking { AppDataRepository.get(context.applicationContext).getPrivacyZones() }

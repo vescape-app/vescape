@@ -255,7 +255,7 @@ test('discarding custom rules clears them and returns the metric to a preset', a
 
   await useAlertPresetStore.getState().setLevel('duty', 'safe')
   await useAlertPresetStore.getState().customize('duty')
-  useAlertsStore.getState().add('duty', {
+  await useAlertsStore.getState().add('duty', {
     threshold: 70,
     thresholdMax: null,
     soundType: 'preset:beep',
@@ -271,4 +271,29 @@ test('discarding custom rules clears them and returns the metric to a preset', a
   expect(boardSelection(useBoardStore.getState().boards[0])).toMatchObject({ duty: 'normal' })
   expect(rules.length).toBeGreaterThan(0)
   expect(rules.every((rule) => rule.source === 'preset')).toBe(true)
+})
+
+test('failed Alert Rule save does not publish optimistic state', async () => {
+  const { useAlertsStore } = await setup()
+  upsertAlertRule.mockRejectedValueOnce(new Error('disk unavailable'))
+
+  await expect(
+    useAlertsStore.getState().add('duty', {
+      threshold: 70,
+      thresholdMax: null,
+      soundType: 'preset:beep',
+      repeatEverySeconds: null,
+      beepCount: ALERT_BEEP_COUNT_DEFAULT,
+    }),
+  ).rejects.toThrow('disk unavailable')
+  expect(useAlertsStore.getState().rules).toEqual([])
+  expect(useAlertsStore.getState().error).toBe('disk unavailable')
+})
+
+test('failed Alert Rule read remains distinct from an empty result', async () => {
+  const { useAlertsStore } = await setup({ seedRules: [] })
+  getAlertRules.mockRejectedValueOnce(new Error('query failed'))
+
+  await expect(useAlertsStore.getState().load(BOARD_ID)).rejects.toThrow('query failed')
+  expect(useAlertsStore.getState().error).toBe('query failed')
 })

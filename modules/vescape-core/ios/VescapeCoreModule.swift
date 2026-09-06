@@ -1,4 +1,9 @@
 import ExpoModulesCore
+
+private func reportTunePersistenceWrite(operation: String, error: Error) {
+  if let tuneError = error as? TuneProfileError, tuneError != .databaseUnavailable { return }
+  RecordingStorageFailure.report(operation: operation, category: "write_failed", error: error)
+}
 import Foundation
 import UIKit
 import UserNotifications
@@ -823,17 +828,20 @@ public class VescapeCoreModule: Module {
     // owns the transactional semantics; mutations reject with Android's error vocabulary.
 
     AsyncFunction("getTuneProfiles") { (boardId: String, refloatBaseVersion: String?, promise: Promise) in
-      promise.resolve(TuneProfileStore.shared.getTuneProfiles(boardId, refloatBaseVersion: refloatBaseVersion))
+      do { promise.resolve(try TuneProfileStore.shared.getTuneProfiles(boardId, refloatBaseVersion: refloatBaseVersion)) }
+      catch { RecordingStorageFailure.reportRead(operation: "tune_profiles_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
     }
 
     AsyncFunction("getTuneProfile") { (profileId: String, promise: Promise) in
-      promise.resolve(TuneProfileStore.shared.getTuneProfile(profileId))
+      do { promise.resolve(try TuneProfileStore.shared.getTuneProfile(profileId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "tune_profile_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
     }
 
     AsyncFunction("createProfile") { (boardId: String, name: String, icon: String, color: String, fields: [String: Any], refloatBaseVersion: String, promise: Promise) in
       do {
         promise.resolve(try TuneProfileStore.shared.createProfile(boardId: boardId, name: name, icon: icon, color: color, fields: fields, refloatBaseVersion: refloatBaseVersion))
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_create", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
@@ -842,6 +850,7 @@ public class VescapeCoreModule: Module {
       do {
         promise.resolve(try TuneProfileStore.shared.renameProfile(profileId: profileId, name: name, icon: icon, color: color))
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_rename", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
@@ -851,12 +860,14 @@ public class VescapeCoreModule: Module {
         try TuneProfileStore.shared.deleteProfile(profileId: profileId)
         promise.resolve(nil)
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_delete", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
 
     AsyncFunction("getProfileHistory") { (profileId: String, promise: Promise) in
-      promise.resolve(TuneProfileStore.shared.getProfileHistory(profileId))
+      do { promise.resolve(try TuneProfileStore.shared.getProfileHistory(profileId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "tune_history_read", error: error); promise.reject(TuneProfileStore.errorCode, error.localizedDescription) }
     }
 
     AsyncFunction("rollbackProfile") { (profileId: String, historyEntryId: Double, promise: Promise) in
@@ -865,6 +876,7 @@ public class VescapeCoreModule: Module {
           try TuneProfileStore.shared.rollbackProfile(profileId: profileId, historyEntryId: Int64(historyEntryId))
         )
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_rollback", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
@@ -879,6 +891,7 @@ public class VescapeCoreModule: Module {
           )
         )
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_copy", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
@@ -887,6 +900,7 @@ public class VescapeCoreModule: Module {
       do {
         promise.resolve(try TuneProfileStore.shared.saveProfile(profileId: profileId, fields: fields))
       } catch {
+        reportTunePersistenceWrite(operation: "tune_profile_save", error: error)
         promise.reject(TuneProfileStore.errorCode, error.localizedDescription)
       }
     }
@@ -1034,25 +1048,23 @@ public class VescapeCoreModule: Module {
     }
 
     AsyncFunction("getAlertRules") { (boardId: String, promise: Promise) in
-      promise.resolve(self.appData.getAlertRules(boardId))
+      do { promise.resolve(try self.appData.getAlertRules(boardId)) }
+      catch { RecordingStorageFailure.reportRead(operation: "alert_rules_read", error: error); promise.reject("ERR_ALERT_RULES_READ", "Could not load Alert Rules", error) }
     }
 
     AsyncFunction("upsertAlertRule") { (rule: [String: Any], promise: Promise) in
-      self.appData.upsertAlertRule(rule)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      do { try self.appData.upsertAlertRule(rule); self.coordinator.reloadAlertRules(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "alert_rule_save", category: "write_failed", error: error); promise.reject("ERR_ALERT_RULE_WRITE", "Alert Rule could not be stored", error) }
     }
 
     AsyncFunction("setAlertRuleEnabled") { (boardId: String, id: String, enabled: Bool, promise: Promise) in
-      self.appData.setAlertRuleEnabled(boardId, id, enabled)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      do { try self.appData.setAlertRuleEnabled(boardId, id, enabled); self.coordinator.reloadAlertRules(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "alert_rule_enable", category: "write_failed", error: error); promise.reject("ERR_ALERT_RULE_WRITE", "Alert Rule could not be stored", error) }
     }
 
     AsyncFunction("deleteAlertRule") { (boardId: String, id: String, promise: Promise) in
-      self.appData.deleteAlertRule(boardId, id)
-      self.coordinator.reloadAlertRules()
-      promise.resolve(nil)
+      do { try self.appData.deleteAlertRule(boardId, id); self.coordinator.reloadAlertRules(); promise.resolve(nil) }
+      catch { RecordingStorageFailure.report(operation: "alert_rule_delete", category: "write_failed", error: error); promise.reject("ERR_ALERT_RULE_WRITE", "Alert Rule could not be deleted", error) }
     }
 
     AsyncFunction("getPrivacyZones") { (promise: Promise) in

@@ -40,7 +40,7 @@ interface AlertFormSheetProps {
   editRule: DraftAlertRule | null
   batteryConfig: DerivedBatteryConfig | null
   onClose(): void
-  onSave(draft: AlertRuleDraft): void
+  onSave(draft: AlertRuleDraft): Promise<void>
 }
 
 /** Writes one alert rule: its threshold, how it sounds, and how often it repeats. */
@@ -113,7 +113,7 @@ export function AlertFormSheet({
 
   const handleSave = useCallback(() => {
     const isRange = tab === 'geiger'
-    onSave({
+    void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
       soundType: tab === 'message' ? `tts:${messageTemplate}` : soundType,
@@ -121,7 +121,7 @@ export function AlertFormSheet({
       // announcement — neither has a beep count or a repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
       beepCount,
-    })
+    }).catch(() => {})
   }, [
     tab,
     threshold,

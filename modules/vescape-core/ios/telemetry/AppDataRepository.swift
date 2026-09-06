@@ -33,6 +33,7 @@ final class AppDataRepository {
   private var writer: (any DatabaseWriter)? { dbWriter ?? TelemetryDatabase.pool }
 
   private enum StorageUnavailable: Error { case databaseNotOpen }
+  private enum InvalidInput: Error { case alertRuleIdentity }
 
   private func boardSettingsPersistence() throws -> BoardSettingsPersistence {
     guard let writer else { throw StorageUnavailable.databaseNotOpen }
@@ -280,31 +281,19 @@ final class AppDataRepository {
 
   // MARK: - Alert rules
 
-  func getAlertRules(_ boardId: String) -> [[String: Any?]] {
-    read([]) { db in
-      try Row.fetchAll(
-        db,
-        sql: "SELECT * FROM alerts WHERE board_id = ? ORDER BY created_at ASC",
-        arguments: [boardId]
-      ).map { row in
+  func getAlertRules(_ boardId: String) throws -> [[String: Any?]] {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    return try AlertRulePersistence(writer: writer).rules(boardId: boardId).map { row in
         [
-          "boardId": row["board_id"] as String,
-          "id": row["id"] as String,
-          "controlId": row["control_id"] as String,
-          "threshold": row["threshold"] as Double,
-          "thresholdMax": row["threshold_max"] as Double?,
-          "thresholdRule": (row["threshold_kind"] as String? == "config-relative") ? [
-            "kind": "config-relative", "fieldId": row["config_field_id"] as String?,
-            "thresholdOffset": row["threshold_offset"] as Double?, "thresholdMaxOffset": row["threshold_max_offset"] as Double?
+          "boardId": row.boardId, "id": row.id, "controlId": row.controlId,
+          "threshold": row.threshold, "thresholdMax": row.thresholdMax,
+          "thresholdRule": row.thresholdKind == "config-relative" ? [
+            "kind": "config-relative", "fieldId": row.configFieldId,
+            "thresholdOffset": row.thresholdOffset, "thresholdMaxOffset": row.thresholdMaxOffset
           ] : ["kind": "fixed"],
-          "enabled": (row["enabled"] as Int64) != 0,
-          "soundType": row["sound_type"] as String,
-          "createdAt": row["created_at"] as Int64,
-          "repeatEverySeconds": row["repeat_every_seconds"] as Int64?,
-          "beepCount": row["beep_count"] as Int? ?? alertBeepCountDefault,
-          "source": row["source"] as String?,
+          "enabled": row.enabled, "soundType": row.soundType, "createdAt": row.createdAt,
+          "repeatEverySeconds": row.repeatEverySeconds, "beepCount": row.beepCount, "source": row.source,
         ]
-      }
     }
   }
 
@@ -312,8 +301,9 @@ final class AppDataRepository {
   /// evaluates only the connected Board's rules. Mirrors Android
   /// `AppDataRepository.getEnabledAlertRuleEntities`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getEnabledAlertRuleEntities`
-  func getEnabledAlertRules(_ boardId: String) -> [AlertRule] {
-    read([]) { db in
+  func getEnabledAlertRules(_ boardId: String) throws -> [AlertRule] {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    return try writer.read { db in
       try Row.fetchAll(
         db,
         sql: "SELECT * FROM alerts WHERE board_id = ? AND enabled = 1 ORDER BY created_at ASC",
@@ -340,12 +330,12 @@ final class AppDataRepository {
     }
   }
 
-  func upsertAlertRule(_ rule: [String: Any?]) {
+  func upsertAlertRule(_ rule: [String: Any?]) throws {
     guard
       let boardId = rule["boardId"] as? String,
       let id = rule["id"] as? String,
       let controlId = rule["controlId"] as? String
-    else { return }
+    else { throw InvalidInput.alertRuleIdentity }
     let threshold = Self.doubleValue(rule["threshold"] ?? nil) ?? 0
     let thresholdMax = Self.doubleValue(rule["thresholdMax"] ?? nil)
     let enabled = (rule["enabled"] as? Bool) ?? false
@@ -359,30 +349,19 @@ final class AppDataRepository {
     let configFieldId = thresholdRule?["fieldId"] as? String
     let thresholdOffset = Self.doubleValue(thresholdRule?["thresholdOffset"])
     let thresholdMaxOffset = Self.doubleValue(thresholdRule?["thresholdMaxOffset"])
-    write { db in
-      try db.execute(
-        sql: """
-          INSERT OR REPLACE INTO alerts (board_id, id, control_id, threshold, threshold_max, enabled, sound_type, created_at, repeat_every_seconds, beep_count, source, threshold_kind, config_field_id, threshold_offset, threshold_max_offset)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """,
-        arguments: [boardId, id, controlId, threshold, thresholdMax, enabled ? 1 : 0, soundType, createdAt, repeatEverySeconds, beepCount, source, thresholdKind, configFieldId, thresholdOffset, thresholdMaxOffset]
-      )
-    }
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    let record = PersistedAlertRule(boardId: boardId, id: id, controlId: controlId, threshold: threshold, thresholdMax: thresholdMax, enabled: enabled, soundType: soundType, createdAt: createdAt, repeatEverySeconds: repeatEverySeconds, beepCount: beepCount, source: source, thresholdKind: thresholdKind, configFieldId: configFieldId, thresholdOffset: thresholdOffset, thresholdMaxOffset: thresholdMaxOffset)
+    try AlertRulePersistence(writer: writer).save(record)
   }
 
-  func setAlertRuleEnabled(_ boardId: String, _ id: String, _ enabled: Bool) {
-    write { db in
-      try db.execute(
-        sql: "UPDATE alerts SET enabled = ? WHERE board_id = ? AND id = ?",
-        arguments: [enabled ? 1 : 0, boardId, id]
-      )
-    }
+  func setAlertRuleEnabled(_ boardId: String, _ id: String, _ enabled: Bool) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try AlertRulePersistence(writer: writer).setEnabled(boardId: boardId, id: id, enabled: enabled)
   }
 
-  func deleteAlertRule(_ boardId: String, _ id: String) {
-    write { db in
-      try db.execute(sql: "DELETE FROM alerts WHERE board_id = ? AND id = ?", arguments: [boardId, id])
-    }
+  func deleteAlertRule(_ boardId: String, _ id: String) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try AlertRulePersistence(writer: writer).delete(boardId: boardId, id: id)
   }
 
   // MARK: - Privacy zones
