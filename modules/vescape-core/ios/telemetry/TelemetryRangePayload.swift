@@ -20,10 +20,11 @@ extension TelemetryRepository {
     let pool = try TelemetryDatabase.requirePool()
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the range read below.
-    let configs = batteryConfigByBoard()
-    let boardNames = Self.boardNamesById()
     let windowMs = socWindowMs()
     return try pool.read { db -> [String: Any?] in
+      batteryEstimator.ensureLoaded()
+      let configs = try historyBatteryConfigs(db)
+      let boardNames = try historyBoardNames(db)
       let sampleRows = try Row.fetchAll(
         db,
         sql: """

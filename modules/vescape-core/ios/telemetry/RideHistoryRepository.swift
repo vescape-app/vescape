@@ -1,6 +1,24 @@
 import Foundation
 import GRDB
 
+internal func historyBoardNames(_ db: Database) throws -> [String: String] {
+  try Row.fetchAll(db, sql: "SELECT id, name FROM boards").reduce(into: [String: String]()) {
+    $0[$1["id"] as String] = $1["name"] as String
+  }
+}
+
+internal func historyBatteryConfigs(_ db: Database) throws -> [String: [String: Any]] {
+  try Row.fetchAll(
+    db,
+    sql: "SELECT board_id, value_json FROM board_settings WHERE key = 'batteryConfig'"
+  ).reduce(into: [String: [String: Any]]()) { result, row in
+    let data = Data((row["value_json"] as String).utf8)
+    if let config = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+      result[row["board_id"] as String] = config
+    }
+  }
+}
+
 private let rideBucketBatchSize = 100
 private let maxRidePageSize = 50
 private let rideBreakBoundaries: Set<String> = ["disconnected", "app_stop", "error"]
@@ -80,9 +98,7 @@ internal final class RideHistoryRepository {
     let pool = try poolProvider()
     return try pool.read { db in
       // Names resolve from `boards` on read, never off the bucket row (ADR 0028).
-      let boardNames = try Row.fetchAll(db, sql: "SELECT id, name FROM boards").reduce(into: [String: String]()) {
-        $0[$1["id"] as String] = $1["name"] as String
-      }
+      let boardNames = try historyBoardNames(db)
       var buckets: [Row] = []
       var complete: [RideSessionAggregate] = []
       var hasOlderBuckets = true

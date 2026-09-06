@@ -36,7 +36,7 @@ internal final class TelemetryRepository {
   private var lastKeyframeAtMs: Int64?
   private var metricConfig = MetricSanitizerConfig()
   private var enabledPrivacyZones: [PrivacyZoneEntity] = []
-  private let batteryEstimator = BatterySocEstimator()
+  internal let batteryEstimator = BatterySocEstimator()
   private var onRecordingFailure: (() -> Void)?
   private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in
     RecordingStorageFailure.fail(error)
@@ -136,8 +136,8 @@ internal final class TelemetryRepository {
     let limit = min(500, max(1, telemetryInt(options["limit"]) ?? DEFAULT_HISTORY_LIMIT))
     let boardId = options["boardId"] as? String
     let pool = try TelemetryDatabase.requirePool()
-    let boardNames = Self.boardNamesById()
     return try pool.read { db in
+      let boardNames = try historyBoardNames(db)
       let rows = try Row.fetchAll(
         db,
         sql: """
@@ -168,10 +168,11 @@ internal final class TelemetryRepository {
     let boardId = options["boardId"] as? String
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the frames read below.
-    let configs = batteryConfigByBoard()
-    let boardNames = Self.boardNamesById()
     let windowMs = socWindowMs()
     return try pool.read { db in
+      batteryEstimator.ensureLoaded()
+      let configs = try historyBatteryConfigs(db)
+      let boardNames = try historyBoardNames(db)
       let rows = try Row.fetchAll(
         db,
         sql: """

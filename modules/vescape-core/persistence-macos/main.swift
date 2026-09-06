@@ -161,8 +161,12 @@ try require((populatedStats["months"] as! [[String: Int]]).count == int(historyE
 let selectedMonth = populatedStats["selectedMonth"] as! [String: Int]
 try require(selectedMonth["year"] == int(historyExpected["selectedYear"]), "selected year")
 try require(selectedMonth["month"] == int(historyExpected["selectedMonth"]), "selected month")
+try historyPool.write { db in try db.drop(table: "board_settings") }
+do { _ = try historyPool.read(historyBatteryConfigs); throw Failure(description: "battery-config query failure became empty") } catch is DatabaseError {}
+try historyPool.write { db in try db.drop(table: "boards") }
+do { _ = try historyPool.read(historyBoardNames); throw Failure(description: "board-name query failure became empty") } catch is DatabaseError {}
+do { _ = try history.getPage([:]); throw Failure(description: "history auxiliary query failure became empty") } catch is DatabaseError {}
 try historyPool.write { db in try db.drop(table: "telemetry_minute_buckets") }
-do { _ = try history.getPage([:]); throw Failure(description: "history query failure became empty") } catch is DatabaseError {}
 do { _ = try profile.getProfileStatsSnapshot([:]); throw Failure(description: "profile query failure became empty") } catch is DatabaseError {}
 try historyPool.close()
 try FileManager.default.removeItem(at: historyURL)
