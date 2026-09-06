@@ -139,11 +139,12 @@ internal final class AlertAudioPlayer {
   /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle` lookup. Production passes
   /// nil; the SPM test target has no resource bundle and points at the repo's wav directory so the
   /// engine graph is exercised for real.
-  init(assetsDirectory: URL? = nil) {
+  init(assetsDirectory: URL? = nil, outputVolume: Float = 1) {
     self.assetsDirectory = assetsDirectory
     geigerQueue.setSpecific(key: Self.geigerQueueMarker, value: ObjectIdentifier(self))
     acquireAudioSession()
     let standardFormat = makeStandardFormat()
+    engine.mainMixerNode.outputVolume = outputVolume
     do {
       try engine.start()
       started = true

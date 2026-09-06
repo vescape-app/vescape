@@ -13,7 +13,8 @@ final class AlertAudioPlayerTests: XCTestCase {
   }
 
   private func makePlayer() -> AlertAudioPlayer {
-    AlertAudioPlayer(assetsDirectory: assetsDirectory)
+    // Exercise real playback and teardown without sending the test tones to the speakers.
+    AlertAudioPlayer(assetsDirectory: assetsDirectory, outputVolume: 0)
   }
 
   func testReleaseWhileOneShotAndSustainedPlaybackAreInFlight() {
