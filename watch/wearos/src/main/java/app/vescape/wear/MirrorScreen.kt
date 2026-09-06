@@ -53,7 +53,6 @@ internal fun MirrorScreen(
 ) {
     val isAmbient = ambient.active
     val state by TelemetryState.mirrorState
-    val phoneLink by TelemetryState.phoneLink
     var showClosePrompt by remember { mutableStateOf(false) }
     // A hold must not be interpreted as a page swipe, and must never end because the page moved.
     var moveHeld by remember { mutableStateOf(false) }
@@ -269,7 +268,6 @@ internal fun MirrorScreen(
                             // in the frame takes pointer input, so the pages stay reachable.
                             MirrorContent(
                                 state = state,
-                                phoneLink = phoneLink,
                                 ambient = ambient,
                                 focus = navFocus,
                                 controlFocus = controlFocus,
@@ -319,7 +317,6 @@ private const val CONTROL_PAGE_COUNT = 4
 @Composable
 private fun MirrorContent(
     state: MirrorState,
-    phoneLink: PhoneLink,
     ambient: AmbientMode,
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
@@ -327,20 +324,29 @@ private fun MirrorContent(
     onWeatherClick: (() -> Unit)? = null,
 ) {
     when (state.status) {
+        // The gauge shell is the app, so a stalled stream keeps its arcs and reads the reason inside
+        // them. Dropping to a bare notice threw the layout away exactly when the rider was already
+        // lost, and it hid that the clock, forecast and battery arc still had something to say.
         MirrorStatus.DISCONNECTED -> {
-            if (phoneLink == PhoneLink.NO_PHONE) {
-                // No arcs to pin without a phone, only the notice — and it is a readout, so it
-                // leaves with them rather than bleeding under whatever page took the centre.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    DisconnectedLayout(ambient)
-                }
-            } else {
-                FrameLayout(EMPTY_FRAME, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+            FrameLayout(
+                EMPTY_FRAME,
+                false,
+                focus,
+                controlFocus,
+                weatherFocus,
+                onWeatherClick,
+                ambient,
+                showReadouts = false,
+            )
+            // A readout like any other: it leaves with them rather than bleeding under whatever page
+            // took the centre.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
+                contentAlignment = Alignment.Center,
+            ) {
+                DisconnectedLayout(ambient)
             }
         }
         MirrorStatus.WAITING ->

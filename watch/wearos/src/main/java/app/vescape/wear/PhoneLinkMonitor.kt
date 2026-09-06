@@ -13,11 +13,13 @@ import java.util.concurrent.TimeUnit
 /** Capability the Vescape phone app advertises (vescape-core res/values/wear.xml). Keep the two in sync. */
 private const val PHONE_APP_CAPABILITY = "vescape_phone_app"
 /**
- * Poll spacing while the link is still unproven. Each pass is two blocking Play-services round
- * trips, so once frames are arriving the link is proven by the frames themselves and the poll
- * drops to [PHONE_LINK_SETTLED_REFRESH_MS] — it exists to explain silence, not to narrate success.
+ * Poll spacing while the link is still unproven. Each pass is two blocking Play-services round trips,
+ * so this is deliberately the only state that pays for them: a rider staring at a dark wrist is
+ * waiting on exactly this query, and the wrist shows every pass landing. Once frames are arriving the
+ * link is proven by the frames themselves and the poll drops to [PHONE_LINK_SETTLED_REFRESH_MS] — it
+ * exists to explain silence, not to narrate success.
  */
-private const val PHONE_LINK_REFRESH_MS = 5_000L
+private const val PHONE_LINK_REFRESH_MS = 2_000L
 private const val PHONE_LINK_SETTLED_REFRESH_MS = 60_000L
 
 /**
@@ -39,7 +41,9 @@ class PhoneLinkMonitor(context: Context) {
     private var nextRefresh: ScheduledFuture<*>? = null
 
     private val listener = CapabilityClient.OnCapabilityChangedListener { info ->
-        if (info.nodes.isNotEmpty()) publish(PhoneLink.APP_REACHABLE)
+        // The listener is a push, not a poll: it answers instantly and proves nothing about the
+        // monitor still running, so it does not count as a probe.
+        if (info.nodes.isNotEmpty()) publish(PhoneLink.APP_REACHABLE, probe = false)
     }
 
     fun start() {
@@ -73,6 +77,7 @@ class PhoneLinkMonitor(context: Context) {
                 nodes.isNotEmpty() -> PhoneLink.PHONE_ONLY
                 else -> PhoneLink.NO_PHONE
             },
+            probe = true,
         )
         if (running) {
             val settled = TelemetryState.mirrorState.value.status == MirrorStatus.LIVE
@@ -81,11 +86,12 @@ class PhoneLinkMonitor(context: Context) {
         }
     }
 
-    private fun publish(link: PhoneLink) {
+    private fun publish(link: PhoneLink, probe: Boolean) {
         mainHandler.post {
             if (!running) return@post
             WatchDiagnostics.recordLinkChange(link)
             TelemetryState.phoneLink.value = link
+            if (probe) TelemetryState.recordLinkProbe()
         }
     }
 }

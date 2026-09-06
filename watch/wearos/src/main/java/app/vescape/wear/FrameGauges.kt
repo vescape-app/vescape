@@ -52,6 +52,10 @@ import kotlin.math.sin
  * [ambient] is the always-on rendering of this same layout, not a second one: see [AmbientMode] for
  * which lanes keep their reading there and which stay an empty skeleton.
  *
+ * [showReadouts] strips every value out of the shell — heroes, curved temps, battery percent — and
+ * leaves the arcs, the clock and the forecast. A stalled stream has nothing to put in them but
+ * dashes, and a ring of dashes is noise around the one thing worth reading: why it stalled.
+ *
  * This layout is pinned at the root of the mirror, over both pagers: the rim arcs are permanent
  * furniture and never move, whatever page the rider swipes to. It draws above the pages so the
  * forecast readout can be tapped at all; that readout is the only thing here that takes pointer
@@ -75,6 +79,7 @@ internal fun FrameLayout(
     weatherFocus: () -> Float = { 0f },
     onWeatherClick: (() -> Unit)? = null,
     ambient: AmbientMode = AmbientOff,
+    showReadouts: Boolean = true,
 ) {
     // A stale frame in ambient is the one case with nothing to say: the readings it would keep are
     // exactly the ones that have stopped arriving, so ambient empties every lane instead.
@@ -157,8 +162,10 @@ internal fun FrameLayout(
 
         // Temp readouts ride their own arc: curved text just inside the gauge line, centred on the
         // arc's mid-angle. Colour carries which is which (red = motor, orange = controller).
-        CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
-        CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+        if (showReadouts) {
+            CurvedTemp(MOTOR_ARC_START + TEMP_SWEEP / 2f, temp(frame.motorTemp, ambientBlind), "MOTOR", motorColor, readoutFocus)
+            CurvedTemp(CTRL_ARC_START - TEMP_SWEEP / 2f, temp(frame.ctrlTemp, ambientBlind), "CTRL", ctrlColor, readoutFocus)
+        }
 
         // ── Top: wall clock at the rim gap, forecast under it ──
         // Its own stack, so the heroes below never move when the forecast appears or disappears.
@@ -177,7 +184,7 @@ internal fun FrameLayout(
         }
 
         // ── Speed + duty: pinned to the rim, not stacked under the clock ──
-        Row(
+        if (showReadouts) Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(offset.x, offset.y)
@@ -201,7 +208,7 @@ internal fun FrameLayout(
         }
 
         // ── Bottom: battery % above the bottom gauge ──
-        Text(
+        if (showReadouts) Text(
             // Same size as the curved temp values so the three secondary readouts match.
             text = if (ambientBlind) DASH else frame.battery?.let { "${format(it, 0)}%" } ?: DASH,
             style = MaterialTheme.typography.title3.copy(fontSize = TEMP_FONT_SIZE),
