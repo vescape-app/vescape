@@ -42,6 +42,8 @@
 
 ### Process
 
+- [persistence-reliability-plan.md](./persistence-reliability-plan.md) — in-progress Android/iOS persistence reliability plan and shared native DB contract tests
+
 - [design.md](./design.md) — visual design language: colors, layout, typography
 - [release.md](./release.md) — versioning, per-version notes tiers, tags & GitHub Releases
 
