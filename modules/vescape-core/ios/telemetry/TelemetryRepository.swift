@@ -626,7 +626,7 @@ internal final class TelemetryRepository {
           """,
         arguments: [startMs, endMs, boardId, boardId]
       )
-      let track = try fetchRideTrack(db, fromMs: startMs, toMs: endMs, boardId: boardId)
+      let track = try fetchRideTrackForAggregation(db, fromMs: startMs, toMs: endMs, boardId: boardId)
         .map(rideTrackPoint)
       return (rows.compactMap(bucketPoint), track)
     }) ?? ([], [])
@@ -735,7 +735,7 @@ internal final class TelemetryRepository {
             """,
           arguments: [chunkFrom, chunkTo]
         )
-        let track = try fetchRideTrack(db, fromMs: chunkFrom, toMs: chunkTo, boardId: nil)
+        let track = try fetchRideTrackForAggregation(db, fromMs: chunkFrom, toMs: chunkTo, boardId: nil)
           .map(rideTrackPoint)
         var points = rows.compactMap(bucketPoint)
         let sanitization = sanitizeTelemetrySamples(points, track: track, config: metricConfig)

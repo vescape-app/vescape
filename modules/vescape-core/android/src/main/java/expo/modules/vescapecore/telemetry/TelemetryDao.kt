@@ -8,6 +8,13 @@ import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 
+private const val RIDE_TRACK_RANGE_QUERY = """
+  SELECT * FROM ride_track_points
+  WHERE fix_at_ms >= :fromMs AND fix_at_ms <= :toMs
+    AND (:boardId IS NULL OR board_id = :boardId)
+  ORDER BY fix_at_ms ASC
+"""
+
 // @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift
 @Dao
 interface TelemetryDao {
@@ -182,21 +189,22 @@ interface TelemetryDao {
    * accuracy it was reported with — filtering poor fixes is a read-side decision the caller makes,
    * not one this query bakes in.
    */
-  @Query(
-    """
-    SELECT * FROM ride_track_points
-    WHERE fix_at_ms >= :fromMs
-      AND fix_at_ms <= :toMs
-      AND (:boardId IS NULL OR board_id = :boardId)
-    ORDER BY fix_at_ms ASC
-    LIMIT :limit
-    """,
-  )
+  // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrack`
+  @Query(RIDE_TRACK_RANGE_QUERY + " LIMIT :limit")
   suspend fun getRideTrackPoints(
     fromMs: Long,
     toMs: Long,
     boardId: String?,
     limit: Int,
+  ): List<RideTrackPointEntity>
+
+  /** Complete input for durable summaries and bucket rebuilds, without the bridge read cap. */
+  // @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `fetchRideTrackForAggregation`
+  @Query(RIDE_TRACK_RANGE_QUERY)
+  suspend fun getRideTrackForAggregation(
+    fromMs: Long,
+    toMs: Long,
+    boardId: String?,
   ): List<RideTrackPointEntity>
 
   @Query("SELECT COUNT(*) FROM ride_track_points")
@@ -304,16 +312,26 @@ interface TelemetryDao {
    * Sample in them. A board dropout is exactly when those minutes exist, and they carry the Moving
    * Window and route anchor that keep Time and the seek timeline honest across it (ADR 0038).
    * [getHistoryBuckets] stays sample-only: its rows are graph buckets.
+   * The limit is soft: every bucket in the boundary minute is included.
    */
+  // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `fetchRideHistoryBucketBatch`
   @Query(
     """
     SELECT * FROM telemetry_minute_buckets
-    WHERE bucket_start_ms <= :beforeMs
+    WHERE bucket_start_ms < :beforeMs AND bucket_start_ms >= (
+      SELECT MIN(bucket_start_ms) FROM (
+        SELECT bucket_start_ms FROM telemetry_minute_buckets
+        WHERE bucket_start_ms < :beforeMs ORDER BY bucket_start_ms DESC LIMIT :limit
+      )
+    )
     ORDER BY bucket_start_ms DESC
-    LIMIT :limit
     """,
   )
   suspend fun getRideBuckets(beforeMs: Long, limit: Int): List<TelemetryMinuteBucketEntity>
+
+  // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift `fetchRideHistoryBucketBatch`
+  @Query("SELECT EXISTS(SELECT 1 FROM telemetry_minute_buckets WHERE bucket_start_ms < :beforeMs)")
+  suspend fun hasRideBucketsBefore(beforeMs: Long): Boolean
 
   @Query(
     """

@@ -80,6 +80,54 @@ final class RideHistoryGroupingTests: XCTestCase {
     XCTAssertEqual(groupRideSessions(buckets: buckets, markers: [], gapMs: 2 * 3_600_000).count, 1)
   }
 
+  /// The 100th and 101st buckets share a minute. Neither recording may be skipped by the cursor.
+  /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
+  func testBucketPagingIncludesTheWholeBoundaryMinute() throws {
+    let database = try DatabaseQueue()
+    try TelemetryDatabase.migrator.migrate(database)
+    try database.write { db in
+      for minute in 2...100 {
+        try insertPagingBucket(db, start: base + Int64(minute) * 60_000, recordingId: "newer")
+      }
+      try insertPagingBucket(db, start: base + 60_000, recordingId: "boundary-a")
+      try insertPagingBucket(db, start: base + 80_000, recordingId: "boundary-b")
+      try insertPagingBucket(db, start: base, recordingId: "boundary-a")
+    }
+    try database.read { db in
+      let first = try fetchRideHistoryBucketBatch(db, beforeMs: Int64.max)
+      XCTAssertEqual(first.buckets.count, 101)
+      XCTAssertTrue(first.hasOlder)
+      let cursor = try XCTUnwrap(first.buckets.last?["bucket_start_ms"] as Int64?)
+      XCTAssertEqual(cursor, base + 60_000)
+      let second = try fetchRideHistoryBucketBatch(db, beforeMs: cursor)
+      XCTAssertEqual(second.buckets.count, 1)
+      XCTAssertFalse(second.hasOlder)
+      let sessions = groupRideSessions(buckets: first.buckets + second.buckets, markers: [], gapMs: gapMs)
+      XCTAssertEqual(sessions.count, 3)
+      XCTAssertEqual(sessions.first { $0.recordingId == "newer" }?.sampleCount, 99)
+      XCTAssertEqual(sessions.first { $0.recordingId == "boundary-a" }?.sampleCount, 2)
+      XCTAssertEqual(sessions.first { $0.recordingId == "boundary-b" }?.sampleCount, 1)
+      let empty = try fetchRideHistoryBucketBatch(db, beforeMs: base)
+      XCTAssertTrue(empty.buckets.isEmpty)
+      XCTAssertFalse(empty.hasOlder)
+    }
+  }
+
+  private func insertPagingBucket(_ db: Database, start: Int64, recordingId: String) throws {
+    var bucket = TelemetryBucket(
+      bucketStartMs: start - start % TELEMETRY_BUCKET_SIZE_MS,
+      boardId: "board-1", recordingId: recordingId
+    )
+    bucket.sampleCount = 1
+    bucket.firstSampleAtMs = start
+    bucket.lastSampleAtMs = start + 10_000
+    bucket.movingSpeedSampleCount = 1
+    bucket.sumMovingAbsSpeedCentiKmh = 1_000
+    bucket.firstMovingAtMs = start
+    bucket.lastMovingAtMs = start + 10_000
+    try upsertBucket(db, bucket)
+  }
+
   private func trackOnlyBucket(start: Int64, end: Int64) -> Row {
     bucket(
       start: start,

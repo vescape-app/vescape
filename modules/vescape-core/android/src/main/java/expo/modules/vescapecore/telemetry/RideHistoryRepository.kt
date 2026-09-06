@@ -76,16 +76,15 @@ internal class RideHistoryRepository private constructor(private val context: Co
       var complete = emptyList<RideSessionAggregate>()
 
       while (hasOlderBuckets && complete.size < limit) {
-        val beforeInclusive = if (beforeExclusive == Long.MAX_VALUE) Long.MAX_VALUE else beforeExclusive - 1L
-        val fetched = dao.getRideBuckets(beforeInclusive, RIDE_BUCKET_BATCH_SIZE + 1)
-        val batch = fetched.take(RIDE_BUCKET_BATCH_SIZE)
+        // The limit is soft: include every recording and Board in the boundary minute.
+        val batch = dao.getRideBuckets(beforeExclusive, RIDE_BUCKET_BATCH_SIZE)
         if (batch.isEmpty()) {
           hasOlderBuckets = false
           break
         }
         buckets.addAll(batch)
         beforeExclusive = batch.minOf { it.bucketStartMs }
-        hasOlderBuckets = fetched.size > RIDE_BUCKET_BATCH_SIZE
+        hasOlderBuckets = dao.hasRideBucketsBefore(beforeExclusive)
         val markerFrom = buckets.minOf { it.firstSampleAtMs } - gapMs
         val markerTo = buckets.maxOf { it.lastSampleAtMs } + TELEMETRY_BUCKET_SIZE_MS
         val markers = dao.getMarkers(markerFrom, markerTo, null)

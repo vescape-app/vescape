@@ -736,7 +736,7 @@ class TelemetryRepository private constructor(context: Context) {
    * The Ride Track over a range: every stored fix, on the GPS clock, independent of whether a
    * telemetry frame arrived near it.
    */
-  private suspend fun rideTrack(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity> =
+  private suspend fun rideTrackPage(fromMs: Long, toMs: Long, boardId: String?): List<RideTrackPointEntity> =
     dao.getRideTrackPoints(fromMs, toMs, boardId, MAX_SAMPLE_LIMIT)
 
   suspend fun getRange(options: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -745,7 +745,7 @@ class TelemetryRepository private constructor(context: Context) {
     val configs = batteryConfigByBoard()
     val boardNames = boardNamesById()
     smoothedSampleColumns(samples, configs, boardNames) + mapOf(
-      "gpsSamples" to rideTrack(query.fromMs, query.toMs, query.boardId).toGpsSampleMaps(boardNames),
+      "gpsSamples" to rideTrackPage(query.fromMs, query.toMs, query.boardId).toGpsSampleMaps(boardNames),
       "markers" to dao.getMarkers(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
       "exclusions" to dao.getExclusions(query.fromMs, query.toMs, query.boardId).map { it.toMap() },
     )
@@ -836,7 +836,7 @@ class TelemetryRepository private constructor(context: Context) {
     flushNow()
 
     val states = getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE)
-    val summary = favoriteSummary(states, rideTrack(startMs, endMs, boardId))
+    val summary = favoriteSummary(states, dao.getRideTrackForAggregation(startMs, endMs, boardId))
     val nowMs = System.currentTimeMillis()
     val favorite = FavoriteEntity(
       id = UUID.randomUUID().toString(),
@@ -881,7 +881,7 @@ class TelemetryRepository private constructor(context: Context) {
 
     val summary = favoriteSummary(
       getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE),
-      rideTrack(startMs, endMs, boardId),
+      dao.getRideTrackForAggregation(startMs, endMs, boardId),
     )
     val updated = existing.copy(
       name = name,
@@ -986,7 +986,7 @@ class TelemetryRepository private constructor(context: Context) {
       val chunkTo = minOf(chunkFrom + chunkMs - 1, lastMs)
 
       val states = getSampleStates(chunkFrom, chunkTo, null, Int.MAX_VALUE)
-      val track = rideTrack(chunkFrom, chunkTo, null)
+      val track = dao.getRideTrackForAggregation(chunkFrom, chunkTo, null)
       if (states.isNotEmpty() || track.isNotEmpty()) {
         val telemetryPoints = states.map { it.state.toBucketPoint() }
         val sanitization = sanitizeTelemetrySamples(telemetryPoints, track, metricSanitizerConfig)

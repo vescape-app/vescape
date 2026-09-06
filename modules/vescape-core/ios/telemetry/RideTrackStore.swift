@@ -189,16 +189,38 @@ internal func fetchRideTrack(
   boardId: String?,
   limit: Int = MAX_SAMPLE_LIMIT
 ) throws -> [Row] {
-  try Row.fetchAll(
-    db,
-    sql: """
-      SELECT * FROM ride_track_points
-      WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND (? IS NULL OR board_id = ?)
-      ORDER BY fix_at_ms ASC
-      LIMIT ?
-      """,
-    arguments: [fromMs, toMs, boardId, boardId, limit]
-  )
+  try fetchRideTrackRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId, limit: limit)
+}
+
+/// Complete input for durable summaries and bucket rebuilds, without the bridge read cap.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideTrackForAggregation`
+internal func fetchRideTrackForAggregation(
+  _ db: Database,
+  fromMs: Int64,
+  toMs: Int64,
+  boardId: String?
+) throws -> [Row] {
+  try fetchRideTrackRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId, limit: nil)
+}
+
+private func fetchRideTrackRows(
+  _ db: Database,
+  fromMs: Int64,
+  toMs: Int64,
+  boardId: String?,
+  limit: Int?
+) throws -> [Row] {
+  var sql = """
+    SELECT * FROM ride_track_points
+    WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND (? IS NULL OR board_id = ?)
+    ORDER BY fix_at_ms ASC
+    """
+  var arguments: StatementArguments = [fromMs, toMs, boardId, boardId]
+  if let limit {
+    sql += " LIMIT ?"
+    arguments += [limit]
+  }
+  return try Row.fetchAll(db, sql: sql, arguments: arguments)
 }
 
 /// Drop closed recordings no row references any more. Identity outlives its rows only as long as
