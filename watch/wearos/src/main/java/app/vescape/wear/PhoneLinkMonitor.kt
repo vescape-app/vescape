@@ -40,6 +40,9 @@ class PhoneLinkMonitor(context: Context) {
     @Volatile
     private var nextRefresh: ScheduledFuture<*>? = null
 
+    @Volatile
+    private var ambient = false
+
     private val listener = CapabilityClient.OnCapabilityChangedListener { info ->
         // The listener is a push, not a poll: it answers instantly and proves nothing about the
         // monitor still running, so it does not count as a probe.
@@ -50,6 +53,21 @@ class PhoneLinkMonitor(context: Context) {
         if (running) return
         running = true
         capabilityClient.addListener(listener, PHONE_APP_CAPABILITY)
+        executor.execute(::refreshLoop)
+    }
+
+    /**
+     * Ambient pays the settled rate whatever the link says. The fast poll exists for a rider looking
+     * at a dark screen and watching each pass land; in always-on nothing animates and each pass is
+     * still two blocking Play-services round trips. Waking asks again immediately rather than
+     * serving the rider a stale answer for the rest of the slow interval.
+     */
+    fun setAmbient(active: Boolean) {
+        if (ambient == active) return
+        ambient = active
+        if (active || !running) return
+        nextRefresh?.cancel(false)
+        nextRefresh = null
         executor.execute(::refreshLoop)
     }
 
@@ -80,7 +98,7 @@ class PhoneLinkMonitor(context: Context) {
             probe = true,
         )
         if (running) {
-            val settled = TelemetryState.mirrorState.value.status == MirrorStatus.LIVE
+            val settled = ambient || TelemetryState.mirrorState.value.status == MirrorStatus.LIVE
             val delayMs = if (settled) PHONE_LINK_SETTLED_REFRESH_MS else PHONE_LINK_REFRESH_MS
             nextRefresh = executor.schedule(::refreshLoop, delayMs, TimeUnit.MILLISECONDS)
         }

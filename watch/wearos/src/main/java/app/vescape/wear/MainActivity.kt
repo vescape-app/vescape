@@ -271,11 +271,13 @@ class MainActivity : ComponentActivity() {
                 lowBit = ambientDetails.deviceHasLowBitAmbient,
                 burnInProtection = ambientDetails.burnInProtectionRequired,
             )
+            phoneLinkMonitor.setAmbient(true)
             publishWakeLevel()
         }
 
         override fun onExitAmbient() {
             ambient.value = AmbientOff
+            phoneLinkMonitor.setAmbient(false)
             publishWakeLevel()
         }
     }

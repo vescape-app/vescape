@@ -17,7 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,9 +71,20 @@ internal fun DisconnectedLayout(ambient: AmbientMode) {
 private fun ProbePulse(ambient: AmbientMode) {
     val probe by TelemetryState.linkProbe
     val sweep = remember { Animatable(PULSE_SETTLED) }
+    // Seeded with the count already on screen, so neither first composition nor a wake replays a
+    // probe that landed before either of them. Only a count this row has not lit yet animates.
+    var pulsed by remember { mutableIntStateOf(probe.count) }
 
     LaunchedEffect(probe.count, ambient.active) {
-        if (ambient.active || probe.count == 0) return@LaunchedEffect
+        if (ambient.active) {
+            // Entering ambient cancels a pulse mid-travel; left alone the row would hold a half-lit
+            // dot for the whole always-on session and read as a query still in flight.
+            sweep.snapTo(PULSE_SETTLED)
+            pulsed = probe.count
+            return@LaunchedEffect
+        }
+        if (probe.count == pulsed) return@LaunchedEffect
+        pulsed = probe.count
         sweep.snapTo(0f)
         sweep.animateTo(PULSE_SETTLED, tween(durationMillis = PULSE_MS, easing = LinearEasing))
     }
