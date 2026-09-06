@@ -25,6 +25,21 @@ Measured on 2026-09-06: a clean `bun run test:persistence` took 11.83 s end to e
 3 s, Swift build 7.28 s, macOS scenario 24 ms). A warm run took 2.87 s end to end (Android 615 ms,
 Swift build 220 ms, macOS scenario 20 ms). The scenario duration excludes tool startup and builds.
 
+## Native persistence error delivery check
+
+Issue #462 routes recording transaction failures directly to the already initialized native Sentry
+SDK (`io.sentry:sentry-android` 8.31.0 and `Sentry/HybridSDK` 8.58.0, matching
+`@sentry/react-native` 7.11.0). Reports contain only operation, failure category, and exception type;
+telemetry, GPS, SQL, arguments, and error descriptions are excluded. Repeated failures in one
+episode produce one event. Offline delivery remains the SDK's best-effort queue.
+
+On 2026-09-06, compile-time native integration was verified by Android and iOS test builds. An
+actual event delivery check was unavailable in this checkout because no Sentry auth token or
+production DSN was available. Do not treat SDK invocation tests or successful compilation as proof
+that Sentry received an event. A release-device delivery check must trigger the deterministic
+recording write failure, copy the returned Sentry event id, and confirm that exact event in the
+production project without adding sample, location, SQL, or argument data.
+
 ## Implementation issues
 
 - #461 — Test recording across hosts

@@ -1,0 +1,46 @@
+import Foundation
+import GRDB
+import XCTest
+@testable import VescapeCore
+
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/recording/RecordingStorageFailureTest.kt
+final class RecordingStorageFailureTests: XCTestCase {
+  func testSharedFailureFixtureClassifiesPlatformErrors() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    let data = try Data(contentsOf: root.appendingPathComponent("../shared/recording-failure-contract.json"))
+    let fixture = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    let scenarios = fixture["scenarios"] as! [[String: Any]]
+    for scenario in scenarios {
+      let code = ResultCode(rawValue: Int32(scenario["sqliteCode"] as! Int))
+      let kind = RecordingStorageFailure.classify(DatabaseError(resultCode: code))
+      XCTAssertEqual(kind.rawValue, scenario["expectedKind"] as? String)
+      XCTAssertEqual(kind != .writeFailed, scenario["storageUnavailable"] as? Bool)
+      let bridgeState = recordingFailureState(kind)
+      XCTAssertEqual(bridgeState["kind"] as? String, scenario["expectedKind"] as? String)
+      XCTAssertEqual(bridgeState["storageUnavailable"] as? Bool, scenario["storageUnavailable"] as? Bool)
+    }
+  }
+
+  func testReportIsSanitizedAndEmittedOncePerEpisode() {
+    var reports: [RecordingFailureReport] = []
+    let reporter = RecordingFailureReporter { reports.append($0) }
+    reporter.report(kind: .fullDisk, error: DatabaseError(resultCode: .SQLITE_FULL, message: "private SQL and args"))
+    reporter.report(kind: .fullDisk, error: DatabaseError(resultCode: .SQLITE_FULL, message: "again"))
+    XCTAssertEqual(reports, [.init(operation: "recording_commit", category: "full_disk", errorType: "DatabaseError")])
+  }
+
+  func testWriteGateStopsIngestionAndReportsOnce() {
+    var reports = 0
+    let gate = RecordingWriteGate { _ in reports += 1 }
+    XCTAssertTrue(gate.isAccepting())
+    gate.fail(DatabaseError(resultCode: .SQLITE_ERROR))
+    gate.fail(DatabaseError(resultCode: .SQLITE_FULL))
+    XCTAssertFalse(gate.isAccepting())
+    XCTAssertEqual(reports, 1)
+  }
+
+
+  func testGenericFailureCannotHideABroadOutage() {
+    XCTAssertEqual(resolveRecordingFailureKind(current: .fullDisk, incoming: .writeFailed), .fullDisk)
+  }
+}

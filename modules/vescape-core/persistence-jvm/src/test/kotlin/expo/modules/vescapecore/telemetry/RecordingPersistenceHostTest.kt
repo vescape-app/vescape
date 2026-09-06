@@ -2,14 +2,61 @@ package expo.modules.vescapecore.telemetry
 
 import androidx.room.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.execSQL
 import java.nio.file.Files
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CoroutineStart
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.Assert.assertFalse
 
 /** Production Room DAO contract on host SQLite. No Android framework, emulator, or test DAO. */
 class RecordingPersistenceHostTest {
+  @Test
+  fun failedTransactionRollsBackAndStopsIngestion(): Unit = runBlocking {
+    val path = Files.createTempFile("vescape-recording-failure", ".db")
+    Files.deleteIfExists(path)
+    fun open() = Room.databaseBuilder<TelemetryRoomDatabase>(path.toString()).setDriver(BundledSQLiteDriver()).build()
+    var db = open()
+    var persistence = RecordingPersistence(db.telemetryDao())
+    fun marker(at: Long, type: String) = TelemetryMarkerEntity(
+      occurredAtMs = at, elapsedRealtimeMs = at, type = type, boardId = null, message = null, gapMs = null,
+    )
+    persistence.commit(emptyList(), emptyList(), listOf(marker(1, "committed")))
+    db.close()
+    var connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("""
+      CREATE TRIGGER fail_recording_marker BEFORE INSERT ON telemetry_markers
+      WHEN NEW.type = 'fail' BEGIN SELECT RAISE(FAIL, 'deterministic recording failure'); END
+    """.trimIndent())
+    connection.close()
+    db = open()
+    persistence = RecordingPersistence(db.telemetryDao())
+    var reports = 0
+    val boundary = RecordingCommitBoundary(persistence, onFailure = { reports++ })
+    val failingFlush = async(start = CoroutineStart.UNDISPATCHED) {
+      boundary.commit(emptyList(), emptyList(), listOf(marker(2, "pending"), marker(3, "fail")))
+    }
+    val competingFlush = async {
+      boundary.commit(emptyList(), emptyList(), listOf(marker(4, "after_failure")))
+    }
+    assertFalse(failingFlush.await())
+    assertFalse(competingFlush.await())
+    assertFalse(boundary.isAccepting())
+    assertFalse(boundary.commit(emptyList(), emptyList(), listOf(marker(5, "later"))))
+    assertEquals(1, reports)
+    db.close()
+    connection = BundledSQLiteDriver().open(path.toString())
+    connection.execSQL("DROP TRIGGER fail_recording_marker")
+    connection.close()
+    db = open()
+    assertEquals(listOf("committed"), db.telemetryDao().getMarkers(0, Long.MAX_VALUE, null).map { it.type })
+    db.close()
+    Files.deleteIfExists(path)
+  }
+
   @Test
   fun movingRecordingSurvivesCloseAndReopen(): Unit = runBlocking {
     val fixture = JSONObject(

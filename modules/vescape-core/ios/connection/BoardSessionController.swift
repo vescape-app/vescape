@@ -185,7 +185,13 @@ internal final class BoardSessionController: VescGattListener {
   /// True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only.
   private var bmsSeriesFocused = false
   private let appData: AppDataRepository
-  private lazy var recordingCoordinator = RecordingCoordinator(appData: appData)
+  private lazy var recordingCoordinator: RecordingCoordinator = {
+    let value = RecordingCoordinator(appData: appData)
+    value.onFailure = { [weak self] in self?.onStateChanged?() }
+    return value
+  }()
+
+  func recordingFailure() -> RecordingStorageFailureKind? { RecordingStorageFailure.value() }
   private lazy var configController = ConfigRWController()
   private lazy var locationTracker = LocationTracker(
     recentWindowMs: { [weak self] in Int64(max(1, self?.config?.liveHistoryLimitMinutes ?? 5)) * 60_000 },

@@ -15,6 +15,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.recordingFailureState
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
@@ -381,7 +383,9 @@ class CoreForegroundService : Service() {
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {
             RecordingCoordinator.requestTelemetryRecording(enabled)
             instance?.controller?.setTelemetryRecordingEnabled(enabled)
-            if (!enabled) TelemetryRepository.get(context.applicationContext).flushBlocking()
+            if (!enabled && RecordingStorageFailure.value() == null) {
+                TelemetryRepository.get(context.applicationContext).flushBlocking()
+            }
         }
 
         fun setBmsSeriesFocused(focused: Boolean) {
@@ -446,9 +450,11 @@ class CoreForegroundService : Service() {
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()
 
-        fun currentLiveState(context: Context): Map<String, Any?> =
-            instance?.controller?.liveStateMap(includeRecent = true)
+        fun currentLiveState(context: Context): Map<String, Any?> {
+            RecordingStorageFailure.initialize(context.applicationContext)
+            return instance?.controller?.liveStateMap(includeRecent = true)
                 ?: idleState(AppDataRepository.get(context.applicationContext))
+        }
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
@@ -490,8 +496,10 @@ class CoreForegroundService : Service() {
                 ),
                 "recording" to mapOf(
                     "enabled" to false,
+                    "paused" to false,
                     "activeBoardId" to null,
                     "startedAt" to null,
+                    "failure" to RecordingStorageFailure.value()?.let(::recordingFailureState),
                 ),
             )
         }
@@ -504,6 +512,7 @@ class CoreForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        RecordingStorageFailure.initialize(applicationContext)
         controller = BoardSessionController(this)
         instance = this
         controller.onCreate()

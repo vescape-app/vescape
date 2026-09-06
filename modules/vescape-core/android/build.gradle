@@ -27,6 +27,8 @@ android {
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  sourceSets.test.resources.srcDir "../shared"
+
   buildTypes {
     release {
       minifyEnabled false
@@ -55,6 +57,7 @@ dependencies {
   implementation "androidx.wear:wear-remote-interactions:1.1.0"
   implementation "androidx.room:room-runtime:2.8.4"
   implementation "androidx.room:room-ktx:2.8.4"
+  implementation "io.sentry:sentry-android:8.31.0"
   ksp "androidx.room:room-compiler:2.8.4"
   testImplementation "junit:junit:4.13.2"
   testImplementation "org.json:json:20231013"

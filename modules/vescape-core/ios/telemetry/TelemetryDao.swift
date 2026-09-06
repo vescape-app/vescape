@@ -3,28 +3,34 @@ import GRDB
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
 internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
-  let t = state.t
-  let loc = state.location
-  try db.execute(
-    sql: RecordingPersistenceSQL.insertFrame,
-    arguments: RecordingPersistenceSQL.frameArguments(.init(
-      capturedAtMs: state.capturedAtMs, elapsedRealtimeMs: state.elapsedRealtimeMs, boardId: state.boardId,
-      canId: state.capture.canId, flags: TELEMETRY_FLAG_KEYFRAME | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION),
-      changedMask1: Int.max, changedMask2: 1, speedCentiKmh: telemetryCenti(t.speed),
-      batteryVoltageMv: telemetryMilli(t.batteryVoltage), motorCurrentMa: telemetryMilli(t.motorCurrent),
-      batteryCurrentMa: telemetryMilli(t.batteryCurrent), dutyPermille: telemetryMilli(t.dutyCycle),
-      pitchCentiDeg: telemetryCenti(t.pitch), rollCentiDeg: telemetryCenti(t.roll),
-      balancePitchCentiDeg: telemetryCenti(t.balancePitch), balanceCurrentMa: telemetryMilli(t.balanceCurrent),
-      erpm: t.erpm, state: t.state, switchState: t.switchState, adc1Milli: telemetryMilli(t.adc1),
-      adc2Milli: telemetryMilli(t.adc2), odometerCm: t.odometer.map { Int64(($0 * 100.0).rounded()) },
-      tempMosfetDeciC: t.tempMosfet.map { telemetryDeci($0) }, tempMotorDeciC: t.tempMotor.map { telemetryDeci($0) },
-      latitudeE7: loc.map { Int64(($0.latitude * 10_000_000.0).rounded()) },
-      longitudeE7: loc.map { Int64(($0.longitude * 10_000_000.0).rounded()) },
-      gpsSpeedCentiMps: loc?.speedMps.map { telemetryCenti($0) }, bearingCentiDeg: loc?.bearingDeg.map { telemetryCenti($0) },
-      accuracyCm: loc?.accuracyM.map { telemetryCenti($0) }, altitudeCm: loc?.altitudeM.map { telemetryCenti($0) },
-      locationTimestampMs: loc?.timestamp
-    ))
-  )
+  try TelemetryFrameRecord(state: state).insert(db)
+}
+
+private struct TelemetryFrameRecord: PersistableRecord {
+  static let databaseTableName = "telemetry_frames"
+  let state: FullTelemetryState
+  func encode(to row: inout PersistenceContainer) {
+    let t = state.t
+    let loc = state.location
+    row["captured_at_ms"] = state.capturedAtMs; row["elapsed_realtime_ms"] = state.elapsedRealtimeMs
+    row["board_id"] = state.boardId; row["can_id"] = state.capture.canId
+    row["flags"] = TELEMETRY_FLAG_KEYFRAME | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION)
+    row["changed_mask_1"] = Int.max; row["changed_mask_2"] = 1
+    row["speed_centi_kmh"] = telemetryCenti(t.speed); row["battery_voltage_mv"] = telemetryMilli(t.batteryVoltage)
+    row["motor_current_ma"] = telemetryMilli(t.motorCurrent); row["battery_current_ma"] = telemetryMilli(t.batteryCurrent)
+    row["duty_permille"] = telemetryMilli(t.dutyCycle); row["pitch_centi_deg"] = telemetryCenti(t.pitch)
+    row["roll_centi_deg"] = telemetryCenti(t.roll); row["balance_pitch_centi_deg"] = telemetryCenti(t.balancePitch)
+    row["balance_current_ma"] = telemetryMilli(t.balanceCurrent); row["erpm"] = t.erpm
+    row["state"] = t.state; row["switch_state"] = t.switchState
+    row["adc1_milli"] = telemetryMilli(t.adc1); row["adc2_milli"] = telemetryMilli(t.adc2)
+    row["odometer_cm"] = t.odometer.map { Int64(($0 * 100.0).rounded()) }
+    row["temp_mosfet_deci_c"] = t.tempMosfet.map { telemetryDeci($0) }; row["temp_motor_deci_c"] = t.tempMotor.map { telemetryDeci($0) }
+    row["latitude_e7"] = loc.map { Int64(($0.latitude * 10_000_000.0).rounded()) }
+    row["longitude_e7"] = loc.map { Int64(($0.longitude * 10_000_000.0).rounded()) }
+    row["gps_speed_centi_mps"] = loc?.speedMps.map { telemetryCenti($0) }; row["bearing_centi_deg"] = loc?.bearingDeg.map { telemetryCenti($0) }
+    row["accuracy_cm"] = loc?.accuracyM.map { telemetryCenti($0) }; row["altitude_cm"] = loc?.altitudeM.map { telemetryCenti($0) }
+    row["location_timestamp_ms"] = loc?.timestamp
+  }
 }
 
 internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {

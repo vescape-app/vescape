@@ -589,7 +589,18 @@ export interface LiveStateEvent {
     paused: boolean
     activeBoardId: string | null
     startedAt: number | null
+    /**
+     * Native-owned persistence failure. Cleared only by a successful startup storage check.
+     * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/RecordingStorageFailure.kt
+     * @parity /modules/vescape-core/ios/recording/RecordingStorageFailure.swift
+     */
+    failure?: RecordingFailureState | null
   }
+}
+
+export interface RecordingFailureState {
+  kind: 'write_failed' | 'storage_unavailable' | 'full_disk'
+  storageUnavailable: boolean
 }
 
 export interface TelemetryHistoryOptions {

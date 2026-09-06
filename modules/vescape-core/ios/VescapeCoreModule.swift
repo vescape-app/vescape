@@ -1500,6 +1500,7 @@ public class VescapeCoreModule: Module {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `buildLiveState`
   private func liveState() -> [String: Any?] {
+    RecordingStorageFailure.initialize()
     let settings = appData.getSettings()
     return [
       "board": [
@@ -1536,6 +1537,7 @@ public class VescapeCoreModule: Module {
         // Always null, matching Android's live-state mapper — JS never consumes a real timestamp.
         // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt
         "startedAt": nil,
+        "failure": coordinator.recordingFailure().map(recordingFailureState),
       ] as [String: Any?],
     ]
   }

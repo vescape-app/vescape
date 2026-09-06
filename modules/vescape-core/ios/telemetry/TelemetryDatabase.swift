@@ -37,6 +37,13 @@ enum TelemetryDatabase {
     return nil
   }
 
+  /// Resolve the shared pool while preserving its original open or migration error for startup
+  /// health checks. Ordinary callers keep using `pool` so reads can still degrade gracefully.
+  static func requirePool() throws -> DatabasePool {
+    if let reopened { return reopened }
+    return try poolResult.get()
+  }
+
   /// One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
   /// the whole database lives in the main file, then renames it in place. Idempotent: once the new
   /// file exists (or no legacy file is present) this is a no-op.

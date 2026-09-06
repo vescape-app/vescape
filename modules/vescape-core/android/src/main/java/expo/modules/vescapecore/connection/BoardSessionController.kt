@@ -313,7 +313,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         RecordingCoordinator(
             context = service.applicationContext,
             applyLiveSettings = ::applyTelemetryPipelineSettings,
+            onRecordingFailure = ::onRecordingPersistenceFailure,
         )
+    }
+
+    private fun onRecordingPersistenceFailure() {
+        scheduler.post {
+            recordingCoordinator.handleStorageFailure()
+            emitState()
+        }
     }
     private val liveSeriesEmitter by lazy {
         LiveSeriesEmitter(

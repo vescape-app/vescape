@@ -16,9 +16,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 
 private const val TAG = "TelemetryStore"
 private const val KEYFRAME_INTERVAL_MS = 60_000L
@@ -110,6 +113,18 @@ class TelemetryRepository private constructor(context: Context) {
   private var lastKeyframeAtMs: Long? = null
   private var forceNextKeyframe = true
   private var droppedPendingFrames = 0L
+  @Volatile private var onRecordingFailure: (() -> Unit)? = null
+  private val recordingCommitBoundary = RecordingCommitBoundary(
+    persistence = recordingPersistence,
+    onFailure = { error ->
+      RecordingStorageFailure.fail(appContext, error)
+      onRecordingFailure?.invoke()
+    },
+    // Database restore can recreate this repository in the same process. A prior failure remains
+    // fail-closed until the next process startup check succeeds.
+    initiallyAccepting = RecordingStorageFailure.value() == null,
+  )
+  private val flushMutex = Mutex()
   private var metricSanitizerConfig = MetricSanitizerConfig()
   @Volatile
   private var enabledPrivacyZones: List<PrivacyZoneEntity> = emptyList()
@@ -184,6 +199,7 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   fun recordTelemetry(capture: TelemetryCapture) {
+    if (!recordingCommitBoundary.isAccepting()) return
     val current = FullTelemetryState.from(capture)
     synchronized(lock) {
       val previous = lastState
@@ -241,6 +257,10 @@ class TelemetryRepository private constructor(context: Context) {
         scheduleFlushLocked()
       }
     }
+  }
+
+  fun observeRecordingFailure(listener: (() -> Unit)?) {
+    onRecordingFailure = listener
   }
 
   fun flushBlocking() {
@@ -867,24 +887,30 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   private suspend fun flushNow() {
-    val frames: List<PendingFrame>
-    val bucketStates: List<FullTelemetryState>
-    val markers: List<TelemetryMarkerEntity>
-    synchronized(lock) {
-      if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty()) {
-        flushScheduled = false
-        return
+    flushMutex.withLock {
+      if (!recordingCommitBoundary.isAccepting()) {
+        synchronized(lock) {
+          pending.clear(); pendingBucketStates.clear(); pendingMarkers.clear(); flushScheduled = false
+        }
+        return@withLock
       }
-      frames = pending.toList()
-      bucketStates = pendingBucketStates.toList()
-      markers = pendingMarkers.toList()
-      pending.clear()
-      pendingBucketStates.clear()
-      pendingMarkers.clear()
-      flushScheduled = false
-    }
+      val frames: List<PendingFrame>
+      val bucketStates: List<FullTelemetryState>
+      val markers: List<TelemetryMarkerEntity>
+      synchronized(lock) {
+        if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty()) {
+          flushScheduled = false
+          return@withLock
+        }
+        frames = pending.toList()
+        bucketStates = pendingBucketStates.toList()
+        markers = pendingMarkers.toList()
+        pending.clear()
+        pendingBucketStates.clear()
+        pendingMarkers.clear()
+        flushScheduled = false
+      }
 
-    try {
       val zones = enabledPrivacyZones
       // Persisted detail trace (2 Hz).
       val filteredFrames = if (zones.isEmpty()) frames else frames.filter { pending ->
@@ -896,7 +922,7 @@ class TelemetryRepository private constructor(context: Context) {
         val loc = state.location ?: return@filter true
         !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
       }
-      if (filteredFrames.isEmpty() && filteredStates.isEmpty() && markers.isEmpty()) return
+      if (filteredFrames.isEmpty() && filteredStates.isEmpty() && markers.isEmpty()) return@withLock
 
       val telemetryPoints = filteredStates.map { it.toBucketPoint() }
       val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
@@ -907,7 +933,7 @@ class TelemetryRepository private constructor(context: Context) {
           excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
         )
       }
-      recordingPersistence.commit(
+      recordingCommitBoundary.commit(
         frames = filteredFrames.map { it.frame },
         buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
@@ -916,8 +942,6 @@ class TelemetryRepository private constructor(context: Context) {
         markers = markers,
         exclusions = sanitization.exclusions,
       )
-    } catch (e: Exception) {
-      Log.w(TAG, "Telemetry flush failed: ${e.message}")
     }
   }
 
@@ -926,6 +950,9 @@ class TelemetryRepository private constructor(context: Context) {
     private var instance: TelemetryRepository? = null
 
     fun get(context: Context): TelemetryRepository {
+      // Force the real database open/write probe before any repository can be acquired. This also
+      // turns an open or migration failure into the native recording failure state.
+      RecordingStorageFailure.initialize(context.applicationContext)
       return instance ?: synchronized(this) {
         instance ?: TelemetryRepository(context.applicationContext).also { instance = it }
       }

@@ -13,12 +13,21 @@ internal final class RecordingCoordinator {
   private var startedAtMs: Int64?
   private var requestedTelemetryRecordingEnabled = false
   private var backgroundFlush: BackgroundFlushGuard?
+  var onFailure: (() -> Void)?
 
   init(appData: AppDataRepository) {
     self.appData = appData
     // Lives as long as the coordinator (process-level, below Expo module lifetime), so the flush
     // still fires after a JS reload has torn the module down mid-ride.
     backgroundFlush = BackgroundFlushGuard { [weak self] _ in self?.flushPendingTelemetry() }
+    store.observeRecordingFailure { [weak self] in
+      DispatchQueue.main.async {
+        self?.enabled = false
+        self?.requestedTelemetryRecordingEnabled = false
+        self?.startedAtMs = nil
+        self?.onFailure?()
+      }
+    }
   }
 
   /// Writes whatever `TelemetryRepository` still holds in memory. No-op when nothing is recording —
@@ -106,7 +115,7 @@ internal final class RecordingCoordinator {
     }
     if requested {
       enableTelemetryRecording(config: config)
-      return true
+      return enabled
     }
     if enabled {
       recordMarker("app_stop", config: config, message: "Recording stopped")
@@ -159,6 +168,7 @@ internal final class RecordingCoordinator {
   }
 
   private func enableTelemetryRecording(config: BoardConnectConfig, emitConnectedMarker: Bool = true) {
+    guard RecordingStorageFailure.value() == nil else { return }
     if !enabled {
       startedAtMs = nowMs()
       if emitConnectedMarker {

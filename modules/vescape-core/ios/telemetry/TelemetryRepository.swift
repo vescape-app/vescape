@@ -37,6 +37,19 @@ internal final class TelemetryRepository {
   private var metricConfig = MetricSanitizerConfig()
   private var enabledPrivacyZones: [PrivacyZoneEntity] = []
   private let batteryEstimator = BatterySocEstimator()
+  private var onRecordingFailure: (() -> Void)?
+  private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in
+    RecordingStorageFailure.fail(error)
+    self?.onRecordingFailure?()
+  }
+
+  private init() {
+    RecordingStorageFailure.initialize()
+  }
+
+  func observeRecordingFailure(_ listener: (() -> Void)?) {
+    queue.sync { onRecordingFailure = listener }
+  }
 
   func applySettings(_ settings: [String: Any?]) {
     queue.async { self.metricConfig = MetricSanitizerConfig.from(settings: settings) }
@@ -53,6 +66,7 @@ internal final class TelemetryRepository {
   func recordTelemetry(_ capture: TelemetryCapture) {
     let state = FullTelemetryState(capture: capture)
     queue.async {
+      guard self.recordingCommitBoundary.isAccepting() else { return }
       let gapMs = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
       let gap = (gapMs ?? 0) > GAP_BOUNDARY_MS
       let keyframe = self.lastHistoryAtMs == nil || gap || self.lastKeyframeAtMs == nil ||
@@ -608,11 +622,13 @@ internal final class TelemetryRepository {
     }
     let buckets = buildTelemetryBuckets(sanitized)
 
-    try? pool.write { db in
-      for state in persisted { try insertFrame(db, state) }
-      for bucket in buckets { try upsertBucket(db, bucket) }
-      for marker in markers { try insertMarker(db, marker) }
-      for range in sanitization.exclusions { try insertExclusion(db, range) }
+    recordingCommitBoundary.commit {
+      try pool.write { db in
+        for state in persisted { try insertFrame(db, state) }
+        for bucket in buckets { try upsertBucket(db, bucket) }
+        for marker in markers { try insertMarker(db, marker) }
+        for range in sanitization.exclusions { try insertExclusion(db, range) }
+      }
     }
   }
 
