@@ -34,20 +34,24 @@ import kotlinx.coroutines.launch
  * and drawn once; both pagers are transparent and only swap what sits in the centre of the circle,
  * so the rider never loses speed, duty, battery and temps by swiping. Routes between the Board
  * Move page ([MoveScreen]), the diagnostics pager page ([DiagnosticsScreen]), the
- * waiting/disconnected status layouts, the ambient hero, and the close prompt. Also owns the
- * refresh tick that ages a stopped stream into DISCONNECTED. The board Lights page ([LightsScreen])
- * sits between them.
+ * waiting/disconnected status layouts and the close prompt. Also owns the refresh tick that ages a
+ * stopped stream into DISCONNECTED. The board Lights page ([LightsScreen]) sits between them.
  *
  * The mirror deliberately does not hold the screen on. `FLAG_KEEP_SCREEN_ON` also suppresses
- * ambient, so a ride ran the display at full brightness for hours and the low-power ambient hero
- * below was unreachable — by far the largest battery cost the wrist had.
+ * ambient, so a ride ran the display at full brightness for hours and the low-power always-on
+ * rendering below was unreachable — by far the largest battery cost the wrist had.
+ *
+ * Ambient does not replace this tree, it settles it: the pagers stay mounted and are parked on the
+ * gauges with their gestures off, so going in and out of always-on never rebuilds the screen or
+ * restarts the idle clock. What ambient changes is inside [AmbientMode].
  */
 @Composable
-fun MirrorScreen(
+internal fun MirrorScreen(
     sender: CommandSender,
-    isAmbient: Boolean = false,
+    ambient: AmbientMode = AmbientOff,
     onRequestClose: () -> Unit = {},
 ) {
+    val isAmbient = ambient.active
     val state by TelemetryState.mirrorState
     val phoneLink by TelemetryState.phoneLink
     var showClosePrompt by remember { mutableStateOf(false) }
@@ -97,19 +101,13 @@ fun MirrorScreen(
             showClosePrompt -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ClosePrompt(onStay = { showClosePrompt = false }, onClose = onRequestClose)
             }
-            // Ambient bypasses the pager: always the dim hero, never the diagnostics page.
-            isAmbient -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                MirrorContent(state = state, phoneLink = phoneLink, isAmbient = true)
-            }
             else -> {
                 val dismissState = rememberSwipeToDismissBoxState()
                 // Page 0 = gauges centre (empty), 1 = Board Move, 2 = board Lights,
                 // 3 = diagnostics. Dismiss stays on the left edge; interior horizontal swipes page.
                 val controlPagerState = rememberPagerState(pageCount = { CONTROL_PAGE_COUNT })
                 var dismissEnabled by remember { mutableStateOf(true) }
-                // Idle clock for the auto-return. Remembered inside this branch on purpose:
-                // ambient replaces the whole subtree, so leaving ambient re-remembers it and the
-                // window restarts from the moment the rider looks at the screen again.
+                // Idle clock for the auto-return.
                 var lastTouchMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
                 // Both pagers are transparent: they only swap the centre of the circle. Their drag
                 // offsets are the focus progresses the pinned frame fades its readouts against.
@@ -118,6 +116,14 @@ fun MirrorScreen(
                         .coerceIn(0f, 1f)
                 }
                 val weatherFocus = { (VERTICAL_PAGE_GAUGES - verticalPosition()).coerceIn(0f, 1f) }
+                // The wrist goes always-on wherever the rider left it. Ambient only ever draws the
+                // gauges, so park both axes there first — without this the arcs would be pinned
+                // over a control page the rider can no longer swipe away.
+                LaunchedEffect(isAmbient) {
+                    if (!isAmbient) return@LaunchedEffect
+                    verticalPagerState.scrollToPage(VERTICAL_PAGE_GAUGES)
+                    controlPagerState.scrollToPage(CONTROL_PAGE_GAUGES)
+                }
                 // A page is interactive only once it has settled: a tap landing mid-swipe belongs
                 // to the gesture, not to the control it happened to be over. Derived, so the drag
                 // offset does not invalidate the whole mirror on every frame of a swipe.
@@ -131,9 +137,10 @@ fun MirrorScreen(
                 }
                 // The readout only answers a tap while the gauges own both axes; mid-swipe or on
                 // another page the tap belongs to the page under it.
-                val weatherTappable by remember(controlPagerState, verticalPagerState) {
+                val weatherTappable by remember(controlPagerState, verticalPagerState, isAmbient) {
                     derivedStateOf {
-                        activePage == CONTROL_PAGE_GAUGES &&
+                        !isAmbient &&
+                            activePage == CONTROL_PAGE_GAUGES &&
                             !verticalPagerState.isScrollInProgress &&
                             verticalPagerState.currentPage == VERTICAL_PAGE_GAUGES
                     }
@@ -157,8 +164,9 @@ fun MirrorScreen(
                 // the gauges. The vertical axis is never moved: weather and the nav-focus map are
                 // places a rider parks on deliberately. Re-keying on lastTouchMs restarts the
                 // window; a held Move suspends it outright.
-                LaunchedEffect(lastTouchMs, moveHeld) {
-                    if (moveHeld) return@LaunchedEffect
+                LaunchedEffect(lastTouchMs, moveHeld, isAmbient) {
+                    // Ambient has already parked the pager, and an animation there is wasted panel.
+                    if (moveHeld || isAmbient) return@LaunchedEffect
                     delay(CONTROL_IDLE_RETURN_MS)
                     if (controlPagerState.currentPage != CONTROL_PAGE_GAUGES) {
                         controlPagerState.animateScrollToPage(CONTROL_PAGE_GAUGES)
@@ -169,7 +177,7 @@ fun MirrorScreen(
                 BasicSwipeToDismissBox(
                     onDismissed = { showClosePrompt = true },
                     state = dismissState,
-                    userSwipeEnabled = dismissEnabled,
+                    userSwipeEnabled = dismissEnabled && !isAmbient,
                 ) { isBackground ->
                     Box(
                         // Initial pass: the event is seen before any child consumes it, so a tap
@@ -194,7 +202,7 @@ fun MirrorScreen(
                                 // The vertical axis belongs to the gauges alone: weather above,
                                 // nav focus below. From a control page it would open a blank map
                                 // over a page the rider is working on, so it is only live there.
-                                userScrollEnabled = !moveHeld && activePage == CONTROL_PAGE_GAUGES,
+                                userScrollEnabled = !isAmbient && !moveHeld && activePage == CONTROL_PAGE_GAUGES,
                                 // A page swap on the wrist is a flick, not a drag: the default
                                 // half-screen threshold means a rider has to pull the weather page
                                 // most of the way down or watch it spring back.
@@ -215,7 +223,7 @@ fun MirrorScreen(
                                     VERTICAL_PAGE_NAV -> Unit
                                     else -> HorizontalPager(
                                         state = controlPagerState,
-                                        userScrollEnabled = !moveHeld,
+                                        userScrollEnabled = !isAmbient && !moveHeld,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .then(
@@ -236,12 +244,16 @@ fun MirrorScreen(
                                                 CONTROL_PAGE_GAUGES -> Unit
                                                 CONTROL_PAGE_MOVE -> MoveScreen(
                                                     sender = sender,
-                                                    interactionEnabled = activePage == CONTROL_PAGE_MOVE,
+                                                    // Ambient parks the pager, but the park is a
+                                                    // scroll and this gate is not: a held Move must
+                                                    // stop the moment the wrist goes always-on, not
+                                                    // once the page has finished travelling.
+                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_MOVE,
                                                     onHoldChanged = { moveHeld = it },
                                                 )
                                                 CONTROL_PAGE_LIGHTS -> LightsScreen(
                                                     sender = sender,
-                                                    interactionEnabled = activePage == CONTROL_PAGE_LIGHTS,
+                                                    interactionEnabled = !isAmbient && activePage == CONTROL_PAGE_LIGHTS,
                                                 )
                                                 CONTROL_PAGE_DIAGNOSTICS -> DiagnosticsScreen()
                                                 else -> Unit
@@ -258,7 +270,7 @@ fun MirrorScreen(
                             MirrorContent(
                                 state = state,
                                 phoneLink = phoneLink,
-                                isAmbient = false,
+                                ambient = ambient,
                                 focus = navFocus,
                                 controlFocus = controlFocus,
                                 weatherFocus = weatherFocus,
@@ -308,7 +320,7 @@ private const val CONTROL_PAGE_COUNT = 4
 private fun MirrorContent(
     state: MirrorState,
     phoneLink: PhoneLink,
-    isAmbient: Boolean,
+    ambient: AmbientMode,
     focus: () -> Float = { 0f },
     controlFocus: () -> Float = { 0f },
     weatherFocus: () -> Float = { 0f },
@@ -325,29 +337,18 @@ private fun MirrorContent(
                         .graphicsLayer { alpha = fadeOut(maxOf(focus(), controlFocus(), weatherFocus())) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    DisconnectedLayout(isAmbient)
+                    DisconnectedLayout(ambient)
                 }
-            } else if (isAmbient) {
-                AmbientLayout(EMPTY_FRAME)
             } else {
-                FrameLayout(EMPTY_FRAME, muted = false, focus, controlFocus, weatherFocus, onWeatherClick)
+                FrameLayout(EMPTY_FRAME, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
             }
         }
-        MirrorStatus.WAITING -> if (isAmbient) {
-            AmbientLayout(state.frame!!)
-        } else {
-            FrameLayout(state.frame!!, muted = false, focus, controlFocus, weatherFocus, onWeatherClick)
-        }
-        MirrorStatus.STALE -> if (isAmbient) {
-            AmbientLayout(state.frame!!)
-        } else {
-            FrameLayout(state.frame!!, muted = true, focus, controlFocus, weatherFocus, onWeatherClick)
-        }
-        MirrorStatus.LIVE -> if (isAmbient) {
-            AmbientLayout(state.frame!!)
-        } else {
-            FrameLayout(state.frame!!, muted = false, focus, controlFocus, weatherFocus, onWeatherClick)
-        }
+        MirrorStatus.WAITING ->
+            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+        MirrorStatus.STALE ->
+            FrameLayout(state.frame!!, true, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
+        MirrorStatus.LIVE ->
+            FrameLayout(state.frame!!, false, focus, controlFocus, weatherFocus, onWeatherClick, ambient)
     }
 }
 
@@ -361,4 +362,12 @@ private val EMPTY_FRAME = WatchFrame(
     stale = false,
 )
 
-private const val AMBIENT_REFRESH_INTERVAL_MS = 60_000L
+/**
+ * Ambient repaint cadence. The phone drops to a 5 s push while the wrist is in ambient
+ * (`WATCH_FRAME_AMBIENT_INTERVAL_MS`), so a slower tick here only ages the reading on screen without
+ * saving a single radio wake. One minute — the system's own ambient callback rate — left battery and
+ * temperatures up to a minute behind data the watch already had in memory.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `WATCH_FRAME_AMBIENT_INTERVAL_MS`
+ */
+private const val AMBIENT_REFRESH_INTERVAL_MS = 10_000L

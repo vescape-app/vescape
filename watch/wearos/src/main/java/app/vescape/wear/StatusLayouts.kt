@@ -22,12 +22,7 @@ import androidx.wear.compose.material.Text
  * are distinguishable at a glance.
  */
 @Composable
-internal fun DisconnectedLayout(isAmbient: Boolean) {
-    if (isAmbient) {
-        AmbientPlaceholder()
-        return
-    }
-
+internal fun DisconnectedLayout(ambient: AmbientMode) {
     val link by TelemetryState.phoneLink
     val (title, caption) = when (link) {
         PhoneLink.UNKNOWN -> "Connecting…" to ""
@@ -35,22 +30,19 @@ internal fun DisconnectedLayout(isAmbient: Boolean) {
         PhoneLink.PHONE_ONLY -> "Phone linked" to "Vescape app not found"
         PhoneLink.APP_REACHABLE -> "Phone connected" to "No board session"
     }
-    StatusLayout(title = title, caption = caption, spin = link != PhoneLink.NO_PHONE)
-}
-
-/** Ambient stand-in while there is no frame to show: a dim dash hero. */
-@Composable
-private fun AmbientPlaceholder() {
-    Text(
-        text = DASH,
-        style = MaterialTheme.typography.display1,
-        color = AmbientText,
-        textAlign = TextAlign.Center,
+    // Ambient keeps the reason on screen — it is exactly the state a rider needs while not looking
+    // — but never the spinner: a permanent animation is the one thing an always-on panel cannot pay
+    // for.
+    StatusLayout(
+        title = title,
+        caption = caption,
+        spin = !ambient.active && link != PhoneLink.NO_PHONE,
+        ambient = ambient,
     )
 }
 
 @Composable
-private fun StatusLayout(title: String, caption: String, spin: Boolean) {
+private fun StatusLayout(title: String, caption: String, spin: Boolean, ambient: AmbientMode) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         if (spin) {
             CircularProgressIndicator(
@@ -67,7 +59,7 @@ private fun StatusLayout(title: String, caption: String, spin: Boolean) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.title3,
-                color = PrimaryText,
+                color = ambient.readout(PrimaryText),
                 textAlign = TextAlign.Center,
             )
             if (caption.isNotEmpty()) {
@@ -75,7 +67,7 @@ private fun StatusLayout(title: String, caption: String, spin: Boolean) {
                 Text(
                     text = caption,
                     style = MaterialTheme.typography.caption2,
-                    color = SecondaryText,
+                    color = ambient.skeleton(SecondaryText),
                     textAlign = TextAlign.Center,
                 )
             }
