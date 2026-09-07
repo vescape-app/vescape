@@ -2,6 +2,25 @@ import { expect, mock, test } from 'bun:test'
 
 import { createBoardLightsWriteQueue } from './boardLightsWriteQueue'
 
+test('only an echo confirming the failed intent clears its error', async () => {
+  const errors: (string | null)[] = []
+  const writer = createBoardLightsWriteQueue(
+    async () => {
+      throw new Error('write failed')
+    },
+    (error) => errors.push(error),
+  )
+  writer.setReportedState({ enabled: false, headlightsEnabled: false })
+  writer.write({ enabled: true })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  expect(errors.at(-1)).toBe('Board lights could not be changed.')
+  writer.setReportedState({ enabled: false, headlightsEnabled: false })
+  expect(errors.at(-1)).toBe('Board lights could not be changed.')
+  writer.setReportedState({ enabled: true, headlightsEnabled: false })
+  expect(errors.at(-1)).toBeNull()
+})
+
 test('serializes complete light intents and keeps an older failure from replacing the latest result', async () => {
   let rejectFirst!: (error: Error) => void
   const send = mock(

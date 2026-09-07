@@ -32,8 +32,13 @@ export function createBoardLightsWriteQueue(
         return
       }
       reported = next
-      if (desired?.enabled === next.enabled && desired.headlightsEnabled === next.headlightsEnabled)
+      if (
+        desired?.enabled === next.enabled &&
+        desired.headlightsEnabled === next.headlightsEnabled
+      ) {
         desired = null
+        setError(null)
+      }
     },
     write(patch: Partial<BoardLightsState>) {
       if (disposed) return
