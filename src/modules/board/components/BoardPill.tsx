@@ -200,7 +200,13 @@ const styles = StyleSheet.create({
     maxWidth: 180,
     flexShrink: 1,
   },
-  divider: { width: 1, height: 20, backgroundColor: theme.control.divider },
+  // Runs the pill's full height rather than floating in the middle of it — same rule as the
+  // board selector's links strip and the settings status strip.
+  divider: {
+    width: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    backgroundColor: theme.control.divider,
+  },
   button: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.7 },
