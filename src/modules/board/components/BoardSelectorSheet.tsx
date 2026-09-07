@@ -180,7 +180,7 @@ export function BoardSelectorContent({
     <>
       {active && (
         <View style={styles.activeBlock}>
-          <View style={styles.row}>
+          <View style={[styles.row, styles.activeRow]}>
             <BoardIcon active />
             <View style={styles.rowInfo}>
               <Text style={styles.boardNameActive} numberOfLines={1}>
@@ -321,6 +321,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     gap: 10,
   },
+  // The card breathes wider than a list row — it is the one thing in the drawer being read, not
+  // scanned.
+  activeRow: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
   listRow: {
     borderRadius: 10,
   },
@@ -397,7 +404,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   segmentGlyph: {
     flexDirection: 'row',
