@@ -1,6 +1,6 @@
 # Error handling audit
 
-Status: audited failures fixed; local verification complete.
+Status: audit implemented; Android XML parser regression corrected and verified on a real board.
 
 The audit covers production TypeScript, Swift, Kotlin, and Wear code. It includes empty catches,
 Swift `try?`, `runCatching` fallbacks, failed reads represented as missing data, and promises whose
@@ -60,6 +60,37 @@ is semantically safe; new persistence, privacy, and lifecycle changes still requ
 behavior tests. Device delivery to Sentry and OS-specific failures remain separate verification.
 
 ## Validation results
+
+### Android linking regression found after the audit
+
+Commit `e1195706` made SAX external-entity feature settings mandatory in the Refloat DOM parser.
+The desktop JVM accepts those settings; Android's provider rejects them. Valid board schemas then
+failed with `UNSUPPORTED_SCHEMA`, and linking waited 30 seconds for config values that could never
+be saved. The correction keeps the DOCTYPE rejection and uses a rejecting entity resolver instead
+of unsupported feature settings. iOS uses `XMLParser.shouldResolveExternalEntities = false` and does
+not make those SAX calls.
+
+`RefloatConfigSchemaDeviceTest` exercises the production parser on Android, including valid schema
+decoding and rejection of external-entity declarations. Its valid-schema case reproduced the exact
+device error before the fix. Run it on a connected Android device or emulator:
+
+```sh
+cd android
+./gradlew :vescape-core:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=expo.modules.vescapecore.config.RefloatConfigSchemaDeviceTest
+```
+
+After the fix, both instrumentation tests passed on a Pixel 9 Pro XL running Android 17.
+The six desktop schema tests and two Thor301 config replay tests also passed.
+The rebuilt DEV APK was installed on that phone; the rider confirmed Thor301 re-link passed.
+Device logs show Refloat acquisition advancing to motor config in about six seconds, with
+196 motor-config fields decoded, instead of the previous 30-second Refloat timeout.
+
+This instrumentation test is separate from the desktop native suites and is not currently wired
+into CI. E2E linking uses `e2eFake.finalizeBoardLink`, so passing those flows does not verify native
+schema parsing or real-board linking. Host persistence contracts cannot cover this platform XML
+provider difference either.
+
+### Earlier audit verification
 
 - TypeScript checks and lint pass. Lint retains existing warnings.
 - Full Bun suite: 966 tests pass, including scanner regressions.

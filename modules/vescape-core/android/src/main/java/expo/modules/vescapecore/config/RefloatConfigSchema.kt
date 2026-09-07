@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.util.zip.InflaterInputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import org.xml.sax.SAXException
 
 // @parity /modules/vescape-core/ios/config/RefloatConfigSchema.swift
 internal enum class RefloatConfigValueType(val byteSize: Int) {
@@ -48,14 +49,13 @@ internal object RefloatConfigSchemaParser {
       val factory = DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = false
         isIgnoringComments = true
-        for ((feature, value) in listOf(
-          "http://xml.org/sax/features/external-general-entities" to false,
-          "http://xml.org/sax/features/external-parameter-entities" to false,
-        )) {
-          setFeature(feature, value)
-        }
       }
-      factory.newDocumentBuilder().parse(ByteArrayInputStream(normalizedXmlBytes))
+      // Android's DOM provider rejects the SAX external-entity feature flags supported by the JVM.
+      // Reject DTDs above and external resolution here without relying on optional parser features.
+      val builder = factory.newDocumentBuilder().apply {
+        setEntityResolver { _, _ -> throw SAXException("External XML entities are forbidden") }
+      }
+      builder.parse(ByteArrayInputStream(normalizedXmlBytes))
     } catch (e: Exception) {
       val preview = xmlBytes
         .take(96)
