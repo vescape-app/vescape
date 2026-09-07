@@ -128,6 +128,7 @@ internal class ReconnectScheduler(
             scanning = false
             try {
                 port.stopScan()
+            // intentional-suppression: transport port owns stop-scan logging
             } catch (_: Exception) {
                 // Port impl handles logging.
             }

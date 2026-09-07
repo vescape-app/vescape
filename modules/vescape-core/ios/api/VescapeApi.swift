@@ -11,8 +11,8 @@ import Foundation
 final class VescapeApi {
   private let baseUrl: String
   private let appVersion: String
-  private let credentialProvider: () -> DeviceCredential?
-  private let onUnauthorized: () -> Void
+  private let credentialProvider: () throws -> DeviceCredential?
+  private let onUnauthorized: () throws -> Void
   private let transport: ApiTransport
   private let retryDelayNanoseconds: UInt64
 
@@ -23,8 +23,8 @@ final class VescapeApi {
   init(
     baseUrl: String,
     appVersion: String,
-    credentialProvider: @escaping () -> DeviceCredential? = { nil },
-    onUnauthorized: @escaping () -> Void = {},
+    credentialProvider: @escaping () throws -> DeviceCredential? = { nil },
+    onUnauthorized: @escaping () throws -> Void = {},
     transport: ApiTransport = UrlSessionApiTransport(),
     retryDelayNanoseconds: UInt64 = VescapeApi.retryDelayNanosecondsDefault
   ) {
@@ -44,7 +44,13 @@ final class VescapeApi {
     auth: AuthMode = .required,
     parse: (String) throws -> T
   ) async -> ApiResult<T> {
-    guard let token = token(for: auth) else { return .unauthorized }
+    let token: String
+    do { guard let resolved = try self.token(for: auth) else { return .unauthorized }; token = resolved }
+    catch {
+      if Self.isCancellation(error) { return .cancelled }
+      UnexpectedNativeError.report(operation: "device_credential_read", category: "secure_store_read", error: error)
+      return .unavailable("Device credential is unavailable")
+    }
     let encodedBody = body.flatMap { serialize($0) }
     if body != nil && encodedBody == nil { return .malformed("Request body is not JSON") }
     let request = ApiRequest(
@@ -53,22 +59,26 @@ final class VescapeApi {
       headers: headers(token: token.isEmpty ? nil : token, hasBody: encodedBody != nil),
       body: encodedBody
     )
-    return await send(request, authenticated: !token.isEmpty, parse: parse)
+    return await send(
+      request,
+      rejectsStoredCredential: auth.rejectsStoredCredential && !token.isEmpty,
+      parse: parse
+    )
   }
 
   /// Resolved bearer token, empty when the call goes out anonymously, `nil` when a required
   /// credential is missing. A credential minted against another origin belongs to another
   /// environment, so it counts as missing rather than being sent to this one.
-  private func token(for auth: AuthMode) -> String? {
+  private func token(for auth: AuthMode) throws -> String? {
     switch auth {
     case .bearer(let token): return token
-    case .optional: return storedToken() ?? ""
-    case .required: return storedToken()
+    case .optional: return try storedToken() ?? ""
+    case .required: return try storedToken()
     }
   }
 
-  private func storedToken() -> String? {
-    guard let credential = credentialProvider() else { return nil }
+  private func storedToken() throws -> String? {
+    guard let credential = try credentialProvider() else { return nil }
     let origin = credential.serverUrl.hasSuffix("/")
       ? String(credential.serverUrl.dropLast())
       : credential.serverUrl
@@ -91,7 +101,7 @@ final class VescapeApi {
 
   private func send<T>(
     _ request: ApiRequest,
-    authenticated: Bool,
+    rejectsStoredCredential: Bool,
     parse: (String) throws -> T
   ) async -> ApiResult<T> {
     var retried = false
@@ -101,16 +111,21 @@ final class VescapeApi {
         if response.status >= 500 {
           if canRetry(request, retried: retried) {
             retried = true
-            try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+            do { try await Task.sleep(nanoseconds: retryDelayNanoseconds) }
+            catch where Self.isCancellation(error) { return .cancelled }
+            catch { return .unavailable(error.localizedDescription) }
             continue
           }
           return .unavailable("Server error (\(response.status))")
         }
-        return outcome(response, authenticated: authenticated, parse: parse)
+        return outcome(response, rejectsStoredCredential: rejectsStoredCredential, parse: parse)
       } catch {
+        if Self.isCancellation(error) { return .cancelled }
         if canRetry(request, retried: retried) {
           retried = true
-          try? await Task.sleep(nanoseconds: retryDelayNanoseconds)
+          do { try await Task.sleep(nanoseconds: retryDelayNanoseconds) }
+          catch where Self.isCancellation(error) { return .cancelled }
+          catch { return .unavailable(error.localizedDescription) }
           continue
         }
         return .unavailable(error.localizedDescription)
@@ -126,13 +141,20 @@ final class VescapeApi {
 
   private func outcome<T>(
     _ response: ApiResponse,
-    authenticated: Bool,
+    rejectsStoredCredential: Bool,
     parse: (String) throws -> T
   ) -> ApiResult<T> {
     switch response.status {
     case 401:
       // An anonymous read cannot say anything about the stored credential, so it must not reject it.
-      if authenticated { onUnauthorized() }
+      if rejectsStoredCredential {
+        do { try onUnauthorized() }
+        catch {
+          if Self.isCancellation(error) { return .cancelled }
+          UnexpectedNativeError.report(operation: "device_credential_reject", category: "secure_store_delete", error: error)
+          return .unavailable("Device credential could not be rejected")
+        }
+      }
       return .unauthorized
     case 403: return .forbidden
     case 404: return .notFound
@@ -141,6 +163,7 @@ final class VescapeApi {
       do {
         return .ok(try parse(response.body))
       } catch {
+        if Self.isCancellation(error) { return .cancelled }
         return .malformed(error.localizedDescription)
       }
     }
@@ -148,6 +171,7 @@ final class VescapeApi {
 
   private func errorSlug(_ body: String) -> String {
     guard let data = body.data(using: .utf8),
+          // intentional-suppression: caller maps malformed request encoding to an explicit API error
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let error = json["error"] as? String,
           !error.isEmpty
@@ -156,8 +180,14 @@ final class VescapeApi {
   }
 
   private func serialize(_ body: [String: Any]) -> String? {
+    // intentional-suppression: caller maps malformed request encoding to an explicit API error
     guard let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
     return String(data: data, encoding: .utf8)
+  }
+
+  private static func isCancellation(_ error: Error) -> Bool {
+    if Task.isCancelled || error is CancellationError { return true }
+    return (error as? URLError)?.code == .cancelled
   }
 
   /// Client pinned to an origin. Callers pass the baked backend origin
@@ -169,9 +199,9 @@ final class VescapeApi {
     return VescapeApi(
       baseUrl: serverUrl,
       appVersion: AppStatusCoordinator.installedMarketingVersion(),
-      credentialProvider: { store.read() },
+      credentialProvider: { try store.read() },
       onUnauthorized: {
-        store.reject()
+        try store.reject()
         Task { @MainActor in AppStatusCoordinator.shared.refresh() }
       }
     )

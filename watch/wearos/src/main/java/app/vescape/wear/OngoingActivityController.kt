@@ -51,8 +51,11 @@ class OngoingActivityController(private val context: Context) {
 
         ongoingActivity.apply(context)
 
+        // intentional-suppression: activity failure is recorded by onFailure
         runCatching {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notificationBuilder.build())
+        }.onFailure {
+            WatchDiagnostics.recordNotificationFailure()
         }
     }
 

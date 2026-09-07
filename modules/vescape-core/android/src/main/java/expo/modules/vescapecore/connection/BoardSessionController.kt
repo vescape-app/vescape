@@ -8,6 +8,7 @@ import expo.modules.vescapecore.alerts.AlertCoordinator
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.withLegalModeOverlay
 import expo.modules.vescapecore.location.LegalPolicyCatalog
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.telemetry.BmsSeriesFrame
 import expo.modules.vescapecore.telemetry.BmsSeriesRing
 import expo.modules.vescapecore.protocol.BmsTelemetry
@@ -73,6 +74,10 @@ import expo.modules.vescapecore.VescLiveStateSnapshot
 import expo.modules.vescapecore.protocol.VescPacketReassembler
 import expo.modules.vescapecore.navigation.NavigationController
 import expo.modules.vescapecore.watch.GeoPoint
+import expo.modules.vescapecore.watch.WatchBoard
+import expo.modules.vescapecore.watch.WatchBoardPusher
+import expo.modules.vescapecore.watch.WatchLightsRelay
+import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorLauncher
 import expo.modules.vescapecore.watch.WATCH_MIRROR_AWAKE_TIMEOUT_MS
 import expo.modules.vescapecore.watch.WatchMirrorPresence
@@ -202,6 +207,23 @@ internal fun legalModeEnableError(
     return null
 }
 
+internal data class GroupRideTargetReload(val target: TargetPoint?, val loaded: Boolean)
+
+internal suspend fun reloadGroupRideTarget(
+    current: TargetPoint?,
+    read: suspend () -> TargetPoint?,
+    report: (Throwable) -> Unit = {
+        RecordingStorageFailure.reportRead("group_ride_target_read", it)
+    },
+): GroupRideTargetReload = try {
+    GroupRideTargetReload(read(), loaded = true)
+} catch (error: kotlinx.coroutines.CancellationException) {
+    throw error
+} catch (error: Throwable) {
+    report(error)
+    GroupRideTargetReload(current, loaded = false)
+}
+
 /**
  * Owns the durable board-session state and orchestration. [CoreForegroundService] is a thin Android
  * shell delegating lifecycle + the static JS bridge here. Holds a [service] reference solely for the
@@ -308,7 +330,15 @@ internal class BoardSessionController(private val service: CoreForegroundService
         RecordingCoordinator(
             context = service.applicationContext,
             applyLiveSettings = ::applyTelemetryPipelineSettings,
+            onRecordingFailure = ::onRecordingPersistenceFailure,
         )
+    }
+
+    private fun onRecordingPersistenceFailure() {
+        scheduler.post {
+            recordingCoordinator.handleStorageFailure()
+            emitState()
+        }
     }
     private val liveSeriesEmitter by lazy {
         LiveSeriesEmitter(
@@ -333,6 +363,9 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val watchWeatherPusher by lazy {
         WatchWeatherPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
     }
+    private val watchBoardPusher by lazy {
+        WatchBoardPusher(service.applicationContext, CoreForegroundService.appDataScope, ::recordWatchDiagnostic)
+    }
     private val weatherCoordinator = WeatherCoordinator.get()
 
     /** Removes this controller's weather subscription; a restarted service must not stack them. */
@@ -346,6 +379,14 @@ internal class BoardSessionController(private val service: CoreForegroundService
             strengthPercent = { boardMoveStrengthPercent },
             startMove = ::startBoardMove,
             stopMove = ::stopBoardMove,
+            record = ::recordWatchDiagnostic,
+        )
+    }
+    private val watchLightsRelay by lazy {
+        WatchLightsRelay(
+            scheduler = scheduler,
+            currentLights = { boardLights },
+            setLights = ::setBoardLights,
             record = ::recordWatchDiagnostic,
         )
     }
@@ -423,8 +464,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
      * suppression (ADR-0009 / ADR-0020). Touched off the main thread, so kept @Volatile.
      */
-    @Volatile
-    private var groupRidePrivacyZones: List<PrivacyZoneEntity> = emptyList()
+    private val groupRidePrivacy = PrivacyZoneReadState()
 
     /**
      * The Rider's shared map target (their direction Map Point), cached for presence egress.
@@ -524,7 +564,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
             // which clears its runtime override and hands authority back to config. Keeping the old
             // echo would leave the switch showing pre-reboot state that nothing ever corrects.
             boardLights = null
-            emitEvent("onBoardLights", lightsEventBody())
+            publishBoardLights()
             // Re-arm the post-trust read so the relinked session gets fresh values back.
             boardConfigReadScheduled = false
             // Same reasoning as the Refloat demote above: the disconnected window is where another
@@ -667,6 +707,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val warningWriteExceptionHandler = CoroutineExceptionHandler { _, throwable ->
         reportWarningFailure("registry_write", throwable)
     }
+    /** VESC Fault writes share the ordered persistence dispatcher but report as storage failures. */
+    private val faultWriteExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        RecordingStorageFailure.report("vesc_fault_write", "write_failed", throwable)
+    }
     /** True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only. */
     @Volatile
     private var bmsSeriesFocused = false
@@ -695,6 +739,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var gpsLastFixAt: Long? = null
     private var isStoppingService = false
     private var connectionSoundsEnabled = true
+    @Volatile
+    private var lastAppliedSettings = AppSettings()
 private var wearAutoLaunchOnConnect = true
     private var watchLaunchFiredSessionId = 0L
     /**
@@ -836,6 +882,8 @@ private var wearAutoLaunchOnConnect = true
             AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = false)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Companion connect config failed: ${e.message}")
                 scheduler.post { stopIfIdle() }
@@ -875,6 +923,8 @@ private var wearAutoLaunchOnConnect = true
             ManualDisconnectAutoStartGate.clear(appCtx)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = recordingEnabled)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Notification connect failed: ${e.message}")
                 scheduler.post { stopIfIdle() }
@@ -1533,7 +1583,7 @@ private var wearAutoLaunchOnConnect = true
         liveFaultCode = code
         lastFaultDispatchAtMs = now
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
-        launchWarningWrite { coordinator.onActiveFault(boardId, code) }
+        launchFaultWrite { coordinator.onActiveFault(boardId, code) }
     }
 
     /**
@@ -1549,7 +1599,7 @@ private var wearAutoLaunchOnConnect = true
         lastFaultDispatchAtMs = now
         val boardId = boardConfig?.appBoardId ?: return
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
-        launchWarningWrite { coordinator.onFaultCleared(boardId) }
+        launchFaultWrite { coordinator.onFaultCleared(boardId) }
     }
 
     /**
@@ -1666,6 +1716,12 @@ private var wearAutoLaunchOnConnect = true
         ) { block() }
     }
 
+    private fun launchFaultWrite(block: suspend () -> Unit) {
+        CoreForegroundService.appDataScope.launch(
+            faultWriteExceptionHandler + CoreForegroundService.warningWriteDispatcher,
+        ) { block() }
+    }
+
     /**
      * Manual clear from JS: reset the matching telemetry detector's dedupe so a still-true condition
      * re-fires within this Board Session (`kind == null` means all kinds). Detectors are not
@@ -1754,9 +1810,12 @@ private var wearAutoLaunchOnConnect = true
         alertCoordinator.updateBoardConfigValues(values.values)
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch {
-            if (origin == BoardConfigOperationOrigin.FRESH_READ) {
-                repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
-            } else repo.saveBoardConfigValues(values)
+            try {
+                if (origin == BoardConfigOperationOrigin.FRESH_READ) {
+                    repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+                } else repo.saveBoardConfigValues(values)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.report("board_config_save", "write_failed", e) }
         }
         evaluateConfigSafety(values)
     }
@@ -1772,7 +1831,10 @@ private var wearAutoLaunchOnConnect = true
         val repo = AppDataRepository.get(service.applicationContext)
         val session = boardSession
         CoreForegroundService.appDataScope.launch {
-            val restored = repo.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@launch
+            val restored = try { repo.getBoardConfigValues(boardId, refloatBaseVersion) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.reportRead("board_config_restore", e); return@launch }
+                ?: return@launch
             scheduler.post {
                 // The load is async, so re-check everything that could have moved since: the session
                 // must still be the one that asked, on the same Board and Refloat base version, with a
@@ -1802,7 +1864,10 @@ private var wearAutoLaunchOnConnect = true
         val repo = AppDataRepository.get(service.applicationContext)
         val session = boardSession
         CoreForegroundService.appDataScope.launch {
-            val restored = repo.getLatestMotorConfigValues(boardId) ?: return@launch
+            val restored = try { repo.getLatestMotorConfigValues(boardId) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.reportRead("motor_config_restore", e); return@launch }
+                ?: return@launch
             scheduler.post {
                 if (session == null || !isCurrentBoardSession(session)) return@post
                 if (boardConfig?.appBoardId != boardId) return@post
@@ -1910,9 +1975,10 @@ private var wearAutoLaunchOnConnect = true
                 motorConfigValues = values
                 val repo = AppDataRepository.get(service.applicationContext)
                 CoreForegroundService.appDataScope.launch {
-                    repo.saveFreshMotorConfigValues(values)?.let {
-                        emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
-                    }
+                    try { repo.saveFreshMotorConfigValues(values)?.let {
+                      emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
+                    } } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (e: Throwable) { RecordingStorageFailure.report("motor_config_save", "write_failed", e) }
                 }
                 Log.i(
                     VESC_SESSION_TAG,
@@ -2066,6 +2132,8 @@ private var wearAutoLaunchOnConnect = true
         if (next == lastEmittedLinkIntegrity) return
         lastEmittedLinkIntegrity = next
         emitState()
+        // Trust is half of `lightsControllable`, and it moves without the lights moving.
+        pushWatchBoard()
         // Link just became trusted — schedule the one background config read for this session.
         if (next == LinkIntegrity.Trusted) scheduleBoardConfigRead()
         // Mismatched firmware makes every cached offset meaningless: drop the held object and the
@@ -2346,6 +2414,34 @@ private var wearAutoLaunchOnConnect = true
     )
 
     /**
+     * Every point [boardLights] changes ends here: JS gets the event, the wrist gets the same truth
+     * on the Data Layer. Nulls stay null on both sides — the board is not saying, so neither is the
+     * phone. `lightsControllable` repeats [setBoardLights]' own guards rather than a second policy,
+     * so the wrist never has to know what a trusted Board Link is.
+     */
+    private fun publishBoardLights() {
+        emitEvent("onBoardLights", lightsEventBody())
+        pushWatchBoard()
+    }
+
+    /**
+     * Push the wrist's slice of the light state. Called from [publishBoardLights] and from every
+     * phase and link-integrity change too, because `lightsControllable` moves on its own: a link
+     * that drops trust or a transport that goes away changes whether a write would be accepted
+     * without changing either switch, and the wrist would otherwise keep offering taps that the
+     * phone silently refuses. The pusher deduplicates, so the extra calls cost nothing on the wire.
+     */
+    private fun pushWatchBoard() {
+        watchBoardPusher.push(
+            WatchBoard(
+                lightsEnabled = boardLights?.enabled,
+                headlightsEnabled = boardLights?.headlightsEnabled,
+                lightsControllable = firmwareCommandsTrusted() && currentBoardTransport() != null,
+            ),
+        )
+    }
+
+    /**
      * State the board's lights: the LEDs and the headlights, each on or off. Both switches are
      * always written, so a caller changing one must pass the other's current value. Runtime only:
      * firmware applies it live and writes no config, so the board's own setting returns on the next
@@ -2376,7 +2472,7 @@ private var wearAutoLaunchOnConnect = true
      */
     private fun onBoardLightsEcho(lights: BoardLightsState) {
         boardLights = lights
-        emitEvent("onBoardLights", lightsEventBody())
+        publishBoardLights()
         if (lightsGeneration() != BoardLightsGeneration.Legacy) return
         val values = boardConfigValues ?: return
         val boardId = values.boardId ?: return
@@ -2407,7 +2503,7 @@ private var wearAutoLaunchOnConnect = true
         val lights = BoardLightsState(enabled, values.flag(BoardConfigFlagField.HEADLIGHTS_ON) ?: false)
         if (lights == boardLights) return
         boardLights = lights
-        emitEvent("onBoardLights", lightsEventBody())
+        publishBoardLights()
     }
 
     fun startBoardMove(input: Int): Boolean = boardMoveController.hold(input)
@@ -2417,6 +2513,12 @@ private var wearAutoLaunchOnConnect = true
      * setting — and a missing tick stops the board, see [WatchMoveRelay].
      */
     fun watchMove(direction: Int) = watchMoveRelay.accept(direction)
+
+    /**
+     * A wrist light edit (ADR-0033). One switch named, both composed and written here, see
+     * [WatchLightsRelay].
+     */
+    internal fun watchLights(switch: WatchLightsSwitch, on: Boolean) = watchLightsRelay.accept(switch, on)
 
     /**
      * Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level
@@ -2548,7 +2650,7 @@ private var wearAutoLaunchOnConnect = true
         motorConfigRequested = false
         // Lights are per Board Session: what the last board's echo said means nothing for the next.
         boardLights = null
-        emitEvent("onBoardLights", lightsEventBody())
+        publishBoardLights()
         boardSession?.invalidate()
         boardSession = null
         // A whole session with BMS data and no sustained spread auto-clears any stored cell-spread
@@ -2642,6 +2744,9 @@ private var wearAutoLaunchOnConnect = true
         recordProperties: Map<String, Any?> = emptyMap(),
     ) {
         boardStatus = next
+        // A phase change can flip whether a light write would be accepted, with the lights
+        // themselves unchanged. See [pushWatchBoard].
+        pushWatchBoard()
         recordName?.let { recordingCoordinator.recordState(it, recordProperties) }
         rescheduleAutoClose()
         // The notification mirrors the phase, not just telemetry frames: without this a phase change
@@ -2965,6 +3070,7 @@ private var wearAutoLaunchOnConnect = true
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
+        if (!groupRidePrivacy.allowsLocationEgress) return null
         val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
         // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
         // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
@@ -2996,7 +3102,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun isInsidePrivacyZone(location: LocationSnapshot): Boolean {
-        val zones = groupRidePrivacyZones
+        val zones = groupRidePrivacy.zones
         if (zones.isEmpty()) return false
         val latitudeE7 = (location.latitude * 10_000_000.0).roundToInt()
         val longitudeE7 = (location.longitude * 10_000_000.0).roundToInt()
@@ -3008,11 +3114,15 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadPrivacyZones`
      */
     suspend fun loadPrivacyZones(context: Context) {
-        groupRidePrivacyZones = try {
-            AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
+        try {
+            groupRidePrivacy.reload {
+                AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load privacy zones for presence gate: ${e.message}")
-            emptyList()
+            RecordingStorageFailure.reportRead("group_ride_privacy_zones_read", e)
         }
     }
 
@@ -3024,14 +3134,13 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadGroupRideTarget`
      */
     suspend fun loadGroupRideTarget(context: Context) {
-        groupRideTarget = try {
+        val reload = reloadGroupRideTarget(groupRideTarget, read = {
             AppDataRepository.get(context).getDirectionPoint()?.let { (latitude, longitude) ->
                 TargetPoint(lat = latitude, lng = longitude)
             }
-        } catch (e: Exception) {
-            Log.w(VESC_SESSION_TAG, "Failed to load direction target for presence: ${e.message}")
-            null
-        }
+        })
+        if (!reload.loaded) return
+        groupRideTarget = reload.target
         mainHandler.post { latestRiderPresence()?.let(groupRideObserver::pushPresence) }
     }
 
@@ -3040,6 +3149,17 @@ private var wearAutoLaunchOnConnect = true
             AppDataRepository.get(service.applicationContext).getTypedSettings()
         }
         applyTelemetrySettings(settings)
+        return liveStateMapWithoutStorage(settings, includeRecent)
+    }
+
+    /** Builds an outage event from memory only, preserving the active Board and live telemetry. */
+    fun liveStateMapWithoutStorage(includeRecent: Boolean = false): Map<String, Any?> =
+        liveStateMapWithoutStorage(lastAppliedSettings, includeRecent)
+
+    private fun liveStateMapWithoutStorage(
+        settings: AppSettings,
+        includeRecent: Boolean,
+    ): Map<String, Any?> {
         val recentTelemetryValue = if (includeRecent) telemetryPipeline.recentSnapshot() else emptyList()
         val recentLocationsValue = if (includeRecent) locationTracker.recentLocations() else emptyList()
 
@@ -3092,11 +3212,11 @@ private var wearAutoLaunchOnConnect = true
             if (!CoreForegroundService.isLatestAlertRulesGeneration(generation)) return
             alertCoordinator.replaceRules(rules)
             Log.d(VESC_SESSION_TAG, "Loaded ${rules.size} alert rule(s)")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load alert rules: ${e.message}")
-            if (CoreForegroundService.isLatestAlertRulesGeneration(generation)) {
-                alertCoordinator.replaceRules(emptyList())
-            }
+            RecordingStorageFailure.reportRead("enabled_alert_rules_read", e)
         }
     }
 
@@ -3107,17 +3227,22 @@ private var wearAutoLaunchOnConnect = true
     suspend fun reloadBoardDataForActiveBoard() {
         val current = boardConfig
         val repo = AppDataRepository.get(service.applicationContext)
-        val selectedBoardId = repo.getTypedSettings().selectedBoardId
+        val selectedBoardId: String?
+        val board: Map<String, Any?>?
         val activeBoardId = current?.appBoardId
-        val boardId = activeBoardId ?: selectedBoardId ?: return
-        val board = try {
-            repo.getBoard(boardId)
+        try {
+            selectedBoardId = repo.getTypedSettings().selectedBoardId
+            val boardId = activeBoardId ?: selectedBoardId ?: return
+            board = repo.getBoard(boardId)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load board data: ${e.message}")
-            null
-        } ?: return
+            RecordingStorageFailure.reportRead("active_board_read", e)
+            return
+        }
+        val boardId = activeBoardId ?: selectedBoardId ?: return
+        board ?: return
         val name = (board["name"] as? String)?.takeIf { it.isNotEmpty() }
             ?: current?.deviceName
             ?: selectedBoardName
@@ -3163,7 +3288,8 @@ private var wearAutoLaunchOnConnect = true
             throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load battery config: ${e.message}")
-            null
+            RecordingStorageFailure.reportRead("board_battery_config_read", e)
+            return
         }
     }
 
@@ -3190,6 +3316,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun applyTelemetrySettings(settings: AppSettings) {
+        lastAppliedSettings = settings
         applyTelemetryPipelineSettings(settings)
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L

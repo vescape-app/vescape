@@ -30,7 +30,7 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
   const dismissed = fault.dismissed
   const active = fault.clearedAtMs == null
   const title = faultTitle(fault.code)
-  const { capture, loading } = useVescFaultCapture(fault.id, expanded)
+  const { capture, loading, error } = useVescFaultCapture(fault.id, expanded)
 
   return (
     <View
@@ -91,7 +91,8 @@ export function VescFaultRow({ fault, onSetDismissed }: VescFaultRowProps) {
         />
       </Pressable>
 
-      {expanded && <VescFaultCaptureSection capture={capture} loading={loading} />}
+      {expanded && error ? <Text style={styles.error}>{error}</Text> : null}
+      {expanded && !error ? <VescFaultCaptureSection capture={capture} loading={loading} /> : null}
     </View>
   )
 }
@@ -140,6 +141,10 @@ const styles = StyleSheet.create({
   },
   detected: {
     color: theme.neutral.textMuted,
+    fontSize: 12,
+  },
+  error: {
+    color: theme.status.error.text,
     fontSize: 12,
   },
   expand: {

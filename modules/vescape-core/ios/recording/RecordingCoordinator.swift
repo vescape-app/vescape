@@ -23,13 +23,23 @@ internal final class RecordingCoordinator {
   /// Auto-recording is a *connect* rule, not a re-ready rule: it fires at the first board-ready of a
   /// Board Session and stays quiet for every reconnect's board-ready after it.
   private var boardReadySeen = false
+  private var privacyZonesReady = false
   private var backgroundFlush: BackgroundFlushGuard?
+  var onFailure: (() -> Void)?
 
   init(appData: AppDataRepository) {
     self.appData = appData
     // Lives as long as the coordinator (process-level, below Expo module lifetime), so the flush
     // still fires after a JS reload has torn the module down mid-ride.
     backgroundFlush = BackgroundFlushGuard { [weak self] _ in self?.flushPendingTelemetry() }
+    store.observeRecordingFailure { [weak self] in
+      DispatchQueue.main.async {
+        self?.enabled = false
+        self?.requestedTelemetryRecordingEnabled = false
+        self?.startedAtMs = nil
+        self?.onFailure?()
+      }
+    }
   }
 
   /// Writes whatever `TelemetryRepository` still holds in memory. No-op when nothing is recording —
@@ -69,20 +79,28 @@ internal final class RecordingCoordinator {
     activeConfig = config
     recorder?.finish(status: "stopped")
     recorder = nil
-    if config.recordingEnabled,
-      let recorder = SessionRecorder(
-        deviceName: config.name,
-        deviceId: config.bleId,
-        pollIntervalMs: config.pollIntervalMs
-      )
-    {
-      recorder.start()
-      self.recorder = recorder
+    if config.recordingEnabled {
+      do {
+        let recorder = try SessionRecorder(
+          deviceName: config.name,
+          deviceId: config.bleId,
+          pollIntervalMs: config.pollIntervalMs
+        )
+        recorder.start()
+        self.recorder = recorder
+      } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_open", category: "file_open_failed", error: error)
+      }
     }
     boardReadySeen = false
     store.resetSessionState()
-    store.reloadPrivacyZones(appData.getEnabledPrivacyZoneEntities())
-    store.applySettings(appData.getSettings())
+    privacyZonesReady = false
+    do {
+      store.reloadPrivacyZones(try appData.getEnabledPrivacyZoneEntities())
+      privacyZonesReady = true
+    }
+    catch { RecordingStorageFailure.reportRead(operation: "recording_privacy_zones_read", error: error) }
+    if let settings = readSettings(operation: "recording_settings_read") { store.applySettings(settings) }
     // `autoRecording` is honored at board-ready, not here — mirrors Android, which only enables
     // the telemetry store once the board is actually connected. Only an explicit JS request
     // (`setTelemetryRecordingEnabled`) starts recording this early — or a recording this session
@@ -105,8 +123,9 @@ internal final class RecordingCoordinator {
   func markBoardReady(config: BoardConnectConfig) {
     activeConfig = config
     let firstReady = !boardReadySeen
+    guard let settings = readSettings(operation: "auto_recording_settings_read") else { return }
     boardReadySeen = true
-    let autoRecording = appData.getSettings()["autoRecording"] as? Bool ?? false
+    let autoRecording = settings["autoRecording"] as? Bool ?? false
     if autoRecording && !enabled && firstReady && !explicitlyStopped {
       enableTelemetryRecording(config: config, emitConnectedMarker: false)
     }
@@ -129,6 +148,7 @@ internal final class RecordingCoordinator {
     store.flushBlocking()
     activeConfig = nil
     enabled = false
+    privacyZonesReady = false
     startedAtMs = nil
     boardReadySeen = false
     resumeRecordingId = nil
@@ -140,6 +160,7 @@ internal final class RecordingCoordinator {
     store.flushBlocking()
     activeConfig = nil
     enabled = false
+    privacyZonesReady = false
     startedAtMs = nil
     boardReadySeen = false
     resumeRecordingId = nil
@@ -155,7 +176,7 @@ internal final class RecordingCoordinator {
     }
     if requested {
       enableTelemetryRecording(config: config)
-      return true
+      return enabled
     }
     // Explicit Stop Recording. The end is stamped on the recording row below, which is what a late
     // reconnect callback or a restoration relaunch reads — neither can revive an ended recording.
@@ -219,6 +240,9 @@ internal final class RecordingCoordinator {
   }
 
   private func enableTelemetryRecording(config: BoardConnectConfig, emitConnectedMarker: Bool = true) {
+    guard RecordingStorageFailure.value() == nil, privacyZonesReady,
+      let settings = readSettings(operation: "recording_settings_read") else { return }
+    store.applySettings(settings)
     if !enabled {
       startedAtMs = nowMs()
       // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
@@ -234,7 +258,10 @@ internal final class RecordingCoordinator {
       }
       resumeRecordingId = nil
       if resumed == nil {
-        store.beginRideRecording(boardId: config.appBoardId)
+        guard store.beginRideRecording(boardId: config.appBoardId) != nil else {
+          startedAtMs = nil
+          return
+        }
       }
       if emitConnectedMarker {
         recordMarker("connected", config: config)
@@ -242,7 +269,14 @@ internal final class RecordingCoordinator {
     }
     enabled = true
     activeConfig = config
-    store.applySettings(appData.getSettings())
+  }
+
+  private func readSettings(operation: String) -> [String: Any?]? {
+    do { return try appData.getSettings() }
+    catch {
+      RecordingStorageFailure.reportRead(operation: operation, error: error)
+      return nil
+    }
   }
 
   private func recordMarker(_ type: String, config: BoardConnectConfig, message: String? = nil) {

@@ -1,0 +1,27 @@
+{
+  "scenario": "favorite-create-rename-trim-delete-reopen",
+  "input": {
+    "id": "favorite-contract",
+    "boardId": "board-contract",
+    "name": "Morning ride",
+    "renamed": "Cliff loop",
+    "startMs": 1000,
+    "endMs": 5000,
+    "trimmedStartMs": 2000,
+    "trimmedEndMs": 4000,
+    "samples": [
+      { "capturedAtMs": 2000, "speedCentiKmh": 1000, "odometerCm": 100 },
+      { "capturedAtMs": 3000, "speedCentiKmh": 2000, "odometerCm": 200 },
+      { "capturedAtMs": 4000, "speedCentiKmh": 3000, "odometerCm": 400 }
+    ]
+  },
+  "expected": {
+    "sampleCount": 3,
+    "gpsPointCount": 0,
+    "distanceCm": 300,
+    "movingDurationMs": 2000,
+    "avgSpeedCentiKmh": 2000,
+    "maxSpeedCentiKmh": 3000,
+    "batteryUsedWhMilli": 0
+  }
+}

@@ -4,11 +4,13 @@ import androidx.annotation.DrawableRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import java.util.Calendar
 
 /**
  * Data Layer path the phone publishes the forecast on. Must match the phone-side
@@ -29,6 +31,8 @@ const val WEATHER_HOUR_ICONS = "hourIcons"
 const val WEATHER_HOUR_PRECIPS = "hourPrecips"
 const val WEATHER_SUNRISE = "sunriseMinuteOfDay"
 const val WEATHER_SUNSET = "sunsetMinuteOfDay"
+const val WEATHER_LATITUDE = "latitude"
+const val WEATHER_LONGITUDE = "longitude"
 const val WEATHER_FETCHED_AT = "fetchedAtMs"
 
 /** One forecast hour, as the wrist renders it. [minuteOfDay] is local to the forecast location. */
@@ -52,6 +56,12 @@ data class WatchWeather(
     /** Minutes since local midnight; null when the phone had no daily times to send. */
     val sunriseMinuteOfDay: Int?,
     val sunsetMinuteOfDay: Int?,
+    /**
+     * Where the forecast was taken. Null from a phone too old to send it, which is why the radar
+     * page can be empty on a wrist that is otherwise showing weather fine.
+     */
+    val latitude: Double?,
+    val longitude: Double?,
     val fetchedAtMs: Long,
 )
 
@@ -115,6 +125,35 @@ fun weatherIconRes(slug: String): Int = when (slug) {
     "cloud-snow" -> R.drawable.ic_ph_cloud_snow
     "cloud-lightning" -> R.drawable.ic_ph_cloud_lightning
     else -> R.drawable.ic_ph_cloud
+}
+
+/**
+ * Local wall-clock minute of day, re-read on the same coarse tick as staleness so a forecast left
+ * open on the wrist crosses sunset on its own.
+ */
+@Composable
+fun currentMinuteOfDay(): Int {
+    var minuteOfDay by remember { mutableIntStateOf(minuteOfDayNow()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(STALENESS_TICK_MS)
+            minuteOfDay = minuteOfDayNow()
+        }
+    }
+
+    return minuteOfDay
+}
+
+/** Minute of day from the device clock, the unit every sun and hour time on the wrist is in. */
+fun minuteOfDayNow(): Int = Calendar.getInstance().let {
+    it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
+}
+
+/** Local minute of day for an instant, the unit every wrist time is formatted from. */
+fun minuteOfDay(epochMs: Long): Int = Calendar.getInstance().let {
+    it.timeInMillis = epochMs
+    it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
 }
 
 /** `HH:MM` for a minute-of-day, matching [WatchClock]'s always-24h readout. */

@@ -25,11 +25,34 @@ class WatchCommandDecoderTest {
         )
     }
 
+    @Test
+    fun `a lights command decodes bit0 as the target and bit1 as the switch`() {
+        assertEquals(
+            WatchCommand.Lights(WatchLightsSwitch.LEDS, false),
+            WatchCommandDecoder.decode(byteArrayOf(3, 0b00)),
+        )
+        assertEquals(
+            WatchCommand.Lights(WatchLightsSwitch.LEDS, true),
+            WatchCommandDecoder.decode(byteArrayOf(3, 0b01)),
+        )
+        assertEquals(
+            WatchCommand.Lights(WatchLightsSwitch.HEADLIGHT, false),
+            WatchCommandDecoder.decode(byteArrayOf(3, 0b10)),
+        )
+        assertEquals(
+            WatchCommand.Lights(WatchLightsSwitch.HEADLIGHT, true),
+            WatchCommandDecoder.decode(byteArrayOf(3, 0b11)),
+        )
+    }
+
     /** A wrist newer than the phone must read as "unknown", never as a neighbouring level. */
     @Test
     fun `an unknown kind or wake level is dropped rather than guessed`() {
         assertNull(WatchCommandDecoder.decode(byteArrayOf(9, 1)))
         assertNull(WatchCommandDecoder.decode(byteArrayOf(2, 7)))
         assertNull(WatchCommandDecoder.decode(byteArrayOf(2)))
+        // Bits above the two this kind defines belong to a wrist this phone does not understand.
+        assertNull(WatchCommandDecoder.decode(byteArrayOf(3, 0b100)))
+        assertNull(WatchCommandDecoder.decode(byteArrayOf(3)))
     }
 }

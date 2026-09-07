@@ -18,6 +18,7 @@
     "no-duplicate-case": "error",
     "no-empty-character-class": "error",
     "no-empty-pattern": "error",
+    "no-empty": "error",
     "no-extend-native": "error",
     "no-extra-bind": "error",
     "no-redeclare": "error",

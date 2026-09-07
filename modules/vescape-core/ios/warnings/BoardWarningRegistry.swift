@@ -68,7 +68,9 @@ final class BoardWarningRegistry {
   /// Raw path: manual/dev injection of an arbitrary kind slug (including kinds JS may not know).
   func reportFinding(boardId: String, kind: String, severity: Severity, payloadJson: String) {
     let timestamp = now()
-    let existing = store.get(boardId, kind)
+    let existing: BoardWarning?
+    do { existing = try store.get(boardId, kind) }
+    catch { RecordingStorageFailure.reportRead(operation: "board_warning_existing_read", error: error); return }
     let warning = BoardWarning(
       boardId: boardId,
       kind: kind,
@@ -77,7 +79,8 @@ final class BoardWarningRegistry {
       lastDetectedAtMs: timestamp,
       payloadJson: payloadJson
     )
-    store.upsert(warning)
+    do { try store.upsert(warning) }
+    catch { RecordingStorageFailure.report(operation: "board_warning_upsert", category: "write_failed", error: error); return }
 
     lock.lock()
     let isFirstFireThisSession = firedThisSession.insert(sessionKey(boardId, kind)).inserted
@@ -94,7 +97,8 @@ final class BoardWarningRegistry {
         ]
       )
     }
-    emit(boardId)
+    do { try emit(boardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "board_warnings_reload", error: error) }
   }
 
   /// Typed detector path: the kind evaluated with real data and the condition was gone.
@@ -103,31 +107,45 @@ final class BoardWarningRegistry {
   }
 
   func reportCleanEvaluation(boardId: String, kind: String) {
-    if store.delete(boardId, kind) { emit(boardId) }
+    let deleted: Bool
+    do { deleted = try store.delete(boardId, kind) }
+    catch { RecordingStorageFailure.report(operation: "board_warning_clean", category: "write_failed", error: error); return }
+    guard deleted else { return }
+    do { try emit(boardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "board_warnings_reload_after_clean", error: error) }
   }
 
-  func clearWarning(boardId: String, kind: String) {
-    if store.delete(boardId, kind) { emit(boardId) }
+  func clearWarning(boardId: String, kind: String) throws {
+    if try store.delete(boardId, kind) {
+      do { try emit(boardId) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_warnings_reload_after_clear", error: error) }
+    }
     onManualClear?(boardId, kind)
   }
 
-  func clearAllWarnings(boardId: String) {
-    if store.deleteForBoard(boardId) { emit(boardId) }
+  func clearAllWarnings(boardId: String) throws {
+    if try store.deleteForBoard(boardId) {
+      do { try emit(boardId) }
+      catch { RecordingStorageFailure.reportRead(operation: "board_warnings_reload_after_clear_all", error: error) }
+    }
     onManualClear?(boardId, nil)
   }
 
-  func warningsForBoard(_ boardId: String) -> [BoardWarning] { store.getForBoard(boardId) }
+  func warningsForBoard(_ boardId: String) throws -> [BoardWarning] { try store.getForBoard(boardId) }
 
   /// Every current warning across all boards — used for the JS foreground catch-up pull.
-  func allWarnings() -> [BoardWarning] { store.getAll() }
+  func allWarnings() throws -> [BoardWarning] { try store.getAll() }
 
   /// Emit the current warnings for every board that has any — used on late subscribe.
   func emitSnapshot() {
-    let byBoard = Dictionary(grouping: store.getAll(), by: { $0.boardId })
+    let warnings: [BoardWarning]
+    do { warnings = try store.getAll() }
+    catch { RecordingStorageFailure.reportRead(operation: "board_warnings_snapshot", error: error); return }
+    let byBoard = Dictionary(grouping: warnings, by: { $0.boardId })
     for (boardId, warnings) in byBoard { onChange?(boardId, warnings) }
   }
 
-  private func emit(_ boardId: String) {
-    onChange?(boardId, store.getForBoard(boardId))
+  private func emit(_ boardId: String) throws {
+    onChange?(boardId, try store.getForBoard(boardId))
   }
 }

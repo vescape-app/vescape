@@ -1,12 +1,9 @@
 package expo.modules.vescapecore.telemetry
 
-import android.database.Cursor
-import androidx.sqlite.db.SupportSQLiteDatabase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.lang.reflect.Proxy
 
 /**
  * Ride Track becomes the durable home for ride position (#448, ADR 0038). Schema 42→43 creates
@@ -14,44 +11,21 @@ import java.lang.reflect.Proxy
  * seven raw GPS columns from `telemetry_frames`, and puts the Ride Recording into the minute-bucket
  * primary key.
  *
- * Asserted against the emitted SQL rather than a live database, for the same reason as
- * [TelemetryBoardIdMigrationTest]: Room's `@Query` has BINARY retention and this module's JVM test
- * source set has no SQLite. The behavioural half — rows after a real migration — runs on the GRDB
- * peer, which does have an in-memory database.
+ * This narrow test checks the portable production migration's emitted SQL. Real Room upgrade
+ * behavior and cross-platform archive exchange are covered by the persistence-jvm contracts.
  *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryMigrationTests.swift
  */
 class RideTrackMigrationTest {
   private fun migrationSql(): List<String> {
     val sql = mutableListOf<String>()
-    val db = Proxy.newProxyInstance(
-      SupportSQLiteDatabase::class.java.classLoader,
-      arrayOf(SupportSQLiteDatabase::class.java),
-    ) { _, method, args ->
-      when (method.name) {
-        "execSQL" -> {
-          sql += args?.firstOrNull() as String
-          null
-        }
-        "query" -> emptyCursor()
-        else -> throw UnsupportedOperationException(method.name)
-      }
-    } as SupportSQLiteDatabase
-    TelemetryDatabase.MIGRATION_42_43.migrate(db)
+    val db = object : TelemetryMigrationDatabase {
+      override fun execSQL(statement: String) { sql += statement }
+      override fun hasColumn(tableName: String, columnName: String) = false
+    }
+    TelemetryMigrations.MIGRATION_42_43.migrate(db)
     return sql
   }
-
-  private fun emptyCursor(): Cursor = Proxy.newProxyInstance(
-    Cursor::class.java.classLoader,
-    arrayOf(Cursor::class.java),
-  ) { _, method, _ ->
-    when (method.name) {
-      "getColumnIndex" -> 0
-      "moveToNext" -> false
-      "close" -> null
-      else -> throw UnsupportedOperationException(method.name)
-    }
-  } as Cursor
 
   private fun statement(match: String): String =
     migrationSql().firstOrNull { it.contains(match) }
@@ -60,8 +34,8 @@ class RideTrackMigrationTest {
   @Test
   fun migrationTargetsTheCurrentSchemaVersion() {
     assertEquals(43, TELEMETRY_DATABASE_VERSION)
-    assertEquals(42, TelemetryDatabase.MIGRATION_42_43.startVersion)
-    assertEquals(43, TelemetryDatabase.MIGRATION_42_43.endVersion)
+    assertEquals(42, TelemetryMigrations.MIGRATION_42_43.startVersion)
+    assertEquals(43, TelemetryMigrations.MIGRATION_42_43.endVersion)
   }
 
   @Test

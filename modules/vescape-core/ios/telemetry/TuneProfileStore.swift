@@ -1,10 +1,29 @@
 import Foundation
 import GRDB
 
+private struct TuneProfileRecord: Codable, FetchableRecord, PersistableRecord {
+  static let databaseTableName = "tune_profiles"
+  let id: String, boardId: String, refloatBaseVersion: String, name: String, icon: String, color: String, fieldsJson: String
+  let createdAt: Int64, updatedAt: Int64
+  enum CodingKeys: String, CodingKey {
+    case id, boardId = "board_id", refloatBaseVersion = "refloat_base_version", name, icon, color
+    case fieldsJson = "fields_json", createdAt = "created_at", updatedAt = "updated_at"
+  }
+}
+
+private struct TuneHistoryRecord: Codable, PersistableRecord {
+  static let databaseTableName = "tune_history_entries"
+  var id: Int64?
+  let profileId: String, fieldsJson: String, createdAt: Int64
+  enum CodingKeys: String, CodingKey {
+    case id, profileId = "profile_id", fieldsJson = "fields_json", createdAt = "created_at"
+  }
+}
+
 /// Android-matching error vocabulary for Tune Profile mutations. Messages are byte-for-byte the same
 /// as Android so JS surfaces identical text, and the JS `errorMessage()` helper reads `message`.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
-enum TuneProfileError: LocalizedError {
+enum TuneProfileError: LocalizedError, Equatable {
   case profileNotFound(String)
   case cannotDeleteLast
   case historyEntryNotFound(Int64)
@@ -68,59 +87,32 @@ struct TuneProfileStore {
   /// so the schema stays single-source. Mirrors Android `TuneProfileEntity` / `TuneHistoryEntryEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE tune_profiles (
-        id TEXT NOT NULL PRIMARY KEY,
-        board_id TEXT NOT NULL,
-        refloat_base_version TEXT NOT NULL DEFAULT '',
-        name TEXT NOT NULL,
-        icon TEXT NOT NULL DEFAULT 'sliders-horizontal',
-        color TEXT NOT NULL DEFAULT 'purple',
-        fields_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX index_tune_profiles_board_id ON tune_profiles(board_id)")
-    try db.execute(sql: "CREATE INDEX index_tune_profiles_board_id_refloat_base_version ON tune_profiles(board_id, refloat_base_version)")
-
-    try db.execute(sql: """
-      CREATE TABLE tune_history_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-        profile_id TEXT NOT NULL,
-        fields_json TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX index_tune_history_entries_profile_id ON tune_history_entries(profile_id)")
-    try db.execute(sql: "CREATE INDEX index_tune_history_entries_created_at ON tune_history_entries(created_at)")
+    try PersistenceSchema.createTuneProfiles(db)
   }
 
   // MARK: - Reads
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getTuneProfiles`
-  func getTuneProfiles(_ boardId: String, refloatBaseVersion: String?) -> [[String: Any?]] {
+  func getTuneProfiles(_ boardId: String, refloatBaseVersion: String?) throws -> [[String: Any?]] {
     guard let compatibility = Self.validRefloatBaseVersion(refloatBaseVersion) else { return [] }
-    guard let writer = resolveWriter() else { return [] }
-    return (try? writer.read { db in
+    let writer = try requireWriter()
+    return try writer.read { db in
       try Row.fetchAll(
         db,
         sql: "SELECT * FROM tune_profiles WHERE board_id = ? AND refloat_base_version = ? ORDER BY created_at ASC",
         arguments: [boardId, compatibility]
-      ).map { Self.profileMap($0) }
-    }) ?? []
+      ).map { try Self.profileMap($0) }
+    }
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getTuneProfile`
-  func getTuneProfile(_ id: String) -> [String: Any?]? {
-    guard let writer = resolveWriter() else { return nil }
-    return (try? writer.read { db in try Self.fetchProfileMap(db, id) }).flatMap { $0 }
+  func getTuneProfile(_ id: String) throws -> [String: Any?]? {
+    try requireWriter().read { db in try Self.fetchProfileMap(db, id) }
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getProfileHistory`
-  func getProfileHistory(_ profileId: String) -> [[String: Any?]] {
-    guard let writer = resolveWriter() else { return [] }
-    return (try? writer.read { db in
+  func getProfileHistory(_ profileId: String) throws -> [[String: Any?]] {
+    try requireWriter().read { db in
       try Row.fetchAll(
         db,
         // `id` breaks ties: a save and a rollback can land in the same millisecond, and without a
@@ -128,8 +120,8 @@ struct TuneProfileStore {
         // first — which is the opposite of what Tune History shows.
         sql: "SELECT * FROM tune_history_entries WHERE profile_id = ? ORDER BY created_at DESC, id DESC",
         arguments: [profileId]
-      ).map { Self.historyMap($0) }
-    }) ?? []
+      ).map { try Self.historyMap($0) }
+    }
   }
 
   // MARK: - Mutations
@@ -148,16 +140,10 @@ struct TuneProfileStore {
       throw TuneProfileError.missingRefloatCompatibility
     }
     let now = Self.nowMs()
-    let fieldsJson = Self.encodeFields(fields)
+    let fieldsJson = try Self.encodeFields(fields)
     let id = Self.newId()
     return try inWrite { db in
-      try db.execute(
-        sql: """
-          INSERT INTO tune_profiles (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """,
-        arguments: [id, boardId, compatibility, name, icon, color, fieldsJson, now, now]
-      )
+      try TuneProfileRecord(id: id, boardId: boardId, refloatBaseVersion: compatibility, name: name, icon: icon, color: color, fieldsJson: fieldsJson, createdAt: now, updatedAt: now).insert(db)
       try Self.insertHistory(db, profileId: id, fieldsJson: fieldsJson, createdAt: now)
       return try Self.requireProfileMap(db, id)
     }
@@ -172,13 +158,11 @@ struct TuneProfileStore {
   ) throws -> [String: Any?] {
     let now = Self.nowMs()
     return try inWrite { db in
-      try db.execute(
-        sql: "UPDATE tune_profiles SET name = ?, icon = ?, color = ?, updated_at = ? WHERE id = ?",
-        arguments: [name, icon, color, now, profileId]
-      )
-      guard let map = try Self.fetchProfileMap(db, profileId) else {
+      guard let current = try TuneProfileRecord.fetchOne(db, key: profileId) else {
         throw TuneProfileError.profileNotFound(profileId)
       }
+      try TuneProfileRecord(id: current.id, boardId: current.boardId, refloatBaseVersion: current.refloatBaseVersion, name: name, icon: icon, color: color, fieldsJson: current.fieldsJson, createdAt: current.createdAt, updatedAt: now).update(db)
+      guard let map = try Self.fetchProfileMap(db, profileId) else { throw TuneProfileError.profileNotFound(profileId) }
       return map
     }
   }
@@ -223,10 +207,7 @@ struct TuneProfileStore {
       if entryProfileId != profileId { throw TuneProfileError.historyEntryWrongProfile }
 
       try Self.insertHistory(db, profileId: profileId, fieldsJson: profile["fields_json"], createdAt: now)
-      try db.execute(
-        sql: "UPDATE tune_profiles SET fields_json = ?, updated_at = ? WHERE id = ?",
-        arguments: [entry["fields_json"] as String, now, profileId]
-      )
+      try TuneProfileRecord(id: profileId, boardId: profile["board_id"], refloatBaseVersion: profile["refloat_base_version"], name: profile["name"], icon: profile["icon"], color: profile["color"], fieldsJson: entry["fields_json"], createdAt: profile["created_at"], updatedAt: now).update(db)
       guard let map = try Self.fetchProfileMap(db, profileId) else {
         throw TuneProfileError.disappearedDuringRollback(profileId)
       }
@@ -246,13 +227,7 @@ struct TuneProfileStore {
       let fieldsJson: String = source["fields_json"]
       let icon: String = source["icon"]
       let color: String = source["color"]
-      try db.execute(
-        sql: """
-          INSERT INTO tune_profiles (id, board_id, refloat_base_version, name, icon, color, fields_json, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """,
-        arguments: [copyId, targetBoardId, source["refloat_base_version"] as String, newName, icon, color, fieldsJson, now, now]
-      )
+      try TuneProfileRecord(id: copyId, boardId: targetBoardId, refloatBaseVersion: source["refloat_base_version"], name: newName, icon: icon, color: color, fieldsJson: fieldsJson, createdAt: now, updatedAt: now).insert(db)
       try Self.insertHistory(db, profileId: copyId, fieldsJson: fieldsJson, createdAt: now)
       return try Self.requireProfileMap(db, copyId)
     }
@@ -263,16 +238,13 @@ struct TuneProfileStore {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `saveTuneProfile`
   func saveProfile(profileId: String, fields: [String: Any]) throws -> [String: Any?] {
     let now = Self.nowMs()
-    let fieldsJson = Self.encodeFields(fields)
+    let fieldsJson = try Self.encodeFields(fields)
     return try inWrite { db in
       guard let current = try Self.fetchProfileRow(db, profileId) else {
         throw TuneProfileError.profileNotFound(profileId)
       }
       try Self.insertHistory(db, profileId: profileId, fieldsJson: current["fields_json"], createdAt: now)
-      try db.execute(
-        sql: "UPDATE tune_profiles SET fields_json = ?, updated_at = ? WHERE id = ?",
-        arguments: [fieldsJson, now, profileId]
-      )
+      try TuneProfileRecord(id: profileId, boardId: current["board_id"], refloatBaseVersion: current["refloat_base_version"], name: current["name"], icon: current["icon"], color: current["color"], fieldsJson: fieldsJson, createdAt: current["created_at"], updatedAt: now).update(db)
       guard let map = try Self.fetchProfileMap(db, profileId) else {
         throw TuneProfileError.disappearedDuringSave(profileId)
       }
@@ -283,8 +255,12 @@ struct TuneProfileStore {
   // MARK: - Private helpers
 
   private func inWrite<T>(_ body: @escaping (Database) throws -> T) throws -> T {
+    try requireWriter().write(body)
+  }
+
+  private func requireWriter() throws -> DatabaseWriter {
     guard let writer = resolveWriter() else { throw TuneProfileError.databaseUnavailable }
-    return try writer.write(body)
+    return writer
   }
 
   private static func insertHistory(
@@ -293,10 +269,7 @@ struct TuneProfileStore {
     fieldsJson: String,
     createdAt: Int64
   ) throws {
-    try db.execute(
-      sql: "INSERT INTO tune_history_entries (profile_id, fields_json, created_at) VALUES (?, ?, ?)",
-      arguments: [profileId, fieldsJson, createdAt]
-    )
+    try TuneHistoryRecord(id: nil, profileId: profileId, fieldsJson: fieldsJson, createdAt: createdAt).insert(db)
   }
 
   private static func fetchProfileRow(_ db: Database, _ id: String) throws -> Row? {
@@ -304,7 +277,7 @@ struct TuneProfileStore {
   }
 
   private static func fetchProfileMap(_ db: Database, _ id: String) throws -> [String: Any?]? {
-    try fetchProfileRow(db, id).map { profileMap($0) }
+    try fetchProfileRow(db, id).map { try profileMap($0) }
   }
 
   private static func requireProfileMap(_ db: Database, _ id: String) throws -> [String: Any?] {
@@ -313,7 +286,7 @@ struct TuneProfileStore {
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `TuneProfileEntity.toMap`
-  private static func profileMap(_ row: Row) -> [String: Any?] {
+  private static func profileMap(_ row: Row) throws -> [String: Any?] {
     [
       "id": row["id"] as String,
       "boardId": row["board_id"] as String,
@@ -321,37 +294,35 @@ struct TuneProfileStore {
       "name": row["name"] as String,
       "icon": row["icon"] as String,
       "color": row["color"] as String,
-      "fields": decodeFields(row["fields_json"]),
+      "fields": try decodeFields(row["fields_json"]),
       "createdAt": row["created_at"] as Int64,
       "updatedAt": row["updated_at"] as Int64,
     ]
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `TuneHistoryEntryEntity.toMap`
-  private static func historyMap(_ row: Row) -> [String: Any?] {
+  private static func historyMap(_ row: Row) throws -> [String: Any?] {
     [
       "id": row["id"] as Int64,
       "profileId": row["profile_id"] as String,
-      "fields": decodeFields(row["fields_json"]),
+      "fields": try decodeFields(row["fields_json"]),
       "createdAt": row["created_at"] as Int64,
     ]
   }
 
   /// Serialize the bridge-delivered fields (JS `null` arrives as `NSNull`, which JSONSerialization
   /// writes as `null`) into the `fields_json` column, matching Android's `toJsonObject().toString()`.
-  private static func encodeFields(_ fields: [String: Any]) -> String {
-    guard
-      let data = try? JSONSerialization.data(withJSONObject: fields),
-      let json = String(data: data, encoding: .utf8)
-    else { return "{}" }
+  private static func encodeFields(_ fields: [String: Any]) throws -> String {
+    let data = try JSONSerialization.data(withJSONObject: fields)
+    guard let json = String(data: data, encoding: .utf8) else { throw TuneProfileError.databaseUnavailable }
     return json
   }
 
-  private static func decodeFields(_ json: String) -> [String: Any] {
-    guard
-      let data = json.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
+  private static func decodeFields(_ json: String) throws -> [String: Any] {
+    guard let data = json.data(using: .utf8) else { throw TuneProfileError.databaseUnavailable }
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw TuneProfileError.databaseUnavailable
+    }
     return object
   }
 

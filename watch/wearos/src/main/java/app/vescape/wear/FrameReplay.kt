@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import org.json.JSONObject
-import java.util.Calendar
 
 /**
  * Emulator-only Watch Frame replay: feeds recorded lane samples into [TelemetryState] on the same
@@ -118,6 +117,8 @@ object ReplaySceneParser {
             },
             sunriseMinuteOfDay = root.getInt("sunriseMinuteOfDay"),
             sunsetMinuteOfDay = root.getInt("sunsetMinuteOfDay"),
+            latitude = root.optDouble("latitude").takeIf { !it.isNaN() },
+            longitude = root.optDouble("longitude").takeIf { !it.isNaN() },
             fetchedAtMs = nowMs,
         )
     } catch (e: Exception) {
@@ -125,12 +126,16 @@ object ReplaySceneParser {
     }
 }
 
-object ReplayGate {
+/**
+ * The gate every emulator-only dev mode passes through: fixture replay, and the forced ambient
+ * rendering the always-on layout is worked on with. A real watch and a release build have neither.
+ */
+object DevGate {
     /**
-     * Replay is an explicit emulator dev mode, entered by `bun run wear:replay`. A normal emulator
-     * launch listens to its paired phone like a real watch instead of silently replacing those
-     * frames with a fixture. Emulator detection reads [Build] rather than `ro.kernel.qemu`, which
-     * is not readable from the SDK.
+     * A dev mode is explicit and never inferred: `bun run wear:replay` asks for one, and a normal
+     * emulator launch listens to its paired phone like a real watch instead of silently replacing
+     * those frames with a fixture. Emulator detection reads [Build] rather than `ro.kernel.qemu`,
+     * which is not readable from the SDK.
      */
     fun isEnabled(context: Context, requested: Boolean): Boolean =
         requested && isDebuggable(context) && isEmulator()
@@ -197,9 +202,9 @@ class FrameReplayer(private val context: Context) {
     private fun loadScene() {
         readAsset(REPLAY_FIXTURE_ROUTE)?.let { RouteState.accept(ReplaySceneParser.parseRoute(it)) }
         readAsset(REPLAY_FIXTURE_WEATHER)?.let {
-            val now = Calendar.getInstance()
-            val minuteOfDay = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-            WeatherState.accept(ReplaySceneParser.parseWeather(it, now.timeInMillis, minuteOfDay))
+            WeatherState.accept(
+                ReplaySceneParser.parseWeather(it, System.currentTimeMillis(), minuteOfDayNow()),
+            )
         }
     }
 

@@ -12,10 +12,10 @@ final class NativeAuthCoordinator {
   private static let accountPath = "/api/account"
   private static let revokePath = "/api/auth/device-tokens/current"
 
-  func stateMap() -> [String: Any?] {
-    let credential = store.read()
+  func stateMap() throws -> [String: Any?] {
+    let credential = try store.read()
     return [
-      "state": store.state().rawValue,
+      "state": store.state(credential: credential).rawValue,
       "accountId": credential?.accountId,
       "expiresAt": credential?.expiresAt,
     ]
@@ -47,6 +47,8 @@ final class NativeAuthCoordinator {
     // `VescapeApi` already rejected the stored credential and refreshed App Status.
     case .unauthorized:
       throw NSError(domain: "NativeAuth", code: 401)
+    case .cancelled:
+      throw CancellationError()
     default:
       throw NSError(domain: "NativeAuth", code: -5)
     }
@@ -61,13 +63,13 @@ final class NativeAuthCoordinator {
     await MainActor.run {
       AppStatusCoordinator.shared.refresh()
     }
-    return stateMap()
+    return try stateMap()
   }
 
   /// Revokes server-side before the local copy goes away. A `401` means the server already considers
   /// it gone, which is the same end state.
   func revoke() async throws {
-    guard let credential = store.read() else { return }
+    guard let credential = try store.read() else { return }
     let result: ApiResult<Void> = await VescapeApi.forOrigin(credential.serverUrl).request(
       .delete,
       path: Self.revokePath,
@@ -76,10 +78,11 @@ final class NativeAuthCoordinator {
 
     switch result {
     case .ok, .unauthorized: break
+    case .cancelled: throw CancellationError()
     default: throw NSError(domain: "NativeAuth", code: -6)
     }
-    store.clear()
+    try store.clear()
   }
 
-  func clear() { store.clear() }
+  func clear() throws { try store.clear() }
 }

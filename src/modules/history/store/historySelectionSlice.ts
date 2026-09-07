@@ -16,6 +16,7 @@ function getSessionRangeOptions(session: HistorySession) {
     fromMs: session.startAtMs,
     toMs: session.endAtMs,
     ...(session.boardId ? { boardId: session.boardId } : {}),
+    ...(session.recordingId ? { recordingId: session.recordingId } : {}),
   }
 }
 

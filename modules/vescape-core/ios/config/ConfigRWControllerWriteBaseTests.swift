@@ -7,6 +7,20 @@ import XCTest
 ///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/ConfigRWFsmWriteBaseTest.kt
 final class ConfigRWControllerWriteBaseTests: XCTestCase {
+  func testProfileReadFailureDoesNotSendFirmwareCommand() {
+    let sent = SentFrames()
+    var failureCode: String?
+    ConfigRWController().consumeWrite(
+      profileId: "profile-1",
+      connection: connection(fresh(), sent, loadProfile: { _ in throw ProfileReadFailure.failed }),
+      onSuccess: { _ in XCTFail("write should not succeed") },
+      onError: { code, _ in failureCode = code }
+    )
+
+    XCTAssertEqual(failureCode, RefloatConfigErrorCode.CONFIG_READ_FAILED.rawValue)
+    XCTAssertTrue(sent.frames.isEmpty)
+  }
+
   func testFreshValuesWriteWithoutReadingFirst() {
     let sent = SentFrames()
     let controller = ConfigRWController()
@@ -47,10 +61,10 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertNotEqual(Array(payload[0..<4]), Array(base.rawConfig[0..<4]), "tuned field must change")
   }
 
-  func testProvisionalValuesReadBeforeWriting() {
+  func testProvisionalValuesReadBeforeWriting() throws {
     let sent = SentFrames()
     let controller = ConfigRWController()
-    let lastKnown = BoardConfigValues.lastKnown(
+    let lastKnown = try BoardConfigValues.lastKnown(
       boardId: "board-1",
       refloatBaseVersion: "3.0.7",
       capturedAtMs: 0,
@@ -140,7 +154,8 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
   private func connection(
     _ values: BoardConfigValues?,
     _ sent: SentFrames,
-    linkIntegrity: LinkIntegrity = .trusted
+    linkIntegrity: LinkIntegrity = .trusted,
+    loadProfile: ((String) throws -> [String: Any?]?)? = nil
   ) -> ConfigRWConnection {
     ConfigRWConnection(
       phase: .connected,
@@ -156,13 +171,15 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
       startPolling: {},
       sendPayload: { payload in sent.frames.append(payload); return true },
       captureDiagnostic: { _, _ in },
-      loadProfile: { _ in
+      loadProfile: loadProfile ?? { _ in
         ["boardId": "board-1", "refloatBaseVersion": "3.0.7", "fields": ["tuned": 7.0] as [String: Any]]
       },
       onBoardConfigValues: { _, _ in }
     )
   }
 }
+
+private enum ProfileReadFailure: Error { case failed }
 
 /// Frames the controller handed to the transport, in send order.
 private final class SentFrames {

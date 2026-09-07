@@ -42,6 +42,10 @@
 
 ### Process
 
+- [persistence-reliability-plan.md](./persistence-reliability-plan.md) — in-progress Android/iOS persistence reliability plan and shared native DB contract tests
+- [persistence-operation-inventory.md](./persistence-operation-inventory.md) — every native durable operation and its executable contract owner
+- [error-handling-audit.md](./error-handling-audit.md) — swallowed-error audit, explicit failure outcomes, and regression checks
+
 - [design.md](./design.md) — visual design language: colors, layout, typography
 - [release.md](./release.md) — versioning, per-version notes tiers, tags & GitHub Releases
 

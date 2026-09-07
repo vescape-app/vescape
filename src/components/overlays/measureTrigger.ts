@@ -31,7 +31,13 @@ export function getModalCoordinateOffset() {
  */
 export function measureTrigger(ref: React.RefObject<View | null>) {
   return new Promise<TriggerLayout>((resolve) => {
-    ref.current?.measureInWindow((x, y, width, height) => {
+    const view = ref.current
+    if (!view) {
+      const window = Dimensions.get('window')
+      resolve({ x: window.width / 2, y: window.height / 2, width: 0, height: 0 })
+      return
+    }
+    view.measureInWindow((x, y, width, height) => {
       resolve({ x, y, width, height })
     })
   })

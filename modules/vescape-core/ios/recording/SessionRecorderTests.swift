@@ -18,12 +18,12 @@ final class SessionRecorderTests: XCTestCase {
   }
 
   private func record(_ body: (SessionRecorder) -> Void) throws -> [[String: Any]] {    let store = DebugRecordingStore(directory: directory)
-    let recorder = try XCTUnwrap(SessionRecorder(
+    let recorder = try SessionRecorder(
       store: store,
       deviceName: "Funwheel S/2",
       deviceId: "AA:BB",
       pollIntervalMs: 100
-    ))
+    )
     recorder.start()
     body(recorder)
     recorder.finish(status: "stopped")
@@ -129,12 +129,12 @@ final class SessionRecorderTests: XCTestCase {
   /// replay of the whole recording.
   func testConcurrentWritesProduceOnlyWellFormedLines() throws {
     let store = DebugRecordingStore(directory: directory)
-    let recorder = try XCTUnwrap(SessionRecorder(
+    let recorder = try SessionRecorder(
       store: store,
       deviceName: "Thor301",
       deviceId: "AA:BB",
       pollIntervalMs: 100
-    ))
+    )
     recorder.start()
 
     let threads = 8

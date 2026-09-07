@@ -37,40 +37,50 @@ function RiderNameWidget() {
   const setName = useRiderStore((s) => s.setName)
   const riderColor = useRiderStore((s) => s.riderColor)
   const setColor = useRiderStore((s) => s.setColor)
+  const error = useRiderStore((s) => s.error)
 
   return (
-    <InputWidget
-      label="Your name"
-      value={riderName}
-      placeholder="Add a display name"
-      maxLength={32}
-      onCommit={(value) => void setName(value)}
-      accessibilityLabel="Rider display name"
-      commitOnBlur={false}
-      leading={
-        <View
-          style={[
-            styles.colorDot,
-            riderColor ? { backgroundColor: riderColor } : styles.colorDotEmpty,
-          ]}
-          accessibilityLabel={riderColor ? `Your color ${riderColor}` : 'No color selected'}
-        >
-          {riderColor ? null : (
-            <PaletteIcon size={14} color={theme.neutral.textSecondary} weight="duotone" />
-          )}
-        </View>
-      }
-      editingContent={
-        <View style={styles.colorEditor}>
-          <Text style={styles.colorLabel}>Color</Text>
-          <ColorPicker
-            value={riderColor}
-            colors={riderColorOptions}
-            onChange={(color) => void setColor(color)}
-          />
-        </View>
-      }
-    />
+    <View style={styles.riderIdentity}>
+      <InputWidget
+        label="Your name"
+        value={riderName}
+        placeholder="Add a display name"
+        maxLength={32}
+        onCommit={(value) => {
+          // intentional-suppression: Rider store error is rendered by Social Sheet
+          void setName(value).catch(() => undefined) // The store exposes this failure below.
+        }}
+        accessibilityLabel="Rider display name"
+        commitOnBlur={false}
+        leading={
+          <View
+            style={[
+              styles.colorDot,
+              riderColor ? { backgroundColor: riderColor } : styles.colorDotEmpty,
+            ]}
+            accessibilityLabel={riderColor ? `Your color ${riderColor}` : 'No color selected'}
+          >
+            {riderColor ? null : (
+              <PaletteIcon size={14} color={theme.neutral.textSecondary} weight="duotone" />
+            )}
+          </View>
+        }
+        editingContent={
+          <View style={styles.colorEditor}>
+            <Text style={styles.colorLabel}>Color</Text>
+            <ColorPicker
+              value={riderColor}
+              colors={riderColorOptions}
+              onChange={(color) => {
+                // intentional-suppression: Rider store error is rendered by Social Sheet
+                void setColor(color).catch(() => undefined) // The store exposes this failure below.
+              }}
+            />
+          </View>
+        }
+      />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
   )
 }
 
@@ -257,5 +267,12 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 12,
+  },
+  riderIdentity: {
+    gap: 6,
+  },
+  errorText: {
+    color: theme.status.error.text,
+    fontSize: 12,
   },
 })

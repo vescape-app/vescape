@@ -12,7 +12,6 @@ internal const val TELEMETRY_BUCKET_SIZE_MS = 60_000L
  *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `UNKNOWN_TELEMETRY_BOARD_ID`
  */
-internal const val UNKNOWN_TELEMETRY_BOARD_ID = ""
 internal const val UNKNOWN_TELEMETRY_BOARD_NAME = "VESC Board"
 
 /**

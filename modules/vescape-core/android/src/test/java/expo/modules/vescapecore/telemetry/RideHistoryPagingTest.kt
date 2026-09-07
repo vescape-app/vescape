@@ -80,6 +80,16 @@ class RideHistoryPagingTest {
     assertEquals(base + 3_600_000L + 30_000L, grouped.single().endAtMs)
   }
 
+  @Test
+  fun recordingsWithIdenticalTimeBoundsHaveDistinctBridgeIdentities() {
+    val sessions = groupRideSessions(listOf(
+      bucket(start = base, end = base + 10_000L, recordingId = "recording-1"),
+      bucket(start = base, end = base + 10_000L, recordingId = "recording-2"),
+    ), emptyList(), gapMs).map { rideSessionMap(it, emptyMap()) }
+    assertEquals(listOf("recording-1", "recording-2"), sessions.map { it["id"] })
+    assertEquals(listOf("recording-1", "recording-2"), sessions.map { it["recordingId"] })
+  }
+
   /** Stop then start again inside one minute: two recordings, two entries. */
   @Test
   fun separateRecordingsInsideOneMinuteStaySeparateEntries() {

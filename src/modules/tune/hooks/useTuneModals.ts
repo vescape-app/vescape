@@ -176,9 +176,9 @@ export function useTuneModals(
   }, [])
 
   const handleCopyConfirm = useCallback(
-    (name: string) => {
+    async (name: string) => {
       if (!copySourceProfile || !copyTargetBoard) return
-      void storeCopyProfile(copySourceProfile.id, copyTargetBoard.id, name)
+      await storeCopyProfile(copySourceProfile.id, copyTargetBoard.id, name)
       setCopySourceProfile(null)
       setCopyTargetBoard(null)
     },

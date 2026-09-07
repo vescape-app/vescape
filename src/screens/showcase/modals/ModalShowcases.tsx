@@ -73,6 +73,8 @@ export function ConfirmModalShowcase() {
         }
         confirmLabel={destructive ? 'Delete' : 'Apply'}
         destructive={destructive}
+        error="Example operation failed."
+        loading={false}
         onConfirm={() => setVisible(false)}
         onCancel={() => setVisible(false)}
       />

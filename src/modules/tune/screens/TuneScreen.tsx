@@ -110,20 +110,23 @@ export function TuneScreen() {
   ])
 
   const handleSave = () => {
-    void saveActiveProfile().catch(() => undefined)
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
+    void saveActiveProfile().catch(() => undefined) // Store error renders in the banner below.
   }
 
   const handleSaveAndSync = () => {
     if (!firmwareCommandsTrusted) return
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
     void (async () => {
       await saveActiveProfile()
       await syncToBoard()
-    })().catch(() => undefined)
+    })().catch(() => undefined) // Store error renders in the banner below.
   }
 
   const handleSync = () => {
     if (!firmwareCommandsTrusted) return
-    void syncToBoard().catch(() => undefined)
+    // intentional-suppression: Tune store error is rendered by the active screen or modal
+    void syncToBoard().catch(() => undefined) // Store error renders in the banner below.
   }
 
   const hasTuneView = activeProfile != null
@@ -140,7 +143,10 @@ export function TuneScreen() {
         firmwareCommandBlockReason={firmwareCommandBlockReason}
         loadOnline={loadOnline}
         loadOffline={loadOffline}
-        onCreateFirstProfile={() => void modals.storeCreateProfile('Main', '', '')}
+        onCreateFirstProfile={() => {
+          // intentional-suppression: Tune store error is rendered by the active screen or modal
+          void modals.storeCreateProfile('Main', '', '').catch(() => undefined) // Tune error state replaces the empty screen.
+        }}
       />
 
       <TunePreviewSection fields={profileFields ?? {}} active={isFocused} visible={hasTuneView}>

@@ -2,6 +2,7 @@ import Foundation
 
 /// Threshold (meters) at or below which a horizontal accuracy is treated as a precise GPS fix.
 /// One number for live classification and for Ride History's read-side rule, on both platforms.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/location/GpsAccuracy.kt `MAX_RECORDING_ACCURACY_M`
 internal let MAX_RECORDING_ACCURACY_M = 20.0
 
 /// Classify a **live** GPS fix as precise (recording-grade) vs approximate — the GPS status pill,

@@ -15,12 +15,17 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.RecordingStorageFailureKind
+import expo.modules.vescapecore.recording.recordingFailureState
+import expo.modules.vescapecore.liveStateWithStorageFailure
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.TelemetryRepository
+import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
@@ -261,6 +266,11 @@ class CoreForegroundService : Service() {
             instance?.controller?.watchMove(direction)
         }
 
+        /** Wrist light edit (ADR-0033). Dropped when no session is running — nothing to state. */
+        internal fun watchLights(switch: WatchLightsSwitch, on: Boolean) {
+            instance?.controller?.watchLights(switch, on)
+        }
+
         /** Wrist wake level. Dropped when no service is running — nothing is pushing frames anyway. */
         internal fun watchMirrorWakeLevel(level: WatchMirrorWakeLevel) {
             instance?.controller?.watchMirrorWakeLevel(level)
@@ -375,7 +385,9 @@ class CoreForegroundService : Service() {
         fun setTelemetryRecordingEnabled(context: Context, enabled: Boolean) {
             RecordingCoordinator.requestTelemetryRecording(enabled)
             instance?.controller?.setTelemetryRecordingEnabled(enabled)
-            if (!enabled) TelemetryRepository.get(context.applicationContext).flushBlocking()
+            if (!enabled && RecordingStorageFailure.value() == null) {
+                TelemetryRepository.get(context.applicationContext).flushBlocking()
+            }
         }
 
         fun setBmsSeriesFocused(focused: Boolean) {
@@ -440,21 +452,30 @@ class CoreForegroundService : Service() {
 
         fun alertSoundPresets(): List<Map<String, Any>> = alertSoundPresetMaps()
 
-        fun currentLiveState(context: Context): Map<String, Any?> =
-            instance?.controller?.liveStateMap(includeRecent = true)
+        fun currentLiveState(context: Context): Map<String, Any?> {
+            RecordingStorageFailure.initialize(context.applicationContext)
+            return instance?.controller?.liveStateMap(includeRecent = true)
                 ?: idleState(AppDataRepository.get(context.applicationContext))
+        }
+
+        /** State payload for a broad DB outage; deliberately performs no persistence read. */
+        fun storageUnavailableLiveState(): Map<String, Any?> =
+            liveStateWithStorageFailure(
+                instance?.controller?.liveStateMapWithoutStorage(includeRecent = true) ?: idleState(null),
+                RecordingStorageFailure.value() ?: RecordingStorageFailureKind.StorageUnavailable,
+            )
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
         /** Live rider position for Navigation; null while the service is not up. */
         fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
-        private fun idleState(repository: AppDataRepository): Map<String, Any?> {
-            val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }
+        private fun idleState(repository: AppDataRepository?): Map<String, Any?> {
+            val settings = repository?.let { kotlinx.coroutines.runBlocking { it.getTypedSettings() } }
             return mapOf(
                 "board" to mapOf(
                     "phase" to "idle",
-                    "selectedBoardId" to settings.selectedBoardId,
+                    "selectedBoardId" to settings?.selectedBoardId,
                     "connectedBoardId" to null,
                     "bleId" to null,
                     "name" to null,
@@ -462,7 +483,7 @@ class CoreForegroundService : Service() {
                     "lastTelemetryAt" to null,
                     "recentTelemetry" to emptyList<Map<String, Any?>>(),
                     "error" to null,
-                    "autoConnect" to settings.autoConnect,
+                    "autoConnect" to (settings?.autoConnect ?: false),
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(
@@ -484,8 +505,10 @@ class CoreForegroundService : Service() {
                 ),
                 "recording" to mapOf(
                     "enabled" to false,
+                    "paused" to false,
                     "activeBoardId" to null,
                     "startedAt" to null,
+                    "failure" to RecordingStorageFailure.value()?.let(::recordingFailureState),
                 ),
             )
         }
@@ -498,6 +521,7 @@ class CoreForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        RecordingStorageFailure.initialize(applicationContext)
         controller = BoardSessionController(this)
         instance = this
         controller.onCreate()

@@ -17,12 +17,12 @@ interface RainViewerRadarState {
   transitionMode: RainViewerRadarTransitionMode
   loading: boolean
   fetchedAt: number | null
+  error: string | null
 }
 
 interface RainViewerRadarActions {
   fetch: (force?: boolean) => Promise<void>
   setFrameIndex: (index: number, transitionMode?: RainViewerRadarTransitionMode) => void
-  nextFrame: () => void
 }
 
 interface RainViewerMetaResponse {
@@ -37,6 +37,13 @@ function clampFrameIndex(index: number, frameCount: number): number {
   return Math.max(0, Math.min(frameCount - 1, index))
 }
 
+/**
+ * Slippy-map tile template for the phone's Mapbox overlay. The wrist renders the same provider from
+ * single centred images instead of a tile grid, so the two build different URLs from the same
+ * metadata — the frame list and the "past frames only" rule are what must stay in step.
+ *
+ * @parity /watch/wearos/src/main/java/app/vescape/wear/WatchRadar.kt `RainViewer`
+ */
 export function buildRainViewerTileTemplate(host: string, frame: RainViewerRadarFrame): string {
   return `${host}${frame.path}/512/{z}/{x}/{y}/2/1_1.png`
 }
@@ -77,21 +84,28 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
     transitionMode: 'auto',
     loading: false,
     fetchedAt: null,
+    error: null,
 
     async fetch(force = false) {
       const state = get()
       if (!force && state.fetchedAt && Date.now() - state.fetchedAt < CACHE_MS) return
       if (state.loading) return
 
-      set({ loading: true })
+      set({ loading: true, error: null })
       try {
         const res = await globalThis.fetch(RAINVIEWER_META_URL)
-        if (!res.ok) return
+        if (!res.ok) {
+          set({ error: 'Radar is temporarily unavailable.' })
+          return
+        }
 
         const meta = (await res.json()) as RainViewerMetaResponse
         const host = meta.host ?? null
         const frames = meta.radar?.past ?? []
-        if (!host || frames.length === 0) return
+        if (!host || frames.length === 0) {
+          set({ error: 'Radar data is temporarily unavailable.' })
+          return
+        }
 
         set((current) => {
           const selectedFrameIndex =
@@ -104,10 +118,11 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
             frames,
             selectedFrameIndex,
             fetchedAt: Date.now(),
+            error: null,
           }
         })
       } catch {
-        // network errors ignored in prototype
+        set({ error: 'Radar could not be refreshed. Check your connection.' })
       } finally {
         set({ loading: false })
       }
@@ -116,12 +131,6 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
     setFrameIndex(index, transitionMode = 'manual') {
       const { frames } = get()
       set({ selectedFrameIndex: clampFrameIndex(index, frames.length), transitionMode })
-    },
-
-    nextFrame() {
-      const { frames, selectedFrameIndex } = get()
-      if (frames.length <= 1) return
-      set({ selectedFrameIndex: (selectedFrameIndex + 1) % frames.length, transitionMode: 'auto' })
     },
   }),
 )

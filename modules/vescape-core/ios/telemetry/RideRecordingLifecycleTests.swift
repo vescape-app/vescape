@@ -70,6 +70,61 @@ final class RideRecordingLifecycleTests: XCTestCase {
     }
   }
 
+  func testFailedStartRollsBackPriorEndAndStopsWrites() throws {
+    try open(id: "existing", boardId: "board-a")
+    try queue.write { db in
+      try db.execute(sql: "CREATE TRIGGER reject_recording BEFORE INSERT ON ride_recordings BEGIN SELECT RAISE(ABORT, 'injected'); END")
+    }
+    var reports = 0
+    let boundary = RecordingCommitBoundary { _ in reports += 1 }
+    XCTAssertFalse(boundary.commit {
+      try queue.write { db in
+        try beginRideRecordingRow(db, recording: RideRecording(id: "new", boardId: "board-a",
+          startedAtMs: 2000, endedAtMs: nil, endedReason: nil), replacingId: "existing")
+      }
+    })
+    XCTAssertNil(try endedAt("existing"))
+    XCTAssertNil(try openRecording(id: "new", boardId: "board-a"))
+    XCTAssertFalse(boundary.isAccepting())
+    XCTAssertEqual(reports, 1)
+  }
+
+  func testFailedEndKeepsDurableRecordingOpenAndStopsWrites() throws {
+    try open(id: "existing", boardId: "board-a")
+    try queue.write { db in
+      try db.execute(sql: "CREATE TRIGGER reject_end BEFORE UPDATE ON ride_recordings BEGIN SELECT RAISE(ABORT, 'injected'); END")
+    }
+    var reports = 0
+    let boundary = RecordingCommitBoundary { _ in reports += 1 }
+    XCTAssertFalse(boundary.commit {
+      try queue.write { db in
+        try closeRideRecordingRow(db, id: "existing", endedAtMs: 2000, reason: RIDE_RECORDING_END_STOPPED)
+      }
+    })
+    XCTAssertNil(try endedAt("existing"))
+    XCTAssertFalse(boundary.isAccepting())
+    XCTAssertEqual(reports, 1)
+  }
+
+  func testScopedTrackReadAndDeletePreserveOverlappingRecording() throws {
+    try open(id: "one", boardId: "board-a")
+    try open(id: "two", boardId: "board-a")
+    try track("one", fixAtMs: 1000)
+    try track("two", fixAtMs: 1000)
+    try queue.read { db in
+      let rows = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "board-a", recordingId: "two", limit: 1)
+      XCTAssertEqual(rows.count, 1)
+      XCTAssertEqual(rows.first?["recording_id"] as String?, "two")
+    }
+    _ = try TelemetryMaintenancePersistence(writer: queue).deleteRanges(
+      [.init(startMs: 0, endMs: 2000)], boardId: "board-a", allBoards: false, recordingId: "one")
+    try queue.read { db in
+      let rows = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "board-a")
+      XCTAssertEqual(rows.count, 1)
+      XCTAssertEqual(rows.first?["recording_id"] as String?, "two")
+    }
+  }
+
   // MARK: - Rejoining an open recording
 
   /// The reconnect case the whole issue is about: the rider's Board dropped, the recording stayed

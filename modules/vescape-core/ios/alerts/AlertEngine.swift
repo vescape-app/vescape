@@ -13,7 +13,6 @@ internal let alertBeepCountRange = 1...5
 /// Beeps per announcement when nothing says otherwise.
 /// @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `ALERT_BEEP_COUNT_DEFAULT`
-internal let alertBeepCountDefault = 3
 
 /// Gap between beeps of one announcement — tight enough that a burst reads as a single signal.
 internal let alertBeepSpacingMs: Double = 200

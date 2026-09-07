@@ -72,6 +72,22 @@ test('loads favorites from native', async () => {
   expect(useFavoriteStore.getState().loading).toBe(false)
 })
 
+test('removes a durable favorite when only media cleanup failed', async () => {
+  const stored = favorite({ id: 'fav-1', startMs: 2_000_000 })
+  deleteFavorite.mockImplementation(async () => {
+    throw Object.assign(new Error('private path'), { code: 'ERR_DELETE_FAVORITE_MEDIA_CLEANUP' })
+  })
+  const { useFavoriteStore } = await import('@/modules/history/store/favoriteStore')
+  useFavoriteStore.setState({ favorites: [stored] })
+
+  await useFavoriteStore.getState().remove(stored.id)
+
+  expect(useFavoriteStore.getState().favorites).toEqual([])
+  expect(useFavoriteStore.getState().error).toBe(
+    'Favorite removed, but some attached media could not be cleaned up.',
+  )
+})
+
 test('keeps the list newest first after adding a favorite', async () => {
   const older = favorite({ id: 'older', startMs: 1_000_000 })
   const newer = favorite({ id: 'newer', startMs: 3_000_000 })

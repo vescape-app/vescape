@@ -55,6 +55,8 @@ interface TuneProfileMetadataModalProps {
   initialValue?: Partial<TuneProfileMetadataValue>
   onConfirm: (value: TuneProfileMetadataValue) => void
   onDismiss: () => void
+  loading?: boolean
+  error?: string | null
 }
 
 interface TuneProfileMetadataModalContentProps extends Omit<
@@ -167,6 +169,8 @@ function TuneProfileMetadataModalContent({
   initialValue,
   onConfirm,
   onDismiss,
+  loading = false,
+  error,
 }: TuneProfileMetadataModalContentProps) {
   const [name, setName] = useState(initialValue?.name ?? '')
   const [icon, setIcon] = useState<TuneProfileIconId>(
@@ -179,7 +183,7 @@ function TuneProfileMetadataModalContent({
   const accent = COLORS[color]
 
   return (
-    <Pressable style={styles.backdrop} onPress={onDismiss}>
+    <Pressable style={styles.backdrop} onPress={loading ? undefined : onDismiss}>
       <Pressable style={styles.modal} onPress={(event) => event.stopPropagation()}>
         <Text style={styles.title}>{title}</Text>
         <Input
@@ -190,7 +194,9 @@ function TuneProfileMetadataModalContent({
           placeholderTextColor={theme.neutral.textDim}
           autoFocus
           selectTextOnFocus
+          editable={!loading}
         />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Icon</Text>
@@ -211,6 +217,7 @@ function TuneProfileMetadataModalContent({
                   accessibilityRole="button"
                   accessibilityLabel={ICON_LABELS[iconId]}
                   accessibilityState={{ selected }}
+                  disabled={loading}
                   onPress={() => setIcon(iconId)}
                 >
                   <TuneProfileIcon
@@ -240,6 +247,7 @@ function TuneProfileMetadataModalContent({
                   accessibilityRole="button"
                   accessibilityLabel={`${colorId} color`}
                   accessibilityState={{ selected }}
+                  disabled={loading}
                   onPress={() => setColor(colorId)}
                 >
                   <View style={[styles.swatch, { backgroundColor: swatch.bg }]}>
@@ -253,7 +261,7 @@ function TuneProfileMetadataModalContent({
         </View>
 
         <View style={styles.actions}>
-          <Pressable style={styles.cancelButton} onPress={onDismiss}>
+          <Pressable style={styles.cancelButton} onPress={onDismiss} disabled={loading}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
           <Pressable
@@ -263,6 +271,7 @@ function TuneProfileMetadataModalContent({
               if (!trimmed) return
               onConfirm({ name: trimmed, icon, color })
             }}
+            disabled={loading}
           >
             <CheckIcon size={15} color={theme.neutral.surfaceDeep} weight="bold" />
             <Text style={styles.confirmText}>{confirmLabel}</Text>
@@ -281,7 +290,12 @@ export function TuneProfileMetadataModal({
   const key = `${initialValue?.name ?? ''}:${initialValue?.icon ?? ''}:${initialValue?.color ?? ''}`
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={props.onDismiss}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={props.loading ? undefined : props.onDismiss}
+    >
       {visible ? (
         <TuneProfileMetadataModalContent key={key} initialValue={initialValue ?? {}} {...props} />
       ) : null}
@@ -290,6 +304,7 @@ export function TuneProfileMetadataModal({
 }
 
 const styles = StyleSheet.create({
+  error: { color: theme.status.error.text, fontSize: 12 },
   backdrop: {
     flex: 1,
     justifyContent: 'center',

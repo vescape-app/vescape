@@ -36,16 +36,23 @@ import kotlin.math.sin
  * destination sees the plain telemetry frame.
  *
  * [focus] is the nav-focus progress (see [FrameLayout]): as the telemetry readouts leave, the
- * chevron and the distance grow into the room they free up.
+ * chevron and the distance grow into the room they free up. [stackAlpha] is the opposite pull — the
+ * control and weather pages take the whole centre, so the nav stack fades out with the readouts.
  */
 @Composable
-internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean, focus: () -> Float = { 0f }) {
+internal fun NavPointer(
+    bearingDeg: Double,
+    distanceM: Double,
+    muted: Boolean,
+    focus: () -> Float = { 0f },
+    stackAlpha: () -> Float = { 1f },
+) {
     val color = if (muted) DimText else navColor()
 
     // The chevron alone is opt-in (phone: Settings > Watch) while its bearing is being worked on.
     // Everything else nav draws — route, rider dot, pin, distance — is untouched by the switch.
     if (SettingsState.settings.value.navArrowEnabled) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = stackAlpha() }) {
             // Read inside the draw scope: focus changes redraw the chevron without recomposing.
             val grow = 1f + CHEVRON_FOCUS_GROWTH * focus()
             val center = Offset(size.width / 2f, size.height / 2f)
@@ -63,6 +70,7 @@ internal fun NavPointer(bearingDeg: Double, distanceM: Double, muted: Boolean, f
             .padding(bottom = NAV_READOUT_BOTTOM_PAD)
             .graphicsLayer {
                 val f = focus()
+                alpha = stackAlpha()
                 // Drops into the band the battery % vacates, and grows there.
                 translationY = f * READOUT_FOCUS_DROP.toPx()
                 scaleX = 1f + READOUT_FOCUS_GROWTH * f

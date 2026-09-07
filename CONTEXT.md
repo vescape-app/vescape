@@ -44,6 +44,10 @@ _Avoid_: Refloat version, firmware string, fw version, tune version
 A pre-save check that a scanned BLE peripheral can produce telemetry over at least one Board Transport and produce a Board Link. The rider-facing UI calls running a Board Probe "linking" (and re-running it "re-linking") — the screen, buttons, and progress timeline say "link", while the domain and code keep "Board Probe" for the act and "Board Link" for the saved result.
 _Avoid_: Validation, test connection, scan
 
+**App Storage Failure**:
+A condition in which the app's local storage is unusable and affected capabilities cannot reliably read or save their durable data.
+_Avoid_: App critical error, Board disconnection
+
 **Live State**:
 The current app-visible snapshot of board connection, GPS, scan, recording, and recent telemetry state.
 _Avoid_: UI state, cached status

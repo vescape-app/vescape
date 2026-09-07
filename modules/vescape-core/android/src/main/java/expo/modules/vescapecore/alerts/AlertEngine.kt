@@ -5,6 +5,7 @@ import expo.modules.vescapecore.telemetry.formatValue
 import expo.modules.vescapecore.R
 
 import expo.modules.vescapecore.protocol.RefloatTelemetry
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import expo.modules.vescapecore.service.VESC_SESSION_TAG
 import expo.modules.vescapecore.telemetry.telemetryMetricByControlId
 
@@ -37,14 +38,6 @@ const val ALERT_REPEAT_MIN_SECONDS = 3L
  * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountRange`
  */
 val ALERT_BEEP_COUNT_RANGE = 1..5
-
-/**
- * Beeps per announcement when nothing says otherwise.
- *
- * @parity /modules/vescape-core/src/index.ts `ALERT_BEEP_COUNT_DEFAULT`
- * @parity /modules/vescape-core/ios/alerts/AlertEngine.swift `alertBeepCountDefault`
- */
-const val ALERT_BEEP_COUNT_DEFAULT = 3
 
 /** Gap between beeps of one announcement — tight enough that a burst reads as a single signal. */
 internal const val ALERT_BEEP_SPACING_MS = 350L
@@ -412,11 +405,16 @@ internal class AlertFeedback(
     fun playDisconnect() = playRaw(disconnectSoundId)
 
     private fun playRaw(soundId: Int) {
-        if (released || soundId == 0) return
+        if (released) return
+        if (soundId == 0) {
+            UnexpectedNativeError.report("alert_audio_connection_asset", "bundled_asset", IllegalStateException())
+            return
+        }
         try {
-            soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
+            check(soundPool.play(soundId, 1f, 1f, 1, 0, 1f) != 0) { "SoundPool refused playback" }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Connection sound failed: ${e.message}")
+            UnexpectedNativeError.report("alert_audio_connection_play", "audio_play_failed", e)
         }
     }
 
@@ -439,6 +437,7 @@ internal class AlertFeedback(
                     if (pending != null) speakNow(pending)
                 } else {
                     Log.w(VESC_SESSION_TAG, "TTS init failed status=$status")
+                    UnexpectedNativeError.report("alert_audio_tts_init", "audio_start_failed", IllegalStateException("TTS status $status"))
                 }
             }
             return
@@ -465,6 +464,7 @@ internal class AlertFeedback(
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert sound failed: ${e.message}")
+            UnexpectedNativeError.report("alert_audio_single_play", "audio_play_failed", e)
         }
     }
 
@@ -479,6 +479,7 @@ internal class AlertFeedback(
             playPreset(resolveAlertPreset(soundType, null))
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Alert preview failed: ${e.message}")
+            UnexpectedNativeError.report("alert_audio_preview", "audio_play_failed", e)
         }
     }
 
@@ -517,6 +518,7 @@ internal class AlertFeedback(
             handler.post(runnable)
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Geiger sound failed: ${e.message}")
+            UnexpectedNativeError.report("alert_audio_geiger_play", "audio_play_failed", e)
         }
     }
 
@@ -558,8 +560,10 @@ internal class AlertFeedback(
 
     private fun playPreset(preset: AlertSoundPreset, loop: Int = 0): Int {
         if (released) return 0
-        val soundId = soundIds[preset.resId] ?: return 0
+        val soundId = soundIds[preset.resId]
+          ?.takeIf { it != 0 } ?: error("Bundled alert asset did not load")
         return soundPool.play(soundId, 1f, 1f, 1, loop, 1f)
+          .also { check(it != 0) { "SoundPool refused playback" } }
     }
 
     private fun geigerIntervalMs(rangeDepth: Double): Long =
@@ -606,12 +610,14 @@ internal class AlertFeedback(
             try {
                 pool.setOnLoadCompleteListener { soundPool, sampleId, status ->
                     if (status == 0) soundPool.play(sampleId, 1f, 1f, 1, 0, 1f)
+                    else UnexpectedNativeError.report("alert_audio_preview_load", "bundled_asset", IllegalStateException())
                 }
                 pool.load(context, preset.resId, 1)
                 handler.postDelayed({ pool.release() }, 1_000)
             } catch (e: Exception) {
                 pool.release()
                 Log.w(VESC_SESSION_TAG, "Alert preview failed: ${e.message}")
+                UnexpectedNativeError.report("alert_audio_preview", "audio_play_failed", e)
             }
         }
 

@@ -1,6 +1,24 @@
 import Foundation
 import GRDB
 
+internal func historyBoardNames(_ db: Database) throws -> [String: String] {
+  try Row.fetchAll(db, sql: "SELECT id, name FROM boards").reduce(into: [String: String]()) {
+    $0[$1["id"] as String] = $1["name"] as String
+  }
+}
+
+internal func historyBatteryConfigs(_ db: Database) throws -> [String: [String: Any]] {
+  try Row.fetchAll(
+    db,
+    sql: "SELECT board_id, value_json FROM board_settings WHERE key = 'batteryConfig'"
+  ).reduce(into: [String: [String: Any]]()) { result, row in
+    let data = Data((row["value_json"] as String).utf8)
+    if let config = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+      result[row["board_id"] as String] = config
+    }
+  }
+}
+
 private let rideBucketBatchSize = 100
 private let maxRidePageSize = 50
 private let rideBreakBoundaries: Set<String> = ["disconnected", "app_stop", "error"]
@@ -93,19 +111,29 @@ internal struct RideSessionAggregate {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/RideHistoryRepository.kt
 internal final class RideHistoryRepository {
   static let shared = RideHistoryRepository()
-  private var pool: DatabasePool? { TelemetryDatabase.pool }
-  private init() {}
+  private let poolProvider: () throws -> DatabasePool
+  private let gapMsProvider: () throws -> Int64
+
+  internal init(
+    poolProvider: @escaping () throws -> DatabasePool = { try TelemetryDatabase.requirePool() },
+    gapMsProvider: @escaping () throws -> Int64 = {
+      let minutes = telemetryInt(try AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
+      return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
+    }
+  ) {
+    self.poolProvider = poolProvider
+    self.gapMsProvider = gapMsProvider
+  }
 
   /// @parity /modules/vescape-core/src/index.ts `RideHistoryPage`
-  func getPage(_ options: [String: Any]) -> [String: Any?] {
+  func getPage(_ options: [String: Any]) throws -> [String: Any?] {
     let limit = min(maxRidePageSize, max(1, telemetryInt(options["limit"]) ?? 10))
     var beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? Int64.max
-    let gapMs = rideSplitGapMs()
-    guard let pool else { return ["sessions": [], "hasMore": false, "nextCursorBeforeMs": nil] }
-    // Names resolve from `boards` on read, never off the bucket row (ADR 0028), so a rename
-    // relabels the whole Ride History. Read up front: GRDB forbids a nested `read` on the pool.
-    let boardNames = TelemetryRepository.boardNamesById()
-    return (try? pool.read { db in
+    let gapMs = try gapMsProvider()
+    let pool = try poolProvider()
+    return try pool.read { db in
+      // Names resolve from `boards` on read, never off the bucket row (ADR 0028).
+      let boardNames = try historyBoardNames(db)
       var buckets: [Row] = []
       var complete: [RideSessionAggregate] = []
       var hasOlderBuckets = true
@@ -135,13 +163,9 @@ internal final class RideHistoryRepository {
         "hasMore": hasMore,
         "nextCursorBeforeMs": hasMore ? page.last?.firstBucketStartMs : nil,
       ]
-    }) ?? ["sessions": [], "hasMore": false, "nextCursorBeforeMs": nil]
+    }
   }
 
-  private func rideSplitGapMs() -> Int64 {
-    let minutes = telemetryInt(AppDataRepository.shared.getSettings()["rideSplitGapMinutes"] ?? nil)
-    return Int64(minutes ?? DEFAULT_RIDE_SPLIT_GAP_MINUTES) * 60_000
-  }
 }
 
 /// Buckets arrive newest-first, so the only ride that may still grow backwards is the OLDEST one in
@@ -246,7 +270,8 @@ private func rideDistanceDeltaM(_ bucket: Row) -> Double? {
 internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [String: String]) -> [String: Any?] {
   let average = session.avgSpeedSampleCount > 0 ? session.avgSpeedWeightedSum / Double(session.avgSpeedSampleCount) : 0
   return [
-    "id": "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)",
+    "id": session.recordingId.isEmpty ? "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)" : session.recordingId,
+    "recordingId": session.recordingId.isEmpty ? nil : session.recordingId,
     "boardId": session.boardId.isEmpty ? nil : session.boardId,
     "boardName": boardNames[session.boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "startAtMs": session.startAtMs, "endAtMs": session.endAtMs, "movingStartAtMs": session.movingStartAtMs,

@@ -63,6 +63,9 @@ const HISTORY_BOTTOM_POSITIONS = [0, 0.5, 0.6, 1]
  * Light mode holds the wash near full strength for most of the band and then drops off fast, and
  * reaches further into the screen: the readouts sit below the dark-mode edge band, and a near-white
  * wash over a light map needs the extra reach to lift them off the map detail.
+ *
+ * Weather mode carries the most text of any map surface at the bottom — the radar timeline and the
+ * hourly strip — so its bottom band is stronger and starts higher than its top one.
  */
 function mapEdgeVignetteSpace(mode: MainViewState, resolvedTheme: ResolvedTheme) {
   const light = resolvedTheme === 'light'
@@ -72,7 +75,8 @@ function mapEdgeVignetteSpace(mode: MainViewState, resolvedTheme: ResolvedTheme)
       levels: [0.78, 0.36, 0],
       positions: light ? LIGHT_MAP_EDGE_POSITIONS : MAP_EDGE_POSITIONS,
       topEnd: 0.3,
-      bottomStart: 0.7,
+      bottomLevels: [0.95, 0.55, 0],
+      bottomStart: 0.6,
     }
   }
 
@@ -258,7 +262,7 @@ export function MapVignette({
           top={mapEdgeSpace.levels}
           topPositions={mapEdgeSpace.positions}
           topEnd={mapEdgeSpace.topEnd}
-          bottom={topOnly ? undefined : mapEdgeSpace.levels}
+          bottom={topOnly ? undefined : (mapEdgeSpace.bottomLevels ?? mapEdgeSpace.levels)}
           bottomPositions={mapEdgeSpace.positions}
           bottomStart={topOnly ? undefined : mapEdgeSpace.bottomStart}
         />

@@ -162,15 +162,7 @@ export function HistoryDrawer({
             <Placeholder
               icon={WarningCircleIcon}
               title="Could not load rides"
-              description="Try loading ride history again"
-              action={
-                <Button
-                  label="Retry"
-                  size="sm"
-                  variant="secondary"
-                  onPress={() => useHistoryStore.getState().loadInitial()}
-                />
-              }
+              description="Restart the app to try again"
               style={styles.placeholder}
             />
           ) : sessions.length === 0 ? (

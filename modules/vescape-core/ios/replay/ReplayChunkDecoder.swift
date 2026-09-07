@@ -34,6 +34,7 @@ internal enum ReplayChunkDecoder {
     jsonl.split(separator: "\n").compactMap { line in
       guard
         let data = line.data(using: .utf8),
+        // intentional-suppression: malformed replay lines are skipped individually
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
         json["kind"] as? String == "ble-chunk",
         json["direction"] as? String == "rx",
@@ -50,6 +51,7 @@ internal enum ReplayChunkDecoder {
     jsonl.split(separator: "\n").compactMap { line in
       guard
         let data = line.data(using: .utf8),
+        // intentional-suppression: malformed replay lines are skipped individually
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
         json["kind"] as? String == "location",
         let t = (json["t"] as? NSNumber)?.int64Value,

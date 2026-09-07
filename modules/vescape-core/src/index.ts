@@ -589,7 +589,18 @@ export interface LiveStateEvent {
     paused: boolean
     activeBoardId: string | null
     startedAt: number | null
+    /**
+     * Native-owned persistence failure. Cleared only by a successful startup storage check.
+     * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/recording/RecordingStorageFailure.kt
+     * @parity /modules/vescape-core/ios/recording/RecordingStorageFailure.swift
+     */
+    failure?: RecordingFailureState | null
   }
+}
+
+export interface RecordingFailureState {
+  kind: 'write_failed' | 'storage_unavailable' | 'full_disk'
+  storageUnavailable: boolean
 }
 
 export interface TelemetryHistoryOptions {
@@ -612,6 +623,8 @@ export interface TelemetryDeleteRangeOptions {
   fromMs: number
   toMs: number
   boardId?: string | null
+  /** Restrict deletion to one native Ride Recording. Omitted for legacy time-range operations. */
+  recordingId?: string | null
 }
 
 export interface TelemetryMinuteBucket {
@@ -1019,6 +1032,8 @@ export interface RideRoutePoint {
  */
 export interface RideHistorySession {
   id: string
+  /** Durable Ride Recording identity; null/absent for reconstructed legacy sessions. */
+  recordingId?: string | null
   /** Owning Board (`boards.id`), or null when the ride matches no saved Board. */
   boardId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
@@ -2212,6 +2227,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fromMs: number
     toMs: number
     boardId?: string
+    recordingId?: string
     limit?: number
   }): Promise<NativeHistoryRange>
   getTelemetrySummary(): Promise<TelemetrySummary>
@@ -2792,6 +2808,7 @@ export async function getHistoryRange(options: {
   fromMs: number
   toMs: number
   boardId?: string
+  recordingId?: string
   limit?: number
 }): Promise<HistoryRange> {
   const range: NativeHistoryRange = E2E_ENABLED

@@ -142,3 +142,13 @@ internal func rideTrackPoint(_ row: Row) -> RideTrackPoint {
     altitudeCm: row["altitude_cm"] as Int?
   )
 }
+
+internal func telemetryHaversineM(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
+  let radius = 6_371_000.0
+  let dLat = (lat2 - lat1) * .pi / 180.0
+  let dLon = (lon2 - lon1) * .pi / 180.0
+  let a = sin(dLat / 2) * sin(dLat / 2) +
+    cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0) *
+    sin(dLon / 2) * sin(dLon / 2)
+  return radius * 2 * atan2(sqrt(a), sqrt(1 - a))
+}

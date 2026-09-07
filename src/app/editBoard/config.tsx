@@ -6,6 +6,7 @@ import { BracketsCurlyIcon } from 'phosphor-react-native'
 
 import { IconHero } from '@/components/settings/IconHero'
 import { RawSection } from '@/components/settings/RawSection'
+import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
 import { useBoardConfigValuesStore } from '@/modules/board/store/boardConfigValuesStore'
 import { useMotorConfigValuesStore } from '@/modules/board/store/motorConfigValuesStore'
@@ -17,8 +18,10 @@ import { useMotorConfigValuesStore } from '@/modules/board/store/motorConfigValu
 export default function BoardConfigScreen() {
   const { boardId } = useLocalSearchParams<{ boardId: string }>()
   const values = useBoardConfigValuesStore((s) => s.values)
+  const configError = useBoardConfigValuesStore((s) => s.error)
   const forThisBoard = values && (values.boardId == null || values.boardId === boardId)
   const motor = useMotorConfigValuesStore((s) => s.values)
+  const motorError = useMotorConfigValuesStore((s) => s.error)
   const motorForThisBoard = motor && (motor.boardId == null || motor.boardId === boardId)
 
   const meta = useMemo(
@@ -66,6 +69,8 @@ export default function BoardConfigScreen() {
           icon={BracketsCurlyIcon}
           description="Decoded Refloat and VESC motor config for the current Board Session, exactly as read."
         />
+        {configError ? <Text style={styles.error}>{configError}</Text> : null}
+        {motorError ? <Text style={styles.error}>{motorError}</Text> : null}
 
         <RawSection
           title="Config read"
@@ -107,5 +112,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 8,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
   },
 })

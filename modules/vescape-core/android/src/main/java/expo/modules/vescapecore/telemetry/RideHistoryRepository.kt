@@ -1,8 +1,5 @@
 package expo.modules.vescapecore.telemetry
 
-import android.content.Context
-import androidx.room.withTransaction
-
 private const val RIDE_BUCKET_BATCH_SIZE = 100
 private const val MAX_RIDE_PAGE_SIZE = 50
 private val RIDE_BREAK_BOUNDARIES = setOf("disconnected", "app_stop", "error")
@@ -61,16 +58,13 @@ internal data class RideSessionAggregate(
 
 /** Complete-ride paging over minute buckets. JS never observes a provisional, cut-off ride. */
 // @parity /modules/vescape-core/ios/telemetry/RideHistoryRepository.swift
-internal class RideHistoryRepository private constructor(private val context: Context) {
-  private val database = TelemetryDatabase.get(context)
-  private val dao = database.telemetryDao()
-
-  /** @parity /modules/vescape-core/src/index.ts `RideHistoryPage` */
-  suspend fun getPage(options: Map<String, Any?>): Map<String, Any?> {
-    val limit = ((options["limit"] as? Number)?.toInt() ?: 10).coerceIn(1, MAX_RIDE_PAGE_SIZE)
-    val gapMs = rideSplitGapMs()
-    return database.withTransaction {
-      var beforeExclusive = (options["cursorBeforeMs"] as? Number)?.toLong() ?: Long.MAX_VALUE
+internal suspend fun readRideHistoryPage(
+  dao: TelemetryDao,
+  options: Map<String, Any?>,
+  gapMs: Long,
+): Map<String, Any?> {
+  val limit = ((options["limit"] as? Number)?.toInt() ?: 10).coerceIn(1, MAX_RIDE_PAGE_SIZE)
+  var beforeExclusive = (options["cursorBeforeMs"] as? Number)?.toLong() ?: Long.MAX_VALUE
       val buckets = mutableListOf<TelemetryMinuteBucketEntity>()
       var hasOlderBuckets = true
       var complete = emptyList<RideSessionAggregate>()
@@ -99,28 +93,11 @@ internal class RideHistoryRepository private constructor(private val context: Co
       val cutoff = sorted.getOrNull(limit - 1)?.firstBucketStartMs
       val page = if (cutoff == null) sorted else sorted.filter { it.firstBucketStartMs >= cutoff }
       val hasMore = hasOlderBuckets || (cutoff != null && sorted.any { it.firstBucketStartMs < cutoff })
-      mapOf(
+      return mapOf(
         "sessions" to page.map { rideSessionMap(it, boardNames) },
         "hasMore" to hasMore,
         "nextCursorBeforeMs" to if (hasMore) page.lastOrNull()?.firstBucketStartMs else null,
       )
-    }
-  }
-
-  private suspend fun rideSplitGapMs(): Long {
-    val minutes = AppDataRepository.get(context).getSettings()["rideSplitGapMinutes"] as? Number
-    return (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L
-  }
-
-  companion object {
-    @Volatile private var instance: RideHistoryRepository? = null
-
-    fun get(context: Context): RideHistoryRepository = instance ?: synchronized(this) {
-      instance ?: RideHistoryRepository(context.applicationContext).also { instance = it }
-    }
-
-    fun resetForDatabaseSwap() = synchronized(this) { instance = null }
-  }
 }
 
 /**
@@ -240,7 +217,8 @@ private fun rideDistanceDeltaM(bucket: TelemetryMinuteBucketEntity): Double? {
 internal fun rideSessionMap(session: RideSessionAggregate, boardNames: Map<String, String>): Map<String, Any?> {
   val avgSpeed = if (session.avgSpeedSampleCount > 0) session.avgSpeedWeightedSum / session.avgSpeedSampleCount else 0.0
   return mapOf(
-    "id" to "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}",
+    "id" to session.recordingId.ifBlank { "${session.boardId.ifBlank { "unknown" }}:${session.startAtMs}:${session.endAtMs}" },
+    "recordingId" to session.recordingId.ifBlank { null },
     "boardId" to session.boardId.ifBlank { null },
     "boardName" to (boardNames[session.boardId] ?: UNKNOWN_TELEMETRY_BOARD_NAME),
     "startAtMs" to session.startAtMs, "endAtMs" to session.endAtMs,

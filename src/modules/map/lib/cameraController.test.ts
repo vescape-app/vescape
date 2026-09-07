@@ -3,7 +3,11 @@ import { describe, expect, test } from 'bun:test'
 import {
   initialMapCameraControllerState,
   reduceMapCameraIntent,
+  zoomForRadarView,
 } from '@/modules/map/lib/cameraController'
+
+/** A phone-sized viewport: the radar view frames its outer range ring inside the narrow side. */
+const VIEWPORT = { width: 390, height: 844 }
 
 describe('map camera controller', () => {
   const gpsCamera = {
@@ -73,6 +77,7 @@ describe('map camera controller', () => {
         type: 'EnterWeatherView',
         currentCamera: null,
         fallbackCenterCoordinate: [19, 50],
+        viewport: VIEWPORT,
         perspectiveEnabled: true,
       })
 
@@ -82,7 +87,7 @@ describe('map camera controller', () => {
         anchorCamera,
       })
 
-      expect(weather.effect?.camera.zoomLevel).toBe(8)
+      expect(weather.effect?.camera.zoomLevel).toBeCloseTo(zoomForRadarView(50, VIEWPORT), 5)
       expect(cancelled.state).toBe(weather.state)
       expect(cancelled.effect).toBeNull()
     })
@@ -113,6 +118,7 @@ describe('map camera controller', () => {
         type: 'EnterWeatherView',
         currentCamera: null,
         fallbackCenterCoordinate: [19, 50],
+        viewport: VIEWPORT,
         perspectiveEnabled: true,
       }).state
 
@@ -287,12 +293,14 @@ describe('map camera controller', () => {
         pitch: 45,
       },
       fallbackCenterCoordinate: [15, 54],
+      viewport: VIEWPORT,
       perspectiveEnabled: true,
     })
 
     expect(result.effect?.camera).toEqual({
       centerCoordinate: [15, 54],
-      zoomLevel: 8,
+      // Framed on the 100 km ring rather than a fixed zoom, so it tightens as latitude rises.
+      zoomLevel: expect.closeTo(6.32, 2),
       heading: 0,
       pitch: 0,
     })

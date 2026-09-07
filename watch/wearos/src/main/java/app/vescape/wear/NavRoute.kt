@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
  * shows a line the rider is not actually on.
  */
 @Composable
-internal fun NavRoute(frame: WatchFrame, muted: Boolean) {
+internal fun NavRoute(frame: WatchFrame, muted: Boolean, navFocus: () -> Float = { 0f }) {
     val color = if (muted) DimText else navColor()
     val route = RouteState.route.value
     val east = frame.riderEastM
@@ -55,22 +55,29 @@ internal fun NavRoute(frame: WatchFrame, muted: Boolean) {
             targetCourseDeg = (frame.courseDeg ?: 0.0).toFloat(),
             routeSpanM = routeSpanM,
             color = color,
+            navFocus = navFocus,
         )
     }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         // Rider sits below the screen centre so more of the frame is "ahead" than behind.
-        val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
-        // "You are here": a ring in the route's own colour, punched out to black so the line
-        // passing under it never reads as passing through the rider.
-        drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), center = center)
-        drawCircle(
-            color,
-            radius = RIDER_DOT_R.toPx(),
-            center = center,
-            style = Stroke(width = RIDER_RING_W.toPx()),
-        )
+        drawRiderDot(Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx()), color)
     }
+}
+
+/**
+ * "You are here": a ring in the route's own colour, punched out to black so whatever passes under
+ * it never reads as passing through the rider. Shared with the radar page — the two are the same
+ * map seen at different scales, and a rider that looked different on each would say otherwise.
+ */
+internal fun DrawScope.drawRiderDot(center: Offset, color: Color) {
+    drawCircle(Color.Black, radius = RIDER_DOT_R.toPx(), center = center)
+    drawCircle(
+        color,
+        radius = RIDER_DOT_R.toPx(),
+        center = center,
+        style = Stroke(width = RIDER_RING_W.toPx()),
+    )
 }
 
 @Composable
@@ -81,6 +88,7 @@ private fun AnimatedRoute(
     targetCourseDeg: Float,
     routeSpanM: Float,
     color: Color,
+    navFocus: () -> Float,
 ) {
     // Offsets are metres from *this* route's origin. A new route moves the origin, so the old
     // animators would glide the rider across a jump that never happened: key them to the route.
@@ -104,6 +112,10 @@ private fun AnimatedRoute(
     // gauges, never crossing them out to the bezel.
     val isRound = LocalConfiguration.current.isScreenRound
     Canvas(modifier = Modifier.fillMaxSize()) {
+        // Read in the draw scope: the line thickens as the map page takes over, without
+        // recomposing anything. Only there — a wider line under the readouts would fight the
+        // gauge fills, but on the map it is the whole page and has to survive sunlight.
+        val focus = navFocus().coerceIn(0f, 1f)
         val center = Offset(size.width / 2f, size.height / 2f + RIDER_DROP.toPx())
         val scale = (size.minDimension - ROUTE_EDGE_INSET.toPx()) / routeSpanM
         val path = routePath(route, Offset(eastM.value, northM.value), center, scale)
@@ -120,7 +132,7 @@ private fun AnimatedRoute(
         clipPath(faceClip) {
             // Heading-up, taking the shortest turn across the 0°/360° boundary.
             rotate(degrees = -courseDeg.value, pivot = center) {
-                drawRoute(path, color)
+                drawRoute(path, color, focus)
             }
         }
     }
@@ -142,8 +154,10 @@ private fun routePath(route: WatchRoute, rider: Offset, center: Offset, scale: F
     )
 
 /** One flat stroke: a casing glow under the line only muddied it against the gauge fills. */
-private fun DrawScope.drawRoute(path: Path, color: Color) {
-    drawPath(path, color.copy(alpha = 0.55f), style = routeStroke(ROUTE_W.toPx()))
+private fun DrawScope.drawRoute(path: Path, color: Color, focus: Float) {
+    val width = ROUTE_W.toPx() + (ROUTE_FOCUS_W - ROUTE_W).toPx() * focus
+    val alpha = ROUTE_ALPHA + (ROUTE_FOCUS_ALPHA - ROUTE_ALPHA) * focus
+    drawPath(path, color.copy(alpha = alpha), style = routeStroke(width))
 }
 
 private fun polyline(points: List<Offset>): Path = Path().apply {
@@ -164,6 +178,11 @@ private val ROUTE_EDGE_INSET = 24.dp
 /** Half the widest gauge guide stroke: the route clip stops at the inner side of that line. */
 private val GUIDE_HALF_WIDTH = 1.dp
 private val ROUTE_W = 2.dp
+
+/** Width and opacity on the map page, where the line is the page and has to read in daylight. */
+private val ROUTE_FOCUS_W = 3.5.dp
+private const val ROUTE_ALPHA = 0.55f
+private const val ROUTE_FOCUS_ALPHA = 0.85f
 private val RIDER_DOT_R = 4.dp
 /** Same weight as the route line, so the rider reads as part of it rather than an added marker. */
 private val RIDER_RING_W = ROUTE_W

@@ -171,3 +171,19 @@ When history map looks wrong:
 - Render only actionable marker types (`gap`, `error`) on history map.
 - Style lifecycle markers (`connected`, `app_stop`) differently or hide them by default.
 - Split history sessions using markers inside buckets, not only `boundaryBefore`.
+
+### Persistence integration
+
+Ride Track uses schema generation 43 on both platforms. The production migration graph moves legacy
+GPS fields into the independent stream; new frames carry recording identity and no GPS columns.
+GPS fixes and their minute buckets share the recording transaction and storage failure gate.
+
+Identified history entries use the recording ID as their UI identity. Opening or deleting one passes
+that ID to native queries, so a same-Board recording at a shared timestamp stays separate. Legacy
+entries and Favorites retain their time-range semantics. Markers and metric exclusions currently
+belong to Board/time ranges; deleting one identified recording preserves those shared annotations.
+
+`bun run test:persistence` checks real Room/GRDB storage and exchanges production archives in both
+directions, including independent GPS fixes and recording end intent. Native lifecycle tests and
+full app builds cover integration beyond the database hosts. Real-device background GPS behavior
+still requires a device smoke test.

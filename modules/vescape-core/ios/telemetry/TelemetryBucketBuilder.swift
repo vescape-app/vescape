@@ -1,5 +1,32 @@
 import Foundation
 
+internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
+internal let MAX_ENERGY_SAMPLE_GAP_MS: Int64 = 5_000
+
+internal struct BucketTelemetryPoint {
+  let capturedAtMs: Int64
+  /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
+  let boardId: String?
+  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for rows without durable identity.
+  var recordingId: String = LEGACY_RIDE_RECORDING_ID
+  let speedCentiKmh: Int
+  let batteryVoltageMv: Int
+  let motorCurrentMa: Int
+  let batteryCurrentMa: Int
+  let dutyPermille: Int
+  let odometerCm: Int64?
+  let tempMosfetDeciC: Int?
+  let tempMotorDeciC: Int?
+  var excludedFromAvgSpeed = false
+  var excludedFromMaxSpeed = false
+  var excludedFromMaxDuty = false
+}
+
+internal func telemetryMaxOptional(_ lhs: Int?, _ rhs: Int?) -> Int? {
+  guard let rhs else { return lhs }
+  return max(lhs ?? rhs, rhs)
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt
 internal struct TelemetryBucket {
   let bucketStartMs: Int64

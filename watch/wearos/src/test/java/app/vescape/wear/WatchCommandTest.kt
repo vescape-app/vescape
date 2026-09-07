@@ -19,6 +19,14 @@ class WatchCommandTest {
     }
 
     @Test
+    fun `a lights command is a kind byte, bit0 the target and bit1 the switch`() {
+        assertArrayEquals(byteArrayOf(3, 0b00), encodeLightsCommand(LightSwitch.LEDS, false))
+        assertArrayEquals(byteArrayOf(3, 0b01), encodeLightsCommand(LightSwitch.LEDS, true))
+        assertArrayEquals(byteArrayOf(3, 0b10), encodeLightsCommand(LightSwitch.HEADLIGHT, false))
+        assertArrayEquals(byteArrayOf(3, 0b11), encodeLightsCommand(LightSwitch.HEADLIGHT, true))
+    }
+
+    @Test
     fun `a direction is clamped so the wrist can never ask for more than one board move`() {
         assertArrayEquals(byteArrayOf(1, 1), encodeMoveCommand(127))
         assertArrayEquals(byteArrayOf(1, -1), encodeMoveCommand(-127))

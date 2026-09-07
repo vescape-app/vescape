@@ -19,6 +19,12 @@ const manifest = (
   marketingVersion: '0.83.1',
   versionCodes: { phone: 100_000_042, wear: 1_100_000_042 },
   workflow: { runId: 123, runUrl: 'https://example.test/run/123', runAttempt: 1 },
+  storageContracts: {
+    sourceSha: 'a'.repeat(40),
+    androidRoom: 'passed',
+    iosGrdb: 'passed',
+    crossPlatformArchives: 'passed',
+  },
   artifacts: {
     phone: { name: 'app-release.aab', sha256: 'a', signingCertificateSha256: 'c' },
     wear: { name: 'wearos-release.aab', sha256: 'b', signingCertificateSha256: 'c' },
@@ -63,7 +69,17 @@ describe('open promotion manifest', () => {
 
 describe('release manifest', () => {
   test('parses the workflow contract', () => {
-    expect(parseReleaseManifest(manifest('succeeded', 'succeeded')).sourceSha).toBe('a'.repeat(40))
+    const valid = manifest('succeeded', 'succeeded')
+    expect(parseReleaseManifest(valid).sourceSha).toBe('a'.repeat(40))
+    expect(() => parseReleaseManifest({ ...valid, storageContracts: undefined })).toThrow(
+      'invalid shape',
+    )
+    expect(() =>
+      parseReleaseManifest({
+        ...valid,
+        storageContracts: { ...valid.storageContracts, sourceSha: 'b'.repeat(40) },
+      }),
+    ).toThrow('invalid shape')
     expect(() => parseReleaseManifest({ schemaVersion: 2 })).toThrow('invalid shape')
   })
 

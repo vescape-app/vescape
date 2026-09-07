@@ -67,6 +67,7 @@ final class NavigationControllerTests: XCTestCase {
     private var storage: Navigation?
     private var target: (latitude: Double, longitude: Double)?
     private var profile: NavigationProfile?
+    private let directionReadFails: Bool
     /// Held closed to keep the profile read in flight while the test taps.
     private var profileGateOpen: Bool
 
@@ -74,11 +75,13 @@ final class NavigationControllerTests: XCTestCase {
       stored: Navigation? = nil,
       directionPoint: (latitude: Double, longitude: Double)? = nil,
       profile: NavigationProfile? = nil,
-      gateProfileRead: Bool = false
+      gateProfileRead: Bool = false,
+      directionReadFails: Bool = false
     ) {
       storage = stored
       target = directionPoint
       self.profile = profile
+      self.directionReadFails = directionReadFails
       profileGateOpen = !gateProfileRead
     }
 
@@ -94,8 +97,9 @@ final class NavigationControllerTests: XCTestCase {
       lock.withLock { storage = navigation }
     }
 
-    func directionPoint() async -> (latitude: Double, longitude: Double)? {
-      lock.withLock { target }
+    func directionPoint() async throws -> (latitude: Double, longitude: Double)? {
+      if directionReadFails { throw NSError(domain: "test.storage", code: 1) }
+      return lock.withLock { target }
     }
 
     func loadProfile() async -> NavigationProfile? {
@@ -182,6 +186,19 @@ final class NavigationControllerTests: XCTestCase {
     // Dropped from storage too, or every later start would re-read and re-reject it.
     XCTAssertNil(store.stored)
     XCTAssertTrue(emitted.values.isEmpty)
+  }
+
+  func testDirectionReadFailureDoesNotEraseAStoredPath() {
+    let original = navigation(targetLatitude: targetLatitude)
+    let store = FakeStore(stored: original, directionReadFails: true)
+    let controller = NavigationController(api: GatedRoutes(), store: store)
+
+    controller.restore()
+    settle()
+
+    XCTAssertNil(controller.current)
+    XCTAssertEqual(store.stored?.targetLatitude, original.targetLatitude)
+    XCTAssertEqual(store.stored?.points.count, original.points.count)
   }
 
   func testRiderTapDuringRestoreWinsOverTheStoredPath() {

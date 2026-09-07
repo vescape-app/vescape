@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
 
+internal let MAX_SAMPLE_LIMIT = 20_000
+
 /// One **Ride Recording**: durable identity and explicit start/end boundaries for a capture, held
 /// apart from the Board that produced it (ADR 0038).
 ///
@@ -187,9 +189,10 @@ internal func fetchRideTrack(
   fromMs: Int64,
   toMs: Int64,
   boardId: String?,
+  recordingId: String? = nil,
   limit: Int = MAX_SAMPLE_LIMIT
 ) throws -> [Row] {
-  try fetchRideTrackRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId, limit: limit)
+  try fetchRideTrackRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId, recordingId: recordingId, limit: limit)
 }
 
 /// Complete input for durable summaries and bucket rebuilds, without the bridge read cap.
@@ -200,7 +203,7 @@ internal func fetchRideTrackForAggregation(
   toMs: Int64,
   boardId: String?
 ) throws -> [Row] {
-  try fetchRideTrackRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId, limit: nil)
+  try fetchRideTrackRows(db, fromMs: fromMs, toMs: toMs, boardId: boardId, recordingId: nil, limit: nil)
 }
 
 private func fetchRideTrackRows(
@@ -208,14 +211,16 @@ private func fetchRideTrackRows(
   fromMs: Int64,
   toMs: Int64,
   boardId: String?,
+  recordingId: String?,
   limit: Int?
 ) throws -> [Row] {
   var sql = """
     SELECT * FROM ride_track_points
     WHERE fix_at_ms >= ? AND fix_at_ms <= ? AND (? IS NULL OR board_id = ?)
+      AND (? IS NULL OR COALESCE(recording_id, '') = ?)
     ORDER BY fix_at_ms ASC
     """
-  var arguments: StatementArguments = [fromMs, toMs, boardId, boardId]
+  var arguments: StatementArguments = [fromMs, toMs, boardId, boardId, recordingId, recordingId]
   if let limit {
     sql += " LIMIT ?"
     arguments += [limit]
@@ -238,4 +243,14 @@ internal func pruneOrphanRideRecordings(_ db: Database) throws {
         )
       """
   )
+}
+
+/// One transaction starts a recording and retires every identity it replaces.
+internal func beginRideRecordingRow(_ db: Database, recording: RideRecording, replacingId: String?) throws {
+  if let replacingId {
+    try closeRideRecordingRow(db, id: replacingId, endedAtMs: recording.startedAtMs,
+      reason: RIDE_RECORDING_END_STOPPED)
+  }
+  try closeAbandonedRideRecordings(db, reason: RIDE_RECORDING_END_DISCONNECTED, except: recording.id)
+  try insertRideRecording(db, recording)
 }

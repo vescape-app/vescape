@@ -3,14 +3,6 @@ package expo.modules.vescapecore.location
 import android.location.LocationManager
 
 /**
- * Threshold (meters) at or below which a horizontal accuracy is treated as a precise GPS fix. One
- * number for live classification and for Ride History's read-side rule, on both platforms.
- *
- * @parity /modules/vescape-core/ios/location/GpsPrecision.swift
- */
-internal const val MAX_RECORDING_ACCURACY_M = 20.0
-
-/**
  * Classify a **live** GPS fix as precise vs approximate. Ride History does not go through here: a
  * stored fix is judged by [expo.modules.vescapecore.telemetry.isPrecise], which applies the same
  * 20m limit to the accuracy the fix was stored with and deliberately ignores the provider, so the

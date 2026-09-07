@@ -12,27 +12,30 @@ private let HISTORY_CHART_OVERVIEW_SAMPLES = 600
 // the SPM test target (`bun run test:ios`) compile and exercise them.
 
 extension TelemetryRepository {
-  func getRange(_ options: [String: Any]) -> [String: Any?] {
+  func getRange(_ options: [String: Any]) throws -> [String: Any?] {
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
-    guard let pool else { return emptyRangePayload() }
+    let recordingId = options["recordingId"] as? String
+    let pool = try TelemetryDatabase.requirePool()
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the range read below.
-    let configs = batteryConfigByBoard()
-    let boardNames = Self.boardNamesById()
-    let windowMs = socWindowMs()
-    return (try? pool.read { db -> [String: Any?] in
+    let windowMs = try socWindowMs()
+    return try pool.read { db -> [String: Any?] in
+      batteryEstimator.ensureLoaded()
+      let configs = try historyBatteryConfigs(db)
+      let boardNames = try historyBoardNames(db)
       let sampleRows = try Row.fetchAll(
         db,
         sql: """
           SELECT * FROM telemetry_frames
           WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
+            AND (? IS NULL OR COALESCE(recording_id, '') = ?)
           ORDER BY captured_at_ms ASC
           LIMIT ?
           """,
-        arguments: [fromMs, toMs, boardId, boardId, limit]
+        arguments: [fromMs, toMs, boardId, boardId, recordingId, recordingId, limit]
       )
       let markers = try Row.fetchAll(
         db,
@@ -46,15 +49,15 @@ extension TelemetryRepository {
       ).map(exclusionMap)
       // Ride Track is the route source now — denser than the frames, alive through a board
       // dropout, and read over exactly the requested window on its own clock.
-      let track = try fetchRideTrack(db, fromMs: fromMs, toMs: toMs, boardId: boardId)
+      let track = try fetchRideTrack(db, fromMs: fromMs, toMs: toMs, boardId: boardId, recordingId: recordingId)
       let percents = self.batteryPercents(sampleRows, configs: configs, windowMs: windowMs)
       let overviewIndices = evenlySpacedIndices(sampleRows.count, limit: HISTORY_CHART_OVERVIEW_SAMPLES)
       let overviewRows = overviewIndices.map { sampleRows[$0] }
       let overviewPercents = overviewIndices.map { percents[$0] }
       return mergeTelemetryPayload(
-        sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
+        try sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
         [
-          "chartColumns": sampleColumns(
+          "chartColumns": try sampleColumns(
             overviewRows,
             batteryPercents: overviewPercents,
             boardNames: boardNames
@@ -65,7 +68,7 @@ extension TelemetryRepository {
           "exclusions": exclusions,
         ]
       )
-    }) ?? emptyRangePayload()
+    }
   }
 }
 
@@ -86,7 +89,7 @@ internal func sampleColumns(
   _ rows: [Row],
   batteryPercents: [Double?],
   boardNames: [String: String]
-) -> [String: Any?] {
+) throws -> [String: Any?] {
   var data = Data(capacity: rows.count * SAMPLE_COLUMN_COUNT * MemoryLayout<Double>.size)
   var boardIds: [String?] = []
   var names: [String] = []
@@ -125,7 +128,7 @@ internal func sampleColumns(
     appendNullableDouble(&data, (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 })
   }
   return [
-    "boardColumns": (try? NativeArrayBuffer.copy(data: data)) ?? NativeArrayBuffer.allocate(size: 0),
+    "boardColumns": try NativeArrayBuffer.copy(data: data),
     "boardCount": rows.count,
     "boardIds": boardIds,
     "boardNames": names,

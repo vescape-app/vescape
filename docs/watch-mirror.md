@@ -170,6 +170,58 @@ If the watch says `DISCONNECTED`, distinguish the cause:
 
 The watch switches to `DISCONNECTED` when no Watch Frame arrives for about three watch ticks.
 
+## Always-On (Ambient)
+
+Ambient is not a separate screen. `FrameLayout` draws the same arcs in the same places with an
+`AmbientMode` (`watch/wearos/.../Ambient.kt`), so waking the wrist is a state change on a live tree
+rather than a swap between two layouts — the pagers stay mounted, parked on the gauges with their
+gestures off, and the idle clock never restarts.
+
+Colour says how current a reading is:
+
+| Lane                      | Ambient                                        |
+| ------------------------- | ---------------------------------------------- |
+| Battery, motor/ctrl temps | `AmbientText` — exact at the tick              |
+| Speed, duty               | `DimText` — last reading, may be a tick behind |
+| Clock, forecast, nav      | shown, dimmed                                  |
+| Route lanes (`NavRoute`)  | skipped — it animates its zoom                 |
+| Any lane, stream stopped  | dash, empty arc                                |
+
+Ambient draws flat strokes only: no gradient wedges, since the fills are lit pixels. The panel flags
+come from the ambient callback, never assumed — `deviceHasLowBitAmbient` switches readouts to pure
+white, and `burnInProtectionRequired` walks the centre content around a small square once a minute.
+
+The wrist repaints every `AMBIENT_REFRESH_INTERVAL_MS` (10 s), matched to the phone's 5 s ambient
+push (`WATCH_FRAME_AMBIENT_INTERVAL_MS`, linked by `@parity`). A slower tick saves no radio wake and
+only ages what is on screen.
+
+## Dev Modes On The Emulator
+
+Both are gated by `DevGate` — a debuggable build on an emulator, never a real watch or a release
+build — and both are entered explicitly, so an ordinary emulator launch still mirrors its paired
+phone like hardware.
+
+Fixture replay feeds a recorded ride into `TelemetryState` on the same path a phone push takes, so
+the visuals can be worked on without a board, a phone, or a ride:
+
+```bash
+bun run wear:replay
+```
+
+Forced ambient renders the always-on layout without power-cycling the screen between screenshots:
+
+```bash
+adb -s <serial> shell am start -S -n app.vescape.dev/app.vescape.wear.MainActivity --es replay ride --ez ambient true
+```
+
+`-S` because a running activity keeps the intent it was started with. `--es replay sweep` walks every
+lane's full range instead of replaying the ride. Add `--ez lowBit true` or `--ez burnIn true` to
+render for those panels. Screenshot with `adb -s <serial> exec-out screencap -p > shot.png`.
+
+The emulator renders ambient at full brightness with normal colour, so it answers layout questions
+only. Readability belongs to a physical watch, entered the real way: enable Settings → Display →
+Always-on screen, then `adb shell input keyevent 26`.
+
 ## Phone → Watch Channels
 
 Three channels, split by how often the data changes:

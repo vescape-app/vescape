@@ -1,6 +1,8 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import org.json.JSONObject
 
@@ -109,16 +111,43 @@ object NavigationJson {
 class AppDataNavigationStore(context: Context) : NavigationStore {
   private val repository = AppDataRepository.get(context.applicationContext)
 
-  override suspend fun load(): Navigation? = repository.getNavigationPath()?.let(NavigationJson::decode)
+  override suspend fun load(): Navigation? = try {
+    repository.getNavigationPath()?.let(NavigationJson::decode)
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: Exception) {
+    RecordingStorageFailure.reportRead("navigation_path_read", error)
+    null
+  }
 
-  override suspend fun save(navigation: Navigation?) =
-    repository.setNavigationPath(navigation?.let(NavigationJson::encode))
+  override suspend fun save(navigation: Navigation?) {
+    try {
+      repository.setNavigationPath(navigation?.let(NavigationJson::encode))
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: Exception) {
+      RecordingStorageFailure.report("navigation_path_save", "write_failed", error)
+    }
+  }
 
   override suspend fun directionPoint(): Pair<Double, Double>? = repository.getDirectionPoint()
 
-  override suspend fun loadProfile(): NavigationProfile? =
+  override suspend fun loadProfile(): NavigationProfile? = try {
     repository.getNavigationProfile()?.let(NavigationProfile::fromWire)
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: Exception) {
+    RecordingStorageFailure.reportRead("navigation_profile_read", error)
+    null
+  }
 
-  override suspend fun saveProfile(profile: NavigationProfile) =
-    repository.setNavigationProfile(profile.wire)
+  override suspend fun saveProfile(profile: NavigationProfile) {
+    try {
+      repository.setNavigationProfile(profile.wire)
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: Exception) {
+      RecordingStorageFailure.report("navigation_profile_save", "write_failed", error)
+    }
+  }
 }

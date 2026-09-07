@@ -44,7 +44,7 @@ final class ConfigReplayHarnessTests: XCTestCase {
   // Thor301 runs 20s pack-mode Refloat: the tiltback voltages are pack totals, not per-cell.
   func testRealConfigSurfacesUnsafeDutyPushback() throws {
     let values = try XCTUnwrap(ConfigReplayHarness.decodeBoardConfigValues(jsonl))
-    let report = ConfigSafetyDetector.evaluate(values, seriesCount: 20, perCell: false)
+    let report = try ConfigSafetyDetector.evaluate(values, seriesCount: 20, perCell: false)
     // Duty pushback recorded at 1.0 (100%) — a genuinely unsafe setting on the real board.
     XCTAssertTrue(report.findings.contains { $0.kind == .dutyPushbackHigh })
     // Footpad configured (ADC != 0) and LV pushback above the floor -> those rules evaluate clean.

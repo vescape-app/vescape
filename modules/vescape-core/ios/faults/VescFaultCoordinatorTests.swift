@@ -175,7 +175,7 @@ final class VescFaultCoordinatorTests: XCTestCase {
     XCTAssertEqual(store.all.count, 1)
     XCTAssertNil(store.all[0].clearedAtMs)
 
-    coordinator.setDismissed(id: existing, dismissed: true)
+    try! coordinator.setDismissed(id: existing, dismissed: true)
     XCTAssertTrue(store.all[0].dismissed)
   }
 
@@ -249,7 +249,7 @@ final class VescFaultCoordinatorTests: XCTestCase {
     let coordinator = makeCoordinator()
     coordinator.onActiveFault(boardId: "board", code: 9)
     let first = store.all[0].id
-    coordinator.setDismissed(id: first, dismissed: true)
+    try! coordinator.setDismissed(id: first, dismissed: true)
     clock = 3_000
     coordinator.onFaultCleared(boardId: "board")
     clock = 7_000

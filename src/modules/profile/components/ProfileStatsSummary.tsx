@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { ChartLineUpIcon, WarningCircleIcon } from 'phosphor-react-native'
 
-import { Button } from '@/components/base/Button'
 import { Placeholder } from '@/components/base/Placeholder'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { useResolvedSecondaryWidgetSurface } from '@/components/widgets/widgetSurface'
@@ -25,7 +24,7 @@ interface ProfileStatsSummaryProps {
  * The full breakdown lives on the Profile Stats screen; this is the glance version.
  */
 export function ProfileStatsSummary({ active = true, action }: ProfileStatsSummaryProps) {
-  const { total, monthly, selectedMonth, loading, error, empty, refresh } = useProfileStats(active)
+  const { total, monthly, selectedMonth, loading, error, empty } = useProfileStats(active)
   const surface = useResolvedSecondaryWidgetSurface()
   const [scope, setScope] = useState<Scope>('total')
   const stats = scope === 'total' ? total : monthly
@@ -52,8 +51,7 @@ export function ProfileStatsSummary({ active = true, action }: ProfileStatsSumma
         {!loading && error ? (
           <Placeholder
             icon={WarningCircleIcon}
-            description="Could not load riding totals"
-            action={<Button label="Retry" size="sm" variant="secondary" onPress={refresh} />}
+            description="Could not load riding totals. Restart the app to try again"
             style={styles.empty}
           />
         ) : !loading && empty ? (

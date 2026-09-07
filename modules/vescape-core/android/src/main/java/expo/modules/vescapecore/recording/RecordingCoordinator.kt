@@ -15,6 +15,7 @@ import expo.modules.vescapecore.telemetry.TelemetryRepository
 internal class RecordingCoordinator(
     private val context: Context,
     private val applyLiveSettings: (AppSettings) -> Unit,
+    private val onRecordingFailure: () -> Unit,
 ) {
     private var recorder: SessionRecorder? = null
     private var telemetryStore: TelemetryRepository? = null
@@ -72,15 +73,19 @@ internal class RecordingCoordinator(
         // from restarting what they stopped, not to keep the next ride from recording.
         explicitlyStopped = false
         boardReadySeen = false
-        recorder = if (config.recordingEnabled) {
+        recorder = if (config.recordingEnabled) try {
             SessionRecorder(context, config).also { it.start() }
-        } else {
+        } catch (error: Exception) {
+            expo.modules.vescapecore.diagnostics.UnexpectedNativeError.report(
+                "debug_recording_open", "file_open_failed", error,
+            )
             null
-        }
+        } else null
         // A retained recording was already capturing: keep the store armed so no fix is dropped
         // between this connect and the board-ready that would otherwise enable it.
         telemetryStore = if (
-            config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled || retained != null
+            RecordingStorageFailure.value() == null &&
+            (config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled || retained != null)
         ) {
             configuredTelemetryStore(config, openNewRecording = retained == null)
         } else {
@@ -100,15 +105,18 @@ internal class RecordingCoordinator(
     fun markBoardReady(config: SessionConfig) {
         connectionLostMarkerAt = null
         val firstReady = !boardReadySeen
-        boardReadySeen = true
         val autoRecording = try {
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getTypedSettings().autoRecording
             }
-        } catch (_: Exception) {
-            false
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RecordingStorageFailure.reportRead("auto_recording_settings_read", e)
+            return
         }
-        if (autoRecording && telemetryStore == null && firstReady && !explicitlyStopped) {
+        boardReadySeen = true
+        if (autoRecording && telemetryStore == null && firstReady && !explicitlyStopped && RecordingStorageFailure.value() == null) {
             telemetryStore = configuredTelemetryStore(config)
         }
         recordMarker("connected", config)
@@ -185,6 +193,7 @@ internal class RecordingCoordinator(
     }
 
     fun enableTelemetryRecording(config: SessionConfig) {
+        if (RecordingStorageFailure.value() != null) return
         explicitlyStopped = false
         if (telemetryStore == null) {
             telemetryStore = configuredTelemetryStore(config)
@@ -228,30 +237,45 @@ internal class RecordingCoordinator(
     private fun configuredTelemetryStore(
         config: SessionConfig?,
         openNewRecording: Boolean = true,
-    ): TelemetryRepository {
+    ): TelemetryRepository? {
         val store = TelemetryRepository.get(context)
+        store.observeRecordingFailure {
+            onRecordingFailure()
+        }
         val settings = try {
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getTypedSettings()
             }
-        } catch (_: Exception) {
-            null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RecordingStorageFailure.reportRead("recording_settings_read", e)
+            return null
         }
-        val resolvedSettings = settings ?: AppSettings()
-        applyLiveSettings(resolvedSettings)
-        store.applySettings(resolvedSettings)
+        applyLiveSettings(settings)
+        store.applySettings(settings)
         val zones = try {
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
             }
-        } catch (_: Exception) {
-            emptyList()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RecordingStorageFailure.reportRead("recording_privacy_zones_read", e)
+            return null
         }
         store.reloadPrivacyZones(zones)
         // Enabling recording is what opens a Ride Recording: durable identity and an explicit start
         // boundary, minted before the first sample or fix can be admitted.
-        if (openNewRecording) store.beginRideRecording(config?.appBoardId)
+        if (openNewRecording && store.beginRideRecording(config?.appBoardId) == null) return null
         return store
+    }
+
+    /** Runs on Board Session owner scheduler after repository IO reports a failed transaction. */
+    fun handleStorageFailure() {
+        telemetryStore = null
+        requestedTelemetryRecordingEnabled = false
+        connectionLostMarkerAt = null
     }
 
     private fun recordMarker(type: String, config: SessionConfig?, message: String? = null) {

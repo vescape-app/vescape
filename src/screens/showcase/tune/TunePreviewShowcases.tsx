@@ -260,6 +260,8 @@ export function TuneProfileMetadataModalShowcase() {
         visible={open}
         title="Edit Profile"
         confirmLabel="Save"
+        error="Profile could not be saved."
+        loading={false}
         initialValue={value}
         onConfirm={(next) => {
           setValue(next)

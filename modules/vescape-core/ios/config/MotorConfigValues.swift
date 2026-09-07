@@ -55,9 +55,15 @@ struct MotorConfigValues {
     ]
   }
 
-  func valuesJson() -> String {
-    guard let data = try? JSONSerialization.data(withJSONObject: values) else { return "{}" }
-    return String(data: data, encoding: .utf8) ?? "{}"
+  func valuesJson() throws -> String {
+    guard JSONSerialization.isValidJSONObject(values) else {
+      throw CocoaError(.propertyListWriteInvalid)
+    }
+    let data = try JSONSerialization.data(withJSONObject: values)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
+    return json
   }
 
   /// Rebuild a cached object. Always lastKnown.
@@ -67,22 +73,22 @@ struct MotorConfigValues {
     firmware: String,
     capturedAtMs: Int64,
     valuesJson: String
-  ) -> MotorConfigValues {
+  ) throws -> MotorConfigValues {
     MotorConfigValues(
       boardId: boardId,
       signature: signature,
       firmware: firmware,
       capturedAtMs: capturedAtMs,
       freshness: .lastKnown,
-      values: decodeValuesJson(valuesJson)
+      values: try decodeValuesJson(valuesJson)
     )
   }
 
-  private static func decodeValuesJson(_ json: String) -> [String: Double] {
-    guard
-      let data = json.data(using: .utf8),
-      let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
+  private static func decodeValuesJson(_ json: String) throws -> [String: Double] {
+    guard let data = json.data(using: .utf8) else { throw ConfigStorageError.invalidCachedJSON }
+    guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw ConfigStorageError.invalidCachedJSON
+    }
     var values: [String: Double] = [:]
     for (id, raw) in parsed {
       if let number = raw as? NSNumber, number.doubleValue.isFinite { values[id] = number.doubleValue }

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Discord Post'
+  short_description: 'Short Polish Discord announcement for the newest release'
+  default_prompt: 'Use $discord to write the Polish Discord post for the newest release notes.'

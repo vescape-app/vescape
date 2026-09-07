@@ -118,15 +118,6 @@ internal fun validWearPushRateHz(value: Any?): Int? =
     ?.toInt()
     ?.coerceIn(1, 20)
 
-val DEFAULT_HISTORY_METRIC_HOT_RANGES: Map<String, Map<String, Double>> = mapOf(
-  "speed" to mapOf("start" to 30.0, "end" to 40.0),
-  "duty" to mapOf("start" to 60.0, "end" to 80.0),
-  "tempMotor" to mapOf("start" to 70.0, "end" to 90.0),
-  "tempController" to mapOf("start" to 60.0, "end" to 80.0),
-  "motorCurrent" to mapOf("start" to 35.0, "end" to 55.0),
-  "batteryCurrent" to mapOf("start" to 25.0, "end" to 45.0),
-)
-
 private val historyMetricHotRangeKeys = setOf(
   "speed",
   "duty",
@@ -180,6 +171,8 @@ private fun Any?.asStringKeyMap(): Map<String, Any?>? = when (this) {
 // @parity /modules/vescape-core/ios/telemetry/AppDataRepository.swift
 class AppDataRepository private constructor(private val context: Context) {
   private val dao = TelemetryDatabase.get(context).telemetryDao()
+  private val tuneAlerts = TuneAlertPersistence(dao)
+  private val boardSettings = BoardSettingsPersistence(dao)
 
   /** Notify JS that persisted data in [scope] changed, so the matching store reloads and stays in
    *  sync without an app restart. Every mutating method below funnels through here — new writes get
@@ -190,28 +183,26 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getBoards(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    val boards = dao.getBoards()
+    val boards = boardSettings.getBoards()
     val settingsByBoard =
-      if (boards.isEmpty()) emptyMap() else dao.getBoardSettings(boards.map { it.id }).groupBy { it.boardId }
+      if (boards.isEmpty()) emptyMap() else boardSettings.getBoardSettings(boards.map { it.id }).groupBy { it.boardId }
     boards.map { it.toMap(settingsByBoard[it.id].orEmpty()) }
   }
 
   suspend fun getBoard(id: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    dao.getBoard(id)?.toMap(dao.getBoardSettings(id))
+    boardSettings.getBoard(id)?.toMap(boardSettings.getBoardSettings(id))
   }
 
   suspend fun upsertBoard(board: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
     val boardId = board.getString("id")
     val (settings, deletedKeys) = board.toBoardSettingEntities(boardId)
-    dao.upsertBoardWithSettings(board.toBoardEntity(), settings, deletedKeys)
+    boardSettings.upsertBoard(board.toBoardEntity(), settings, deletedKeys)
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
   /** Tombstones the Board and hard-deletes its configuration; see [TelemetryDao.deleteBoardWithSettings]. */
   suspend fun deleteBoard(id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteBoardWithSettings(id, System.currentTimeMillis())
-    dao.deleteBoardConfigValues(id)
-    dao.deleteBoardConfigChangeNotice(id)
+    boardSettings.deleteBoard(id, System.currentTimeMillis())
     notifyDataChanged(AppDataScope.BOARDS)
   }
 
@@ -294,12 +285,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, values.valuesJson(), values.capturedAtMs)) { old ->
-      val oldValues = old?.let { BoardConfigValues.lastKnown(boardId, base, it.capturedAt, it.valuesJson).values } ?: return@replaceBaselineAndNotice null
-      val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, values.writeBase?.schema)
-      diffs.takeIf { it.isNotEmpty() }?.let { BoardConfigChangeNoticeEntity(boardId, values.capturedAtMs, BoardConfigChangeNotice(boardId, values.capturedAtMs, it).diffsJson()) }
-    }
-    row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+    ConfigPersistence(dao).saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
@@ -342,36 +328,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
     withContext(Dispatchers.IO) {
       val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext null
-      val entity = MotorConfigValuesEntity(
-        boardId = boardId,
-        mcconfSignature = values.signature,
-        firmware = values.firmware,
-        valuesJson = values.valuesJson(),
-        capturedAt = values.capturedAtMs,
-      )
-      val row = dao.replaceMotorBaselineAndNotice(entity) { old, existingNotice ->
-        if (old == null || old.mcconfSignature != values.signature) return@replaceMotorBaselineAndNotice existingNotice
-        val oldValues = MotorConfigValues.lastKnown(
-          boardId = boardId,
-          signature = old.mcconfSignature,
-          firmware = old.firmware,
-          capturedAtMs = old.capturedAt,
-          valuesJson = old.valuesJson,
-        ).values
-        // Motor config carries no schema, so a field's id is its own label (ADR 0036).
-        val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, null)
-        if (diffs.isEmpty()) return@replaceMotorBaselineAndNotice existingNotice
-        val previous = existingNotice
-          ?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson)?.diffs }
-          .orEmpty()
-        val merged = BoardConfigChangeNotice.mergeDiffs(previous, diffs)
-        BoardConfigChangeNoticeEntity(
-          boardId,
-          values.capturedAtMs,
-          BoardConfigChangeNotice(boardId, values.capturedAtMs, merged).diffsJson(),
-        )
-      }
-      row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+      ConfigPersistence(dao).saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
     }
 
   /**
@@ -381,13 +338,11 @@ class AppDataRepository private constructor(private val context: Context) {
    */
   internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
     if (boardId.isBlank()) return@withContext
-    dao.deleteBoardConfigValues(boardId)
-    dao.deleteBoardConfigChangeNotice(boardId)
-    dao.deleteMotorConfigValues(boardId)
+    dao.clearBoardConfigState(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    dao.getAlertRules(boardId).map { it.toMap() }
+    tuneAlerts.alertRules(boardId).map { it.toMap() }
   }
 
   /** The given Board's enabled rules — the alert engine evaluates only the connected Board's rules. */
@@ -397,16 +352,16 @@ class AppDataRepository private constructor(private val context: Context) {
     }
 
   suspend fun upsertAlertRule(rule: Map<String, Any?>): Unit = withContext(Dispatchers.IO) {
-    dao.upsertAlertRule(rule.toAlertRuleEntity())
+    tuneAlerts.saveAlert(rule.toAlertRuleEntity())
   }
 
   suspend fun setAlertRuleEnabled(boardId: String, id: String, enabled: Boolean): Unit =
     withContext(Dispatchers.IO) {
-      dao.setAlertRuleEnabled(boardId, id, enabled)
+      tuneAlerts.setAlertEnabled(boardId, id, enabled)
     }
 
   suspend fun deleteAlertRule(boardId: String, id: String): Unit = withContext(Dispatchers.IO) {
-    dao.deleteAlertRule(boardId, id)
+    tuneAlerts.deleteAlert(boardId, id)
   }
 
   suspend fun getSettings(): Map<String, Any?> = withContext(Dispatchers.IO) {
@@ -414,7 +369,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getTypedSettings(): AppSettings = withContext(Dispatchers.IO) {
-    val rows = dao.getAllAppSettings()
+    val rows = boardSettings.getSettings()
     val map = rows.associateBy { it.key }
     val badKeys = mutableListOf<String>()
 
@@ -686,11 +641,11 @@ class AppDataRepository private constructor(private val context: Context) {
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
   suspend fun getTuneProfiles(boardId: String, refloatBaseVersion: String?): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val compatibility = validRefloatBaseVersion(refloatBaseVersion) ?: return@withContext emptyList()
-    dao.getTuneProfilesByBoard(boardId, compatibility).map { it.toMap() }
+    tuneAlerts.profiles(boardId, compatibility).map { it.toMap() }
   }
 
   suspend fun getTuneProfile(id: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    dao.getTuneProfile(id)?.toMap()
+    tuneAlerts.profile(id)?.toMap()
   }
 
   suspend fun createProfile(
@@ -717,15 +672,7 @@ class AppDataRepository private constructor(private val context: Context) {
         createdAt = now,
         updatedAt = now,
       )
-      dao.upsertTuneProfile(profile)
-      dao.insertTuneHistoryEntry(
-        TuneHistoryEntryEntity(
-          profileId = profile.id,
-          fieldsJson = fieldsJson,
-          createdAt = now,
-        ),
-      )
-      profile.toMap()
+      tuneAlerts.createProfile(profile).toMap()
     }
 
   suspend fun renameProfile(
@@ -745,7 +692,7 @@ class AppDataRepository private constructor(private val context: Context) {
   }
 
   suspend fun getProfileHistory(profileId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
-    dao.getTuneHistoryEntries(profileId).map { it.toMap() }
+    tuneAlerts.history(profileId).map { it.toMap() }
   }
 
   suspend fun rollbackProfile(profileId: String, historyEntryId: Long): Map<String, Any?> =
@@ -769,20 +716,12 @@ class AppDataRepository private constructor(private val context: Context) {
         createdAt = now,
         updatedAt = now,
       )
-      dao.upsertTuneProfile(copy)
-      dao.insertTuneHistoryEntry(
-        TuneHistoryEntryEntity(
-          profileId = copy.id,
-          fieldsJson = copy.fieldsJson,
-          createdAt = now,
-        ),
-      )
-      copy.toMap()
+      tuneAlerts.createProfile(copy).toMap()
     }
 
   suspend fun saveProfile(profileId: String, fields: Map<String, Any?>): Map<String, Any?> =
     withContext(Dispatchers.IO) {
-      dao.saveTuneProfile(
+      tuneAlerts.saveProfile(
         profileId = profileId,
         fieldsJson = fields.toJsonObject().toString(),
         updatedAt = System.currentTimeMillis(),
@@ -825,11 +764,12 @@ class AppDataRepository private constructor(private val context: Context) {
   suspend fun setDirectionPoint(latitude: Double?, longitude: Double?): Unit =
     withContext(Dispatchers.IO) {
       val now = System.currentTimeMillis()
-      dao.upsertAppSetting(
-        AppSettingEntity(DIRECTION_POINT_LATITUDE, encodeSettingJson(latitude), now),
-      )
-      dao.upsertAppSetting(
-        AppSettingEntity(DIRECTION_POINT_LONGITUDE, encodeSettingJson(longitude), now),
+      dao.replaceAppSettings(
+        listOf(
+          latitude?.let { AppSettingEntity(DIRECTION_POINT_LATITUDE, encodeSettingJson(it), now) },
+          longitude?.let { AppSettingEntity(DIRECTION_POINT_LONGITUDE, encodeSettingJson(it), now) },
+        ),
+        listOf(DIRECTION_POINT_LATITUDE, DIRECTION_POINT_LONGITUDE),
       )
       notifyDataChanged(AppDataScope.SETTINGS)
     }
@@ -1009,12 +949,6 @@ internal fun encodeSettingJson(value: Any?): String {
   return s.substring(1, s.length - 1)
 }
 
-internal fun decodeSettingJson(json: String): Any? {
-  val obj = JSONObject("{\"v\":$json}")
-  val v = obj.get("v")
-  return jsonValue(v)
-}
-
 fun AlertRuleEntity.toMap(): Map<String, Any?> = mapOf(
   "boardId" to boardId,
   "id" to id,
@@ -1100,23 +1034,6 @@ private fun String.toJsonMap(): Map<String, Any?> {
     result[key] = jsonValue(json.get(key))
   }
   return result
-}
-
-private fun jsonValue(value: Any?): Any? {
-  return when (value) {
-    JSONObject.NULL -> null
-    is JSONObject -> {
-      val result = mutableMapOf<String, Any?>()
-      val keys = value.keys()
-      while (keys.hasNext()) {
-        val key = keys.next()
-        result[key] = jsonValue(value.get(key))
-      }
-      result
-    }
-    is JSONArray -> List(value.length()) { index -> jsonValue(value.get(index)) }
-    else -> value
-  }
 }
 
 fun PrivacyZoneEntity.toMap(): Map<String, Any?> = mapOf(

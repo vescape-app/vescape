@@ -6,10 +6,33 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.File
+import java.io.IOException
+import java.io.Writer
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class SessionRecorderTest {
+
+    @Test
+    fun firstWriteFailureStopsAllLaterWrites() {
+        val writer = object : Writer() {
+            var attempts = 0
+            override fun write(buffer: CharArray, offset: Int, count: Int) {
+                attempts += 1
+                throw IOException("injected")
+            }
+            override fun flush() = Unit
+            override fun close() = Unit
+        }
+        val file = File.createTempFile("session-recorder-failure", ".jsonl").also { it.deleteOnExit() }
+        val recorder = SessionRecorder(session, file, writer) {}
+
+        recorder.start()
+        recorder.recordState("later")
+        recorder.recordState("still-later")
+
+        assertEquals(1, writer.attempts)
+    }
 
     private val session = SessionConfig(
         appBoardId = "board-1",

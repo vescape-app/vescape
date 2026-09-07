@@ -49,8 +49,9 @@ internal class GroupRideObserver(
         override fun run() {
             val ws = webSocket
             if (!stopped && ws != null && joinedRideId != null) {
-                ws.send(JSONObject().put("type", "heartbeat").toString())
-                handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+                if (send(ws, JSONObject().put("type", "heartbeat"))) {
+                    handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+                }
             }
         }
     }
@@ -140,7 +141,7 @@ internal class GroupRideObserver(
                 return@post
             }
             if (joinedRideId != null || desiredRideId != null) {
-                ws.send(JSONObject().put("type", "leave").toString())
+                send(ws, JSONObject().put("type", "leave"))
                 joinedRideId = null
                 desiredRideId = null
                 stopHeartbeat()
@@ -151,7 +152,7 @@ internal class GroupRideObserver(
                 .put("type", "create")
                 .put("location", JSONObject().put("lat", lat).put("lng", lng))
             if (!name.isNullOrBlank()) create.put("name", name)
-            ws.send(create.toString())
+            send(ws, create)
         }
     }
 
@@ -164,7 +165,7 @@ internal class GroupRideObserver(
             }
             val previousRideId = joinedRideId ?: desiredRideId
             if (previousRideId != null && previousRideId != rideId) {
-                ws.send(JSONObject().put("type", "leave").toString())
+                send(ws, JSONObject().put("type", "leave"))
                 joinedRideId = null
                 stopHeartbeat()
             }
@@ -175,14 +176,14 @@ internal class GroupRideObserver(
                 .put("type", "join")
                 .put("rideId", rideId)
             presence?.let { join.put("presence", it.toJson()) }
-            ws.send(join.toString())
+            send(ws, join)
         }
     }
 
     fun leave() {
         handler.post {
             val ws = webSocket ?: return@post
-            ws.send(JSONObject().put("type", "leave").toString())
+            send(ws, JSONObject().put("type", "leave"))
             joinedRideId = null
             desiredRideId = null
             stopHeartbeat()
@@ -213,11 +214,10 @@ internal class GroupRideObserver(
             val ws = webSocket
             if (stopped || ws == null || joinedRideId == null) return@post
             lastPresence = presence
-            ws.send(
+            send(ws,
                 JSONObject()
                     .put("type", "presence")
-                    .put("presence", presence.toJson())
-                    .toString(),
+                    .put("presence", presence.toJson()),
             )
         }
     }
@@ -388,7 +388,7 @@ internal class GroupRideObserver(
             .put("riderId", riderId)
             .put("name", riderName)
         if (!riderColor.isNullOrBlank()) hello.put("color", riderColor)
-        ws.send(hello.toString())
+        send(ws, hello)
     }
 
     private fun sendJoin(ws: WebSocket, rideId: String, presence: RiderPresence?) {
@@ -396,7 +396,23 @@ internal class GroupRideObserver(
             .put("type", "join")
             .put("rideId", rideId)
         presence?.let { join.put("presence", it.toJson()) }
-        ws.send(join.toString())
+        send(ws, join)
+    }
+
+    private fun send(ws: WebSocket, frame: JSONObject): Boolean {
+        val sent = try {
+            ws.send(frame.toString())
+        } catch (error: Exception) {
+            expo.modules.vescapecore.diagnostics.UnexpectedNativeError.report(
+                "group_ride_frame_encode", "encode_failed", error,
+            )
+            false
+        }
+        if (!sent && isCurrentSocket(ws)) {
+            Log.w(TAG, "Group Ride send failed; reconnecting")
+            scheduleReconnect()
+        }
+        return sent
     }
 
     /** Decode the `RideSummary` shape shared by `snapshot` and `ride-created`. */

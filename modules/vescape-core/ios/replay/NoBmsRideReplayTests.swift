@@ -25,17 +25,17 @@ final class NoBmsRideReplayTests: XCTestCase {
     )
   }
 
-  func testRealRideHasInboundTrafficButNoBmsFrames() {
+  func testRealRideHasInboundTrafficButNoBmsFrames() throws {
     // Real recording carries inbound BLE traffic...
     XCTAssertFalse(ReplayChunkDecoder.rxChunks(jsonl).isEmpty, "expected recorded rx chunks")
     // ...none of which decodes to smart-BMS telemetry.
     XCTAssertTrue(ReplayChunkDecoder.bmsFrames(jsonl).isEmpty, "no-BMS ride must yield zero BMS frames")
   }
 
-  func testNoBmsRideKeepsDetectorsSilent() {
+  func testNoBmsRideKeepsDetectorsSilent() throws {
     // A configured series count is present, yet with no BMS frames there is nothing to evaluate:
     // both detectors stay silent (no false cell-spread, no false config-mismatch)...
-    let result = WarningReplayHarness.run(jsonl, configuredSeries: 16)
+    let result = try WarningReplayHarness.run(jsonl, configuredSeries: 16)
     XCTAssertEqual(result.frameCount, 0)
     XCTAssertTrue(result.cellSpreadFindings.isEmpty)
     XCTAssertTrue(result.mismatchFindings.isEmpty)

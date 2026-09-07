@@ -26,6 +26,11 @@ env:
   WEAR_INTERNAL_TRACK: ${{ vars.PLAY_WEAR_INTERNAL_TRACK || 'wear:internal' }}
 
 jobs:
+  persistence-contracts:
+    uses: ./.github/workflows/persistence-contracts.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
   gates:
     name: Release gates
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -68,7 +73,7 @@ jobs:
 
   build:
     name: Build signed artifacts once
-    needs: gates
+    needs: [gates, persistence-contracts]
     runs-on: blacksmith-8vcpu-ubuntu-2404
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
@@ -313,7 +318,7 @@ jobs:
             --arg phone_status "$PHONE_STATUS" \
             --arg wear_status "$WEAR_STATUS" \
             --slurpfile identity artifact-identity.json \
-            '{schemaVersion:1,requestId:$request_id,sourceSha:$source_sha,marketingVersion:$version,versionCodes:{phone:$phone_code,wear:$wear_code},workflow:{runId:$run_id,runUrl:$run_url,runAttempt:$run_attempt},artifacts:$identity[0],uploads:{phone:$phone_status,wear:$wear_status}}' \
+            '{schemaVersion:1,requestId:$request_id,sourceSha:$source_sha,marketingVersion:$version,versionCodes:{phone:$phone_code,wear:$wear_code},workflow:{runId:$run_id,runUrl:$run_url,runAttempt:$run_attempt},storageContracts:{sourceSha:$source_sha,androidRoom:"passed",iosGrdb:"passed",crossPlatformArchives:"passed"},artifacts:$identity[0],uploads:{phone:$phone_status,wear:$wear_status}}' \
             > release-manifest.json
         env:
           REQUEST_ID: ${{ inputs.request_id }}

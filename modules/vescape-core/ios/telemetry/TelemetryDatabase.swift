@@ -20,7 +20,7 @@ enum TelemetryDatabase {
   private static let poolResult: Result<DatabasePool, Error> = {
     do {
       guard let url = databaseURL else { throw CocoaError(.fileNoSuchFile) }
-      migrateLegacyDatabaseFile(to: url)
+      try migrateLegacyDatabaseFile(to: url)
       let pool = try DatabasePool(path: url.path)
       try migrator.migrate(pool)
       return .success(pool)
@@ -29,37 +29,46 @@ enum TelemetryDatabase {
     }
   }()
 
-  /// The shared pool, or `nil` if the database could not be opened. Callers degrade gracefully
-  /// (reads return empty, writes no-op) rather than crashing the bridge.
+  /// The shared pool, or `nil` if the database could not be opened. Startup health owns the
+  /// resulting outage; bridge operations use `requirePool()` so the original error is preserved.
   static var pool: DatabasePool? {
     if let reopened { return reopened }
     if case let .success(pool) = poolResult { return pool }
     return nil
   }
 
+  /// Resolve the shared pool while preserving its original open or migration error for startup
+  /// health checks. Ordinary callers keep using `pool` so reads can still degrade gracefully.
+  static func requirePool() throws -> DatabasePool {
+    if let reopened { return reopened }
+    return try poolResult.get()
+  }
+
   /// One-time file rename from the pre-release "telemetry.db" name. Checkpoints the legacy WAL so
   /// the whole database lives in the main file, then renames it in place. Idempotent: once the new
   /// file exists (or no legacy file is present) this is a no-op.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `migrateLegacyDatabaseFile`
-  private static func migrateLegacyDatabaseFile(to url: URL) {
+  internal static func migrateLegacyDatabaseFile(to url: URL) throws {
     let fm = FileManager.default
     let legacy = url.deletingLastPathComponent().appendingPathComponent(legacyDatabaseName)
     guard !fm.fileExists(atPath: url.path), fm.fileExists(atPath: legacy.path) else { return }
-    if let legacyPool = try? DatabasePool(path: legacy.path) {
-      _ = try? legacyPool.writeWithoutTransaction { db in try db.checkpoint(.truncate) }
-      try? legacyPool.close()
+    let legacyPool = try DatabasePool(path: legacy.path)
+    try legacyPool.writeWithoutTransaction { db in try db.checkpoint(.truncate) }
+    try legacyPool.close()
+    try moveLegacyDatabaseFile(from: legacy, to: url)
+    for suffix in ["-wal", "-shm"] where fm.fileExists(atPath: legacy.path + suffix) {
+      // intentional-suppression: obsolete sidecar cleanup is best effort and support-directory absence is explicit
+      try? fm.removeItem(atPath: legacy.path + suffix)
     }
-    do {
-      try fm.moveItem(at: legacy, to: url)
-      try? fm.removeItem(atPath: legacy.path + "-wal")
-      try? fm.removeItem(atPath: legacy.path + "-shm")
-    } catch {
-      // Leave the legacy file untouched; the next launch retries.
-    }
+  }
+
+  internal static func moveLegacyDatabaseFile(from legacy: URL, to target: URL) throws {
+    try FileManager.default.moveItem(at: legacy, to: target)
   }
 
   /// On-disk location of the single database file.
   static var databaseURL: URL? {
+    // intentional-suppression: obsolete sidecar cleanup is best effort and support-directory absence is explicit
     guard let support = try? FileManager.default.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
@@ -70,10 +79,19 @@ enum TelemetryDatabase {
   }
 
   /// Size of the live database file in bytes, or 0 when it does not exist yet.
-  static var databaseSizeBytes: Int64 {
-    guard let path = databaseURL?.path,
-          let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-          let size = attrs[.size] as? NSNumber else { return 0 }
+  static func databaseSizeBytes(
+    at url: URL? = databaseURL,
+    attributes: (String) throws -> [FileAttributeKey: Any] = {
+      try FileManager.default.attributesOfItem(atPath: $0)
+    }
+  ) throws -> Int64 {
+    guard let url else { throw CocoaError(.fileNoSuchFile) }
+    let attrs: [FileAttributeKey: Any]
+    do { attrs = try attributes(url.path) }
+    catch let error as NSError
+      where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
+    { return 0 }
+    guard let size = attrs[.size] as? NSNumber else { throw CocoaError(.fileReadUnknown) }
     return size.int64Value
   }
 
@@ -105,6 +123,108 @@ enum TelemetryDatabase {
         arguments: [identifier]
       )
     }
+  }
+
+  /// Bring an exported Room database from the first backup-capable generation to the shared v22
+  /// baseline. Android backup export shipped at v14, before the GRDB migration names became
+  /// aligned with Room versions. These are the production Room 14→22 operations expressed through
+  /// GRDB so an old Android archive follows the same data-preserving path on iOS.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_14_15` through `MIGRATION_21_22`
+  internal static func upgradeExportedAndroidDatabase(_ db: Database, from version: Int) throws {
+    guard version < 22 else { return }
+    guard version >= 14 else {
+      throw NSError(
+        domain: "VescapeDatabaseMigration",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Android backup predates backup export support"]
+      )
+    }
+
+    if version < 15 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS metric_exclusions (
+          captured_at_ms INTEGER NOT NULL, device_id TEXT NOT NULL, metric TEXT NOT NULL,
+          reason TEXT NOT NULL, PRIMARY KEY(captured_at_ms, device_id, metric)
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusions_captured_at_ms ON metric_exclusions(captured_at_ms)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusions_device_id_captured_at_ms ON metric_exclusions(device_id, captured_at_ms)")
+    }
+    if version < 16 {
+      try db.execute(sql: "ALTER TABLE metric_exclusions ADD COLUMN raw_value TEXT")
+      try db.execute(sql: "ALTER TABLE metric_exclusions ADD COLUMN reference_value TEXT")
+      try db.execute(sql: "ALTER TABLE metric_exclusions ADD COLUMN context_json TEXT")
+    }
+    if version < 17 {
+      try db.execute(sql: "DROP TABLE IF EXISTS metric_exclusions")
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS metric_exclusion_ranges (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, device_id TEXT NOT NULL,
+          reason TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+          sample_count INTEGER NOT NULL
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusion_ranges_start_ms_end_ms ON metric_exclusion_ranges(start_ms, end_ms)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusion_ranges_device_id_start_ms_end_ms ON metric_exclusion_ranges(device_id, start_ms, end_ms)")
+    }
+    if version < 18 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS privacy_zones (
+          id TEXT NOT NULL PRIMARY KEY, preset TEXT NOT NULL, name TEXT NOT NULL,
+          enabled INTEGER NOT NULL, center_latitude_e7 INTEGER NOT NULL,
+          center_longitude_e7 INTEGER NOT NULL, radius_meters INTEGER NOT NULL,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )
+        """)
+    }
+    if version < 19 {
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_created_at")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_is_starred")
+      try db.execute(sql: """
+        CREATE TABLE boards_v19 (
+          id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, description TEXT, ble_id TEXT,
+          is_starred INTEGER NOT NULL, created_at INTEGER NOT NULL, battery_config_json TEXT
+        )
+        """)
+      try db.execute(sql: "INSERT INTO boards_v19 SELECT id,name,description,ble_id,is_starred,created_at,NULL FROM boards")
+      try db.execute(sql: "DROP TABLE boards")
+      try db.execute(sql: "ALTER TABLE boards_v19 RENAME TO boards")
+      try db.execute(sql: "CREATE INDEX index_boards_created_at ON boards(created_at)")
+      try db.execute(sql: "CREATE INDEX index_boards_is_starred ON boards(is_starred)")
+    }
+    if version < 20 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS map_points (
+          id TEXT NOT NULL PRIMARY KEY, kind TEXT NOT NULL, latitude_e7 INTEGER NOT NULL,
+          longitude_e7 INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_map_points_kind ON map_points(kind)")
+    }
+    if version < 21 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS board_settings (
+          board_id TEXT NOT NULL, key TEXT NOT NULL, value_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL, PRIMARY KEY(board_id,key)
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_board_settings_board_id ON board_settings(board_id)")
+      try db.execute(sql: "INSERT OR REPLACE INTO board_settings SELECT id,'description',json_quote(description),created_at FROM boards WHERE description IS NOT NULL")
+      try db.execute(sql: "INSERT OR REPLACE INTO board_settings SELECT id,'batteryConfig',battery_config_json,created_at FROM boards WHERE battery_config_json IS NOT NULL")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_is_starred")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_created_at")
+      try db.execute(sql: "CREATE TABLE boards_v21 (id TEXT NOT NULL PRIMARY KEY,name TEXT NOT NULL,ble_id TEXT,created_at INTEGER NOT NULL)")
+      try db.execute(sql: "INSERT INTO boards_v21 SELECT id,name,ble_id,created_at FROM boards")
+      try db.execute(sql: "DROP TABLE boards")
+      try db.execute(sql: "ALTER TABLE boards_v21 RENAME TO boards")
+      try db.execute(sql: "CREATE INDEX index_boards_created_at ON boards(created_at)")
+    }
+    if version < 22 {
+      try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN first_moving_at_ms INTEGER")
+      try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN last_moving_at_ms INTEGER")
+    }
+    try db.execute(sql: "PRAGMA user_version = 22")
   }
 
   /// Bridge the places where the two platforms hold the same fact in different shapes. Stamping
@@ -139,42 +259,43 @@ enum TelemetryDatabase {
   /// from wherever it left off.
   static func replaceDatabase(withFileAt source: URL, schemaVersion: Int) throws {
     guard let target = databaseURL else { throw CocoaError(.fileNoSuchFile) }
-    let fm = FileManager.default
-    let sidecarSuffixes = ["", "-wal", "-shm"]
-
-    if let reopened { try? reopened.close() }
-    else if case let .success(pool) = poolResult { try? pool.close() }
-
-    let rollbackDir = fm.temporaryDirectory.appendingPathComponent("db-rollback-\(UUID().uuidString)", isDirectory: true)
-    try fm.createDirectory(at: rollbackDir, withIntermediateDirectories: true)
-    defer { try? fm.removeItem(at: rollbackDir) }
-
-    var moved: [(original: URL, saved: URL)] = []
-    for suffix in sidecarSuffixes {
-      let file = URL(fileURLWithPath: target.path + suffix)
-      guard fm.fileExists(atPath: file.path) else { continue }
-      let saved = rollbackDir.appendingPathComponent(target.lastPathComponent + suffix)
-      try fm.moveItem(at: file, to: saved)
-      moved.append((file, saved))
-    }
-
     do {
-      try fm.copyItem(at: source, to: target)
-      let pool = try DatabasePool(path: target.path)
-      try pool.write { db in
-        guard try !db.tableExists(migrationLedgerTable) else { return }
-        try stampAppliedMigrations(db, schemaVersion: schemaVersion)
-        try reconcileForeignSchema(db)
+      if let reopened { try reopened.close() }
+      else if case let .success(pool) = poolResult { try pool.close() }
+      reopened = try replacingDatabaseFiles(source: source, target: target) { installed in
+        try openRestoredDatabase(at: installed, schemaVersion: schemaVersion)
       }
-      try migrator.migrate(pool)
-      try pool.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
-      reopened = pool
     } catch {
-      for suffix in sidecarSuffixes { try? fm.removeItem(at: URL(fileURLWithPath: target.path + suffix)) }
-      for entry in moved { try? fm.moveItem(at: entry.saved, to: entry.original) }
-      reopened = try? DatabasePool(path: target.path)
-      throw error
+      let restoreError = error
+      do {
+        reopened = try DatabasePool(path: target.path)
+        try reopened?.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
+      } catch {
+        throw NSError(
+          domain: "VescapeDatabaseSwap",
+          code: 3,
+          userInfo: [
+            NSLocalizedDescriptionKey: "Database restore failed and the original database could not be reopened",
+            NSUnderlyingErrorKey: restoreError,
+            "reopenError": String(describing: error),
+          ]
+        )
+      }
+      throw restoreError
     }
+  }
+
+  internal static func openRestoredDatabase(at url: URL, schemaVersion: Int) throws -> DatabasePool {
+    let pool = try DatabasePool(path: url.path)
+    try pool.write { db in
+      guard try !db.tableExists(migrationLedgerTable) else { return }
+      try upgradeExportedAndroidDatabase(db, from: schemaVersion)
+      try stampAppliedMigrations(db, schemaVersion: max(schemaVersion, 22))
+      try reconcileForeignSchema(db)
+    }
+    try migrator.migrate(pool)
+    try pool.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
+    return pool
   }
 
   /// Internal, not private, so migration tests can run the real migrator against an in-memory
@@ -399,10 +520,9 @@ enum TelemetryDatabase {
     }
 
     // MARK: Tune Profiles (#161)
-    // Per-board VESC tune configs with reversible Tune History. DDL lives on `TuneProfileStore` so
-    // the schema stays single-source with the tests that reuse it.
+    // Per-board VESC tune configs with reversible Tune History. Host and app share the DDL.
     migrator.registerMigration("v2_tune_profiles") { db in
-      try TuneProfileStore.createTables(db)
+      try PersistenceSchema.createTuneProfiles(db)
     }
 
     migrator.registerMigration("v23_tune_profile_metadata") { db in
@@ -425,10 +545,9 @@ enum TelemetryDatabase {
     }
 
     // MARK: Board Warnings (#208)
-    // Durable one-row-per-(board, kind) warning store. DDL lives on `BoardWarningStore` so the schema
-    // stays single-source with the tests that reuse it. Mirrors Android Room migration 24→25.
+    // Durable one-row-per-(board, kind) warning store. Mirrors Android Room migration 24→25.
     migrator.registerMigration("v25_board_warnings") { db in
-      try BoardWarningStore.createTables(db)
+      try PersistenceSchema.createBoardWarnings(db)
     }
 
     migrator.registerMigration("v26_alert_source") { db in
@@ -481,19 +600,18 @@ enum TelemetryDatabase {
     }
 
     // MARK: Favorites (#287)
-    // Durable, optionally named time ranges over Ride History (ADR 0029). DDL lives on
-    // `FavoriteStore` so the schema stays single-source with the tests that reuse it. Mirrors
-    // Android Room migration 29→30.
+    // Durable, optionally named time ranges over Ride History (ADR 0029). Mirrors Android Room
+    // migration 29→30.
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_29_30`
     migrator.registerMigration("v30_favorites") { db in
-      try FavoriteStore.createTables(db)
+      try PersistenceSchema.createFavorites(db)
     }
 
     // Favorite Media (#291). Native manifest metadata truth; bytes live in canonical Favorite-owned
     // app storage (ADR 0030).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_30_31`
     migrator.registerMigration("v31_favorite_media") { db in
-      try FavoriteMediaStore.createTables(db)
+      try PersistenceSchema.createFavoriteMedia(db)
     }
 
     // Per-rule repeat cadence and beep count (#348). Existing rows land on one-shot with the
@@ -515,7 +633,7 @@ enum TelemetryDatabase {
     // restored as `lastKnown` on connect (#393).
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_32_33`
     migrator.registerMigration("v33_board_config_values") { db in
-      try BoardConfigStore.createTables(db)
+      try PersistenceSchema.createBoardConfig(db)
     }
 
     migrator.registerMigration("v34_board_config_change_notices") { db in
@@ -530,7 +648,7 @@ enum TelemetryDatabase {
     }
 
     migrator.registerMigration("v36_motor_config_values") { db in
-      try MotorConfigStore.createTables(db)
+      try PersistenceSchema.createMotorConfig(db)
     }
 
     /// VESC Fault Evidence (#430): dedicated Board-owned fault storage replaces the partial Ride
@@ -546,8 +664,8 @@ enum TelemetryDatabase {
     /// down; a database that recorded them is beyond this migrator and has to be reinstalled.
     /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_36_40`
     migrator.registerMigration("v40_vesc_faults") { db in
-      try VescFaultStore.createTables(db)
-      try VescFaultCaptureStore.createTables(db)
+      try PersistenceSchema.createVescFaults(db)
+      try PersistenceSchema.createVescFaultCaptures(db)
       try db.execute(sql: "DROP INDEX IF EXISTS index_telemetry_frames_fault")
       if try db.columns(in: "telemetry_frames").map(\.name).contains("fault_code") {
         try db.execute(sql: """
@@ -699,7 +817,7 @@ enum TelemetryDatabase {
     // a row. Rides recorded before today gain no new points: their tracks come out exactly as
     // sparse as their telemetry was. Legacy rows get no recording identity either;
     // `rideSplitGapMinutes` still groups them.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `MIGRATION_42_43`
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_42_43`
     migrator.registerMigration("v43_ride_track") { db in
       try createRideRecordingTables(db)
       try migrateFrameGpsIntoRideTrack(db)
@@ -1093,7 +1211,7 @@ private func rebuildExclusionRangesOnBoardId(_ db: Database) throws {
   try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusion_ranges_board_id_start_ms_end_ms ON metric_exclusion_ranges(board_id, start_ms, end_ms)")
 }
 
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `createRideRecordingTables`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `createRideRecordingTables`
 internal func createRideRecordingTables(_ db: Database) throws {
   try db.execute(sql: """
     CREATE TABLE IF NOT EXISTS ride_recordings (
@@ -1129,7 +1247,7 @@ internal func createRideRecordingTables(_ db: Database) throws {
 /// clock and is preferred over the frame's capture time, which is the clock the fix was merely
 /// stamped onto. A frame with no coordinates contributes nothing — a ride recorded without GPS
 /// migrates to an empty track, not to fabricated points.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `migrateFrameGpsIntoRideTrack`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `migrateFrameGpsIntoRideTrack`
 internal func migrateFrameGpsIntoRideTrack(_ db: Database) throws {
   try db.execute(sql: """
     INSERT INTO ride_track_points (
@@ -1154,7 +1272,7 @@ internal func migrateFrameGpsIntoRideTrack(_ db: Database) throws {
 
 /// Drops the seven raw GPS columns and adds `recording_id`. A rebuild rather than an `ALTER`, which
 /// keeps the two platforms' migrations shaped the same way.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildFramesWithoutGps`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildFramesWithoutGps`
 internal func rebuildFramesWithoutGps(_ db: Database) throws {
   let columns = """
     captured_at_ms, elapsed_realtime_ms, board_id, can_id, flags, changed_mask_1, changed_mask_2, \
@@ -1209,7 +1327,7 @@ internal func rebuildFramesWithoutGps(_ db: Database) throws {
 /// The bucket primary key gains `recording_id`, so two recordings of one Board inside one minute
 /// stop aggregating into a single row. Existing buckets take `LEGACY_RIDE_RECORDING_ID` and keep
 /// grouping exactly as they did.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `rebuildBucketsOnRecordingId`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `rebuildBucketsOnRecordingId`
 internal func rebuildBucketsOnRecordingId(_ db: Database) throws {
   let columns = """
     bucket_start_ms, board_id, sample_count, first_sample_at_ms, last_sample_at_ms, \

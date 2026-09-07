@@ -246,7 +246,12 @@ final class NavigationController {
         lock.withLock { if !profileChosen { profile = stored } }
       }
       guard let stored = await store.load() else { return }
-      let directionPoint = await store.directionPoint()
+      let directionPoint: (latitude: Double, longitude: Double)?
+      do { directionPoint = try await store.directionPoint() }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
+        return
+      }
       // The two are written separately, so an interrupted write can leave a path leading somewhere
       // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
       let matchesDirectionPoint = stored.targetLatitude == directionPoint?.latitude

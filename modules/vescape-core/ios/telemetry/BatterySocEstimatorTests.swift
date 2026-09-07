@@ -46,6 +46,17 @@ final class BatterySocEstimatorTests: XCTestCase {
     ))
   }
 
+  func testFailedBundleLoadIsAttemptedOnlyOnce() {
+    var attempts = 0
+    let unloaded = BatterySocEstimator(presetLoader: { attempts += 1; return nil })
+
+    unloaded.ensureLoaded()
+    unloaded.ensureLoaded()
+
+    XCTAssertEqual(attempts, 1)
+    XCTAssertFalse(unloaded.isLoaded)
+  }
+
   func testReturnsNilForInvalidManualConfig() {
     XCTAssertNil(estimator.estimateBatteryPercent(
       voltageV: 72.0,

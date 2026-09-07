@@ -227,8 +227,9 @@ export function useHistoryFavorites(
     if (!id) return
     const removedIndex = useFavoriteStore.getState().favorites.findIndex((item) => item.id === id)
     await removeFavorite(id)
-    if (useFavoriteStore.getState().error) return
-    const remaining = useFavoriteStore.getState().favorites
+    const favoriteState = useFavoriteStore.getState()
+    if (favoriteState.favorites.some((favorite) => favorite.id === id)) return
+    const remaining = favoriteState.favorites
     const replacement = remaining[Math.min(Math.max(removedIndex, 0), remaining.length - 1)]
     if (replacement) await selectFavorite(replacement)
     else {

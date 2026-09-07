@@ -159,6 +159,8 @@ final class MapPointApi {
       throw MapPointApiError(code: MapPointApiError.refused, message: cause)
     case .unavailable(let cause):
       throw MapPointApiError(code: MapPointApiError.unreachable, message: cause)
+    case .cancelled:
+      throw CancellationError()
     }
   }
 }

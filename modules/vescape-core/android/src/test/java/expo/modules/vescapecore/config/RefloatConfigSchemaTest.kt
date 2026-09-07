@@ -3,10 +3,20 @@ package expo.modules.vescapecore.config
 import java.io.ByteArrayOutputStream
 import java.util.zip.DeflaterOutputStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RefloatConfigSchemaTest {
+  @Test fun `doctype detection ignores comments and cdata`() {
+    assertFalse(RefloatConfigSchemaParser.containsDocumentType(
+      "<root><!-- <!DOCTYPE fake> --><![CDATA[<!DOCTYPE fake>]]></root>",
+    ))
+    assertTrue(RefloatConfigSchemaParser.containsDocumentType("<!DOCTYPE root><root/>"))
+    assertTrue(RefloatConfigSchemaParser.containsDocumentType(
+      "<!DOCTYPE root SYSTEM 'https://example.invalid/entity'><root/>",
+    ))
+  }
   @Test
   fun parsesParamsFromVescStyleXml() {
     val xml = """

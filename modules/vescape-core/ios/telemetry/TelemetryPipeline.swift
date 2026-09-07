@@ -93,25 +93,6 @@ internal struct TelemetryCapture {
   let location: TelemetryLocationCapture?
 }
 
-internal struct BucketTelemetryPoint {
-  let capturedAtMs: Int64
-  /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
-  let boardId: String?
-  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for rows without durable identity.
-  var recordingId: String = LEGACY_RIDE_RECORDING_ID
-  let speedCentiKmh: Int
-  let batteryVoltageMv: Int
-  let motorCurrentMa: Int
-  let batteryCurrentMa: Int
-  let dutyPermille: Int
-  let odometerCm: Int64?
-  let tempMosfetDeciC: Int?
-  let tempMotorDeciC: Int?
-  var excludedFromAvgSpeed = false
-  var excludedFromMaxSpeed = false
-  var excludedFromMaxDuty = false
-}
-
 internal struct FullTelemetryState {
   let capture: TelemetryCapture
   /// Owning Ride Recording, stamped when the frame is admitted rather than when it is flushed: a
@@ -143,4 +124,3 @@ internal struct FullTelemetryState {
     )
   }
 }
-

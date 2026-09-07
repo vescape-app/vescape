@@ -12,6 +12,19 @@ import XCTest
 final class TelemetryMigrationTests: XCTestCase {
   private var queue: DatabaseQueue!
 
+  func testSharedFixtureManifestCoversBothProductionMigrationRegistries() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    let data = try Data(contentsOf: root.appendingPathComponent("../shared/migration-fixture-manifest.json"))
+    let manifest = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    let room = manifest["room"] as! [String: Any]
+    let roomStarts = Set(room["supportedStarts"] as! [Int])
+    XCTAssertEqual(roomStarts, supportedAndroidDatabaseVersions)
+    let archiveStarts = Set(room["archiveSupportedStarts"] as! [Int])
+    XCTAssertEqual(archiveStarts, exportedAndroidDatabaseVersions)
+    let grdb = manifest["grdb"] as! [String: Any]
+    XCTAssertEqual(Set(grdb["migrationIdentifiers"] as! [String]), Set(TelemetryDatabase.migrator.migrations))
+  }
+
   override func setUpWithError() throws {
     queue = try DatabaseQueue()
   }
@@ -71,6 +84,15 @@ final class TelemetryMigrationTests: XCTestCase {
 
     let applied = try queue.read { db in try TelemetryDatabase.migrator.appliedIdentifiers(db) }
     XCTAssertEqual(applied, Set(TelemetryDatabase.migrator.migrations))
+  }
+
+  func testPublishedBackupGenerationsMatchRealMigrationHistory() {
+    XCTAssertTrue([1, 23, 31, 33, 40, 42].allSatisfy(exportedIOSDatabaseVersions.contains))
+    XCTAssertTrue((14...36).allSatisfy(exportedAndroidDatabaseVersions.contains))
+    XCTAssertTrue((40...42).allSatisfy(exportedAndroidDatabaseVersions.contains))
+    XCTAssertFalse(exportedAndroidDatabaseVersions.contains(13))
+    XCTAssertFalse(exportedAndroidDatabaseVersions.contains(37))
+    XCTAssertFalse(exportedAndroidDatabaseVersions.contains(39))
   }
 
   /// The fault migration is the only one that rewrites telemetry tables, so assert both halves:

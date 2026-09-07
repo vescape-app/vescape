@@ -192,6 +192,7 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
             isCompatibleProfile(p, state.activeBoardId, state.refloatBaseVersion),
         )?.fields ?? {})
       : state.boardFields
+    set({ error: null })
     try {
       const profile = await createNativeProfileWithMetadata(
         state.activeBoardId,
@@ -210,16 +211,18 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
           hasDirtyFields: false,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
+          error: null,
         }
       })
       return profile
     } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profiles.') })
-      return null
+      set({ error: errorMessage(error, 'Unable to create tune profile.') })
+      throw error
     }
   },
 
   async renameProfile(profileId, name, icon, color) {
+    set({ error: null })
     try {
       const updated = await renameNativeProfileWithMetadata(
         profileId,
@@ -230,15 +233,17 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
       set((state) => ({
         profiles: state.profiles.map((p) => (p.id === updated.id ? updated : p)),
         activeProfile: state.activeProfile?.id === updated.id ? updated : state.activeProfile,
+        error: null,
       }))
       return updated
     } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profiles.') })
-      return null
+      set({ error: errorMessage(error, 'Unable to rename tune profile.') })
+      throw error
     }
   },
 
   async deleteProfile(profileId) {
+    set({ error: null })
     try {
       await nativeDeleteProfile(profileId)
       set((state) => {
@@ -253,25 +258,29 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
           hasDirtyFields: needSwitch ? false : state.hasDirtyFields,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
+          error: null,
         }
       })
     } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profiles.') })
+      set({ error: errorMessage(error, 'Unable to delete tune profile.') })
+      throw error
     }
   },
 
   async loadHistory(profileId) {
+    set({ error: null })
     try {
       return await nativeGetProfileHistory(profileId)
     } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profiles.') })
-      return []
+      set({ error: errorMessage(error, 'Unable to load tune profile history.') })
+      throw error
     }
   },
 
   async rollbackToHistory(historyEntryId) {
     const profile = get().activeProfile
     if (!profile) return null
+    set({ error: null })
     try {
       const restored = await nativeRollbackProfile(profile.id, historyEntryId)
       set((state) => {
@@ -283,21 +292,25 @@ export const createTuneProfileLibrarySlice: SliceFactory = (set, get) => ({
           hasDirtyFields: false,
           boardDiff: diff,
           hasBoardDiff: diff.length > 0,
+          error: null,
         }
       })
       return restored
     } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profiles.') })
-      return null
+      set({ error: errorMessage(error, 'Unable to restore tune profile.') })
+      throw error
     }
   },
 
   async copyProfileToBoard(profileId, targetBoardId, newName) {
+    set({ error: null })
     try {
-      return await nativeCopyProfileToBoard(profileId, targetBoardId, newName)
+      const copied = await nativeCopyProfileToBoard(profileId, targetBoardId, newName)
+      set({ error: null })
+      return copied
     } catch (error) {
-      set({ error: errorMessage(error, 'Unable to load tune profiles.') })
-      return null
+      set({ error: errorMessage(error, 'Unable to copy tune profile.') })
+      throw error
     }
   },
 

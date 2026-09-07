@@ -48,8 +48,8 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(summary.movingDurationMs, 60_000)
     XCTAssertEqual(summary.gpsPointCount, MAX_SAMPLE_LIMIT + 2)
     let favorite = makeFavorite(id: "long-ride", startMs: 0, endMs: Int64.max, summary: summary)
-    XCTAssertTrue(store.insert(favorite))
-    XCTAssertEqual(store.list().first?.summary.movingDurationMs, 60_000)
+    try store.insert(favorite)
+    XCTAssertEqual(try store.list().first?.summary.movingDurationMs, 60_000)
   }
 
   // MARK: - Store
@@ -72,9 +72,9 @@ final class FavoriteStoreTests: XCTestCase {
       )
     )
 
-    XCTAssertTrue(store.insert(favorite))
+    try store.insert(favorite)
 
-    let stored = try XCTUnwrap(store.list().first)
+    let stored = try XCTUnwrap(try store.list().first)
     XCTAssertEqual(stored.id, "fav-1")
     XCTAssertEqual(stored.name, "Dolina single track")
     XCTAssertEqual(stored.startMs, 1_000)
@@ -87,15 +87,15 @@ final class FavoriteStoreTests: XCTestCase {
     XCTAssertEqual(stored.summary.batteryUsedWhMilli, 9_600)
   }
 
-  func testListReturnsNewestRangeFirst() {
-    store.insert(makeFavorite(id: "older", startMs: 1_000, endMs: 2_000))
-    store.insert(makeFavorite(id: "newer", startMs: 9_000, endMs: 10_000))
+  func testListReturnsNewestRangeFirst() throws {
+    try store.insert(makeFavorite(id: "older", startMs: 1_000, endMs: 2_000))
+    try store.insert(makeFavorite(id: "newer", startMs: 9_000, endMs: 10_000))
 
-    XCTAssertEqual(store.list().map(\.id), ["newer", "older"])
+    XCTAssertEqual(try store.list().map(\.id), ["newer", "older"])
   }
 
   func testUpdateKeepsIdentityAndCreationTimeWhileReplacingRangeNameAndSummary() throws {
-    store.insert(
+    try store.insert(
       makeFavorite(
         id: "fav-1",
         name: "Dolina",
@@ -115,7 +115,7 @@ final class FavoriteStoreTests: XCTestCase {
     }
 
     let updated = try XCTUnwrap(
-      store.update(
+      try store.update(
         makeFavorite(
           id: "fav-1",
           name: "Dolina single track",
@@ -142,10 +142,10 @@ final class FavoriteStoreTests: XCTestCase {
   }
 
   func testUpdateToNilClearsTheName() throws {
-    store.insert(makeFavorite(id: "fav-1", name: "Dolina", startMs: 1_000, endMs: 2_000))
+    try store.insert(makeFavorite(id: "fav-1", name: "Dolina", startMs: 1_000, endMs: 2_000))
 
     let cleared = try XCTUnwrap(
-      store.update(
+      try store.update(
         makeFavorite(
           id: "fav-1",
           name: nil,
@@ -157,12 +157,12 @@ final class FavoriteStoreTests: XCTestCase {
     )
 
     XCTAssertNil(cleared.name)
-    XCTAssertNil(try XCTUnwrap(store.list().first).name)
+    XCTAssertNil(try XCTUnwrap(try store.list().first).name)
   }
 
   func testUpdateOfAnUnknownFavoriteReportsNoRow() {
     XCTAssertNil(
-      store.update(
+      try store.update(
         makeFavorite(
           id: "missing",
           name: "Nope",
@@ -175,17 +175,17 @@ final class FavoriteStoreTests: XCTestCase {
   }
 
   /// Removing a Favorite unpins it and nothing else: only its own row goes away.
-  func testDeleteRemovesOnlyTheTargetRow() {
-    store.insert(makeFavorite(id: "fav-1", startMs: 1_000, endMs: 2_000))
-    store.insert(makeFavorite(id: "fav-2", startMs: 3_000, endMs: 4_000))
+  func testDeleteRemovesOnlyTheTargetRow() throws {
+    try store.insert(makeFavorite(id: "fav-1", startMs: 1_000, endMs: 2_000))
+    try store.insert(makeFavorite(id: "fav-2", startMs: 3_000, endMs: 4_000))
 
-    XCTAssertTrue(store.delete("fav-1"))
-    XCTAssertEqual(store.list().map(\.id), ["fav-2"])
-    XCTAssertFalse(store.delete("fav-1"))
+    XCTAssertTrue(try store.delete("fav-1"))
+    XCTAssertEqual(try store.list().map(\.id), ["fav-2"])
+    XCTAssertFalse(try store.delete("fav-1"))
   }
 
   func testDeleteRawCascadesFavoriteMediaManifestRows() throws {
-    store.insert(makeFavorite(id: "fav-1", startMs: 1_000, endMs: 2_000))
+    try store.insert(makeFavorite(id: "fav-1", startMs: 1_000, endMs: 2_000))
     try queue.write { db in
       try db.execute(
         sql: """
@@ -196,7 +196,7 @@ final class FavoriteStoreTests: XCTestCase {
       )
     }
 
-    XCTAssertTrue(store.delete("fav-1"))
+    XCTAssertTrue(try store.delete("fav-1"))
     let mediaCount = try queue.read { db in
       try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM favorite_media")
     }

@@ -1,4 +1,4 @@
-import { PauseIcon, PlayIcon } from 'phosphor-react-native'
+import { TargetIcon } from 'phosphor-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LayoutChangeEvent } from 'react-native'
 import { StyleSheet, View } from 'react-native'
@@ -13,7 +13,6 @@ import Animated, {
 } from 'react-native-reanimated'
 import { scheduleOnRN } from 'react-native-worklets'
 
-import { IconButton } from '@/components/base/IconButton'
 import { MonoValue } from '@/components/base/MonoValue'
 import { Text } from '@/components/base/Text'
 import { theme } from '@/constants/theme'
@@ -27,6 +26,9 @@ import {
 const FRAME_INTERVAL_MS = 450
 const INITIAL_FRAME_OFFSET_SECONDS = 30 * 60
 const TIME_FONT_SIZE = 12
+
+/** Same stroke the wrist draws its timeline with: a line, never a pill. */
+const LINE_WIDTH = 2
 
 function pickFrameIndexByX(x: number, width: number, frameCount: number): number {
   'worklet'
@@ -42,6 +44,7 @@ function createRadarScrubGesture({
   gestureFrameIndex,
   progress,
   commitManualFrame,
+  setScrubbing,
 }: {
   enabled: boolean
   frameCount: SharedValue<number>
@@ -49,6 +52,7 @@ function createRadarScrubGesture({
   gestureFrameIndex: SharedValue<number>
   progress: SharedValue<number>
   commitManualFrame: (index: number) => void
+  setScrubbing: (scrubbing: boolean) => void
 }) {
   return Gesture.Pan()
     .enabled(enabled)
@@ -60,6 +64,7 @@ function createRadarScrubGesture({
       cancelAnimation(progress)
       gestureFrameIndex.value = nextIndex
       progress.value = frameCount.value <= 1 ? 1 : nextIndex / (frameCount.value - 1)
+      scheduleOnRN(setScrubbing, true)
       scheduleOnRN(commitManualFrame, nextIndex)
     })
     .onUpdate((event) => {
@@ -74,15 +79,17 @@ function createRadarScrubGesture({
     .onFinalize(() => {
       'worklet'
       gestureFrameIndex.value = -1
+      // Playback picks up from wherever the finger left it: with no transport controls, a scrub
+      // that stopped the animation for good would leave the rider on a frozen frame.
+      scheduleOnRN(setScrubbing, false)
     })
 }
 
 export function WeatherRadarTimeline() {
   const neutral = useResolvedNeutralColors()
   const frames = useRainViewerRadarStore((state) => state.frames)
-  const loading = useRainViewerRadarStore((state) => state.loading)
   const fetchRadar = useRainViewerRadarStore((state) => state.fetch)
-  const [playing, setPlaying] = useState(true)
+  const [scrubbing, setScrubbing] = useState(false)
   const frameCountRef = useRef(0)
   const frameIndexRef = useRef(0)
   const initialFrameSelectedRef = useRef(false)
@@ -140,13 +147,12 @@ export function WeatherRadarTimeline() {
   }, [frameLabel, progress])
 
   const commitManualFrame = useCallback((index: number) => {
-    setPlaying(false)
     instantFrameIndexRef.current = index
     useRainViewerRadarStore.getState().setFrameIndex(index)
   }, [])
 
   useEffect(() => {
-    if (!playing || frames.length <= 1) return undefined
+    if (scrubbing || frames.length <= 1) return undefined
     const interval = setInterval(() => {
       const liveFrameCount = frameCountRef.current
       if (liveFrameCount <= 1) return
@@ -155,14 +161,7 @@ export function WeatherRadarTimeline() {
       useRainViewerRadarStore.getState().setFrameIndex(nextIndex, 'auto')
     }, FRAME_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [frames.length, playing])
-
-  const frameWindowLabel = useMemo(() => {
-    const first = frames[0]
-    const last = frames[frames.length - 1]
-    if (!first || !last) return loading ? 'Loading' : 'No frames'
-    return `${formatRainViewerFrameTime(first.time)}-${formatRainViewerFrameTime(last.time)}`
-  }, [frames, loading])
+  }, [frames.length, scrubbing])
 
   function handleTrackLayout(event: LayoutChangeEvent) {
     trackWidth.value = event.nativeEvent.layout.width
@@ -178,6 +177,7 @@ export function WeatherRadarTimeline() {
         gestureFrameIndex,
         progress,
         commitManualFrame,
+        setScrubbing,
       }),
     [commitManualFrame, frameCount, frames.length, gestureFrameIndex, progress, trackWidth],
   )
@@ -186,96 +186,75 @@ export function WeatherRadarTimeline() {
     width: `${progress.value * 100}%`,
   }))
 
-  const thumbStyle = useAnimatedStyle(() => ({
-    left: `${progress.value * 100}%`,
-  }))
-
   return (
-    <View
-      style={[styles.container, { backgroundColor: neutral.surface, borderColor: neutral.border }]}
-    >
-      <IconButton
-        icon={playing ? PauseIcon : PlayIcon}
-        size="sm"
-        accessibilityLabel={playing ? 'Pause radar animation' : 'Play radar animation'}
-        disabled={frames.length <= 1}
-        onPress={() => setPlaying((value) => !value)}
-      />
-      <View style={styles.timeline}>
-        <View style={styles.timelineHeader}>
-          <MonoValue
-            text={frameLabel}
-            size={TIME_FONT_SIZE}
-            weight="800"
-            color={neutral.textPrimary}
-            style={styles.timeText}
-          />
-          <Text style={[styles.rangeText, { color: neutral.textSecondary }]}>
-            {frameWindowLabel}
-          </Text>
-        </View>
-        <GestureDetector gesture={scrubGesture}>
-          <Animated.View
-            accessibilityRole="adjustable"
-            accessibilityLabel="Radar frame timeline"
-            onLayout={handleTrackLayout}
-            style={styles.track}
-          >
-            <Animated.View style={[styles.fill, fillStyle]} />
-            <Animated.View style={[styles.thumb, thumbStyle]} />
-          </Animated.View>
-        </GestureDetector>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TargetIcon size={16} color={theme.weather.rain} weight="duotone" />
+        <Text style={[styles.title, { color: neutral.textSecondary }]}>Rain radar</Text>
       </View>
+      <MonoValue
+        text={frameLabel}
+        size={TIME_FONT_SIZE}
+        weight="800"
+        color={neutral.textPrimary}
+        align="center"
+      />
+      <GestureDetector gesture={scrubGesture}>
+        <Animated.View
+          accessibilityRole="adjustable"
+          accessibilityLabel="Radar frame timeline"
+          onLayout={handleTrackLayout}
+          style={styles.track}
+        >
+          <View style={[styles.guide, { backgroundColor: neutral.border }]}>
+            <Animated.View style={[styles.fill, fillStyle]} />
+          </View>
+        </Animated.View>
+      </GestureDetector>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
     alignSelf: 'center',
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     marginHorizontal: 16,
-    maxWidth: 520,
-    padding: 8,
-    width: '92%',
+    maxWidth: 300,
+    width: '68%',
   },
-  timeline: {
-    flex: 1,
-    gap: 6,
-  },
-  timelineHeader: {
+  header: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timeText: {
-    width: 64,
-  },
-  rangeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  track: {
-    height: 18,
+    gap: 4,
     justifyContent: 'center',
   },
+  title: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  // Thin line, thick target: the stroke matches the wrist's timeline, but the row stays a
+  // finger tall so a scrub does not have to be aimed at two pixels. The line rides at the top of
+  // that row rather than its middle, so the time reads as the line's label instead of the
+  // header's — the slack all falls below, where nothing else sits.
+  track: {
+    height: 20,
+    justifyContent: 'flex-start',
+    paddingTop: 4,
+  },
+  guide: {
+    borderRadius: 999,
+    height: LINE_WIDTH,
+  },
+  // Inside the guide, not beside it: as a sibling it was positioned against the track box and
+  // drew as a second line above the guide instead of over it.
   fill: {
     backgroundColor: theme.palette.sky.color,
     borderRadius: 999,
-    height: 3,
-  },
-  thumb: {
-    backgroundColor: theme.palette.slate.surfaceDeep,
-    borderColor: theme.palette.sky.light,
-    borderRadius: 6,
-    borderWidth: 2,
-    height: 12,
-    marginLeft: -6,
+    bottom: 0,
+    left: 0,
     position: 'absolute',
-    width: 12,
+    top: 0,
   },
 })

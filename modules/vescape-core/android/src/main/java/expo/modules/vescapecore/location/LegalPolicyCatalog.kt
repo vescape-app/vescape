@@ -3,6 +3,7 @@ package expo.modules.vescapecore.location
 import android.content.Context
 import java.util.Locale
 import org.json.JSONArray
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 
 internal data class LegalPolicySpeeds(
     val warningSpeedKmh: Double,
@@ -15,17 +16,26 @@ internal data class LegalPolicySpeeds(
  * @parity /modules/vescape-core/ios/location/LegalPolicyCatalog.swift
  */
 internal class LegalPolicyCatalog(context: Context) {
+    private var loadFailed = false
     private val rows by lazy {
-        val json = context.assets.open("data/legal-policies.json").bufferedReader().use { it.readText() }
-        parseLegalPolicies(json)
+        try {
+            val json = context.assets.open("data/legal-policies.json").bufferedReader().use { it.readText() }
+            parseLegalPolicies(json).ifEmpty { error("Required Legal Policy catalog is empty") }
+        } catch (error: Exception) {
+            loadFailed = true
+            UnexpectedNativeError.report("legal_policy_catalog_load", "bundled_asset", error)
+            emptyMap()
+        }
     }
 
     val countryCodes: Set<String> get() = rows.keys
+    val isAvailable: Boolean get() { rows; return !loadFailed }
 
     fun speeds(countryCode: String): LegalPolicySpeeds? = rows[countryCode.trim().uppercase(Locale.ROOT)]
 }
 
 internal fun parseLegalPolicies(json: String): Map<String, LegalPolicySpeeds> {
+    // intentional-suppression: catalog owner reports unavailable policy data
     val rows = runCatching { JSONArray(json) }.getOrNull() ?: return emptyMap()
     return buildMap {
         for (index in 0 until rows.length()) {

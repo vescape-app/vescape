@@ -28,18 +28,38 @@ internal final class BatterySocEstimator {
   private static let defaultInternalResistanceMilliOhm = 18
 
   private var presetById: [String: CellPreset] = [:]
+  private var loadAttempted = false
+  private let presetLoader: () -> String?
+
+  init(presetLoader: @escaping () -> String? = BatterySocEstimator.bundledPresetsJson) {
+    self.presetLoader = presetLoader
+  }
 
   var isLoaded: Bool { !presetById.isEmpty }
 
   /// Load presets from the bundled `cell-presets.json` once. No-op if already loaded.
   func ensureLoaded() {
-    guard presetById.isEmpty, let json = Self.bundledPresetsJson() else { return }
+    guard presetById.isEmpty, !loadAttempted else { return }
+    loadAttempted = true
+    guard let json = presetLoader() else {
+      UnexpectedNativeError.report(
+        operation: "battery_soc_catalog_load", category: "bundled_asset", error: CocoaError(.fileNoSuchFile)
+      )
+      return
+    }
     loadPresets(json)
+    if presetById.isEmpty {
+      UnexpectedNativeError.report(
+        operation: "battery_soc_catalog_parse", category: "bundled_asset", error: CocoaError(.fileReadCorruptFile)
+      )
+    }
   }
 
   func loadPresets(_ json: String) {
+    loadAttempted = true
     guard
       let data = json.data(using: .utf8),
+      // intentional-suppression: catalog owner reports unavailable estimator data
       let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let curvesObj = root["curves"] as? [String: Any],
       let cellsArr = root["cells"] as? [[String: Any]]
@@ -174,6 +194,7 @@ internal final class BatterySocEstimator {
       },
     ]
     for case let url? in candidates {
+      // intentional-suppression: catalog owner reports unavailable estimator data
       if let text = try? String(contentsOf: url, encoding: .utf8) { return text }
     }
     return nil

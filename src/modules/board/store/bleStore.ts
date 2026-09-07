@@ -71,6 +71,7 @@ interface BleState {
   metricVersion: number
   telemetryRecordingEnabled: boolean
   telemetryRecordingPaused: boolean
+  recordingFailure: LiveStateEvent['recording']['failure']
   recordDebugSession: boolean
   latestBms: BmsEvent | null
   bmsSeries: BmsSeriesFrame[]
@@ -272,6 +273,7 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
     error: state.board.error ?? state.gps.error ?? state.scan.error ?? undefined,
     telemetryRecordingEnabled: state.recording.enabled,
     telemetryRecordingPaused: state.recording.paused,
+    recordingFailure: state.recording.failure ?? null,
     remoteTilt: state.board.remoteTilt,
     linkIntegrity: state.board.linkIntegrity,
     ...(shouldSeedLiveState || !isBoardConnected
@@ -513,6 +515,7 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   metricVersion: 0,
   telemetryRecordingEnabled: false,
   telemetryRecordingPaused: false,
+  recordingFailure: null,
   recordDebugSession: false,
   latestBms: null,
   bmsSeries: [],

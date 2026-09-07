@@ -1,0 +1,22 @@
+{
+  "scenarios": [
+    {
+      "name": "deterministic-write-failure",
+      "sqliteCode": 1,
+      "expectedKind": "write_failed",
+      "storageUnavailable": false
+    },
+    {
+      "name": "full-disk",
+      "sqliteCode": 13,
+      "expectedKind": "full_disk",
+      "storageUnavailable": true
+    },
+    {
+      "name": "disk-io-failure",
+      "sqliteCode": 10,
+      "expectedKind": "storage_unavailable",
+      "storageUnavailable": true
+    }
+  ]
+}

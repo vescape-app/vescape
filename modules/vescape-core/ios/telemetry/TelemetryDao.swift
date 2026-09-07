@@ -2,99 +2,29 @@ import Foundation
 import GRDB
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
-internal func insertFrame(_ db: Database, _ state: FullTelemetryState, recordingId: String?) throws {
-  let t = state.t
-  try db.execute(
-    sql: """
-      INSERT INTO telemetry_frames (
-        captured_at_ms, elapsed_realtime_ms, board_id, recording_id, can_id, flags,
-        changed_mask_1, changed_mask_2,
-        speed_centi_kmh, battery_voltage_mv, motor_current_ma, battery_current_ma, duty_permille,
-        pitch_centi_deg, roll_centi_deg, balance_pitch_centi_deg, balance_current_ma, erpm, state,
-        switch_state, adc1_milli, adc2_milli, odometer_cm, temp_mosfet_deci_c, temp_motor_deci_c
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      """,
-    arguments: [
-      state.capturedAtMs, state.elapsedRealtimeMs, state.boardId, recordingId, state.capture.canId,
-      TELEMETRY_FLAG_KEYFRAME,
-      Int.max, 0,
-      telemetryCenti(t.speed), telemetryMilli(t.batteryVoltage), telemetryMilli(t.motorCurrent), telemetryMilli(t.batteryCurrent), telemetryMilli(t.dutyCycle),
-      telemetryCenti(t.pitch), telemetryCenti(t.roll), telemetryCenti(t.balancePitch), telemetryMilli(t.balanceCurrent), t.erpm, t.state,
-      t.switchState, telemetryMilli(t.adc1), telemetryMilli(t.adc2), t.odometer.map { Int64(($0 * 100.0).rounded()) },
-      t.tempMosfet.map { telemetryDeci($0) }, t.tempMotor.map { telemetryDeci($0) },
-    ]
-  )
+internal func insertFrame(_ db: Database, _ state: FullTelemetryState) throws {
+  try TelemetryFrameRecord(state: state).insert(db)
 }
 
-internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
-  try db.execute(
-    sql: """
-      INSERT INTO telemetry_minute_buckets (
-        bucket_start_ms, board_id, recording_id, sample_count, first_sample_at_ms, last_sample_at_ms,
-        sum_abs_speed_centi_kmh, moving_speed_sample_count, sum_moving_abs_speed_centi_kmh,
-        max_abs_speed_centi_kmh, min_battery_voltage_mv, max_motor_current_abs_ma,
-        max_battery_current_abs_ma, battery_used_wh_milli, battery_regen_wh_milli, max_duty_abs_permille,
-        first_odometer_cm, last_odometer_cm, gps_point_count, precise_gps_point_count,
-        gps_distance_cm, max_gps_speed_centi_mps, max_temp_mosfet_deci_c, max_temp_motor_deci_c,
-        first_latitude_e7, first_longitude_e7, first_moving_at_ms, last_moving_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(bucket_start_ms, board_id, recording_id) DO UPDATE SET
-        sample_count=telemetry_minute_buckets.sample_count + excluded.sample_count,
-        last_sample_at_ms=MAX(telemetry_minute_buckets.last_sample_at_ms, excluded.last_sample_at_ms),
-        sum_abs_speed_centi_kmh=telemetry_minute_buckets.sum_abs_speed_centi_kmh + excluded.sum_abs_speed_centi_kmh,
-        moving_speed_sample_count=telemetry_minute_buckets.moving_speed_sample_count + excluded.moving_speed_sample_count,
-        sum_moving_abs_speed_centi_kmh=telemetry_minute_buckets.sum_moving_abs_speed_centi_kmh + excluded.sum_moving_abs_speed_centi_kmh,
-        max_abs_speed_centi_kmh=MAX(telemetry_minute_buckets.max_abs_speed_centi_kmh, excluded.max_abs_speed_centi_kmh),
-        min_battery_voltage_mv=MIN(telemetry_minute_buckets.min_battery_voltage_mv, excluded.min_battery_voltage_mv),
-        max_motor_current_abs_ma=MAX(telemetry_minute_buckets.max_motor_current_abs_ma, excluded.max_motor_current_abs_ma),
-        max_battery_current_abs_ma=MAX(telemetry_minute_buckets.max_battery_current_abs_ma, excluded.max_battery_current_abs_ma),
-        battery_used_wh_milli=telemetry_minute_buckets.battery_used_wh_milli + excluded.battery_used_wh_milli,
-        battery_regen_wh_milli=telemetry_minute_buckets.battery_regen_wh_milli + excluded.battery_regen_wh_milli,
-        max_duty_abs_permille=MAX(telemetry_minute_buckets.max_duty_abs_permille, excluded.max_duty_abs_permille),
-        last_odometer_cm=COALESCE(excluded.last_odometer_cm, telemetry_minute_buckets.last_odometer_cm),
-        -- The two streams flush on their own clocks, so a minute's first flush can carry frames and
-        -- no fix at all. Without this the bucket's route point would stay NULL forever even though a
-        -- fix arrived in the very next flush of the same minute.
-        first_latitude_e7=COALESCE(telemetry_minute_buckets.first_latitude_e7, excluded.first_latitude_e7),
-        first_longitude_e7=COALESCE(telemetry_minute_buckets.first_longitude_e7, excluded.first_longitude_e7),
-        gps_point_count=telemetry_minute_buckets.gps_point_count + excluded.gps_point_count,
-        precise_gps_point_count=telemetry_minute_buckets.precise_gps_point_count + excluded.precise_gps_point_count,
-        gps_distance_cm=telemetry_minute_buckets.gps_distance_cm + excluded.gps_distance_cm,
-        max_gps_speed_centi_mps=MAX(telemetry_minute_buckets.max_gps_speed_centi_mps, excluded.max_gps_speed_centi_mps),
-        max_temp_mosfet_deci_c=MAX(telemetry_minute_buckets.max_temp_mosfet_deci_c, excluded.max_temp_mosfet_deci_c),
-        max_temp_motor_deci_c=MAX(telemetry_minute_buckets.max_temp_motor_deci_c, excluded.max_temp_motor_deci_c),
-        first_moving_at_ms=MIN(telemetry_minute_buckets.first_moving_at_ms, excluded.first_moving_at_ms),
-        last_moving_at_ms=MAX(telemetry_minute_buckets.last_moving_at_ms, excluded.last_moving_at_ms)
-      """,
-    arguments: [
-      b.bucketStartMs, b.boardId, b.recordingId, b.sampleCount, b.firstSampleAtMs, b.lastSampleAtMs,
-      b.sumAbsSpeedCentiKmh, b.movingSpeedSampleCount, b.sumMovingAbsSpeedCentiKmh, b.maxAbsSpeedCentiKmh,
-      b.minBatteryVoltageMv, b.maxMotorCurrentAbsMa, b.maxBatteryCurrentAbsMa, b.batteryUsedWhMilli,
-      b.batteryRegenWhMilli, b.maxDutyAbsPermille, b.firstOdometerCm, b.lastOdometerCm,
-      b.gpsPointCount, b.preciseGpsPointCount, b.gpsDistanceCm, b.maxGpsSpeedCentiMps, b.maxTempMosfetDeciC,
-      b.maxTempMotorDeciC, b.firstLatitudeE7, b.firstLongitudeE7, b.firstMovingAtMs, b.lastMovingAtMs,
-    ]
-  )
-}
-
-internal func insertMarker(_ db: Database, _ marker: [String: Any?]) throws {
-  let occurredAtMs = telemetryLong(marker["occurredAtMs"] ?? nil) ?? telemetryNowMs()
-  let elapsedRealtimeMs = telemetryLong(marker["elapsedRealtimeMs"] ?? nil) ?? telemetryElapsedMs()
-  let type = marker["type"] as? String ?? "event"
-  let boardId = marker["boardId"] as? String
-  let message = marker["message"] as? String
-  let gapMs = telemetryLong(marker["gapMs"] ?? nil)
-  try db.execute(
-    sql: "INSERT INTO telemetry_markers (occurred_at_ms, elapsed_realtime_ms, type, board_id, message, gap_ms) VALUES (?, ?, ?, ?, ?, ?)",
-    arguments: [occurredAtMs, elapsedRealtimeMs, type, boardId, message, gapMs]
-  )
-}
-
-internal func insertExclusion(_ db: Database, _ range: MetricExclusionRange) throws {
-  try db.execute(
-    sql: "INSERT INTO metric_exclusion_ranges (board_id, reason, start_ms, end_ms, sample_count) VALUES (?, ?, ?, ?, ?)",
-    arguments: [range.boardId, range.reason, range.startMs, range.endMs, range.sampleCount]
-  )
+private struct TelemetryFrameRecord: PersistableRecord {
+  static let databaseTableName = "telemetry_frames"
+  let state: FullTelemetryState
+  func encode(to row: inout PersistenceContainer) {
+    let t = state.t
+    row["captured_at_ms"] = state.capturedAtMs; row["elapsed_realtime_ms"] = state.elapsedRealtimeMs
+    row["board_id"] = state.boardId; row["recording_id"] = state.recordingId; row["can_id"] = state.capture.canId
+    row["flags"] = TELEMETRY_FLAG_KEYFRAME
+    row["changed_mask_1"] = Int.max; row["changed_mask_2"] = 0
+    row["speed_centi_kmh"] = telemetryCenti(t.speed); row["battery_voltage_mv"] = telemetryMilli(t.batteryVoltage)
+    row["motor_current_ma"] = telemetryMilli(t.motorCurrent); row["battery_current_ma"] = telemetryMilli(t.batteryCurrent)
+    row["duty_permille"] = telemetryMilli(t.dutyCycle); row["pitch_centi_deg"] = telemetryCenti(t.pitch)
+    row["roll_centi_deg"] = telemetryCenti(t.roll); row["balance_pitch_centi_deg"] = telemetryCenti(t.balancePitch)
+    row["balance_current_ma"] = telemetryMilli(t.balanceCurrent); row["erpm"] = t.erpm
+    row["state"] = t.state; row["switch_state"] = t.switchState
+    row["adc1_milli"] = telemetryMilli(t.adc1); row["adc2_milli"] = telemetryMilli(t.adc2)
+    row["odometer_cm"] = t.odometer.map { Int64(($0 * 100.0).rounded()) }
+    row["temp_mosfet_deci_c"] = t.tempMosfet.map { telemetryDeci($0) }; row["temp_motor_deci_c"] = t.tempMotor.map { telemetryDeci($0) }
+  }
 }
 
 /// [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028).
@@ -213,24 +143,6 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   ]
 }
 
-/// Rebuild a bucket point from a stored frame. Position is not part of it: the Ride Track is its
-/// own stream, and the sanitizers that need a fix read that stream directly (ADR 0038).
-internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
-  BucketTelemetryPoint(
-    capturedAtMs: row["captured_at_ms"] as Int64,
-    boardId: row["board_id"] as String?,
-    recordingId: (row["recording_id"] as String?) ?? LEGACY_RIDE_RECORDING_ID,
-    speedCentiKmh: row["speed_centi_kmh"] as Int? ?? 0,
-    batteryVoltageMv: row["battery_voltage_mv"] as Int? ?? 0,
-    motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,
-    batteryCurrentMa: row["battery_current_ma"] as Int? ?? 0,
-    dutyPermille: row["duty_permille"] as Int? ?? 0,
-    odometerCm: row["odometer_cm"] as Int64?,
-    tempMosfetDeciC: row["temp_mosfet_deci_c"] as Int?,
-    tempMotorDeciC: row["temp_motor_deci_c"] as Int?
-  )
-}
-
 internal func appendNullableDouble(_ data: inout Data, _ value: Double?) {
   appendDouble(&data, value ?? Double.nan)
 }
@@ -240,16 +152,6 @@ internal func appendDouble(_ data: inout Data, _ value: Double) {
   withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
 }
 
-internal func telemetryHaversineM(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
-  let radius = 6_371_000.0
-  let dLat = (lat2 - lat1) * .pi / 180.0
-  let dLon = (lon2 - lon1) * .pi / 180.0
-  let a = sin(dLat / 2) * sin(dLat / 2) +
-    cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0) *
-    sin(dLon / 2) * sin(dLon / 2)
-  return radius * 2 * atan2(sqrt(a), sqrt(1 - a))
-}
-
 internal func mergeTelemetryPayload(_ lhs: [String: Any?], _ rhs: [String: Any?]) -> [String: Any?] {
   lhs.merging(rhs) { _, new in new }
 }
@@ -257,11 +159,6 @@ internal func mergeTelemetryPayload(_ lhs: [String: Any?], _ rhs: [String: Any?]
 internal func telemetryCenti(_ value: Double) -> Int { Int((value * 100.0).rounded()) }
 internal func telemetryMilli(_ value: Double) -> Int { Int((value * 1000.0).rounded()) }
 internal func telemetryDeci(_ value: Double) -> Int { Int((value * 10.0).rounded()) }
-internal func telemetryMaxOptional(_ lhs: Int?, _ rhs: Int?) -> Int? {
-  guard let rhs else { return lhs }
-  return max(lhs ?? rhs, rhs)
-}
-internal func telemetryNowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000.0) }
 internal func telemetryElapsedMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000.0) }
 internal func telemetryInt(_ raw: Any?) -> Int? {
   if let value = raw as? Int { return value }

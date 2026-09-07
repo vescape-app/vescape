@@ -49,7 +49,7 @@ final class BatteryConfigMismatchDetector {
   /// warning payload to report, or nil when nothing should be reported this frame (no cells, the
   /// count is not yet stable, no configured series to compare against, the counts match, or this
   /// exact mismatch pair was already reported).
-  func onFrame(bmsCellCount: Int, configuredSeries: Int?) -> String? {
+  func onFrame(bmsCellCount: Int, configuredSeries: Int?) throws -> String? {
     if bmsCellCount <= 0 { return nil }
     if bmsCellCount == runValue {
       runLen += 1
@@ -70,7 +70,7 @@ final class BatteryConfigMismatchDetector {
     fired = true
     reportedCount = bmsCellCount
     reportedSeries = configuredSeries
-    return payloadJson(bmsCellCount: bmsCellCount, configuredSeries: configuredSeries)
+    return try payloadJson(bmsCellCount: bmsCellCount, configuredSeries: configuredSeries)
   }
 
   /// At session end: report a clean evaluation only when a stable BMS count was compared against a
@@ -78,8 +78,8 @@ final class BatteryConfigMismatchDetector {
   /// `evaluated` false, so a previously stored warning is left untouched.
   func sessionEndClean() -> Bool { evaluated && !fired }
 
-  private func payloadJson(bmsCellCount: Int, configuredSeries: Int) -> String {
-    BoardWarningPayload.json([
+  private func payloadJson(bmsCellCount: Int, configuredSeries: Int) throws -> String {
+    try BoardWarningPayload.json([
       "bmsCellCount": bmsCellCount,
       "configuredSeries": configuredSeries,
     ])
