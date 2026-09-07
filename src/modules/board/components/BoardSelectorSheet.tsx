@@ -257,20 +257,19 @@ export function BoardSelectorContent({
         </Pressable>
       ))}
 
-      {/* Adding a board is an action under the picker, not another board in it — with nothing to
-          divide it from, it drops the rule and stands alone. */}
-      <View style={[styles.footer, boards.length === 0 && styles.footerBare]}>
-        <Pressable
-          style={({ pressed }) => [styles.footerButton, pressed && styles.rowPressed]}
-          onPress={onAddBoard}
-          testID="board-selector-add-board"
-          accessibilityRole="button"
-          accessibilityLabel="Add new board"
-        >
-          <PlusIcon size={13} color={theme.palette.sky.color} weight="bold" />
-          <Text style={styles.footerText}>Add new board</Text>
-        </Pressable>
-      </View>
+      {/* The last row in the list, only lighter — it is where a board would go, not a board. */}
+      <Pressable
+        style={({ pressed }) => [styles.row, styles.addRow, pressed && styles.rowPressed]}
+        onPress={onAddBoard}
+        testID="board-selector-add-board"
+        accessibilityRole="button"
+        accessibilityLabel="Add new board"
+      >
+        <View style={styles.addIcon}>
+          <PlusIcon size={14} color={theme.palette.sky.color} weight="bold" />
+        </View>
+        <Text style={styles.addText}>Add new board</Text>
+      </Pressable>
     </View>
   )
 }
@@ -422,28 +421,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  footer: {
-    marginTop: 4,
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: theme.alpha(theme.neutral.border, 0.6),
-  },
-  footerBare: {
-    marginTop: 0,
-    paddingTop: 0,
-    borderTopWidth: 0,
-  },
-  footerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 11,
+  addRow: {
+    paddingVertical: 8,
     borderRadius: 10,
   },
-  footerText: {
+  // A board row's tile, thinned down to an outline: same place, less weight.
+  addIcon: {
+    width: 28,
+    height: 28,
+    marginHorizontal: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.alpha(theme.neutral.border, 0.6),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addText: {
     color: theme.palette.sky.color,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 })
