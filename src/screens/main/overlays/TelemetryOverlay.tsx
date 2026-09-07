@@ -205,6 +205,7 @@ export function TelemetryOverlay({
             onSelectBoard={onSelectBoard}
             onAddBoard={onAddBoard}
             onDisconnect={onStopScan}
+            onConnect={onRetryConnect}
             onWeatherPress={onEnterWeather}
             activeNavigationTarget={activeNavigationTarget}
             onNavigationPress={onEnterMapFocus}

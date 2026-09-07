@@ -1,9 +1,7 @@
 import { forwardRef, type RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
-  CaretDownIcon,
   EngineIcon,
-  PencilSimpleIcon,
   PowerIcon,
   RecordIcon,
   WarningDiamondIcon,
@@ -27,8 +25,9 @@ interface BoardPillProps {
   bleStatus: string
   replay?: boolean
   onOpenSelector: () => void
-  onEdit?: () => void
   onDisconnect: () => void
+  /** Starts a connection while the board is idle; absent when there is no board to reach. */
+  onConnect?: () => void
   onStopRecording?: () => void
   warning?: PillAction & { severity: BoardWarningSeverity }
   fault?: PillAction
@@ -42,8 +41,8 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
     bleStatus,
     replay,
     onOpenSelector,
-    onEdit,
     onDisconnect,
+    onConnect,
     onStopRecording,
     warning,
     fault,
@@ -77,15 +76,9 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         <Text style={styles.boardText} numberOfLines={1}>
           {name ?? 'No board'}
         </Text>
-        <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
       </Pressable>
-      <BoardPillButton
-        icon={PencilSimpleIcon}
-        onPress={onEdit}
-        label="Edit board"
-        testID="board-edit-button"
-      />
-      {canDisconnect && (
+      {/* One power key: red while there is a link to cut, quiet gray while there is one to open. */}
+      {canDisconnect ? (
         <BoardPillButton
           icon={PowerIcon}
           onPress={onDisconnect}
@@ -93,7 +86,15 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
           testID="board-disconnect-button"
           color={theme.status.error.color}
         />
-      )}
+      ) : onConnect ? (
+        <BoardPillButton
+          icon={PowerIcon}
+          onPress={onConnect}
+          label="Connect board"
+          testID="board-connect-button"
+          color={theme.control.textMuted}
+        />
+      ) : null}
       {onStopRecording && (
         <BoardPillButton
           icon={RecordIcon}
@@ -186,8 +187,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     alignItems: 'center',
     gap: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
+    paddingHorizontal: 12,
     minHeight: 38,
     minWidth: 0,
     overflow: 'hidden',
@@ -200,7 +200,13 @@ const styles = StyleSheet.create({
     maxWidth: 180,
     flexShrink: 1,
   },
-  divider: { width: 1, height: 20, backgroundColor: theme.control.divider },
+  // Runs the pill's full height rather than floating in the middle of it — same rule as the
+  // board selector's links strip and the settings status strip.
+  divider: {
+    width: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    backgroundColor: theme.control.divider,
+  },
   button: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.4 },
   pressed: { opacity: 0.7 },

@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import type { BoardWarning } from 'vescape-core'
 
-import { parseWarningDetail, warningTitle, worstSeverity } from '@/modules/board/lib/boardWarnings'
+import {
+  parseWarningDetail,
+  pendingWarnings,
+  warningTitle,
+  worstSeverity,
+} from '@/modules/board/lib/boardWarnings'
 
 function warning(overrides: Partial<BoardWarning>): BoardWarning {
   return {
@@ -99,4 +104,20 @@ describe('parseWarningDetail', () => {
   test('config kind with malformed payload renders no rows', () => {
     expect(parseWarningDetail('hv-pushback-high', '{"param":"tiltback_hv"}')).toEqual([])
   })
+})
+
+test('pending warnings drop dismissed kinds without touching the list the sheet renders', () => {
+  const warnings: BoardWarning[] = [
+    warning({ kind: 'cell-spread', severity: 'critical' }),
+    warning({ kind: 'footpad-disabled', severity: 'warn' }),
+  ]
+
+  expect(pendingWarnings(warnings, undefined)).toBe(warnings)
+  expect(pendingWarnings(warnings, [])).toBe(warnings)
+  expect(pendingWarnings(warnings, ['cell-spread']).map((w) => w.kind)).toEqual([
+    'footpad-disabled',
+  ])
+  // The dismissed critical no longer speaks for the board's severity.
+  expect(worstSeverity(pendingWarnings(warnings, ['cell-spread']))).toBe('warn')
+  expect(worstSeverity(pendingWarnings(warnings, ['cell-spread', 'footpad-disabled']))).toBeNull()
 })

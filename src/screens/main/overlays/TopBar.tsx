@@ -16,6 +16,8 @@ import { IconButton } from '@/components/base/IconButton'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
+import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
+import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
 import { routes } from '@/navigation/routes'
@@ -46,6 +48,7 @@ interface TopBarProps {
   onSelectBoard: (id: string) => void
   onAddBoard: () => void
   onDisconnect: () => void
+  onConnect: () => void
   onWeatherPress?: () => void
   activeNavigationTarget: MapSelection | null
   onNavigationPress: () => void
@@ -60,6 +63,7 @@ export function TopBar({
   onSelectBoard,
   onAddBoard,
   onDisconnect,
+  onConnect,
   onWeatherPress,
   activeNavigationTarget,
   onNavigationPress,
@@ -70,7 +74,16 @@ export function TopBar({
   const boardPillMaxWidth = width - 116
   const pillRef = useRef<View>(null)
   const socialRef = useRef<View>(null)
+  const warningRef = useRef<View>(null)
+  const faultRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
+  const [warningsOpen, setWarningsOpen] = useState(false)
+  const [faultsOpen, setFaultsOpen] = useState(false)
+  // What the selector was asked for on its way out. Presenting a modal while another is still
+  // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
+  const pendingExit = useRef<{ kind: 'warnings' | 'faults' | 'edit'; boardId?: string } | null>(
+    null,
+  )
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -82,6 +95,8 @@ export function TopBar({
   // Faults belong to whichever board the live session writes under — a replay's synthetic board
   // while it plays, the selected board otherwise.
   const sessionBoardId = isReplay ? connectedId : activeBoardId
+  // Read once here: the pill wears the badges, the selector offers the same two ways in.
+  const issues = useBoardIssues(activeBoardId, sessionBoardId)
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
   const weather = useWeatherStore((s) => s.weather)
@@ -127,13 +142,17 @@ export function TopBar({
               boardPill={
                 <ConnectedBoardPill
                   maxWidth={boardPillMaxWidth}
-                  activeBoardId={activeBoardId}
                   activeBoard={activeBoard}
                   bleStatus={bleStatus}
                   isReplay={isReplay}
-                  sessionBoardId={sessionBoardId}
+                  issues={issues}
+                  warningTriggerRef={warningRef}
+                  faultTriggerRef={faultRef}
+                  onOpenWarnings={() => setWarningsOpen(true)}
+                  onOpenFaults={() => setFaultsOpen(true)}
                   onOpenSelector={() => setSelectorOpen(true)}
                   onDisconnect={onDisconnect}
+                  onConnect={onConnect}
                 />
               }
               maxWidth={Math.min(boardPillMaxWidth, 240)}
@@ -151,13 +170,17 @@ export function TopBar({
           <ConnectedBoardPill
             ref={pillRef}
             maxWidth={boardPillMaxWidth}
-            activeBoardId={activeBoardId}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
             isReplay={isReplay}
-            sessionBoardId={sessionBoardId}
+            issues={issues}
+            warningTriggerRef={warningRef}
+            faultTriggerRef={faultRef}
+            onOpenWarnings={() => setWarningsOpen(true)}
+            onOpenFaults={() => setFaultsOpen(true)}
             onOpenSelector={() => setSelectorOpen(true)}
             onDisconnect={onDisconnect}
+            onConnect={onConnect}
           />
         )}
         {/* The gear wears whatever is happening inside the drawer — a required update, or a
@@ -220,7 +243,39 @@ export function TopBar({
         boards={boards}
         activeBoardId={activeBoardId}
         activeBoardLive={bleStatus === 'connected' || bleStatus === 'stale'}
-        onClose={() => setSelectorOpen(false)}
+        warnings={
+          issues.warningsEnabled && activeBoardId
+            ? {
+                count: issues.warningCount,
+                severity: issues.severity,
+                onPress: () => {
+                  pendingExit.current = { kind: 'warnings' }
+                  setSelectorOpen(false)
+                },
+              }
+            : undefined
+        }
+        faults={
+          issues.faultsEnabled && sessionBoardId
+            ? {
+                count: issues.faultCount,
+                onPress: () => {
+                  pendingExit.current = { kind: 'faults' }
+                  setSelectorOpen(false)
+                },
+              }
+            : undefined
+        }
+        onClose={() => {
+          setSelectorOpen(false)
+          const exit = pendingExit.current
+          pendingExit.current = null
+          if (exit?.kind === 'warnings') setWarningsOpen(true)
+          if (exit?.kind === 'faults') setFaultsOpen(true)
+          if (exit?.kind === 'edit' && exit.boardId) {
+            router.push({ pathname: routes.editBoard, params: { boardId: exit.boardId } })
+          }
+        }}
         onSelectBoard={(id) => {
           onSelectBoard(id)
           setSelectorOpen(false)
@@ -229,6 +284,22 @@ export function TopBar({
           setSelectorOpen(false)
           onAddBoard()
         }}
+        onEditBoard={(id) => {
+          pendingExit.current = { kind: 'edit', boardId: id }
+          setSelectorOpen(false)
+        }}
+      />
+
+      <BoardIssueDrawers
+        issues={issues}
+        activeBoardId={activeBoardId}
+        sessionBoardId={sessionBoardId}
+        warningsOpen={warningsOpen}
+        faultsOpen={faultsOpen}
+        warningTriggerRef={warningRef}
+        faultTriggerRef={faultRef}
+        onCloseWarnings={() => setWarningsOpen(false)}
+        onCloseFaults={() => setFaultsOpen(false)}
       />
     </View>
   )
