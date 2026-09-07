@@ -26,6 +26,8 @@ interface BoardPillProps {
   replay?: boolean
   onOpenSelector: () => void
   onDisconnect: () => void
+  /** Starts a connection while the board is idle; absent when there is no board to reach. */
+  onConnect?: () => void
   onStopRecording?: () => void
   warning?: PillAction & { severity: BoardWarningSeverity }
   fault?: PillAction
@@ -40,6 +42,7 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
     replay,
     onOpenSelector,
     onDisconnect,
+    onConnect,
     onStopRecording,
     warning,
     fault,
@@ -74,7 +77,8 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
           {name ?? 'No board'}
         </Text>
       </Pressable>
-      {canDisconnect && (
+      {/* One power key: red while there is a link to cut, quiet gray while there is one to open. */}
+      {canDisconnect ? (
         <BoardPillButton
           icon={PowerIcon}
           onPress={onDisconnect}
@@ -82,7 +86,15 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
           testID="board-disconnect-button"
           color={theme.status.error.color}
         />
-      )}
+      ) : onConnect ? (
+        <BoardPillButton
+          icon={PowerIcon}
+          onPress={onConnect}
+          label="Connect board"
+          testID="board-connect-button"
+          color={theme.control.textMuted}
+        />
+      ) : null}
       {onStopRecording && (
         <BoardPillButton
           icon={RecordIcon}

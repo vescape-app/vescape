@@ -48,6 +48,7 @@ interface TopBarProps {
   onSelectBoard: (id: string) => void
   onAddBoard: () => void
   onDisconnect: () => void
+  onConnect: () => void
   onWeatherPress?: () => void
   activeNavigationTarget: MapSelection | null
   onNavigationPress: () => void
@@ -62,6 +63,7 @@ export function TopBar({
   onSelectBoard,
   onAddBoard,
   onDisconnect,
+  onConnect,
   onWeatherPress,
   activeNavigationTarget,
   onNavigationPress,
@@ -150,6 +152,7 @@ export function TopBar({
                   onOpenFaults={() => setFaultsOpen(true)}
                   onOpenSelector={() => setSelectorOpen(true)}
                   onDisconnect={onDisconnect}
+                  onConnect={onConnect}
                 />
               }
               maxWidth={Math.min(boardPillMaxWidth, 240)}
@@ -177,6 +180,7 @@ export function TopBar({
             onOpenFaults={() => setFaultsOpen(true)}
             onOpenSelector={() => setSelectorOpen(true)}
             onDisconnect={onDisconnect}
+            onConnect={onConnect}
           />
         )}
         {/* The gear wears whatever is happening inside the drawer — a required update, or a

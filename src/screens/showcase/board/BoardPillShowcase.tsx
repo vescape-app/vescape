@@ -86,6 +86,7 @@ export function BoardPillShowcase() {
           bleStatus={status}
           replay={replay}
           onOpenSelector={() => setLastAction('Open board selector')}
+          onConnect={selected ? () => setLastAction('Connect board') : undefined}
           onDisconnect={() => {
             setStatus('idle')
             setLastAction('Board disconnected')

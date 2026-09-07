@@ -20,6 +20,7 @@ interface ConnectedBoardPillProps {
   onOpenFaults: () => void
   onOpenSelector: () => void
   onDisconnect: () => void
+  onConnect?: () => void
 }
 
 /** Store subscriptions and drawer intents stay outside the pill's presentation. */
