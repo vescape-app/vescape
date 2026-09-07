@@ -66,13 +66,12 @@ internal enum RecordingStorageFailure {
   private static var outageListener: (() -> Void)?
   private static let reporter = NativeFailureReporter { report in
 #if canImport(Sentry)
-    SentrySDK.capture(message: "Local persistence operation failed") { scope in
-      scope.setLevel(.error)
-      scope.setFingerprint(["persistence", report.category, report.operation])
-      scope.setTag(value: report.operation, key: "persistence.operation")
-      scope.setTag(value: report.category, key: "persistence.category")
-      scope.setExtra(value: report.errorType, key: "persistence.error_type")
-    }
+    let event = Event(level: .error)
+    event.message = SentryMessage(formatted: "Local persistence operation failed")
+    event.fingerprint = ["persistence", report.category, report.operation]
+    event.tags = ["persistence.operation": report.operation, "persistence.category": report.category]
+    event.extra = ["persistence.error_type": report.errorType]
+    SentrySDK.capture(event: event)
 #endif
   }
 

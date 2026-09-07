@@ -37,14 +37,13 @@ internal final class NativeFailureReporter {
 internal enum UnexpectedNativeError {
   private static let reporter = NativeFailureReporter { report in
 #if canImport(Sentry)
-    SentrySDK.capture(message: "Native operation failed") { scope in
-      scope.setLevel(.error)
-      scope.setFingerprint(["native", report.category, report.operation])
-      scope.setTag(value: report.operation, key: "native.operation")
-      scope.setTag(value: report.category, key: "native.category")
-      scope.setExtra(value: report.errorType, key: "native.error_type")
-      if let code = report.errorCode { scope.setExtra(value: code, key: "native.error_code") }
-    }
+    let event = Event(level: .error)
+    event.message = SentryMessage(formatted: "Native operation failed")
+    event.fingerprint = ["native", report.category, report.operation]
+    event.tags = ["native.operation": report.operation, "native.category": report.category]
+    event.extra = ["native.error_type": report.errorType]
+    if let code = report.errorCode { event.extra?["native.error_code"] = code }
+    SentrySDK.capture(event: event)
 #endif
   }
 
