@@ -115,11 +115,11 @@ export function BoardSelectorSheetShowcase() {
 }
 
 const styles = StyleSheet.create({
-  // The floating shell the real sheet wears, so spacing reads the same as on the map.
+  // The drawer the real selector lives in: full width, so the active card's extra width over the
+  // list column reads the same here as on the map.
   sheet: {
-    alignSelf: 'center',
-    width: 300,
-    paddingVertical: 8,
+    alignSelf: 'stretch',
+    padding: 12,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.neutral.border,

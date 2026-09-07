@@ -177,7 +177,7 @@ export function BoardSelectorContent({
   const others = boards.filter((b) => b.id !== active?.id)
 
   return (
-    <View style={styles.frame}>
+    <>
       {active && (
         <View style={styles.activeBlock}>
           <View style={styles.row}>
@@ -228,49 +228,51 @@ export function BoardSelectorContent({
         </View>
       )}
 
-      {others.map((board) => (
-        <Pressable
-          key={board.id}
-          style={({ pressed }) => [styles.row, styles.listRow, pressed && styles.rowPressed]}
-          onPress={() => onSelectBoard(board.id)}
-          accessibilityRole="button"
-          accessibilityLabel={`Select ${board.name}`}
-        >
-          <BoardIcon active={false} />
-          <View style={styles.rowInfo}>
-            <Text style={styles.boardName} numberOfLines={1}>
-              {board.name}
-            </Text>
-            <View style={styles.metaLine}>
-              <StaleMeta board={board} />
-            </View>
-          </View>
-          {/* Renaming a board should not cost a connection attempt first. */}
+      <View style={styles.frame}>
+        {others.map((board) => (
           <Pressable
-            onPress={() => onEditBoard(board.id)}
-            hitSlop={8}
+            key={board.id}
+            style={({ pressed }) => [styles.row, styles.listRow, pressed && styles.rowPressed]}
+            onPress={() => onSelectBoard(board.id)}
             accessibilityRole="button"
-            accessibilityLabel={`Edit ${board.name}`}
+            accessibilityLabel={`Select ${board.name}`}
           >
-            <PencilSimpleIcon size={15} color={theme.neutral.textDim} weight="bold" />
+            <BoardIcon active={false} />
+            <View style={styles.rowInfo}>
+              <Text style={styles.boardName} numberOfLines={1}>
+                {board.name}
+              </Text>
+              <View style={styles.metaLine}>
+                <StaleMeta board={board} />
+              </View>
+            </View>
+            {/* Renaming a board should not cost a connection attempt first. */}
+            <Pressable
+              onPress={() => onEditBoard(board.id)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${board.name}`}
+            >
+              <PencilSimpleIcon size={15} color={theme.neutral.textDim} weight="bold" />
+            </Pressable>
           </Pressable>
-        </Pressable>
-      ))}
+        ))}
 
-      {/* The last row in the list, only lighter — it is where a board would go, not a board. */}
-      <Pressable
-        style={({ pressed }) => [styles.row, styles.addRow, pressed && styles.rowPressed]}
-        onPress={onAddBoard}
-        testID="board-selector-add-board"
-        accessibilityRole="button"
-        accessibilityLabel="Add new board"
-      >
-        <View style={styles.addIcon}>
-          <PlusIcon size={16} color={theme.palette.sky.color} weight="bold" />
-        </View>
-        <Text style={styles.addText}>Add new board</Text>
-      </Pressable>
-    </View>
+        {/* The last row in the list, only lighter — it is where a board would go, not a board. */}
+        <Pressable
+          style={({ pressed }) => [styles.row, styles.addRow, pressed && styles.rowPressed]}
+          onPress={onAddBoard}
+          testID="board-selector-add-board"
+          accessibilityRole="button"
+          accessibilityLabel="Add new board"
+        >
+          <View style={styles.addIcon}>
+            <PlusIcon size={16} color={theme.palette.sky.color} weight="bold" />
+          </View>
+          <Text style={styles.addText}>Add new board</Text>
+        </Pressable>
+      </View>
+    </>
   )
 }
 
@@ -297,15 +299,16 @@ export function BoardSelectorSheet({
 }
 
 const styles = StyleSheet.create({
-  // The drawer is full width; the picker is not. Rows that run the whole phone read as a settings
-  // screen rather than a choice, so the list stays a centered column.
+  // The picker is not the drawer's width: rows that run the whole phone read as a settings screen
+  // rather than a choice, so the list and its add row stay a centered column.
   frame: {
     width: '100%',
     minWidth: 260,
     maxWidth: 300,
     alignSelf: 'center',
   },
-  // The active board is a card of its own, so it wears the same surface the widgets do.
+  // The active board is a card, not a list row — it takes the drawer's full width and the same
+  // surface every other widget in there wears.
   activeBlock: {
     ...widgetSurface,
     marginBottom: 4,
