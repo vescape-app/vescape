@@ -46,7 +46,7 @@ enum PersistenceSchema {
   static func createVescFaultCaptures(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS vesc_fault_captures (occurrence_id TEXT NOT NULL PRIMARY KEY, board_id TEXT NOT NULL, started_at INTEGER NOT NULL, opened_at INTEGER NOT NULL, sample_count INTEGER NOT NULL)")
     try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_vesc_fault_captures_board_id ON vesc_fault_captures(board_id)")
-    try db.execute(sql: "CREATE TABLE IF NOT EXISTS vesc_fault_capture_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, occurrence_id TEXT NOT NULL, captured_at INTEGER NOT NULL, speed REAL, duty_cycle REAL, erpm REAL, battery_voltage REAL, battery_current REAL, motor_current REAL, temp_mosfet REAL, temp_motor REAL, pitch REAL, roll REAL, balance_pitch REAL, adc1 REAL, adc2 REAL, state INTEGER)")
+    try db.execute(sql: "CREATE TABLE IF NOT EXISTS vesc_fault_capture_samples (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, occurrence_id TEXT NOT NULL, captured_at INTEGER NOT NULL, speed REAL, duty_cycle REAL, erpm REAL, battery_voltage REAL, battery_current REAL, motor_current REAL, temp_mosfet REAL, temp_motor REAL, pitch REAL, roll REAL, balance_pitch REAL, adc1 REAL, adc2 REAL, state INTEGER)")
     try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at ON vesc_fault_capture_samples(occurrence_id, captured_at)")
   }
 }

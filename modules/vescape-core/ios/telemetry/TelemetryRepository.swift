@@ -38,6 +38,7 @@ internal final class TelemetryRepository {
   private var enabledPrivacyZones: [PrivacyZoneEntity] = []
   internal let batteryEstimator = BatterySocEstimator()
   private var onRecordingFailure: (() -> Void)?
+  private var databaseSwapInProgress = false
   private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in
     RecordingStorageFailure.fail(error)
     self?.onRecordingFailure?()
@@ -66,7 +67,7 @@ internal final class TelemetryRepository {
   func recordTelemetry(_ capture: TelemetryCapture) {
     let state = FullTelemetryState(capture: capture)
     queue.async {
-      guard self.recordingCommitBoundary.isAccepting() else { return }
+      guard !self.databaseSwapInProgress, self.recordingCommitBoundary.isAccepting() else { return }
       let gapMs = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
       let gap = (gapMs ?? 0) > GAP_BOUNDARY_MS
       let keyframe = self.lastHistoryAtMs == nil || gap || self.lastKeyframeAtMs == nil ||
@@ -92,6 +93,7 @@ internal final class TelemetryRepository {
 
   func recordMarker(type: String, boardId: String?, message: String? = nil) {
     queue.async {
+      guard !self.databaseSwapInProgress else { return }
       self.pendingMarkers.append([
         "occurredAtMs": telemetryNowMs(),
         "elapsedRealtimeMs": telemetryElapsedMs(),
@@ -106,6 +108,26 @@ internal final class TelemetryRepository {
 
   func flushBlocking() {
     queue.sync { self.flushOnQueue() }
+  }
+
+  /// Flush accepted work and reject new ingestion until the candidate or original pool is open.
+  func beginDatabaseSwap() {
+    queue.sync {
+      flushOnQueue()
+      databaseSwapInProgress = true
+    }
+  }
+
+  func endDatabaseSwap() {
+    queue.sync {
+      pendingStates.removeAll()
+      pendingPersisted.removeAll()
+      pendingMarkers.removeAll()
+      lastFrameAtMs = nil
+      lastHistoryAtMs = nil
+      lastKeyframeAtMs = nil
+      databaseSwapInProgress = false
+    }
   }
 
   func resetSessionState() {

@@ -52,14 +52,14 @@ enum TelemetryDatabase {
     let fm = FileManager.default
     let legacy = url.deletingLastPathComponent().appendingPathComponent(legacyDatabaseName)
     guard !fm.fileExists(atPath: url.path), fm.fileExists(atPath: legacy.path) else { return }
-    if let legacyPool = try? DatabasePool(path: legacy.path) {
-      _ = try? legacyPool.writeWithoutTransaction { db in try db.checkpoint(.truncate) }
-      try? legacyPool.close()
-    }
     do {
+      let legacyPool = try DatabasePool(path: legacy.path)
+      try legacyPool.writeWithoutTransaction { db in try db.checkpoint(.truncate) }
+      try legacyPool.close()
       try fm.moveItem(at: legacy, to: url)
-      try? fm.removeItem(atPath: legacy.path + "-wal")
-      try? fm.removeItem(atPath: legacy.path + "-shm")
+      for suffix in ["-wal", "-shm"] where fm.fileExists(atPath: legacy.path + suffix) {
+        try fm.removeItem(atPath: legacy.path + suffix)
+      }
     } catch {
       // Leave the legacy file untouched; the next launch retries.
     }
@@ -114,6 +114,108 @@ enum TelemetryDatabase {
     }
   }
 
+  /// Bring an exported Room database from the first backup-capable generation to the shared v22
+  /// baseline. Android backup export shipped at v14, before the GRDB migration names became
+  /// aligned with Room versions. These are the production Room 14→22 operations expressed through
+  /// GRDB so an old Android archive follows the same data-preserving path on iOS.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_14_15` through `MIGRATION_21_22`
+  internal static func upgradeExportedAndroidDatabase(_ db: Database, from version: Int) throws {
+    guard version < 22 else { return }
+    guard version >= 14 else {
+      throw NSError(
+        domain: "VescapeDatabaseMigration",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Android backup predates backup export support"]
+      )
+    }
+
+    if version < 15 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS metric_exclusions (
+          captured_at_ms INTEGER NOT NULL, device_id TEXT NOT NULL, metric TEXT NOT NULL,
+          reason TEXT NOT NULL, PRIMARY KEY(captured_at_ms, device_id, metric)
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusions_captured_at_ms ON metric_exclusions(captured_at_ms)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusions_device_id_captured_at_ms ON metric_exclusions(device_id, captured_at_ms)")
+    }
+    if version < 16 {
+      try db.execute(sql: "ALTER TABLE metric_exclusions ADD COLUMN raw_value TEXT")
+      try db.execute(sql: "ALTER TABLE metric_exclusions ADD COLUMN reference_value TEXT")
+      try db.execute(sql: "ALTER TABLE metric_exclusions ADD COLUMN context_json TEXT")
+    }
+    if version < 17 {
+      try db.execute(sql: "DROP TABLE IF EXISTS metric_exclusions")
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS metric_exclusion_ranges (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, device_id TEXT NOT NULL,
+          reason TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+          sample_count INTEGER NOT NULL
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusion_ranges_start_ms_end_ms ON metric_exclusion_ranges(start_ms, end_ms)")
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_metric_exclusion_ranges_device_id_start_ms_end_ms ON metric_exclusion_ranges(device_id, start_ms, end_ms)")
+    }
+    if version < 18 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS privacy_zones (
+          id TEXT NOT NULL PRIMARY KEY, preset TEXT NOT NULL, name TEXT NOT NULL,
+          enabled INTEGER NOT NULL, center_latitude_e7 INTEGER NOT NULL,
+          center_longitude_e7 INTEGER NOT NULL, radius_meters INTEGER NOT NULL,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )
+        """)
+    }
+    if version < 19 {
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_created_at")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_is_starred")
+      try db.execute(sql: """
+        CREATE TABLE boards_v19 (
+          id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, description TEXT, ble_id TEXT,
+          is_starred INTEGER NOT NULL, created_at INTEGER NOT NULL, battery_config_json TEXT
+        )
+        """)
+      try db.execute(sql: "INSERT INTO boards_v19 SELECT id,name,description,ble_id,is_starred,created_at,NULL FROM boards")
+      try db.execute(sql: "DROP TABLE boards")
+      try db.execute(sql: "ALTER TABLE boards_v19 RENAME TO boards")
+      try db.execute(sql: "CREATE INDEX index_boards_created_at ON boards(created_at)")
+      try db.execute(sql: "CREATE INDEX index_boards_is_starred ON boards(is_starred)")
+    }
+    if version < 20 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS map_points (
+          id TEXT NOT NULL PRIMARY KEY, kind TEXT NOT NULL, latitude_e7 INTEGER NOT NULL,
+          longitude_e7 INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_map_points_kind ON map_points(kind)")
+    }
+    if version < 21 {
+      try db.execute(sql: """
+        CREATE TABLE IF NOT EXISTS board_settings (
+          board_id TEXT NOT NULL, key TEXT NOT NULL, value_json TEXT NOT NULL,
+          updated_at INTEGER NOT NULL, PRIMARY KEY(board_id,key)
+        )
+        """)
+      try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_board_settings_board_id ON board_settings(board_id)")
+      try db.execute(sql: "INSERT OR REPLACE INTO board_settings SELECT id,'description',json_quote(description),created_at FROM boards WHERE description IS NOT NULL")
+      try db.execute(sql: "INSERT OR REPLACE INTO board_settings SELECT id,'batteryConfig',battery_config_json,created_at FROM boards WHERE battery_config_json IS NOT NULL")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_is_starred")
+      try db.execute(sql: "DROP INDEX IF EXISTS index_boards_created_at")
+      try db.execute(sql: "CREATE TABLE boards_v21 (id TEXT NOT NULL PRIMARY KEY,name TEXT NOT NULL,ble_id TEXT,created_at INTEGER NOT NULL)")
+      try db.execute(sql: "INSERT INTO boards_v21 SELECT id,name,ble_id,created_at FROM boards")
+      try db.execute(sql: "DROP TABLE boards")
+      try db.execute(sql: "ALTER TABLE boards_v21 RENAME TO boards")
+      try db.execute(sql: "CREATE INDEX index_boards_created_at ON boards(created_at)")
+    }
+    if version < 22 {
+      try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN first_moving_at_ms INTEGER")
+      try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN last_moving_at_ms INTEGER")
+    }
+    try db.execute(sql: "PRAGMA user_version = 22")
+  }
+
   /// Bridge the places where the two platforms hold the same fact in different shapes. Stamping
   /// tells the migrator an incoming Room database is up to date, which it is — for Android. Where
   /// iOS keeps something Android files elsewhere, nothing else will ever add it, so it is added
@@ -146,42 +248,43 @@ enum TelemetryDatabase {
   /// from wherever it left off.
   static func replaceDatabase(withFileAt source: URL, schemaVersion: Int) throws {
     guard let target = databaseURL else { throw CocoaError(.fileNoSuchFile) }
-    let fm = FileManager.default
-    let sidecarSuffixes = ["", "-wal", "-shm"]
-
-    if let reopened { try? reopened.close() }
-    else if case let .success(pool) = poolResult { try? pool.close() }
-
-    let rollbackDir = fm.temporaryDirectory.appendingPathComponent("db-rollback-\(UUID().uuidString)", isDirectory: true)
-    try fm.createDirectory(at: rollbackDir, withIntermediateDirectories: true)
-    defer { try? fm.removeItem(at: rollbackDir) }
-
-    var moved: [(original: URL, saved: URL)] = []
-    for suffix in sidecarSuffixes {
-      let file = URL(fileURLWithPath: target.path + suffix)
-      guard fm.fileExists(atPath: file.path) else { continue }
-      let saved = rollbackDir.appendingPathComponent(target.lastPathComponent + suffix)
-      try fm.moveItem(at: file, to: saved)
-      moved.append((file, saved))
-    }
-
     do {
-      try fm.copyItem(at: source, to: target)
-      let pool = try DatabasePool(path: target.path)
-      try pool.write { db in
-        guard try !db.tableExists(migrationLedgerTable) else { return }
-        try stampAppliedMigrations(db, schemaVersion: schemaVersion)
-        try reconcileForeignSchema(db)
+      if let reopened { try reopened.close() }
+      else if case let .success(pool) = poolResult { try pool.close() }
+      reopened = try replacingDatabaseFiles(source: source, target: target) { installed in
+        try openRestoredDatabase(at: installed, schemaVersion: schemaVersion)
       }
-      try migrator.migrate(pool)
-      try pool.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
-      reopened = pool
     } catch {
-      for suffix in sidecarSuffixes { try? fm.removeItem(at: URL(fileURLWithPath: target.path + suffix)) }
-      for entry in moved { try? fm.moveItem(at: entry.saved, to: entry.original) }
-      reopened = try? DatabasePool(path: target.path)
-      throw error
+      let restoreError = error
+      do {
+        reopened = try DatabasePool(path: target.path)
+        try reopened?.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
+      } catch {
+        throw NSError(
+          domain: "VescapeDatabaseSwap",
+          code: 3,
+          userInfo: [
+            NSLocalizedDescriptionKey: "Database restore failed and the original database could not be reopened",
+            NSUnderlyingErrorKey: restoreError,
+            "reopenError": String(describing: error),
+          ]
+        )
+      }
+      throw restoreError
     }
+  }
+
+  internal static func openRestoredDatabase(at url: URL, schemaVersion: Int) throws -> DatabasePool {
+    let pool = try DatabasePool(path: url.path)
+    try pool.write { db in
+      guard try !db.tableExists(migrationLedgerTable) else { return }
+      try upgradeExportedAndroidDatabase(db, from: schemaVersion)
+      try stampAppliedMigrations(db, schemaVersion: max(schemaVersion, 22))
+      try reconcileForeignSchema(db)
+    }
+    try migrator.migrate(pool)
+    try pool.read { db in _ = try Int.fetchOne(db, sql: "SELECT 1") }
+    return pool
   }
 
   /// Internal, not private, so migration tests can run the real migrator against an in-memory

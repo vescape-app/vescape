@@ -45,7 +45,7 @@
     "test:bun": "bun test",
     "test:android": "export NODE_BINARY=$(command -v node); export PATH=$(dirname \"$NODE_BINARY\"):$PATH; cd android && ./gradlew :vescape-core:testDebugUnitTest",
     "test:ios": "bun run scripts/test-ios.ts",
-    "test:persistence": "bun run test:persistence:android && bun run test:persistence:ios",
+    "test:persistence": "bun run scripts/test-persistence.ts",
     "test:persistence:android": "./android/gradlew -p modules/vescape-core/persistence-jvm test",
     "test:persistence:ios": "cd modules/vescape-core && swift run RecordingPersistenceHost",
     "ts": "tsc --noEmit",

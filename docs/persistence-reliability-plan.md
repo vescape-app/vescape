@@ -10,10 +10,35 @@ minute bucket from its moving samples, commit frames and bucket, close SQLite, r
 explicit durable values. Missing fixture/scenario fails either runner.
 
 Android compiles the production `TelemetryRoomDatabase`, Room-generated `TelemetryDao`, recording
-transaction seam, entities, and bucket builder into a plain Kotlin/JVM module. Android `Context`,
-legacy-file rename, incremental migration adapters, and app lifecycle remain in `TelemetryDatabase`.
-Room 2.8.4 runs through `sqlite-bundled` 2.6.2 on the host. This case opens Room's production fresh
-schema; #468 will extract and execute the Android incremental migration and backup-restore paths.
+transaction seam, entities, bucket builder, and `TelemetryMigrations` graph into a plain Kotlin/JVM
+module. Android `Context`, legacy-file rename, the `SupportSQLiteDatabase` adapter, and app lifecycle
+remain in `TelemetryDatabase`; every adapter delegates to the same portable migration step that the
+Room 2.8.4 `sqlite-bundled` 2.6.2 host executes. The migration matrix starts from the authentic Room
+v3 entities at `f51663a8^`, derives each graph generation with production edges, separately covers
+the released v22 Tune Profile shape at `10deb46c^`, and lets Room validate every supported result
+against its generated current schema. `shared/migration-fixture-manifest.json` enumerates the exact
+Room versions and GRDB identifiers; versions 37–39 are absent because production jumps 36→40.
+
+The GRDB matrix likewise stops at every registered migration prefix, seeds the durable tables and
+columns available in that generation, then runs the real remaining migrator and checks the final
+ledger and preserved values. It separately reconstructs the original `db6e9b9` v1 shape with global
+alerts and legacy telemetry fault columns. The v27 migration intentionally drops those unowned
+global rules; Board-linked telemetry survives both the v40 rebuild and v42 identity migration.
+
+Backup support distinguishes native database upgrades from archives that production could create.
+Room retains native upgrade paths from v3, while Android backup export first shipped at v14 in
+`dc985d80`; Android archives therefore start at v14. The iOS restore runs the production-equivalent
+Room 14→22 transformations before entering the shared numbered GRDB migrations, preserving the
+older Tune Profile, Board settings, Ride Recording, battery, and GPS shapes. iOS backup export first
+shipped in `23c0be34`; its original manifest generation is resolved from the exact GRDB ledger.
+
+`bun run test:persistence` exchanges actual ZIP artifacts between the host engines in both
+directions. A Room-created current archive and an authentic Room v14 archive pass through the Swift
+production archive validator and GRDB migrator; a GRDB-created archive passes through the Kotlin
+production codec, iOS-schema reconciliation, and Room's generated schema validator. The receiving
+engine checks Ride Recording, Boards, settings, Tune Profiles, Favorites, and config values. Invalid
+formats, unsupported versions, migration failures, and failed file swaps are rejected before the
+former database and its WAL/SHM recovery files are discarded.
 
 macOS compiles production `TelemetryDatabase.migrator`, `RecordingPersistenceSQL`, and bucket builder
 through a small Swift executable target. App-directory selection and database hot-swap remain in the
@@ -80,6 +105,7 @@ The Board-id migration removed a column from iOS telemetry inserts without remov
 - Share behavioral scenarios and expected results across platforms. Compare durable values and observable outcomes, normalizing generated identities and timestamps. Require both runners to cover every shared scenario.
 - Exercise transactions, updates, deletes, migration preservation, write failures, and close/reopen persistence. Use temporary database files for reopening and migration scenarios.
 - Require migration fixtures for every supported DB upgrade path and Android-to-iOS and iOS-to-Android backup restore. Assert preservation of rides, Boards, settings, Favorites, and other covered durable values. Determine supported versions from production migration and restore contracts; do not invent a new support cutoff. Exercise actual backup/restore and migration code where applicable, not just fixture queries.
+- The current iOS schema now declares `vesc_fault_capture_samples.id` as `NOT NULL`, matching Room's generated schema. This corrects fresh-database metadata without a new GRDB migration: existing iOS databases already use the column as an integer primary key and remain valid to GRDB, while Android restore normalization rebuilds archived iOS copies into Room's stricter shape and preserves their rows.
 - Make both contract suites required release gates. Existing native CI jobs are a starting point; release dependency wiring must be verified.
 - Keep device smoke tests for background recording and OS lifecycle, outside the fast host DB contract suite.
 - Fail fast when a recording write transaction fails: expose a failed recording state immediately, preserve already committed data, and keep Board connection and live telemetry running. Do not add an application retry loop that silently continues claiming to record.

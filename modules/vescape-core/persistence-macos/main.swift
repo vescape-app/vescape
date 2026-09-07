@@ -11,6 +11,13 @@ final class AppDataRepository {
   func getSettings() -> [String: Any?] { [:] }
 }
 
+final class TelemetryRepository {
+  static let shared = TelemetryRepository()
+  func flushBlocking() {}
+  func beginDatabaseSwap() {}
+  func endDatabaseSwap() {}
+}
+
 func telemetryInt(_ raw: Any?) -> Int? { (raw as? NSNumber)?.intValue }
 func telemetryLong(_ raw: Any?) -> Int64? { (raw as? NSNumber)?.int64Value }
 
@@ -661,6 +668,250 @@ do { _ = try alertPersistence.rules(boardId: tuneAlertBoardId) } catch { alertQu
 try require(alertQueryFailed, "Alert query failure became empty")
 try tuneQueue!.close()
 try FileManager.default.removeItem(at: tuneURL)
+
+// Every registered GRDB prefix is a supported restore start. Seed values available at that prefix,
+// run the remaining production migrator, and prove both preservation and the final ledger here in
+// the fast macOS host command.
+let migrationManifest = try JSONSerialization.jsonObject(
+  with: Data(contentsOf: root.appendingPathComponent("shared/migration-fixture-manifest.json"))
+) as! [String: Any]
+let grdbManifest = migrationManifest["grdb"] as! [String: Any]
+let migrationIdentifiers = TelemetryDatabase.migrator.migrations
+try require(
+  Set(grdbManifest["migrationIdentifiers"] as! [String]) == Set(migrationIdentifiers),
+  "shared GRDB migration manifest differs from production registry"
+)
+for start in migrationIdentifiers {
+  let migrationQueue = try DatabaseQueue()
+  try TelemetryDatabase.migrator.migrate(migrationQueue, upTo: start)
+  let available = try migrationQueue.write { db -> (tune: Bool, favorite: Bool, config: Bool) in
+    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES ('matrix-board','Matrix Board','matrix-ble',100)")
+    try db.execute(sql: "INSERT INTO app_settings VALUES ('matrix-setting','\"preserved\"',101)")
+    try db.execute(sql: "INSERT INTO alerts (board_id,id,control_id,threshold,enabled,sound_type,created_at) VALUES ('matrix-board','matrix-alert','speed',24.5,1,'beep',102)")
+    let frameColumns = try db.columns(in: "telemetry_frames").map(\.name)
+    if frameColumns.contains("board_id") {
+      try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'matrix-board',1,1,0,2468)")
+    } else {
+      try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,device_id,device_name,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'matrix-ble','Matrix Board',1,1,0,2468)")
+    }
+    let hasTune = try db.tableExists("tune_profiles")
+    if hasTune {
+      let columns = try db.columns(in: "tune_profiles").map(\.name)
+      var names = ["id", "board_id", "name", "fields_json", "created_at", "updated_at"]
+      var values = ["'matrix-tune'", "'matrix-board'", "'Matrix Tune'", "'{}'", "103", "104"]
+      if columns.contains("icon") { names.append("icon"); values.append("'gauge'") }
+      if columns.contains("color") { names.append("color"); values.append("'orange'") }
+      if columns.contains("refloat_base_version") { names.append("refloat_base_version"); values.append("'2.0'") }
+      try db.execute(sql: "INSERT INTO tune_profiles (\(names.joined(separator: ","))) VALUES (\(values.joined(separator: ",")))")
+    }
+    let hasFavorite = try db.tableExists("favorites")
+    if hasFavorite {
+      try db.execute(sql: "INSERT INTO favorites (id,board_id,name,start_ms,end_ms,created_at,updated_at,sample_count,gps_point_count,moving_duration_ms,avg_speed_centi_kmh,max_speed_centi_kmh,battery_used_wh_milli) VALUES ('matrix-favorite','matrix-board','Matrix Favorite',900,1100,105,106,1,0,100,2400,2468,2)")
+    }
+    let hasConfig = try db.tableExists("board_config_values")
+    if hasConfig {
+      try db.execute(sql: "INSERT INTO board_config_values VALUES ('matrix-board','2.0','{\"motor_current_max\":55.5}',107)")
+    }
+    return (hasTune, hasFavorite, hasConfig)
+  }
+  try TelemetryDatabase.migrator.migrate(migrationQueue)
+  try migrationQueue.read { db in
+    let boardName = try String.fetchOne(db, sql: "SELECT name FROM boards WHERE id='matrix-board'")
+    let settingValue = try String.fetchOne(db, sql: "SELECT value_json FROM app_settings WHERE key='matrix-setting'")
+    let speed = try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000")
+    let frameBoard = try String.fetchOne(db, sql: "SELECT board_id FROM telemetry_frames WHERE captured_at_ms=1000")
+    let alertId = try String.fetchOne(db, sql: "SELECT id FROM alerts WHERE id='matrix-alert'")
+    try require(boardName == "Matrix Board", "\(start) lost Board")
+    try require(settingValue == "\"preserved\"", "\(start) lost setting")
+    try require(speed == 2468, "\(start) lost telemetry")
+    try require(frameBoard == "matrix-board", "\(start) lost telemetry owner")
+    try require(alertId == "matrix-alert", "\(start) lost Alert Rule")
+    if available.tune { let value = try String.fetchOne(db, sql: "SELECT name FROM tune_profiles WHERE id='matrix-tune'"); try require(value == "Matrix Tune", "\(start) lost Tune Profile") }
+    if available.favorite { let value = try String.fetchOne(db, sql: "SELECT name FROM favorites WHERE id='matrix-favorite'"); try require(value == "Matrix Favorite", "\(start) lost Favorite") }
+    if available.config { let value = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='matrix-board'"); try require(value == "{\"motor_current_max\":55.5}", "\(start) lost config") }
+    let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+    try require(ledger == Set(migrationIdentifiers), "\(start) final ledger")
+  }
+  try migrationQueue.close()
+}
+
+// Reconstruct the original db6e9b9 v1 release shape, including global Alert Rules and the legacy
+// telemetry fault columns, then run the real destructive/preserving migrations.
+let authenticV1 = try DatabaseQueue()
+try TelemetryDatabase.migrator.migrate(authenticV1, upTo: "v1")
+try authenticV1.write { db in
+  try db.execute(sql: "DROP TABLE alerts")
+  try db.execute(sql: "CREATE TABLE alerts (id TEXT NOT NULL PRIMARY KEY,control_id TEXT NOT NULL,threshold REAL NOT NULL,threshold_max REAL,enabled INTEGER NOT NULL,sound_type TEXT NOT NULL,created_at INTEGER NOT NULL,source TEXT)")
+  try db.execute(sql: "ALTER TABLE telemetry_frames ADD COLUMN fault_code INTEGER")
+  try db.execute(sql: "ALTER TABLE telemetry_minute_buckets ADD COLUMN fault_count INTEGER NOT NULL DEFAULT 0")
+  try db.execute(sql: "INSERT INTO alerts VALUES ('legacy-global','speed',20,NULL,1,'beep',100,NULL)")
+  try db.execute(sql: "INSERT INTO boards (id,name,ble_id,created_at) VALUES ('historical-board','Historical','historical-ble',100)")
+  try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,device_id,device_name,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'historical-ble','Historical',1,1,0,2468)")
+}
+try TelemetryDatabase.migrator.migrate(authenticV1)
+try authenticV1.read { db in
+  let alertCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM alerts")
+  let frameBoard = try String.fetchOne(db, sql: "SELECT board_id FROM telemetry_frames WHERE captured_at_ms=1000")
+  let frameColumns = try db.columns(in: "telemetry_frames").map(\.name)
+  let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+  try require(alertCount == 0, "authentic v1 retained unowned global Alert Rule")
+  try require(frameBoard == "historical-board", "authentic v1 lost telemetry ownership")
+  try require(!frameColumns.contains("fault_code"), "authentic v1 retained fault column")
+  try require(ledger == Set(migrationIdentifiers), "authentic v1 final ledger")
+}
+try authenticV1.close()
+
+let swapDirectory = FileManager.default.temporaryDirectory
+  .appendingPathComponent("vescape-host-swap-\(UUID().uuidString)", isDirectory: true)
+try FileManager.default.createDirectory(at: swapDirectory, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: swapDirectory) }
+let swapTarget = swapDirectory.appendingPathComponent("vescape.db")
+let swapWal = URL(fileURLWithPath: swapTarget.path + "-wal")
+let swapShm = URL(fileURLWithPath: swapTarget.path + "-shm")
+let swapCandidate = swapDirectory.appendingPathComponent("candidate.db")
+try Data("original".utf8).write(to: swapTarget)
+try Data("original-wal".utf8).write(to: swapWal)
+try Data("original-shm".utf8).write(to: swapShm)
+try Data("candidate".utf8).write(to: swapCandidate)
+do {
+  _ = try replacingDatabaseFiles(source: swapCandidate, target: swapTarget) { _ in
+    throw Failure(description: "forced installed-candidate validation failure")
+  }
+  throw Failure(description: "failed database swap reported success")
+} catch let error as Failure where error.description == "forced installed-candidate validation failure" {}
+let swappedTargetData = try Data(contentsOf: swapTarget)
+let swappedWalData = try Data(contentsOf: swapWal)
+let swappedShmData = try Data(contentsOf: swapShm)
+try require(swappedTargetData == Data("original".utf8), "database swap lost original database")
+try require(swappedWalData == Data("original-wal".utf8), "database swap lost original WAL")
+try require(swappedShmData == Data("original-shm".utf8), "database swap lost original SHM")
+
+let invalidArchiveDatabase = try DatabaseQueue()
+try TelemetryDatabase.migrator.migrate(invalidArchiveDatabase)
+let invalidArchiveURL = swapDirectory.appendingPathComponent("archive.sqlite")
+try invalidArchiveDatabase.backup(to: DatabaseQueue(path: invalidArchiveURL.path))
+try invalidArchiveDatabase.close()
+let invalidDatabaseData = try Data(contentsOf: invalidArchiveURL)
+for (version, format) in [(43, "vesc-db-backup"), (42, "unknown-format")] {
+  let manifest = try JSONSerialization.data(withJSONObject: [
+    "format": format, "platform": "android", "schemaVersion": version,
+  ])
+  let archive = DatabaseBackupArchive.archive(database: invalidDatabaseData, manifest: manifest)
+  let invalidStage = swapDirectory.appendingPathComponent("invalid-\(version)-\(format)", isDirectory: true)
+  try FileManager.default.createDirectory(at: invalidStage, withIntermediateDirectories: true)
+  var rejected = false
+  do { _ = try DatabaseBackupManager.stageBackupArchive(archive, in: invalidStage) } catch { rejected = true }
+  try require(rejected, "invalid or unsupported archive was accepted")
+}
+
+if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHANGE"] {
+  let exchange = URL(fileURLWithPath: exchangePath, isDirectory: true)
+  let stage = exchange.appendingPathComponent("swift-stage", isDirectory: true)
+  try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
+  let androidArchive = try Data(contentsOf: exchange.appendingPathComponent("android.zip"))
+  let staged = try DatabaseBackupManager.stageBackupArchive(androidArchive, in: stage)
+  let importedAndroid = try TelemetryDatabase.openRestoredDatabase(
+    at: staged.database,
+    schemaVersion: staged.roomVersion
+  )
+  try importedAndroid.read { db in
+    let board = try String.fetchOne(db, sql: "SELECT name FROM boards WHERE id='cross-board'")
+    let setting = try String.fetchOne(db, sql: "SELECT value_json FROM board_settings WHERE board_id='cross-board' AND key='description'")
+    let tune = try String.fetchOne(db, sql: "SELECT name FROM tune_profiles WHERE id='cross-tune'")
+    let favorite = try String.fetchOne(db, sql: "SELECT name FROM favorites WHERE id='cross-favorite'")
+    let config = try String.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id='cross-board'")
+    let speed = try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000")
+    try require(board == "Cross Board", "Android archive lost Board on iOS")
+    try require(setting == "\"durable\"", "Android archive lost Board setting on iOS")
+    try require(tune == "Cross Tune", "Android archive lost Tune Profile on iOS")
+    try require(favorite == "Cross Favorite", "Android archive lost Favorite on iOS")
+    try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
+    try require(speed == 2468, "Android archive lost Ride Recording on iOS")
+  }
+  try importedAndroid.close()
+
+  let androidV14Archive = try Data(contentsOf: exchange.appendingPathComponent("android-v14.zip"))
+  let v14Stage = exchange.appendingPathComponent("swift-v14-stage", isDirectory: true)
+  try FileManager.default.createDirectory(at: v14Stage, withIntermediateDirectories: true)
+  let stagedV14 = try DatabaseBackupManager.stageBackupArchive(androidV14Archive, in: v14Stage)
+  try require(stagedV14.roomVersion == 14, "first Android archive generation resolved incorrectly")
+  let importedV14 = try TelemetryDatabase.openRestoredDatabase(
+    at: stagedV14.database,
+    schemaVersion: stagedV14.roomVersion
+  )
+  try importedV14.read { db in
+    let board = try String.fetchOne(db, sql: "SELECT name FROM boards WHERE id='board-era3'")
+    let description = try String.fetchOne(db, sql: "SELECT value_json FROM board_settings WHERE board_id='board-era3' AND key='description'")
+    let eraSetting = try String.fetchOne(db, sql: "SELECT value_json FROM app_settings WHERE key='era-setting'")
+    let tune = try String.fetchOne(db, sql: "SELECT name FROM tune_profiles WHERE id='v14-tune'")
+    let speed = try Int.fetchOne(db, sql: "SELECT speed_centi_kmh FROM telemetry_frames WHERE captured_at_ms=1000")
+    let minVoltage = try Int.fetchOne(db, sql: "SELECT min_battery_voltage_mv FROM telemetry_minute_buckets WHERE bucket_start_ms=960")
+    let gpsDistance = try Int.fetchOne(db, sql: "SELECT gps_distance_cm FROM telemetry_minute_buckets WHERE bucket_start_ms=960")
+    let privacyZonesExist = try db.tableExists("privacy_zones")
+    let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+    try require(board == "Era Three", "v14 archive lost Board")
+    try require(description == "\"kept\"", "v14 archive lost migrated Board setting")
+    try require(eraSetting == "\"preserved\"", "v14 archive lost app setting")
+    try require(tune == "V14 Tune", "v14 archive lost pre-presentation Tune Profile")
+    try require(speed == 1234, "v14 archive lost Ride Recording")
+    try require(minVoltage == 50000, "v14 archive lost bucket battery value")
+    try require(gpsDistance == 20, "v14 archive lost bucket GPS value")
+    try require(privacyZonesExist, "v14 archive skipped privacy-zone migration")
+    try require(ledger == Set(migrationIdentifiers), "v14 archive did not reach final GRDB ledger")
+  }
+  try importedV14.close()
+
+  for version in [18, 19, 20] {
+    let archive = try Data(contentsOf: exchange.appendingPathComponent("android-v\(version).zip"))
+    let stage = exchange.appendingPathComponent("swift-v\(version)-stage", isDirectory: true)
+    try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
+    let staged = try DatabaseBackupManager.stageBackupArchive(archive, in: stage)
+    let imported = try TelemetryDatabase.openRestoredDatabase(
+      at: staged.database,
+      schemaVersion: staged.roomVersion
+    )
+    try imported.read { db in
+      let zone = try Row.fetchOne(db, sql: "SELECT * FROM privacy_zones WHERE id='era-zone'")
+      let battery = try String.fetchOne(db, sql: "SELECT value_json FROM board_settings WHERE board_id='board-era3' AND key='batteryConfig'")
+      let ledger = try TelemetryDatabase.migrator.appliedIdentifiers(db)
+      try require(zone?["name"] as String? == "Era Zone", "v\(version) archive lost Privacy Zone name")
+      try require(zone?["enabled"] as Int? == 1, "v\(version) archive lost Privacy Zone state")
+      try require(zone?["center_latitude_e7"] as Int64? == 510_000_000, "v\(version) archive lost Privacy Zone latitude")
+      try require(zone?["center_longitude_e7"] as Int64? == 170_000_000, "v\(version) archive lost Privacy Zone longitude")
+      try require(zone?["radius_meters"] as Int64? == 250, "v\(version) archive lost Privacy Zone radius")
+      if version >= 19 {
+        try require(battery == "{\"cells\":20}", "v\(version) archive lost migrated battery config")
+      }
+      try require(ledger == Set(migrationIdentifiers), "v\(version) archive did not reach final GRDB ledger")
+    }
+    try imported.close()
+  }
+
+  let iosDatabaseURL = exchange.appendingPathComponent("ios.sqlite")
+  let iosDatabase = try DatabaseQueue(path: iosDatabaseURL.path)
+  try TelemetryDatabase.migrator.migrate(iosDatabase)
+  try iosDatabase.write { db in
+    try db.execute(sql: "INSERT INTO boards (id,name,ble_id,transport,created_at) VALUES ('cross-board','Cross Board','cross-ble','direct',100)")
+    try db.execute(sql: "INSERT INTO board_settings VALUES ('cross-board','description','\"durable\"',101)")
+    try db.execute(sql: "INSERT INTO app_settings VALUES ('cross-setting','\"ios\"',102)")
+    try db.execute(sql: "INSERT INTO tune_profiles (id,board_id,name,icon,color,fields_json,created_at,updated_at,refloat_base_version) VALUES ('cross-tune','cross-board','Cross Tune','gauge','orange','{\"kp\":2}',103,104,'2.0')")
+    try db.execute(sql: "INSERT INTO favorites (id,board_id,name,start_ms,end_ms,created_at,updated_at,sample_count,gps_point_count,distance_cm,moving_duration_ms,avg_speed_centi_kmh,max_speed_centi_kmh,battery_used_wh_milli) VALUES ('cross-favorite','cross-board','Cross Favorite',900,1100,105,106,1,0,200,100,2400,2468,2)")
+    try db.execute(sql: "INSERT INTO board_config_values VALUES ('cross-board','2.0','{\"motor_current_max\":55.5}',107)")
+    try db.execute(sql: "INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'cross-board',1,1,0,2468)")
+    try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
+    try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
+    try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('cross-fault',1000,24.68,1)")
+    try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
+  }
+  try iosDatabase.close()
+  let iosData = try Data(contentsOf: iosDatabaseURL)
+  let iosManifest = try DatabaseBackupArchive.manifest(
+    platform: "ios", schemaVersion: TELEMETRY_SCHEMA_VERSION, appVersion: "host",
+    dbSizeBytes: Int64(iosData.count), createdAt: 1
+  )
+  try DatabaseBackupArchive.archive(database: iosData, manifest: iosManifest)
+    .write(to: exchange.appendingPathComponent("ios.zip"), options: .atomic)
+}
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

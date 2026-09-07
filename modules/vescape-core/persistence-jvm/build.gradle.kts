@@ -24,6 +24,10 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/telemetry/BoardSettingsPersistence.kt",
       "expo/modules/vescapecore/telemetry/RecordingPersistence.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt",
+      "expo/modules/vescapecore/telemetry/DatabaseUpgradeContract.kt",
+      "expo/modules/vescapecore/telemetry/TelemetryMigrations.kt",
+      "expo/modules/vescapecore/telemetry/DatabaseFileSwap.kt",
+      "expo/modules/vescapecore/telemetry/DatabaseBackupArchive.kt",
       "expo/modules/vescapecore/telemetry/PersistenceDefaults.kt",
       "expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt",
       "expo/modules/vescapecore/telemetry/MetricSanitizer.kt",
@@ -52,4 +56,11 @@ dependencies {
   implementation("org.json:json:20231013")
   ksp("androidx.room:room-compiler:2.8.4")
   testImplementation("junit:junit:4.13.2")
+}
+
+tasks.withType<Test>().configureEach {
+  // Host contracts consume shared fixtures and per-run cross-platform artifacts outside this
+  // Gradle project. Never reuse a prior test result for a different archive exchange.
+  outputs.upToDateWhen { false }
+  outputs.cacheIf { false }
 }
