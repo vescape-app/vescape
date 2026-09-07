@@ -266,7 +266,7 @@ export function BoardSelectorContent({
         accessibilityLabel="Add new board"
       >
         <View style={styles.addIcon}>
-          <PlusIcon size={14} color={theme.palette.sky.color} weight="bold" />
+          <PlusIcon size={16} color={theme.palette.sky.color} weight="bold" />
         </View>
         <Text style={styles.addText}>Add new board</Text>
       </Pressable>
@@ -428,11 +428,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 10,
   },
-  // A board row's tile, thinned down to an outline: same place, less weight.
+  // A board row's tile, thinned down to an outline: same size and place, less weight.
   addIcon: {
-    width: 28,
-    height: 28,
-    marginHorizontal: 2,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.alpha(theme.neutral.border, 0.6),
