@@ -279,21 +279,24 @@ const styles = StyleSheet.create({
   dim: {
     opacity: 0.5,
   },
+  // The cells carry the padding, not the strip: a divider that stops short of the card edges reads
+  // as a broken line. Same rule as the board selector's links strip.
   strip: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    paddingVertical: 14,
     marginBottom: 10,
+    overflow: 'hidden',
   },
   stripCell: {
     flex: 1,
     alignItems: 'center',
     gap: 3,
+    paddingVertical: 14,
     paddingHorizontal: 4,
   },
   stripDivider: {
-    width: 1,
-    backgroundColor: theme.neutral.border,
+    width: StyleSheet.hairlineWidth * 2,
+    backgroundColor: theme.alpha(theme.neutral.border, 0.6),
   },
   stripValue: {
     color: theme.neutral.textPrimary,
