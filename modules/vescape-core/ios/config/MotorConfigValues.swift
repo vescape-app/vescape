@@ -67,22 +67,22 @@ struct MotorConfigValues {
     firmware: String,
     capturedAtMs: Int64,
     valuesJson: String
-  ) -> MotorConfigValues {
+  ) throws -> MotorConfigValues {
     MotorConfigValues(
       boardId: boardId,
       signature: signature,
       firmware: firmware,
       capturedAtMs: capturedAtMs,
       freshness: .lastKnown,
-      values: decodeValuesJson(valuesJson)
+      values: try decodeValuesJson(valuesJson)
     )
   }
 
-  private static func decodeValuesJson(_ json: String) -> [String: Double] {
-    guard
-      let data = json.data(using: .utf8),
-      let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
+  private static func decodeValuesJson(_ json: String) throws -> [String: Double] {
+    guard let data = json.data(using: .utf8) else { throw ConfigStorageError.invalidCachedJSON }
+    guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw ConfigStorageError.invalidCachedJSON
+    }
     var values: [String: Double] = [:]
     for (id, raw) in parsed {
       if let number = raw as? NSNumber, number.doubleValue.isFinite { values[id] = number.doubleValue }

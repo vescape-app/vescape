@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import androidx.room.withTransaction
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -96,6 +97,7 @@ class TelemetryRepository private constructor(context: Context) {
   private val db = TelemetryDatabase.get(context)
   private val dao = db.telemetryDao()
   private val recordingPersistence = RecordingPersistence(dao)
+  private val maintenancePersistence = TelemetryMaintenancePersistence(dao)
   private val favoriteMediaStore = FavoriteMediaStore(appContext, dao)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val lock = Any()
@@ -588,9 +590,9 @@ class TelemetryRepository private constructor(context: Context) {
     val requested = TelemetryTimeRange(query.fromMs, query.toMs)
     val protected = favoriteTelemetryRanges()
     promoteProtectedRangeStarts(protected, query.boardId)
-    val deleted = subtractProtectedTelemetryRanges(requested, protected).sumOf { range ->
-      dao.deleteRange(range.startMs, range.endMs, query.boardId)
-    }
+    val deleted = maintenancePersistence.deleteRanges(
+      subtractProtectedTelemetryRanges(requested, protected), query.boardId, allBoards = false,
+    )
     deleted
   }
 
@@ -737,62 +739,16 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   suspend fun rebuildBuckets(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
-    val firstMs = dao.firstFrameAt() ?: return@withContext 0
-    val lastMs = dao.lastFrameAt() ?: return@withContext 0
-
-    dao.clearBuckets()
-    dao.clearExclusions()
-
-    val chunkMs = 3_600_000L
-    val chunks = ((lastMs - firstMs) / chunkMs + 1).toInt()
-    var rebuiltBuckets = 0
-    onProgress(0, chunks)
-
-    for (i in 0 until chunks) {
-      val chunkFrom = firstMs + i * chunkMs
-      val chunkTo = minOf(chunkFrom + chunkMs - 1, lastMs)
-
-      val states = getSampleStates(chunkFrom, chunkTo, null, Int.MAX_VALUE)
-      if (states.isNotEmpty()) {
-        val telemetryPoints = states.map { it.state.toBucketPoint() }
-        val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
-        val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
-          point.copy(
-            excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
-            excludedFromMaxSpeed = sanitization.samples[index].excludedFromMaxSpeed,
-            excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
-          )
-        }
-        if (sanitization.exclusions.isNotEmpty()) dao.upsertExclusionRanges(sanitization.exclusions)
-        val buckets = buildTelemetryBuckets(
-          telemetryPoints = sanitizedPoints,
-          locationPoints = states.toBucketLocationPoints(),
-        )
-        if (buckets.isNotEmpty()) {
-          dao.upsertBuckets(buckets)
-          rebuiltBuckets += buckets.size
-        }
-      }
-      onProgress(i + 1, chunks)
-    }
-
-    Log.i(TAG, "rebuildBuckets complete: $rebuiltBuckets buckets from $chunks chunks")
-    rebuiltBuckets
+    maintenancePersistence.rebuild(metricSanitizerConfig, onProgress)
   }
 
   suspend fun clearAll() = withContext(Dispatchers.IO) {
     flushNow()
     val protected = favoriteTelemetryRanges()
-    if (protected.isEmpty()) {
-      dao.clearAll()
-    } else {
+    if (protected.isNotEmpty()) {
       promoteProtectedRangeStarts(protected, boardId = null)
-      val requested = TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)
-      for (range in subtractProtectedTelemetryRanges(requested, protected)) {
-        dao.deleteRangeAllDevices(range.startMs, range.endMs)
-      }
-      dao.clearDiagnosticEvents()
     }
+    maintenancePersistence.clear(protected)
     synchronized(lock) {
       pending.clear()
       pendingMarkers.clear()

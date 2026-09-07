@@ -16,7 +16,9 @@ import android.content.Intent
 import android.os.IBinder
 import expo.modules.vescapecore.recording.RecordingCoordinator
 import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.RecordingStorageFailureKind
 import expo.modules.vescapecore.recording.recordingFailureState
+import expo.modules.vescapecore.liveStateWithStorageFailure
 import expo.modules.vescapecore.protocol.LocationSnapshot
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
@@ -456,17 +458,24 @@ class CoreForegroundService : Service() {
                 ?: idleState(AppDataRepository.get(context.applicationContext))
         }
 
+        /** State payload for a broad DB outage; deliberately performs no persistence read. */
+        fun storageUnavailableLiveState(): Map<String, Any?> =
+            liveStateWithStorageFailure(
+                instance?.controller?.liveStateMapWithoutStorage(includeRecent = true) ?: idleState(null),
+                RecordingStorageFailure.value() ?: RecordingStorageFailureKind.StorageUnavailable,
+            )
+
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
         /** Live rider position for Navigation; null while the service is not up. */
         fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
-        private fun idleState(repository: AppDataRepository): Map<String, Any?> {
-            val settings = kotlinx.coroutines.runBlocking { repository.getTypedSettings() }
+        private fun idleState(repository: AppDataRepository?): Map<String, Any?> {
+            val settings = repository?.let { kotlinx.coroutines.runBlocking { it.getTypedSettings() } }
             return mapOf(
                 "board" to mapOf(
                     "phase" to "idle",
-                    "selectedBoardId" to settings.selectedBoardId,
+                    "selectedBoardId" to settings?.selectedBoardId,
                     "connectedBoardId" to null,
                     "bleId" to null,
                     "name" to null,
@@ -474,7 +483,7 @@ class CoreForegroundService : Service() {
                     "lastTelemetryAt" to null,
                     "recentTelemetry" to emptyList<Map<String, Any?>>(),
                     "error" to null,
-                    "autoConnect" to settings.autoConnect,
+                    "autoConnect" to (settings?.autoConnect ?: false),
                     "remoteTilt" to null,
                 ),
                 "gps" to mapOf(

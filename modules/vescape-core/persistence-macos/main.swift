@@ -16,6 +16,263 @@ func telemetryLong(_ raw: Any?) -> Int64? { (raw as? NSNumber)?.int64Value }
 
 let started = Date()
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+let remainingFixture = try JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("shared/remaining-stores-persistence-contract.json"))) as! [String: Any]
+try require(remainingFixture["scenario"] as? String == "remaining-stores-close-reopen-rollback", "unknown remaining-store scenario")
+let remainingZone = remainingFixture["privacyZone"] as! [String: Any]
+let remainingDiagnostic = remainingFixture["diagnostic"] as! [String: Any]
+let remainingWarning = remainingFixture["warning"] as! [String: Any]
+let remainingFault = remainingFixture["fault"] as! [String: Any]
+let remainingConfig = remainingFixture["config"] as! [String: Any]
+let remainingNavigation = remainingFixture["navigation"] as! [String: Any]
+let remainingMaintenance = remainingFixture["maintenance"] as! [String: Any]
+let remainingURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-remaining-\(UUID().uuidString).db")
+var remainingQueue: DatabaseQueue? = try DatabaseQueue(path: remainingURL.path)
+try TelemetryDatabase.migrator.migrate(remainingQueue!)
+var settingsStore = BoardSettingsPersistence(writer: remainingQueue!)
+func encodedSetting(_ key: String) throws -> PersistedAppSetting {
+  let data = try JSONSerialization.data(withJSONObject: remainingNavigation[key]!, options: [.fragmentsAllowed])
+  return .init(key: key, valueJson: String(decoding: data, as: UTF8.self), updatedAt: 900)
+}
+try settingsStore.saveSettings([
+  try encodedSetting("path"), try encodedSetting("profile"),
+  try encodedSetting("latitude"), try encodedSetting("longitude"),
+].enumerated().map { index, setting in
+  let keys = ["navigationPath", "navigationProfile", "directionPointLatitude", "directionPointLongitude"]
+  return .init(key: keys[index], valueJson: setting.valueJson, updatedAt: setting.updatedAt)
+})
+var zoneStore = PrivacyZonePersistence(writer: remainingQueue!)
+try zoneStore.save(.init(id: remainingZone["id"] as! String, preset: remainingZone["preset"] as! String, name: remainingZone["name"] as! String, enabled: true, centerLatitudeE7: Int64(int(remainingZone["centerLatitudeE7"])), centerLongitudeE7: Int64(int(remainingZone["centerLongitudeE7"])), radiusMeters: Int64(int(remainingZone["radiusMeters"])), createdAt: Int64(int(remainingZone["createdAt"])), updatedAt: Int64(int(remainingZone["updatedAt"]))))
+var diagnosticStore = DiagnosticEventPersistence(writer: remainingQueue!)
+try diagnosticStore.insert(.init(id: nil, occurredAtMs: Int64(int(remainingDiagnostic["occurredAtMs"])), elapsedRealtimeMs: 1, eventName: remainingDiagnostic["eventName"] as! String, operation: nil, phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
+try remainingQueue!.close()
+remainingQueue = try DatabaseQueue(path: remainingURL.path)
+settingsStore = BoardSettingsPersistence(writer: remainingQueue!)
+let reopenedNavigationPath = try settingsStore.setting("navigationPath")?.valueJson
+let expectedNavigationPath = try encodedSetting("path").valueJson
+let reopenedNavigationProfile = try settingsStore.setting("navigationProfile")?.valueJson
+let expectedNavigationProfile = try encodedSetting("profile").valueJson
+try require(reopenedNavigationPath == expectedNavigationPath, "Navigation path reopen")
+try require(reopenedNavigationProfile == expectedNavigationProfile, "Navigation profile reopen")
+zoneStore = PrivacyZonePersistence(writer: remainingQueue!)
+let reopenedZones = try zoneStore.zones()
+try require(reopenedZones.first?.id == remainingZone["id"] as? String, "Privacy Zone reopen")
+diagnosticStore = DiagnosticEventPersistence(writer: remainingQueue!)
+let diagnosticName = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10).first?.eventName
+try require(diagnosticName == remainingDiagnostic["eventName"] as? String, "Diagnostic Event reopen")
+try diagnosticStore.insert(.init(id: nil, occurredAtMs: 13_000, elapsedRealtimeMs: 2, eventName: "retained", operation: nil, phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
+try diagnosticStore.delete(beforeMs: 5_000)
+let diagnosticsAfterPrune = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10)
+try require(diagnosticsAfterPrune.map(\.eventName) == ["retained"], "Diagnostic Event prune")
+var warningStore = BoardWarningStore(dbWriter: remainingQueue!)
+let warningBoardId = remainingWarning["boardId"] as! String
+let warningKind = remainingWarning["kind"] as! String
+try warningStore.upsert(.init(boardId: warningBoardId, kind: warningKind, severity: remainingWarning["severity"] as! String, firstDetectedAtMs: Int64(int(remainingWarning["firstDetectedAtMs"])), lastDetectedAtMs: Int64(int(remainingWarning["lastDetectedAtMs"])), payloadJson: remainingWarning["payloadJson"] as! String))
+try warningStore.upsert(.init(boardId: warningBoardId, kind: warningKind, severity: "critical", firstDetectedAtMs: Int64(int(remainingWarning["firstDetectedAtMs"])), lastDetectedAtMs: Int64(int(remainingWarning["updatedLastDetectedAtMs"])), payloadJson: remainingWarning["payloadJson"] as! String))
+try remainingQueue!.write { db in try db.execute(sql: "UPDATE board_warnings SET severity = ? WHERE board_id = ? AND kind = ?", arguments: [remainingWarning["invalidSeverity"] as! String, warningBoardId, warningKind]) }
+var invalidWarningSeverityFailed = false
+do { _ = try warningStore.get(warningBoardId, warningKind) } catch { invalidWarningSeverityFailed = true }
+try require(invalidWarningSeverityFailed, "invalid Board Warning severity accepted")
+try remainingQueue!.write { db in try db.execute(sql: "UPDATE board_warnings SET severity = 'critical' WHERE board_id = ? AND kind = ?", arguments: [warningBoardId, warningKind]) }
+let updatedWarnings = try warningStore.getForBoard(warningBoardId)
+try require(updatedWarnings.first?.lastDetectedAtMs == Int64(int(remainingWarning["updatedLastDetectedAtMs"])), "Board Warning upsert")
+let faultBoardId = remainingFault["boardId"] as! String
+let firstFaultId = remainingFault["firstId"] as! String
+var faultStore = VescFaultStore(dbWriter: remainingQueue!)
+var firstFault = VescFaultOccurrence(id: firstFaultId, boardId: faultBoardId, code: int(remainingFault["firstCode"]), occurredAtMs: Int64(int(remainingFault["occurredAtMs"])), lastObservedAtMs: Int64(int(remainingFault["occurredAtMs"])), clearedAtMs: nil, dismissed: false)
+try faultStore.upsert(firstFault)
+let didDismissFault = try faultStore.setDismissed(firstFaultId, true)
+try require(didDismissFault, "VESC Fault dismiss")
+firstFault.lastObservedAtMs = Int64(int(remainingFault["advancedAtMs"])); firstFault.clearedAtMs = Int64(int(remainingFault["clearedAtMs"]))
+try faultStore.upsert(firstFault)
+let secondFault = VescFaultOccurrence(id: remainingFault["secondId"] as! String, boardId: faultBoardId, code: int(remainingFault["secondCode"]), occurredAtMs: Int64(int(remainingFault["secondOccurredAtMs"])), lastObservedAtMs: Int64(int(remainingFault["secondOccurredAtMs"])), clearedAtMs: nil, dismissed: false)
+try faultStore.upsert(secondFault)
+let openFault = try faultStore.openLive(faultBoardId)
+let progressedFaults = try faultStore.getForBoard(faultBoardId)
+try require(openFault?.id == secondFault.id, "VESC Fault live progression")
+try require(progressedFaults.last?.dismissed == true, "VESC Fault lifecycle overwrote dismissal")
+var captureStore = VescFaultCaptureStore(dbWriter: remainingQueue!)
+let sampleValues = remainingFault["captureSamples"] as! [[String: Any]]
+func faultSample(_ value: [String: Any]) -> VescFaultCaptureSample {
+  .init(capturedAtMs: Int64(int(value["capturedAtMs"])), speed: (value["speed"] as! NSNumber).doubleValue, dutyCycle: nil, erpm: nil, batteryVoltage: nil, batteryCurrent: nil, motorCurrent: nil, tempMosfet: nil, tempMotor: nil, pitch: nil, roll: nil, balancePitch: nil, adc1: nil, adc2: nil, state: int(value["state"]))
+}
+try captureStore.saveCapture(.init(occurrenceId: firstFaultId, boardId: faultBoardId, startedAtMs: Int64(int(remainingFault["captureStartedAtMs"])), openedAtMs: Int64(int(remainingFault["occurredAtMs"])), sampleCount: sampleValues.count), samples: sampleValues.map(faultSample))
+try remainingQueue!.close()
+remainingQueue = try DatabaseQueue(path: remainingURL.path)
+warningStore = BoardWarningStore(dbWriter: remainingQueue!); faultStore = VescFaultStore(dbWriter: remainingQueue!); captureStore = VescFaultCaptureStore(dbWriter: remainingQueue!)
+zoneStore = PrivacyZonePersistence(writer: remainingQueue!)
+diagnosticStore = DiagnosticEventPersistence(writer: remainingQueue!)
+let reopenedWarning = try warningStore.get(warningBoardId, warningKind)
+let reopenedFaults = try faultStore.getAll()
+let reopenedCaptureSamples = try captureStore.getSamples(firstFaultId)
+try require(reopenedWarning?.severity == "critical", "Board Warning reopen")
+try require(reopenedFaults.count == 2, "VESC Fault reopen")
+let didClearWarning = try warningStore.delete(warningBoardId, warningKind)
+try require(didClearWarning, "Board Warning clear")
+let clearedWarning = try warningStore.get(warningBoardId, warningKind)
+try require(clearedWarning == nil, "Board Warning clear persisted")
+try warningStore.upsert(.init(boardId: warningBoardId, kind: warningKind, severity: "critical", firstDetectedAtMs: Int64(int(remainingWarning["firstDetectedAtMs"])), lastDetectedAtMs: Int64(int(remainingWarning["updatedLastDetectedAtMs"])), payloadJson: remainingWarning["payloadJson"] as! String))
+let reopenedCapture = try captureStore.getCapture(firstFaultId)
+try require(reopenedCapture?.sampleCount == sampleValues.count, "VESC Fault Capture reopen")
+try require(reopenedCaptureSamples.map(\.capturedAtMs) == [7800, 7900], "VESC Fault Capture ordering")
+try remainingQueue!.write { db in try db.execute(sql: "CREATE TRIGGER fail_fault_sample BEFORE INSERT ON vesc_fault_capture_samples WHEN NEW.captured_at = 7900 BEGIN SELECT RAISE(FAIL, 'late fault capture failure'); END") }
+do { try captureStore.saveCapture(.init(occurrenceId: secondFault.id, boardId: faultBoardId, startedAtMs: 6000, openedAtMs: 8000, sampleCount: sampleValues.count), samples: sampleValues.map(faultSample)); throw Failure(description: "failed VESC Fault Capture save reported success") } catch is DatabaseError {}
+let failedCaptureSamples = try captureStore.getSamples(secondFault.id)
+try require(failedCaptureSamples.isEmpty, "failed VESC Fault Capture append was not rolled back")
+let failedCapture = try captureStore.getCapture(secondFault.id)
+try require(failedCapture == nil, "failed VESC Fault Capture left metadata")
+try remainingQueue!.write { db in try db.drop(table: "board_warnings") }
+do { _ = try warningStore.getAll(); throw Failure(description: "Board Warning query failure became empty") } catch is DatabaseError {}
+try remainingQueue!.write { db in try db.drop(table: "vesc_fault_occurrences") }
+do { _ = try faultStore.getAll(); throw Failure(description: "VESC Fault query failure became empty") } catch is DatabaseError {}
+try remainingQueue!.write { db in try db.execute(sql: "CREATE TRIGGER fail_zone_update BEFORE UPDATE ON privacy_zones BEGIN SELECT RAISE(FAIL, 'late zone failure'); END") }
+do { try zoneStore.setEnabled(id: remainingZone["id"] as! String, enabled: false, updatedAt: 4000); throw Failure(description: "failed Privacy Zone update reported success") } catch is DatabaseError {}
+let zonesAfterFailure = try zoneStore.zones()
+try require(zonesAfterFailure.first?.enabled == true, "failed Privacy Zone update changed row")
+try remainingQueue!.write { db in try db.execute(sql: "DROP TRIGGER fail_zone_update") }
+try zoneStore.delete(id: remainingZone["id"] as! String)
+let zonesAfterDelete = try zoneStore.zones()
+try require(zonesAfterDelete.isEmpty, "Privacy Zone delete")
+try diagnosticStore.clear()
+let diagnosticsAfterClear = try diagnosticStore.events(fromMs: 0, toMs: Int64.max, boardId: nil, limit: 10)
+try require(diagnosticsAfterClear.isEmpty, "Diagnostic Event clear")
+try remainingQueue!.write { db in try db.execute(sql: "CREATE TRIGGER fail_diagnostic_insert BEFORE INSERT ON diagnostic_events BEGIN SELECT RAISE(FAIL, 'diagnostic unavailable'); END") }
+do {
+  try diagnosticStore.insert(.init(id: nil, occurredAtMs: 14_000, elapsedRealtimeMs: 3, eventName: "must-fail", operation: nil, phase: nil, boardId: nil, message: nil, propertiesJson: "{}"))
+  throw Failure(description: "failed Diagnostic Event insert reported success")
+} catch is DatabaseError {}
+let configBoardId = remainingConfig["boardId"] as! String
+let configBase = remainingConfig["baseVersion"] as! String
+var boardConfigStore = BoardConfigStore(dbWriter: remainingQueue!)
+var motorConfigStore = MotorConfigStore(dbWriter: remainingQueue!)
+func boardValues(_ key: String, at: Int64, value: Double? = nil) -> BoardConfigValues {
+  var json = remainingConfig[key] as! [String: Any]
+  if let value { json["kp"] = value }
+  return BoardConfigValues(boardId: configBoardId, refloatBaseVersion: configBase, capturedAtMs: at, freshness: .fresh, values: json, writeBase: nil)
+}
+func motorValues(_ key: String, at: Int64, value: Double? = nil) -> MotorConfigValues {
+  var json = (remainingConfig[key] as! [String: Any]).mapValues { ($0 as! NSNumber).doubleValue }
+  if let value { json["l_temp_fet_start"] = value }
+  return MotorConfigValues(boardId: configBoardId, signature: UInt32(int(remainingConfig["signature"])), firmware: remainingConfig["firmware"] as! String, capturedAtMs: at, freshness: .fresh, values: json)
+}
+try boardConfigStore.saveFresh(boardValues("initialBoard", at: 1000))
+let initialNotice = try boardConfigStore.loadNotice(boardId: configBoardId)
+try require(initialNotice == nil, "first Board config created notice")
+try boardConfigStore.saveFresh(boardValues("updatedBoard", at: 2000))
+try motorConfigStore.saveFresh(motorValues("initialMotor", at: 3000))
+try motorConfigStore.saveFresh(motorValues("updatedMotor", at: 4000))
+try boardConfigStore.saveFresh(boardValues("updatedBoard", at: 4500, value: 3))
+try remainingQueue!.close()
+remainingQueue = try DatabaseQueue(path: remainingURL.path)
+boardConfigStore = BoardConfigStore(dbWriter: remainingQueue!)
+motorConfigStore = MotorConfigStore(dbWriter: remainingQueue!)
+let reopenedBoardConfig = try boardConfigStore.load(boardId: configBoardId, refloatBaseVersion: configBase)
+let reopenedMotorConfig = try motorConfigStore.loadLatest(boardId: configBoardId)
+let reopenedConfigNotice = try boardConfigStore.loadNotice(boardId: configBoardId)
+try require(reopenedBoardConfig?.number("kp") == 3, "Board config reopen")
+try require(reopenedMotorConfig?.number("l_temp_fet_start") == 85, "Motor config reopen")
+try require(reopenedConfigNotice?.diffs.map(\.fieldId) == ["kp", "l_temp_fet_start"], "Board/Motor notice merge")
+try remainingQueue!.write { db in try db.execute(sql: "CREATE TRIGGER fail_motor_baseline BEFORE UPDATE ON motor_config_values BEGIN SELECT RAISE(FAIL, 'late config failure'); END") }
+do { try motorConfigStore.saveFresh(motorValues("updatedMotor", at: 5000, value: 90)); throw Failure(description: "failed Motor config save reported success") } catch is DatabaseError {}
+let motorAfterFailure = try motorConfigStore.loadLatest(boardId: configBoardId)
+let noticeAfterFailure = try boardConfigStore.loadNotice(boardId: configBoardId)
+try require(motorAfterFailure?.number("l_temp_fet_start") == 85, "failed Motor config changed baseline")
+try require(noticeAfterFailure?.detectedAtMs == 4500, "failed Motor config changed notice")
+try remainingQueue!.write { db in
+  try db.execute(sql: "DROP TRIGGER fail_motor_baseline")
+  try db.execute(sql: "UPDATE board_config_change_notices SET diffs_json = 'not-json' WHERE board_id = ?", arguments: [configBoardId])
+}
+do { try motorConfigStore.saveFresh(motorValues("updatedMotor", at: 6000, value: 90)); throw Failure(description: "corrupt notice accepted") } catch is DecodingError {}
+let motorAfterCorruption = try motorConfigStore.loadLatest(boardId: configBoardId)
+try require(motorAfterCorruption?.number("l_temp_fet_start") == 85, "corrupt notice changed baseline")
+try remainingQueue!.write { db in try db.execute(sql: "UPDATE board_config_values SET values_json = 'not-json' WHERE board_id = ?", arguments: [configBoardId]) }
+do { try boardConfigStore.saveFresh(boardValues("updatedBoard", at: 7000, value: 4)); throw Failure(description: "corrupt Board baseline accepted") } catch is CocoaError {} catch is ConfigStorageError {} catch is DecodingError {}
+try boardConfigStore.clear(boardId: configBoardId)
+try motorConfigStore.clear(boardId: configBoardId)
+let clearedBoardConfig = try boardConfigStore.load(boardId: configBoardId, refloatBaseVersion: configBase)
+let clearedMotorConfig = try motorConfigStore.loadLatest(boardId: configBoardId)
+try require(clearedBoardConfig == nil, "Board config clear")
+try require(clearedMotorConfig == nil, "Motor config clear")
+try remainingQueue!.close()
+try FileManager.default.removeItem(at: remainingURL)
+
+let maintenanceURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-maintenance-\(UUID().uuidString).db")
+var maintenanceQueue: DatabaseQueue? = try DatabaseQueue(path: maintenanceURL.path)
+try TelemetryDatabase.migrator.migrate(maintenanceQueue!)
+let maintenanceFrames = remainingMaintenance["frames"] as! [[String: Any]]
+func maintenanceFrame(_ at: Int64, _ boardId: String) -> RecordingPersistenceSQL.Frame {
+  .init(capturedAtMs: at, elapsedRealtimeMs: at, boardId: boardId, canId: nil, flags: 1,
+        changedMask1: Int.max, changedMask2: 1, speedCentiKmh: Int(at), batteryVoltageMv: 80_000,
+        motorCurrentMa: 1_000, batteryCurrentMa: 500, dutyPermille: 100, pitchCentiDeg: 0,
+        rollCentiDeg: 0, balancePitchCentiDeg: 0, balanceCurrentMa: 0, erpm: 1_000, state: 1,
+        switchState: 1, adc1Milli: 0, adc2Milli: 0, odometerCm: at, tempMosfetDeciC: 300,
+        tempMotorDeciC: 300, latitudeE7: nil, longitudeE7: nil, gpsSpeedCentiMps: nil,
+        bearingCentiDeg: nil, accuracyCm: nil, altitudeCm: nil, locationTimestampMs: nil)
+}
+try maintenanceQueue!.write { db in
+  for value in maintenanceFrames {
+    let at = Int64(int(value["at"])); let board = value["boardId"] as! String
+    let frame = maintenanceFrame(at, board)
+    try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(frame))
+    try insertMarker(db, ["occurredAtMs": at, "elapsedRealtimeMs": at, "type": "m\(at)", "boardId": board])
+  }
+  let delta = remainingMaintenance["deltaFrame"] as! [String: Any]
+  let reconstructed = maintenanceFrame(Int64(int(delta["at"])), delta["boardId"] as! String)
+  try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(reconstructed))
+  try insertMarker(db, ["occurredAtMs": int(delta["at"]), "elapsedRealtimeMs": int(delta["at"]), "type": "m-delta", "boardId": delta["boardId"]])
+  try insertExclusion(db, .init(boardId: "board-a", reason: "test", startMs: 900, endMs: 1_100, sampleCount: 1))
+  try insertExclusion(db, .init(boardId: "board-a", reason: "overlap-a", startMs: 61_500, endMs: 62_500, sampleCount: 1))
+  try insertExclusion(db, .init(boardId: "board-b", reason: "overlap-b", startMs: 61_500, endMs: 62_500, sampleCount: 1))
+  try insertExclusion(db, .init(boardId: "board-b", reason: "test", startMs: 183_900, endMs: 184_100, sampleCount: 1))
+}
+var maintenance = TelemetryMaintenancePersistence(writer: maintenanceQueue!)
+let boardRange = remainingMaintenance["boardRange"] as! [String: Any]
+let allBoardRange = remainingMaintenance["allBoardRange"] as! [String: Any]
+let favoriteRange = remainingMaintenance["favorite"] as! [String: Any]
+let prunedCount = try maintenance.deleteBefore(Int64(int(remainingMaintenance["deleteBeforeMs"])))
+let boardDeletedCount = try maintenance.deleteRanges([.init(startMs: Int64(int(boardRange["fromMs"])), endMs: Int64(int(boardRange["toMs"])))], boardId: boardRange["boardId"] as? String, allBoards: false)
+let exclusionsAfterBoardDelete = try maintenanceQueue!.read { db in
+  try String.fetchAll(db, sql: "SELECT reason FROM metric_exclusion_ranges WHERE start_ms = 61500 ORDER BY reason")
+}
+try require(exclusionsAfterBoardDelete == ["overlap-a"], "Board range preserves peer exclusions")
+let allBoardDeletedCount = try maintenance.deleteRanges([.init(startMs: Int64(int(allBoardRange["fromMs"])), endMs: Int64(int(allBoardRange["toMs"])))], boardId: nil, allBoards: true)
+try require(prunedCount == 1, "maintenance delete-before count")
+try require(boardDeletedCount == 1, "maintenance Board range count")
+try require(allBoardDeletedCount == 1, "maintenance all-Board range count")
+let maintenanceFavoriteStore = FavoriteStore(dbWriter: maintenanceQueue!)
+try maintenanceFavoriteStore.insert(.init(id: "pin", boardId: "board-b", name: nil, startMs: Int64(int(favoriteRange["fromMs"])), endMs: Int64(int(favoriteRange["toMs"])), createdAtMs: 4_000, updatedAtMs: 4_000, summary: .init()))
+let pins = try maintenanceFavoriteStore.list().map { expandTelemetryRangeToBuckets(.init(startMs: $0.startMs, endMs: $0.endMs)) }
+try maintenance.clear(protectedRanges: pins)
+let rebuilt = try maintenance.rebuild(config: .init(), onProgress: { _, _ in })
+try require(rebuilt == 1, "maintenance rebuild count")
+try maintenanceQueue!.write { db in
+  for at in [Int64(245_000), 305_000] {
+    let frame = maintenanceFrame(at, "board-b")
+    try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(frame))
+    try insertMarker(db, ["occurredAtMs": at, "elapsedRealtimeMs": at, "type": "late", "boardId": "board-b"])
+  }
+  try db.execute(sql: "CREATE TRIGGER fail_maintenance_marker BEFORE DELETE ON telemetry_markers WHEN OLD.occurred_at_ms = 305000 BEGIN SELECT RAISE(FAIL, 'late maintenance failure'); END")
+}
+do {
+  let rollback = remainingMaintenance["rollbackRanges"] as! [[String: Any]]
+  _ = try maintenance.deleteRanges(rollback.map { .init(startMs: Int64(int($0["fromMs"])), endMs: Int64(int($0["toMs"]))) }, boardId: nil, allBoards: true)
+  throw Failure(description: "late maintenance failure reported success")
+} catch is DatabaseError {}
+try maintenanceQueue!.close()
+maintenanceQueue = try DatabaseQueue(path: maintenanceURL.path)
+maintenance = TelemetryMaintenancePersistence(writer: maintenanceQueue!)
+try maintenanceQueue!.read { db in
+  let frames = try Row.fetchAll(db, sql: "SELECT captured_at_ms FROM telemetry_frames ORDER BY captured_at_ms").map { $0["captured_at_ms"] as Int64 }
+  let markers = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_markers")
+  let buckets = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_minute_buckets")
+  let rebuiltSamples = try Int.fetchOne(db, sql: "SELECT sample_count FROM telemetry_minute_buckets")
+  let expectedFrames = (remainingMaintenance["expectedRemainingFrameTimes"] as! [NSNumber]).map(\.int64Value)
+  try require(frames == expectedFrames, "maintenance rollback/reopen frames")
+  try require(markers == 4, "maintenance marker preservation")
+  try require(buckets == int(remainingMaintenance["expectedRebuiltBuckets"]), "maintenance rebuilt bucket reopen")
+  try require(rebuiltSamples == int(remainingMaintenance["expectedRebuiltSampleCount"]), "maintenance rebuilt samples")
+}
+try maintenanceQueue!.close()
+try FileManager.default.removeItem(at: maintenanceURL)
 let fixtureURL = root.appendingPathComponent("shared/recording-persistence-contract.json")
 let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: fixtureURL)) as! [String: Any]
 let samples = fixture["samples"] as! [[String: Any]]

@@ -1,6 +1,12 @@
 import Foundation
 import GRDB
 
+private struct MotorConfigRecord: Codable, FetchableRecord, PersistableRecord {
+  static let databaseTableName = "motor_config_values"
+  let boardId: String; let mcconfSignature: Int64; let firmware: String; let valuesJson: String; let capturedAt: Int64
+  enum CodingKeys: String, CodingKey { case boardId = "board_id"; case mcconfSignature = "mcconf_signature"; case firmware; case valuesJson = "values_json"; case capturedAt = "captured_at" }
+}
+
 /// DB-backed Last Known Motor Config Values, one row per Board and MCCONF signature — the signature
 /// is the layout identity, so values only mean anything against the one they were read under
 /// (ADR 0036).
@@ -35,26 +41,13 @@ struct MotorConfigStore {
   /// The Board's most recently captured values, whatever signature they were read under. The live
   /// board's signature is unknown until it answers, so the caller restores optimistically and lets
   /// the session's own read replace this.
-  func loadLatest(boardId: String) -> MotorConfigValues? {
-    guard !boardId.isEmpty, let writer = resolveWriter() else { return nil }
-    let row = try? writer.read { db in
-      try Row.fetchOne(
-        db,
-        sql: """
-          SELECT mcconf_signature, firmware, values_json, captured_at FROM motor_config_values
-          WHERE board_id = ? ORDER BY captured_at DESC LIMIT 1
-          """,
-        arguments: [boardId]
-      )
-    }
-    guard let row = row ?? nil else { return nil }
-    let signature: Int64 = row["mcconf_signature"]
-    return MotorConfigValues.lastKnown(
+  func loadLatest(boardId: String) throws -> MotorConfigValues? {
+    guard !boardId.isEmpty else { return nil }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    guard let row = try writer.read({ db in try MotorConfigRecord.filter(Column("board_id") == boardId).order(Column("captured_at").desc).fetchOne(db) }) else { return nil }
+    return try MotorConfigValues.lastKnown(
       boardId: boardId,
-      signature: UInt32(truncatingIfNeeded: signature),
-      firmware: row["firmware"],
-      capturedAtMs: row["captured_at"],
-      valuesJson: row["values_json"]
+      signature: UInt32(truncatingIfNeeded: row.mcconfSignature), firmware: row.firmware,
+      capturedAtMs: row.capturedAt, valuesJson: row.valuesJson
     )
   }
 
@@ -68,29 +61,19 @@ struct MotorConfigStore {
   /// Both configs write into one `board_config_change_notices` row per Board: a rider does not care
   /// which subsystem a setting lives in, only that their board changed while Vescape was away.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveFreshMotorConfigValues`
-  func saveFresh(_ values: MotorConfigValues) {
-    guard let boardId = values.boardId, !boardId.isEmpty, let writer = resolveWriter() else { return }
+  func saveFresh(_ values: MotorConfigValues) throws {
+    guard let boardId = values.boardId, !boardId.isEmpty else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     var notice: BoardConfigChangeNotice?
     var committed = false
-    try? writer.write { db in
-      let oldRow = try Row.fetchOne(
-        db,
-        sql: """
-          SELECT mcconf_signature, firmware, values_json FROM motor_config_values
-          WHERE board_id = ? ORDER BY captured_at DESC LIMIT 1
-          """,
-        arguments: [boardId]
-      )
-      let oldSignature: Int64? = oldRow?["mcconf_signature"]
-      if let oldRow, oldSignature == Int64(values.signature) {
-        let oldFirmware: String = oldRow["firmware"]
-        let oldValuesJson: String = oldRow["values_json"]
-        let old = MotorConfigValues.lastKnown(
+    try writer.write { db in
+      let oldRow = try MotorConfigRecord.filter(Column("board_id") == boardId).order(Column("captured_at").desc).fetchOne(db)
+      if let oldRow, oldRow.mcconfSignature == Int64(values.signature) {
+        let old = try MotorConfigValues.lastKnown(
           boardId: boardId,
           signature: values.signature,
-          firmware: oldFirmware,
+          firmware: oldRow.firmware,
           capturedAtMs: 0,
-          valuesJson: oldValuesJson
+          valuesJson: oldRow.valuesJson
         )
         // Motor config carries no schema, so a field's id is its own label (ADR 0036).
         let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: nil)
@@ -101,37 +84,24 @@ struct MotorConfigStore {
             arguments: [boardId]
           )
           let existingDiffsJson: String? = existing?["diffs_json"]
-          let previous = existingDiffsJson
-            .flatMap { BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: 0, diffsJson: $0) }?.diffs ?? []
+          let previous = try existingDiffsJson
+            .map { try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: 0, diffsJson: $0).diffs } ?? []
           let merged = BoardConfigChangeNotice.mergeDiffs(previous: previous, incoming: diffs)
           let built = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: values.capturedAtMs, diffs: merged)
           notice = built
-          try db.execute(
-            sql: "INSERT OR REPLACE INTO board_config_change_notices (board_id, detected_at, diffs_json) VALUES (?, ?, ?)",
-            arguments: [boardId, values.capturedAtMs, built.diffsJson()]
-          )
+          try ConfigNoticeRecord(boardId: boardId, detectedAt: values.capturedAtMs, diffsJson: built.diffsJson()).save(db)
         }
       }
-      try db.execute(
-        sql: """
-          INSERT INTO motor_config_values (board_id, mcconf_signature, firmware, values_json, captured_at)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(board_id, mcconf_signature) DO UPDATE SET
-            firmware = excluded.firmware,
-            values_json = excluded.values_json,
-            captured_at = excluded.captured_at
-          """,
-        arguments: [boardId, Int64(values.signature), values.firmware, values.valuesJson(), values.capturedAtMs]
-      )
+      try MotorConfigRecord(boardId: boardId, mcconfSignature: Int64(values.signature), firmware: values.firmware, valuesJson: values.valuesJson(), capturedAt: values.capturedAtMs).save(db)
       committed = true
     }
     if committed, let notice { BoardConfigStore.onNoticeChanged?(notice) }
   }
 
   /// Drop every stored signature for a Board. Called when link integrity goes `mismatched`.
-  func clear(boardId: String) {
-    guard !boardId.isEmpty, let writer = resolveWriter() else { return }
-    try? writer.write { db in
+  func clear(boardId: String) throws {
+    guard !boardId.isEmpty else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    try writer.write { db in
       try db.execute(sql: "DELETE FROM motor_config_values WHERE board_id = ?", arguments: [boardId])
     }
   }

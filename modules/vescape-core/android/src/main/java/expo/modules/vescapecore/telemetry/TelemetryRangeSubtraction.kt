@@ -6,7 +6,7 @@ package expo.modules.vescapecore.telemetry
  *
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRangeSubtraction.swift `TelemetryTimeRange`
  */
-internal data class TelemetryTimeRange(
+data class TelemetryTimeRange(
   val startMs: Long,
   val endMs: Long,
 ) {

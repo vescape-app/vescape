@@ -159,11 +159,7 @@ internal data class BoardConfigValues(
      * while `Boolean` stays `Boolean` — the restored map has the same types the decode produced.
      */
     private fun decodeValuesJson(json: String): Map<String, Any> {
-      val parsed = try {
-        JSONObject(json)
-      } catch (_: Exception) {
-        return emptyMap()
-      }
+      val parsed = JSONObject(json)
       val values = mutableMapOf<String, Any>()
       for (id in parsed.keys()) {
         when (val raw = parsed.opt(id)) {

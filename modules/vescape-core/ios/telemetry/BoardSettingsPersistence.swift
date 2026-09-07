@@ -103,6 +103,10 @@ final class BoardSettingsPersistence {
     try writer.read { db in try PersistedAppSetting.fetchAll(db) }
   }
 
+  func setting(_ key: String) throws -> PersistedAppSetting? {
+    try writer.read { db in try PersistedAppSetting.fetchOne(db, key: key) }
+  }
+
   func settings(defaults: [String: Any]) throws -> [String: Any] {
     var merged = defaults
     for setting in try settings() {
@@ -122,6 +126,16 @@ final class BoardSettingsPersistence {
 
   func saveSettings(_ settings: [PersistedAppSetting]) throws {
     try writer.write { db in for setting in settings { try setting.save(db) } }
+  }
+
+  func replaceSettings(_ settings: [PersistedAppSetting?], keys: [String]) throws {
+    precondition(settings.count == keys.count)
+    try writer.write { db in
+      for (setting, key) in zip(settings, keys) {
+        if let setting { try setting.save(db) }
+        else { _ = try PersistedAppSetting.deleteOne(db, key: key) }
+      }
+    }
   }
 
   func deleteSetting(_ key: String) throws {

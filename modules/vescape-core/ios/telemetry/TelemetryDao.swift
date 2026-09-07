@@ -33,33 +33,6 @@ private struct TelemetryFrameRecord: PersistableRecord {
   }
 }
 
-internal func upsertBucket(_ db: Database, _ b: TelemetryBucket) throws {
-  try db.execute(
-    sql: RecordingPersistenceSQL.upsertBucket,
-    arguments: RecordingPersistenceSQL.bucketArguments(b)
-  )
-}
-
-internal func insertMarker(_ db: Database, _ marker: [String: Any?]) throws {
-  let occurredAtMs = telemetryLong(marker["occurredAtMs"] ?? nil) ?? telemetryNowMs()
-  let elapsedRealtimeMs = telemetryLong(marker["elapsedRealtimeMs"] ?? nil) ?? telemetryElapsedMs()
-  let type = marker["type"] as? String ?? "event"
-  let boardId = marker["boardId"] as? String
-  let message = marker["message"] as? String
-  let gapMs = telemetryLong(marker["gapMs"] ?? nil)
-  try db.execute(
-    sql: "INSERT INTO telemetry_markers (occurred_at_ms, elapsed_realtime_ms, type, board_id, message, gap_ms) VALUES (?, ?, ?, ?, ?, ?)",
-    arguments: [occurredAtMs, elapsedRealtimeMs, type, boardId, message, gapMs]
-  )
-}
-
-internal func insertExclusion(_ db: Database, _ range: MetricExclusionRange) throws {
-  try db.execute(
-    sql: "INSERT INTO metric_exclusion_ranges (board_id, reason, start_ms, end_ms, sample_count) VALUES (?, ?, ?, ?, ?)",
-    arguments: [range.boardId, range.reason, range.startMs, range.endMs, range.sampleCount]
-  )
-}
-
 /// [boardNames] resolves `boards.id` -> name on read; the row never carried one (ADR 0028).
 internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String]) -> [String: Any?] {
   let sampleCount: Int = row["sample_count"]
@@ -199,29 +172,6 @@ internal func gpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: 
       "distanceFromPreviousM": previous.map { telemetryHaversineM($0.lat, $0.lon, latitude, longitude) },
     ]
   }
-}
-
-internal func bucketPoint(_ row: Row) -> BucketTelemetryPoint? {
-  BucketTelemetryPoint(
-    capturedAtMs: row["captured_at_ms"] as Int64,
-    boardId: row["board_id"] as String?,
-    speedCentiKmh: row["speed_centi_kmh"] as Int? ?? 0,
-    batteryVoltageMv: row["battery_voltage_mv"] as Int? ?? 0,
-    motorCurrentMa: row["motor_current_ma"] as Int? ?? 0,
-    batteryCurrentMa: row["battery_current_ma"] as Int? ?? 0,
-    dutyPermille: row["duty_permille"] as Int? ?? 0,
-    odometerCm: row["odometer_cm"] as Int64?,
-    tempMosfetDeciC: row["temp_mosfet_deci_c"] as Int?,
-    tempMotorDeciC: row["temp_motor_deci_c"] as Int?,
-    gpsSpeedCentiMps: row["gps_speed_centi_mps"] as Int?,
-    gpsTimestampMs: row["location_timestamp_ms"] as Int64?,
-    gpsAccuracyCm: row["accuracy_cm"] as Int?,
-    latitudeE7: row["latitude_e7"] as Int64?,
-    longitudeE7: row["longitude_e7"] as Int64?,
-    bearingCentiDeg: row["bearing_centi_deg"] as Int?,
-    altitudeCm: row["altitude_cm"] as Int?,
-    preciseGps: ((row["accuracy_cm"] as Int?) ?? Int.max) <= 2_000
-  )
 }
 
 internal func appendNullableDouble(_ data: inout Data, _ value: Double?) {

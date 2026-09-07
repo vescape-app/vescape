@@ -20,7 +20,7 @@ internal const val FREE_SPIN_MAX_DELTA_CENTI_KMH = 1200
 internal const val FREE_SPIN_NEAREST_GPS_MAX_AGE_MS = 10_000L
 internal const val FREE_SPIN_GPS_PRECISE_ACCURACY_CM = 2000
 
-internal data class MetricSanitizerConfig(
+data class MetricSanitizerConfig(
   val movingSpeedThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH,
   val freeSpinMaxSpeedDeltaCentiKmh: Int = (DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH * 100).toInt(),
   val freeSpinStationaryBoardCapCentiKmh: Int = (DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH * 100).toInt(),

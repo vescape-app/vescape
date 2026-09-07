@@ -208,6 +208,23 @@ internal fun legalModeEnableError(
     return null
 }
 
+internal data class GroupRideTargetReload(val target: TargetPoint?, val loaded: Boolean)
+
+internal suspend fun reloadGroupRideTarget(
+    current: TargetPoint?,
+    read: suspend () -> TargetPoint?,
+    report: (Throwable) -> Unit = {
+        RecordingStorageFailure.reportRead("group_ride_target_read", it)
+    },
+): GroupRideTargetReload = try {
+    GroupRideTargetReload(read(), loaded = true)
+} catch (error: kotlinx.coroutines.CancellationException) {
+    throw error
+} catch (error: Throwable) {
+    report(error)
+    GroupRideTargetReload(current, loaded = false)
+}
+
 /**
  * Owns the durable board-session state and orchestration. [CoreForegroundService] is a thin Android
  * shell delegating lifecycle + the static JS bridge here. Holds a [service] reference solely for the
@@ -692,6 +709,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private val warningWriteExceptionHandler = CoroutineExceptionHandler { _, throwable ->
         reportWarningFailure("registry_write", throwable)
     }
+    /** VESC Fault writes share the ordered persistence dispatcher but report as storage failures. */
+    private val faultWriteExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        RecordingStorageFailure.report("vesc_fault_write", "write_failed", throwable)
+    }
     /** True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only. */
     @Volatile
     private var bmsSeriesFocused = false
@@ -720,6 +741,8 @@ internal class BoardSessionController(private val service: CoreForegroundService
     private var gpsLastFixAt: Long? = null
     private var isStoppingService = false
     private var connectionSoundsEnabled = true
+    @Volatile
+    private var lastAppliedSettings = AppSettings()
 private var wearAutoLaunchOnConnect = true
     private var watchLaunchFiredSessionId = 0L
     /**
@@ -1553,7 +1576,7 @@ private var wearAutoLaunchOnConnect = true
         liveFaultCode = code
         lastFaultDispatchAtMs = now
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
-        launchWarningWrite { coordinator.onActiveFault(boardId, code) }
+        launchFaultWrite { coordinator.onActiveFault(boardId, code) }
     }
 
     /**
@@ -1569,7 +1592,7 @@ private var wearAutoLaunchOnConnect = true
         lastFaultDispatchAtMs = now
         val boardId = boardConfig?.appBoardId ?: return
         val coordinator = VescFaultCoordinator.get(service.applicationContext)
-        launchWarningWrite { coordinator.onFaultCleared(boardId) }
+        launchFaultWrite { coordinator.onFaultCleared(boardId) }
     }
 
     /**
@@ -1686,6 +1709,12 @@ private var wearAutoLaunchOnConnect = true
         ) { block() }
     }
 
+    private fun launchFaultWrite(block: suspend () -> Unit) {
+        CoreForegroundService.appDataScope.launch(
+            faultWriteExceptionHandler + CoreForegroundService.warningWriteDispatcher,
+        ) { block() }
+    }
+
     /**
      * Manual clear from JS: reset the matching telemetry detector's dedupe so a still-true condition
      * re-fires within this Board Session (`kind == null` means all kinds). Detectors are not
@@ -1774,9 +1803,12 @@ private var wearAutoLaunchOnConnect = true
         alertCoordinator.updateBoardConfigValues(values.values)
         val repo = AppDataRepository.get(service.applicationContext)
         CoreForegroundService.appDataScope.launch {
-            if (origin == BoardConfigOperationOrigin.FRESH_READ) {
-                repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
-            } else repo.saveBoardConfigValues(values)
+            try {
+                if (origin == BoardConfigOperationOrigin.FRESH_READ) {
+                    repo.saveFreshBoardConfigValues(values)?.let { emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap())) }
+                } else repo.saveBoardConfigValues(values)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.report("board_config_save", "write_failed", e) }
         }
         evaluateConfigSafety(values)
     }
@@ -1792,7 +1824,10 @@ private var wearAutoLaunchOnConnect = true
         val repo = AppDataRepository.get(service.applicationContext)
         val session = boardSession
         CoreForegroundService.appDataScope.launch {
-            val restored = repo.getBoardConfigValues(boardId, refloatBaseVersion) ?: return@launch
+            val restored = try { repo.getBoardConfigValues(boardId, refloatBaseVersion) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.reportRead("board_config_restore", e); return@launch }
+                ?: return@launch
             scheduler.post {
                 // The load is async, so re-check everything that could have moved since: the session
                 // must still be the one that asked, on the same Board and Refloat base version, with a
@@ -1822,7 +1857,10 @@ private var wearAutoLaunchOnConnect = true
         val repo = AppDataRepository.get(service.applicationContext)
         val session = boardSession
         CoreForegroundService.appDataScope.launch {
-            val restored = repo.getLatestMotorConfigValues(boardId) ?: return@launch
+            val restored = try { repo.getLatestMotorConfigValues(boardId) }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Throwable) { RecordingStorageFailure.reportRead("motor_config_restore", e); return@launch }
+                ?: return@launch
             scheduler.post {
                 if (session == null || !isCurrentBoardSession(session)) return@post
                 if (boardConfig?.appBoardId != boardId) return@post
@@ -1930,9 +1968,10 @@ private var wearAutoLaunchOnConnect = true
                 motorConfigValues = values
                 val repo = AppDataRepository.get(service.applicationContext)
                 CoreForegroundService.appDataScope.launch {
-                    repo.saveFreshMotorConfigValues(values)?.let {
-                        emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
-                    }
+                    try { repo.saveFreshMotorConfigValues(values)?.let {
+                      emitEvent("onBoardConfigChangeNotice", mapOf("notice" to it.toMap()))
+                    } } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (e: Throwable) { RecordingStorageFailure.report("motor_config_save", "write_failed", e) }
                 }
                 Log.i(
                     VESC_SESSION_TAG,
@@ -3057,14 +3096,13 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadGroupRideTarget`
      */
     suspend fun loadGroupRideTarget(context: Context) {
-        groupRideTarget = try {
+        val reload = reloadGroupRideTarget(groupRideTarget, read = {
             AppDataRepository.get(context).getDirectionPoint()?.let { (latitude, longitude) ->
                 TargetPoint(lat = latitude, lng = longitude)
             }
-        } catch (e: Exception) {
-            Log.w(VESC_SESSION_TAG, "Failed to load direction target for presence: ${e.message}")
-            null
-        }
+        })
+        if (!reload.loaded) return
+        groupRideTarget = reload.target
         mainHandler.post { latestRiderPresence()?.let(groupRideObserver::pushPresence) }
     }
 
@@ -3073,6 +3111,17 @@ private var wearAutoLaunchOnConnect = true
             AppDataRepository.get(service.applicationContext).getTypedSettings()
         }
         applyTelemetrySettings(settings)
+        return liveStateMapWithoutStorage(settings, includeRecent)
+    }
+
+    /** Builds an outage event from memory only, preserving the active Board and live telemetry. */
+    fun liveStateMapWithoutStorage(includeRecent: Boolean = false): Map<String, Any?> =
+        liveStateMapWithoutStorage(lastAppliedSettings, includeRecent)
+
+    private fun liveStateMapWithoutStorage(
+        settings: AppSettings,
+        includeRecent: Boolean,
+    ): Map<String, Any?> {
         val recentTelemetryValue = if (includeRecent) telemetryPipeline.recentSnapshot() else emptyList()
         val recentLocationsValue = if (includeRecent) locationTracker.recentLocations() else emptyList()
 
@@ -3223,6 +3272,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun applyTelemetrySettings(settings: AppSettings) {
+        lastAppliedSettings = settings
         applyTelemetryPipelineSettings(settings)
         recordingCoordinator.applySettings(settings)
         socWindow.windowMs = settings.socEstimateWindowSeconds * 1000L

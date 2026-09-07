@@ -10,6 +10,40 @@ import GRDB
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt
 struct VescFaultCaptureStore: VescFaultCaptureStoring {
+  private struct WriterUnavailable: Error {}
+  private struct CaptureRecord: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "vesc_fault_captures"
+    let occurrenceId: String; let boardId: String; let startedAt: Int64; let openedAt: Int64
+    let sampleCount: Int
+    enum CodingKeys: String, CodingKey {
+      case occurrenceId = "occurrence_id", boardId = "board_id", startedAt = "started_at"
+      case openedAt = "opened_at", sampleCount = "sample_count"
+    }
+    init(_ value: VescFaultCapture) { occurrenceId = value.occurrenceId; boardId = value.boardId; startedAt = value.startedAtMs; openedAt = value.openedAtMs; sampleCount = value.sampleCount }
+    var capture: VescFaultCapture { .init(occurrenceId: occurrenceId, boardId: boardId, startedAtMs: startedAt, openedAtMs: openedAt, sampleCount: sampleCount) }
+  }
+  private struct SampleRecord: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "vesc_fault_capture_samples"
+    var id: Int64? = nil
+    let occurrenceId: String; let capturedAt: Int64
+    let speed, dutyCycle, erpm, batteryVoltage, batteryCurrent, motorCurrent: Double?
+    let tempMosfet, tempMotor, pitch, roll, balancePitch, adc1, adc2: Double?
+    let state: Int?
+    enum CodingKeys: String, CodingKey {
+      case id, speed, erpm, pitch, roll, state
+      case occurrenceId = "occurrence_id", capturedAt = "captured_at", dutyCycle = "duty_cycle"
+      case batteryVoltage = "battery_voltage", batteryCurrent = "battery_current", motorCurrent = "motor_current"
+      case tempMosfet = "temp_mosfet", tempMotor = "temp_motor", balancePitch = "balance_pitch", adc1, adc2
+    }
+    init(_ occurrenceId: String, _ value: VescFaultCaptureSample) {
+      self.occurrenceId = occurrenceId; capturedAt = value.capturedAtMs; speed = value.speed
+      dutyCycle = value.dutyCycle; erpm = value.erpm; batteryVoltage = value.batteryVoltage
+      batteryCurrent = value.batteryCurrent; motorCurrent = value.motorCurrent; tempMosfet = value.tempMosfet
+      tempMotor = value.tempMotor; pitch = value.pitch; roll = value.roll; balancePitch = value.balancePitch
+      adc1 = value.adc1; adc2 = value.adc2; state = value.state
+    }
+    var sample: VescFaultCaptureSample { .init(capturedAtMs: capturedAt, speed: speed, dutyCycle: dutyCycle, erpm: erpm, batteryVoltage: batteryVoltage, batteryCurrent: batteryCurrent, motorCurrent: motorCurrent, tempMosfet: tempMosfet, tempMotor: tempMotor, pitch: pitch, roll: roll, balancePitch: balancePitch, adc1: adc1, adc2: adc2, state: state) }
+  }
   /// Resolves the shared GRDB writer at call time so it always sees the current pool (swapped on
   /// database restore). `nil` while the pool failed to open.
   private let resolveWriter: () -> DatabaseWriter?
@@ -36,97 +70,34 @@ struct VescFaultCaptureStore: VescFaultCaptureStoring {
 
   // MARK: - Writes
 
-  func upsertCapture(_ capture: VescFaultCapture) {
-    guard let writer = resolveWriter() else { return }
-    try? writer.write { db in
-      try db.execute(
-        sql: """
-          INSERT INTO vesc_fault_captures
-            (occurrence_id, board_id, started_at, opened_at, sample_count)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(occurrence_id) DO UPDATE SET
-            sample_count = excluded.sample_count
-          """,
-        arguments: [
-          capture.occurrenceId, capture.boardId, capture.startedAtMs, capture.openedAtMs,
-          capture.sampleCount,
-        ]
-      )
-    }
-  }
-
-  func appendSamples(_ occurrenceId: String, _ samples: [VescFaultCaptureSample]) {
-    guard !samples.isEmpty, let writer = resolveWriter() else { return }
-    try? writer.write { db in
-      for sample in samples {
-        try db.execute(
-          sql: """
-            INSERT INTO vesc_fault_capture_samples
-              (occurrence_id, captured_at, speed, duty_cycle, erpm, battery_voltage, battery_current,
-               motor_current, temp_mosfet, temp_motor, pitch, roll, balance_pitch, adc1, adc2, state)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-          arguments: [
-            occurrenceId, sample.capturedAtMs, sample.speed, sample.dutyCycle, sample.erpm,
-            sample.batteryVoltage, sample.batteryCurrent, sample.motorCurrent, sample.tempMosfet,
-            sample.tempMotor, sample.pitch, sample.roll, sample.balancePitch, sample.adc1,
-            sample.adc2, sample.state,
-          ]
+  func saveCapture(_ capture: VescFaultCapture, samples: [VescFaultCaptureSample]) throws {
+    try writer().write { db in
+      if try CaptureRecord.fetchOne(db, key: capture.occurrenceId) == nil {
+        try CaptureRecord(capture).insert(db)
+      } else {
+        try CaptureRecord.filter(key: capture.occurrenceId).updateAll(
+          db, Column("sample_count").set(to: capture.sampleCount)
         )
       }
+      for sample in samples { try SampleRecord(capture.occurrenceId, sample).insert(db) }
     }
   }
 
   // MARK: - Reads
 
-  func getCapture(_ occurrenceId: String) -> VescFaultCapture? {
-    guard let writer = resolveWriter() else { return nil }
-    return try? writer.read { db in
-      try Row.fetchOne(
-        db,
-        sql: "SELECT * FROM vesc_fault_captures WHERE occurrence_id = ? LIMIT 1",
-        arguments: [occurrenceId]
-      ).map { row in
-        VescFaultCapture(
-          occurrenceId: row["occurrence_id"] as String,
-          boardId: row["board_id"] as String,
-          startedAtMs: row["started_at"] as Int64,
-          openedAtMs: row["opened_at"] as Int64,
-          sampleCount: row["sample_count"] as Int
-        )
-      }
-    } ?? nil
+  func getCapture(_ occurrenceId: String) throws -> VescFaultCapture? {
+    try writer().read { db in try CaptureRecord.fetchOne(db, key: occurrenceId)?.capture }
   }
 
-  func getSamples(_ occurrenceId: String) -> [VescFaultCaptureSample] {
-    guard let writer = resolveWriter() else { return [] }
-    return (try? writer.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = ?
-          ORDER BY captured_at ASC, id ASC
-          """,
-        arguments: [occurrenceId]
-      ).map { row in
-        VescFaultCaptureSample(
-          capturedAtMs: row["captured_at"] as Int64,
-          speed: row["speed"] as Double?,
-          dutyCycle: row["duty_cycle"] as Double?,
-          erpm: row["erpm"] as Double?,
-          batteryVoltage: row["battery_voltage"] as Double?,
-          batteryCurrent: row["battery_current"] as Double?,
-          motorCurrent: row["motor_current"] as Double?,
-          tempMosfet: row["temp_mosfet"] as Double?,
-          tempMotor: row["temp_motor"] as Double?,
-          pitch: row["pitch"] as Double?,
-          roll: row["roll"] as Double?,
-          balancePitch: row["balance_pitch"] as Double?,
-          adc1: row["adc1"] as Double?,
-          adc2: row["adc2"] as Double?,
-          state: row["state"] as Int?
-        )
-      }
-    }) ?? []
+  func getSamples(_ occurrenceId: String) throws -> [VescFaultCaptureSample] {
+    try writer().read { db in
+      try SampleRecord.filter(Column("occurrence_id") == occurrenceId)
+        .order(Column("captured_at"), Column("id")).fetchAll(db).map(\.sample)
+    }
+  }
+
+  private func writer() throws -> DatabaseWriter {
+    guard let writer = resolveWriter() else { throw WriterUnavailable() }
+    return writer
   }
 }

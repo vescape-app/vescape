@@ -285,12 +285,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshBoardConfigValues(values: BoardConfigValues): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
     val boardId = values.boardId ?: return@withContext null
     val base = values.refloatBaseVersion ?: return@withContext null
-    val row = dao.replaceBaselineAndNotice(BoardConfigValuesEntity(boardId, base, values.valuesJson(), values.capturedAtMs)) { old ->
-      val oldValues = old?.let { BoardConfigValues.lastKnown(boardId, base, it.capturedAt, it.valuesJson).values } ?: return@replaceBaselineAndNotice null
-      val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, values.writeBase?.schema)
-      diffs.takeIf { it.isNotEmpty() }?.let { BoardConfigChangeNoticeEntity(boardId, values.capturedAtMs, BoardConfigChangeNotice(boardId, values.capturedAtMs, it).diffsJson()) }
-    }
-    row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+    ConfigPersistence(dao).saveFreshBoard(boardId, base, values.values, values.capturedAtMs, values.writeBase?.schema)
   }
 
   internal suspend fun getBoardConfigChangeNotice(boardId: String): BoardConfigChangeNotice? = withContext(Dispatchers.IO) {
@@ -333,36 +328,7 @@ class AppDataRepository private constructor(private val context: Context) {
   internal suspend fun saveFreshMotorConfigValues(values: MotorConfigValues): BoardConfigChangeNotice? =
     withContext(Dispatchers.IO) {
       val boardId = values.boardId?.takeIf { it.isNotBlank() } ?: return@withContext null
-      val entity = MotorConfigValuesEntity(
-        boardId = boardId,
-        mcconfSignature = values.signature,
-        firmware = values.firmware,
-        valuesJson = values.valuesJson(),
-        capturedAt = values.capturedAtMs,
-      )
-      val row = dao.replaceMotorBaselineAndNotice(entity) { old, existingNotice ->
-        if (old == null || old.mcconfSignature != values.signature) return@replaceMotorBaselineAndNotice existingNotice
-        val oldValues = MotorConfigValues.lastKnown(
-          boardId = boardId,
-          signature = old.mcconfSignature,
-          firmware = old.firmware,
-          capturedAtMs = old.capturedAt,
-          valuesJson = old.valuesJson,
-        ).values
-        // Motor config carries no schema, so a field's id is its own label (ADR 0036).
-        val diffs = BoardConfigChangeNotice.diff(oldValues, values.values, null)
-        if (diffs.isEmpty()) return@replaceMotorBaselineAndNotice existingNotice
-        val previous = existingNotice
-          ?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson)?.diffs }
-          .orEmpty()
-        val merged = BoardConfigChangeNotice.mergeDiffs(previous, diffs)
-        BoardConfigChangeNoticeEntity(
-          boardId,
-          values.capturedAtMs,
-          BoardConfigChangeNotice(boardId, values.capturedAtMs, merged).diffsJson(),
-        )
-      }
-      row?.let { BoardConfigChangeNotice.from(it.boardId, it.detectedAt, it.diffsJson) }
+      ConfigPersistence(dao).saveFreshMotor(boardId, values.signature, values.firmware, values.values, values.capturedAtMs)
     }
 
   /**
@@ -372,9 +338,7 @@ class AppDataRepository private constructor(private val context: Context) {
    */
   internal suspend fun clearBoardConfigValues(boardId: String): Unit = withContext(Dispatchers.IO) {
     if (boardId.isBlank()) return@withContext
-    dao.deleteBoardConfigValues(boardId)
-    dao.deleteBoardConfigChangeNotice(boardId)
-    dao.deleteMotorConfigValues(boardId)
+    dao.clearBoardConfigState(boardId)
   }
 
   suspend fun getAlertRules(boardId: String): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
@@ -800,11 +764,12 @@ class AppDataRepository private constructor(private val context: Context) {
   suspend fun setDirectionPoint(latitude: Double?, longitude: Double?): Unit =
     withContext(Dispatchers.IO) {
       val now = System.currentTimeMillis()
-      dao.upsertAppSetting(
-        AppSettingEntity(DIRECTION_POINT_LATITUDE, encodeSettingJson(latitude), now),
-      )
-      dao.upsertAppSetting(
-        AppSettingEntity(DIRECTION_POINT_LONGITUDE, encodeSettingJson(longitude), now),
+      dao.replaceAppSettings(
+        listOf(
+          latitude?.let { AppSettingEntity(DIRECTION_POINT_LATITUDE, encodeSettingJson(it), now) },
+          longitude?.let { AppSettingEntity(DIRECTION_POINT_LONGITUDE, encodeSettingJson(it), now) },
+        ),
+        listOf(DIRECTION_POINT_LATITUDE, DIRECTION_POINT_LONGITUDE),
       )
       notifyDataChanged(AppDataScope.SETTINGS)
     }

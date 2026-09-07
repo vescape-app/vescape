@@ -1,0 +1,81 @@
+{
+  "scenario": "remaining-stores-close-reopen-rollback",
+  "maintenance": {
+    "frames": [
+      { "at": 1000, "boardId": "board-a" },
+      { "at": 62000, "boardId": "board-b" },
+      { "at": 123000, "boardId": "board-a" },
+      { "at": 184000, "boardId": "board-b" }
+    ],
+    "deleteBeforeMs": 1500,
+    "boardRange": { "fromMs": 61000, "toMs": 63000, "boardId": "board-b" },
+    "allBoardRange": { "fromMs": 122000, "toMs": 124000 },
+    "favorite": { "fromMs": 184000, "toMs": 184000 },
+    "deltaFrame": { "at": 185000, "boardId": "board-b", "reconstructedSpeedCentiKmh": 1000 },
+    "rollbackRanges": [
+      { "fromMs": 244000, "toMs": 246000 },
+      { "fromMs": 304000, "toMs": 306000 }
+    ],
+    "expectedRemainingFrameTimes": [184000, 185000, 245000, 305000],
+    "expectedRebuiltBuckets": 1,
+    "expectedRebuiltSampleCount": 2
+  },
+  "navigation": {
+    "path": "{\"status\":\"ready\",\"coordinates\":[[21.0,52.0]]}",
+    "profile": "cycling",
+    "latitude": 52.123,
+    "longitude": 21.456
+  },
+  "privacyZone": {
+    "id": "zone-home",
+    "preset": "home",
+    "name": "Home",
+    "centerLatitudeE7": 521234567,
+    "centerLongitudeE7": 210123456,
+    "radiusMeters": 150,
+    "createdAt": 1000,
+    "updatedAt": 2000
+  },
+  "diagnostic": {
+    "eventName": "connection_retry",
+    "occurredAtMs": 3000
+  },
+  "warning": {
+    "boardId": "board-warning",
+    "kind": "battery-cell-drift",
+    "severity": "warn",
+    "firstDetectedAtMs": 5000,
+    "lastDetectedAtMs": 6000,
+    "updatedLastDetectedAtMs": 7000,
+    "invalidSeverity": "invalid",
+    "payloadJson": "{\"delta\":0.12}"
+  },
+  "fault": {
+    "boardId": "board-fault",
+    "firstId": "fault-one",
+    "secondId": "fault-two",
+    "firstCode": 9,
+    "secondCode": 11,
+    "occurredAtMs": 8000,
+    "advancedAtMs": 9000,
+    "clearedAtMs": 10000,
+    "secondOccurredAtMs": 11000,
+    "captureStartedAtMs": 6000,
+    "captureSamples": [
+      { "capturedAtMs": 7900, "speed": 12.5, "state": 2 },
+      { "capturedAtMs": 7800, "speed": 11.5, "state": 1 }
+    ]
+  },
+  "config": {
+    "boardId": "board-config",
+    "baseVersion": "1.2",
+    "signature": 12345,
+    "firmware": "release_6_05",
+    "initialBoard": { "kp": 1.0 },
+    "updatedBoard": { "kp": 2.0 },
+    "initialMotor": { "l_temp_fet_start": 80.0 },
+    "updatedMotor": { "l_temp_fet_start": 85.0 },
+    "boardDiffsJson": "[{\"fieldId\":\"kp\",\"label\":\"kp\",\"oldValue\":1,\"newValue\":2}]",
+    "mergedDiffsJson": "[{\"fieldId\":\"kp\",\"label\":\"kp\",\"oldValue\":1,\"newValue\":2},{\"fieldId\":\"l_temp_fet_start\",\"label\":\"l_temp_fet_start\",\"oldValue\":80,\"newValue\":85}]"
+  }
+}

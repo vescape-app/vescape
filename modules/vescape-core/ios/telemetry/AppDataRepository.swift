@@ -58,29 +58,6 @@ final class AppDataRepository {
     Self.onDataChanged?(scope.rawValue)
   }
 
-  /// Degrading to `fallback` is deliberate — a database failure must not crash the bridge — but it
-  /// is indistinguishable from "no rows" at the call site. `getBoards` returning `[]` because
-  /// `boards` was missing a column read on screen exactly like a rider with no boards, so log it:
-  /// a swallowed error still gets to say what it was.
-  private func read<T>(_ fallback: T, _ body: (Database) throws -> T) -> T {
-    guard let writer else { return fallback }
-    do {
-      return try writer.read(body)
-    } catch {
-      NSLog("[vescape] AppDataRepository read failed: \(error)")
-      return fallback
-    }
-  }
-
-  private func write(_ body: @escaping (Database) throws -> Void) {
-    guard let writer else { return }
-    do {
-      try writer.write(body)
-    } catch {
-      NSLog("[vescape] AppDataRepository write failed: \(error)")
-    }
-  }
-
   private func nowMs() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
   // MARK: - Boards
@@ -366,61 +343,44 @@ final class AppDataRepository {
 
   // MARK: - Privacy zones
 
-  func getPrivacyZones() -> [[String: Any?]] {
-    read([]) { db in
-      try Row.fetchAll(db, sql: "SELECT * FROM privacy_zones ORDER BY created_at ASC").map { row in
+  func getPrivacyZones() throws -> [[String: Any?]] {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    return try PrivacyZonePersistence(writer: writer).zones().map { row in
         [
-          "id": row["id"] as String,
-          "preset": row["preset"] as String,
-          "name": row["name"] as String,
-          "enabled": (row["enabled"] as Int64) != 0,
-          "centerLatitude": (row["center_latitude_e7"] as Int64).asE7Degrees,
-          "centerLongitude": (row["center_longitude_e7"] as Int64).asE7Degrees,
-          "radiusMeters": row["radius_meters"] as Int64,
-          "createdAt": row["created_at"] as Int64,
-          "updatedAt": row["updated_at"] as Int64,
+          "id": row.id, "preset": row.preset, "name": row.name, "enabled": row.enabled,
+          "centerLatitude": row.centerLatitudeE7.asE7Degrees,
+          "centerLongitude": row.centerLongitudeE7.asE7Degrees,
+          "radiusMeters": row.radiusMeters, "createdAt": row.createdAt, "updatedAt": row.updatedAt,
         ]
-      }
     }
   }
 
-  func upsertPrivacyZone(_ zone: [String: Any?]) {
+  func upsertPrivacyZone(_ zone: [String: Any?]) throws {
     guard
       let id = zone["id"] as? String,
       let name = zone["name"] as? String,
       let latitude = Self.doubleValue(zone["centerLatitude"] ?? nil),
       let longitude = Self.doubleValue(zone["centerLongitude"] ?? nil),
       let radius = Self.longValue(zone["radiusMeters"] ?? nil)
-    else { return }
+    else { throw InvalidInput.alertRuleIdentity }
     let preset = zone["preset"] as? String ?? "custom"
     let enabled = (zone["enabled"] as? Bool) ?? false
     let now = nowMs()
     let createdAt = Self.longValue(zone["createdAt"] ?? nil) ?? now
     let updatedAt = Self.longValue(zone["updatedAt"] ?? nil) ?? now
-    write { db in
-      try db.execute(
-        sql: """
-          INSERT OR REPLACE INTO privacy_zones
-            (id, preset, name, enabled, center_latitude_e7, center_longitude_e7, radius_meters, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          """,
-        arguments: [id, preset, name, enabled ? 1 : 0, latitude.toE7, longitude.toE7, radius, createdAt, updatedAt]
-      )
-    }
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try PrivacyZonePersistence(writer: writer).save(.init(id: id, preset: preset, name: name, enabled: enabled, centerLatitudeE7: latitude.toE7, centerLongitudeE7: longitude.toE7, radiusMeters: radius, createdAt: createdAt, updatedAt: updatedAt))
   }
 
-  func setPrivacyZoneEnabled(_ id: String, _ enabled: Bool) {
+  func setPrivacyZoneEnabled(_ id: String, _ enabled: Bool) throws {
     let updatedAt = nowMs()
-    write { db in
-      try db.execute(
-        sql: "UPDATE privacy_zones SET enabled = ?, updated_at = ? WHERE id = ?",
-        arguments: [enabled ? 1 : 0, updatedAt, id]
-      )
-    }
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try PrivacyZonePersistence(writer: writer).setEnabled(id: id, enabled: enabled, updatedAt: updatedAt)
   }
 
-  func deletePrivacyZone(_ id: String) {
-    write { db in try db.execute(sql: "DELETE FROM privacy_zones WHERE id = ?", arguments: [id]) }
+  func deletePrivacyZone(_ id: String) throws {
+    guard let writer else { throw StorageUnavailable.databaseNotOpen }
+    try PrivacyZonePersistence(writer: writer).delete(id: id)
   }
 
   // MARK: - Direction point
@@ -432,8 +392,17 @@ final class AppDataRepository {
   static let directionPointLongitudeKey = "directionPointLongitude"
 
   func setDirectionPoint(latitude: Double?, longitude: Double?) throws {
-    try updateSetting(Self.directionPointLatitudeKey, rawValue: latitude)
-    try updateSetting(Self.directionPointLongitudeKey, rawValue: longitude)
+    let updatedAt = nowMs()
+    let values = [latitude, longitude].map { value -> PersistedAppSetting? in
+      guard let value, let json = Self.encodeJson(value) else { return nil }
+      return PersistedAppSetting(key: "", valueJson: json, updatedAt: updatedAt)
+    }
+    let keys = [Self.directionPointLatitudeKey, Self.directionPointLongitudeKey]
+    let keyed = zip(values, keys).map { setting, key in
+      setting.map { PersistedAppSetting(key: key, valueJson: $0.valueJson, updatedAt: $0.updatedAt) }
+    }
+    try boardSettingsPersistence().replaceSettings(keyed, keys: keys)
+    notifyDataChanged(.settings)
   }
 
   func getDirectionPoint() throws -> (latitude: Double, longitude: Double)? {
@@ -454,30 +423,15 @@ final class AppDataRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationPath`
   static let navigationPathKey = "navigationPath"
 
-  func getNavigationPath() -> String? {
-    read(nil) { db in
-      try String.fetchOne(
-        db,
-        sql: "SELECT value_json FROM app_settings WHERE key = ?",
-        arguments: [Self.navigationPathKey]
-      )
-    }
-    .flatMap { Self.decodeJson($0) as? String }
+  func getNavigationPath() throws -> String? {
+    guard let row = try boardSettingsPersistence().setting(Self.navigationPathKey) else { return nil }
+    return try Self.decodeStoredString(row.valueJson)
   }
 
-  func setNavigationPath(_ json: String?) {
-    let key = Self.navigationPathKey
-    guard let json, let encoded = Self.encodeJson(json) else {
-      write { db in try db.execute(sql: "DELETE FROM app_settings WHERE key = ?", arguments: [key]) }
-      return
-    }
-    let updatedAt = nowMs()
-    write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: [key, encoded, updatedAt]
-      )
-    }
+  func setNavigationPath(_ json: String?) throws {
+    guard let json else { try boardSettingsPersistence().deleteSetting(Self.navigationPathKey); return }
+    guard let encoded = Self.encodeJson(json) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
+    try boardSettingsPersistence().saveSetting(.init(key: Self.navigationPathKey, valueJson: encoded, updatedAt: nowMs()))
   }
 
   /// The rider's last chosen Navigation Profile, as its wire string. App data rather than a
@@ -486,26 +440,20 @@ final class AppDataRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getNavigationProfile`
   static let navigationProfileKey = "navigationProfile"
 
-  func getNavigationProfile() -> String? {
-    read(nil) { db in
-      try String.fetchOne(
-        db,
-        sql: "SELECT value_json FROM app_settings WHERE key = ?",
-        arguments: [Self.navigationProfileKey]
-      )
-    }
-    .flatMap { Self.decodeJson($0) as? String }
+  func getNavigationProfile() throws -> String? {
+    guard let row = try boardSettingsPersistence().setting(Self.navigationProfileKey) else { return nil }
+    return try Self.decodeStoredString(row.valueJson)
   }
 
-  func setNavigationProfile(_ profile: String) {
-    guard let encoded = Self.encodeJson(profile) else { return }
-    let updatedAt = nowMs()
-    write { db in
-      try db.execute(
-        sql: "INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES (?, ?, ?)",
-        arguments: [Self.navigationProfileKey, encoded, updatedAt]
-      )
-    }
+  func setNavigationProfile(_ profile: String) throws {
+    guard let encoded = Self.encodeJson(profile) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
+    try boardSettingsPersistence().saveSetting(.init(key: Self.navigationProfileKey, valueJson: encoded, updatedAt: nowMs()))
+  }
+
+  private static func decodeStoredString(_ json: String) throws -> String {
+    let decoded = try JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed])
+    guard let value = decoded as? String else { throw CocoaError(.coderInvalidValue) }
+    return value
   }
 
   // MARK: - Settings

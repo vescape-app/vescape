@@ -47,12 +47,12 @@ internal data class BoardConfigChangeNotice(val boardId: String, val detectedAtM
         if (!changed(a, b)) null else BoardConfigChangeDiff(id, metadata[id]?.label ?: id, metadata[id]?.unit, a, b)
       }
     }
-    fun from(boardId: String, at: Long, json: String): BoardConfigChangeNotice? = runCatching {
+    fun from(boardId: String, at: Long, json: String): BoardConfigChangeNotice {
       val array = JSONArray(json)
-      BoardConfigChangeNotice(boardId, at, (0 until array.length()).map { i ->
+      return BoardConfigChangeNotice(boardId, at, (0 until array.length()).map { i ->
         val o = array.getJSONObject(i)
         BoardConfigChangeDiff(o.getString("fieldId"), o.getString("label"), o.optString("unit").takeUnless { o.isNull("unit") }, o.opt("oldValue").takeUnless { it == JSONObject.NULL }, o.opt("newValue").takeUnless { it == JSONObject.NULL })
       })
-    }.getOrNull()
+    }
   }
 }

@@ -558,11 +558,8 @@ internal final class BoardSessionController: VescGattListener {
     let patch = rebased.values.filter {
       $0.key == BoardConfigFlagField.ledsOn.id || $0.key == BoardConfigFlagField.headlightsOn.id
     }
-    BoardConfigStore.shared.patch(
-      boardId: boardId,
-      refloatBaseVersion: baseVersion,
-      values: patch
-    )
+    do { try BoardConfigStore.shared.patch(boardId: boardId, refloatBaseVersion: baseVersion, values: patch) }
+    catch { RecordingStorageFailure.report(operation: "board_config_patch", category: "write_failed", error: error) }
   }
 
   /// Seed the lights from config, which is what firmware applies until something overrides it. On
@@ -746,7 +743,8 @@ internal final class BoardSessionController: VescGattListener {
   /// Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadPrivacyZones`
   func loadPrivacyZones() {
-    groupRidePrivacyZones = appData.getEnabledPrivacyZoneEntities()
+    do { groupRidePrivacyZones = try appData.getEnabledPrivacyZoneEntities() }
+    catch { RecordingStorageFailure.reportRead(operation: "group_ride_privacy_zones_read", error: error) }
   }
 
   /// Refresh the shared Group Ride target from native storage (observe start + direction-point
@@ -1135,7 +1133,8 @@ internal final class BoardSessionController: VescGattListener {
     if let restored = boardConfigValues { syncBoardLightsFromConfig(restored) }
     // No scope key to match on: the board's MCCONF signature is unknown until it answers, so the
     // latest row is restored optimistically and replaced when this session's own read lands.
-    motorConfigValues = MotorConfigStore.shared.loadLatest(boardId: config.appBoardId)
+    do { motorConfigValues = try MotorConfigStore.shared.loadLatest(boardId: config.appBoardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "motor_config_restore", error: error); motorConfigValues = nil }
     alertCoordinator.updateBoardConfigValues(boardConfigValues?.values ?? [:])
     // A Board Session actually started, so the manual stop that gated auto-connect is spent: the
     // rider is riding again. Without this the tombstone outlives every later launch and auto-connect
@@ -1785,15 +1784,18 @@ internal final class BoardSessionController: VescGattListener {
     boardConfigValues = values
     syncBoardLightsFromConfig(values)
     alertCoordinator.updateBoardConfigValues(values.values)
-    if origin == .freshRead { BoardConfigStore.shared.saveFresh(values) }
-    else { BoardConfigStore.shared.save(values) }
+    do {
+      if origin == .freshRead { try BoardConfigStore.shared.saveFresh(values) }
+      else { try BoardConfigStore.shared.save(values) }
+    } catch { RecordingStorageFailure.report(operation: "board_config_save", category: "write_failed", error: error) }
     evaluateConfigSafety(values)
   }
 
   /// The cached values for the connecting Board, as `lastKnown`.
   private func restoredBoardConfigValues(_ config: BoardConnectConfig) -> BoardConfigValues? {
     guard let base = config.refloatBaseVersion else { return nil }
-    return BoardConfigStore.shared.load(boardId: config.appBoardId, refloatBaseVersion: base)
+    do { return try BoardConfigStore.shared.load(boardId: config.appBoardId, refloatBaseVersion: base) }
+    catch { RecordingStorageFailure.reportRead(operation: "board_config_restore", error: error); return nil }
   }
 
   /// Drop held and persisted Board Config Values for the connected Board (`mismatched` link).
@@ -1802,8 +1804,10 @@ internal final class BoardSessionController: VescGattListener {
     motorConfigValues = nil
     alertCoordinator.updateBoardConfigValues([:])
     guard let boardId = config?.appBoardId else { return }
-    BoardConfigStore.shared.clear(boardId: boardId)
-    MotorConfigStore.shared.clear(boardId: boardId)
+    do { try BoardConfigStore.shared.clear(boardId: boardId) }
+    catch { RecordingStorageFailure.report(operation: "board_config_clear", category: "write_failed", error: error) }
+    do { try MotorConfigStore.shared.clear(boardId: boardId) }
+    catch { RecordingStorageFailure.report(operation: "motor_config_clear", category: "write_failed", error: error) }
   }
 
   /// Evaluate the config-safety rules against a freshly decoded config (background read after link
@@ -1898,7 +1902,8 @@ internal final class BoardSessionController: VescGattListener {
         values: values
       )
       motorConfigValues = decoded
-      MotorConfigStore.shared.saveFresh(decoded)
+      do { try MotorConfigStore.shared.saveFresh(decoded) }
+      catch { RecordingStorageFailure.report(operation: "motor_config_save", category: "write_failed", error: error) }
       NSLog("MCCONF decoded: \(firmware) signature=\(signature) fields=\(values.count)")
     // Not a failure of ours: this board runs a firmware whose layout is not carried yet.
     // Report the signature so a table can be generated for it; decode nothing.

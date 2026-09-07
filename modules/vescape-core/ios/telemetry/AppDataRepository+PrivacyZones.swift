@@ -7,9 +7,9 @@ extension AppDataRepository {
   /// Reads straight off the shared pool so it can live outside the main repository file.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `reloadPrivacyZonesIntoRecorder`
-  func getEnabledPrivacyZoneEntities() -> [PrivacyZoneEntity] {
-    guard let pool = TelemetryDatabase.pool else { return [] }
-    return (try? pool.read { db in
+  func getEnabledPrivacyZoneEntities() throws -> [PrivacyZoneEntity] {
+    let pool = try TelemetryDatabase.requirePool()
+    return try pool.read { db in
       try Row.fetchAll(
         db,
         sql: """
@@ -25,6 +25,6 @@ extension AppDataRepository {
           radiusMeters: Int(row["radius_meters"] as Int64)
         )
       }
-    }) ?? []
+    }
   }
 }

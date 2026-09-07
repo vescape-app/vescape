@@ -61,10 +61,10 @@ final class ConfigRWControllerWriteBaseTests: XCTestCase {
     XCTAssertNotEqual(Array(payload[0..<4]), Array(base.rawConfig[0..<4]), "tuned field must change")
   }
 
-  func testProvisionalValuesReadBeforeWriting() {
+  func testProvisionalValuesReadBeforeWriting() throws {
     let sent = SentFrames()
     let controller = ConfigRWController()
-    let lastKnown = BoardConfigValues.lastKnown(
+    let lastKnown = try BoardConfigValues.lastKnown(
       boardId: "board-1",
       refloatBaseVersion: "3.0.7",
       capturedAtMs: 0,

@@ -53,4 +53,40 @@ final class RecordingStorageFailureTests: XCTestCase {
   func testGenericFailureCannotHideABroadOutage() {
     XCTAssertEqual(resolveRecordingFailureKind(current: .fullDisk, incoming: .writeFailed), .fullDisk)
   }
+
+  func testReporterCallsSinkOutsideDedupLock() {
+    var operations: [String] = []
+    var reporter: RecordingFailureReporter!
+    reporter = RecordingFailureReporter { report in
+      operations.append(report.operation)
+      if report.operation == "first" {
+        reporter.report(operation: "second", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
+      }
+    }
+    reporter.report(operation: "first", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
+    XCTAssertEqual(operations, ["first", "second"])
+  }
+
+  func testSuccessfulSuspendedStartupProbeDoesNotEraseRuntimeOutage() {
+    RecordingStorageFailure.resetForTesting()
+    let entered = DispatchSemaphore(value: 0)
+    let resume = DispatchSemaphore(value: 0)
+    let finished = expectation(description: "startup probe")
+    DispatchQueue.global().async {
+      RecordingStorageFailure.startupCheck {
+        entered.signal()
+        resume.wait()
+      }
+      finished.fulfill()
+    }
+    XCTAssertEqual(entered.wait(timeout: .now() + 1), .success)
+    RecordingStorageFailure.reportRead(
+      operation: "runtime_read_during_startup",
+      error: DatabaseError(resultCode: .SQLITE_IOERR)
+    )
+    resume.signal()
+    wait(for: [finished], timeout: 1)
+    XCTAssertEqual(RecordingStorageFailure.value(), .storageUnavailable)
+    RecordingStorageFailure.resetForTesting()
+  }
 }

@@ -14,18 +14,27 @@ val extractProductionPersistence by tasks.registering {
     delete(output)
     listOf(
       "expo/modules/vescapecore/alerts/AlertDefaults.kt",
+      "expo/modules/vescapecore/warnings/BoardWarningSeverity.kt",
+      "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
+      "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
       "expo/modules/vescapecore/telemetry/TelemetryEntities.kt",
       "expo/modules/vescapecore/telemetry/TelemetryDao.kt",
+      "expo/modules/vescapecore/telemetry/ConfigPersistence.kt",
       "expo/modules/vescapecore/telemetry/TuneAlertPersistence.kt",
       "expo/modules/vescapecore/telemetry/BoardSettingsPersistence.kt",
       "expo/modules/vescapecore/telemetry/RecordingPersistence.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRoomDatabase.kt",
       "expo/modules/vescapecore/telemetry/PersistenceDefaults.kt",
       "expo/modules/vescapecore/telemetry/TelemetryBucketBuilder.kt",
+      "expo/modules/vescapecore/telemetry/MetricSanitizer.kt",
+      "expo/modules/vescapecore/telemetry/sanitizers/MetricSampleSanitizer.kt",
+      "expo/modules/vescapecore/telemetry/sanitizers/LowSpeedAverageSpeedSanitizer.kt",
+      "expo/modules/vescapecore/telemetry/sanitizers/FreeSpinMetricSanitizer.kt",
       "expo/modules/vescapecore/telemetry/RideHistoryRepository.kt",
       "expo/modules/vescapecore/telemetry/ProfileStatsRepository.kt",
       "expo/modules/vescapecore/telemetry/FavoriteSummaryBuilder.kt",
       "expo/modules/vescapecore/telemetry/TelemetryRangeSubtraction.kt",
+      "expo/modules/vescapecore/telemetry/TelemetryMaintenancePersistence.kt",
     ).forEach { relative ->
       val source = productionRoot.file(relative).asFile.readText()
       output.resolve(relative).apply { parentFile.mkdirs(); writeText(source) }

@@ -58,7 +58,8 @@ internal final class RecordingCoordinator {
       self.recorder = recorder
     }
     store.resetSessionState()
-    store.reloadPrivacyZones(appData.getEnabledPrivacyZoneEntities())
+    do { store.reloadPrivacyZones(try appData.getEnabledPrivacyZoneEntities()) }
+    catch { RecordingStorageFailure.reportRead(operation: "recording_privacy_zones_read", error: error) }
     if let settings = readSettings(operation: "recording_settings_read") { store.applySettings(settings) }
     // `autoRecording` is honored at board-ready, not here — mirrors Android, which only enables
     // the telemetry store once the board is actually connected. Only an explicit JS request

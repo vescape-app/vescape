@@ -164,24 +164,24 @@ struct BoardConfigValues {
     refloatBaseVersion: String?,
     capturedAtMs: Int64,
     valuesJson: String
-  ) -> BoardConfigValues {
+  ) throws -> BoardConfigValues {
     BoardConfigValues(
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
       capturedAtMs: capturedAtMs,
       freshness: .lastKnown,
-      values: decodeValuesJson(valuesJson),
+      values: try decodeValuesJson(valuesJson),
       writeBase: nil
     )
   }
 
   /// JSON numbers all arrive as `NSNumber`, so a stored `true` would otherwise read back as `1.0`.
   /// `CFBoolean` is the only way to tell the two apart.
-  private static func decodeValuesJson(_ json: String) -> [String: Any] {
-    guard
-      let data = json.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
+  private static func decodeValuesJson(_ json: String) throws -> [String: Any] {
+    guard let data = json.data(using: .utf8) else { throw ConfigStorageError.invalidCachedJSON }
+    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw ConfigStorageError.invalidCachedJSON
+    }
     var values: [String: Any] = [:]
     for (id, raw) in object {
       if let number = raw as? NSNumber {

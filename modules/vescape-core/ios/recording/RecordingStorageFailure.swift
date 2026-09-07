@@ -27,6 +27,11 @@ internal struct RecordingFailureReport: Equatable {
   let errorType: String
 }
 
+internal struct StorageUnavailableError: LocalizedError {
+  let kind: RecordingStorageFailureKind
+  var errorDescription: String? { "Local storage is unavailable (\(kind.rawValue))" }
+}
+
 internal final class RecordingFailureReporter {
   private let lock = NSLock()
   private var reported: Set<String> = []
@@ -35,8 +40,10 @@ internal final class RecordingFailureReporter {
   init(sink: @escaping (RecordingFailureReport) -> Void) { self.sink = sink }
 
   func report(operation: String, category: String, error: Error) {
-    lock.lock(); defer { lock.unlock() }
-    guard reported.insert(operation).inserted else { return }
+    lock.lock()
+    let inserted = reported.insert(operation).inserted
+    lock.unlock()
+    guard inserted else { return }
     sink(.init(operation: operation, category: category, errorType: String(describing: type(of: error))))
   }
 }
@@ -77,6 +84,8 @@ internal enum RecordingStorageFailure {
     UserDefaults.standard.string(forKey: key).flatMap(RecordingStorageFailureKind.init(rawValue:))
   private static let lock = NSRecursiveLock()
   private static var startupChecked = false
+  private static var failureGeneration: UInt64 = 0
+  private static var outageListener: (() -> Void)?
   private static let reporter = RecordingFailureReporter { report in
 #if canImport(Sentry)
     SentrySDK.capture(message: "Local persistence operation failed") { scope in
@@ -99,16 +108,28 @@ internal enum RecordingStorageFailure {
   }
 
   static func startupCheck(_ check: () throws -> Void) {
-    lock.lock(); defer { lock.unlock() }
-    guard !startupChecked else { return }
+    lock.lock()
+    guard !startupChecked else { lock.unlock(); return }
     startupChecked = true
+    let generationAtStart = failureGeneration
+    lock.unlock()
     do {
       try check()
-      UserDefaults.standard.removeObject(forKey: key)
-      current = nil
+      lock.lock()
+      let clear = failureGeneration == generationAtStart
+      if clear { current = nil }
+      lock.unlock()
+      if clear {
+        UserDefaults.standard.removeObject(forKey: key)
+        lock.lock(); let raced = current; lock.unlock()
+        if let raced { UserDefaults.standard.set(raced.rawValue, forKey: key) }
+      }
     } catch {
       let classified = classify(error)
-      recordFailure(error, kind: classified == .writeFailed ? .storageUnavailable : classified)
+      lock.lock()
+      let changed = recordFailureLocked(kind: classified == .writeFailed ? .storageUnavailable : classified)
+      lock.unlock()
+      if changed { notifyOutage() }
     }
   }
 
@@ -117,30 +138,68 @@ internal enum RecordingStorageFailure {
     return current
   }
 
-  @discardableResult static func fail(_ error: Error) -> RecordingStorageFailureKind {
-    lock.lock(); defer { lock.unlock() }
-    let kind = classify(error)
-    return recordFailure(error, kind: kind)
+  static func requireAvailable() throws {
+    if let kind = value(), kind != .writeFailed { throw StorageUnavailableError(kind: kind) }
   }
 
-  @discardableResult private static func recordFailure(
-    _ error: Error, kind: RecordingStorageFailureKind
-  ) -> RecordingStorageFailureKind {
+  static func observeOutage(_ listener: (() -> Void)?) {
+    lock.lock(); outageListener = listener; lock.unlock()
+  }
+
+#if DEBUG
+  static func resetForTesting() {
+    lock.lock()
+    current = nil
+    startupChecked = false
+    failureGeneration = 0
+    outageListener = nil
+    lock.unlock()
+    UserDefaults.standard.removeObject(forKey: key)
+  }
+#endif
+
+  @discardableResult static func fail(_ error: Error) -> RecordingStorageFailureKind {
+    let kind = classify(error)
+    lock.lock()
+    let resolved = resolveRecordingFailureKind(current: current, incoming: kind)
+    let changed = recordFailureLocked(kind: kind)
+    lock.unlock()
+    reporter.report(operation: "recording_commit", category: resolved.rawValue, error: error)
+    if changed { notifyOutage() }
+    return resolved
+  }
+
+  @discardableResult private static func recordFailureLocked(kind: RecordingStorageFailureKind) -> Bool {
     // A later operation-specific failure must not hide an already established broad outage.
     let resolved = resolveRecordingFailureKind(current: current, incoming: kind)
+    let changed = current != resolved
     current = resolved
+    if changed { failureGeneration &+= 1 }
     if resolved != .writeFailed { UserDefaults.standard.set(resolved.rawValue, forKey: key) }
-    reporter.report(operation: "recording_commit", category: resolved.rawValue, error: error)
-    return resolved
+    return changed && resolved != .writeFailed
+  }
+
+  private static func notifyOutage() {
+    lock.lock(); let listener = outageListener; lock.unlock()
+    if let listener { DispatchQueue.main.async(execute: listener) }
   }
 
   /// Reports a failed read without changing the recording gate or durable failure state.
   static func reportRead(operation: String, error: Error) {
     reporter.report(operation: operation, category: "query_failed", error: error)
+    enterBroadOutage(error)
   }
 
   static func report(operation: String, category: String, error: Error) {
     reporter.report(operation: operation, category: category, error: error)
+    enterBroadOutage(error)
+  }
+
+  private static func enterBroadOutage(_ error: Error) {
+    let kind = classify(error)
+    guard kind != .writeFailed else { return }
+    lock.lock(); let changed = recordFailureLocked(kind: kind); lock.unlock()
+    if changed { notifyOutage() }
   }
 
   static func classify(_ error: Error) -> RecordingStorageFailureKind {

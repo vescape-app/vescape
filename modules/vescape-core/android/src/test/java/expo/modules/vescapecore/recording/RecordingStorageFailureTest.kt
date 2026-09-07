@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteFullException
 import expo.modules.vescapecore.telemetry.RecordingWriteGate
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /** @parity /modules/vescape-core/ios/recording/RecordingStorageFailureTests.swift */
@@ -78,5 +79,39 @@ class RecordingStorageFailureTest {
       RecordingStorageFailureKind.FullDisk,
       resolveRecordingFailureKind(RecordingStorageFailureKind.FullDisk, RecordingStorageFailureKind.WriteFailed),
     )
+  }
+
+  @Test fun `reporter calls sink outside dedup monitor`() {
+    val operations = mutableListOf<String>()
+    lateinit var reporter: RecordingFailureReporter
+    reporter = RecordingFailureReporter { report ->
+      operations += report.operation
+      if (report.operation == "first") reporter.report("second", "query_failed", SQLiteException("nested"))
+    }
+    reporter.report("first", "query_failed", SQLiteException("first"))
+    assertEquals(listOf("first", "second"), operations)
+  }
+
+  @Test fun `successful suspended startup probe cannot erase runtime broad outage`() {
+    val state = StorageFailureState()
+    val probeGeneration = state.startupGeneration()
+    state.record(RecordingStorageFailureKind.StorageUnavailable)
+    assertEquals(false, state.clearAfterSuccessfulStartup(probeGeneration))
+    assertEquals(RecordingStorageFailureKind.StorageUnavailable, state.current)
+  }
+
+  @Test fun `disconnected outage emits once and rejects next storage intent without a database read`() {
+    val state = StorageFailureState()
+    var events = 0
+    var reads = 0
+    val bridge = StorageOutageEventBridge(shouldEmit = { true }, emit = { events++ })
+    if (state.record(RecordingStorageFailureKind.StorageUnavailable)) bridge.onOutage()
+    if (state.record(RecordingStorageFailureKind.StorageUnavailable)) bridge.onOutage()
+
+    assertThrows(StorageUnavailableException::class.java) {
+      withAvailableStorage(state.current) { reads++ }
+    }
+    assertEquals(1, events)
+    assertEquals(0, reads)
   }
 }

@@ -15,7 +15,7 @@ protocol NavigationStore {
 
   /// The current Direction Point as `(latitude, longitude)`. A restored path is only usable while it
   /// still leads here.
-  func directionPoint() async -> (latitude: Double, longitude: Double)?
+  func directionPoint() async throws -> (latitude: Double, longitude: Double)?
 
   /// The rider's last chosen Navigation Profile, or `nil` when they have never chosen one. Stored
   /// apart from the path because it outlives it: it is what the *next* Navigation is computed under.
@@ -101,26 +101,26 @@ struct AppDataNavigationStore: NavigationStore {
   private let repository = AppDataRepository.shared
 
   func load() async -> Navigation? {
-    repository.getNavigationPath().flatMap(NavigationJson.decode)
+    do { return try repository.getNavigationPath().flatMap(NavigationJson.decode) }
+    catch { RecordingStorageFailure.reportRead(operation: "navigation_path_read", error: error); return nil }
   }
 
   func save(_ navigation: Navigation?) async {
-    repository.setNavigationPath(navigation.flatMap(NavigationJson.encode))
+    do { try repository.setNavigationPath(navigation.flatMap(NavigationJson.encode)) }
+    catch { RecordingStorageFailure.report(operation: "navigation_path_save", category: "write_failed", error: error) }
   }
 
-  func directionPoint() async -> (latitude: Double, longitude: Double)? {
-    do { return try repository.getDirectionPoint() }
-    catch {
-      RecordingStorageFailure.reportRead(operation: "direction_point_read", error: error)
-      return nil
-    }
+  func directionPoint() async throws -> (latitude: Double, longitude: Double)? {
+    try repository.getDirectionPoint()
   }
 
   func loadProfile() async -> NavigationProfile? {
-    repository.getNavigationProfile().map(NavigationProfile.fromWire)
+    do { return try repository.getNavigationProfile().map(NavigationProfile.fromWire) }
+    catch { RecordingStorageFailure.reportRead(operation: "navigation_profile_read", error: error); return nil }
   }
 
   func saveProfile(_ profile: NavigationProfile) async {
-    repository.setNavigationProfile(profile.rawValue)
+    do { try repository.setNavigationProfile(profile.rawValue) }
+    catch { RecordingStorageFailure.report(operation: "navigation_profile_save", category: "write_failed", error: error) }
   }
 }
