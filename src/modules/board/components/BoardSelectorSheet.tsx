@@ -15,6 +15,7 @@ import { TickText } from '@/components/base/TickText'
 import type { Board } from '@/modules/board/store/boardStore'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
 import { liveTelemetryRuntime } from '@/modules/board/lib/liveTelemetryRuntime'
+import { widgetSurface } from '@/components/widgets/widgetSurface'
 import { fmtTimeAgo } from '@/helpers/format'
 import { interaction, theme } from '@/constants/theme'
 
@@ -305,11 +306,10 @@ const styles = StyleSheet.create({
     maxWidth: 300,
     alignSelf: 'center',
   },
+  // The active board is a card of its own, so it wears the same surface the widgets do.
   activeBlock: {
+    ...widgetSurface,
     marginBottom: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   row: {
