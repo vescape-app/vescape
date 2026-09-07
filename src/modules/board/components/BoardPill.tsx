@@ -1,7 +1,6 @@
 import { forwardRef, type RefObject } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import {
-  CaretDownIcon,
   EngineIcon,
   PowerIcon,
   RecordIcon,
@@ -74,7 +73,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         <Text style={styles.boardText} numberOfLines={1}>
           {name ?? 'No board'}
         </Text>
-        <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
       </Pressable>
       {canDisconnect && (
         <BoardPillButton
@@ -177,8 +175,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     alignItems: 'center',
     gap: 6,
-    paddingLeft: 10,
-    paddingRight: 8,
+    paddingHorizontal: 12,
     minHeight: 38,
     minWidth: 0,
     overflow: 'hidden',
