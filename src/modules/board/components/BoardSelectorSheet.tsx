@@ -328,15 +328,18 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
+  // Over a translucent drawer a filled tile disappears, so an inactive board is outlined instead.
   boardIcon: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderWidth: 1,
+    borderColor: theme.alpha(theme.neutral.border, 0.6),
     alignItems: 'center',
     justifyContent: 'center',
   },
   boardIconActive: {
+    borderColor: theme.alpha(theme.palette.sky.color, 0.4),
     backgroundColor: theme.palette.sky.bg,
   },
   boardName: {
