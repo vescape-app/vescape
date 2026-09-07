@@ -24,6 +24,7 @@ import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRow
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
+import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
 import { GpsStatusPillShowcase } from '@/screens/showcase/board/GpsStatusPillShowcase'
 import { useSharedValue } from 'react-native-reanimated'
@@ -358,6 +359,7 @@ export default function BoardComponentsPage() {
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
         <BoardPillShowcase />
+        <BoardSelectorSheetShowcase />
         <GpsStatusPillShowcase />
         <DeviceRowShowcase />
         <StepTimelineShowcase />

@@ -16,6 +16,8 @@ import { IconButton } from '@/components/base/IconButton'
 import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
+import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
+import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
 import { routes } from '@/navigation/routes'
@@ -70,7 +72,11 @@ export function TopBar({
   const boardPillMaxWidth = width - 116
   const pillRef = useRef<View>(null)
   const socialRef = useRef<View>(null)
+  const warningRef = useRef<View>(null)
+  const faultRef = useRef<View>(null)
   const [selectorOpen, setSelectorOpen] = useState(false)
+  const [warningsOpen, setWarningsOpen] = useState(false)
+  const [faultsOpen, setFaultsOpen] = useState(false)
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -82,6 +88,8 @@ export function TopBar({
   // Faults belong to whichever board the live session writes under — a replay's synthetic board
   // while it plays, the selected board otherwise.
   const sessionBoardId = isReplay ? connectedId : activeBoardId
+  // Read once here: the pill wears the badges, the selector offers the same two ways in.
+  const issues = useBoardIssues(activeBoardId, sessionBoardId)
   const nearbyBadge = useGroupRideStore((s) => s.badge)
   const rideActive = useGroupRideStore((s) => s.activeRideId !== null)
   const weather = useWeatherStore((s) => s.weather)
@@ -127,11 +135,14 @@ export function TopBar({
               boardPill={
                 <ConnectedBoardPill
                   maxWidth={boardPillMaxWidth}
-                  activeBoardId={activeBoardId}
                   activeBoard={activeBoard}
                   bleStatus={bleStatus}
                   isReplay={isReplay}
-                  sessionBoardId={sessionBoardId}
+                  issues={issues}
+                  warningTriggerRef={warningRef}
+                  faultTriggerRef={faultRef}
+                  onOpenWarnings={() => setWarningsOpen(true)}
+                  onOpenFaults={() => setFaultsOpen(true)}
                   onOpenSelector={() => setSelectorOpen(true)}
                   onDisconnect={onDisconnect}
                 />
@@ -151,11 +162,14 @@ export function TopBar({
           <ConnectedBoardPill
             ref={pillRef}
             maxWidth={boardPillMaxWidth}
-            activeBoardId={activeBoardId}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
             isReplay={isReplay}
-            sessionBoardId={sessionBoardId}
+            issues={issues}
+            warningTriggerRef={warningRef}
+            faultTriggerRef={faultRef}
+            onOpenWarnings={() => setWarningsOpen(true)}
+            onOpenFaults={() => setFaultsOpen(true)}
             onOpenSelector={() => setSelectorOpen(true)}
             onDisconnect={onDisconnect}
           />
@@ -220,6 +234,29 @@ export function TopBar({
         boards={boards}
         activeBoardId={activeBoardId}
         activeBoardLive={bleStatus === 'connected' || bleStatus === 'stale'}
+        warnings={
+          issues.warningsEnabled && activeBoardId
+            ? {
+                count: issues.warningCount,
+                severity: issues.severity,
+                onPress: () => {
+                  setSelectorOpen(false)
+                  setWarningsOpen(true)
+                },
+              }
+            : undefined
+        }
+        faults={
+          issues.faultsEnabled && sessionBoardId
+            ? {
+                count: issues.faultCount,
+                onPress: () => {
+                  setSelectorOpen(false)
+                  setFaultsOpen(true)
+                },
+              }
+            : undefined
+        }
         onClose={() => setSelectorOpen(false)}
         onSelectBoard={(id) => {
           onSelectBoard(id)
@@ -229,6 +266,22 @@ export function TopBar({
           setSelectorOpen(false)
           onAddBoard()
         }}
+        onEditBoard={(id) => {
+          setSelectorOpen(false)
+          router.push({ pathname: routes.editBoard, params: { boardId: id } })
+        }}
+      />
+
+      <BoardIssueDrawers
+        issues={issues}
+        activeBoardId={activeBoardId}
+        sessionBoardId={sessionBoardId}
+        warningsOpen={warningsOpen}
+        faultsOpen={faultsOpen}
+        warningTriggerRef={warningRef}
+        faultTriggerRef={faultRef}
+        onCloseWarnings={() => setWarningsOpen(false)}
+        onCloseFaults={() => setFaultsOpen(false)}
       />
     </View>
   )
