@@ -76,6 +76,9 @@ export function HistoryControls({
               onChangeText={onTrimNameChange}
               placeholder={trimNamePlaceholder}
               editable={!saving}
+              // Renaming replaces the old name far more often than it appends to it, and the
+              // inline board-name field already behaves this way.
+              selectTextOnFocus
               returnKeyType="done"
               onSubmitEditing={onSaveTrim}
               style={styles.nameInput}

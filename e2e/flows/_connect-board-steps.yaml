@@ -26,15 +26,12 @@ appId: ${APP_ID}
     id: board-edit-button
 - assertVisible: 21s2p.*
 - tapOn:
-    id: edit-board-header
-- assertVisible: Board info
-- tapOn:
-    id: edit-board-name-input
-- eraseText
+    id: edit-board-name-edit
+# The field mounts focused with its text selected; tapping it again would drop the cursor
+# mid-word and leave a tail behind the erase.
+- eraseText: 50
 - inputText: E2E Renamed Board
-- hideKeyboard
-- tapOn:
-    id: edit-board-info-save
+- pressKey: Enter
 - assertVisible: E2E Renamed Board
 
 - tapOn:
@@ -60,7 +57,8 @@ appId: ${APP_ID}
 - tapOn:
     id: board-disconnect-button
 - extendedWaitUntil:
-    visible: Board not connected
+    visible:
+      id: floating-bar-connect
     timeout: 15000
 - tapOn:
     id: floating-bar-connect
