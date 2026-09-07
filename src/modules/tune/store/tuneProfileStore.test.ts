@@ -161,6 +161,22 @@ test('loads and creates profiles scoped to normalized Refloat base compatibility
   )
 })
 
+test('a successful profile retry clears the previous modal error', async () => {
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+  await useTuneProfileStore.getState().loadProfiles('board-1', '1.3.0')
+  createProfile.mockImplementationOnce(async () => {
+    throw new Error('disk unavailable')
+  })
+
+  await expect(
+    useTuneProfileStore.getState().createProfile('Trail', 'mountains', 'green'),
+  ).rejects.toThrow('disk unavailable')
+  expect(useTuneProfileStore.getState().error).toBe('disk unavailable')
+
+  await useTuneProfileStore.getState().createProfile('Trail', 'mountains', 'green')
+  expect(useTuneProfileStore.getState().error).toBeNull()
+})
+
 test('clears stale same-board profiles while compatibility reloads', async () => {
   let resolveNext: (profiles: TuneProfile[]) => void = () => {}
   getTuneProfiles.mockImplementation(
@@ -465,6 +481,24 @@ test('saves dirty fields through native saveProfile and clears the draft', async
   expect(useTuneProfileStore.getState().activeProfile?.fields.kp).toBe(24)
   expect(useTuneProfileStore.getState().draftFields).toEqual({})
   expect(useTuneProfileStore.getState().hasDirtyFields).toBe(false)
+})
+
+test('preserves edits made while a profile save is in flight', async () => {
+  let finish!: (value: TuneProfile) => void
+  saveProfile.mockImplementationOnce(
+    () => new Promise<TuneProfile>((resolve) => (finish = resolve)),
+  )
+  const { useTuneProfileStore } = await import('@/modules/tune/store/tuneProfileStore')
+  useTuneProfileStore.setState({ activeProfile: profile, profiles: [profile] })
+  useTuneProfileStore.getState().setDraftField('kp', 21)
+
+  const saving = useTuneProfileStore.getState().saveActiveProfile()
+  useTuneProfileStore.getState().setDraftField('kp', 22)
+  finish({ ...profile, fields: { ...profile.fields, kp: 21 } })
+  await saving
+
+  expect(useTuneProfileStore.getState().draftFields).toEqual({ kp: 22 })
+  expect(useTuneProfileStore.getState().hasDirtyFields).toBe(true)
 })
 
 test('ignores stale profile loads when board selection changes', async () => {

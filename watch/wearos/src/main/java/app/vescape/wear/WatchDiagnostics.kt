@@ -34,6 +34,7 @@ object WatchDiagnostics {
 
     private var lastLink: PhoneLink? = null
     private var inDecodeFailStreak = false
+    private var linkProbeFailed = false
 
     fun recordFrame() {
         val c = counters.value
@@ -66,6 +67,17 @@ object WatchDiagnostics {
         if (link == lastLink) return
         lastLink = link
         event("link ${link.name}")
+        linkProbeFailed = false
+    }
+
+    fun recordLinkProbeFailure() {
+        if (linkProbeFailed) return
+        linkProbeFailed = true
+        event("phone link probe failed", warn = true)
+    }
+
+    fun recordNotificationFailure() {
+        event("ongoing notification failed", warn = true)
     }
 
     fun recordReceiver(active: Boolean) {

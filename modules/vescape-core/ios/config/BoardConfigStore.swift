@@ -1,6 +1,18 @@
 import Foundation
 import GRDB
 
+enum ConfigStorageError: Error { case databaseNotOpen, invalidCachedJSON }
+private struct BoardConfigRecord: Codable, FetchableRecord, PersistableRecord {
+  static let databaseTableName = "board_config_values"
+  let boardId: String; let refloatBaseVersion: String; let valuesJson: String; let capturedAt: Int64
+  enum CodingKeys: String, CodingKey { case boardId = "board_id"; case refloatBaseVersion = "refloat_base_version"; case valuesJson = "values_json"; case capturedAt = "captured_at" }
+}
+struct ConfigNoticeRecord: Codable, FetchableRecord, PersistableRecord {
+  static let databaseTableName = "board_config_change_notices"
+  let boardId: String; let detectedAt: Int64; let diffsJson: String
+  enum CodingKeys: String, CodingKey { case boardId = "board_id"; case detectedAt = "detected_at"; case diffsJson = "diffs_json" }
+}
+
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/BoardConfigChangeNotice.kt
 struct BoardConfigChangeDiff: Codable {
   let fieldId: String; let label: String; let unit: String?
@@ -15,7 +27,10 @@ struct BoardConfigChangeNotice {
   let boardId: String; let detectedAtMs: Int64; let diffs: [BoardConfigChangeDiff]
   func toMap() -> [String: Any] { ["boardId": boardId, "detectedAtMs": detectedAtMs, "diffs": diffs.map { ["fieldId": $0.fieldId, "label": $0.label, "unit": $0.unit, "oldValue": $0.oldValue?.toBridge(), "newValue": $0.newValue?.toBridge()] as [String: Any?] }] }
   func diffsJson() -> String { String(data: try! JSONEncoder().encode(diffs), encoding: .utf8)! }
-  static func from(boardId: String, detectedAtMs: Int64, diffsJson: String) -> Self? { guard let data = diffsJson.data(using: .utf8), let diffs = try? JSONDecoder().decode([BoardConfigChangeDiff].self, from: data) else { return nil }; return .init(boardId: boardId, detectedAtMs: detectedAtMs, diffs: diffs) }
+  static func from(boardId: String, detectedAtMs: Int64, diffsJson: String) throws -> Self {
+    guard let data = diffsJson.data(using: .utf8) else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Notice is not UTF-8")) }
+    return .init(boardId: boardId, detectedAtMs: detectedAtMs, diffs: try JSONDecoder().decode([BoardConfigChangeDiff].self, from: data))
+  }
   /// Relative tolerance for number fields. Two decodes of the same board bytes can differ by a few
   /// ULP once a value has been through the cache JSON or the `float32_auto` reconstruction, and a
   /// rider must never be told `0.026 -> 0.026`. Well below the smallest step any Refloat field
@@ -77,41 +92,18 @@ struct BoardConfigStore {
   /// reused by tests so the schema stays single-source. Mirrors Android `BoardConfigValuesEntity`.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt
   static func createTables(_ db: Database) throws {
-    try db.execute(sql: """
-      CREATE TABLE IF NOT EXISTS board_config_values (
-        board_id TEXT NOT NULL,
-        refloat_base_version TEXT NOT NULL,
-        values_json TEXT NOT NULL,
-        captured_at INTEGER NOT NULL,
-        PRIMARY KEY (board_id, refloat_base_version)
-      )
-      """)
-    try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_board_config_values_board_id ON board_config_values(board_id)")
-    try db.execute(sql: """
-      CREATE TABLE IF NOT EXISTS board_config_change_notices (
-        board_id TEXT NOT NULL PRIMARY KEY,
-        detected_at INTEGER NOT NULL,
-        diffs_json TEXT NOT NULL
-      )
-      """)
+    try PersistenceSchema.createBoardConfig(db)
   }
 
   /// Last Known values for this Board + Refloat base version. Nil when none exist for that scope.
-  func load(boardId: String, refloatBaseVersion: String) -> BoardConfigValues? {
-    guard !boardId.isEmpty, !refloatBaseVersion.isEmpty, let writer = resolveWriter() else { return nil }
-    let row = try? writer.read { db in
-      try Row.fetchOne(
-        db,
-        sql: "SELECT values_json, captured_at FROM board_config_values WHERE board_id = ? AND refloat_base_version = ?",
-        arguments: [boardId, refloatBaseVersion]
-      )
-    }
-    guard let row = row ?? nil else { return nil }
-    return BoardConfigValues.lastKnown(
+  func load(boardId: String, refloatBaseVersion: String) throws -> BoardConfigValues? {
+    guard !boardId.isEmpty, !refloatBaseVersion.isEmpty else { return nil }
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    guard let row = try writer.read({ db in try BoardConfigRecord.fetchOne(db, key: ["board_id": boardId, "refloat_base_version": refloatBaseVersion]) }) else { return nil }
+    return try BoardConfigValues.lastKnown(
       boardId: boardId,
       refloatBaseVersion: refloatBaseVersion,
-      capturedAtMs: row["captured_at"],
-      valuesJson: row["values_json"]
+      capturedAtMs: row.capturedAt, valuesJson: row.valuesJson
     )
   }
 
@@ -123,46 +115,23 @@ struct BoardConfigStore {
   /// saw on that Board, and picking a scope is meaningless without a connection to say which
   /// firmware is running now.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `getLatestBoardConfigValues`
-  func loadLatest(boardId: String) -> BoardConfigValues? {
-    guard !boardId.isEmpty, let writer = resolveWriter() else { return nil }
-    let row = try? writer.read { db in
-      try Row.fetchOne(
-        db,
-        sql: """
-          SELECT refloat_base_version, values_json, captured_at FROM board_config_values
-          WHERE board_id = ? ORDER BY captured_at DESC LIMIT 1
-          """,
-        arguments: [boardId]
-      )
-    }
-    guard let row = row ?? nil else { return nil }
-    return BoardConfigValues.lastKnown(
+  func loadLatest(boardId: String) throws -> BoardConfigValues? {
+    guard !boardId.isEmpty else { return nil }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    guard let row = try writer.read({ db in try BoardConfigRecord.filter(Column("board_id") == boardId).order(Column("captured_at").desc).fetchOne(db) }) else { return nil }
+    return try BoardConfigValues.lastKnown(
       boardId: boardId,
-      refloatBaseVersion: row["refloat_base_version"],
-      capturedAtMs: row["captured_at"],
-      valuesJson: row["values_json"]
+      refloatBaseVersion: row.refloatBaseVersion, capturedAtMs: row.capturedAt, valuesJson: row.valuesJson
     )
   }
 
   /// Persist values just read from the board. Rows need both Board and Tune Compatibility scope.
-  func save(_ values: BoardConfigValues) {
+  func save(_ values: BoardConfigValues) throws {
     guard
       let boardId = values.boardId, !boardId.isEmpty,
       let refloatBaseVersion = values.refloatBaseVersion, !refloatBaseVersion.isEmpty,
-      let writer = resolveWriter()
-    else { return }
-    try? writer.write { db in
-      try db.execute(
-        sql: """
-          INSERT INTO board_config_values (board_id, refloat_base_version, values_json, captured_at)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT(board_id, refloat_base_version) DO UPDATE SET
-            values_json = excluded.values_json,
-            captured_at = excluded.captured_at
-          """,
-        arguments: [boardId, refloatBaseVersion, values.valuesJson(), values.capturedAtMs]
-      )
-    }
+      let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    let json = try values.valuesJson()
+    try writer.write { db in try BoardConfigRecord(boardId: boardId, refloatBaseVersion: refloatBaseVersion, valuesJson: json, capturedAt: values.capturedAtMs).save(db) }
   }
 
   /// Teach the config-change baseline about fields a runtime command changed on the board, merging
@@ -171,18 +140,13 @@ struct BoardConfigStore {
   /// `captured_at` is deliberately untouched: the row still describes the read it came from, it just
   /// accounts for a change Vescape itself made since.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `patchBoardConfigValues`
-  func patch(boardId: String, refloatBaseVersion: String, values patch: [String: Any]) {
+  func patch(boardId: String, refloatBaseVersion: String, values patch: [String: Any]) throws {
     guard !boardId.isEmpty, !refloatBaseVersion.isEmpty, !patch.isEmpty, let writer = resolveWriter()
-    else { return }
-    try? writer.write { db in
-      let row = try Row.fetchOne(
-        db,
-        sql:
-          "SELECT values_json FROM board_config_values WHERE board_id = ? AND refloat_base_version = ?",
-        arguments: [boardId, refloatBaseVersion]
-      )
-      guard let json: String = row?["values_json"] else { return }
-      let stored = BoardConfigValues.lastKnown(
+    else { if resolveWriter() == nil { throw ConfigStorageError.databaseNotOpen }; return }
+    try writer.write { db in
+      guard let row = try BoardConfigRecord.fetchOne(db, key: ["board_id": boardId, "refloat_base_version": refloatBaseVersion]) else { return }
+      let json = row.valuesJson
+      let stored = try BoardConfigValues.lastKnown(
         boardId: boardId,
         refloatBaseVersion: refloatBaseVersion,
         capturedAtMs: 0,
@@ -193,7 +157,7 @@ struct BoardConfigStore {
       try db.execute(
         sql:
           "UPDATE board_config_values SET values_json = ? WHERE board_id = ? AND refloat_base_version = ?",
-        arguments: [stored.withValues(merged).valuesJson(), boardId, refloatBaseVersion]
+        arguments: [try stored.withValues(merged).valuesJson(), boardId, refloatBaseVersion]
       )
     }
   }
@@ -201,44 +165,48 @@ struct BoardConfigStore {
   /// Fresh trusted-session read: compare against Last Known, then replace notice + baseline in one
   /// transaction. No previous row means Board Probe/first-link baseline, never a notice.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `saveFreshBoardConfigValues`
-  func saveFresh(_ values: BoardConfigValues) {
-    guard let boardId = values.boardId, let base = values.refloatBaseVersion, let writer = resolveWriter() else { return }
+  func saveFresh(_ values: BoardConfigValues) throws {
+    guard let boardId = values.boardId, let base = values.refloatBaseVersion else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
     var notice: BoardConfigChangeNotice?
     var committed = false
-    try? writer.write { db in
+    try writer.write { db in
       let oldRow = try Row.fetchOne(db, sql: "SELECT values_json FROM board_config_values WHERE board_id = ? AND refloat_base_version = ?", arguments: [boardId, base])
       if let oldJson: String = oldRow?["values_json"] {
-        let old = BoardConfigValues.lastKnown(boardId: boardId, refloatBaseVersion: base, capturedAtMs: 0, valuesJson: oldJson)
+        let old = try BoardConfigValues.lastKnown(boardId: boardId, refloatBaseVersion: base, capturedAtMs: 0, valuesJson: oldJson)
         let diffs = BoardConfigChangeNotice.diff(old: old.values, new: values.values, schema: values.writeBase?.schema)
         if !diffs.isEmpty {
-          notice = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: values.capturedAtMs, diffs: diffs)
-          try db.execute(sql: "INSERT OR REPLACE INTO board_config_change_notices (board_id, detected_at, diffs_json) VALUES (?, ?, ?)", arguments: [boardId, values.capturedAtMs, notice!.diffsJson()])
+          let existing = try ConfigNoticeRecord.fetchOne(db, key: boardId)
+          let previous = try existing.map {
+            try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: $0.detectedAt, diffsJson: $0.diffsJson).diffs
+          } ?? []
+          let merged = BoardConfigChangeNotice.mergeDiffs(previous: previous, incoming: diffs)
+          notice = BoardConfigChangeNotice(boardId: boardId, detectedAtMs: values.capturedAtMs, diffs: merged)
+          try ConfigNoticeRecord(boardId: boardId, detectedAt: values.capturedAtMs, diffsJson: notice!.diffsJson()).save(db)
         }
       }
-      try db.execute(sql: "INSERT OR REPLACE INTO board_config_values (board_id, refloat_base_version, values_json, captured_at) VALUES (?, ?, ?, ?)", arguments: [boardId, base, values.valuesJson(), values.capturedAtMs])
+      try BoardConfigRecord(boardId: boardId, refloatBaseVersion: base, valuesJson: try values.valuesJson(), capturedAt: values.capturedAtMs).save(db)
       committed = true
     }
     if committed, let notice { Self.onNoticeChanged?(notice) }
   }
 
-  func loadNotice(boardId: String) -> BoardConfigChangeNotice? {
-    guard let writer = resolveWriter() else { return nil }
-    let row = try? writer.read { db in try Row.fetchOne(db, sql: "SELECT detected_at, diffs_json FROM board_config_change_notices WHERE board_id = ?", arguments: [boardId]) }
-    guard let row = row ?? nil else { return nil }
-    return BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row["detected_at"], diffsJson: row["diffs_json"])
+  func loadNotice(boardId: String) throws -> BoardConfigChangeNotice? {
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    guard let row = try writer.read({ db in try ConfigNoticeRecord.fetchOne(db, key: boardId) }) else { return nil }
+    return try BoardConfigChangeNotice.from(boardId: boardId, detectedAtMs: row.detectedAt, diffsJson: row.diffsJson)
   }
 
-  func dismissNotice(boardId: String) {
-    guard let writer = resolveWriter() else { return }
-    try? writer.write { db in try db.execute(sql: "DELETE FROM board_config_change_notices WHERE board_id = ?", arguments: [boardId]) }
+  func dismissNotice(boardId: String) throws {
+    guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    _ = try writer.write { db in try ConfigNoticeRecord.deleteOne(db, key: boardId) }
     Self.onNoticeChanged?(nil)
   }
 
   /// Drop every Last Known scope for a Board. Called when link integrity goes `mismatched`: the firmware
   /// behind the link is not the one those offsets were decoded against.
-  func clear(boardId: String) {
-    guard !boardId.isEmpty, let writer = resolveWriter() else { return }
-    try? writer.write { db in
+  func clear(boardId: String) throws {
+    guard !boardId.isEmpty else { return }; guard let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
+    try writer.write { db in
       try db.execute(sql: "DELETE FROM board_config_values WHERE board_id = ?", arguments: [boardId])
       try db.execute(sql: "DELETE FROM board_config_change_notices WHERE board_id = ?", arguments: [boardId])
     }

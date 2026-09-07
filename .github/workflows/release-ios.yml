@@ -22,6 +22,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  persistence-contracts:
+    uses: ./.github/workflows/persistence-contracts.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
   gates:
     name: Release gates
     runs-on: blacksmith-6vcpu-macos-26
@@ -67,7 +72,7 @@ jobs:
 
   build:
     name: Build signed IPA and upload to TestFlight
-    needs: gates
+    needs: [gates, persistence-contracts]
     runs-on: blacksmith-6vcpu-macos-26
     outputs:
       marketing_version: ${{ steps.release.outputs.marketing_version }}
@@ -175,7 +180,7 @@ jobs:
             --argjson run_id "$RUN_ID" \
             --arg run_url "$RUN_URL" \
             --argjson run_attempt "$RUN_ATTEMPT" \
-            '{schemaVersion:1,requestId:$request_id,sourceSha:$source_sha,marketingVersion:$version,buildNumber:$build_number,workflow:{runId:$run_id,runUrl:$run_url,runAttempt:$run_attempt}}' \
+            '{schemaVersion:1,requestId:$request_id,sourceSha:$source_sha,marketingVersion:$version,buildNumber:$build_number,workflow:{runId:$run_id,runUrl:$run_url,runAttempt:$run_attempt},storageContracts:{sourceSha:$source_sha,androidRoom:"passed",iosGrdb:"passed",crossPlatformArchives:"passed"}}' \
             > release-manifest-ios.json
         env:
           REQUEST_ID: ${{ inputs.request_id }}

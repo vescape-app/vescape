@@ -135,6 +135,7 @@ internal class GpsMonitor(
         )
         try {
             lm.removeUpdates(locationListener)
+        // intentional-suppression: location-listener teardown is best effort
         } catch (_: Exception) {
         }
         locationManager = null
@@ -239,8 +240,10 @@ internal class GpsMonitor(
         resolutionScope.launch {
             val repository = AppDataRepository.get(context.applicationContext)
             if (repository.getTypedSettings().legalPolicy != null) return@launch
-            val countryCode = legalPolicyResolver.resolve(location.latitude, location.longitude)
-            if (countryCode != null) repository.updateLegalPolicy(countryCode)
+            val resolution = legalPolicyResolver.resolve(location.latitude, location.longitude)
+            if (resolution is LegalPolicyResolution.Resolved && resolution.countryCode != null) {
+                repository.updateLegalPolicy(resolution.countryCode)
+            }
         }
     }
 }

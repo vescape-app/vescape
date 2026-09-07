@@ -16,6 +16,7 @@ export const EMPTY_WARNINGS: BoardWarning[] = []
 interface BoardWarningsState {
   /** Warnings keyed by boardId. A board with no warnings has no entry. */
   warningsByBoard: Record<string, BoardWarning[]>
+  error: string | null
   replaceBoard: (boardId: string, warnings: BoardWarning[]) => void
   /** Replace the entire mirror from a native pull — heals boards whose warnings cleared while away. */
   replaceAll: (warnings: BoardWarning[]) => void
@@ -32,14 +33,15 @@ function groupByBoard(warnings: BoardWarning[]): Record<string, BoardWarning[]> 
 
 export const useBoardWarningsStore = create<BoardWarningsState>((set) => ({
   warningsByBoard: {},
+  error: null,
   replaceBoard: (boardId, warnings) =>
     set((state) => {
       if (warnings.length === 0) {
-        return { warningsByBoard: omitKey(state.warningsByBoard, boardId) }
+        return { warningsByBoard: omitKey(state.warningsByBoard, boardId), error: null }
       }
-      return { warningsByBoard: { ...state.warningsByBoard, [boardId]: warnings } }
+      return { warningsByBoard: { ...state.warningsByBoard, [boardId]: warnings }, error: null }
     }),
-  replaceAll: (warnings) => set({ warningsByBoard: groupByBoard(warnings) }),
+  replaceAll: (warnings) => set({ warningsByBoard: groupByBoard(warnings), error: null }),
   clear: () => set({ warningsByBoard: {} }),
 }))
 
@@ -64,14 +66,17 @@ export function startBoardWarningsSync(): () => void {
     useBoardWarningsStore.getState().replaceBoard(event.boardId, event.warnings)
   })
   const pull = () => {
-    const startedAt = revision
+    const startedAt = ++revision
     void getBoardWarnings()
       .then((warnings) => {
         if (revision !== startedAt) return
-        useBoardWarningsStore.getState().replaceAll(warnings)
+        useBoardWarningsStore.setState({ warningsByBoard: groupByBoard(warnings), error: null })
       })
       // A failed pull keeps the last known mirror; the next foreground or push heals it.
-      .catch(() => undefined)
+      .catch(() => {
+        if (revision !== startedAt) return
+        useBoardWarningsStore.setState({ error: 'Board warnings could not be refreshed.' })
+      })
   }
   pull()
   const appStateSub = AppState.addEventListener('change', (nextState) => {

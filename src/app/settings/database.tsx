@@ -27,6 +27,7 @@ export default function DatabaseSettingsScreen() {
           icon={DatabaseIcon}
           description="Back up, restore, and rebuild your ride history database."
         />
+        {db.dbSizeError ? <Text style={styles.error}>{db.dbSizeError}</Text> : null}
         <SettingsCard>
           <SettingsRow
             icon={ClockCounterClockwiseIcon}
@@ -128,6 +129,11 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     gap: 8,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
+    textAlign: 'center',
   },
   rebuildButton: {
     backgroundColor: theme.neutral.surfaceDeep,

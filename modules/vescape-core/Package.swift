@@ -96,9 +96,10 @@ let grdb = Target.Dependency.product(name: "GRDB", package: "GRDB.swift")
 let package = Package(
   name: "VescapeCore",
   // iOS only, matching `VescapeCore.podspec`: the tree uses UIKit, ActivityKit and CoreBluetooth.
-  platforms: [.iOS(.v17)],
+  platforms: [.iOS(.v17), .macOS(.v13)],
   products: [
-    .library(name: "VescapeCore", targets: ["VescapeCore"])
+    .library(name: "VescapeCore", targets: ["VescapeCore"]),
+    .executable(name: "RecordingPersistenceHost", targets: ["RecordingPersistenceHost"])
   ],
   dependencies: [
     // The app ships 6.24.1 (`VescapeCore.podspec`) because that is the last GRDB published to
@@ -121,6 +122,11 @@ let package = Package(
       dependencies: ["VescapeCore", grdb],
       path: "ios",
       sources: tree.tests
+    ),
+    .executableTarget(
+      name: "RecordingPersistenceHost",
+      dependencies: [grdb],
+      path: "persistence-macos"
     ),
   ]
 )

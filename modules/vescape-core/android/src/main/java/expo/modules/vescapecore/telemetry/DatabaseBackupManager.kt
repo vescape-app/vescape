@@ -5,18 +5,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import org.json.JSONObject
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
-
-private const val MANIFEST_ENTRY = "manifest.json"
-private const val DATABASE_ENTRY = "db.sqlite"
 
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift
 object DatabaseBackupManager {
@@ -34,14 +26,8 @@ object DatabaseBackupManager {
     val escapedPath = sqliteExport.absolutePath.replace("'", "''")
     TelemetryDatabase.get(appContext).openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
 
-    ZipOutputStream(FileOutputStream(zipExport)).use { zip ->
-      zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
-      zip.write(manifest(context, sqliteExport.length()).toString().toByteArray(Charsets.UTF_8))
-      zip.closeEntry()
-
-      zip.putNextEntry(ZipEntry(DATABASE_ENTRY))
-      FileInputStream(sqliteExport).use { it.copyTo(zip) }
-      zip.closeEntry()
+    zipExport.outputStream().use { output ->
+      DatabaseBackupArchive.write(sqliteExport, manifest(context, sqliteExport.length()), output)
     }
     sqliteExport.delete()
 
@@ -52,7 +38,8 @@ object DatabaseBackupManager {
     )
   }
 
-  fun restoreBackup(context: Context, uriString: String) {
+  /** Caller must first await the BoardSessionController-owned stop callback. */
+  internal fun restoreBackup(context: Context, uriString: String) {
     val appContext = context.applicationContext
     val workDir = File(appContext.cacheDir, "db-restore").apply {
       deleteRecursively()
@@ -60,33 +47,23 @@ object DatabaseBackupManager {
     }
     val restoredDb = File(workDir, "restored.sqlite")
     val manifest = extractBackup(appContext, uriString, restoredDb)
-    validateManifest(manifest)
-    validateDatabase(restoredDb)
-
-    resetRepositoriesAndCloseDatabase()
+    val manifestVersion = validateDatabase(restoredDb, validateManifest(manifest))
+    if (manifestVersion.platform == "ios") reconcileIosSchema(restoredDb, manifestVersion.bootstrapLegacyTune)
+    if (readDatabaseVersion(restoredDb) == 0) {
+      SQLiteDatabase.openDatabase(restoredDb.path, null, SQLiteDatabase.OPEN_READWRITE).use {
+        it.execSQL("PRAGMA user_version = ${manifestVersion.roomVersion}")
+      }
+    }
 
     val dbFile = appContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
     dbFile.parentFile?.mkdirs()
-    val rollback = File(dbFile.parentFile, "$TELEMETRY_DATABASE_NAME.restore-tmp")
-    rollback.delete()
-    sidecarFiles(dbFile).forEach { it.delete() }
-
-    var movedActive = false
     try {
-      if (dbFile.exists()) {
-        check(dbFile.renameTo(rollback)) { "Could not prepare current database rollback file" }
-        movedActive = true
+      resetRepositoriesAndCloseDatabase()
+      replaceDatabaseFiles(restoredDb, dbFile) { installed ->
+        validateDatabase(installed, manifestVersion.copy(declaredVersion = manifestVersion.roomVersion))
+        TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
       }
-      check(restoredDb.copyTo(dbFile, overwrite = true).exists()) { "Could not install restored database" }
-      validateDatabase(dbFile)
-      TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
-      rollback.delete()
     } catch (e: Exception) {
-      dbFile.delete()
-      sidecarFiles(dbFile).forEach { it.delete() }
-      if (movedActive && rollback.exists()) {
-        rollback.renameTo(dbFile)
-      }
       resetRepositoriesAndCloseDatabase()
       TelemetryDatabase.get(appContext).openHelper.readableDatabase.query("SELECT 1").close()
       throw e
@@ -96,58 +73,108 @@ object DatabaseBackupManager {
   }
 
   private fun extractBackup(context: Context, uriString: String, restoredDb: File): JSONObject {
-    var manifest: JSONObject? = null
     val uri = Uri.parse(uriString)
     context.contentResolver.openInputStream(uri).use { input ->
       requireNotNull(input) { "Could not open backup file" }
-      ZipInputStream(input).use { zip ->
-        generateSequence { zip.nextEntry }.forEach { entry ->
-          when (entry.name) {
-            MANIFEST_ENTRY -> manifest = JSONObject(zip.readBytes().toString(Charsets.UTF_8))
-            DATABASE_ENTRY -> FileOutputStream(restoredDb).use { zip.copyTo(it) }
-          }
-          zip.closeEntry()
-        }
-      }
+      return DatabaseBackupArchive.extract(input, restoredDb)
     }
-    require(restoredDb.exists() && restoredDb.length() > 0) { "Backup missing db.sqlite" }
-    return requireNotNull(manifest) { "Backup missing manifest.json" }
   }
 
-  private fun validateManifest(manifest: JSONObject) {
+  private data class BackupSchema(
+    val platform: String,
+    val declaredVersion: Int,
+    val roomVersion: Int,
+    val bootstrapLegacyTune: Boolean = false,
+  )
+
+  private fun validateManifest(manifest: JSONObject): BackupSchema {
     require(manifest.optString("format") == "vesc-db-backup") { "Unsupported backup format" }
     val schemaVersion = manifest.optInt("schemaVersion", -1)
-    require(schemaVersion in 1..TELEMETRY_DATABASE_VERSION) {
-      "Backup schema version $schemaVersion is newer than app schema $TELEMETRY_DATABASE_VERSION"
-    }
+    val platform = manifest.optString("platform")
+    val roomVersion = roomVersionForBackup(platform, schemaVersion)
+    if (!(platform == "ios" && schemaVersion == 1)) requireSupportedAndroidDatabaseVersion(roomVersion)
+    return BackupSchema(platform, schemaVersion, roomVersion)
   }
 
-  private fun validateDatabase(file: File) {
+  private fun validateDatabase(file: File, manifestVersion: BackupSchema): BackupSchema {
     val db = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
     db.use {
       it.rawQuery("PRAGMA integrity_check", null).use { cursor ->
         require(cursor.moveToFirst() && cursor.getString(0) == "ok") { "Backup database integrity check failed" }
       }
-      it.rawQuery("PRAGMA user_version", null).use { cursor ->
+      val resolved = it.rawQuery("PRAGMA user_version", null).use { cursor ->
         require(cursor.moveToFirst()) { "Backup database schema version missing" }
         val userVersion = cursor.getInt(0)
-        require(userVersion in 1..TELEMETRY_DATABASE_VERSION) {
-          "Backup schema version $userVersion is newer than app schema $TELEMETRY_DATABASE_VERSION"
+        require(userVersion == manifestVersion.declaredVersion || (userVersion == 0 && manifestVersion.platform == "ios")) {
+          "Backup manifest schema version ${manifestVersion.declaredVersion} does not match database schema version $userVersion"
+        }
+        if (userVersion > 0) manifestVersion
+        else {
+          val (version, bootstrapTune) = effectiveRoomVersionFromIosLedger(it, manifestVersion)
+          manifestVersion.copy(roomVersion = version, bootstrapLegacyTune = bootstrapTune)
+        }
+      }
+      requireSupportedAndroidDatabaseVersion(resolved.roomVersion)
+      return resolved
+    }
+  }
+
+  private fun effectiveRoomVersionFromIosLedger(db: SQLiteDatabase, manifest: BackupSchema): Pair<Int, Boolean> {
+    require(manifest.platform == "ios") { "Only iOS databases may omit user_version" }
+    val registered = listOf(
+      "v1", "v2_tune_profiles", "v23_tune_profile_metadata", "v24_tune_profile_refloat_base_version",
+      "v25_board_warnings", "v26_alert_source", "v27_alert_board_id", "v29_drop_map_points",
+      "v30_favorites", "v31_favorite_media", "v32_alert_repeat", "v33_board_config_values",
+      "v34_board_config_change_notices", "v35_alert_config_relative", "v36_motor_config_values",
+      "v40_vesc_faults", "v41_board_deleted_at", "v42_telemetry_board_id",
+    )
+    val applied = db.rawQuery("SELECT identifier FROM grdb_migrations", null).use { cursor ->
+      buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+    }
+    val lastIndex = registered.indexOfLast(applied::contains)
+    require(lastIndex >= 0 && applied.toSet() == registered.take(lastIndex + 1).toSet()) {
+      "iOS migration ledger is not a valid production prefix"
+    }
+    val lastIdentifier = registered[lastIndex]
+    val effective = lastIdentifier.drop(1).takeWhile(Char::isDigit).toInt()
+    require(effective <= manifest.declaredVersion || manifest.declaredVersion == 1) {
+      "Backup manifest schema version ${manifest.declaredVersion} is older than its migration ledger v$effective"
+    }
+    return (if (effective <= 2) 22 else effective) to (lastIdentifier == "v1")
+  }
+
+  /** Convert iOS-only columns into Room-owned settings before Room validates the candidate. */
+  private fun reconcileIosSchema(file: File, bootstrapLegacyTune: Boolean) {
+    SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+      val boardColumns = db.rawQuery("PRAGMA table_info(boards)", null).use { cursor ->
+        buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+      }
+      if ("transport" in boardColumns) {
+        val hasFaultCaptures = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vesc_fault_capture_samples'", null).use { it.moveToFirst() }
+        iosSchemaReconciliationStatements("deleted_at" in boardColumns, hasFaultCaptures, bootstrapLegacyTune).forEach(db::execSQL)
+      } else {
+        require(db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tune_profiles'", null).use { it.moveToFirst() }) {
+          "iOS backup migration ledger claims Tune Profiles but the table is missing"
         }
       }
     }
   }
 
+  private fun readDatabaseVersion(file: File): Int =
+    SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+      db.rawQuery("PRAGMA user_version", null).use { cursor ->
+        check(cursor.moveToFirst())
+        cursor.getInt(0)
+      }
+    }
+
   private fun manifest(context: Context, dbSizeBytes: Long): JSONObject =
-    JSONObject(
-      mapOf(
-        "format" to "vesc-db-backup",
-        "createdAt" to System.currentTimeMillis(),
-        "schemaVersion" to TELEMETRY_DATABASE_VERSION,
-        "appVersion" to appVersion(context),
-        "platform" to "android",
-        "dbSizeBytes" to dbSizeBytes,
-      ),
+    DatabaseBackupArchive.manifest(
+      platform = "android",
+      schemaVersion = TELEMETRY_DATABASE_VERSION,
+      appVersion = appVersion(context),
+      dbSizeBytes = dbSizeBytes,
+      createdAt = System.currentTimeMillis(),
     )
 
   private fun appVersion(context: Context): String {
@@ -162,9 +189,6 @@ object DatabaseBackupManager {
     RideHistoryRepository.resetForDatabaseSwap()
     TelemetryDatabase.closeAndReset()
   }
-
-  private fun sidecarFiles(dbFile: File): List<File> =
-    listOf(File("${dbFile.absolutePath}-wal"), File("${dbFile.absolutePath}-shm"))
 
   private fun utcStamp(): String =
     SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US).apply {

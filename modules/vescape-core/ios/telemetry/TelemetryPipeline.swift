@@ -93,31 +93,6 @@ internal struct TelemetryCapture {
   let location: TelemetryLocationCapture?
 }
 
-internal struct BucketTelemetryPoint {
-  let capturedAtMs: Int64
-  /// Owning Board (`boards.id`); the durable identity telemetry is keyed on (ADR 0028).
-  let boardId: String?
-  let speedCentiKmh: Int
-  let batteryVoltageMv: Int
-  let motorCurrentMa: Int
-  let batteryCurrentMa: Int
-  let dutyPermille: Int
-  let odometerCm: Int64?
-  let tempMosfetDeciC: Int?
-  let tempMotorDeciC: Int?
-  let gpsSpeedCentiMps: Int?
-  let gpsTimestampMs: Int64?
-  let gpsAccuracyCm: Int?
-  let latitudeE7: Int64?
-  let longitudeE7: Int64?
-  let bearingCentiDeg: Int?
-  let altitudeCm: Int?
-  let preciseGps: Bool
-  var excludedFromAvgSpeed = false
-  var excludedFromMaxSpeed = false
-  var excludedFromMaxDuty = false
-}
-
 internal struct FullTelemetryState {
   let capture: TelemetryCapture
 
@@ -150,4 +125,3 @@ internal struct FullTelemetryState {
     )
   }
 }
-

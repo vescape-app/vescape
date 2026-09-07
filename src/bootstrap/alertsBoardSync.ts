@@ -11,11 +11,19 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
  */
 export function startAlertsBoardSync(): () => void {
   let current = useBoardStore.getState().activeBoardId
-  void useAlertsStore.getState().load(current)
+  // intentional-suppression: Alerts store error is rendered by the active form or list
+  void useAlertsStore
+    .getState()
+    .load(current)
+    .catch(() => undefined) // The alerts store owns the error rendered by alert surfaces.
   return useBoardStore.subscribe((state) => {
     if (state.activeBoardId !== current) {
       current = state.activeBoardId
-      void useAlertsStore.getState().load(current)
+      // intentional-suppression: Alerts store error is rendered by the active form or list
+      void useAlertsStore
+        .getState()
+        .load(current)
+        .catch(() => undefined) // The alerts store owns the error rendered by alert surfaces.
     }
   })
 }

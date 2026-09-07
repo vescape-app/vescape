@@ -333,6 +333,7 @@ try {
     copyFileSync(args.source, dbPath)
   }
 
+  // intentional-suppression: null is immediately converted to an explicit invalid-backup error
   const manifest = (await Bun.file(manifestPath)
     .json()
     .catch(() => null)) as Record<string, unknown> | null

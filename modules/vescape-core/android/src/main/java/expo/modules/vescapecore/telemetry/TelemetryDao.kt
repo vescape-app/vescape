@@ -28,6 +28,9 @@ interface TelemetryDao {
   @Query("DELETE FROM metric_exclusion_ranges WHERE start_ms <= :toMs AND end_ms >= :fromMs")
   suspend fun deleteExclusionsRange(fromMs: Long, toMs: Long): Int
 
+  @Query("DELETE FROM metric_exclusion_ranges WHERE start_ms <= :toMs AND end_ms >= :fromMs AND ((:boardId IS NOT NULL AND board_id = :boardId) OR (:boardId IS NULL AND board_id IS NULL))")
+  suspend fun deleteExclusionsRangeForBoard(fromMs: Long, toMs: Long, boardId: String?): Int
+
   @Query("DELETE FROM metric_exclusion_ranges")
   suspend fun clearExclusions()
 
@@ -320,7 +323,7 @@ interface TelemetryDao {
     val frames = deleteFramesRange(fromMs, toMs, boardId)
     deleteMarkersRange(fromMs, toMs, boardId)
     deleteBucketsRange(fromMs, toMs, boardId ?: UNKNOWN_TELEMETRY_BOARD_ID)
-    deleteExclusionsRange(fromMs, toMs)
+    deleteExclusionsRangeForBoard(fromMs, toMs, boardId)
     return frames
   }
 
@@ -348,6 +351,13 @@ interface TelemetryDao {
     return frames
   }
 
+  @Transaction
+  suspend fun deleteRanges(ranges: List<TelemetryTimeRange>, boardId: String?, allBoards: Boolean): Int =
+    ranges.sumOf { range ->
+      if (allBoards) deleteRangeAllDevices(range.startMs, range.endMs)
+      else deleteRange(range.startMs, range.endMs, boardId)
+    }
+
   @Query("DELETE FROM telemetry_frames")
   suspend fun clearFrames()
 
@@ -368,6 +378,22 @@ interface TelemetryDao {
     clearDiagnosticEvents()
     clearExclusions()
   }
+
+  @Transaction
+  suspend fun clearExcept(protectedRanges: List<TelemetryTimeRange>) {
+    if (protectedRanges.isEmpty()) return clearAll()
+    val requested = TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)
+    subtractProtectedTelemetryRanges(requested, protectedRanges).forEach { range ->
+      deleteRangeAllDevices(range.startMs, range.endMs)
+    }
+    clearDiagnosticEvents()
+  }
+
+  @Transaction
+  suspend fun rebuildTelemetryBuckets(
+    config: MetricSanitizerConfig,
+    onProgress: (Int, Int) -> Unit,
+  ): Int = rebuildTelemetryBucketsImpl(config, onProgress)
 
   /** Live Boards only — a tombstoned Board is gone from every Rider-facing list (ADR 0027). */
   @Query("SELECT * FROM boards WHERE deleted_at IS NULL ORDER BY created_at ASC")
@@ -438,6 +464,8 @@ interface TelemetryDao {
     deleteBoardWarnings(id)
     // Alert Rules are Board-owned (#254) — drop them with the Board so no orphan rows survive.
     deleteAlertRules(id)
+    deleteBoardConfigValues(id)
+    deleteBoardConfigChangeNotice(id)
     insertBoardRow(board.copy(deletedAt = deletedAt))
   }
 
@@ -470,6 +498,14 @@ interface TelemetryDao {
 
   @Query("DELETE FROM app_settings WHERE key = :key")
   suspend fun deleteAppSetting(key: String)
+
+  @Transaction
+  suspend fun replaceAppSettings(settings: List<AppSettingEntity?>, keys: List<String>) {
+    require(settings.size == keys.size)
+    settings.zip(keys).forEach { (setting, key) ->
+      if (setting == null) deleteAppSetting(key) else upsertAppSetting(setting)
+    }
+  }
 
   // Tune Profile / Tune History DAO. Transactional bodies below are mirrored in Swift.
   // @parity /modules/vescape-core/ios/telemetry/TuneProfileStore.swift
@@ -508,6 +544,13 @@ interface TelemetryDao {
 
   @Insert
   suspend fun insertTuneHistoryEntry(entry: TuneHistoryEntryEntity): Long
+
+  @Transaction
+  suspend fun createTuneProfile(profile: TuneProfileEntity, historyEntry: TuneHistoryEntryEntity): TuneProfileEntity {
+    upsertTuneProfile(profile)
+    insertTuneHistoryEntry(historyEntry)
+    return getTuneProfile(profile.id) ?: throw IllegalStateException("Tune Profile disappeared during save: ${profile.id}")
+  }
 
   // `id` breaks ties: a save and a rollback can land in the same millisecond, and without a
   // monotonic tiebreaker `created_at DESC` alone returns them in insertion order — oldest first —
@@ -652,6 +695,12 @@ interface TelemetryDao {
   @Insert
   suspend fun insertVescFaultCaptureSamples(samples: List<VescFaultCaptureSampleEntity>)
 
+  @Transaction
+  suspend fun saveVescFaultCapture(capture: VescFaultCaptureEntity, samples: List<VescFaultCaptureSampleEntity>) {
+    upsertVescFaultCapture(capture)
+    if (samples.isNotEmpty()) insertVescFaultCaptureSamples(samples)
+  }
+
   @Query(
     "SELECT * FROM vesc_fault_capture_samples WHERE occurrence_id = :occurrenceId " +
       "ORDER BY captured_at ASC, id ASC",
@@ -704,9 +753,17 @@ interface TelemetryDao {
   @Query("DELETE FROM board_config_change_notices WHERE board_id = :boardId")
   suspend fun deleteBoardConfigChangeNotice(boardId: String)
 
+  /** Clears every cached config scope and its notice as one durable operation. */
   @Transaction
-  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
-    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion))
+  suspend fun clearBoardConfigState(boardId: String) {
+    deleteBoardConfigValues(boardId)
+    deleteMotorConfigValues(boardId)
+    deleteBoardConfigChangeNotice(boardId)
+  }
+
+  @Transaction
+  suspend fun replaceBaselineAndNotice(values: BoardConfigValuesEntity, buildNotice: (BoardConfigValuesEntity?, BoardConfigChangeNoticeEntity?) -> BoardConfigChangeNoticeEntity?): BoardConfigChangeNoticeEntity? {
+    val notice = buildNotice(getBoardConfigValues(values.boardId, values.refloatBaseVersion), getBoardConfigChangeNotice(values.boardId))
     if (notice != null) upsertBoardConfigChangeNotice(notice)
     upsertBoardConfigValues(values)
     return notice

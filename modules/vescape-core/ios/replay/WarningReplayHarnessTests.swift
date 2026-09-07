@@ -21,7 +21,7 @@ enum WarningReplayHarness {
     _ jsonl: String,
     configuredSeries: Int?,
     transform: (BmsTelemetry, Int64) -> BmsTelemetry = { bms, _ in bms }
-  ) -> Result {
+  ) throws -> Result {
     let cellSpread = CellSpreadDetector()
     let mismatch = BatteryConfigMismatchDetector()
     var cellSpreadFindings: [CellSpreadFinding] = []
@@ -31,12 +31,12 @@ enum WarningReplayHarness {
     for frame in frames {
       let atMs = frame.capturedAt
       let bms = transform(frame, atMs)
-      if let finding = cellSpread.onFrame(
+      if let finding = try cellSpread.onFrame(
         cellVoltages: bms.cellVoltages, balancing: bms.balancing, vCharge: bms.vCharge, atMs: atMs
       ) {
         cellSpreadFindings.append(finding)
       }
-      if let payload = mismatch.onFrame(
+      if let payload = try mismatch.onFrame(
         bmsCellCount: bms.cellVoltages.count, configuredSeries: configuredSeries
       ) {
         mismatchFindings.append(payload)
@@ -81,7 +81,7 @@ final class WarningReplayHarnessTests: XCTestCase {
     )
   }
 
-  func testDecoderYieldsOrderedBmsFramesFromRxChunksOnly() {
+  func testDecoderYieldsOrderedBmsFramesFromRxChunksOnly() throws {
     let frames = ReplayChunkDecoder.bmsFrames(jsonl)
     // No vacuous green: a fixture that decodes to nothing must fail loudly.
     XCTAssertFalse(frames.isEmpty, "fixture yielded zero BMS frames")
@@ -94,8 +94,8 @@ final class WarningReplayHarnessTests: XCTestCase {
     XCTAssertTrue(zip(frames, frames.dropFirst()).allSatisfy { $1.capturedAt - $0.capturedAt == 250 })
   }
 
-  func testCleanFixtureProducesZeroFindingsAndCleanSessionEnd() {
-    let result = WarningReplayHarness.run(jsonl, configuredSeries: fixtureSeries)
+  func testCleanFixtureProducesZeroFindingsAndCleanSessionEnd() throws {
+    let result = try WarningReplayHarness.run(jsonl, configuredSeries: fixtureSeries)
     XCTAssertGreaterThan(result.frameCount, 0, "fixture yielded zero BMS frames")
     XCTAssertTrue(result.cellSpreadFindings.isEmpty)
     XCTAssertTrue(result.mismatchFindings.isEmpty)

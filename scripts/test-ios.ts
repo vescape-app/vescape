@@ -50,7 +50,7 @@ invalidateStaleManifestCache(sourceFingerprint)
 const args = [
   'test',
   '-scheme',
-  'VescapeCore',
+  'VescapeCore-Package',
   '-destination',
   destination,
   '-resultBundlePath',

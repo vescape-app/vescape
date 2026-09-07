@@ -1,0 +1,1 @@
+../ios/telemetry/DiagnosticEventPersistence.swift

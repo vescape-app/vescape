@@ -1,0 +1,52 @@
+name: Native storage contracts
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Immutable source commit to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  persistence-contracts:
+    name: Room and GRDB storage contracts
+    runs-on: blacksmith-6vcpu-macos-26
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true -Dorg.gradle.daemon=false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+      - name: Verify immutable source
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: useblacksmith/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            modules/vescape-core/.build
+          key: persistence-hosts-${{ runner.os }}-${{ hashFiles('modules/vescape-core/persistence-jvm/gradlew', 'modules/vescape-core/persistence-jvm/gradle/wrapper/*', 'modules/vescape-core/persistence-jvm/*.gradle.kts', 'modules/vescape-core/Package.resolved') }}
+          restore-keys: |
+            persistence-hosts-${{ runner.os }}-
+      - name: Verify complete cross-platform orchestrator
+        run: |
+          test -f modules/vescape-core/shared/migration-fixture-manifest.json
+          grep -F "VESCAPE_BACKUP_PHASE: 'export-android'" scripts/test-persistence.ts
+          grep -F "VESCAPE_BACKUP_PHASE: 'import-ios'" scripts/test-persistence.ts
+      - name: Run Room, GRDB, and cross-platform archive contracts
+        run: bun run scripts/test-persistence.ts

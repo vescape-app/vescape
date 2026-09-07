@@ -64,14 +64,14 @@ enum ConfigSafetyDetector {
   static let tiltbackHvId = BoardConfigNumberField.tiltbackHv.id
   static let tiltbackDutyId = BoardConfigNumberField.tiltbackDuty.id
 
-  static func evaluate(_ values: BoardConfigValues, seriesCount: Int?, perCell: Bool?) -> ConfigSafetyReport {
+  static func evaluate(_ values: BoardConfigValues, seriesCount: Int?, perCell: Bool?) throws -> ConfigSafetyReport {
     var findings: [ConfigSafetyFinding] = []
     var clean: [BoardWarningKind] = []
 
     // footpad-disabled (critical): both ADC switch voltages 0 disables the footpad switch entirely.
     if let adc1 = values.number(BoardConfigNumberField.faultAdc1), let adc2 = values.number(BoardConfigNumberField.faultAdc2) {
       if adc1 == 0.0, adc2 == 0.0 {
-        findings.append(finding(.footpadDisabled, .critical, "\(faultAdc1Id)/\(faultAdc2Id)", 0.0, 0.0))
+        findings.append(try finding(.footpadDisabled, .critical, "\(faultAdc1Id)/\(faultAdc2Id)", 0.0, 0.0))
       } else {
         clean.append(.footpadDisabled)
       }
@@ -80,7 +80,7 @@ enum ConfigSafetyDetector {
     // lv-pushback-low (critical): LV pushback below the safe minimum, in the firmware's voltage units.
     if let lv = values.number(BoardConfigNumberField.tiltbackLv), let bound = voltageBound(lv, cellLvMinV, perCell, seriesCount) {
       if lv < bound {
-        findings.append(finding(.lvPushbackLow, .critical, tiltbackLvId, lv, bound))
+        findings.append(try finding(.lvPushbackLow, .critical, tiltbackLvId, lv, bound))
       } else {
         clean.append(.lvPushbackLow)
       }
@@ -89,7 +89,7 @@ enum ConfigSafetyDetector {
     // hv-pushback-high (warn): HV pushback above the safe maximum, in the firmware's voltage units.
     if let hv = values.number(BoardConfigNumberField.tiltbackHv), let bound = voltageBound(hv, cellHvMaxV, perCell, seriesCount) {
       if hv > bound {
-        findings.append(finding(.hvPushbackHigh, .warn, tiltbackHvId, hv, bound))
+        findings.append(try finding(.hvPushbackHigh, .warn, tiltbackHvId, hv, bound))
       } else {
         clean.append(.hvPushbackHigh)
       }
@@ -98,7 +98,7 @@ enum ConfigSafetyDetector {
     // duty-pushback-high (warn): duty pushback threshold set dangerously close to the duty limit.
     if let duty = values.number(BoardConfigNumberField.tiltbackDuty) {
       if duty > dutyMax {
-        findings.append(finding(.dutyPushbackHigh, .warn, tiltbackDutyId, duty, dutyMax))
+        findings.append(try finding(.dutyPushbackHigh, .warn, tiltbackDutyId, duty, dutyMax))
       } else {
         clean.append(.dutyPushbackHigh)
       }
@@ -124,12 +124,12 @@ enum ConfigSafetyDetector {
     _ param: String,
     _ value: Double,
     _ bound: Double
-  ) -> ConfigSafetyFinding {
-    ConfigSafetyFinding(kind: kind, severity: severity, payloadJson: payloadJson(param, value, bound))
+  ) throws -> ConfigSafetyFinding {
+    ConfigSafetyFinding(kind: kind, severity: severity, payloadJson: try payloadJson(param, value, bound))
   }
 
-  private static func payloadJson(_ param: String, _ value: Double, _ bound: Double) -> String {
-    BoardWarningPayload.json([
+  private static func payloadJson(_ param: String, _ value: Double, _ bound: Double) throws -> String {
+    try BoardWarningPayload.json([
       "param": param,
       "value": BoardWarningPayload.round4(value),
       "bound": BoardWarningPayload.round4(bound),

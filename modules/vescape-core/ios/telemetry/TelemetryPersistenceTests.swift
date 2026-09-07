@@ -10,9 +10,9 @@ final class TelemetryPersistenceTests: XCTestCase {
     try TelemetryDatabase.migrator.migrate(dbQueue)
   }
 
-  private func state() -> FullTelemetryState {
+  private func state(capturedAtMs: Int64 = 1_800_000) -> FullTelemetryState {
     FullTelemetryState(capture: TelemetryCapture(
-      capturedAtMs: 1_800_000, elapsedRealtimeMs: 100, boardId: "board-1", canId: nil,
+      capturedAtMs: capturedAtMs, elapsedRealtimeMs: 100, boardId: "board-1", canId: nil,
       telemetry: RefloatTelemetry(
         hasFault: false, faultCode: 0, pitch: 0, roll: 0, balancePitch: 0,
         balanceCurrent: 0, speed: 15, batteryVoltage: 80, motorCurrent: 5,
@@ -44,6 +44,28 @@ final class TelemetryPersistenceTests: XCTestCase {
       XCTAssertEqual(rides.first?.sampleCount, 2)
       XCTAssertEqual(rides.first?.avgSpeedSampleCount, 2)
       XCTAssertEqual(rides.first?.startAtMs, 1_800_000)
+    }
+  }
+
+  func testFailedTransactionRollsBackAndStopsIngestion() throws {
+    try dbQueue.write { db in try insertFrame(db, state()) }
+    var reports = 0
+    let boundary = RecordingCommitBoundary { _ in reports += 1 }
+    XCTAssertFalse(boundary.commit {
+      try dbQueue.write { db in
+        try insertFrame(db, state(capturedAtMs: 1_800_001))
+        try db.execute(sql: "INSERT INTO telemetry_frames (missing_column) VALUES (1)")
+      }
+    })
+    XCTAssertFalse(boundary.isAccepting())
+    XCTAssertFalse(boundary.commit {
+      try dbQueue.write { db in
+        try insertFrame(db, state(capturedAtMs: 1_800_002))
+      }
+    })
+    XCTAssertEqual(reports, 1)
+    try dbQueue.read { db in
+      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames"), 1)
     }
   }
 }

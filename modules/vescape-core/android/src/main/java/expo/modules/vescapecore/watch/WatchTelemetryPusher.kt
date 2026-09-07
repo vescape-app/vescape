@@ -76,14 +76,17 @@ internal class WatchTelemetryPusher(
         if (!refreshing.compareAndSet(false, true)) return
         scope.launch {
             try {
+                // intentional-suppression: missing nodes are reported by the null branch
                 val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull()
                 when {
                     nodes == null -> reportIssue("watch_nodes_lookup_failed")
                     nodes.isEmpty() -> reportIssue("watch_frame_no_nodes")
                 }
-                nodeIds = nodes.orEmpty().map { it.id }
-                // A failed lookup is cached as "none" for the TTL too — retrying it at frame cadence
-                // is what made the failure expensive, and the next pass is 30 s away.
+                if (nodes != null) {
+                    nodeIds = nodes.map { it.id }
+                }
+                // Back off failed IPC probes too. Keep the last trusted nodes, but do not turn every
+                // 2 Hz telemetry frame into another blocking Play-services query.
                 nodeIdsAtMs = SystemClock.elapsedRealtime()
             } finally {
                 refreshing.set(false)

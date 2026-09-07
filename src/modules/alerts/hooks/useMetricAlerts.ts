@@ -32,6 +32,7 @@ import { useBoardStore } from '@/modules/board/store/boardStore'
  * editing as `/control` before a Board exists to own the rules.
  */
 export interface MetricAlertsController {
+  error: string | null
   /** The preset metric this control maps to, or `null` when it only supports custom rules. */
   metric: AlertPresetMetric | null
   controlId: string
@@ -49,10 +50,10 @@ export interface MetricAlertsController {
   customize(): void
   /** Drop every rule in {@link rules} and return to a generated level. */
   discardCustom(): void
-  addRule(draft: AlertRuleDraft): void
-  updateRule(id: string, draft: AlertRuleDraft): void
-  toggleRule(id: string): void
-  removeRule(id: string): void
+  addRule(draft: AlertRuleDraft): Promise<void>
+  updateRule(id: string, draft: AlertRuleDraft): Promise<void>
+  toggleRule(id: string): Promise<void>
+  removeRule(id: string): Promise<void>
 }
 
 /**
@@ -63,6 +64,7 @@ export interface MetricAlertsController {
 export function useBoardMetricAlerts(controlId: string): MetricAlertsController | null {
   const board = useBoardStore((s) => s.boards.find((b) => b.id === s.activeBoardId))
   const allRules = useAlertsStore((s) => s.rules)
+  const error = useAlertsStore((s) => s.error)
   const { add, update, toggle, remove } = useAlertsStore(
     useShallow((s) => ({ add: s.add, update: s.update, toggle: s.toggle, remove: s.remove })),
   )
@@ -77,6 +79,7 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
     const presets = () => useAlertPresetStore.getState()
     return {
       metric,
+      error,
       controlId,
       level,
       rules,
@@ -97,10 +100,10 @@ export function useBoardMetricAlerts(controlId: string): MetricAlertsController 
       },
       addRule: (draft) => add(controlId, draft),
       updateRule: (id, draft) => update(id, draft),
-      toggleRule: (id) => void toggle(id),
-      removeRule: (id) => void remove(id),
+      toggleRule: (id) => toggle(id),
+      removeRule: (id) => remove(id),
     }
-  }, [board, metric, controlId, level, rules, add, update, toggle, remove])
+  }, [board, metric, controlId, level, rules, error, add, update, toggle, remove])
 }
 
 /** One metric's buffered alert setup inside the add-board wizard. */
@@ -132,6 +135,7 @@ export function useDraftMetricAlerts(
 
     return {
       metric,
+      error: null,
       controlId: metric,
       level: setup.level,
       rules: setup.rules,
@@ -150,7 +154,7 @@ export function useDraftMetricAlerts(
           }),
         }),
       discardCustom: () => onChange({ level: ALERT_PRESET_FALLBACK_LEVEL, rules: [] }),
-      addRule: (draft) =>
+      addRule: async (draft) =>
         withRules([
           ...setup.rules,
           {
@@ -161,9 +165,9 @@ export function useDraftMetricAlerts(
             ...draft,
           },
         ]),
-      updateRule: (id, draft) => mapRule(id, (rule) => ({ ...rule, ...draft })),
-      toggleRule: (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
-      removeRule: (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
+      updateRule: async (id, draft) => mapRule(id, (rule) => ({ ...rule, ...draft })),
+      toggleRule: async (id) => mapRule(id, (rule) => ({ ...rule, enabled: !rule.enabled })),
+      removeRule: async (id) => withRules(setup.rules.filter((rule) => rule.id !== id)),
     }
   }, [metric, setup, topSpeedKmh, hasBatteryConfig, onChange])
 }

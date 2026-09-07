@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import expo.modules.vescapecore.auth.DeviceCredentialStore
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -68,7 +69,13 @@ class AppStatusCoordinator internal constructor(
   private val baseUrl: String,
   private val transport: AppStatusTransport,
   private val credentialStore: DeviceCredentialStore? = null,
-  private val deviceTokenProvider: () -> String? = { credentialStore?.read()?.token },
+  private val deviceTokenProvider: () -> String? = {
+    try { credentialStore?.read()?.token }
+    catch (error: Exception) {
+      UnexpectedNativeError.report("device_credential_read", "secure_store_read", error)
+      null
+    }
+  },
 ) : OnlineCapability {
   /** Last successful App Status for this process, or `null` while none has been fetched. */
   @Volatile
@@ -128,11 +135,16 @@ class AppStatusCoordinator internal constructor(
 
   private fun applyDeviceTokenState(body: String) {
     val store = credentialStore ?: return
+    // intentional-suppression: owning store exposes the failure to the active UI
     val token = runCatching { org.json.JSONObject(body).optJSONObject("deviceToken") }.getOrNull()
       ?: return
     when (token.optString("state")) {
-      "valid" -> token.optString("expiresAt").takeIf { it.isNotEmpty() }?.let(store::updateExpiry)
-      "expired", "revoked" -> store.reject()
+      "valid" -> token.optString("expiresAt").takeIf { it.isNotEmpty() }?.let {
+        try { store.updateExpiry(it) }
+        catch (error: Exception) { UnexpectedNativeError.report("device_credential_expiry_write", "secure_store_write", error) }
+      }
+      "expired", "revoked" -> try { store.reject() }
+      catch (error: Exception) { UnexpectedNativeError.report("device_credential_reject", "secure_store_delete", error) }
     }
   }
 

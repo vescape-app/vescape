@@ -20,7 +20,13 @@ const leaveGroupRide = mock(() => {})
 const updateGroupRideIdentity = mock(() => {})
 const startGroupRideObserve = mock(() => {})
 const stopGroupRideObserve = mock(() => {})
-const getSettings = mock(async () => ({ riderId: null, riderName: null }))
+const getSettings = mock(
+  async (): Promise<{
+    riderId: string | null
+    riderName: string | null
+    riderColor?: string | null
+  }> => ({ riderId: null, riderName: null }),
+)
 const updateSetting = mock(async () => {})
 
 function subscribe<T>(listeners: Listener<T>[], listener: Listener<T>) {
@@ -93,7 +99,12 @@ beforeEach(async () => {
   updateGroupRideIdentity.mockClear()
   startGroupRideObserve.mockClear()
   stopGroupRideObserve.mockClear()
+  getSettings.mockReset()
+  getSettings.mockImplementation(async () => ({ riderId: null, riderName: null }))
+  updateSetting.mockReset()
+  updateSetting.mockImplementation(async () => {})
   const { useGroupRideStore } = await import('@/modules/group-ride/store/groupRideStore')
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
   useGroupRideStore.setState({
     connection: 'idle',
     rides: [],
@@ -106,6 +117,72 @@ beforeEach(async () => {
     error: null,
     focusRequest: null,
     observing: false,
+  })
+  useRiderStore.setState({
+    riderId: null,
+    riderName: null,
+    riderColor: null,
+    loaded: false,
+    error: null,
+  })
+})
+
+test('identity load is single-flight and queued edits cannot be overwritten by stale settings', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  let resolveSettings!: (value: { riderId: string; riderName: string }) => void
+  getSettings.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveSettings = resolve
+      }),
+  )
+
+  const firstLoad = useRiderStore.getState().load()
+  const secondLoad = useRiderStore.getState().load()
+  const edit = useRiderStore.getState().setName('New name')
+  await Promise.resolve()
+
+  expect(firstLoad).toBe(secondLoad)
+  expect(getSettings).toHaveBeenCalledTimes(1)
+  expect(updateSetting).not.toHaveBeenCalled()
+
+  resolveSettings({ riderId: 'rider-1', riderName: 'Old name' })
+  await Promise.all([firstLoad, secondLoad, edit])
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderName', 'New name')
+  expect(useRiderStore.getState()).toMatchObject({
+    riderId: 'rider-1',
+    riderName: 'New name',
+    loaded: true,
+    error: null,
+  })
+})
+
+test('rapid rider edits persist and apply in request order', async () => {
+  const { useRiderStore } = await import('@/modules/group-ride/store/riderStore')
+  let finishNameWrite!: () => void
+  updateSetting.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishNameWrite = resolve
+      }),
+  )
+
+  const nameWrite = useRiderStore.getState().setName('First')
+  const colorWrite = useRiderStore.getState().setColor('#38bdf8')
+  await Promise.resolve()
+
+  expect(updateSetting).toHaveBeenCalledTimes(1)
+  expect(updateSetting).toHaveBeenCalledWith('riderName', 'First')
+  finishNameWrite()
+  await Promise.all([nameWrite, colorWrite])
+
+  expect(updateSetting).toHaveBeenNthCalledWith(2, 'riderColor', '#38bdf8')
+  expect(useRiderStore.getState()).toMatchObject({
+    riderName: 'First',
+    riderColor: '#38bdf8',
+    error: null,
   })
 })
 

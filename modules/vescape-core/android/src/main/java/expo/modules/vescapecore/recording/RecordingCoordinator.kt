@@ -12,6 +12,7 @@ import expo.modules.vescapecore.telemetry.TelemetryRepository
 internal class RecordingCoordinator(
     private val context: Context,
     private val applyLiveSettings: (AppSettings) -> Unit,
+    private val onRecordingFailure: () -> Unit,
 ) {
     private var recorder: SessionRecorder? = null
     private var telemetryStore: TelemetryRepository? = null
@@ -33,12 +34,18 @@ internal class RecordingCoordinator(
 
     fun beginBoardSession(config: SessionConfig) {
         connectionLostMarkerAt = null
-        recorder = if (config.recordingEnabled) {
+        recorder = if (config.recordingEnabled) try {
             SessionRecorder(context, config).also { it.start() }
-        } else {
+        } catch (error: Exception) {
+            expo.modules.vescapecore.diagnostics.UnexpectedNativeError.report(
+                "debug_recording_open", "file_open_failed", error,
+            )
             null
-        }
-        telemetryStore = if (config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled) {
+        } else null
+        telemetryStore = if (
+            RecordingStorageFailure.value() == null &&
+            (config.telemetryRecordingEnabled || requestedTelemetryRecordingEnabled)
+        ) {
             configuredTelemetryStore()
         } else {
             null
@@ -51,10 +58,13 @@ internal class RecordingCoordinator(
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getTypedSettings().autoRecording
             }
-        } catch (_: Exception) {
-            false
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RecordingStorageFailure.reportRead("auto_recording_settings_read", e)
+            return
         }
-        if (autoRecording && telemetryStore == null) {
+        if (autoRecording && telemetryStore == null && RecordingStorageFailure.value() == null) {
             telemetryStore = configuredTelemetryStore()
         }
         recordMarker("connected", config)
@@ -119,6 +129,7 @@ internal class RecordingCoordinator(
     }
 
     fun enableTelemetryRecording(config: SessionConfig) {
+        if (RecordingStorageFailure.value() != null) return
         if (telemetryStore == null) {
             telemetryStore = configuredTelemetryStore()
             recordMarker("connected", config)
@@ -145,27 +156,42 @@ internal class RecordingCoordinator(
         telemetryStore?.flushBlocking()
     }
 
-    private fun configuredTelemetryStore(): TelemetryRepository {
+    private fun configuredTelemetryStore(): TelemetryRepository? {
         val store = TelemetryRepository.get(context)
+        store.observeRecordingFailure {
+            onRecordingFailure()
+        }
         val settings = try {
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getTypedSettings()
             }
-        } catch (_: Exception) {
-            null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RecordingStorageFailure.reportRead("recording_settings_read", e)
+            return null
         }
-        val resolvedSettings = settings ?: AppSettings()
-        applyLiveSettings(resolvedSettings)
-        store.applySettings(resolvedSettings)
+        applyLiveSettings(settings)
+        store.applySettings(settings)
         val zones = try {
             kotlinx.coroutines.runBlocking {
                 AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
             }
-        } catch (_: Exception) {
-            emptyList()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            RecordingStorageFailure.reportRead("recording_privacy_zones_read", e)
+            return null
         }
         store.reloadPrivacyZones(zones)
         return store
+    }
+
+    /** Runs on Board Session owner scheduler after repository IO reports a failed transaction. */
+    fun handleStorageFailure() {
+        telemetryStore = null
+        requestedTelemetryRecordingEnabled = false
+        connectionLostMarkerAt = null
     }
 
     private fun recordMarker(type: String, config: SessionConfig?, message: String? = null) {

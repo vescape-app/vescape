@@ -18,7 +18,8 @@ export async function readLastDevice(key: string): Promise<string | null> {
 }
 
 export async function rememberDevice(key: string, id: string): Promise<void> {
-  await Bun.write(join(CACHE_DIR, key), `${id}\n`).catch(() => {})
+  // intentional-suppression: missing device history is an expected CLI result
+  await Bun.write(join(CACHE_DIR, key), `${id}\n`).catch(() => undefined) // Optional CLI preference cache.
 }
 
 /** Last pick first, everything else in its original order. */

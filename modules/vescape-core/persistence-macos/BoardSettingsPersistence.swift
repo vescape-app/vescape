@@ -1,0 +1,1 @@
+../ios/telemetry/BoardSettingsPersistence.swift

@@ -75,6 +75,9 @@ class PhoneLinkMonitor(context: Context) {
         running = false
         nextRefresh?.cancel(false)
         nextRefresh = null
+        // Best-effort teardown: start() owns the next listener registration and stopped monitors do
+        // not publish, so a Play-services race here cannot change rider-visible state.
+        // intentional-suppression: listener teardown is best effort
         runCatching { capabilityClient.removeListener(listener, PHONE_APP_CAPABILITY) }
     }
 
@@ -85,10 +88,20 @@ class PhoneLinkMonitor(context: Context) {
 
     private fun refreshLoop() {
         if (!running) return
-        val capable = runCatching {
-            Tasks.await(capabilityClient.getCapability(PHONE_APP_CAPABILITY, CapabilityClient.FILTER_REACHABLE))
-        }.getOrNull()?.nodes.orEmpty()
-        val nodes = runCatching { Tasks.await(nodeClient.connectedNodes) }.getOrNull().orEmpty()
+        val capable = try {
+            Tasks.await(capabilityClient.getCapability(PHONE_APP_CAPABILITY, CapabilityClient.FILTER_REACHABLE)).nodes
+        } catch (_: Exception) {
+            publishProbeFailure()
+            scheduleNext()
+            return
+        }
+        val nodes = try {
+            Tasks.await(nodeClient.connectedNodes)
+        } catch (_: Exception) {
+            publishProbeFailure()
+            scheduleNext()
+            return
+        }
         publish(
             when {
                 capable.isNotEmpty() -> PhoneLink.APP_REACHABLE
@@ -97,11 +110,19 @@ class PhoneLinkMonitor(context: Context) {
             },
             probe = true,
         )
+        scheduleNext()
+    }
+
+    private fun scheduleNext() {
         if (running) {
             val settled = ambient || TelemetryState.mirrorState.value.status == MirrorStatus.LIVE
             val delayMs = if (settled) PHONE_LINK_SETTLED_REFRESH_MS else PHONE_LINK_REFRESH_MS
             nextRefresh = executor.schedule(::refreshLoop, delayMs, TimeUnit.MILLISECONDS)
         }
+    }
+
+    private fun publishProbeFailure() {
+        mainHandler.post { if (running) WatchDiagnostics.recordLinkProbeFailure() }
     }
 
     private fun publish(link: PhoneLink, probe: Boolean) {

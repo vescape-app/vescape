@@ -20,6 +20,12 @@ export interface ReleaseManifest {
     runUrl: string
     runAttempt: number
   }
+  storageContracts: {
+    sourceSha: string
+    androidRoom: 'passed'
+    iosGrdb: 'passed'
+    crossPlatformArchives: 'passed'
+  }
   artifacts: {
     phone: ArtifactIdentity
     wear: ArtifactIdentity
@@ -119,6 +125,10 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     !manifest.workflow ||
     typeof manifest.workflow.runId !== 'number' ||
     typeof manifest.workflow.runUrl !== 'string' ||
+    manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
+    manifest.storageContracts.androidRoom !== 'passed' ||
+    manifest.storageContracts.iosGrdb !== 'passed' ||
+    manifest.storageContracts.crossPlatformArchives !== 'passed' ||
     !manifest.artifacts?.phone ||
     !manifest.artifacts.wear ||
     !manifest.uploads ||

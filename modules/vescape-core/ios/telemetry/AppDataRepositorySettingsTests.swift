@@ -1,10 +1,25 @@
 import XCTest
+import GRDB
 @testable import VescapeCore
 
 /// App Settings contract: the dismissed Community Message IDs default empty, keep non-empty unique
 /// strings, and reject malformed values.
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/telemetry/AppSettingsMapPreferencesTest.kt
 final class AppDataRepositorySettingsTests: XCTestCase {
+  func testInvalidRequiredJsonPreservesExistingSetting() throws {
+    let queue = try DatabaseQueue()
+    try queue.write { db in
+      try db.execute(sql: "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+      try db.execute(sql: "INSERT INTO app_settings VALUES ('custom', '\"old\"', 1)")
+    }
+    let repository = AppDataRepository.forTesting(dbWriter: queue)
+
+    XCTAssertThrowsError(try repository.updateSetting("custom", rawValue: Double.nan))
+    let stored = try queue.read { db in
+      try String.fetchOne(db, sql: "SELECT value_json FROM app_settings WHERE key = 'custom'")
+    }
+    XCTAssertEqual(stored, "\"old\"")
+  }
   func testDismissedCommunityMessageIdsDefaultEmpty() {
     XCTAssertEqual(AppDataRepository.defaultSettings["dismissedCommunityMessageIds"] as? [String], [])
   }

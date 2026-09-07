@@ -3,11 +3,9 @@ import GRDB
 
 internal let TELEMETRY_FLAG_KEYFRAME = 1
 internal let TELEMETRY_FLAG_HAS_LOCATION = 1 << 2
-internal let TELEMETRY_BUCKET_SIZE_MS: Int64 = 60_000
 internal let GAP_BOUNDARY_MS: Int64 = 90_000
 internal let KEYFRAME_INTERVAL_MS: Int64 = 60_000
 internal let MIN_PERSIST_INTERVAL_MS: Int64 = 500
-internal let MAX_ENERGY_SAMPLE_GAP_MS: Int64 = 5_000
 internal let DEFAULT_HISTORY_LIMIT = 100
 internal let DEFAULT_SAMPLE_LIMIT = 2_000
 internal let MAX_SAMPLE_LIMIT = 20_000
@@ -38,7 +36,21 @@ internal final class TelemetryRepository {
   private var lastKeyframeAtMs: Int64?
   private var metricConfig = MetricSanitizerConfig()
   private var enabledPrivacyZones: [PrivacyZoneEntity] = []
-  private let batteryEstimator = BatterySocEstimator()
+  internal let batteryEstimator = BatterySocEstimator()
+  private var onRecordingFailure: (() -> Void)?
+  private var databaseSwapInProgress = false
+  private lazy var recordingCommitBoundary = RecordingCommitBoundary { [weak self] error in
+    RecordingStorageFailure.fail(error)
+    self?.onRecordingFailure?()
+  }
+
+  private init() {
+    RecordingStorageFailure.initialize()
+  }
+
+  func observeRecordingFailure(_ listener: (() -> Void)?) {
+    queue.sync { onRecordingFailure = listener }
+  }
 
   func applySettings(_ settings: [String: Any?]) {
     queue.async { self.metricConfig = MetricSanitizerConfig.from(settings: settings) }
@@ -55,6 +67,7 @@ internal final class TelemetryRepository {
   func recordTelemetry(_ capture: TelemetryCapture) {
     let state = FullTelemetryState(capture: capture)
     queue.async {
+      guard !self.databaseSwapInProgress, self.recordingCommitBoundary.isAccepting() else { return }
       let gapMs = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
       let gap = (gapMs ?? 0) > GAP_BOUNDARY_MS
       let keyframe = self.lastHistoryAtMs == nil || gap || self.lastKeyframeAtMs == nil ||
@@ -80,6 +93,7 @@ internal final class TelemetryRepository {
 
   func recordMarker(type: String, boardId: String?, message: String? = nil) {
     queue.async {
+      guard !self.databaseSwapInProgress else { return }
       self.pendingMarkers.append([
         "occurredAtMs": telemetryNowMs(),
         "elapsedRealtimeMs": telemetryElapsedMs(),
@@ -96,6 +110,26 @@ internal final class TelemetryRepository {
     queue.sync { self.flushOnQueue() }
   }
 
+  /// Flush accepted work and reject new ingestion until the candidate or original pool is open.
+  func beginDatabaseSwap() {
+    queue.sync {
+      flushOnQueue()
+      databaseSwapInProgress = true
+    }
+  }
+
+  func endDatabaseSwap() {
+    queue.sync {
+      pendingStates.removeAll()
+      pendingPersisted.removeAll()
+      pendingMarkers.removeAll()
+      lastFrameAtMs = nil
+      lastHistoryAtMs = nil
+      lastKeyframeAtMs = nil
+      databaseSwapInProgress = false
+    }
+  }
+
   func resetSessionState() {
     queue.async {
       self.lastFrameAtMs = nil
@@ -104,11 +138,9 @@ internal final class TelemetryRepository {
     }
   }
 
-  func getSummary() -> [String: Any?] {
-    guard let pool else {
-      return ["sampleCount": 0, "gpsPointCount": 0, "firstAtMs": nil, "lastAtMs": nil, "droppedPendingSamples": 0]
-    }
-    return (try? pool.read { db in
+  func getSummary() throws -> [String: Any?] {
+    let pool = try TelemetryDatabase.requirePool()
+    return try pool.read { db in
       [
         "sampleCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") ?? 0,
         "gpsPointCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE latitude_e7 IS NOT NULL") ?? 0,
@@ -116,18 +148,18 @@ internal final class TelemetryRepository {
         "lastAtMs": try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
         "droppedPendingSamples": 0,
       ]
-    }) ?? ["sampleCount": 0, "gpsPointCount": 0, "firstAtMs": nil, "lastAtMs": nil, "droppedPendingSamples": 0]
+    }
   }
 
-  func getHistory(_ options: [String: Any]) -> [[String: Any?]] {
+  func getHistory(_ options: [String: Any]) throws -> [[String: Any?]] {
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let beforeMs = telemetryLong(options["cursorBeforeMs"]) ?? toMs
     let limit = min(500, max(1, telemetryInt(options["limit"]) ?? DEFAULT_HISTORY_LIMIT))
     let boardId = options["boardId"] as? String
-    guard let pool else { return [] }
-    let boardNames = Self.boardNamesById()
-    return (try? pool.read { db in
+    let pool = try TelemetryDatabase.requirePool()
+    return try pool.read { db in
+      let boardNames = try historyBoardNames(db)
       let rows = try Row.fetchAll(
         db,
         sql: """
@@ -147,21 +179,22 @@ internal final class TelemetryRepository {
         arguments: [markerFrom, markerTo, boardId, boardId]
       )
       return rows.map { historyMap($0, markers: markers, boardNames: boardNames) }
-    }) ?? []
+    }
   }
 
-  func getSamples(_ options: [String: Any]) -> [[String: Any?]] {
-    guard let pool else { return [] }
+  func getSamples(_ options: [String: Any]) throws -> [[String: Any?]] {
+    let pool = try TelemetryDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the frames read below.
-    let configs = batteryConfigByBoard()
-    let boardNames = Self.boardNamesById()
-    let windowMs = socWindowMs()
-    return (try? pool.read { db in
+    let windowMs = try socWindowMs()
+    return try pool.read { db in
+      batteryEstimator.ensureLoaded()
+      let configs = try historyBatteryConfigs(db)
+      let boardNames = try historyBoardNames(db)
       let rows = try Row.fetchAll(
         db,
         sql: """
@@ -174,7 +207,7 @@ internal final class TelemetryRepository {
       )
       let percents = self.batteryPercents(rows, configs: configs, windowMs: windowMs)
       return zip(rows, percents).map { sampleMap($0.0, batteryPercent: $0.1, boardNames: boardNames) }
-    }) ?? []
+    }
   }
 
   // MARK: - Battery SoC on read (ADR-0016)
@@ -214,10 +247,10 @@ internal final class TelemetryRepository {
   /// identifier now that samples carry the Board id (ADR 0028), so a re-linked Board keeps its
   /// config across its whole history.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `batteryConfigByBoard`
-  internal func batteryConfigByBoard() -> [String: [String: Any]] {
+  internal func batteryConfigByBoard() throws -> [String: [String: Any]] {
     batteryEstimator.ensureLoaded()
     var result: [String: [String: Any]] = [:]
-    for board in AppDataRepository.shared.getBoards() {
+    for board in try AppDataRepository.shared.getBoards() {
       guard
         let id = board["id"] as? String,
         let config = board["batteryConfig"] as? [String: Any]
@@ -228,8 +261,8 @@ internal final class TelemetryRepository {
   }
 
   /// SoC median window length from app settings (seconds → ms), defaulting to Android's 20 s.
-  internal func socWindowMs() -> Int64 {
-    Int64(telemetryInt(AppDataRepository.shared.getSettings()["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
+  internal func socWindowMs() throws -> Int64 {
+    Int64(telemetryInt(try AppDataRepository.shared.getSettings()["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
   }
 
   // MARK: - Favorites (ADR 0029)
@@ -237,22 +270,22 @@ internal final class TelemetryRepository {
   /// Board names are resolved here, not stored on the row: a Favorite outlives board renames, and
   /// a snapshot would drift.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getFavorites`
-  func getFavorites() -> [[String: Any?]] {
-    FavoriteMediaStore.shared.reconcileAll()
-    let boardNames = Self.boardNamesById()
-    return FavoriteStore.shared.list().map { favorite in
+  func getFavorites() throws -> [[String: Any?]] {
+    try FavoriteMediaStore.shared.reconcileAll()
+    let boardNames = try Self.boardNamesById()
+    return try FavoriteStore.shared.list().map { favorite in
       favorite.toMap(
         boardName: favorite.boardId.flatMap { boardNames[$0] },
-        routePoints: favoriteRoutePoints(favorite)
+        routePoints: try favoriteRoutePoints(favorite)
       )
     }
   }
 
   /// Coarse native route projection for Favorite cards, independent of JS history pagination.
-  private func favoriteRoutePoints(_ favorite: Favorite) -> [[String: Double]] {
-    guard let pool else { return [] }
+  private func favoriteRoutePoints(_ favorite: Favorite) throws -> [[String: Double]] {
+    let pool = try TelemetryDatabase.requirePool()
     let fromBucketMs = favorite.startMs - (favorite.startMs % TELEMETRY_BUCKET_SIZE_MS)
-    return (try? pool.read { db in
+    return try pool.read { db in
       try Row.fetchAll(
         db,
         sql: """
@@ -270,62 +303,51 @@ internal final class TelemetryRepository {
           "longitude": Double(row["first_longitude_e7"] as Int64) / 1e7,
         ]
       }
-    }) ?? []
+    }
   }
 
   /// Pin a time range as a Favorite. Identity and timestamps are minted here — the range and the
   /// optional name are the only things JS gets to supply. Summary stats come from the raw samples
   /// inside the range, so a range that cuts mid-bucket still gets exact numbers.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `createFavorite`
-  func createFavorite(_ options: [String: Any]) -> [String: Any?]? {
+  func createFavorite(_ options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
-    guard let pool else { return nil }
     guard let range = Self.favoriteRange(options) else { return nil }
+    let pool = try TelemetryDatabase.requirePool()
     let startMs = range.startMs
     let endMs = range.endMs
     let boardId = options["boardId"] as? String
     let trimmedName = (options["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let config = queue.sync { metricConfig }
-    let points = (try? pool.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          """,
-        arguments: [startMs, endMs, boardId, boardId]
-      ).compactMap(bucketPoint)
-    }) ?? []
-    let summary = Self.favoriteSummary(points, config: config)
     let nowMs = telemetryNowMs()
-    let favorite = Favorite(
-      id: UUID().uuidString,
-      boardId: boardId,
+    let favorite = try persistFavorite(
+      store: .shared, existingId: nil, range: range, boardId: boardId,
       name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName,
-      startMs: startMs,
-      endMs: endMs,
-      createdAtMs: nowMs,
-      updatedAtMs: nowMs,
-      summary: summary
-    )
-    guard FavoriteStore.shared.insert(favorite) else { return nil }
+      nowMs: nowMs, newId: { UUID().uuidString },
+      loadSummary: { requested, owner in
+        let points = try pool.read { db in
+          try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY captured_at_ms ASC", arguments: [requested.startMs, requested.endMs, owner, owner]).compactMap(bucketPoint)
+        }
+        return Self.favoriteSummary(points, config: config)
+      }
+    )!
+    let boardNames = try Self.boardNamesById()
     return favorite.toMap(
-      boardName: favorite.boardId.flatMap { Self.boardNamesById()[$0] },
-      routePoints: favoriteRoutePoints(favorite)
+      boardName: favorite.boardId.flatMap { boardNames[$0] },
+      routePoints: try favoriteRoutePoints(favorite)
     )
   }
 
   /// `boards.id` -> Board name, tombstones included: Ride History still has to name a Board the
   /// Rider deleted (ADR 0027), and resolving on read is what makes a rename retroactive.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `boardNamesById`
-  internal static func boardNamesById() -> [String: String] {
-    guard let pool = TelemetryDatabase.pool else { return [:] }
-    return (try? pool.read { db in
+  internal static func boardNamesById() throws -> [String: String] {
+    let pool = try TelemetryDatabase.requirePool()
+    return try pool.read { db in
       try Row.fetchAll(db, sql: "SELECT id, name FROM boards").reduce(into: [String: String]()) {
         $0[$1["id"] as String] = $1["name"] as String
       }
-    }) ?? [:]
+    }
   }
 
   /// Favorite ranges are required bridge input. Missing or inverted bounds must fail instead of
@@ -343,57 +365,47 @@ internal final class TelemetryRepository {
   /// Re-trim/rename a Favorite in place. Identity, creation time and Favorite Media stay attached;
   /// summary stats are rebuilt from raw samples for the new exact range.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `updateFavorite`
-  func updateFavorite(_ id: String, options: [String: Any]) -> [String: Any?]? {
+  func updateFavorite(_ id: String, options: [String: Any]) throws -> [String: Any?]? {
     flushBlocking()
-    guard let existing = FavoriteStore.shared.list().first(where: { $0.id == id }), let pool
-    else { return nil }
     guard let range = Self.favoriteRange(options) else { return nil }
+    let pool = try TelemetryDatabase.requirePool()
     let startMs = range.startMs
     let endMs = range.endMs
     let boardId = options["boardId"] as? String
     let trimmedName = (options["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let config = queue.sync { metricConfig }
-    let points = (try? pool.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM telemetry_frames
-          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY captured_at_ms ASC
-          """,
-        arguments: [startMs, endMs, boardId, boardId]
-      ).compactMap(bucketPoint)
-    }) ?? []
-    let updated = Favorite(
-      id: existing.id,
-      boardId: existing.boardId,
+    let persisted = try persistFavorite(
+      store: .shared, existingId: id, range: range, boardId: boardId,
       name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName,
-      startMs: startMs,
-      endMs: endMs,
-      createdAtMs: existing.createdAtMs,
-      updatedAtMs: telemetryNowMs(),
-      summary: Self.favoriteSummary(points, config: config)
+      nowMs: telemetryNowMs(), newId: { UUID().uuidString },
+      loadSummary: { requested, owner in
+        let points = try pool.read { db in
+          try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY captured_at_ms ASC", arguments: [requested.startMs, requested.endMs, owner, owner]).compactMap(bucketPoint)
+        }
+        return Self.favoriteSummary(points, config: config)
+      }
     )
-    guard let stored = FavoriteStore.shared.update(updated) else { return nil }
+    guard let stored = persisted else { return nil }
+    let boardNames = try Self.boardNamesById()
     return stored.toMap(
-      boardName: stored.boardId.flatMap { Self.boardNamesById()[$0] },
-      routePoints: favoriteRoutePoints(stored)
+      boardName: stored.boardId.flatMap { boardNames[$0] },
+      routePoints: try favoriteRoutePoints(stored)
     )
   }
 
   /// Unpin a Favorite. Telemetry in its range stays and becomes normally deletable (ADR 0029).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteFavorite`
-  func deleteFavorite(_ id: String) -> Bool {
-    let deleted = FavoriteStore.shared.delete(id)
-    if deleted { FavoriteMediaStore.shared.deleteDirectory(favoriteId: id) }
+  func deleteFavorite(_ id: String) throws -> Bool {
+    let deleted = try FavoriteStore.shared.delete(id)
+    if deleted { try FavoriteMediaStore.shared.deleteDirectory(favoriteId: id) }
     return deleted
   }
 
   /// Read and reconcile Favorite Media. Missing files remove their manifest rows; temp/orphan files
   /// are deleted and never published to JS.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getFavoriteMedia`
-  func getFavoriteMedia(_ favoriteId: String) -> [[String: Any?]] {
-    FavoriteMediaStore.shared.list(favoriteId: favoriteId).map {
+  func getFavoriteMedia(_ favoriteId: String) throws -> [[String: Any?]] {
+    try FavoriteMediaStore.shared.list(favoriteId: favoriteId).map {
       $0.toMap(fileURL: FavoriteMediaStore.shared.fileURL(for: $0))
     }
   }
@@ -439,21 +451,14 @@ internal final class TelemetryRepository {
     return buildFavoriteSummary(buildTelemetryBuckets(sanitized))
   }
 
-  func deleteBefore(_ beforeMs: Int64) -> Int {
-    guard let pool else { return 0 }
-    return (try? pool.write { db in
-      let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs]) ?? 0
-      try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms < ?", arguments: [beforeMs])
-      try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE bucket_start_ms < ?", arguments: [beforeMs])
-      try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms < ?", arguments: [beforeMs])
-      try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms < ?", arguments: [beforeMs])
-      return count
-    }) ?? 0
+  func deleteBefore(_ beforeMs: Int64) throws -> Int {
+    let pool = try TelemetryDatabase.requirePool()
+    return try TelemetryMaintenancePersistence(writer: pool).deleteBefore(beforeMs)
   }
 
-  func deleteRange(_ options: [String: Any]) -> Int {
+  func deleteRange(_ options: [String: Any]) throws -> Int {
     flushBlocking()
-    guard let pool else { return 0 }
+    let pool = try TelemetryDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? 0
     let boardId = options["boardId"] as? String
@@ -462,108 +467,20 @@ internal final class TelemetryRepository {
       deleteRange: TelemetryTimeRange(startMs: fromMs, endMs: toMs),
       protectedRanges: favoriteTelemetryRanges()
     )
-    let deleted = (try? pool.write { db in
-      var count = 0
-      for range in deletable {
-        count += try Int.fetchOne(
-          db,
-          sql: "SELECT COUNT(*) FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))",
-          arguments: [range.startMs, range.endMs, boardId, boardId, boardId]
-        ) ?? 0
-        try db.execute(sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
-        try db.execute(sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ? AND board_id = ?", arguments: [range.startMs, range.endMs, boardId ?? UNKNOWN_TELEMETRY_BOARD_ID])
-        try db.execute(sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ?", arguments: [range.startMs, range.endMs])
-        try db.execute(sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND ((? IS NOT NULL AND board_id = ?) OR (? IS NULL AND board_id IS NULL))", arguments: [range.startMs, range.endMs, boardId, boardId, boardId])
-      }
-      return count
-    }) ?? 0
-    return deleted
+    return try TelemetryMaintenancePersistence(writer: pool).deleteRanges(deletable, boardId: boardId, allBoards: false)
   }
 
-  func rebuildBuckets(onProgress: (Int, Int) -> Void = { _, _ in }) -> Int {
+  func rebuildBuckets(onProgress: (Int, Int) -> Void = { _, _ in }) throws -> Int {
     flushBlocking()
-    guard let pool else { return 0 }
-    return (try? pool.write { db in
-      guard
-        let firstMs = try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames"),
-        let lastMs = try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames")
-      else { return 0 }
-      try db.execute(sql: "DELETE FROM telemetry_minute_buckets")
-      try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
-
-      let chunkMs: Int64 = 3_600_000
-      let chunks = Int((lastMs - firstMs) / chunkMs + 1)
-      var rebuilt = 0
-      onProgress(0, chunks)
-
-      for index in 0..<chunks {
-        let chunkFrom = firstMs + Int64(index) * chunkMs
-        let chunkTo = min(chunkFrom + chunkMs - 1, lastMs)
-        let rows = try Row.fetchAll(
-          db,
-          sql: """
-            SELECT * FROM telemetry_frames
-            WHERE captured_at_ms >= ? AND captured_at_ms <= ?
-            ORDER BY captured_at_ms ASC
-            """,
-          arguments: [chunkFrom, chunkTo]
-        )
-        var points = rows.compactMap(bucketPoint)
-        let sanitization = sanitizeTelemetrySamples(points, config: metricConfig)
-        for i in points.indices {
-          points[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
-          points[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
-          points[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
-        }
-        for range in sanitization.exclusions { try insertExclusion(db, range) }
-        let buckets = buildTelemetryBuckets(points)
-        for bucket in buckets {
-          try upsertBucket(db, bucket)
-          rebuilt += 1
-        }
-        onProgress(index + 1, chunks)
-      }
-      return rebuilt
-    }) ?? 0
+    let pool = try TelemetryDatabase.requirePool()
+    return try TelemetryMaintenancePersistence(writer: pool).rebuild(config: metricConfig, onProgress: onProgress)
   }
 
-  func clearAll() {
+  func clearAll() throws {
     flushBlocking()
-    guard let pool else { return }
+    let pool = try TelemetryDatabase.requirePool()
     let protected = favoriteTelemetryRanges()
-    if protected.isEmpty {
-      try? pool.write { db in
-        try db.execute(sql: "DELETE FROM telemetry_frames")
-        try db.execute(sql: "DELETE FROM telemetry_minute_buckets")
-        try db.execute(sql: "DELETE FROM telemetry_markers")
-        try db.execute(sql: "DELETE FROM metric_exclusion_ranges")
-      }
-    } else {
-      let deletable = subtractProtectedTelemetryRanges(
-        deleteRange: TelemetryTimeRange(startMs: Int64.min, endMs: Int64.max),
-        protectedRanges: protected
-      )
-      try? pool.write { db in
-        for range in deletable {
-          try db.execute(
-            sql: "DELETE FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ?",
-            arguments: [range.startMs, range.endMs]
-          )
-          try db.execute(
-            sql: "DELETE FROM telemetry_markers WHERE occurred_at_ms >= ? AND occurred_at_ms <= ?",
-            arguments: [range.startMs, range.endMs]
-          )
-          try db.execute(
-            sql: "DELETE FROM telemetry_minute_buckets WHERE last_sample_at_ms >= ? AND first_sample_at_ms <= ?",
-            arguments: [range.startMs, range.endMs]
-          )
-          try db.execute(
-            sql: "DELETE FROM metric_exclusion_ranges WHERE end_ms >= ? AND start_ms <= ?",
-            arguments: [range.startMs, range.endMs]
-          )
-        }
-      }
-    }
+    try TelemetryMaintenancePersistence(writer: pool).clear(protectedRanges: protected)
     queue.sync {
       pendingStates.removeAll()
       pendingPersisted.removeAll()
@@ -579,10 +496,15 @@ internal final class TelemetryRepository {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteTelemetryRanges`
   private func favoriteTelemetryRanges() -> [TelemetryTimeRange] {
-    FavoriteStore.shared.list().map {
-      expandTelemetryRangeToBuckets(
-        TelemetryTimeRange(startMs: $0.startMs, endMs: $0.endMs)
-      )
+    do {
+      return try FavoriteStore.shared.list().map {
+        expandTelemetryRangeToBuckets(
+          TelemetryTimeRange(startMs: $0.startMs, endMs: $0.endMs)
+        )
+      }
+    } catch {
+      RecordingStorageFailure.reportRead(operation: "favorite_pins_read", error: error)
+      return [TelemetryTimeRange(startMs: Int64.min, endMs: Int64.max)]
     }
   }
 
@@ -610,11 +532,13 @@ internal final class TelemetryRepository {
     }
     let buckets = buildTelemetryBuckets(sanitized)
 
-    try? pool.write { db in
-      for state in persisted { try insertFrame(db, state) }
-      for bucket in buckets { try upsertBucket(db, bucket) }
-      for marker in markers { try insertMarker(db, marker) }
-      for range in sanitization.exclusions { try insertExclusion(db, range) }
+    recordingCommitBoundary.commit {
+      try pool.write { db in
+        for state in persisted { try insertFrame(db, state) }
+        for bucket in buckets { try upsertBucket(db, bucket) }
+        for marker in markers { try insertMarker(db, marker) }
+        for range in sanitization.exclusions { try insertExclusion(db, range) }
+      }
     }
   }
 
@@ -652,53 +576,31 @@ internal final class TelemetryRepository {
     let message = properties["message"] as? String
     let propertiesJson = Self.encodeDiagnosticProperties(properties)
     queue.async {
-      try? pool.write { db in
-        try db.execute(
-          sql: """
-            INSERT INTO diagnostic_events
-              (occurred_at_ms, elapsed_realtime_ms, event_name, operation, phase, board_id, message, properties_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-          arguments: [occurredAtMs, elapsed, eventName, operation, phase, boardId, message, propertiesJson]
-        )
+      do { try DiagnosticEventPersistence(writer: pool).insert(.init(id: nil, occurredAtMs: occurredAtMs, elapsedRealtimeMs: elapsed, eventName: eventName, operation: operation, phase: phase, boardId: boardId, message: message, propertiesJson: propertiesJson)) } catch {
+        // Sentry only: writing another Local Diagnostic Event would recurse into the failed store.
+        RecordingStorageFailure.report(operation: "diagnostic_event_insert", category: "write_failed", error: error)
       }
     }
   }
 
-  func getDiagnosticEvents(_ options: [String: Any]) -> [[String: Any?]] {
-    guard let pool else { return [] }
+  func getDiagnosticEvents(_ options: [String: Any]) throws -> [[String: Any?]] {
+    let pool = try TelemetryDatabase.requirePool()
     let fromMs = telemetryLong(options["fromMs"]) ?? 0
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let boardId = options["boardId"] as? String
     let limit = min(1_000, max(1, telemetryInt(options["limit"]) ?? 200))
-    return (try? pool.read { db in
-      try Row.fetchAll(
-        db,
-        sql: """
-          SELECT * FROM diagnostic_events
-          WHERE occurred_at_ms >= ? AND occurred_at_ms <= ? AND (? IS NULL OR board_id = ?)
-          ORDER BY occurred_at_ms DESC
-          LIMIT ?
-          """,
-        arguments: [fromMs, toMs, boardId, boardId, limit]
-      ).map { row in
+    return try DiagnosticEventPersistence(writer: pool).events(fromMs: fromMs, toMs: toMs, boardId: boardId, limit: limit).map { row in
         [
-          "id": row["id"] as Int64,
-          "occurredAtMs": row["occurred_at_ms"] as Int64,
-          "eventName": row["event_name"] as String,
-          "operation": row["operation"] as String?,
-          "phase": row["phase"] as String?,
-          "boardId": row["board_id"] as String?,
-          "message": row["message"] as String?,
-          "propertiesJson": row["properties_json"] as String,
+          "id": row.id, "occurredAtMs": row.occurredAtMs, "eventName": row.eventName,
+          "operation": row.operation, "phase": row.phase, "boardId": row.boardId,
+          "message": row.message, "propertiesJson": row.propertiesJson,
         ]
-      }
-    }) ?? []
+    }
   }
 
-  func clearDiagnosticEvents() {
-    guard let pool else { return }
-    try? pool.write { db in try db.execute(sql: "DELETE FROM diagnostic_events") }
+  func clearDiagnosticEvents() throws {
+    let pool = try TelemetryDatabase.requirePool()
+    try DiagnosticEventPersistence(writer: pool).clear()
   }
 
   private static func encodeDiagnosticProperties(_ properties: [String: Any?]) -> String {
@@ -707,12 +609,15 @@ internal final class TelemetryRepository {
       switch value {
       case let value as String: sanitized[key] = value
       // `Bool` bridges to `NSNumber` (as a CFBoolean) so booleans still serialize as true/false.
-      case let value as NSNumber: sanitized[key] = value
+      case let value as NSNumber:
+        let number = value.doubleValue
+        if CFGetTypeID(value) == CFBooleanGetTypeID() || number.isFinite { sanitized[key] = value }
       case nil, is NSNull: continue
       case let value?: sanitized[key] = String(describing: value)
       }
     }
     guard
+      // intentional-suppression: sanitized diagnostic encoding falls back locally to avoid recursive reporting
       let data = try? JSONSerialization.data(withJSONObject: sanitized),
       let json = String(data: data, encoding: .utf8)
     else { return "{}" }

@@ -139,11 +139,12 @@ internal final class AlertAudioPlayer {
   /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle` lookup. Production passes
   /// nil; the SPM test target has no resource bundle and points at the repo's wav directory so the
   /// engine graph is exercised for real.
-  init(assetsDirectory: URL? = nil) {
+  init(assetsDirectory: URL? = nil, outputVolume: Float = 1) {
     self.assetsDirectory = assetsDirectory
     geigerQueue.setSpecific(key: Self.geigerQueueMarker, value: ObjectIdentifier(self))
     acquireAudioSession()
     let standardFormat = makeStandardFormat()
+    engine.mainMixerNode.outputVolume = outputVolume
     do {
       try engine.start()
       started = true
@@ -153,6 +154,7 @@ internal final class AlertAudioPlayer {
       // to start once the session is configured; a later play call will retry start (`startIfNeeded`).
       started = false
       Self.log("AlertAudioPlayer: engine.start FAILED: \(error)")
+      UnexpectedNativeError.report(operation: "alert_audio_engine_start", category: "audio_start_failed", error: error)
     }
     loadBuffers(using: standardFormat)
     Self.log("AlertAudioPlayer: buffers loaded=\(buffersByFileName.keys.sorted())")
@@ -206,6 +208,7 @@ internal final class AlertAudioPlayer {
       // Soft-fail: playback category is the durable truth for background alerts; if the OS rejects
       // it (e.g. another app owns a non-mixable session), alerts degrade to silence rather than
       // crashing the bridge.
+      UnexpectedNativeError.report(operation: "alert_audio_session_configure", category: "audio_session_failed", error: error)
     }
   }
 
@@ -217,6 +220,7 @@ internal final class AlertAudioPlayer {
     let shouldDeactivate = Self.audioSessionOwnerCount == 0
     Self.audioSessionLock.unlock()
     if shouldDeactivate {
+      // intentional-suppression: audio teardown is best effort and asset-open failure is reported
       try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
   }
@@ -229,6 +233,7 @@ internal final class AlertAudioPlayer {
       started = true
     } catch {
       started = false
+      UnexpectedNativeError.report(operation: "alert_audio_engine_restart", category: "audio_start_failed", error: error)
     }
   }
 
@@ -239,6 +244,7 @@ internal final class AlertAudioPlayer {
     } else {
       guard let bundleURL = bundledAssetsURL(), let bundle = Bundle(url: bundleURL) else {
         Self.log("AlertAudioPlayer: bundledAssetsURL missing — no presets will play")
+        UnexpectedNativeError.report(operation: "alert_audio_bundle_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
         return
       }
       resolve = { bundle.url(forResource: $0, withExtension: "wav") }
@@ -247,10 +253,13 @@ internal final class AlertAudioPlayer {
     for fileName in alertSoundPresets.map(\.fileName) + ["on", "off"] {
       guard let url = resolve(fileName), FileManager.default.fileExists(atPath: url.path) else {
         Self.log("AlertAudioPlayer: missing \(fileName).wav in bundle")
+        UnexpectedNativeError.report(operation: "alert_audio_asset_missing", category: "required_asset_missing", error: CocoaError(.fileNoSuchFile))
         continue
       }
+      // intentional-suppression: audio teardown is best effort and asset-open failure is reported
       guard let file = try? AVAudioFile(forReading: url) else {
         Self.log("AlertAudioPlayer: AVAudioFile read failed for \(fileName).wav")
+        UnexpectedNativeError.report(operation: "alert_audio_asset_open", category: "audio_decode_failed", error: CocoaError(.fileReadCorruptFile))
         continue
       }
       guard let buffer = convertToStandard(file: file, standardFormat: standardFormat) else {
@@ -285,6 +294,7 @@ internal final class AlertAudioPlayer {
     do {
       try file.read(into: srcBuffer)
     } catch {
+      UnexpectedNativeError.report(operation: "alert_audio_asset_decode", category: "audio_decode_failed", error: error)
       return nil
     }
     if srcFormat == standardFormat { return srcBuffer }
@@ -306,7 +316,10 @@ internal final class AlertAudioPlayer {
     }
     var convertError: NSError?
     let status = converter.convert(to: outBuffer, error: &convertError, withInputFrom: inputBlock)
-    guard status != .error, convertError == nil else { return nil }
+    guard status != .error, convertError == nil else {
+      UnexpectedNativeError.report(operation: "alert_audio_asset_convert", category: "audio_decode_failed", error: convertError ?? CocoaError(.fileReadCorruptFile))
+      return nil
+    }
     return outBuffer
   }
 

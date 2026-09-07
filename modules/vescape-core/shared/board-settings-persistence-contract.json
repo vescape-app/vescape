@@ -1,0 +1,16 @@
+{
+  "scenario": "board-settings-close-reopen",
+  "board": {
+    "id": "board-contract",
+    "name": "Original",
+    "renamed": "Renamed",
+    "createdAt": 1700000000000,
+    "description": "daily board"
+  },
+  "setting": {
+    "key": "themeMode",
+    "valueJson": "\"dark\"",
+    "updatedValueJson": "\"sun\"",
+    "malformedValueJson": "{"
+  }
+}

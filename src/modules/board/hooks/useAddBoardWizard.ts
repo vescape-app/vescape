@@ -94,7 +94,7 @@ interface AddBoardWizardActions {
   setManualMaxVoltage: (v: string) => void
   setTopSpeedKmh: (v: number) => void
   setAlertSetup: (metric: AlertPresetMetric, setup: DraftAlertSetup) => void
-  save: () => void
+  save: () => Promise<void>
 }
 
 export type UseAddBoardWizard = AddBoardWizardState & AddBoardWizardActions
@@ -181,7 +181,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
     next()
   }
 
-  const save = () => {
+  const save = async () => {
     if (!canSave) return
     const batteryConfig = buildBatteryConfig(
       batteryMode,
@@ -191,7 +191,7 @@ export function useAddBoardWizard(): UseAddBoardWizard {
       manualMinVoltage,
       manualMaxVoltage,
     )
-    const board = addBoard({
+    const board = await addBoard({
       id: boardId,
       name: name.trim(),
       description: description.trim() || undefined,

@@ -16,6 +16,35 @@ internal data class FavoriteSummary(
   val batteryUsedWhMilli: Long = 0,
 )
 
+/** App-used create/update transaction mapping, injectable only for the host persistence contract. */
+/** @parity /modules/vescape-core/ios/telemetry/FavoriteStore.swift `persistFavorite` */
+internal suspend fun persistFavorite(
+  dao: TelemetryDao,
+  existingId: String?,
+  range: TelemetryTimeRange,
+  boardId: String?,
+  name: String?,
+  nowMs: Long,
+  newId: () -> String,
+  loadSummary: suspend (TelemetryTimeRange, String?) -> FavoriteSummary,
+): FavoriteEntity? {
+  val existing = existingId?.let { dao.getFavorite(it) }
+  if (existingId != null && existing == null) return null
+  val resolvedBoardId = if (existing != null) existing.boardId else boardId
+  val summary = loadSummary(range, resolvedBoardId)
+  val favorite = FavoriteEntity(
+    id = existing?.id ?: newId(), boardId = resolvedBoardId, name = name,
+    startMs = range.startMs, endMs = range.endMs,
+    createdAt = existing?.createdAt ?: nowMs, updatedAt = nowMs,
+    sampleCount = summary.sampleCount, gpsPointCount = summary.gpsPointCount,
+    distanceCm = summary.distanceCm, movingDurationMs = summary.movingDurationMs,
+    avgSpeedCentiKmh = summary.avgSpeedCentiKmh, maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
+    batteryUsedWhMilli = summary.batteryUsedWhMilli,
+  )
+  if (existing == null) dao.insertFavorite(favorite) else if (dao.updateFavorite(favorite) == 0) return null
+  return favorite
+}
+
 /**
  * Aggregate the buckets built from a Favorite's raw samples into one denormalized summary. Pure so
  * both the create path and its tests share one definition. Mirrors how JS collapses minute buckets

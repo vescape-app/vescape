@@ -204,17 +204,19 @@ export function FloatingBar({
   onRetryConnect,
   bottomOffset = 16,
 }: FloatingBarProps) {
-  const { recording, paused, scanStatus, linkIntegrity, isReplay, start, stop } = useBleStore(
-    useShallow((s) => ({
-      recording: s.telemetryRecordingEnabled,
-      paused: s.telemetryRecordingPaused,
-      scanStatus: s.scanStatus,
-      linkIntegrity: s.linkIntegrity,
-      isReplay: isReplayBoardId(s.connectedId),
-      start: s.startTelemetryRecording,
-      stop: s.stopTelemetryRecording,
-    })),
-  )
+  const { recording, paused, recordingFailure, scanStatus, linkIntegrity, isReplay, start, stop } =
+    useBleStore(
+      useShallow((s) => ({
+        recording: s.telemetryRecordingEnabled,
+        paused: s.telemetryRecordingPaused,
+        recordingFailure: s.recordingFailure,
+        scanStatus: s.scanStatus,
+        linkIntegrity: s.linkIntegrity,
+        isReplay: isReplayBoardId(s.connectedId),
+        start: s.startTelemetryRecording,
+        stop: s.stopTelemetryRecording,
+      })),
+    )
 
   const toggleRecord = useCallback(() => {
     if (!recording && !canToggleRecording(bleStatus)) return
@@ -272,7 +274,7 @@ export function FloatingBar({
           label={recording ? (paused ? 'PAUSED' : 'STOP') : 'REC'}
           active={recording}
           paused={paused}
-          disabled={!recording && !canToggleRecording(bleStatus)}
+          disabled={!recording && (!canToggleRecording(bleStatus) || recordingFailure != null)}
           onPress={toggleRecord}
           testID="floating-bar-record"
         />

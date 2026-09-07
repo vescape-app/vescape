@@ -277,6 +277,7 @@ internal final class GroupRideObserver: NSObject {
 
   private func handleMessage(_ text: String) {
     guard let data = text.data(using: .utf8),
+          // intentional-suppression: malformed inbound frames are logged and discarded
           let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     else {
       NSLog("[GroupRide] Discarding malformed Group Ride frame")
@@ -356,10 +357,25 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private func send(_ task: URLSessionWebSocketTask, _ frame: [String: Any]) {
-    guard let data = try? JSONSerialization.data(withJSONObject: frame),
-          let text = String(data: data, encoding: .utf8)
-    else { return }
-    task.send(.string(text)) { _ in }
+    let text: String
+    do {
+      let data = try JSONSerialization.data(withJSONObject: frame)
+      guard let encoded = String(data: data, encoding: .utf8) else {
+        throw CocoaError(.fileReadInapplicableStringEncoding)
+      }
+      text = encoded
+    } catch {
+      UnexpectedNativeError.report(operation: "group_ride_frame_encode", category: "encode_failed", error: error)
+      return
+    }
+    task.send(.string(text)) { [weak self] error in
+      guard let error, let self else { return }
+      self.onMain {
+        guard self.isCurrentSocket(task) else { return }
+        NSLog("[GroupRide] send failed: \(error.localizedDescription)")
+        self.scheduleReconnect()
+      }
+    }
   }
 
   /// Decode the `RideSummary` shape shared by `snapshot` and `ride-created`.

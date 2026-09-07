@@ -18,6 +18,7 @@ class FavoriteMediaTest {
   private lateinit var root: File
   private lateinit var rows: MutableList<FavoriteMediaEntity>
   private lateinit var store: FavoriteMediaStore
+  private var failManifestRead = false
 
   @Before
   fun setUp() {
@@ -29,7 +30,8 @@ class FavoriteMediaTest {
     ) { _, method, args ->
       when (method.name) {
         "getFavorite" -> favorite()
-        "getFavoriteMedia" -> rows.filter { it.favoriteId == args?.first() }
+        "getFavoriteMedia" -> if (failManifestRead) error("deterministic manifest read failure")
+        else rows.filter { it.favoriteId == args?.first() }
         "insertFavoriteMedia" -> {
           rows += args?.first() as FavoriteMediaEntity
           Unit
@@ -94,6 +96,19 @@ class FavoriteMediaTest {
     assertTrue(store.list("favorite-1").isEmpty())
     assertFalse(orphan.exists())
     assertFalse(interrupted.exists())
+  }
+
+  @Test
+  fun `failed manifest lookup preserves existing files`() = runBlocking {
+    val directory = File(root, "favorite-1").apply { mkdirs() }
+    val existing = File(directory, "existing.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+    failManifestRead = true
+
+    var failed = false
+    try { store.reconcile("favorite-1") } catch (_: IllegalStateException) { failed = true }
+
+    assertTrue(failed)
+    assertTrue(existing.isFile)
   }
 
   private fun favorite() = FavoriteEntity(

@@ -8,6 +8,9 @@ import expo.modules.vescapecore.protocol.LocationSnapshot
 
 import expo.modules.vescapecore.telemetry.AppSettings
 import expo.modules.vescapecore.runtime.LinkIntegrity
+import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.recording.RecordingStorageFailureKind
+import expo.modules.vescapecore.recording.recordingFailureState
 
 internal data class VescLiveStateSnapshot(
     val boardPhase: BoardPhase,
@@ -86,5 +89,15 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
             "paused" to snapshot.recordingPaused,
             "activeBoardId" to if (snapshot.recordingEnabled) snapshot.boardConfig?.appBoardId else null,
             "startedAt" to null,
+            "failure" to RecordingStorageFailure.value()?.let(::recordingFailureState),
         ),
     )
+
+internal fun liveStateWithStorageFailure(
+    state: Map<String, Any?>,
+    kind: RecordingStorageFailureKind,
+): Map<String, Any?> {
+    val recording = (state["recording"] as? Map<*, *>)?.entries
+        ?.associate { it.key.toString() to it.value }.orEmpty()
+    return state + ("recording" to (recording + ("failure" to recordingFailureState(kind))))
+}

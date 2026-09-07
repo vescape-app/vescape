@@ -1,43 +1,5 @@
 import Foundation
 
-/// One VESC Fault Occurrence as it crosses the bridge and lives in the durable store.
-/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/faults/VescFaultCoordinator.kt `VescFaultOccurrence`
-/// @parity /modules/vescape-core/src/index.ts `VescFaultOccurrence`
-struct VescFaultOccurrence {
-  let id: String
-  let boardId: String
-  let code: Int
-  let occurredAtMs: Int64
-  var lastObservedAtMs: Int64
-  var clearedAtMs: Int64?
-  var dismissed: Bool
-
-  func toMap() -> [String: Any?] {
-    [
-      "id": id,
-      "boardId": boardId,
-      "code": code,
-      "occurredAtMs": occurredAtMs,
-      "lastObservedAtMs": lastObservedAtMs,
-      "clearedAtMs": clearedAtMs,
-      "dismissed": dismissed,
-    ]
-  }
-}
-
-/// Narrow durable persistence for VESC Fault Occurrences. Production is `VescFaultStore`; tests
-/// supply an in-memory fake so the transition rules are exercised without a database or BLE.
-protocol VescFaultStoring {
-  func getForBoard(_ boardId: String) -> [VescFaultOccurrence]
-  func getAll() -> [VescFaultOccurrence]
-  /// Newest still-open live occurrence for a Board, used to rehydrate state after a restart.
-  /// Throws when the read itself failed, so a dead database is never mistaken for "no open fault".
-  func openLive(_ boardId: String) throws -> VescFaultOccurrence?
-  /// Returns false when the write failed, so callers can keep in-memory state unresolved.
-  @discardableResult func upsert(_ occurrence: VescFaultOccurrence) -> Bool
-  @discardableResult func setDismissed(_ id: String, _ dismissed: Bool) -> Bool
-}
-
 /// Deterministic owner of VESC Fault Occurrence transitions.
 ///
 /// Refloat's `ALLDATA` fault mode is a **state signal**, not a Telemetry Sample: this coordinator
@@ -108,7 +70,8 @@ final class VescFaultCoordinator {
       updated.lastObservedAtMs = timestamp
       // Persist first: a failed write must not leave memory claiming a transition the durable store
       // never took, because the controller-level edge dedupe would never retry it.
-      guard store.upsert(updated) else { return }
+      do { guard try store.upsert(updated) else { return } }
+      catch { Self.reportWrite("vesc_fault_observation", error); return }
       lock.lock()
       active[boardId] = updated
       lock.unlock()
@@ -122,7 +85,8 @@ final class VescFaultCoordinator {
       // Close the old activation durably before opening its replacement. Otherwise a failed close
       // leaves an orphaned open row that later clear heartbeats — which only know the replacement —
       // can never repair.
-      guard store.upsert(current) else { return }
+      do { guard try store.upsert(current) else { return } }
+      catch { Self.reportWrite("vesc_fault_close_for_code_change", error); return }
     }
 
     let opened = VescFaultOccurrence(
@@ -134,12 +98,14 @@ final class VescFaultCoordinator {
       clearedAtMs: nil,
       dismissed: false
     )
-    guard store.upsert(opened) else { return }
+    do { guard try store.upsert(opened) else { return } }
+    catch { Self.reportWrite("vesc_fault_open", error); return }
     lock.lock()
     active[boardId] = opened
     lock.unlock()
     onOccurrenceOpened?(opened)
-    emit(boardId)
+    do { try emit(boardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "vesc_fault_reload_after_open", error: error) }
   }
 
   /// Refloat reported normal `ALLDATA` — any open occurrence for this Board is cleared.
@@ -155,30 +121,39 @@ final class VescFaultCoordinator {
     current.lastObservedAtMs = max(current.lastObservedAtMs, timestamp)
     // Persist the clear before forgetting the occurrence: if the write fails, the occurrence stays
     // active in memory and the next clear observation retries it.
-    guard store.upsert(current) else { return }
+    do { guard try store.upsert(current) else { return } }
+    catch { Self.reportWrite("vesc_fault_clear", error); return }
     lock.lock()
     active.removeValue(forKey: boardId)
     lock.unlock()
-    emit(boardId)
+    do { try emit(boardId) }
+    catch { RecordingStorageFailure.reportRead(operation: "vesc_fault_reload_after_clear", error: error) }
   }
 
-  func setDismissed(id: String, dismissed: Bool) {
-    guard store.setDismissed(id, dismissed) else { return }
+  func setDismissed(id: String, dismissed: Bool) throws {
+    guard try store.setDismissed(id, dismissed) else { return }
     lock.lock()
     for (boardId, occurrence) in active where occurrence.id == id {
       active[boardId]?.dismissed = dismissed
     }
     lock.unlock()
-    guard let boardId = store.getAll().first(where: { $0.id == id })?.boardId else { return }
-    emit(boardId)
+    do {
+      guard let boardId = try store.getAll().first(where: { $0.id == id })?.boardId else { return }
+      try emit(boardId)
+    } catch {
+      RecordingStorageFailure.reportRead(operation: "vesc_fault_reload_after_dismiss", error: error)
+    }
   }
 
   /// Every occurrence across all Boards — the JS foreground catch-up pull.
-  func allFaults() -> [VescFaultOccurrence] { store.getAll() }
+  func allFaults() throws -> [VescFaultOccurrence] { try store.getAll() }
 
   /// Emit the current faults for every Board that has any — used on late subscribe.
   func emitSnapshot() {
-    for (boardId, faults) in Dictionary(grouping: store.getAll(), by: { $0.boardId }) {
+    let faults: [VescFaultOccurrence]
+    do { faults = try store.getAll() }
+    catch { RecordingStorageFailure.reportRead(operation: "vesc_fault_snapshot", error: error); return }
+    for (boardId, faults) in Dictionary(grouping: faults, by: { $0.boardId }) {
       onChange?(boardId, faults)
     }
   }
@@ -198,6 +173,7 @@ final class VescFaultCoordinator {
     do {
       open = try store.openLive(boardId)
     } catch {
+      RecordingStorageFailure.reportRead(operation: "vesc_fault_open_read", error: error)
       return false
     }
 
@@ -208,7 +184,11 @@ final class VescFaultCoordinator {
     return true
   }
 
-  private func emit(_ boardId: String) {
-    onChange?(boardId, store.getForBoard(boardId))
+  private func emit(_ boardId: String) throws {
+    onChange?(boardId, try store.getForBoard(boardId))
+  }
+
+  private static func reportWrite(_ operation: String, _ error: Error) {
+    RecordingStorageFailure.report(operation: operation, category: "write_failed", error: error)
   }
 }

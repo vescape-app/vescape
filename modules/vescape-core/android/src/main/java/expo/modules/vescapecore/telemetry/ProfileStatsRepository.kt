@@ -1,7 +1,5 @@
 package expo.modules.vescapecore.telemetry
 
-import android.content.Context
-import androidx.room.withTransaction
 import java.time.Instant
 import java.time.ZoneId
 
@@ -10,43 +8,32 @@ import java.time.ZoneId
  * @parity /src/modules/history/lib/sessions.ts `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
  * @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift `DEFAULT_RIDE_SPLIT_GAP_MINUTES`
  */
-internal const val DEFAULT_RIDE_SPLIT_GAP_MINUTES = 30
 data class ProfileStatsMonth(val year: Int, val month: Int)
 
 // @parity /modules/vescape-core/ios/telemetry/ProfileStatsRepository.swift
-class ProfileStatsRepository private constructor(private val context: Context) {
-  private val database = TelemetryDatabase.get(context)
-  private val dao = database.telemetryDao()
-
-  /** Lifetime, available months, and selected-month stats from one database read/grouping pass. */
-  // @parity /modules/vescape-core/src/index.ts `ProfileStatsSnapshot`
-  suspend fun getProfileStatsSnapshot(options: Map<String, Any?>): Map<String, Any?> {
-    val gapMs = rideSplitGapMs()
-    return database.withTransaction {
+internal suspend fun readProfileStatsSnapshot(
+  dao: TelemetryDao,
+  options: Map<String, Any?>,
+  gapMs: Long,
+): Map<String, Any?> {
       val buckets = dao.getAllHistoryBucketsAsc()
-      val markers = markersForBuckets(buckets, gapMs)
+      val markers = readProfileMarkers(dao, buckets, gapMs)
       val sessions = groupRideSessions(buckets, markers, gapMs).filter { it.avgSpeedSampleCount > 0 }
       val months = profileMonthsForSessions(sessions)
       val requested = ProfileStatsMonth(
         year = (options["year"] as? Number)?.toInt() ?: months.firstOrNull()?.year ?: java.time.LocalDate.now().year,
         month = (options["month"] as? Number)?.toInt() ?: months.firstOrNull()?.month ?: java.time.LocalDate.now().monthValue,
       )
-      mapOf(
+      return mapOf(
         "total" to computeProfileStatsForSessions(sessions, null),
         "monthly" to computeProfileStatsForSessions(sessions, requested),
         "months" to months.map { mapOf("year" to it.year, "month" to it.month) },
         "selectedMonth" to mapOf("year" to requested.year, "month" to requested.month),
       )
-    }
-  }
+}
 
-  /** Rider-set ride split gap, so profile stats count the same rides the history list shows. */
-  private suspend fun rideSplitGapMs(): Long {
-    val minutes = AppDataRepository.get(context).getSettings()["rideSplitGapMinutes"] as? Number
-    return (minutes?.toLong() ?: DEFAULT_RIDE_SPLIT_GAP_MINUTES.toLong()) * 60_000L
-  }
-
-  private suspend fun markersForBuckets(
+private suspend fun readProfileMarkers(
+    dao: TelemetryDao,
     buckets: List<TelemetryMinuteBucketEntity>,
     gapMs: Long,
   ): List<TelemetryMarkerEntity> {
@@ -55,24 +42,6 @@ class ProfileStatsRepository private constructor(private val context: Context) {
     val toMs = buckets.maxOf { it.lastSampleAtMs } + TELEMETRY_BUCKET_SIZE_MS
     return dao.getMarkers(fromMs = fromMs, toMs = toMs, boardId = null)
   }
-
-  companion object {
-    @Volatile
-    private var instance: ProfileStatsRepository? = null
-
-    fun get(context: Context): ProfileStatsRepository {
-      return instance ?: synchronized(this) {
-        instance ?: ProfileStatsRepository(context.applicationContext).also { instance = it }
-      }
-    }
-
-    fun resetForDatabaseSwap() {
-      synchronized(this) {
-        instance = null
-      }
-    }
-  }
-}
 
 internal fun computeProfileStatsForBuckets(
   buckets: List<TelemetryMinuteBucketEntity>,

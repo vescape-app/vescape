@@ -1,0 +1,24 @@
+{
+  "scenario": "tune-history-alert-close-reopen-rollback",
+  "boardId": "board-1",
+  "profile": {
+    "id": "profile-1",
+    "name": "Trail",
+    "refloatBaseVersion": "1.3.0",
+    "initialFieldsJson": "{\"kp\":1}",
+    "updatedFieldsJson": "{\"kp\":2}",
+    "failedFieldsJson": "{\"kp\":3}"
+  },
+  "alert": {
+    "id": "alert-1",
+    "controlId": "speed",
+    "threshold": 42,
+    "soundType": "beep",
+    "source": "manual"
+  },
+  "expected": {
+    "historyCount": 2,
+    "alertCount": 1,
+    "alertEnabled": false
+  }
+}

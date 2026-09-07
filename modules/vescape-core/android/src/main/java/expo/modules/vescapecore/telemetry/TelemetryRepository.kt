@@ -16,9 +16,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import androidx.room.withTransaction
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 
 private const val TAG = "TelemetryStore"
 private const val KEYFRAME_INTERVAL_MS = 60_000L
@@ -92,6 +96,8 @@ class TelemetryRepository private constructor(context: Context) {
   private val appContext = context.applicationContext
   private val db = TelemetryDatabase.get(context)
   private val dao = db.telemetryDao()
+  private val recordingPersistence = RecordingPersistence(dao)
+  private val maintenancePersistence = TelemetryMaintenancePersistence(dao)
   private val favoriteMediaStore = FavoriteMediaStore(appContext, dao)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val lock = Any()
@@ -109,6 +115,18 @@ class TelemetryRepository private constructor(context: Context) {
   private var lastKeyframeAtMs: Long? = null
   private var forceNextKeyframe = true
   private var droppedPendingFrames = 0L
+  @Volatile private var onRecordingFailure: (() -> Unit)? = null
+  private val recordingCommitBoundary = RecordingCommitBoundary(
+    persistence = recordingPersistence,
+    onFailure = { error ->
+      RecordingStorageFailure.fail(appContext, error)
+      onRecordingFailure?.invoke()
+    },
+    // Database restore can recreate this repository in the same process. A prior failure remains
+    // fail-closed until the next process startup check succeeds.
+    initiallyAccepting = RecordingStorageFailure.value() == null,
+  )
+  private val flushMutex = Mutex()
   private var metricSanitizerConfig = MetricSanitizerConfig()
   @Volatile
   private var enabledPrivacyZones: List<PrivacyZoneEntity> = emptyList()
@@ -183,6 +201,7 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   fun recordTelemetry(capture: TelemetryCapture) {
+    if (!recordingCommitBoundary.isAccepting()) return
     val current = FullTelemetryState.from(capture)
     synchronized(lock) {
       val previous = lastState
@@ -240,6 +259,10 @@ class TelemetryRepository private constructor(context: Context) {
         scheduleFlushLocked()
       }
     }
+  }
+
+  fun observeRecordingFailure(listener: (() -> Unit)?) {
+    onRecordingFailure = listener
   }
 
   fun flushBlocking() {
@@ -567,9 +590,9 @@ class TelemetryRepository private constructor(context: Context) {
     val requested = TelemetryTimeRange(query.fromMs, query.toMs)
     val protected = favoriteTelemetryRanges()
     promoteProtectedRangeStarts(protected, query.boardId)
-    val deleted = subtractProtectedTelemetryRanges(requested, protected).sumOf { range ->
-      dao.deleteRange(range.startMs, range.endMs, query.boardId)
-    }
+    val deleted = maintenancePersistence.deleteRanges(
+      subtractProtectedTelemetryRanges(requested, protected), query.boardId, allBoards = false,
+    )
     deleted
   }
 
@@ -622,26 +645,10 @@ class TelemetryRepository private constructor(context: Context) {
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val states = getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE)
-    val summary = favoriteSummary(states)
     val nowMs = System.currentTimeMillis()
-    val favorite = FavoriteEntity(
-      id = UUID.randomUUID().toString(),
-      boardId = boardId,
-      name = name,
-      startMs = startMs,
-      endMs = endMs,
-      createdAt = nowMs,
-      updatedAt = nowMs,
-      sampleCount = summary.sampleCount,
-      gpsPointCount = summary.gpsPointCount,
-      distanceCm = summary.distanceCm,
-      movingDurationMs = summary.movingDurationMs,
-      avgSpeedCentiKmh = summary.avgSpeedCentiKmh,
-      maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
-      batteryUsedWhMilli = summary.batteryUsedWhMilli,
-    )
-    dao.insertFavorite(favorite)
+    val favorite = persistFavorite(dao, null, range, boardId, name, nowMs, { UUID.randomUUID().toString() }) { requested, owner ->
+      favoriteSummary(getSampleStates(requested.startMs, requested.endMs, owner, Int.MAX_VALUE))
+    } ?: return@withContext null
     favorite.toMap(
       boardId?.let { boardNamesById()[it] },
       favoriteRoutePoints(favorite),
@@ -658,7 +665,6 @@ class TelemetryRepository private constructor(context: Context) {
     id: String,
     options: Map<String, Any?>,
   ): Map<String, Any?>? = withContext(Dispatchers.IO) {
-    val existing = dao.getFavorite(id) ?: return@withContext null
     val range = favoriteRange(options) ?: return@withContext null
     val startMs = range.startMs
     val endMs = range.endMs
@@ -666,21 +672,9 @@ class TelemetryRepository private constructor(context: Context) {
     val name = (options["name"] as? String)?.trim()?.ifEmpty { null }
     flushNow()
 
-    val summary = favoriteSummary(getSampleStates(startMs, endMs, boardId, Int.MAX_VALUE))
-    val updated = existing.copy(
-      name = name,
-      startMs = startMs,
-      endMs = endMs,
-      updatedAt = System.currentTimeMillis(),
-      sampleCount = summary.sampleCount,
-      gpsPointCount = summary.gpsPointCount,
-      distanceCm = summary.distanceCm,
-      movingDurationMs = summary.movingDurationMs,
-      avgSpeedCentiKmh = summary.avgSpeedCentiKmh,
-      maxSpeedCentiKmh = summary.maxSpeedCentiKmh,
-      batteryUsedWhMilli = summary.batteryUsedWhMilli,
-    )
-    if (dao.updateFavorite(updated) == 0) return@withContext null
+    val updated = persistFavorite(dao, id, range, boardId, name, System.currentTimeMillis(), { UUID.randomUUID().toString() }) { requested, owner ->
+      favoriteSummary(getSampleStates(requested.startMs, requested.endMs, owner, Int.MAX_VALUE))
+    } ?: return@withContext null
     updated.toMap(
       dao.getBoards().firstOrNull { it.id == updated.boardId }?.name,
       favoriteRoutePoints(updated),
@@ -745,62 +739,16 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   suspend fun rebuildBuckets(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }): Int = withContext(Dispatchers.IO) {
-    val firstMs = dao.firstFrameAt() ?: return@withContext 0
-    val lastMs = dao.lastFrameAt() ?: return@withContext 0
-
-    dao.clearBuckets()
-    dao.clearExclusions()
-
-    val chunkMs = 3_600_000L
-    val chunks = ((lastMs - firstMs) / chunkMs + 1).toInt()
-    var rebuiltBuckets = 0
-    onProgress(0, chunks)
-
-    for (i in 0 until chunks) {
-      val chunkFrom = firstMs + i * chunkMs
-      val chunkTo = minOf(chunkFrom + chunkMs - 1, lastMs)
-
-      val states = getSampleStates(chunkFrom, chunkTo, null, Int.MAX_VALUE)
-      if (states.isNotEmpty()) {
-        val telemetryPoints = states.map { it.state.toBucketPoint() }
-        val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
-        val sanitizedPoints = telemetryPoints.mapIndexed { index, point ->
-          point.copy(
-            excludedFromAvgSpeed = sanitization.samples[index].excludedFromAvgSpeed,
-            excludedFromMaxSpeed = sanitization.samples[index].excludedFromMaxSpeed,
-            excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
-          )
-        }
-        if (sanitization.exclusions.isNotEmpty()) dao.upsertExclusionRanges(sanitization.exclusions)
-        val buckets = buildTelemetryBuckets(
-          telemetryPoints = sanitizedPoints,
-          locationPoints = states.toBucketLocationPoints(),
-        )
-        if (buckets.isNotEmpty()) {
-          dao.upsertBuckets(buckets)
-          rebuiltBuckets += buckets.size
-        }
-      }
-      onProgress(i + 1, chunks)
-    }
-
-    Log.i(TAG, "rebuildBuckets complete: $rebuiltBuckets buckets from $chunks chunks")
-    rebuiltBuckets
+    maintenancePersistence.rebuild(metricSanitizerConfig, onProgress)
   }
 
   suspend fun clearAll() = withContext(Dispatchers.IO) {
     flushNow()
     val protected = favoriteTelemetryRanges()
-    if (protected.isEmpty()) {
-      dao.clearAll()
-    } else {
+    if (protected.isNotEmpty()) {
       promoteProtectedRangeStarts(protected, boardId = null)
-      val requested = TelemetryTimeRange(Long.MIN_VALUE, Long.MAX_VALUE)
-      for (range in subtractProtectedTelemetryRanges(requested, protected)) {
-        dao.deleteRangeAllDevices(range.startMs, range.endMs)
-      }
-      dao.clearDiagnosticEvents()
     }
+    maintenancePersistence.clear(protected)
     synchronized(lock) {
       pending.clear()
       pendingMarkers.clear()
@@ -866,24 +814,30 @@ class TelemetryRepository private constructor(context: Context) {
   }
 
   private suspend fun flushNow() {
-    val frames: List<PendingFrame>
-    val bucketStates: List<FullTelemetryState>
-    val markers: List<TelemetryMarkerEntity>
-    synchronized(lock) {
-      if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty()) {
-        flushScheduled = false
-        return
+    flushMutex.withLock {
+      if (!recordingCommitBoundary.isAccepting()) {
+        synchronized(lock) {
+          pending.clear(); pendingBucketStates.clear(); pendingMarkers.clear(); flushScheduled = false
+        }
+        return@withLock
       }
-      frames = pending.toList()
-      bucketStates = pendingBucketStates.toList()
-      markers = pendingMarkers.toList()
-      pending.clear()
-      pendingBucketStates.clear()
-      pendingMarkers.clear()
-      flushScheduled = false
-    }
+      val frames: List<PendingFrame>
+      val bucketStates: List<FullTelemetryState>
+      val markers: List<TelemetryMarkerEntity>
+      synchronized(lock) {
+        if (pending.isEmpty() && pendingBucketStates.isEmpty() && pendingMarkers.isEmpty()) {
+          flushScheduled = false
+          return@withLock
+        }
+        frames = pending.toList()
+        bucketStates = pendingBucketStates.toList()
+        markers = pendingMarkers.toList()
+        pending.clear()
+        pendingBucketStates.clear()
+        pendingMarkers.clear()
+        flushScheduled = false
+      }
 
-    try {
       val zones = enabledPrivacyZones
       // Persisted detail trace (2 Hz).
       val filteredFrames = if (zones.isEmpty()) frames else frames.filter { pending ->
@@ -895,7 +849,7 @@ class TelemetryRepository private constructor(context: Context) {
         val loc = state.location ?: return@filter true
         !isInsideAnyPrivacyZone(loc.latitudeE7, loc.longitudeE7, zones)
       }
-      if (filteredFrames.isEmpty() && filteredStates.isEmpty() && markers.isEmpty()) return
+      if (filteredFrames.isEmpty() && filteredStates.isEmpty() && markers.isEmpty()) return@withLock
 
       val telemetryPoints = filteredStates.map { it.toBucketPoint() }
       val sanitization = sanitizeTelemetrySamples(telemetryPoints, metricSanitizerConfig)
@@ -906,7 +860,7 @@ class TelemetryRepository private constructor(context: Context) {
           excludedFromMaxDuty = sanitization.samples[index].excludedFromMaxDuty,
         )
       }
-      dao.insertBatch(
+      recordingCommitBoundary.commit(
         frames = filteredFrames.map { it.frame },
         buckets = buildTelemetryBuckets(
           telemetryPoints = sanitizedPoints,
@@ -915,8 +869,6 @@ class TelemetryRepository private constructor(context: Context) {
         markers = markers,
         exclusions = sanitization.exclusions,
       )
-    } catch (e: Exception) {
-      Log.w(TAG, "Telemetry flush failed: ${e.message}")
     }
   }
 
@@ -925,6 +877,9 @@ class TelemetryRepository private constructor(context: Context) {
     private var instance: TelemetryRepository? = null
 
     fun get(context: Context): TelemetryRepository {
+      // Force the real database open/write probe before any repository can be acquired. This also
+      // turns an open or migration failure into the native recording failure state.
+      RecordingStorageFailure.initialize(context.applicationContext)
       return instance ?: synchronized(this) {
         instance ?: TelemetryRepository(context.applicationContext).also { instance = it }
       }

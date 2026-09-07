@@ -53,8 +53,8 @@ final class WarningReplayScenarioTests: XCTestCase {
     return obj
   }
 
-  func testSustainedSpreadFiresWarnWithWorstGroup() {
-    let result = WarningReplayHarness.run(
+  func testSustainedSpreadFiresWarnWithWorstGroup() throws {
+    let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: fixtureSeries,
       transform: spread(window(10_000, 20_000), group: 3, deltaV: 0.30)
     )
@@ -68,10 +68,10 @@ final class WarningReplayScenarioTests: XCTestCase {
     XCTAssertTrue(result.mismatchFindings.isEmpty)
   }
 
-  func testSpreadGrowingPastCriticalEscalatesAndPeakIsMonotonic() {
+  func testSpreadGrowingPastCriticalEscalatesAndPeakIsMonotonic() throws {
     let warn = spread(window(10_000, 20_000), group: 3, deltaV: 0.30)
     let critical = spread(window(40_000, 50_000), group: 3, deltaV: 0.60)
-    let result = WarningReplayHarness.run(
+    let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: fixtureSeries,
       transform: { bms, t in critical(warn(bms, t), t) }
     )
@@ -86,10 +86,10 @@ final class WarningReplayScenarioTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(peaks.last ?? 0, 0.60)
   }
 
-  func testSingleFrameSpikeNeverFires() {
+  func testSingleFrameSpikeNeverFires() throws {
     var spiked = false
     let anchor = t0 + 10_000
-    let result = WarningReplayHarness.run(
+    let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: fixtureSeries,
       transform: { bms, t in
         guard !spiked, t >= anchor else { return bms }
@@ -104,10 +104,10 @@ final class WarningReplayScenarioTests: XCTestCase {
     XCTAssertTrue(result.cellSpreadSessionEndClean)
   }
 
-  func testConfigMismatchFiresOnceAfterStableFrames() {
+  func testConfigMismatchFiresOnceAfterStableFrames() throws {
     // 18 BMS groups vs 15 configured — both distinct from the fixture's 16. Padding repeats the
     // frame's own last group value so the spread detector sees an unchanged spread.
-    let result = WarningReplayHarness.run(
+    let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: 15,
       transform: { bms, _ in
         bms.with(
@@ -124,9 +124,9 @@ final class WarningReplayScenarioTests: XCTestCase {
     XCTAssertTrue(result.cellSpreadFindings.isEmpty)
   }
 
-  func testFlappingCellCountNeverFires() {
+  func testFlappingCellCountNeverFires() throws {
     var frameIndex = 0
-    let result = WarningReplayHarness.run(
+    let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: 15,
       transform: { bms, _ in
         // Alternate 16/15 groups every frame — the count is never stable for 3 consecutive frames.
@@ -139,10 +139,10 @@ final class WarningReplayScenarioTests: XCTestCase {
     XCTAssertFalse(result.mismatchSessionEndClean)
   }
 
-  func testChargingSpreadRecordsChargingContext() {
+  func testChargingSpreadRecordsChargingContext() throws {
     let range = window(10_000, 20_000)
     let liftGroup = spread(range, group: 3, deltaV: 0.30)
-    let result = WarningReplayHarness.run(
+    let result = try WarningReplayHarness.run(
       jsonl, configuredSeries: fixtureSeries,
       transform: { bms, t in
         let lifted = liftGroup(bms, t)

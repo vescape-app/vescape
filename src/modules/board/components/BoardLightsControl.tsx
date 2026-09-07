@@ -67,27 +67,33 @@ export function BoardLightsControl({ enabled }: { enabled: boolean }) {
   const lights = useBoardLights()
 
   return (
-    <View style={[surface, styles.group]}>
-      <LightsCell
-        icon={LightbulbIcon}
-        label="Lights"
-        value={lights.enabled}
-        disabled={!enabled}
-        onValueChange={lights.setLights}
-      />
-      <View style={styles.divider} />
-      <LightsCell
-        icon={HeadlightsIcon}
-        label="Headlight"
-        value={lights.headlightsEnabled}
-        disabled={!enabled}
-        onValueChange={lights.setHeadlights}
-      />
+    <View style={styles.container}>
+      <View style={[surface, styles.group]}>
+        <LightsCell
+          icon={LightbulbIcon}
+          label="Lights"
+          value={lights.enabled}
+          disabled={!enabled}
+          onValueChange={lights.setLights}
+        />
+        <View style={styles.divider} />
+        <LightsCell
+          icon={HeadlightsIcon}
+          label="Headlight"
+          value={lights.headlightsEnabled}
+          disabled={!enabled}
+          onValueChange={lights.setHeadlights}
+        />
+      </View>
+      {lights.error ? <Text style={styles.error}>{lights.error}</Text> : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  container: {
+    gap: 6,
+  },
   group: {
     width: '100%',
     overflow: 'hidden',
@@ -122,5 +128,9 @@ const styles = StyleSheet.create({
     color: theme.neutral.textPrimary,
     fontSize: 15,
     fontWeight: '700',
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
   },
 })

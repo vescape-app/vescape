@@ -3,6 +3,8 @@ package expo.modules.vescapecore.connection
 import expo.modules.vescapecore.service.SessionConfig
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.telemetry.AppDataRepository
 
 internal const val DEFAULT_BOARD_NAME = "VESC Board"
@@ -22,7 +24,14 @@ internal suspend fun buildSessionConfig(
     recordingEnabled: Boolean,
 ): SessionConfig {
     val repo = AppDataRepository.get(context.applicationContext)
-    val board = repo.getBoard(boardId)
+    val board = try {
+        repo.getBoard(boardId)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("board_connect_read", error)
+        throw error
+    }
         ?: throw IllegalArgumentException("Board not found: $boardId")
     // Reads resolve tombstones so history can name them (ADR 0027); connecting to one is refused.
     if (board["deletedAt"] != null) {
@@ -45,7 +54,14 @@ internal suspend fun buildSessionConfig(
         vescFirmwareVersion = link["vescFirmwareVersion"] as? String,
         refloatVersion = link["refloatVersion"] as? String,
         refloatBaseVersion = link["refloatBaseVersion"] as? String,
-        pollIntervalMs = pollIntervalMsForHz(repo.getTypedSettings().telemetryPollRateHz),
+        pollIntervalMs = pollIntervalMsForHz(try {
+            repo.getTypedSettings().telemetryPollRateHz
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            RecordingStorageFailure.reportRead("board_connect_settings_read", error)
+            throw error
+        }),
         recordingEnabled = recordingEnabled,
         telemetryRecordingEnabled = false,
         autoReconnect = true,
