@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import {
   CaretDownIcon,
   EngineIcon,
-  PencilSimpleIcon,
   PowerIcon,
   RecordIcon,
   WarningDiamondIcon,
@@ -27,7 +26,6 @@ interface BoardPillProps {
   bleStatus: string
   replay?: boolean
   onOpenSelector: () => void
-  onEdit?: () => void
   onDisconnect: () => void
   onStopRecording?: () => void
   warning?: PillAction & { severity: BoardWarningSeverity }
@@ -42,7 +40,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
     bleStatus,
     replay,
     onOpenSelector,
-    onEdit,
     onDisconnect,
     onStopRecording,
     warning,
@@ -79,12 +76,6 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
         </Text>
         <CaretDownIcon size={12} color={theme.control.textMuted} weight="bold" />
       </Pressable>
-      <BoardPillButton
-        icon={PencilSimpleIcon}
-        onPress={onEdit}
-        label="Edit board"
-        testID="board-edit-button"
-      />
       {canDisconnect && (
         <BoardPillButton
           icon={PowerIcon}

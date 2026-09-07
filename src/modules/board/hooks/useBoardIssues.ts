@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { BoardWarning, BoardWarningSeverity, VescFaultOccurrence } from 'vescape-core'
 
-import { worstSeverity } from '@/modules/board/lib/boardWarnings'
+import { pendingWarnings, worstSeverity } from '@/modules/board/lib/boardWarnings'
 import { indicatorFaults } from '@/modules/board/lib/vescFaults'
 import { EMPTY_WARNINGS, useBoardWarningsStore } from '@/modules/board/store/boardWarningsStore'
 import { EMPTY_FAULTS, useVescFaultsStore } from '@/modules/board/store/vescFaultsStore'
@@ -43,9 +43,7 @@ export function useBoardIssues(
   const faultsEnabled = useSettingsStore((s) => s.vescFaultCollectionEnabled)
 
   return useMemo(() => {
-    const pending = dismissedKinds?.length
-      ? warnings.filter((w) => !dismissedKinds.includes(w.kind))
-      : warnings
+    const pending = pendingWarnings(warnings, dismissedKinds)
     return {
       warnings,
       faults,

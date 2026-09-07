@@ -25,7 +25,6 @@ const CONNECTION_STATES: BoardPhase[] = [
 export function BoardPillShowcase() {
   const [selected, setSelected] = useState(true)
   const [status, setStatus] = useState<BoardPhase>('connected')
-  const [editable, setEditable] = useState(true)
   const [warnings, setWarnings] = useState(false)
   const [critical, setCritical] = useState(false)
   const [faults, setFaults] = useState(false)
@@ -50,7 +49,6 @@ export function BoardPillShowcase() {
               onToggle={(on) => setStatus(on ? state : 'idle')}
             />
           ))}
-          <ToggleRow label="edit enabled" value={editable} onToggle={setEditable} />
           <ToggleRow
             label="board warning"
             value={warnings}
@@ -88,7 +86,6 @@ export function BoardPillShowcase() {
           bleStatus={status}
           replay={replay}
           onOpenSelector={() => setLastAction('Open board selector')}
-          onEdit={selected && editable ? () => setLastAction('Edit board') : undefined}
           onDisconnect={() => {
             setStatus('idle')
             setLastAction('Board disconnected')

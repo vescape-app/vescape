@@ -10,7 +10,7 @@ import {
 import type { BoardWarningSeverity } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { FloatingSheet } from '@/components/overlays/AnchoredSheet'
+import { EdgeDrawer } from '@/components/overlays/EdgeDrawer'
 import { TickText } from '@/components/base/TickText'
 import type { Board } from '@/modules/board/store/boardStore'
 import { severityStatus } from '@/modules/board/constants/boardWarnings'
@@ -43,6 +43,8 @@ interface BoardSelectorSheetProps extends BoardSelectorContentProps {
 }
 
 const PULL_RATE_FONT_SIZE = 11
+/** The readout draws on a Skia canvas, which needs a width of its own inside a row. */
+const PULL_RATE_WIDTH = 46
 
 /**
  * What is known about a board while it is not talking: last battery, how long ago that was, and
@@ -52,12 +54,16 @@ function StaleMeta({ board }: { board: Board }) {
   if (!board.link) return <Text style={styles.metaText}>Not linked</Text>
   const last = board.lastBattery
   return (
-    <View style={styles.metaLine}>
-      {last && <Text style={styles.metaBattery}>{`${Math.round(last.percent)}%`}</Text>}
-      {last && <Text style={styles.metaText}>{fmtTimeAgo(last.at)}</Text>}
-      {last && <Text style={styles.metaText}>·</Text>}
+    <>
+      {last && (
+        <>
+          <Text style={styles.metaBattery}>{`${Math.round(last.percent)}%`}</Text>
+          <Text style={styles.metaText}>{fmtTimeAgo(last.at)}</Text>
+          <Text style={styles.metaText}>·</Text>
+        </>
+      )}
       <Text style={styles.metaText}>Offline</Text>
-    </View>
+    </>
   )
 }
 
@@ -80,6 +86,7 @@ function ActiveMeta({ board, live }: { board: Board; live: boolean }) {
           decimals={0}
           unit=" Hz"
           size={PULL_RATE_FONT_SIZE}
+          width={PULL_RATE_WIDTH}
           color={theme.status.success.color}
         />
       ) : (
@@ -94,40 +101,47 @@ interface StripLink {
   icon: Icon
   label: string
   color: string
-  count: number
+  /** Absent for a plain action like Edit, which is never "empty". */
+  count?: number
+  testID?: string
   onPress: () => void
 }
 
 /**
  * Warnings, VESC faults and Edit — the ways into the active board that used to hide behind the
- * pencil. A link with nothing behind it grays out, so color always means "there is something here".
+ * pencil on the pill. A counted link with nothing behind it grays out, so color always means
+ * "there is something here".
  */
 function LinksStrip({ links }: { links: StripLink[] }) {
   return (
     <View style={styles.strip}>
-      {links.map(({ key, icon: Icon, label, color: activeColor, count, onPress }, index) => {
-        const color = count > 0 ? activeColor : theme.neutral.textDim
-        return (
-          <View key={key} style={styles.stripCell}>
-            {index > 0 && <View style={styles.stripDivider} />}
-            <Pressable
-              onPress={onPress}
-              style={({ pressed }) => [styles.segment, pressed && styles.rowPressed]}
-              accessibilityLabel={label}
-            >
-              <View style={styles.segmentGlyph}>
-                <Icon size={17} color={color} weight="duotone" />
-                {count > 0 && (
-                  <View style={[styles.countRing, { borderColor: color }]}>
-                    <Text style={[styles.count, { color }]}>{count}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.segmentLabel}>{label}</Text>
-            </Pressable>
-          </View>
-        )
-      })}
+      {links.map(
+        ({ key, icon: LinkIcon, label, color: activeColor, count, testID, onPress }, i) => {
+          const color = count === 0 ? theme.neutral.textDim : activeColor
+          return (
+            <View key={key} style={styles.stripCell}>
+              {i > 0 && <View style={styles.stripDivider} />}
+              <Pressable
+                onPress={onPress}
+                style={({ pressed }) => [styles.segment, pressed && styles.rowPressed]}
+                testID={testID}
+                accessibilityRole="button"
+                accessibilityLabel={count ? `${label}, ${count}` : label}
+              >
+                <View style={styles.segmentGlyph}>
+                  <LinkIcon size={17} color={color} weight="duotone" />
+                  {count != null && count > 0 && (
+                    <View style={[styles.countRing, { borderColor: color }]}>
+                      <Text style={[styles.count, { color }]}>{count}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.segmentLabel}>{label}</Text>
+              </Pressable>
+            </View>
+          )
+        },
+      )}
     </View>
   )
 }
@@ -145,8 +159,8 @@ function BoardIcon({ active }: { active: boolean }) {
 }
 
 /**
- * The selector's list, without the floating shell around it — one picker where the active board
- * leads, one line taller, with its links attached underneath.
+ * The selector's list, without the drawer around it — one picker where the active board leads,
+ * one line taller and framed, with its links attached underneath.
  */
 export function BoardSelectorContent({
   boards,
@@ -160,47 +174,9 @@ export function BoardSelectorContent({
 }: BoardSelectorContentProps) {
   const active = boards.find((b) => b.id === activeBoardId)
   const others = boards.filter((b) => b.id !== active?.id)
-  const links: StripLink[] = [
-    ...(warnings
-      ? [
-          {
-            key: 'warnings',
-            icon: EngineIcon,
-            label: 'Warnings',
-            color: severityStatus(warnings.severity ?? 'warn').color,
-            count: warnings.count,
-            onPress: warnings.onPress,
-          },
-        ]
-      : []),
-    ...(faults
-      ? [
-          {
-            key: 'faults',
-            icon: WarningDiamondIcon,
-            label: 'VESC faults',
-            color: theme.status.error.color,
-            count: faults.count,
-            onPress: faults.onPress,
-          },
-        ]
-      : []),
-    ...(active
-      ? [
-          {
-            key: 'edit',
-            icon: PencilSimpleIcon,
-            label: 'Edit',
-            color: theme.neutral.textDim,
-            count: 0,
-            onPress: () => onEditBoard(active.id),
-          },
-        ]
-      : []),
-  ]
 
   return (
-    <>
+    <View style={styles.frame}>
       {active && (
         <View style={styles.activeBlock}>
           <View style={styles.row}>
@@ -212,7 +188,42 @@ export function BoardSelectorContent({
               <ActiveMeta board={active} live={activeBoardLive} />
             </View>
           </View>
-          {links.length > 0 && <LinksStrip links={links} />}
+          <LinksStrip
+            links={[
+              ...(warnings
+                ? [
+                    {
+                      key: 'warnings',
+                      icon: EngineIcon,
+                      label: 'Warnings',
+                      color: severityStatus(warnings.severity ?? 'warn').color,
+                      count: warnings.count,
+                      onPress: warnings.onPress,
+                    },
+                  ]
+                : []),
+              ...(faults
+                ? [
+                    {
+                      key: 'faults',
+                      icon: WarningDiamondIcon,
+                      label: 'VESC faults',
+                      color: theme.status.caution.color,
+                      count: faults.count,
+                      onPress: faults.onPress,
+                    },
+                  ]
+                : []),
+              {
+                key: 'edit',
+                icon: PencilSimpleIcon,
+                label: 'Edit',
+                color: theme.neutral.textMuted,
+                testID: 'board-edit-button',
+                onPress: () => onEditBoard(active.id),
+              },
+            ]}
+          />
         </View>
       )}
 
@@ -221,14 +232,27 @@ export function BoardSelectorContent({
           key={board.id}
           style={({ pressed }) => [styles.row, styles.listRow, pressed && styles.rowPressed]}
           onPress={() => onSelectBoard(board.id)}
+          accessibilityRole="button"
+          accessibilityLabel={`Select ${board.name}`}
         >
           <BoardIcon active={false} />
           <View style={styles.rowInfo}>
             <Text style={styles.boardName} numberOfLines={1}>
               {board.name}
             </Text>
-            <StaleMeta board={board} />
+            <View style={styles.metaLine}>
+              <StaleMeta board={board} />
+            </View>
           </View>
+          {/* Renaming a board should not cost a connection attempt first. */}
+          <Pressable
+            onPress={() => onEditBoard(board.id)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${board.name}`}
+          >
+            <PencilSimpleIcon size={15} color={theme.neutral.textDim} weight="bold" />
+          </Pressable>
         </Pressable>
       ))}
 
@@ -239,13 +263,14 @@ export function BoardSelectorContent({
           style={({ pressed }) => [styles.footerButton, pressed && styles.rowPressed]}
           onPress={onAddBoard}
           testID="board-selector-add-board"
+          accessibilityRole="button"
           accessibilityLabel="Add new board"
         >
           <PlusIcon size={13} color={theme.palette.sky.color} weight="bold" />
           <Text style={styles.footerText}>Add new board</Text>
         </Pressable>
       </View>
-    </>
+    </View>
   )
 }
 
@@ -256,30 +281,35 @@ export function BoardSelectorSheet({
   ...content
 }: BoardSelectorSheetProps) {
   return (
-    <FloatingSheet
+    <EdgeDrawer
       visible={visible}
       triggerRef={triggerRef}
+      edge="top"
+      title="Boards"
+      icon={LightningIcon}
+      iconColor={theme.palette.sky.color}
+      backdropTestID="board-selector-backdrop"
       onClose={onClose}
-      matchTriggerWidth={false}
-      minWidth={280}
-      contentContainerStyle={styles.content}
     >
       <BoardSelectorContent {...content} />
-    </FloatingSheet>
+    </EdgeDrawer>
   )
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: 0,
-    paddingVertical: 8,
-    gap: 0,
+  // The drawer is full width; the picker is not. Rows that run the whole phone read as a settings
+  // screen rather than a choice, so the list stays a centered column.
+  frame: {
+    width: '100%',
+    minWidth: 260,
+    maxWidth: 300,
+    alignSelf: 'center',
   },
   activeBlock: {
-    marginHorizontal: 8,
     marginBottom: 4,
     borderRadius: 10,
-    backgroundColor: theme.neutral.surfaceDeep,
+    borderWidth: 1,
+    borderColor: theme.neutral.border,
     overflow: 'hidden',
   },
   row: {
@@ -290,7 +320,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   listRow: {
-    marginHorizontal: 8,
     borderRadius: 10,
   },
   rowPressed: {
@@ -348,7 +377,6 @@ const styles = StyleSheet.create({
 
   strip: {
     flexDirection: 'row',
-    marginTop: 4,
     borderTopWidth: 1,
     borderTopColor: theme.alpha(theme.neutral.border, 0.6),
   },
@@ -410,7 +438,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginHorizontal: 8,
     paddingVertical: 11,
     borderRadius: 10,
   },

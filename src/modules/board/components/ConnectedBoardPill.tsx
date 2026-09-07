@@ -1,13 +1,11 @@
 import { forwardRef } from 'react'
 import type { View } from 'react-native'
-import { router } from 'expo-router'
 
 import { BoardPill } from '@/modules/board/components/BoardPill'
 import type { BoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import type { Board } from '@/modules/board/store/boardStore'
 import { showDevControls } from '@/config/env'
-import { routes } from '@/navigation/routes'
 
 interface ConnectedBoardPillProps {
   maxWidth: number
@@ -48,11 +46,6 @@ export const ConnectedBoardPill = forwardRef<View, ConnectedBoardPillProps>(
         ref={ref}
         name={activeBoard?.name ?? null}
         replay={isReplay && showDevControls}
-        onEdit={
-          activeBoard
-            ? () => router.push({ pathname: routes.editBoard, params: { boardId: activeBoard.id } })
-            : undefined
-        }
         onStopRecording={showDevControls && recording ? () => setRecording(false) : undefined}
         warning={
           issues.warningsEnabled && issues.severity

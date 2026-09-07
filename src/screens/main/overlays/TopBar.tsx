@@ -77,6 +77,11 @@ export function TopBar({
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [warningsOpen, setWarningsOpen] = useState(false)
   const [faultsOpen, setFaultsOpen] = useState(false)
+  // What the selector was asked for on its way out. Presenting a modal while another is still
+  // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
+  const pendingExit = useRef<{ kind: 'warnings' | 'faults' | 'edit'; boardId?: string } | null>(
+    null,
+  )
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -240,8 +245,8 @@ export function TopBar({
                 count: issues.warningCount,
                 severity: issues.severity,
                 onPress: () => {
+                  pendingExit.current = { kind: 'warnings' }
                   setSelectorOpen(false)
-                  setWarningsOpen(true)
                 },
               }
             : undefined
@@ -251,13 +256,22 @@ export function TopBar({
             ? {
                 count: issues.faultCount,
                 onPress: () => {
+                  pendingExit.current = { kind: 'faults' }
                   setSelectorOpen(false)
-                  setFaultsOpen(true)
                 },
               }
             : undefined
         }
-        onClose={() => setSelectorOpen(false)}
+        onClose={() => {
+          setSelectorOpen(false)
+          const exit = pendingExit.current
+          pendingExit.current = null
+          if (exit?.kind === 'warnings') setWarningsOpen(true)
+          if (exit?.kind === 'faults') setFaultsOpen(true)
+          if (exit?.kind === 'edit' && exit.boardId) {
+            router.push({ pathname: routes.editBoard, params: { boardId: exit.boardId } })
+          }
+        }}
         onSelectBoard={(id) => {
           onSelectBoard(id)
           setSelectorOpen(false)
@@ -267,8 +281,8 @@ export function TopBar({
           onAddBoard()
         }}
         onEditBoard={(id) => {
+          pendingExit.current = { kind: 'edit', boardId: id }
           setSelectorOpen(false)
-          router.push({ pathname: routes.editBoard, params: { boardId: id } })
         }}
       />
 
