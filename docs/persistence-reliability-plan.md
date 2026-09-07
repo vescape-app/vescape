@@ -1,6 +1,6 @@
 # Native persistence reliability plan
 
-Status: implementation started with #461.
+Status: host contracts and mandatory release gates implemented through #469.
 
 ## Host recording contract
 
@@ -46,9 +46,42 @@ iOS adapter. The host resolves GRDB 6.29.3 because earlier 6.x SPM builds fail t
 current Xcode; the app ships CocoaPods GRDB 6.24.1. This suite verifies SQL/schema behavior, not exact
 shipping-driver binary behavior. Device lifecycle and crash durability remain device checks.
 
-Measured on 2026-09-06: a clean `bun run test:persistence` took 11.83 s end to end (Android build
-3 s, Swift build 7.28 s, macOS scenario 24 ms). A warm run took 2.87 s end to end (Android 615 ms,
-Swift build 220 ms, macOS scenario 20 ms). The scenario duration excludes tool startup and builds.
+Measured on 2026-09-07 after the release gate landed: a clean tracked-only checkout with no generated
+native folders took 25.83 s end to end (Android compilation 6 s and Swift compilation 9.01 s). A
+warm run took 6.37 s (Android 2 s and Swift 230 ms); host scenario assertions took 458–466 ms. Times
+include orchestration and exclude a first Gradle distribution download.
+
+## CI and release gate
+
+`bun run test:persistence` is the only aggregate gate command. It must run on macOS with JDK 17 so
+one invocation can execute Room, GRDB, Android-to-iOS archive import, and iOS-to-Android archive
+import. `test:persistence:android` and `test:persistence:ios` remain useful focused commands, but
+neither is release evidence by itself. The JVM runner has its own tracked Gradle wrapper pinned to
+Gradle 9.3.1 and its published SHA-256 checksum, so a clean checkout needs no generated `android/`
+folder, Android SDK, emulator, or Expo prebuild.
+
+CI runs the aggregate gate unconditionally. Both internal release workflows call the same reusable
+macOS job against `inputs.source_sha`, validate that the input is a 40-character commit and that the
+checkout HEAD is exactly equal, and make the first build/upload job depend on its success. The gate
+requires the migration manifest and both archive-exchange phases, then invokes
+`scripts/test-persistence.ts` directly; an older source whose package alias ran only independent host
+suites cannot pass and gain a cross-archive attestation. GitHub branch protection and repository
+rulesets were inspected on 2026-09-07 and neither currently adds a separate required check; the
+release workflow dependency is therefore the mandatory publishing boundary.
+
+Successful internal manifests attest the exact tested source plus `androidRoom`, `iosGrdb`, and
+`crossPlatformArchives`. Open and production promotion validate every field before credentials are
+prepared or store state can change. Missing legacy attestations fail closed. Status-only production
+reads keep using an already attested internal manifest and do not rerun the hosts.
+
+The shared fixture owners are the production persistence peers under
+`modules/vescape-core/android`, `modules/vescape-core/ios`, and their host runners. Any change to a
+shared JSON scenario or `migration-fixture-manifest.json` must remain executable by both hosts. Room
+native upgrades are supported from v3, Android-created backup archives from v14, and iOS archives
+from the original GRDB ledger generation; current archives must continue restoring in both
+directions. Add every newly supported released generation to the fixture manifest and both host
+matrices in the same change. Device lifecycle, background execution, crash durability, the shipping
+GRDB 6.24.1 binary, and actual Sentry delivery remain separate device checks.
 
 ## Native persistence error delivery check
 

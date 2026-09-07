@@ -104,6 +104,10 @@ jobs:
           done
           test "$(jq -r .versionCodes.phone candidate/release-manifest.json)" = "$PHONE_VERSION_CODE"
           test "$(jq -r .versionCodes.wear candidate/release-manifest.json)" = "$WEAR_VERSION_CODE"
+          test "$(jq -r .storageContracts.sourceSha candidate/release-manifest.json)" = "$SOURCE_SHA"
+          test "$(jq -r .storageContracts.androidRoom candidate/release-manifest.json)" = passed
+          test "$(jq -r .storageContracts.iosGrdb candidate/release-manifest.json)" = passed
+          test "$(jq -r .storageContracts.crossPlatformArchives candidate/release-manifest.json)" = passed
           test "$(jq -r .phone.versionCode open/promotion-manifest.json)" = "$PHONE_VERSION_CODE"
           test "$(jq -r .wear.versionCode open/promotion-manifest.json)" = "$WEAR_VERSION_CODE"
           test "$(jq -r .phone.status open/promotion-manifest.json)" != failed

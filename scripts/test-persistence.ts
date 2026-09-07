@@ -24,7 +24,7 @@ try {
   await run(['bun', 'run', 'test:persistence:ios'], { VESCAPE_BACKUP_EXCHANGE: exchange })
   await run(
     [
-      './android/gradlew',
+      './modules/vescape-core/persistence-jvm/gradlew',
       '-p',
       'modules/vescape-core/persistence-jvm',
       'test',
