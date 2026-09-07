@@ -4,7 +4,11 @@ import android.content.Context
 import expo.modules.vescapecore.appstatus.AppStatusCoordinator
 import expo.modules.vescapecore.auth.DeviceCredential
 import expo.modules.vescapecore.auth.DeviceCredentialStore
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -44,14 +48,21 @@ class VescapeApi(
     auth: AuthMode = AuthMode.Required,
     parse: (String) -> T,
   ): ApiResult<T> = withContext(Dispatchers.IO) {
-    val token = token(auth) ?: return@withContext ApiResult.Unauthorized
+    val token = try {
+      token(auth) ?: return@withContext ApiResult.Unauthorized
+    } catch (error: Exception) {
+      currentCoroutineContext().ensureActive()
+      if (error is CancellationException) throw error
+      UnexpectedNativeError.report("device_credential_read", "secure_store_read", error)
+      return@withContext ApiResult.Unavailable("Device credential is unavailable")
+    }
     val request = ApiRequest(
       method = method,
       url = url(path, query),
       headers = headers(token.ifEmpty { null }, body != null),
       body = body?.toString(),
     )
-    send(request, authenticated = token.isNotEmpty(), parse = parse)
+    send(request, rejectsStoredCredential = auth == AuthMode.Required && token.isNotEmpty(), parse = parse)
   }
 
   /**
@@ -84,7 +95,7 @@ class VescapeApi(
 
   private suspend fun <T> send(
     request: ApiRequest,
-    authenticated: Boolean,
+    rejectsStoredCredential: Boolean,
     parse: (String) -> T,
   ): ApiResult<T> {
     var retried = false
@@ -92,6 +103,8 @@ class VescapeApi(
       val response = try {
         transport.execute(request)
       } catch (e: Exception) {
+        currentCoroutineContext().ensureActive()
+        if (e is CancellationException) throw e
         if (canRetry(request, retried)) {
           retried = true
           delay(retryDelayMillis)
@@ -99,6 +112,7 @@ class VescapeApi(
         }
         return ApiResult.Unavailable(e.message ?: e.javaClass.simpleName)
       }
+      currentCoroutineContext().ensureActive()
 
       if (response.status >= 500) {
         if (canRetry(request, retried)) {
@@ -109,7 +123,7 @@ class VescapeApi(
         return ApiResult.Unavailable("Server error (${response.status})")
       }
 
-      return outcome(response, authenticated, parse)
+      return outcome(response, rejectsStoredCredential, parse)
     }
   }
 
@@ -118,12 +132,20 @@ class VescapeApi(
 
   private fun <T> outcome(
     response: ApiResponse,
-    authenticated: Boolean,
+    rejectsStoredCredential: Boolean,
     parse: (String) -> T,
-  ): ApiResult<T> = when {
+  ): ApiResult<T> {
+    return when {
     response.status == 401 -> {
       // An anonymous read cannot say anything about the stored credential, so it must not reject it.
-      if (authenticated) onUnauthorized()
+      if (rejectsStoredCredential) {
+        try { onUnauthorized() }
+        catch (error: Exception) {
+          if (error is CancellationException) throw error
+          UnexpectedNativeError.report("device_credential_reject", "secure_store_delete", error)
+          return ApiResult.Unavailable("Device credential could not be rejected")
+        }
+      }
       ApiResult.Unauthorized
     }
     response.status == 403 -> ApiResult.Forbidden
@@ -132,7 +154,9 @@ class VescapeApi(
     else -> try {
       ApiResult.Ok(parse(response.body))
     } catch (e: Exception) {
+      if (e is CancellationException) throw e
       ApiResult.Malformed(e.message ?: e.javaClass.simpleName)
+    }
     }
   }
 

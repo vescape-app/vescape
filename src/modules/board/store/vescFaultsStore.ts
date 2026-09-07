@@ -15,6 +15,7 @@ export const EMPTY_FAULTS: VescFaultOccurrence[] = []
 interface VescFaultsState {
   /** Occurrences keyed by boardId, newest first. A board with no faults has no entry. */
   faultsByBoard: Record<string, VescFaultOccurrence[]>
+  error: string | null
   replaceBoard: (boardId: string, faults: VescFaultOccurrence[]) => void
   /** Replace the entire mirror from a native pull — heals boards changed while away. */
   replaceAll: (faults: VescFaultOccurrence[]) => void
@@ -31,14 +32,15 @@ function groupByBoard(faults: VescFaultOccurrence[]): Record<string, VescFaultOc
 
 export const useVescFaultsStore = create<VescFaultsState>((set) => ({
   faultsByBoard: {},
+  error: null,
   replaceBoard: (boardId, faults) =>
     set((state) => {
       if (faults.length === 0) {
-        return { faultsByBoard: omitKey(state.faultsByBoard, boardId) }
+        return { faultsByBoard: omitKey(state.faultsByBoard, boardId), error: null }
       }
-      return { faultsByBoard: { ...state.faultsByBoard, [boardId]: faults } }
+      return { faultsByBoard: { ...state.faultsByBoard, [boardId]: faults }, error: null }
     }),
-  replaceAll: (faults) => set({ faultsByBoard: groupByBoard(faults) }),
+  replaceAll: (faults) => set({ faultsByBoard: groupByBoard(faults), error: null }),
   clear: () => set({ faultsByBoard: {} }),
 }))
 
@@ -57,14 +59,17 @@ export function startVescFaultsSync(): () => void {
     useVescFaultsStore.getState().replaceBoard(event.boardId, event.faults)
   })
   const pull = () => {
-    const startedAt = revision
+    const startedAt = ++revision
     void getVescFaults()
       .then((faults) => {
         if (revision !== startedAt) return
-        useVescFaultsStore.getState().replaceAll(faults)
+        useVescFaultsStore.setState({ faultsByBoard: groupByBoard(faults), error: null })
       })
       // A failed pull keeps the last known mirror; the next foreground or push heals it.
-      .catch(() => undefined)
+      .catch(() => {
+        if (revision !== startedAt) return
+        useVescFaultsStore.setState({ error: 'Controller faults could not be refreshed.' })
+      })
   }
   pull()
   const appStateSub = AppState.addEventListener('change', (nextState) => {

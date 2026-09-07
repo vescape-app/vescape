@@ -465,8 +465,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
      * when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
      * suppression (ADR-0009 / ADR-0020). Touched off the main thread, so kept @Volatile.
      */
-    @Volatile
-    private var groupRidePrivacyZones: List<PrivacyZoneEntity> = emptyList()
+    private val groupRidePrivacy = PrivacyZoneReadState()
 
     /**
      * The Rider's shared map target (their direction Map Point), cached for presence egress.
@@ -884,6 +883,8 @@ private var wearAutoLaunchOnConnect = true
             AppDataRepository.get(appCtx).setSelectedBoardId(boardId)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = false)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Companion connect config failed: ${e.message}")
                 scheduler.post { stopIfIdle() }
@@ -923,6 +924,8 @@ private var wearAutoLaunchOnConnect = true
             ManualDisconnectAutoStartGate.clear(appCtx)
             val config = try {
                 buildSessionConfig(appCtx, boardId, recordingEnabled = recordingEnabled)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(VESC_SESSION_TAG, "Notification connect failed: ${e.message}")
                 scheduler.post { stopIfIdle() }
@@ -3037,6 +3040,7 @@ private var wearAutoLaunchOnConnect = true
 
     /** @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `latestRiderPresence` */
     private fun latestRiderPresence(): RiderPresence? {
+        if (!groupRidePrivacy.allowsLocationEgress) return null
         val location = locationTracker.latestPreciseLocation ?: locationTracker.latestLocation ?: return null
         // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
         // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
@@ -3068,7 +3072,7 @@ private var wearAutoLaunchOnConnect = true
     }
 
     private fun isInsidePrivacyZone(location: LocationSnapshot): Boolean {
-        val zones = groupRidePrivacyZones
+        val zones = groupRidePrivacy.zones
         if (zones.isEmpty()) return false
         val latitudeE7 = (location.latitude * 10_000_000.0).roundToInt()
         val longitudeE7 = (location.longitude * 10_000_000.0).roundToInt()
@@ -3080,11 +3084,15 @@ private var wearAutoLaunchOnConnect = true
      * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `loadPrivacyZones`
      */
     suspend fun loadPrivacyZones(context: Context) {
-        groupRidePrivacyZones = try {
-            AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
+        try {
+            groupRidePrivacy.reload {
+                AppDataRepository.get(context).getEnabledPrivacyZoneEntities()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load privacy zones for presence gate: ${e.message}")
-            emptyList()
+            RecordingStorageFailure.reportRead("group_ride_privacy_zones_read", e)
         }
     }
 
@@ -3189,17 +3197,22 @@ private var wearAutoLaunchOnConnect = true
     suspend fun reloadBoardDataForActiveBoard() {
         val current = boardConfig
         val repo = AppDataRepository.get(service.applicationContext)
-        val selectedBoardId = repo.getTypedSettings().selectedBoardId
+        val selectedBoardId: String?
+        val board: Map<String, Any?>?
         val activeBoardId = current?.appBoardId
-        val boardId = activeBoardId ?: selectedBoardId ?: return
-        val board = try {
-            repo.getBoard(boardId)
+        try {
+            selectedBoardId = repo.getTypedSettings().selectedBoardId
+            val boardId = activeBoardId ?: selectedBoardId ?: return
+            board = repo.getBoard(boardId)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load board data: ${e.message}")
-            null
-        } ?: return
+            RecordingStorageFailure.reportRead("active_board_read", e)
+            return
+        }
+        val boardId = activeBoardId ?: selectedBoardId ?: return
+        board ?: return
         val name = (board["name"] as? String)?.takeIf { it.isNotEmpty() }
             ?: current?.deviceName
             ?: selectedBoardName
@@ -3245,7 +3258,8 @@ private var wearAutoLaunchOnConnect = true
             throw e
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Failed to load battery config: ${e.message}")
-            null
+            RecordingStorageFailure.reportRead("board_battery_config_read", e)
+            return
         }
     }
 

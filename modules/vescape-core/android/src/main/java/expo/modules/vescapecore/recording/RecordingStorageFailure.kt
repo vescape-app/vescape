@@ -10,6 +10,8 @@ import android.database.sqlite.SQLiteFullException
 import android.database.sqlite.SQLiteReadOnlyDatabaseException
 import java.util.concurrent.Executors
 import io.sentry.Sentry
+import io.sentry.SentryLevel
+import expo.modules.vescapecore.diagnostics.NativeFailureReporter
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
 
 internal enum class RecordingStorageFailureKind(val wireValue: String) {
@@ -28,7 +30,8 @@ internal fun resolveRecordingFailureKind(
     incoming: RecordingStorageFailureKind,
 ): RecordingStorageFailureKind = current?.takeIf { it != RecordingStorageFailureKind.WriteFailed } ?: incoming
 
-internal data class RecordingFailureReport(val operation: String, val category: String, val errorType: String)
+internal fun startupFailureKind(classified: RecordingStorageFailureKind): RecordingStorageFailureKind =
+    if (classified == RecordingStorageFailureKind.WriteFailed) RecordingStorageFailureKind.StorageUnavailable else classified
 
 internal class StorageUnavailableException(kind: RecordingStorageFailureKind) :
     IllegalStateException("Local storage is unavailable (${kind.wireValue})")
@@ -68,18 +71,6 @@ internal inline fun <T> withAvailableStorage(
     return action()
 }
 
-internal class RecordingFailureReporter(private val sink: (RecordingFailureReport) -> Unit) {
-    private val reported = mutableSetOf<String>()
-
-    fun report(operation: String, category: String, error: Throwable) {
-        val report = synchronized(this) {
-            if (!reported.add(operation)) return
-            RecordingFailureReport(operation, category, error.javaClass.simpleName)
-        }
-        sink(report)
-    }
-}
-
 /** Native-owned recording failure episode.
  *
  * @parity /modules/vescape-core/ios/recording/RecordingStorageFailure.swift
@@ -93,8 +84,10 @@ internal object RecordingStorageFailure {
     @Volatile private var outageListener: (() -> Unit)? = null
     private val reportExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "vescape-storage-report").apply { isDaemon = true } }
     private var startupChecked = false
-    private val reporter = RecordingFailureReporter { report ->
+    private val reporter = NativeFailureReporter { report ->
         Sentry.withScope { scope ->
+            scope.level = SentryLevel.ERROR
+            scope.fingerprint = listOf("persistence", report.category, report.operation)
             scope.setTag("persistence.operation", report.operation)
             scope.setTag("persistence.category", report.category)
             scope.setExtra("persistence.error_type", report.errorType)
@@ -120,7 +113,13 @@ internal object RecordingStorageFailure {
 
     fun observeOutage(listener: (() -> Unit)?) { outageListener = listener }
 
-    fun startupCheck(context: Context, check: () -> Unit) {
+    fun startupCheck(
+        context: Context,
+        reportFailure: (String, String, Throwable) -> Unit = { operation, category, error ->
+          reporter.report(operation, category, error)
+        },
+        check: () -> Unit,
+    ) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val generationAtStart = synchronized(this) {
           if (startupChecked) return
@@ -141,8 +140,10 @@ internal object RecordingStorageFailure {
             }
         } catch (error: Exception) {
             val classified = classify(error)
+            val startupKind = startupFailureKind(classified)
+            reportFailure("storage_startup_probe", startupKind.wireValue, error)
             val changed = synchronized(this) { recordFailureLocked(
-              context, if (classified == RecordingStorageFailureKind.WriteFailed) RecordingStorageFailureKind.StorageUnavailable else classified
+              context, startupKind
             ) }
             if (changed) notifyOutage()
         }

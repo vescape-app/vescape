@@ -88,6 +88,7 @@ struct AppStatus: Equatable {
 /// **required** field yields `nil`, which callers treat exactly like a transport failure.
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/appstatus/AppStatus.kt `parseAppStatus`
 func decodeAppStatus(_ body: Data) -> AppStatus? {
+  // intentional-suppression: malformed remote status produces an explicit unavailable result
   guard let object = try? JSONSerialization.jsonObject(with: body),
         let root = object as? [String: Any]
   else { return nil }

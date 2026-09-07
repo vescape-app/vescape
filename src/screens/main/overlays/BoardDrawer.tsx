@@ -88,7 +88,8 @@ export function BoardDrawer({ onNavigate, onOpenLegalLimits }: TuneDrawerProps) 
   const hasProfiles = profilesForBoard.length > 0
 
   useEffect(() => {
-    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined)
+    // intentional-suppression: board config store error is rendered by the drawer
+    if (activeBoardId) void loadProfiles(activeBoardId, tuneCompatibility).catch(() => undefined) // Store error renders in this drawer.
   }, [activeBoardId, loadProfiles, tuneCompatibility])
 
   const openTune = () => {

@@ -12,6 +12,7 @@ internal final class RecordingCoordinator {
   private var enabled = false
   private var startedAtMs: Int64?
   private var requestedTelemetryRecordingEnabled = false
+  private var privacyZonesReady = false
   private var backgroundFlush: BackgroundFlushGuard?
   var onFailure: (() -> Void)?
 
@@ -44,21 +45,30 @@ internal final class RecordingCoordinator {
   func currentRecorder() -> SessionRecorder? { recorder }
 
   func beginBoardSession(config: BoardConnectConfig) {
+    enabled = false
+    startedAtMs = nil
     activeConfig = config
     recorder?.finish(status: "stopped")
     recorder = nil
-    if config.recordingEnabled,
-      let recorder = SessionRecorder(
-        deviceName: config.name,
-        deviceId: config.bleId,
-        pollIntervalMs: config.pollIntervalMs
-      )
-    {
-      recorder.start()
-      self.recorder = recorder
+    if config.recordingEnabled {
+      do {
+        let recorder = try SessionRecorder(
+          deviceName: config.name,
+          deviceId: config.bleId,
+          pollIntervalMs: config.pollIntervalMs
+        )
+        recorder.start()
+        self.recorder = recorder
+      } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_open", category: "file_open_failed", error: error)
+      }
     }
     store.resetSessionState()
-    do { store.reloadPrivacyZones(try appData.getEnabledPrivacyZoneEntities()) }
+    privacyZonesReady = false
+    do {
+      store.reloadPrivacyZones(try appData.getEnabledPrivacyZoneEntities())
+      privacyZonesReady = true
+    }
     catch { RecordingStorageFailure.reportRead(operation: "recording_privacy_zones_read", error: error) }
     if let settings = readSettings(operation: "recording_settings_read") { store.applySettings(settings) }
     // `autoRecording` is honored at board-ready, not here — mirrors Android, which only enables
@@ -97,6 +107,7 @@ internal final class RecordingCoordinator {
     store.flushBlocking()
     activeConfig = nil
     enabled = false
+    privacyZonesReady = false
     startedAtMs = nil
   }
 
@@ -105,6 +116,7 @@ internal final class RecordingCoordinator {
     store.flushBlocking()
     activeConfig = nil
     enabled = false
+    privacyZonesReady = false
     startedAtMs = nil
   }
 
@@ -170,7 +182,9 @@ internal final class RecordingCoordinator {
   }
 
   private func enableTelemetryRecording(config: BoardConnectConfig, emitConnectedMarker: Bool = true) {
-    guard RecordingStorageFailure.value() == nil else { return }
+    guard RecordingStorageFailure.value() == nil, privacyZonesReady,
+      let settings = readSettings(operation: "recording_settings_read") else { return }
+    store.applySettings(settings)
     if !enabled {
       startedAtMs = nowMs()
       if emitConnectedMarker {
@@ -179,7 +193,6 @@ internal final class RecordingCoordinator {
     }
     enabled = true
     activeConfig = config
-    if let settings = readSettings(operation: "recording_settings_read") { store.applySettings(settings) }
   }
 
   private func readSettings(operation: String) -> [String: Any?]? {

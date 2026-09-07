@@ -112,21 +112,6 @@ struct RefloatConfigSnapshot {
     ]
   }
 
-  /// Flatten the decoded groups into the `{ fieldId: value }` JSON stored on a Tune Profile. Mirrors
-  /// Android `RefloatConfigSnapshot.fieldsJson()` in `AppDataRepository.kt`.
-  func fieldsJson() -> String {
-    var object: [String: Any] = [:]
-    for group in groups {
-      for field in group.fields {
-        object[field.id] = field.value
-      }
-    }
-    guard
-      let data = try? JSONSerialization.data(withJSONObject: object),
-      let json = String(data: data, encoding: .utf8)
-    else { return "{}" }
-    return json
-  }
 }
 
 /// Error vocabulary shared with Android so JS error handling stays identical across platforms.

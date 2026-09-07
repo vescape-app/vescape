@@ -63,7 +63,10 @@ export function AlertRuleList({
             setEditRule(rule)
             setFormVisible(true)
           }}
-          onToggle={() => void controller.toggleRule(rule.id).catch(() => {})}
+          onToggle={() => {
+            // intentional-suppression: Alerts store error is rendered by the active form or list
+            void controller.toggleRule(rule.id).catch(() => undefined) // Store error renders below.
+          }}
           onDelete={() => setDeleteTarget(rule)}
         />
       ))}
@@ -96,6 +99,7 @@ export function AlertRuleList({
         unit={unit}
         editRule={editRule}
         batteryConfig={batteryConfig}
+        error={controller.error}
         onClose={closeForm}
         onSave={handleSave}
       />

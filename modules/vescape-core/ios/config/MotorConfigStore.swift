@@ -92,7 +92,7 @@ struct MotorConfigStore {
           try ConfigNoticeRecord(boardId: boardId, detectedAt: values.capturedAtMs, diffsJson: built.diffsJson()).save(db)
         }
       }
-      try MotorConfigRecord(boardId: boardId, mcconfSignature: Int64(values.signature), firmware: values.firmware, valuesJson: values.valuesJson(), capturedAt: values.capturedAtMs).save(db)
+      try MotorConfigRecord(boardId: boardId, mcconfSignature: Int64(values.signature), firmware: values.firmware, valuesJson: try values.valuesJson(), capturedAt: values.capturedAtMs).save(db)
       committed = true
     }
     if committed, let notice { BoardConfigStore.onNoticeChanged?(notice) }

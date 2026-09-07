@@ -1,5 +1,8 @@
 package expo.modules.vescapecore
 
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
+import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
+
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
@@ -58,8 +61,10 @@ import expo.modules.vescapecore.telemetry.ProfileStatsRepository
 import expo.modules.vescapecore.telemetry.RideHistoryRepository
 import expo.modules.vescapecore.telemetry.TELEMETRY_DATABASE_NAME
 import expo.modules.vescapecore.telemetry.TelemetryRepository
+import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.AlertRuleEntity
 import expo.modules.vescapecore.location.LegalPolicyResolver
+import expo.modules.vescapecore.location.LegalPolicyResolution
 import expo.modules.vescapecore.location.LegalPolicyCatalog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -548,6 +553,7 @@ class VescapeCoreModule : Module() {
         try {
           promise.resolve(DebugRecordingStore(context.applicationContext).list())
         } catch (e: Exception) {
+          UnexpectedNativeError.report("debug_recording_list", "file_metadata_failed", e)
           promise.reject("ERR_LIST_DEBUG_RECORDINGS", e.message, e)
         }
       }
@@ -566,6 +572,7 @@ class VescapeCoreModule : Module() {
         try {
           promise.resolve(DebugRecordingStore(context.applicationContext).export(name))
         } catch (e: Exception) {
+          UnexpectedNativeError.report("debug_recording_export", "file_copy_failed", e)
           promise.reject("ERR_EXPORT_DEBUG_RECORDING", e.message, e)
         }
       }
@@ -576,6 +583,7 @@ class VescapeCoreModule : Module() {
           DebugRecordingStore(context.applicationContext).delete(name)
           promise.resolve(null)
         } catch (e: Exception) {
+          UnexpectedNativeError.report("debug_recording_delete", "file_delete_failed", e)
           promise.reject("ERR_DELETE_DEBUG_RECORDING", e.message, e)
         }
       }
@@ -826,10 +834,15 @@ class VescapeCoreModule : Module() {
       RecordingStorageFailure.requireAvailable()
       runBlocking { TelemetryRepository.get(context.applicationContext).clearDiagnosticEvents() }
     }
-    AsyncFunction("getDatabaseSizeBytes") {
+    AsyncFunction("getDatabaseSizeBytes") { promise: Promise ->
       RecordingStorageFailure.requireAvailable()
       val dbFile = context.applicationContext.getDatabasePath(TELEMETRY_DATABASE_NAME)
-      if (dbFile.exists()) dbFile.length() else 0L
+      try {
+        promise.resolve(TelemetryDatabase.databaseSizeBytes(dbFile))
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("database_size_read", error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", error)
+      }
     }
     AsyncFunction("backupDatabase") { promise: Promise ->
       RecordingStorageFailure.requireAvailable()
@@ -985,6 +998,11 @@ class VescapeCoreModule : Module() {
       val deleted = try {
         TelemetryRepository.get(context.applicationContext).deleteFavorite(id)
       } catch (error: CancellationException) { throw error }
+      catch (error: FavoriteMediaCleanupException) {
+        // @parity /src/modules/history/store/favoriteStore.ts `FAVORITE_MEDIA_CLEANUP_ERROR`
+        UnexpectedNativeError.report("favorite_media_delete", "file_delete_failed", error)
+        throw CodedException("ERR_DELETE_FAVORITE_MEDIA_CLEANUP", "Favorite deleted but its media could not be removed", error)
+      }
       catch (error: Throwable) {
         RecordingStorageFailure.report("favorite_delete", "write_failed", error)
         throw CodedException("ERR_DELETE_FAVORITE", "Favorite could not be deleted", error)
@@ -1198,12 +1216,15 @@ class VescapeCoreModule : Module() {
       val settings = repository.getTypedSettings()
       val latitude = settings.lastGpsLatitude
       val longitude = settings.lastGpsLongitude
-      val countryCode = if (latitude != null && longitude != null) {
+      val resolution = if (latitude != null && longitude != null) {
         legalPolicyResolver.resolve(latitude, longitude)
       } else {
-        null
+        LegalPolicyResolution.Resolved(null)
       }
-      repository.updateLegalPolicy(countryCode)
+      if (resolution is LegalPolicyResolution.Unavailable) {
+        throw IllegalStateException("Could not resolve Legal Policy")
+      }
+      repository.updateLegalPolicy((resolution as LegalPolicyResolution.Resolved).countryCode)
       CoreForegroundService.reloadAlertRules(context.applicationContext)
     }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setLegalMode`
@@ -1430,6 +1451,8 @@ key == "wearAutoLaunchOnConnect" ||
     ManualDisconnectAutoStartGate.clear(appCtx)
     val config = try {
       buildSessionConfig(appCtx, boardId, requestedDebugRecordingEnabled)
+    } catch (error: kotlinx.coroutines.CancellationException) {
+      throw error
     } catch (error: Throwable) {
       Log.w(TAG, "Board Link saved but session config failed: ${error.message}")
       return

@@ -8,6 +8,10 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.io.File
+import java.io.FileInputStream
+import java.nio.file.Files
+import java.nio.file.NoSuchFileException
+import java.io.IOException
 
 /** Android lifecycle and Room adapters for the portable production migration graph. */
 internal object TelemetryDatabase {
@@ -64,21 +68,32 @@ internal object TelemetryDatabase {
   internal val MIGRATION_40_41 = migration(40, 41)
   internal val MIGRATION_41_42 = migration(41, 42)
 
-  private fun migrateLegacyDatabaseFile(context: Context) {
+  internal fun migrateLegacyDatabaseFile(context: Context) {
     val target = context.getDatabasePath(TELEMETRY_DATABASE_NAME)
     val legacy = context.getDatabasePath(LEGACY_TELEMETRY_DATABASE_NAME)
     if (target.exists() || !legacy.exists()) return
-    val checkpointed = runCatching {
-      SQLiteDatabase.openDatabase(legacy.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
-        db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).close()
-      }
-    }.isSuccess
-    if (!checkpointed) return
-    target.parentFile?.mkdirs()
-    if (legacy.renameTo(target)) {
-      File("${legacy.path}-wal").delete()
-      File("${legacy.path}-shm").delete()
+    SQLiteDatabase.openDatabase(legacy.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+      db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).close()
     }
+    val parent = target.parentFile
+    if (parent != null && !parent.exists() && !parent.mkdirs()) {
+      throw IOException("Could not create database directory")
+    }
+    moveLegacyDatabaseFile(legacy, target)
+    File("${legacy.path}-wal").delete()
+    File("${legacy.path}-shm").delete()
+  }
+
+  internal fun moveLegacyDatabaseFile(legacy: File, target: File) {
+    if (!legacy.renameTo(target)) throw IOException("Could not migrate legacy database")
+  }
+
+  internal fun databaseSizeBytes(
+    file: File,
+    size: (File) -> Long = { source -> Files.size(source.toPath()) },
+  ): Long {
+    return try { size(file) }
+    catch (_: NoSuchFileException) { 0L }
   }
 
   fun get(context: Context): TelemetryRoomDatabase =

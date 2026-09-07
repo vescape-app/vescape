@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Linking } from 'react-native'
+import { Alert } from 'react-native'
 
 import { openAppUpdate, type CommunityMessageAction } from 'vescape-core'
 
@@ -12,6 +12,7 @@ import { acknowledgeCommunityMessage } from '@/modules/release/lib/communityMess
 import { selectReleaseSurface, type ReleaseSurface } from '@/modules/release/lib/releaseSurface'
 import { useAppStatusStore } from '@/modules/release/store/appStatusStore'
 import { useSettingsStore } from '@/modules/settings/store/settingsStore'
+import { openExternalUrl } from '@/components/base/openExternalUrl'
 
 /**
  * The single mount point for every Release surface, presented one at a time in precedence order
@@ -42,7 +43,10 @@ export function ReleaseSurfaces() {
   const acknowledge = (id: string) => {
     // Read the freshest list at call time so a rapid second dismiss can't drop the first ID.
     const current = useSettingsStore.getState().dismissedCommunityMessageIds
-    void setSetting('dismissedCommunityMessageIds', acknowledgeCommunityMessage(current, id))
+    void setSetting('dismissedCommunityMessageIds', acknowledgeCommunityMessage(current, id)).catch(
+      () =>
+        Alert.alert('Could not dismiss message', 'The message will remain until it can be saved.'),
+    )
   }
 
   const communityMessage = surface?.kind === 'community-message' ? surface.message : null
@@ -55,7 +59,7 @@ export function ReleaseSurfaces() {
     if (!communityMessage) return
     // An action acknowledges the message too — the type only drives presentation, not behavior.
     acknowledge(communityMessage.id)
-    void Linking.openURL(action.url).catch(() => {})
+    openExternalUrl(action.url, 'community_message_link')
   }
 
   if (presented === 'app-block' && surface?.kind === 'app-block') {

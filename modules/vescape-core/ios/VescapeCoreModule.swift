@@ -443,14 +443,14 @@ public class VescapeCoreModule: Module {
         accountId: accountId
       )
     }
-    Function("getDeviceCredentialState") { () -> [String: Any?] in
-      NativeAuthCoordinator.shared.stateMap()
+    Function("getDeviceCredentialState") { () throws -> [String: Any?] in
+      try NativeAuthCoordinator.shared.stateMap()
     }
     AsyncFunction("revokeDeviceCredential") { () async throws in
       try await NativeAuthCoordinator.shared.revoke()
     }
     Function("clearDeviceCredential") {
-      NativeAuthCoordinator.shared.clear()
+      try NativeAuthCoordinator.shared.clear()
     }
 
     // Stable Vescape route keeps the app decoupled from the final store destination.
@@ -509,6 +509,7 @@ public class VescapeCoreModule: Module {
       do {
         promise.resolve(try DebugRecordingStore().list())
       } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_list", category: "file_metadata_failed", error: error)
         promise.reject("ERR_LIST_DEBUG_RECORDINGS", error.localizedDescription)
       }
     }
@@ -521,6 +522,7 @@ public class VescapeCoreModule: Module {
       do {
         promise.resolve(try DebugRecordingStore().export(name: name))
       } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_export", category: "file_copy_failed", error: error)
         promise.reject("ERR_EXPORT_DEBUG_RECORDING", error.localizedDescription)
       }
     }
@@ -530,6 +532,7 @@ public class VescapeCoreModule: Module {
         try DebugRecordingStore().delete(name: name)
         promise.resolve(nil)
       } catch {
+        UnexpectedNativeError.report(operation: "debug_recording_delete", category: "file_delete_failed", error: error)
         promise.reject("ERR_DELETE_DEBUG_RECORDING", error.localizedDescription)
       }
     }
@@ -794,9 +797,13 @@ public class VescapeCoreModule: Module {
       }
     }
 
-    AsyncFunction("getDatabaseSizeBytes") { () -> Int in
+    AsyncFunction("getDatabaseSizeBytes") { (promise: Promise) in
       try RecordingStorageFailure.requireAvailable()
-      Int(TelemetryDatabase.databaseSizeBytes)
+      do { promise.resolve(Int(try TelemetryDatabase.databaseSizeBytes())) }
+      catch {
+        RecordingStorageFailure.reportRead(operation: "database_size_read", error: error)
+        promise.reject("APP_STORAGE_READ_FAILED", "Could not read database size", error)
+      }
     }
 
     AsyncFunction("backupDatabase") { (promise: Promise) in
@@ -1021,6 +1028,12 @@ public class VescapeCoreModule: Module {
           return
         }
         promise.resolve(true)
+      } catch FavoriteMediaStoreError.cleanupFailed {
+        // @parity /src/modules/history/store/favoriteStore.ts `FAVORITE_MEDIA_CLEANUP_ERROR`
+        UnexpectedNativeError.report(
+          operation: "favorite_media_delete", category: "file_delete_failed", error: error
+        )
+        promise.reject("ERR_DELETE_FAVORITE_MEDIA_CLEANUP", "Favorite deleted but its media could not be removed", error)
       } catch {
         RecordingStorageFailure.report(operation: "favorite_delete", category: "write_failed", error: error)
         promise.reject("ERR_DELETE_FAVORITE", "Favorite could not be deleted", error)
@@ -1293,10 +1306,18 @@ public class VescapeCoreModule: Module {
       let latitude = settings["lastGpsLatitude"] as? Double
       let longitude = settings["lastGpsLongitude"] as? Double
       Task {
-        let countryCode: String? = if let latitude, let longitude {
+        let resolution: LegalPolicyResolution = if let latitude, let longitude {
           await self.legalPolicyResolver.resolve(latitude: latitude, longitude: longitude)
         } else {
-          nil
+          .resolved(nil)
+        }
+        if case .cancelled = resolution {
+          promise.reject("LEGAL_POLICY_CANCELLED", "Legal Policy refresh was cancelled")
+          return
+        }
+        guard case .resolved(let countryCode) = resolution else {
+          promise.reject("LEGAL_POLICY_UNAVAILABLE", "Could not resolve Legal Policy")
+          return
         }
         do {
           try self.appData.updateLegalPolicy(jurisdictionCode: countryCode)

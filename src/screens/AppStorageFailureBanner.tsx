@@ -7,16 +7,16 @@ import { useSettingsStore } from '@/modules/settings/store/settingsStore'
 
 export function AppStorageFailureBanner({ top }: { top: number }) {
   const failure = useBleStore((state) => state.recordingFailure)
-  const settingsError = useSettingsStore((state) => state.loadError)
+  const settingsError = useSettingsStore((state) => state.loadError ?? state.writeError)
   if (!failure && !settingsError) return null
 
-  const message =
-    settingsError ??
-    (failure?.kind === 'full_disk'
+  const message = failure
+    ? failure.kind === 'full_disk'
       ? 'Recording stopped. Free storage, then restart Vescape.'
       : failure?.storageUnavailable
         ? 'App storage is unavailable. Restart Vescape before using storage features.'
-        : 'Recording stopped because it could not be saved. Restart Vescape before recording again.')
+        : 'Recording stopped because it could not be saved. Restart Vescape before recording again.'
+    : (settingsError ?? '')
 
   return (
     <View pointerEvents="none" style={[styles.container, { top }]} testID="storage-failure-banner">

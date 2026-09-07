@@ -55,7 +55,9 @@ enum DatabaseBackupManager {
     let stamp = utcStamp()
     let sqliteExport = exportDir.appendingPathComponent("vescape-\(stamp).sqlite")
     let zipExport = exportDir.appendingPathComponent("vesc-db-backup-\(stamp).zip")
+    // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
     try? fm.removeItem(at: sqliteExport)
+    // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
     try? fm.removeItem(at: zipExport)
 
     // VACUUM INTO produces a clean, consistent single-file snapshot (no WAL sidecars).
@@ -76,6 +78,7 @@ enum DatabaseBackupManager {
     let manifestData = try manifest(dbSizeBytes: Int64(dbData.count), sourceURL: dbURL)
     let zipData = DatabaseBackupArchive.archive(database: dbData, manifest: manifestData)
     try zipData.write(to: zipExport, options: .atomic)
+    // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
     try? fm.removeItem(at: sqliteExport)
 
     return [
@@ -91,6 +94,7 @@ enum DatabaseBackupManager {
     let zipData = try Data(contentsOf: sourceURL)
     let workDir = fm.temporaryDirectory.appendingPathComponent("db-restore-\(UUID().uuidString)", isDirectory: true)
     try fm.createDirectory(at: workDir, withIntermediateDirectories: true)
+    // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
     defer { try? fm.removeItem(at: workDir) }
     let staged = try stageBackupArchive(zipData, in: workDir)
 
@@ -128,6 +132,7 @@ enum DatabaseBackupManager {
 
   private static func validateManifest(_ data: Data) throws -> BackupSchema {
     guard
+      // intentional-suppression: temporary-file cleanup is best effort and invalid backup is returned explicitly
       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else { throw BackupError.invalidBackup("Unreadable manifest") }
     guard (object["format"] as? String) == "vesc-db-backup" else {

@@ -2,12 +2,17 @@ package expo.modules.vescapecore.api
 
 import expo.modules.vescapecore.auth.DeviceCredential
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
 
 /**
  * Credential attachment, the 401 policy and the retry rule — the parts every feature client
@@ -124,6 +129,40 @@ class VescapeApiTest {
     val transport = FakeTransport(status(401))
     api(transport, stored = null).text(auth = AuthMode.Optional)
 
+    assertEquals(0, rejections)
+  }
+
+  @Test
+  fun `explicit bearer unauthorized does not reject the stored credential`() {
+    val result = api(FakeTransport(status(401))).text(auth = AuthMode.Bearer("candidate-token"))
+
+    assertEquals(ApiResult.Unauthorized, result)
+    assertEquals(0, rejections)
+  }
+
+  @Test(expected = CancellationException::class)
+  fun `cancellation stops without retry`() {
+    val transport = FakeTransport({ throw CancellationException("cancelled") })
+
+    api(transport).text()
+  }
+
+  @Test fun `cancellation while transport is pending ignores a later unauthorized response`() = runBlocking {
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val transport = object : ApiTransport {
+      override fun execute(request: ApiRequest): ApiResponse {
+        entered.countDown()
+        release.await()
+        return ApiResponse(401, "")
+      }
+    }
+    val call = async(Dispatchers.Default) { api(transport).request(HttpMethod.GET, "/map-points") { it } }
+    entered.await()
+    call.cancel()
+    release.countDown()
+
+    assertThrows(CancellationException::class.java) { runBlocking { call.await() } }
     assertEquals(0, rejections)
   }
 

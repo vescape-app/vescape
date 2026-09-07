@@ -52,7 +52,8 @@ let syncQueue: Promise<void> = Promise.resolve()
 
 function enqueue(task: () => Promise<void>): Promise<void> {
   const run = syncQueue.then(task)
-  syncQueue = run.catch(() => undefined)
+  // intentional-suppression: Alerts store error is rendered by the active form or list
+  syncQueue = run.catch(() => undefined) // Returned run still rejects; this only heals the queue tail.
   return run
 }
 

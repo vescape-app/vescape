@@ -6,6 +6,7 @@ import {
   placeSelectionFromFeatures,
   type MapSelection,
 } from '@/modules/map/lib/mapSelection'
+import { reportUnexpectedError } from '@/config/sentry'
 
 const SELECTABLE_BASE_MAP_LAYER_IDS = [
   'poi-label',
@@ -95,7 +96,8 @@ export function useMapPressHandlers({
               fallbackSelection,
           )
         })
-        .catch(() => {
+        .catch((error: unknown) => {
+          reportUnexpectedError(error, 'map_feature_query')
           onMapPress(fallbackSelection)
         })
     },

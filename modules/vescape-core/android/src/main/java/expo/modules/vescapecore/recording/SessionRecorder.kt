@@ -12,7 +12,12 @@ import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.io.FileWriter
+import java.io.IOException
 import java.io.InputStream
+import java.io.Writer
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
+import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 
 /**
  * Lines are appended from several threads — BLE chunks arrive on the GATT callback thread, phone
@@ -22,13 +27,21 @@ import java.io.InputStream
  *
  * @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `SessionRecorder`
  */
-internal class SessionRecorder(private val boardConfig: SessionConfig, val file: File) {
+internal class SessionRecorder(
+    private val boardConfig: SessionConfig,
+    val file: File,
+    private val writer: Writer = FileWriter(file, false),
+    private val reportWriteFailure: (Exception) -> Unit = { error ->
+        Log.w(VESC_SESSION_TAG, "Recording write failed: ${error.message}")
+        UnexpectedNativeError.report("debug_recording_append", "file_write_failed", error)
+    },
+) {
     constructor(context: Context, boardConfig: SessionConfig) :
         this(boardConfig, DebugRecordingStore(context).createFile(boardConfig.deviceName))
 
     private val startedAt = System.currentTimeMillis()
     private val writeLock = Any()
-    private val writer: FileWriter = FileWriter(file, false)
+    private var failed = false
 
     fun start() {
         write(
@@ -88,6 +101,7 @@ internal class SessionRecorder(private val boardConfig: SessionConfig, val file:
             }
         } catch (e: Exception) {
             Log.w(VESC_SESSION_TAG, "Recording close failed: ${e.message}")
+            UnexpectedNativeError.report("debug_recording_close", "file_close_failed", e)
         }
     }
 
@@ -95,13 +109,15 @@ internal class SessionRecorder(private val boardConfig: SessionConfig, val file:
 
     private fun write(json: JSONObject) {
         val line = json.toString()
-        try {
-            synchronized(writeLock) {
+        synchronized(writeLock) {
+            if (failed) return
+            try {
                 writer.append(line).append('\n')
                 writer.flush()
+            } catch (e: Exception) {
+                failed = true
+                reportWriteFailure(e)
             }
-        } catch (e: Exception) {
-            Log.w(VESC_SESSION_TAG, "Recording write failed: ${e.message}")
         }
     }
 }
@@ -109,27 +125,30 @@ internal class SessionRecorder(private val boardConfig: SessionConfig, val file:
 // @parity /modules/vescape-core/ios/recording/SessionRecorder.swift `DebugRecordingStore`
 internal class DebugRecordingStore(private val context: Context) {
     private val dir: File
-        get() = File(context.filesDir, "vesc-recordings").also { it.mkdirs() }
+        get() = File(context.filesDir, "vesc-recordings").also {
+            if (!it.isDirectory && !it.mkdirs()) throw IOException("Could not create debug recording directory")
+        }
 
     fun createFile(deviceName: String): File {
         val safeName = deviceName.replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-').ifBlank { "vesc-board" }
         return File(dir, "${System.currentTimeMillis()}-$safeName.jsonl")
     }
 
-    fun list(): List<Map<String, Any>> =
-        dir.listFiles()
-            ?.asSequence()
-            ?.filter { it.isFile && it.extension == "jsonl" }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map {
-                mapOf(
-                    "name" to it.name,
-                    "createdAt" to it.lastModified(),
-                    "sizeBytes" to it.length(),
+    fun list(): List<Map<String, Any>> {
+        val files = dir.listFiles() ?: throw IOException("Could not list debug recordings")
+        return files.asSequence()
+            .filter { it.isFile && it.extension == "jsonl" }
+            .map { it to Files.readAttributes(it.toPath(), BasicFileAttributes::class.java) }
+            .sortedByDescending { it.second.lastModifiedTime().toMillis() }
+            .map { (file, attributes) ->
+                mapOf<String, Any>(
+                    "name" to file.name,
+                    "createdAt" to attributes.lastModifiedTime().toMillis(),
+                    "sizeBytes" to attributes.size(),
                 )
             }
-            ?.toList()
-            ?: emptyList()
+            .toList()
+    }
 
     /** Stream a stored recording's `.jsonl` content, for replay (see `ReplayRecordings`). */
     fun openStream(name: String): InputStream = resolve(name).inputStream()
@@ -148,18 +167,20 @@ internal class DebugRecordingStore(private val context: Context) {
     fun export(name: String): Map<String, Any> {
         val source = resolve(name)
 
-        val exportDir = File(context.cacheDir, "debug-recording-exports").also { it.mkdirs() }
+        val exportDir = File(context.cacheDir, "debug-recording-exports").also {
+            if (!it.isDirectory && !it.mkdirs()) throw IOException("Could not create debug export directory")
+        }
         val export = File(exportDir, name)
         source.copyTo(export, overwrite = true)
 
         return mapOf(
             "uri" to Uri.fromFile(export).toString(),
             "name" to export.name,
-            "sizeBytes" to export.length(),
+            "sizeBytes" to Files.size(export.toPath()),
         )
     }
 
     fun delete(name: String) {
-        resolve(name).delete()
+        if (!resolve(name).delete()) throw IOException("Could not delete debug recording")
     }
 }

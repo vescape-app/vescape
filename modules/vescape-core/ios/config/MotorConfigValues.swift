@@ -55,9 +55,15 @@ struct MotorConfigValues {
     ]
   }
 
-  func valuesJson() -> String {
-    guard let data = try? JSONSerialization.data(withJSONObject: values) else { return "{}" }
-    return String(data: data, encoding: .utf8) ?? "{}"
+  func valuesJson() throws -> String {
+    guard JSONSerialization.isValidJSONObject(values) else {
+      throw CocoaError(.propertyListWriteInvalid)
+    }
+    let data = try JSONSerialization.data(withJSONObject: values)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
+    return json
   }
 
   /// Rebuild a cached object. Always lastKnown.

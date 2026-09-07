@@ -60,6 +60,7 @@ internal final class ReplayTransport: SessionTransport {
       guard let self else { return }
       guard
         let url = ReplayRecordings.url(name: self.recordingName),
+        // intentional-suppression: caller emits REPLAY_LOAD_FAILED
         let jsonl = try? String(contentsOf: url, encoding: .utf8)
       else {
         DispatchQueue.main.async { [weak self] in

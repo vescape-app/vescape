@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react-native'
+import { reportUiError } from 'vescape-core'
 
 /**
  * Crash and error monitoring. Captures native crashes (Kotlin/Swift, signal
@@ -34,4 +35,37 @@ export const initSentry = () => {
     // @parity /plugins/withSentryNativeInit.ts `sentryStartSwift`
     ...({ enableMetricKit: true } as object),
   })
+}
+
+const reportedUnexpectedSources = new Set<string>()
+let unexpectedUiReporter = reportUiError
+
+/** Report an unexpected JS/UI integration failure to operational and on-device diagnostics. */
+export function reportUnexpectedError(error: unknown, source: string): void {
+  if (reportedUnexpectedSources.has(source)) return
+  reportedUnexpectedSources.add(source)
+  const knownNames = new Set([
+    'Error',
+    'TypeError',
+    'RangeError',
+    'SyntaxError',
+    'ReferenceError',
+    'URIError',
+  ])
+  const errorName = error instanceof Error && knownNames.has(error.name) ? error.name : 'Error'
+  Sentry.captureMessage('Unexpected UI operation failure', {
+    level: 'error',
+    tags: { source, errorName },
+    fingerprint: ['unexpected-ui-operation', source, errorName],
+  })
+  unexpectedUiReporter(`Unexpected UI operation failure (${errorName})`, source, null)
+}
+
+export function resetUnexpectedErrorReportsForTests(): void {
+  reportedUnexpectedSources.clear()
+  unexpectedUiReporter = reportUiError
+}
+
+export function setUnexpectedUiReporterForTests(reporter: typeof reportUiError): void {
+  unexpectedUiReporter = reporter
 }

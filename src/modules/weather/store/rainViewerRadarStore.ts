@@ -17,6 +17,7 @@ interface RainViewerRadarState {
   transitionMode: RainViewerRadarTransitionMode
   loading: boolean
   fetchedAt: number | null
+  error: string | null
 }
 
 interface RainViewerRadarActions {
@@ -83,21 +84,28 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
     transitionMode: 'auto',
     loading: false,
     fetchedAt: null,
+    error: null,
 
     async fetch(force = false) {
       const state = get()
       if (!force && state.fetchedAt && Date.now() - state.fetchedAt < CACHE_MS) return
       if (state.loading) return
 
-      set({ loading: true })
+      set({ loading: true, error: null })
       try {
         const res = await globalThis.fetch(RAINVIEWER_META_URL)
-        if (!res.ok) return
+        if (!res.ok) {
+          set({ error: 'Radar is temporarily unavailable.' })
+          return
+        }
 
         const meta = (await res.json()) as RainViewerMetaResponse
         const host = meta.host ?? null
         const frames = meta.radar?.past ?? []
-        if (!host || frames.length === 0) return
+        if (!host || frames.length === 0) {
+          set({ error: 'Radar data is temporarily unavailable.' })
+          return
+        }
 
         set((current) => {
           const selectedFrameIndex =
@@ -110,10 +118,11 @@ export const useRainViewerRadarStore = create<RainViewerRadarState & RainViewerR
             frames,
             selectedFrameIndex,
             fetchedAt: Date.now(),
+            error: null,
           }
         })
       } catch {
-        // network errors ignored in prototype
+        set({ error: 'Radar could not be refreshed. Check your connection.' })
       } finally {
         set({ loading: false })
       }

@@ -34,11 +34,15 @@ internal class WatchMirrorLauncher(
 
     fun launch() {
         scope.launch(Dispatchers.IO) {
-            val nodes = runCatching {
+            val nodes = try {
                 Tasks.await(
                     capabilityClient.getCapability(WATCH_MIRROR_CAPABILITY, CapabilityClient.FILTER_REACHABLE),
                 ).nodes
-            }.getOrNull().orEmpty()
+            } catch (error: Exception) {
+                Log.w(VESC_SESSION_TAG, "Watch mirror capability query failed")
+                record("watch_mirror_launch_query_failed", emptyMap())
+                return@launch
+            }
             if (nodes.isEmpty()) {
                 Log.d(VESC_SESSION_TAG, "Watch mirror launch skipped: no capable node")
                 record("watch_mirror_launch_skipped", emptyMap())
@@ -51,6 +55,7 @@ internal class WatchMirrorLauncher(
             for (node in nodes) {
                 val future = remoteActivityHelper.startRemoteActivity(intent, node.id)
                 future.addListener({
+                    // intentional-suppression: future failure is reported by onFailure
                     runCatching { future.get() }
                         .onSuccess {
                             Log.d(VESC_SESSION_TAG, "Watch mirror launched node=${node.id}")

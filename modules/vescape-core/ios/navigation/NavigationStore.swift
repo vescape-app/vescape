@@ -33,6 +33,7 @@ protocol NavigationStore {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/navigation/NavigationStore.kt `NavigationJson`
 enum NavigationJson {
+  enum DecodeError: Error { case malformed }
   private static let targetLatitudeKey = "targetLatitude"
   private static let targetLongitudeKey = "targetLongitude"
   private static let profileKey = "profile"
@@ -42,7 +43,7 @@ enum NavigationJson {
   private static let distanceMetersKey = "distanceMeters"
   private static let durationSecondsKey = "durationSeconds"
 
-  static func encode(_ navigation: Navigation) -> String? {
+  static func encode(_ navigation: Navigation) throws -> String {
     let stored: [String: Any] = [
       targetLatitudeKey: navigation.targetLatitude,
       targetLongitudeKey: navigation.targetLongitude,
@@ -53,8 +54,14 @@ enum NavigationJson {
       durationSecondsKey: navigation.durationSeconds,
       geometryKey: Polyline6.encode(navigation.points),
     ]
-    guard let data = try? JSONSerialization.data(withJSONObject: stored) else { return nil }
-    return String(data: data, encoding: .utf8)
+    guard JSONSerialization.isValidJSONObject(stored) else {
+      throw CocoaError(.propertyListWriteInvalid)
+    }
+    let data = try JSONSerialization.data(withJSONObject: stored)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
+    return json
   }
 
   /// Parses `json`, or returns `nil` when it is malformed. A failed Navigation is stored and
@@ -64,15 +71,15 @@ enum NavigationJson {
   /// A `ready` row with no points is a contradiction and is dropped — the rider can set the pin
   /// again. Rows written before the status existed always carried points, so their missing key
   /// defaults to `ready`.
-  static func decode(_ json: String) -> Navigation? {
+  static func decode(_ json: String) throws -> Navigation? {
     guard
       let data = json.data(using: .utf8),
-      let stored = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+      let stored = try JSONSerialization.jsonObject(with: data) as? [String: Any],
       let targetLatitude = stored[targetLatitudeKey] as? Double,
       let targetLongitude = stored[targetLongitudeKey] as? Double,
       let computedAtMs = (stored[computedAtMsKey] as? NSNumber)?.int64Value,
       let geometry = stored[geometryKey] as? String
-    else { return nil }
+    else { throw DecodeError.malformed }
     let profile = NavigationProfile.fromWire(stored[profileKey] as? String)
     let status = (stored[statusKey] as? String).flatMap(NavigationStatus.init(rawValue:)) ?? .ready
     let points = Polyline6.decode(geometry)
@@ -101,12 +108,25 @@ struct AppDataNavigationStore: NavigationStore {
   private let repository = AppDataRepository.shared
 
   func load() async -> Navigation? {
-    do { return try repository.getNavigationPath().flatMap(NavigationJson.decode) }
+    let stored: String?
+    do { stored = try repository.getNavigationPath() }
     catch { RecordingStorageFailure.reportRead(operation: "navigation_path_read", error: error); return nil }
+    guard let stored else { return nil }
+    do { return try NavigationJson.decode(stored) }
+    catch {
+      UnexpectedNativeError.report(operation: "navigation_path_decode", category: "serialization", error: error)
+      return nil
+    }
   }
 
   func save(_ navigation: Navigation?) async {
-    do { try repository.setNavigationPath(navigation.flatMap(NavigationJson.encode)) }
+    let encoded: String?
+    do { encoded = try navigation.map(NavigationJson.encode) }
+    catch {
+      UnexpectedNativeError.report(operation: "navigation_path_encode", category: "serialization", error: error)
+      return
+    }
+    do { try repository.setNavigationPath(encoded) }
     catch { RecordingStorageFailure.report(operation: "navigation_path_save", category: "write_failed", error: error) }
   }
 

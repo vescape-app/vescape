@@ -397,7 +397,7 @@ internal final class TelemetryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `deleteFavorite`
   func deleteFavorite(_ id: String) throws -> Bool {
     let deleted = try FavoriteStore.shared.delete(id)
-    if deleted { FavoriteMediaStore.shared.deleteDirectory(favoriteId: id) }
+    if deleted { try FavoriteMediaStore.shared.deleteDirectory(favoriteId: id) }
     return deleted
   }
 
@@ -609,12 +609,15 @@ internal final class TelemetryRepository {
       switch value {
       case let value as String: sanitized[key] = value
       // `Bool` bridges to `NSNumber` (as a CFBoolean) so booleans still serialize as true/false.
-      case let value as NSNumber: sanitized[key] = value
+      case let value as NSNumber:
+        let number = value.doubleValue
+        if CFGetTypeID(value) == CFBooleanGetTypeID() || number.isFinite { sanitized[key] = value }
       case nil, is NSNull: continue
       case let value?: sanitized[key] = String(describing: value)
       }
     }
     guard
+      // intentional-suppression: sanitized diagnostic encoding falls back locally to avoid recursive reporting
       let data = try? JSONSerialization.data(withJSONObject: sanitized),
       let json = String(data: data, encoding: .utf8)
     else { return "{}" }

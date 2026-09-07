@@ -120,11 +120,14 @@ struct BoardConfigValues {
 
   /// Decoded values as the JSON stored in the per-Board cache row. Bools serialize as `true` /
   /// `false` so the restored map keeps the same types.
-  func valuesJson() -> String {
-    guard
-      let data = try? JSONSerialization.data(withJSONObject: values),
-      let json = String(data: data, encoding: .utf8)
-    else { return "{}" }
+  func valuesJson() throws -> String {
+    guard JSONSerialization.isValidJSONObject(values) else {
+      throw CocoaError(.propertyListWriteInvalid)
+    }
+    let data = try JSONSerialization.data(withJSONObject: values)
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
     return json
   }
 

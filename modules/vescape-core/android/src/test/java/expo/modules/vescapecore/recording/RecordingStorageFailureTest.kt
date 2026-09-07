@@ -4,6 +4,8 @@ import android.database.sqlite.SQLiteDiskIOException
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteFullException
 import expo.modules.vescapecore.telemetry.RecordingWriteGate
+import expo.modules.vescapecore.diagnostics.NativeFailureReport
+import expo.modules.vescapecore.diagnostics.NativeFailureReporter
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -38,20 +40,20 @@ class RecordingStorageFailureTest {
   }
 
   @Test fun `report is sanitized and emitted once per episode`() {
-    val reports = mutableListOf<RecordingFailureReport>()
-    val reporter = RecordingFailureReporter(reports::add)
+    val reports = mutableListOf<NativeFailureReport>()
+    val reporter = NativeFailureReporter(reports::add)
     reporter.report("recording_commit", "full_disk", SQLiteFullException("private SQL and args"))
     reporter.report("recording_commit", "full_disk", SQLiteFullException("again"))
     assertEquals(1, reports.size)
     assertEquals(
-      RecordingFailureReport("recording_commit", "full_disk", "SQLiteFullException"),
+      NativeFailureReport("recording_commit", "full_disk", "SQLiteFullException", null),
       reports.single(),
     )
   }
 
   @Test fun `different read operations each report once without recording labels`() {
-    val reports = mutableListOf<RecordingFailureReport>()
-    val reporter = RecordingFailureReporter(reports::add)
+    val reports = mutableListOf<NativeFailureReport>()
+    val reporter = NativeFailureReporter(reports::add)
     reporter.report("history_page_read", "query_failed", SQLiteException("private"))
     reporter.report("history_page_read", "query_failed", SQLiteException("again"))
     reporter.report("profile_stats_read", "query_failed", SQLiteException("private"))
@@ -83,8 +85,8 @@ class RecordingStorageFailureTest {
 
   @Test fun `reporter calls sink outside dedup monitor`() {
     val operations = mutableListOf<String>()
-    lateinit var reporter: RecordingFailureReporter
-    reporter = RecordingFailureReporter { report ->
+    lateinit var reporter: NativeFailureReporter
+    reporter = NativeFailureReporter { report ->
       operations += report.operation
       if (report.operation == "first") reporter.report("second", "query_failed", SQLiteException("nested"))
     }
@@ -98,6 +100,19 @@ class RecordingStorageFailureTest {
     state.record(RecordingStorageFailureKind.StorageUnavailable)
     assertEquals(false, state.clearAfterSuccessfulStartup(probeGeneration))
     assertEquals(RecordingStorageFailureKind.StorageUnavailable, state.current)
+  }
+
+  @Test fun `startup reporter deduplicates within a process and resets on restart`() {
+    val reports = mutableListOf<NativeFailureReport>()
+    repeat(2) {
+      val reporter = NativeFailureReporter(reports::add)
+      val error = SQLiteException("startup failed")
+      val kind = startupFailureKind(RecordingStorageFailure.classify(error))
+      reporter.report("storage_startup_probe", kind.wireValue, error)
+      reporter.report("storage_startup_probe", kind.wireValue, error)
+    }
+    assertEquals(listOf("storage_startup_probe", "storage_startup_probe"), reports.map { it.operation })
+    assertEquals(listOf("storage_unavailable", "storage_unavailable"), reports.map { it.category })
   }
 
   @Test fun `disconnected outage emits once and rejects next storage intent without a database read`() {

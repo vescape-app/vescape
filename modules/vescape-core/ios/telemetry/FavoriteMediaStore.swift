@@ -63,6 +63,7 @@ enum FavoriteMediaStoreError: Error {
   case invalidSource
   case copyFailed
   case manifestWriteFailed
+  case cleanupFailed
 }
 
 /// Native Favorite Media import and reconciliation (ADR 0030).
@@ -88,13 +89,26 @@ struct FavoriteMediaStore {
   }
 
   static var defaultRootURL: URL {
-    let support = (try? FileManager.default.url(
+    do {
+      return try FileManager.default.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
       appropriateFor: nil,
       create: true
-    )) ?? FileManager.default.temporaryDirectory
-    return support.appendingPathComponent("favoriteMedia", isDirectory: true)
+      ).appendingPathComponent("favoriteMedia", isDirectory: true)
+    } catch {
+      #if canImport(Sentry)
+      UnexpectedNativeError.report(
+        operation: "favorite_media_root_resolve",
+        category: "filesystem",
+        error: error
+      )
+      #endif
+      // This is the documented user-domain location. Avoid temporary storage, which the OS may
+      // evict while the manifest still says the favorite owns media.
+      return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        .appendingPathComponent("Library/Application Support/favoriteMedia", isDirectory: true)
+    }
   }
 
   static func createTables(_ db: Database) throws {
@@ -158,6 +172,7 @@ struct FavoriteMediaStore {
       copied = try copyAndHash(from: source, to: temporary)
       try FileManager.default.moveItem(at: temporary, to: destination)
     } catch {
+      // intentional-suppression: media cleanup and reconciliation are retryable best effort operations
       try? FileManager.default.removeItem(at: temporary)
       throw FavoriteMediaStoreError.copyFailed
     }
@@ -177,6 +192,7 @@ struct FavoriteMediaStore {
         try FavoriteMediaRecord(completed).insert(db)
       }
     } catch {
+      // intentional-suppression: media cleanup and reconciliation are retryable best effort operations
       try? FileManager.default.removeItem(at: destination)
       throw FavoriteMediaStoreError.manifestWriteFailed
     }
@@ -189,8 +205,11 @@ struct FavoriteMediaStore {
       .appendingPathExtension(Self.extensionForMimeType(media.mimeType))
   }
 
-  func deleteDirectory(favoriteId: String) {
-    try? FileManager.default.removeItem(at: favoriteDirectory(favoriteId))
+  func deleteDirectory(favoriteId: String) throws {
+    let directory = favoriteDirectory(favoriteId)
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+    do { try FileManager.default.removeItem(at: directory) }
+    catch { throw FavoriteMediaStoreError.cleanupFailed }
   }
 
   /// Repair cross-store disagreement on the normal Favorites read path: remove manifest rows whose
@@ -205,11 +224,13 @@ struct FavoriteMediaStore {
     }
     let live = Set(favoriteIds)
     for favoriteId in favoriteIds { try reconcile(favoriteId: favoriteId) }
+    // intentional-suppression: media cleanup and reconciliation are retryable best effort operations
     guard let directories = try? FileManager.default.contentsOfDirectory(
       at: rootURL,
       includingPropertiesForKeys: [.isDirectoryKey]
     ) else { return }
     for directory in directories where !live.contains(directory.lastPathComponent) {
+      // intentional-suppression: media cleanup and reconciliation are retryable best effort operations
       try? FileManager.default.removeItem(at: directory)
     }
   }
@@ -239,11 +260,13 @@ struct FavoriteMediaStore {
         }
       }
     }
+    // intentional-suppression: media cleanup and reconciliation are retryable best effort operations
     guard let entries = try? fm.contentsOfDirectory(
       at: directory,
       includingPropertiesForKeys: nil
     ) else { return }
     for entry in entries where entry.lastPathComponent.hasPrefix(".") || !expected.contains(entry.lastPathComponent) {
+      // intentional-suppression: media cleanup and reconciliation are retryable best effort operations
       try? fm.removeItem(at: entry)
     }
   }

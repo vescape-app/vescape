@@ -88,6 +88,7 @@ beforeEach(async () => {
   useSettingsStore.setState({
     loaded: false,
     loadError: null,
+    writeError: null,
     companionPresenceBoards: [],
     load: useSettingsStore.getInitialState().load,
   })
@@ -126,6 +127,17 @@ test('failed settings read does not mark defaults as loaded', async () => {
   )
   expect(updateSetting).not.toHaveBeenCalled()
   expect(addCompanionPresenceBoard).not.toHaveBeenCalled()
+})
+
+test('failed settings write stays rejected and exposes a visible error', async () => {
+  const { useSettingsStore } = await import('@/modules/settings/store/settingsStore')
+  await useSettingsStore.getState().load()
+  updateSetting.mockRejectedValueOnce(new Error('disk failed'))
+
+  await expect(useSettingsStore.getState().set('themeMode', 'dark')).rejects.toThrow('disk failed')
+
+  expect(useSettingsStore.getState().themeMode).not.toBe('dark')
+  expect(useSettingsStore.getState().writeError).toBe('Setting could not be saved. Try again.')
 })
 
 test('failed reload revokes mutation access while preserving loaded values', async () => {

@@ -130,7 +130,8 @@ struct BoardConfigStore {
       let boardId = values.boardId, !boardId.isEmpty,
       let refloatBaseVersion = values.refloatBaseVersion, !refloatBaseVersion.isEmpty,
       let writer = resolveWriter() else { throw ConfigStorageError.databaseNotOpen }
-    try writer.write { db in try BoardConfigRecord(boardId: boardId, refloatBaseVersion: refloatBaseVersion, valuesJson: values.valuesJson(), capturedAt: values.capturedAtMs).save(db) }
+    let json = try values.valuesJson()
+    try writer.write { db in try BoardConfigRecord(boardId: boardId, refloatBaseVersion: refloatBaseVersion, valuesJson: json, capturedAt: values.capturedAtMs).save(db) }
   }
 
   /// Teach the config-change baseline about fields a runtime command changed on the board, merging
@@ -156,7 +157,7 @@ struct BoardConfigStore {
       try db.execute(
         sql:
           "UPDATE board_config_values SET values_json = ? WHERE board_id = ? AND refloat_base_version = ?",
-        arguments: [stored.withValues(merged).valuesJson(), boardId, refloatBaseVersion]
+        arguments: [try stored.withValues(merged).valuesJson(), boardId, refloatBaseVersion]
       )
     }
   }
@@ -183,7 +184,7 @@ struct BoardConfigStore {
           try ConfigNoticeRecord(boardId: boardId, detectedAt: values.capturedAtMs, diffsJson: notice!.diffsJson()).save(db)
         }
       }
-      try BoardConfigRecord(boardId: boardId, refloatBaseVersion: base, valuesJson: values.valuesJson(), capturedAt: values.capturedAtMs).save(db)
+      try BoardConfigRecord(boardId: boardId, refloatBaseVersion: base, valuesJson: try values.valuesJson(), capturedAt: values.capturedAtMs).save(db)
       committed = true
     }
     if committed, let notice { Self.onNoticeChanged?(notice) }

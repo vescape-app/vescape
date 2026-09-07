@@ -145,6 +145,7 @@ func parseOpenMeteoWeather(
   longitude: Double,
   fetchedAtMs: Int64
 ) -> Weather? {
+  // intentional-suppression: malformed remote weather produces an explicit unavailable result
   guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
         let current = root["current"] as? [String: Any],
         let temperature = current["temperature_2m"] as? Double,

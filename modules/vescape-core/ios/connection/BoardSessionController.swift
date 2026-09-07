@@ -226,7 +226,7 @@ internal final class BoardSessionController: VescGattListener {
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
   /// when observing starts and on zone CRUD; reuses the same geometry as Ride Recording
   /// suppression (ADR-0009 / ADR-0020).
-  private var groupRidePrivacyZones: [PrivacyZoneEntity] = []
+  private var groupRidePrivacy = PrivacyZoneReadState()
 
   /// The Rider's shared map target (their direction Map Point), cached for presence egress.
   /// Refreshed when observing starts and on direction-point CRUD.
@@ -404,6 +404,7 @@ internal final class BoardSessionController: VescGattListener {
   ) {
     guard
       let url = ReplayRecordings.url(name: recordingName),
+      // intentional-suppression: replay failure is emitted and debug metadata is optional
       let jsonl = try? String(contentsOf: url, encoding: .utf8)
     else {
       onError("REPLAY_NOT_FOUND", "Debug recording not found: \(recordingName)")
@@ -411,6 +412,7 @@ internal final class BoardSessionController: VescGattListener {
     }
     let meta = jsonl.split(separator: "\n").first
       .flatMap { $0.data(using: .utf8) }
+      // intentional-suppression: replay failure is emitted and debug metadata is optional
       .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
     let baseName = recordingName.hasSuffix(".jsonl") ? String(recordingName.dropLast(6)) : recordingName
     let replayBoardId = "replay:" + baseName
@@ -703,6 +705,7 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `latestRiderPresence`
   private func latestRiderPresence() -> RiderPresence? {
+    guard groupRidePrivacy.allowsLocationEgress else { return nil }
     guard let location = locationTracker.latestPreciseLocation ?? locationTracker.latestLocation else { return nil }
     // Privacy Zone egress gate (issue #144): freeze the group dot while inside a zone. Local GPS
     // keeps ticking; only the broadcast is suppressed, resuming automatically on exit.
@@ -732,19 +735,23 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func isInsidePrivacyZone(_ location: TelemetryLocationCapture) -> Bool {
-    guard !groupRidePrivacyZones.isEmpty else { return false }
+    guard !groupRidePrivacy.zones.isEmpty else { return false }
     return isInsideAnyPrivacyZone(
       latitudeE7: Int((location.latitude * 10_000_000.0).rounded()),
       longitudeE7: Int((location.longitude * 10_000_000.0).rounded()),
-      zones: groupRidePrivacyZones
+      zones: groupRidePrivacy.zones
     )
   }
 
   /// Refresh the Group Ride presence zone gate from native storage (observe start + zone CRUD).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `loadPrivacyZones`
   func loadPrivacyZones() {
-    do { groupRidePrivacyZones = try appData.getEnabledPrivacyZoneEntities() }
-    catch { RecordingStorageFailure.reportRead(operation: "group_ride_privacy_zones_read", error: error) }
+    do {
+      try groupRidePrivacy.reload { try appData.getEnabledPrivacyZoneEntities() }
+    }
+    catch {
+      RecordingStorageFailure.reportRead(operation: "group_ride_privacy_zones_read", error: error)
+    }
   }
 
   /// Refresh the shared Group Ride target from native storage (observe start + direction-point
@@ -1741,12 +1748,17 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `evaluateCellSpread`
   private func evaluateCellSpread(_ bms: BmsTelemetry) {
     guard boardWarningsEnabled, let boardId = config?.appBoardId else { return }
-    guard let finding = cellSpreadDetector.onFrame(
-      cellVoltages: bms.cellVoltages,
-      balancing: bms.balancing,
-      vCharge: bms.vCharge,
-      atMs: bms.capturedAt
-    ) else { return }
+    let finding: CellSpreadFinding
+    do {
+      guard let value = try cellSpreadDetector.onFrame(
+        cellVoltages: bms.cellVoltages, balancing: bms.balancing,
+        vCharge: bms.vCharge, atMs: bms.capturedAt
+      ) else { return }
+      finding = value
+    } catch {
+      UnexpectedNativeError.report(operation: "cell_spread_payload_encode", category: "serialization", error: error)
+      return
+    }
     BoardWarningRegistry.shared.reportFinding(
       boardId: boardId,
       kind: BoardWarningKind.cellSpread,
@@ -1762,10 +1774,16 @@ internal final class BoardSessionController: VescGattListener {
   private func evaluateBatteryConfigMismatch(_ bms: BmsTelemetry) {
     guard boardWarningsEnabled, let boardId = config?.appBoardId else { return }
     let seriesCount = config?.batteryConfig?["seriesCount"] as? Int
-    guard let payloadJson = batteryConfigMismatchDetector.onFrame(
-      bmsCellCount: bms.cellVoltages.count,
-      configuredSeries: seriesCount
-    ) else { return }
+    let payloadJson: String
+    do {
+      guard let value = try batteryConfigMismatchDetector.onFrame(
+        bmsCellCount: bms.cellVoltages.count, configuredSeries: seriesCount
+      ) else { return }
+      payloadJson = value
+    } catch {
+      UnexpectedNativeError.report(operation: "battery_mismatch_payload_encode", category: "serialization", error: error)
+      return
+    }
     BoardWarningRegistry.shared.reportFinding(
       boardId: boardId,
       kind: BoardWarningKind.batteryConfigMismatch,
@@ -1819,7 +1837,12 @@ internal final class BoardSessionController: VescGattListener {
     guard boardWarningsEnabled, let boardId = config?.appBoardId else { return }
     let seriesCount = config?.batteryConfig?["seriesCount"] as? Int
     let perCellSupported = ConfigSafetyDetector.supportsPerCellVoltage(vescLiveFirmware)
-    let report = ConfigSafetyDetector.evaluate(values, seriesCount: seriesCount, perCell: perCellSupported)
+    let report: ConfigSafetyReport
+    do { report = try ConfigSafetyDetector.evaluate(values, seriesCount: seriesCount, perCell: perCellSupported) }
+    catch {
+      UnexpectedNativeError.report(operation: "config_safety_payload_encode", category: "serialization", error: error)
+      return
+    }
     for finding in report.findings {
       BoardWarningRegistry.shared.reportFinding(
         boardId: boardId,

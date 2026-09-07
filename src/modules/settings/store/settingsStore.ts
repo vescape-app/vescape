@@ -64,6 +64,7 @@ const DEFAULTS: AppSettings = {
 interface SettingsState extends AppSettings {
   loaded: boolean
   loadError: string | null
+  writeError: string | null
   companionPresenceBoards: CompanionPresenceBoard[]
   load: () => Promise<void>
   set: <K extends Exclude<keyof AppSettings, 'legalPolicy'>>(
@@ -91,6 +92,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ...DEFAULTS,
   loaded: false,
   loadError: null,
+  writeError: null,
   companionPresenceBoards: [],
 
   async load() {
@@ -124,11 +126,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  async set(key, value) {
-    assertSettingsAvailable(get().loaded)
-    if (key === 'autoConnect' && value === false && get().companionPresenceEnabled) return
-    await updateSetting(key, value)
-    set({ [key]: value })
+  set(key, value) {
+    const operation = (async () => {
+      set({ writeError: null })
+      try {
+        assertSettingsAvailable(get().loaded)
+        if (key === 'autoConnect' && value === false && get().companionPresenceEnabled) return
+        await updateSetting(key, value)
+        set({ [key]: value })
+      } catch (error) {
+        set({ writeError: 'Setting could not be saved. Try again.' })
+        throw error
+      }
+    })()
+    // Settings controls are fire-and-forget; attach an observer while preserving rejection for awaiters.
+    // intentional-suppression: settings write error is rendered by AppStorageFailureBanner
+    void operation.catch(() => undefined) // Visible owner: writeError in AppStorageFailureBanner.
+    return operation
   },
 
   async setCompanionPresence(enabled) {

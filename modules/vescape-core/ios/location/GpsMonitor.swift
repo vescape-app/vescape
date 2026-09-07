@@ -284,11 +284,11 @@ internal final class GpsMonitor: NSObject, CLLocationManagerDelegate {
         return
       }
       guard stored == nil || stored is NSNull else { return }
-      let countryCode = await legalPolicyResolver.resolve(
+      let resolution = await legalPolicyResolver.resolve(
         latitude: location.coordinate.latitude,
         longitude: location.coordinate.longitude
       )
-      if let countryCode {
+      if case .resolved(let countryCode?) = resolution {
         do { try appData.updateLegalPolicy(jurisdictionCode: countryCode) }
         catch { RecordingStorageFailure.report(operation: "legal_policy_save", category: "write_failed", error: error) }
       }

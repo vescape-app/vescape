@@ -97,7 +97,10 @@ internal class FavoriteMediaStore(
   }
 
   fun deleteDirectory(favoriteId: String) {
-    favoriteDirectory(favoriteId).deleteRecursively()
+    val directory = favoriteDirectory(favoriteId)
+    if (directory.exists() && !directory.deleteRecursively()) {
+      throw FavoriteMediaCleanupException()
+    }
   }
 
   /** Repair manifest/filesystem disagreement on the normal Favorites read path. */
@@ -126,3 +129,5 @@ internal class FavoriteMediaStore(
     else -> if (mimeType.startsWith("video/")) "mp4" else "jpg"
   }
 }
+
+internal class FavoriteMediaCleanupException : Exception("Favorite Media cleanup failed")

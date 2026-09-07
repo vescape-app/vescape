@@ -50,9 +50,9 @@ extension TelemetryRepository {
       let overviewRows = overviewIndices.map { sampleRows[$0] }
       let overviewPercents = overviewIndices.map { percents[$0] }
       return mergeTelemetryPayload(
-        sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
+        try sampleColumns(sampleRows, batteryPercents: percents, boardNames: boardNames),
         [
-          "chartColumns": sampleColumns(
+          "chartColumns": try sampleColumns(
             overviewRows,
             batteryPercents: overviewPercents,
             boardNames: boardNames
@@ -84,7 +84,7 @@ internal func sampleColumns(
   _ rows: [Row],
   batteryPercents: [Double?],
   boardNames: [String: String]
-) -> [String: Any?] {
+) throws -> [String: Any?] {
   var data = Data(capacity: rows.count * SAMPLE_COLUMN_COUNT * MemoryLayout<Double>.size)
   var boardIds: [String?] = []
   var names: [String] = []
@@ -125,7 +125,7 @@ internal func sampleColumns(
     appendNullableDouble(&data, (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 })
   }
   return [
-    "boardColumns": (try? NativeArrayBuffer.copy(data: data)) ?? NativeArrayBuffer.allocate(size: 0),
+    "boardColumns": try NativeArrayBuffer.copy(data: data),
     "boardCount": rows.count,
     "boardIds": boardIds,
     "boardNames": names,

@@ -190,12 +190,14 @@ function serialize(samples: LaneSample[]): string {
 function decodeRide(): { t: number; telemetry: Telemetry }[] {
   const reassembler = new PacketReassembler()
   const decoded: { t: number; telemetry: Telemetry }[] = []
+  let malformedLines = 0
   for (const line of readFileSync(SOURCE, 'utf8').split('\n')) {
     if (!line) continue
     let record: { t?: number; kind?: string; direction?: string; base64?: string }
     try {
       record = JSON.parse(line)
     } catch {
+      malformedLines += 1
       continue
     }
     if (record.kind !== 'ble-chunk' || record.direction !== 'rx' || !record.base64) continue
@@ -205,6 +207,7 @@ function decodeRide(): { t: number; telemetry: Telemetry }[] {
       if (telemetry) decoded.push({ t: record.t ?? 0, telemetry })
     }
   }
+  if (malformedLines > 0) console.warn(`Skipped ${malformedLines} malformed capture lines.`)
   return decoded
 }
 

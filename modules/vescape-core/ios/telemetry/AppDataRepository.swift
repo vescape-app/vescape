@@ -104,11 +104,13 @@ final class AppDataRepository {
     let transport = linkSettings.first { $0.0 == "transport" }?.1 as? String
     let updatedAt = nowMs()
 
-    let encoded = settings.compactMap { key, value -> PersistedBoardSetting? in
-      guard let value, let json = Self.encodeJson(value) else { return nil }
-      return PersistedBoardSetting(boardId: id, key: key, valueJson: json, updatedAt: updatedAt)
+    let encoded = try settings.compactMap { key, value -> PersistedBoardSetting? in
+      guard let value else { return nil }
+      return PersistedBoardSetting(
+        boardId: id, key: key, valueJson: try Self.encodeJson(value), updatedAt: updatedAt
+      )
     }
-    let deletedKeys = settings.compactMap { key, value in value == nil || Self.encodeJson(value!) == nil ? key : nil }
+    let deletedKeys = settings.compactMap { key, value in value == nil ? key : nil }
     try boardSettingsPersistence().upsertBoard(
       PersistedBoard(id: id, name: name, bleId: bleId, transport: transport, createdAt: createdAt, deletedAt: nil),
       settings: encoded,
@@ -133,7 +135,7 @@ final class AppDataRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastBattery`
   func updateLastBattery(boardId: String, percent: Double, voltage: Double?, atMs: Int64) throws {
     let value: [String: Any] = ["percent": percent, "voltage": voltage ?? NSNull(), "at": atMs]
-    guard let json = Self.encodeJson(value) else { return }
+    let json = try Self.encodeJson(value)
     try boardSettingsPersistence().saveBoardSetting(PersistedBoardSetting(boardId: boardId, key: "lastBattery", valueJson: json, updatedAt: atMs))
     notifyDataChanged(.boards)
   }
@@ -141,7 +143,7 @@ final class AppDataRepository {
   /// Dedicated native Legal Mode write; generic Board upserts cannot bypass enable validation.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLegalMode`
   func updateLegalMode(boardId: String, enabled: Bool) throws {
-    guard let json = Self.encodeJson(["enabled": enabled]) else { return }
+    let json = try Self.encodeJson(["enabled": enabled])
     try boardSettingsPersistence().saveBoardSetting(PersistedBoardSetting(boardId: boardId, key: "legalMode", valueJson: json, updatedAt: nowMs()))
     notifyDataChanged(.boards)
   }
@@ -393,9 +395,9 @@ final class AppDataRepository {
 
   func setDirectionPoint(latitude: Double?, longitude: Double?) throws {
     let updatedAt = nowMs()
-    let values = [latitude, longitude].map { value -> PersistedAppSetting? in
-      guard let value, let json = Self.encodeJson(value) else { return nil }
-      return PersistedAppSetting(key: "", valueJson: json, updatedAt: updatedAt)
+    let values = try [latitude, longitude].map { value -> PersistedAppSetting? in
+      guard let value else { return nil }
+      return PersistedAppSetting(key: "", valueJson: try Self.encodeJson(value), updatedAt: updatedAt)
     }
     let keys = [Self.directionPointLatitudeKey, Self.directionPointLongitudeKey]
     let keyed = zip(values, keys).map { setting, key in
@@ -430,7 +432,7 @@ final class AppDataRepository {
 
   func setNavigationPath(_ json: String?) throws {
     guard let json else { try boardSettingsPersistence().deleteSetting(Self.navigationPathKey); return }
-    guard let encoded = Self.encodeJson(json) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
+    let encoded = try Self.encodeJson(json)
     try boardSettingsPersistence().saveSetting(.init(key: Self.navigationPathKey, valueJson: encoded, updatedAt: nowMs()))
   }
 
@@ -446,7 +448,7 @@ final class AppDataRepository {
   }
 
   func setNavigationProfile(_ profile: String) throws {
-    guard let encoded = Self.encodeJson(profile) else { throw CocoaError(.fileWriteInapplicableStringEncoding) }
+    let encoded = try Self.encodeJson(profile)
     try boardSettingsPersistence().saveSetting(.init(key: Self.navigationProfileKey, valueJson: encoded, updatedAt: nowMs()))
   }
 
@@ -473,7 +475,8 @@ final class AppDataRepository {
   /// Persist both coordinates together so readers cannot observe a mixed position.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/AppDataRepository.kt `updateLastGpsLocation`
   func updateLastGpsLocation(latitude: Double, longitude: Double) throws {
-    guard let lat = Self.encodeJson(latitude), let lon = Self.encodeJson(longitude) else { return }
+    let lat = try Self.encodeJson(latitude)
+    let lon = try Self.encodeJson(longitude)
     let updatedAt = nowMs()
     try boardSettingsPersistence().saveSettings([
       PersistedAppSetting(key: "lastGpsLatitude", valueJson: lat, updatedAt: updatedAt),
@@ -533,7 +536,7 @@ final class AppDataRepository {
     } else {
       value = rawValue
     }
-    guard let json = Self.encodeJson(value) else { return }
+    let json = try Self.encodeJson(value)
     try boardSettingsPersistence().saveSetting(PersistedAppSetting(key: key, valueJson: json, updatedAt: updatedAt))
     notifyDataChanged(.settings)
   }
@@ -543,11 +546,12 @@ final class AppDataRepository {
   func updateLegalPolicy(jurisdictionCode: String?) throws {
     let code = jurisdictionCode?.trimmingCharacters(in: .whitespaces).uppercased()
     let value = code.flatMap { $0.count == 2 ? ["jurisdictionCode": $0] : nil }
-    guard let value, let json = Self.encodeJson(value) else {
+    guard let value else {
       try boardSettingsPersistence().deleteSetting("legalPolicy")
       notifyDataChanged(.settings)
       return
     }
+    let json = try Self.encodeJson(value)
     try boardSettingsPersistence().saveSetting(PersistedAppSetting(key: "legalPolicy", valueJson: json, updatedAt: nowMs()))
     notifyDataChanged(.settings)
   }
@@ -745,22 +749,30 @@ final class AppDataRepository {
     return trimmed.isEmpty ? nil : trimmed
   }
 
-  private static func encodeJson(_ value: Any?) -> String? {
-    guard let value, !(value is NSNull) else { return nil }
-    guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]) else {
-      return nil
+  private static func encodeJson(_ value: Any) throws -> String {
+    guard JSONSerialization.isValidJSONObject([value]) else {
+      throw CocoaError(.propertyListWriteInvalid)
     }
-    return String(data: data, encoding: .utf8)
+    let data = try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
+    guard let json = String(data: data, encoding: .utf8) else {
+      throw CocoaError(.fileWriteInapplicableStringEncoding)
+    }
+    return json
   }
 
   private static func decodeJson(_ text: String) -> Any? {
-    guard
-      let data = text.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-    else { return nil }
-    return object is NSNull ? nil : object
+    do {
+      guard let data = text.data(using: .utf8) else { throw AppDataJsonDecodeError.invalidEncoding }
+      let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+      return object is NSNull ? nil : object
+    } catch {
+      UnexpectedNativeError.report(operation: "app_data_json_decode", category: "serialization", error: error)
+      return nil
+    }
   }
 }
+
+private enum AppDataJsonDecodeError: Error { case invalidEncoding }
 
 private extension Int64 {
   /// Convert an e7-scaled integer coordinate to decimal degrees.

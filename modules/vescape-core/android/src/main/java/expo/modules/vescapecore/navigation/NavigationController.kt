@@ -1,9 +1,11 @@
 package expo.modules.vescapecore.navigation
 
 import android.content.Context
+import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.watch.WatchRouteMirror
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -271,7 +273,14 @@ class NavigationController(
         synchronized(lock) { if (!profileChosen) profile = stored }
       }
       val stored = store.load() ?: return@launch
-      val directionPoint = store.directionPoint()
+      val directionPoint = try {
+        store.directionPoint()
+      } catch (error: CancellationException) {
+        throw error
+      } catch (error: Exception) {
+        RecordingStorageFailure.reportRead("direction_point_read", error)
+        return@launch
+      }
       // The two are written separately, so an interrupted write can leave a path leading somewhere
       // the rider is no longer heading. Drawing a line to the wrong place is worse than drawing none.
       val usable = stored.takeIf {

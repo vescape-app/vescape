@@ -39,6 +39,7 @@ interface AlertFormSheetProps {
   unit: string
   editRule: DraftAlertRule | null
   batteryConfig: DerivedBatteryConfig | null
+  error: string | null
   onClose(): void
   onSave(draft: AlertRuleDraft): Promise<void>
 }
@@ -51,6 +52,7 @@ export function AlertFormSheet({
   unit,
   editRule,
   batteryConfig,
+  error,
   onClose,
   onSave,
 }: AlertFormSheetProps) {
@@ -75,6 +77,7 @@ export function AlertFormSheet({
   const [repeatEverySeconds, setRepeatEverySeconds] = useState<number | null>(null)
   const [beepCount, setBeepCount] = useState(ALERT_BEEP_COUNT_DEFAULT)
   const [prevVisible, setPrevVisible] = useState(visible)
+  const [saving, setSaving] = useState(false)
 
   if (visible && !prevVisible) {
     const defaults = editRule
@@ -112,7 +115,10 @@ export function AlertFormSheet({
   )
 
   const handleSave = useCallback(() => {
+    if (saving) return
     const isRange = tab === 'geiger'
+    setSaving(true)
+    // intentional-suppression: Alerts store error is rendered by the active form or list
     void onSave({
       threshold,
       thresholdMax: isRange ? thresholdMax : null,
@@ -121,7 +127,9 @@ export function AlertFormSheet({
       // announcement — neither has a beep count or a repeat interval to honor.
       repeatEverySeconds: isRange ? null : repeatEverySeconds,
       beepCount,
-    }).catch(() => {})
+    })
+      .catch(() => undefined) // The alerts store owns the error rendered below.
+      .finally(() => setSaving(false))
   }, [
     tab,
     threshold,
@@ -131,6 +139,7 @@ export function AlertFormSheet({
     repeatEverySeconds,
     beepCount,
     onSave,
+    saving,
   ])
 
   return (
@@ -218,6 +227,8 @@ export function AlertFormSheet({
         )}
       </SettingsCard>
 
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
       <View style={styles.actions}>
         <Button label="Cancel" variant="secondary" onPress={onClose} style={styles.actionButton} />
         <Button
@@ -225,6 +236,7 @@ export function AlertFormSheet({
           icon={isEditing ? CheckIcon : PlusIcon}
           variant="accent"
           onPress={handleSave}
+          loading={saving}
           style={styles.actionButton}
         />
       </View>
@@ -255,5 +267,9 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     minWidth: 128,
+  },
+  error: {
+    color: theme.status.error.text,
+    fontSize: 12,
   },
 })

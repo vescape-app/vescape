@@ -21,31 +21,9 @@ internal func resolveRecordingFailureKind(
   return incoming
 }
 
-internal struct RecordingFailureReport: Equatable {
-  let operation: String
-  let category: String
-  let errorType: String
-}
-
 internal struct StorageUnavailableError: LocalizedError {
   let kind: RecordingStorageFailureKind
   var errorDescription: String? { "Local storage is unavailable (\(kind.rawValue))" }
-}
-
-internal final class RecordingFailureReporter {
-  private let lock = NSLock()
-  private var reported: Set<String> = []
-  private let sink: (RecordingFailureReport) -> Void
-
-  init(sink: @escaping (RecordingFailureReport) -> Void) { self.sink = sink }
-
-  func report(operation: String, category: String, error: Error) {
-    lock.lock()
-    let inserted = reported.insert(operation).inserted
-    lock.unlock()
-    guard inserted else { return }
-    sink(.init(operation: operation, category: category, errorType: String(describing: type(of: error))))
-  }
 }
 
 internal final class RecordingWriteGate {
@@ -86,9 +64,11 @@ internal enum RecordingStorageFailure {
   private static var startupChecked = false
   private static var failureGeneration: UInt64 = 0
   private static var outageListener: (() -> Void)?
-  private static let reporter = RecordingFailureReporter { report in
+  private static let reporter = NativeFailureReporter { report in
 #if canImport(Sentry)
     SentrySDK.capture(message: "Local persistence operation failed") { scope in
+      scope.setLevel(.error)
+      scope.setFingerprint(["persistence", report.category, report.operation])
       scope.setTag(value: report.operation, key: "persistence.operation")
       scope.setTag(value: report.category, key: "persistence.category")
       scope.setExtra(value: report.errorType, key: "persistence.error_type")
@@ -107,7 +87,12 @@ internal enum RecordingStorageFailure {
     }
   }
 
-  static func startupCheck(_ check: () throws -> Void) {
+  static func startupCheck(
+    reportFailure: (String, String, Error) -> Void = { operation, category, error in
+      reporter.report(operation: operation, category: category, error: error)
+    },
+    _ check: () throws -> Void
+  ) {
     lock.lock()
     guard !startupChecked else { lock.unlock(); return }
     startupChecked = true
@@ -126,8 +111,10 @@ internal enum RecordingStorageFailure {
       }
     } catch {
       let classified = classify(error)
+      let startupKind = classified == .writeFailed ? .storageUnavailable : classified
+      reportFailure("storage_startup_probe", startupKind.rawValue, error)
       lock.lock()
-      let changed = recordFailureLocked(kind: classified == .writeFailed ? .storageUnavailable : classified)
+      let changed = recordFailureLocked(kind: startupKind)
       lock.unlock()
       if changed { notifyOutage() }
     }

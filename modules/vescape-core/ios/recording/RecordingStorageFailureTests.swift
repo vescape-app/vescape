@@ -22,16 +22,16 @@ final class RecordingStorageFailureTests: XCTestCase {
   }
 
   func testReportIsSanitizedAndEmittedOncePerEpisode() {
-    var reports: [RecordingFailureReport] = []
-    let reporter = RecordingFailureReporter { reports.append($0) }
+    var reports: [NativeFailureReport] = []
+    let reporter = NativeFailureReporter { reports.append($0) }
     reporter.report(operation: "recording_commit", category: "full_disk", error: DatabaseError(resultCode: .SQLITE_FULL, message: "private SQL and args"))
     reporter.report(operation: "recording_commit", category: "full_disk", error: DatabaseError(resultCode: .SQLITE_FULL, message: "again"))
-    XCTAssertEqual(reports, [.init(operation: "recording_commit", category: "full_disk", errorType: "DatabaseError")])
+    XCTAssertEqual(reports, [.init(operation: "recording_commit", category: "full_disk", errorType: "DatabaseError", errorCode: 13)])
   }
 
   func testDifferentReadOperationsEachReportOnceWithoutRecordingLabels() {
-    var reports: [RecordingFailureReport] = []
-    let reporter = RecordingFailureReporter { reports.append($0) }
+    var reports: [NativeFailureReport] = []
+    let reporter = NativeFailureReporter { reports.append($0) }
     reporter.report(operation: "history_page_read", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
     reporter.report(operation: "history_page_read", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
     reporter.report(operation: "profile_stats_read", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
@@ -56,8 +56,8 @@ final class RecordingStorageFailureTests: XCTestCase {
 
   func testReporterCallsSinkOutsideDedupLock() {
     var operations: [String] = []
-    var reporter: RecordingFailureReporter!
-    reporter = RecordingFailureReporter { report in
+    var reporter: NativeFailureReporter!
+    reporter = NativeFailureReporter { report in
       operations.append(report.operation)
       if report.operation == "first" {
         reporter.report(operation: "second", category: "query_failed", error: DatabaseError(resultCode: .SQLITE_ERROR))
@@ -87,6 +87,25 @@ final class RecordingStorageFailureTests: XCTestCase {
     resume.signal()
     wait(for: [finished], timeout: 1)
     XCTAssertEqual(RecordingStorageFailure.value(), .storageUnavailable)
+    RecordingStorageFailure.resetForTesting()
+  }
+
+  func testFailedStartupProbeReportsOncePerProcessAndAgainAfterRestart() {
+    var reports: [NativeFailureReport] = []
+    let report: (String, String, Error) -> Void = {
+      reports.append(.init(operation: $0, category: $1, errorType: String(describing: type(of: $2)), errorCode: ($2 as NSError).code))
+    }
+    for _ in 0..<2 {
+      RecordingStorageFailure.resetForTesting()
+      RecordingStorageFailure.startupCheck(reportFailure: report) {
+        throw DatabaseError(resultCode: .SQLITE_CANTOPEN)
+      }
+      RecordingStorageFailure.startupCheck(reportFailure: report) {
+        XCTFail("startup probe repeated in one process")
+      }
+    }
+    XCTAssertEqual(reports.map(\.operation), ["storage_startup_probe", "storage_startup_probe"])
+    XCTAssertEqual(reports.map(\.category), ["storage_unavailable", "storage_unavailable"])
     RecordingStorageFailure.resetForTesting()
   }
 }

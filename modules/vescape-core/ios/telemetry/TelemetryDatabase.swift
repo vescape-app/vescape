@@ -20,7 +20,7 @@ enum TelemetryDatabase {
   private static let poolResult: Result<DatabasePool, Error> = {
     do {
       guard let url = databaseURL else { throw CocoaError(.fileNoSuchFile) }
-      migrateLegacyDatabaseFile(to: url)
+      try migrateLegacyDatabaseFile(to: url)
       let pool = try DatabasePool(path: url.path)
       try migrator.migrate(pool)
       return .success(pool)
@@ -29,8 +29,8 @@ enum TelemetryDatabase {
     }
   }()
 
-  /// The shared pool, or `nil` if the database could not be opened. Callers degrade gracefully
-  /// (reads return empty, writes no-op) rather than crashing the bridge.
+  /// The shared pool, or `nil` if the database could not be opened. Startup health owns the
+  /// resulting outage; bridge operations use `requirePool()` so the original error is preserved.
   static var pool: DatabasePool? {
     if let reopened { return reopened }
     if case let .success(pool) = poolResult { return pool }
@@ -48,25 +48,27 @@ enum TelemetryDatabase {
   /// the whole database lives in the main file, then renames it in place. Idempotent: once the new
   /// file exists (or no legacy file is present) this is a no-op.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDatabase.kt `migrateLegacyDatabaseFile`
-  private static func migrateLegacyDatabaseFile(to url: URL) {
+  internal static func migrateLegacyDatabaseFile(to url: URL) throws {
     let fm = FileManager.default
     let legacy = url.deletingLastPathComponent().appendingPathComponent(legacyDatabaseName)
     guard !fm.fileExists(atPath: url.path), fm.fileExists(atPath: legacy.path) else { return }
-    do {
-      let legacyPool = try DatabasePool(path: legacy.path)
-      try legacyPool.writeWithoutTransaction { db in try db.checkpoint(.truncate) }
-      try legacyPool.close()
-      try fm.moveItem(at: legacy, to: url)
-      for suffix in ["-wal", "-shm"] where fm.fileExists(atPath: legacy.path + suffix) {
-        try fm.removeItem(atPath: legacy.path + suffix)
-      }
-    } catch {
-      // Leave the legacy file untouched; the next launch retries.
+    let legacyPool = try DatabasePool(path: legacy.path)
+    try legacyPool.writeWithoutTransaction { db in try db.checkpoint(.truncate) }
+    try legacyPool.close()
+    try moveLegacyDatabaseFile(from: legacy, to: url)
+    for suffix in ["-wal", "-shm"] where fm.fileExists(atPath: legacy.path + suffix) {
+      // intentional-suppression: obsolete sidecar cleanup is best effort and support-directory absence is explicit
+      try? fm.removeItem(atPath: legacy.path + suffix)
     }
+  }
+
+  internal static func moveLegacyDatabaseFile(from legacy: URL, to target: URL) throws {
+    try FileManager.default.moveItem(at: legacy, to: target)
   }
 
   /// On-disk location of the single database file.
   static var databaseURL: URL? {
+    // intentional-suppression: obsolete sidecar cleanup is best effort and support-directory absence is explicit
     guard let support = try? FileManager.default.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
@@ -77,10 +79,19 @@ enum TelemetryDatabase {
   }
 
   /// Size of the live database file in bytes, or 0 when it does not exist yet.
-  static var databaseSizeBytes: Int64 {
-    guard let path = databaseURL?.path,
-          let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-          let size = attrs[.size] as? NSNumber else { return 0 }
+  static func databaseSizeBytes(
+    at url: URL? = databaseURL,
+    attributes: (String) throws -> [FileAttributeKey: Any] = {
+      try FileManager.default.attributesOfItem(atPath: $0)
+    }
+  ) throws -> Int64 {
+    guard let url else { throw CocoaError(.fileNoSuchFile) }
+    let attrs: [FileAttributeKey: Any]
+    do { attrs = try attributes(url.path) }
+    catch let error as NSError
+      where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
+    { return 0 }
+    guard let size = attrs[.size] as? NSNumber else { throw CocoaError(.fileReadUnknown) }
     return size.int64Value
   }
 
