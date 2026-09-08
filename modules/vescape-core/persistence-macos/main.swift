@@ -212,8 +212,7 @@ func maintenanceFrame(_ at: Int64, _ boardId: String) -> RecordingPersistenceSQL
         motorCurrentMa: 1_000, batteryCurrentMa: 500, dutyPermille: 100, pitchCentiDeg: 0,
         rollCentiDeg: 0, balancePitchCentiDeg: 0, balanceCurrentMa: 0, erpm: 1_000, state: 1,
         switchState: 1, adc1Milli: 0, adc2Milli: 0, odometerCm: at, tempMosfetDeciC: 300,
-        tempMotorDeciC: 300, latitudeE7: nil, longitudeE7: nil, gpsSpeedCentiMps: nil,
-        bearingCentiDeg: nil, accuracyCm: nil, altitudeCm: nil, locationTimestampMs: nil)
+        tempMotorDeciC: 300)
 }
 try maintenanceQueue!.write { db in
   for value in maintenanceFrames {
@@ -280,6 +279,75 @@ try maintenanceQueue!.read { db in
 }
 try maintenanceQueue!.close()
 try FileManager.default.removeItem(at: maintenanceURL)
+// GPS-only writes retain poor fixes and roll back their bucket if a later track insert fails.
+let trackURL = FileManager.default.temporaryDirectory.appendingPathComponent("vescape-track-\(UUID().uuidString).db")
+var trackQueue = try DatabaseQueue(path: trackURL.path)
+try TelemetryDatabase.migrator.migrate(trackQueue)
+let trackPoint = RideTrackPoint(recordingId: "ride-a", boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+try trackQueue.write { db in
+  try insertRideRecording(db, RideRecording(id: "ride-a", boardId: "board-a", startedAtMs: 1000, endedAtMs: nil, endedReason: nil))
+  for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([trackPoint])) {
+    try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
+  }
+  try insertRideTrackPoint(db, trackPoint)
+}
+try trackQueue.close()
+trackQueue = try DatabaseQueue(path: trackURL.path)
+try trackQueue.read { db in
+  let points = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a")
+  try require(points.count == 1 && points[0]["accuracy_cm"] as Int? == 3500, "GPS-only reopen lost poor fix")
+  let bucket = try Row.fetchOne(db, sql: "SELECT sample_count,gps_point_count FROM telemetry_minute_buckets")
+  try require(bucket?["sample_count"] as Int? == 0 && bucket?["gps_point_count"] as Int? == 1, "GPS-only bucket invented telemetry")
+}
+try trackQueue.write { db in
+  try db.execute(sql: "CREATE TRIGGER reject_track BEFORE INSERT ON ride_track_points BEGIN SELECT RAISE(FAIL, 'track failure'); END")
+}
+let lateTrackPoint = RideTrackPoint(recordingId: "ride-a", boardId: "board-a", fixAtMs: 62000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+var trackCommitFailed = false
+do {
+  try trackQueue.write { db in
+    for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([lateTrackPoint])) {
+      try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
+    }
+    try insertRideTrackPoint(db, lateTrackPoint)
+  }
+} catch is DatabaseError { trackCommitFailed = true }
+try require(trackCommitFailed, "GPS insert fault did not propagate")
+try trackQueue.close()
+trackQueue = try DatabaseQueue(path: trackURL.path)
+try trackQueue.read { db in
+  let buckets = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_minute_buckets")
+  let points = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM ride_track_points")
+  try require(buckets == 1 && points == 1, "GPS late failure leaked partial bucket")
+}
+try trackQueue.close()
+
+// Identical timestamps belong to separate recordings, including queries with a small limit.
+let identityQueue = try DatabaseQueue(path: trackURL.path)
+try identityQueue.write { db in
+  try db.execute(sql: "DROP TRIGGER reject_track")
+  try insertRideRecording(db, RideRecording(id: "ride-b", boardId: "board-a", startedAtMs: 1000, endedAtMs: 3000, endedReason: "stopped"))
+  let other = RideTrackPoint(recordingId: "ride-b", boardId: "board-a", fixAtMs: 2000, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 500, gpsSpeedCentiMps: 400, bearingCentiDeg: nil, altitudeCm: nil)
+  try insertRideTrackPoint(db, other)
+  for bucket in buildTelemetryBuckets([], locationPoints: rideTrackBucketPoints([other])) {
+    try db.execute(sql: RecordingPersistenceSQL.upsertBucket, arguments: RecordingPersistenceSQL.bucketArguments(bucket))
+  }
+}
+try identityQueue.read { db in
+  let selected = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a", recordingId: "ride-b", limit: 1)
+  try require(selected.count == 1 && selected[0]["recording_id"] as String? == "ride-b", "Recording filter applied after limit")
+}
+let identityMaintenance = TelemetryMaintenancePersistence(writer: identityQueue)
+_ = try identityMaintenance.deleteRanges([TelemetryTimeRange(startMs: 0, endMs: 10000)], boardId: "board-a", allBoards: false, recordingId: "ride-a")
+try identityQueue.read { db in
+  let remaining = try fetchRideTrack(db, fromMs: 0, toMs: 10000, boardId: "board-a")
+  try require(remaining.count == 1 && remaining[0]["recording_id"] as String? == "ride-b", "Recording deletion removed adjacent GPS")
+  let ids = try String.fetchAll(db, sql: "SELECT recording_id FROM telemetry_minute_buckets")
+  try require(ids == ["ride-b"], "Recording deletion removed adjacent bucket")
+}
+try identityQueue.close()
+try FileManager.default.removeItem(at: trackURL)
+
 let fixtureURL = root.appendingPathComponent("shared/recording-persistence-contract.json")
 let fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: fixtureURL)) as! [String: Any]
 let samples = fixture["samples"] as! [[String: Any]]
@@ -293,9 +361,7 @@ let points = samples.map { sample in
     capturedAtMs: Int64(int(sample["capturedAtMs"])), boardId: boardId,
     speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: int(sample["batteryVoltageMv"]),
     motorCurrentMa: 5_000, batteryCurrentMa: 2_000, dutyPermille: 200,
-    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 350,
-    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
-    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 350
   )
 }
 
@@ -328,8 +394,7 @@ try queue!.write { db in
       motorCurrentMa: 5000, batteryCurrentMa: 2000, dutyPermille: 200, pitchCentiDeg: 0,
       rollCentiDeg: 0, balancePitchCentiDeg: 0, balanceCurrentMa: 0, erpm: 1000, state: 1,
       switchState: 2, adc1Milli: 1000, adc2Milli: 1000, odometerCm: Int64(int(sample["odometerCm"])),
-      tempMosfetDeciC: 300, tempMotorDeciC: 350, latitudeE7: nil, longitudeE7: nil,
-      gpsSpeedCentiMps: nil, bearingCentiDeg: nil, accuracyCm: nil, altitudeCm: nil, locationTimestampMs: nil
+      tempMosfetDeciC: 300, tempMotorDeciC: 350
     )
     try db.execute(sql: RecordingPersistenceSQL.insertFrame, arguments: RecordingPersistenceSQL.frameArguments(frame))
   }
@@ -379,9 +444,7 @@ let nextPoints = samples.map { sample in
     capturedAtMs: Int64(int(sample["capturedAtMs"])) + 60_000, boardId: boardId,
     speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: int(sample["batteryVoltageMv"]),
     motorCurrentMa: 5_000, batteryCurrentMa: 2_000, dutyPermille: 200,
-    odometerCm: Int64(int(sample["odometerCm"])) + 100, tempMosfetDeciC: 300, tempMotorDeciC: 350,
-    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
-    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+    odometerCm: Int64(int(sample["odometerCm"])) + 100, tempMosfetDeciC: 300, tempMotorDeciC: 350
   )
 }
 let currentNext = buildTelemetryBuckets(nextPoints).first!
@@ -391,9 +454,7 @@ let olderPoints = samples.map { sample in
     capturedAtMs: Int64(int(sample["capturedAtMs"])) - offset, boardId: boardId,
     speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: int(sample["batteryVoltageMv"]),
     motorCurrentMa: 5_000, batteryCurrentMa: 2_000, dutyPermille: 200,
-    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 350,
-    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
-    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 350
   )
 }
 let older = buildTelemetryBuckets(olderPoints).first!
@@ -541,9 +602,7 @@ let favoritePoints = favoriteSamples.map { sample in
     capturedAtMs: Int64(int(sample["capturedAtMs"])), boardId: nil,
     speedCentiKmh: int(sample["speedCentiKmh"]), batteryVoltageMv: 80_000,
     motorCurrentMa: 0, batteryCurrentMa: 0, dutyPermille: 100,
-    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 300,
-    gpsSpeedCentiMps: nil, gpsTimestampMs: nil, gpsAccuracyCm: nil, latitudeE7: nil,
-    longitudeE7: nil, bearingCentiDeg: nil, altitudeCm: nil, preciseGps: false
+    odometerCm: Int64(int(sample["odometerCm"])), tempMosfetDeciC: 300, tempMotorDeciC: 300
   )
 }
 let contractSummary = buildFavoriteSummary(buildTelemetryBuckets(favoritePoints))
@@ -792,7 +851,7 @@ let invalidArchiveURL = swapDirectory.appendingPathComponent("archive.sqlite")
 try invalidArchiveDatabase.backup(to: DatabaseQueue(path: invalidArchiveURL.path))
 try invalidArchiveDatabase.close()
 let invalidDatabaseData = try Data(contentsOf: invalidArchiveURL)
-for (version, format) in [(43, "vesc-db-backup"), (42, "unknown-format")] {
+for (version, format) in [(44, "vesc-db-backup"), (43, "unknown-format")] {
   let manifest = try JSONSerialization.data(withJSONObject: [
     "format": format, "platform": "android", "schemaVersion": version,
   ])
@@ -827,6 +886,12 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try require(favorite == "Cross Favorite", "Android archive lost Favorite on iOS")
     try require(config == "{\"motor_current_max\":55.5}", "Android archive lost config on iOS")
     try require(speed == 2468, "Android archive lost Ride Recording on iOS")
+    let track = try fetchRideTrack(db, fromMs: 0, toMs: 2000, boardId: "cross-board")
+    try require(track.count == 1, "Android archive lost independent GPS fix")
+    try require(track.first?["recording_id"] as String? == "cross-recording", "Android archive lost GPS recording identity")
+    try require(track.first?["accuracy_cm"] as Int? == 3500, "Android archive discarded poor GPS accuracy")
+    let endReason = try String.fetchOne(db, sql: "SELECT ended_reason FROM ride_recordings WHERE id='cross-recording'")
+    try require(endReason == "stopped", "Android archive lost recording end intent")
   }
   try importedAndroid.close()
 
@@ -901,6 +966,8 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
     try db.execute(sql: "INSERT INTO vesc_fault_occurrences VALUES ('cross-fault','cross-board',7,1000,1001,NULL,0)")
     try db.execute(sql: "INSERT INTO vesc_fault_captures VALUES ('cross-fault','cross-board',900,1000,1)")
     try db.execute(sql: "INSERT INTO vesc_fault_capture_samples (occurrence_id,captured_at,speed,state) VALUES ('cross-fault',1000,24.68,1)")
+    try insertRideRecording(db, RideRecording(id: "cross-recording", boardId: "cross-board", startedAtMs: 900, endedAtMs: 1500, endedReason: "stopped"))
+    try insertRideTrackPoint(db, RideTrackPoint(recordingId: "cross-recording", boardId: "cross-board", fixAtMs: 1200, latitudeE7: 510000000, longitudeE7: 170000000, accuracyCm: 3500, gpsSpeedCentiMps: 400, bearingCentiDeg: 9000, altitudeCm: 12300))
     try db.execute(sql: "PRAGMA user_version = \(TELEMETRY_SCHEMA_VERSION)")
   }
   try iosDatabase.close()

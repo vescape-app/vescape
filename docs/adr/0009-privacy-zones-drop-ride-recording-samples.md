@@ -15,3 +15,11 @@ Privacy Zones protect places such as home or work by preventing Ride Recording d
 - Ride History may contain route and telemetry gaps when recordings pass through enabled Privacy Zones.
 - Saved Privacy Zones must live in native storage so the recorder can apply them before persistence.
 - Changing Privacy Zones affects future samples only and does not rewrite existing Ride History.
+
+## Interim Ride Track scope
+
+#448, #449, and #450 retain this policy. Reuse the existing enabled-zone geometry to drop Ride Track fixes, preserve the existing Telemetry Sample suppression, and keep live GPS consumers unchanged. Do not introduce privacy markers, continuity flags, track segment identities, or a new gap-detection mechanism for Privacy Zones.
+
+Readers retain their existing gap checks as they move to separate telemetry and GPS streams. A short omission below those checks' thresholds may still be joined or treated as continuous for media matching; these issues do not add a guarantee that every Privacy Zone crossing creates a visible route break.
+
+The future direction is to retain local recordings inside Privacy Zones and control sharing through prevention or warnings, together with Group Ride invisibility. Large zones motivate that rework. It requires a separate policy/design change and is outside #448, #449, #450, and #452; this amendment does not enable recording inside zones today.

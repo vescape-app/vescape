@@ -194,8 +194,8 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   }, [loadingSession, selectedSession, sessionGpsSamples])
 
   const historyPreviewRoute = useMemo(
-    () => (loadingSession ? getHistoryPreviewRoute(sessionSamples) : []),
-    [loadingSession, sessionSamples],
+    () => (loadingSession ? getHistoryPreviewRoute(sessionGpsSamples) : []),
+    [loadingSession, sessionGpsSamples],
   )
 
   const exitMapFocus = useCallback(() => {

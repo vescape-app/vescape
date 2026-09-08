@@ -38,7 +38,13 @@ internal class LocationTracker(
     val riderPosition: LocationSnapshot?
         get() = latestLocation ?: latestPreciseLocation
 
-    fun onLocationUpdated(location: Location) {
+    /**
+     * Ingest one platform fix and return the [LocationSnapshot] it produced, so a caller acts on the
+     * fix it handed in rather than re-reading mutable tracker state.
+     *
+     * @parity /modules/vescape-core/ios/location/LocationTracker.swift `onLocationUpdated`
+     */
+    fun onLocationUpdated(location: Location): LocationSnapshot {
         val accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null
         val speedMps = if (location.hasSpeed()) location.speed.toDouble() else null
         val bearingDeg = if (location.hasBearing()) location.bearing.toDouble() else null
@@ -77,7 +83,7 @@ internal class LocationTracker(
             .onFix(snapshot.latitude, snapshot.longitude, snapshot.speedMps)
         if (!snapshot.precise) {
             emitEvent("onLocation", snapshot.toMap())
-            return
+            return snapshot
         }
         latestPreciseLocation = snapshot
         persistLastGpsLocation(snapshot)
@@ -85,6 +91,7 @@ internal class LocationTracker(
         pruneRecentLocations(snapshot.timestamp)
         emitEvent("onLocation", snapshot.toMap())
         recordingCoordinator.recordLocation(snapshot)
+        return snapshot
     }
 
     fun recentLocations(): List<Map<String, Any?>> = recentLocations.toList()

@@ -9,7 +9,6 @@ internal let EXCLUSION_REASON_FREE_SPIN = "free_spin"
 private let EXCLUSION_RANGE_MERGE_GAP_MS: Int64 = 2_000
 private let FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH = 700
 private let FREE_SPIN_NEAREST_GPS_MAX_AGE_MS: Int64 = 10_000
-private let FREE_SPIN_GPS_PRECISE_ACCURACY_CM = 2_000
 internal let DEFAULT_FREE_SPIN_MAX_SPEED_DELTA_KMH = 12.0
 internal let DEFAULT_FREE_SPIN_STATIONARY_BOARD_CAP_KMH = 15.0
 
@@ -54,22 +53,26 @@ private struct MetricExclusionSample {
 
 /// Metric Sanitizers preserve raw Telemetry Samples while marking metric values excluded.
 ///
+/// [track] is the Ride Track over the same span. Free spin compares the Board's reported speed
+/// against the phone's, and that comparison reads the track directly: the fix is not a column on
+/// the sample any more, and synthesising one onto the sample just to hand it back would be the
+/// same join twice (ADR 0038). Both lists must be ordered by time.
+///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/MetricSanitizer.kt
 internal func sanitizeTelemetrySamples(
   _ samples: [BucketTelemetryPoint],
+  track: [RideTrackPoint] = [],
   config: MetricSanitizerConfig
 ) -> SanitizationResult {
-  let preciseGpsIndices = samples.indices.filter { isPreciseGps(samples[$0]) }
+  let preciseTrack = track.filter { rideTrackFixIsPrecise($0) && $0.gpsSpeedCentiMps != nil }
   var sanitized: [SanitizedSample] = []
   var exclusionSamples: [MetricExclusionSample] = []
 
-  for (index, point) in samples.enumerated() {
+  for point in samples {
     let lowSpeed = abs(point.speedCentiKmh) < config.movingSpeedThresholdCentiKmh
     let freeSpin = isFreeSpin(
-      index: index,
       point: point,
-      samples: samples,
-      preciseGpsIndices: preciseGpsIndices,
+      track: preciseTrack,
       maxDelta: config.freeSpinMaxSpeedDeltaCentiKmh,
       stationaryCap: config.freeSpinStationaryBoardCapCentiKmh
     )
@@ -91,51 +94,54 @@ internal func sanitizeTelemetrySamples(
   return SanitizationResult(samples: sanitized, exclusions: collapseExclusionSamples(exclusionSamples))
 }
 
-private func isPreciseGps(_ point: BucketTelemetryPoint) -> Bool {
-  guard let _ = point.gpsSpeedCentiMps, let _ = point.gpsTimestampMs, let accuracy = point.gpsAccuracyCm else {
-    return false
-  }
-  return accuracy <= FREE_SPIN_GPS_PRECISE_ACCURACY_CM
-}
-
 private func isFreeSpin(
-  index: Int,
   point: BucketTelemetryPoint,
-  samples: [BucketTelemetryPoint],
-  preciseGpsIndices: [Int],
+  track: [RideTrackPoint],
   maxDelta: Int,
   stationaryCap: Int
 ) -> Bool {
-  guard let nearest = nearestPreciseGps(index: index, point: point, samples: samples, indices: preciseGpsIndices),
-        let gpsSpeed = nearest.gpsSpeedCentiMps
+  guard let nearest = nearestFix(to: point, in: track), let gpsSpeed = nearest.gpsSpeedCentiMps
   else { return false }
   let boardSpeed = abs(point.speedCentiKmh)
-  let gpsSpeedKmh = gpsSpeed * 36 / 10
-  if gpsSpeedKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH {
+  let gpsSpeedCentiKmh = gpsSpeedCentiMpsToCentiKmh(gpsSpeed)
+  if gpsSpeedCentiKmh < FREE_SPIN_LOW_GPS_CUTOFF_CENTI_KMH {
     return boardSpeed > max(0, stationaryCap)
   }
-  return boardSpeed - gpsSpeedKmh > max(0, maxDelta)
+  return boardSpeed - gpsSpeedCentiKmh > max(0, maxDelta)
 }
 
-private func nearestPreciseGps(
-  index: Int,
-  point: BucketTelemetryPoint,
-  samples: [BucketTelemetryPoint],
-  indices: [Int]
-) -> BucketTelemetryPoint? {
-  guard !indices.isEmpty else { return nil }
-  let insertion = indices.firstIndex(where: { $0 >= index }) ?? indices.count
-  var best: BucketTelemetryPoint?
+/// The fix nearest in time to a sample, within the age window and attributable to its Board. The
+/// two streams run on two clocks, so "nearest" is a search, not an index: a fix either side of the
+/// sample is equally usable.
+private func nearestFix(to point: BucketTelemetryPoint, in track: [RideTrackPoint]) -> RideTrackPoint? {
+  guard !track.isEmpty else { return nil }
+  var low = 0
+  var high = track.count
+  while low < high {
+    let mid = (low + high) / 2
+    if track[mid].fixAtMs < point.capturedAtMs { low = mid + 1 } else { high = mid }
+  }
+  var best: RideTrackPoint?
   var bestAge = Int64.max
-  for candidateOffset in [insertion, insertion - 1, insertion + 1] where candidateOffset >= 0 && candidateOffset < indices.count {
-    let candidate = samples[indices[candidateOffset]]
-    guard let ts = candidate.gpsTimestampMs else { continue }
-    let age = abs(ts - point.capturedAtMs)
-    if age <= FREE_SPIN_NEAREST_GPS_MAX_AGE_MS && age < bestAge {
+
+  // Walk outward until the age window closes rather than over a fixed number of neighbours: a
+  // multi-Board track interleaves fixes, so the nearest same-Board fix can sit several indices out.
+  func consider(_ candidate: RideTrackPoint) -> Bool {
+    let age = abs(candidate.fixAtMs - point.capturedAtMs)
+    if age > FREE_SPIN_NEAREST_GPS_MAX_AGE_MS { return false }
+    // A fix that matched no saved Board can stand in for any Board's sample, as it always could.
+    let attributable = candidate.boardId == nil || candidate.boardId == point.boardId
+    if attributable && age < bestAge {
       best = candidate
       bestAge = age
     }
+    return true
   }
+
+  var backward = low - 1
+  while backward >= 0, consider(track[backward]) { backward -= 1 }
+  var forward = low
+  while forward < track.count, consider(track[forward]) { forward += 1 }
   return best
 }
 

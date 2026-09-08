@@ -4,7 +4,8 @@ import Foundation
 internal let IDLE_PAUSE_POLL_INTERVAL_MS = 1_000
 
 /// Continuous non-moving time before a Ride Recording enters an Idle Pause.
-internal let DEFAULT_IDLE_PAUSE_AFTER_MS: Int64 = 180_000
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/IdlePauseDetector.kt `DEFAULT_IDLE_PAUSE_AFTER_MS`
+internal let DEFAULT_IDLE_PAUSE_AFTER_MS: Int64 = 30_000
 
 internal enum IdlePauseTransition {
   case paused

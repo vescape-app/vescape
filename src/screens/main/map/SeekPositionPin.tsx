@@ -31,7 +31,6 @@ export function SeekPositionPin({ rideGpsSamples }: { rideGpsSamples: HistoryGps
     const lon: number[] = []
     const lat: number[] = []
     for (const sample of rideGpsSamples) {
-      if (sample.latitude == null || sample.longitude == null) continue
       ts.push(sample.capturedAtMs)
       lon.push(sample.longitude)
       lat.push(sample.latitude)

@@ -10,7 +10,8 @@ internal class RecordingPersistence(private val dao: TelemetryDao) {
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
-  ) = dao.insertBatch(frames, buckets, markers, exclusions)
+    trackPoints: List<RideTrackPointEntity> = emptyList(),
+  ) = dao.insertBatch(frames, buckets, markers, exclusions, trackPoints)
 
   suspend fun readCommittedRide(): List<TelemetryMinuteBucketEntity> = dao.getAllHistoryBucketsAsc()
 }
@@ -42,16 +43,18 @@ internal class RecordingCommitBoundary(
   private val gate = RecordingWriteGate(onFailure, initiallyAccepting)
   private val mutex = Mutex()
   fun isAccepting(): Boolean = gate.isAccepting()
+  fun fail(error: Exception) = gate.fail(error)
 
   suspend fun commit(
     frames: List<TelemetryFrameEntity>,
     buckets: Collection<TelemetryMinuteBucketEntity>,
     markers: List<TelemetryMarkerEntity>,
     exclusions: List<MetricExclusionRangeEntity> = emptyList(),
+    trackPoints: List<RideTrackPointEntity> = emptyList(),
   ): Boolean = mutex.withLock {
     if (!gate.isAccepting()) return@withLock false
     return@withLock try {
-      persistence.commit(frames, buckets, markers, exclusions)
+      persistence.commit(frames, buckets, markers, exclusions, trackPoints)
       true
     } catch (error: Exception) {
       gate.fail(error)

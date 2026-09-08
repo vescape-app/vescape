@@ -126,7 +126,7 @@ object DatabaseBackupManager {
       "v25_board_warnings", "v26_alert_source", "v27_alert_board_id", "v29_drop_map_points",
       "v30_favorites", "v31_favorite_media", "v32_alert_repeat", "v33_board_config_values",
       "v34_board_config_change_notices", "v35_alert_config_relative", "v36_motor_config_values",
-      "v40_vesc_faults", "v41_board_deleted_at", "v42_telemetry_board_id",
+      "v40_vesc_faults", "v41_board_deleted_at", "v42_telemetry_board_id", "v43_ride_track",
     )
     val applied = db.rawQuery("SELECT identifier FROM grdb_migrations", null).use { cursor ->
       buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }

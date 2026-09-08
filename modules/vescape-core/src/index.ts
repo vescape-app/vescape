@@ -623,6 +623,8 @@ export interface TelemetryDeleteRangeOptions {
   fromMs: number
   toMs: number
   boardId?: string | null
+  /** Restrict deletion to one native Ride Recording. Omitted for legacy time-range operations. */
+  recordingId?: string | null
 }
 
 export interface TelemetryMinuteBucket {
@@ -632,6 +634,15 @@ export interface TelemetryMinuteBucket {
   bucketStartMs: number
   /** Owning Board (`boards.id`), or null when the samples match no saved Board. */
   boardId: string | null
+  /**
+   * Owning Ride Recording, or null for buckets aggregated before durable recording identity
+   * existed. Board attribution and recording identity are separate facts: two recordings of one
+   * Board can share a minute and stay two buckets (ADR 0038).
+   *
+   * @parity /modules/vescape-core/ios/telemetry/TelemetryDao.swift `historyMap`
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `getHistory`
+   */
+  recordingId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
   boardName: string
   sampleCount: number
@@ -691,12 +702,19 @@ export interface TelemetrySample {
   odometer: number | null
   tempMosfet: number | null
   tempMotor: number | null
-  latitude: number | null
-  longitude: number | null
 }
 
+/**
+ * One Ride Track fix, as history reads it. Only fixes that pass the shared native precision rule
+ * (20m reported horizontal accuracy, both platforms, provider-independent) are returned, so this is
+ * already the route stream — no consumer re-filters it (ADR 0038).
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackProjection.swift `rideTrackGpsMaps`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt `toSampleMap`
+ */
 export interface HistoryGpsSample {
   id: number
+  /** Owning Ride Recording; null for migrated legacy fixes. */
+  recordingId: string | null
   capturedAtMs: number
   boardId: string | null
   boardName: string
@@ -707,7 +725,6 @@ export interface HistoryGpsSample {
   accuracyM: number | null
   altitudeM: number | null
   timestamp: number
-  precise: boolean
   distanceFromPreviousM: number | null
 }
 
@@ -754,12 +771,12 @@ export interface HistoryRange {
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRepository.swift `SAMPLE_COLUMN_COUNT`
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
  */
-const SAMPLE_COLUMN_COUNT = 23
+const SAMPLE_COLUMN_COUNT = 21
 
 /**
- * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer (25
- * lanes/sample, row-major) plus a device dictionary, instead of an array of ~25-field objects. This
- * replaces N×25 per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
+ * Native `getHistoryRange` shape: board samples arrive as one columnar Float64 ArrayBuffer
+ * (`SAMPLE_COLUMN_COUNT` lanes/sample, row-major) plus a device dictionary, instead of an array of
+ * per-field objects. This replaces N×`SAMPLE_COLUMN_COUNT` per-field JSI conversions with a single buffer transfer; see decodeBoardSamples.
  */
 /**
  * @parity /modules/vescape-core/ios/telemetry/TelemetryRangePayload.swift `getRange`
@@ -823,8 +840,6 @@ function decodeBoardSamples(
       odometer: nullableLane(lanes[o + 18]),
       tempMosfet: nullableLane(lanes[o + 19]),
       tempMotor: nullableLane(lanes[o + 20]),
-      latitude: nullableLane(lanes[o + 21]),
-      longitude: nullableLane(lanes[o + 22]),
     }
   }
   return samples
@@ -1017,6 +1032,8 @@ export interface RideRoutePoint {
  */
 export interface RideHistorySession {
   id: string
+  /** Durable Ride Recording identity; null/absent for reconstructed legacy sessions. */
+  recordingId?: string | null
   /** Owning Board (`boards.id`), or null when the ride matches no saved Board. */
   boardId: string | null
   /** Resolved from `boards` on read, never stored on the row — a rename relabels history. */
@@ -2210,6 +2227,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
     fromMs: number
     toMs: number
     boardId?: string
+    recordingId?: string
     limit?: number
   }): Promise<NativeHistoryRange>
   getTelemetrySummary(): Promise<TelemetrySummary>
@@ -2790,6 +2808,7 @@ export async function getHistoryRange(options: {
   fromMs: number
   toMs: number
   boardId?: string
+  recordingId?: string
   limit?: number
 }): Promise<HistoryRange> {
   const range: NativeHistoryRange = E2E_ENABLED

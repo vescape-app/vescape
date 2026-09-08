@@ -23,6 +23,38 @@ private let rideBucketBatchSize = 100
 private let maxRidePageSize = 50
 private let rideBreakBoundaries: Set<String> = ["disconnected", "app_stop", "error"]
 
+/// Keep every recording and Board in the boundary minute; the bucket limit is a soft limit.
+/// Both queries run in the caller's read transaction so the cursor and lookahead share a snapshot.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `getRideBuckets`
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryDao.kt `hasRideBucketsBefore`
+internal func fetchRideHistoryBucketBatch(
+  _ db: Database,
+  beforeMs: Int64,
+  limit: Int = rideBucketBatchSize
+) throws -> (buckets: [Row], hasOlder: Bool) {
+  let buckets = try Row.fetchAll(
+    db,
+    sql: """
+      SELECT * FROM telemetry_minute_buckets
+      WHERE bucket_start_ms < ? AND bucket_start_ms >= (
+        SELECT MIN(bucket_start_ms) FROM (
+          SELECT bucket_start_ms FROM telemetry_minute_buckets
+          WHERE bucket_start_ms < ? ORDER BY bucket_start_ms DESC LIMIT ?
+        )
+      )
+      ORDER BY bucket_start_ms DESC
+      """,
+    arguments: [beforeMs, beforeMs, limit]
+  )
+  guard let oldest = buckets.last?["bucket_start_ms"] as Int64? else { return ([], false) }
+  let hasOlder = try Bool.fetchOne(
+    db,
+    sql: "SELECT EXISTS(SELECT 1 FROM telemetry_minute_buckets WHERE bucket_start_ms < ?)",
+    arguments: [oldest]
+  ) ?? false
+  return (buckets, hasOlder)
+}
+
 internal struct RideRoutePoint {
   let latitude: Double
   let longitude: Double
@@ -31,6 +63,9 @@ internal struct RideRoutePoint {
 internal struct RideSessionAggregate {
   /// Owning Board (`boards.id`), empty when the buckets match no saved Board (ADR 0028).
   let boardId: String
+  /// Owning Ride Recording, or `LEGACY_RIDE_RECORDING_ID` for buckets with no durable identity.
+  /// A real recording *is* the history entry: gap length and disconnect markers never split it.
+  let recordingId: String
   var boundaryBefore: String
   var firstBucketStartMs: Int64
   var startAtMs: Int64
@@ -103,16 +138,11 @@ internal final class RideHistoryRepository {
       var complete: [RideSessionAggregate] = []
       var hasOlderBuckets = true
       while hasOlderBuckets && complete.count < limit {
-        let batch = try Row.fetchAll(
-          db,
-          sql: "SELECT * FROM telemetry_minute_buckets WHERE bucket_start_ms < ? AND sample_count > 0 ORDER BY bucket_start_ms DESC LIMIT ?",
-          arguments: [beforeMs, rideBucketBatchSize + 1]
-        )
-        if batch.isEmpty { hasOlderBuckets = false; break }
-        let pageBatch = Array(batch.prefix(rideBucketBatchSize))
-        buckets.append(contentsOf: pageBatch)
-        beforeMs = pageBatch.map { $0["bucket_start_ms"] as Int64 }.min() ?? beforeMs
-        hasOlderBuckets = batch.count > rideBucketBatchSize
+        let batch = try fetchRideHistoryBucketBatch(db, beforeMs: beforeMs)
+        if batch.buckets.isEmpty { hasOlderBuckets = false; break }
+        buckets.append(contentsOf: batch.buckets)
+        beforeMs = batch.buckets.map { $0["bucket_start_ms"] as Int64 }.min() ?? beforeMs
+        hasOlderBuckets = batch.hasOlder
         let markerFrom = (buckets.map { $0["first_sample_at_ms"] as Int64 }.min() ?? 0) - gapMs
         let markerTo = (buckets.map { $0["last_sample_at_ms"] as Int64 }.max() ?? 0) + TELEMETRY_BUCKET_SIZE_MS
         let markers = try Row.fetchAll(
@@ -155,16 +185,21 @@ internal func groupRideSessions(buckets: [Row], markers: [Row], gapMs: Int64) ->
   var current: RideSessionAggregate?
   var previous: Row?
   for bucket in buckets.sorted(by: { ($0["first_sample_at_ms"] as Int64) < ($1["first_sample_at_ms"] as Int64) }) {
-    if (bucket["sample_count"] as Int) <= 0 { continue }
     let boundary = rideBoundaryForBucket(bucket, markers: markers)
     let boardId = bucket["board_id"] as String
-    let split = current == nil || current?.boardId != boardId ||
-      (previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false) ||
-      rideBreakBoundaries.contains(boundary)
+    let recordingId = bucket["recording_id"] as String
+    // Legacy rows have no recording identity, so they keep reconstructing rides from gaps and
+    // break markers. A row that carries one needs neither: the recording *is* the entry, and a
+    // dropout of any length inside it stays one ride (ADR 0038).
+    let legacy = recordingId == LEGACY_RIDE_RECORDING_ID
+    let split = current == nil || current?.boardId != boardId || current?.recordingId != recordingId ||
+      (legacy && (previous.map { (bucket["first_sample_at_ms"] as Int64) - ($0["last_sample_at_ms"] as Int64) > gapMs } ?? false)) ||
+      (legacy && rideBreakBoundaries.contains(boundary))
     if split {
       if let current { sessions.append(current) }
       current = RideSessionAggregate(
         boardId: boardId,
+        recordingId: recordingId,
         boundaryBefore: boundary,
         firstBucketStartMs: bucket["bucket_start_ms"] as Int64,
         startAtMs: bucket["first_sample_at_ms"] as Int64,
@@ -183,7 +218,8 @@ private func mergeRideBucket(_ bucket: Row, into session: inout RideSessionAggre
   session.firstBucketStartMs = min(session.firstBucketStartMs, bucketStart)
   session.startAtMs = min(session.startAtMs, bucket["first_sample_at_ms"] as Int64)
   session.endAtMs = max(session.endAtMs, bucket["last_sample_at_ms"] as Int64)
-  session.blockIds.append("\(session.boardId):\(bucketStart)")
+  // Same identity `getHistory` gives a bucket: two recordings of one Board can share a minute.
+  session.blockIds.append("\(session.boardId):\(session.recordingId):\(bucketStart)")
   session.blockCount += 1
   session.sampleCount += bucket["sample_count"] as Int
   session.gpsPointCount += bucket["gps_point_count"] as Int
@@ -234,7 +270,8 @@ private func rideDistanceDeltaM(_ bucket: Row) -> Double? {
 internal func rideSessionMap(_ session: RideSessionAggregate, boardNames: [String: String]) -> [String: Any?] {
   let average = session.avgSpeedSampleCount > 0 ? session.avgSpeedWeightedSum / Double(session.avgSpeedSampleCount) : 0
   return [
-    "id": "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)",
+    "id": session.recordingId.isEmpty ? "\(session.boardId.isEmpty ? "unknown" : session.boardId):\(session.startAtMs):\(session.endAtMs)" : session.recordingId,
+    "recordingId": session.recordingId.isEmpty ? nil : session.recordingId,
     "boardId": session.boardId.isEmpty ? nil : session.boardId,
     "boardName": boardNames[session.boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "startAtMs": session.startAtMs, "endAtMs": session.endAtMs, "movingStartAtMs": session.movingStartAtMs,

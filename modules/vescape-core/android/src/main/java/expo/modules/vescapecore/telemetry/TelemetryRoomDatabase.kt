@@ -4,11 +4,12 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 
 // @parity /modules/vescape-core/ios/telemetry/DatabaseBackupManager.swift `TELEMETRY_SCHEMA_VERSION`
-internal const val TELEMETRY_DATABASE_VERSION = 42
+internal const val TELEMETRY_DATABASE_VERSION = 43
 
 /** Production Room schema/DAO, portable to JVM hosts. Android open/migration lifecycle stays in [TelemetryDatabase]. */
 @Database(
   entities = [
+    RideRecordingEntity::class, RideTrackPointEntity::class,
     TelemetryFrameEntity::class, TelemetryMinuteBucketEntity::class, TelemetryMarkerEntity::class,
     MetricExclusionRangeEntity::class, BoardEntity::class, BoardSettingEntity::class, AlertRuleEntity::class,
     AppSettingEntity::class, TuneProfileEntity::class, TuneHistoryEntryEntity::class, DiagnosticEventEntity::class,

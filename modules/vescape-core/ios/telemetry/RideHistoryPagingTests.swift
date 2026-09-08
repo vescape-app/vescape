@@ -26,7 +26,7 @@ final class RideHistoryPagingTests: XCTestCase {
 
   private func bucket(_ start: Int64) -> Row {
     Row([
-      "board_id": "board-1", "bucket_start_ms": start,
+      "board_id": "board-1", "recording_id": LEGACY_RIDE_RECORDING_ID, "bucket_start_ms": start,
       "first_sample_at_ms": start, "last_sample_at_ms": start + 59_000,
       "sample_count": 1, "gps_point_count": 0, "precise_gps_point_count": 0,
       "moving_speed_sample_count": 1, "sum_moving_abs_speed_centi_kmh": 1_000,

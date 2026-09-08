@@ -8,12 +8,11 @@ internal let KEYFRAME_INTERVAL_MS: Int64 = 60_000
 internal let MIN_PERSIST_INTERVAL_MS: Int64 = 500
 internal let DEFAULT_HISTORY_LIMIT = 100
 internal let DEFAULT_SAMPLE_LIMIT = 2_000
-internal let MAX_SAMPLE_LIMIT = 20_000
 /// Float64 lanes per sample in the columnar history payload. Must match the JS decoder.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `SAMPLE_COLUMN_COUNT`
 /// @parity /modules/vescape-core/src/index.ts `SAMPLE_COLUMN_COUNT`
-internal let SAMPLE_COLUMN_COUNT = 23
+internal let SAMPLE_COLUMN_COUNT = 21
 
 /// GRDB writer for iOS Ride Recording telemetry. Raw Telemetry Samples are preserved; Metric
 /// Sanitizers only write exclusion ranges and bucket-derived metric values.
@@ -31,6 +30,12 @@ internal final class TelemetryRepository {
   private var pendingStates: [FullTelemetryState] = []
   private var pendingPersisted: [FullTelemetryState] = []
   private var pendingMarkers: [[String: Any?]] = []
+  // Ride Track fixes admitted but not yet durable. Written on the GPS clock, never aligned to a
+  // telemetry frame, and already carrying the Board and Ride Recording they were captured under —
+  // a Board change flushes them under those identities rather than the new session's (ADR 0038).
+  private var pendingTrack: [RideTrackPoint] = []
+  private var lastFlushedTrackPoint: RideTrackPoint?
+  private var currentRecording: RideRecording?
   private var lastFrameAtMs: Int64?
   private var lastHistoryAtMs: Int64?
   private var lastKeyframeAtMs: Int64?
@@ -64,10 +69,186 @@ internal final class TelemetryRepository {
     queue.async { self.enabledPrivacyZones = zones }
   }
 
-  func recordTelemetry(_ capture: TelemetryCapture) {
-    let state = FullTelemetryState(capture: capture)
+  /// Identity #449 groups history on and #450 carries across a Board Session teardown.
+  var activeRideRecordingId: String? { queue.sync { currentRecording?.id } }
+
+
+  /// Rejoin the Ride Recording named by `recordingId`, or nil when it can no longer be rejoined.
+  ///
+  /// The one path that does not mint a new identity. Two callers need it: an iOS BLE
+  /// state-restoration relaunch rebuilding the session that was live when the process died (ADR
+  /// 0034), and an explicit Connect to the Board that already owns the open recording — a rider
+  /// tapping Connect to hurry its reconnect loop along is not asking for a second ride.
+  ///
+  /// The recording is named, not searched for. An abandoned row from a ride days ago has a
+  /// different identity and is refused, so a restoration relaunch can never claim capture across a
+  /// gap the process could not run through. The still-open row is also the persisted end intent: an
+  /// explicitly stopped or disconnected recording carries `ended_at_ms`, so this returns nil and the
+  /// caller must start a fresh recording rather than reviving an ended one.
+  ///
+  /// The dead interval is left exactly as honest as it was — no fix or frame is fabricated for the
+  /// time the process could not run.
+  ///
+  /// @platform-diff No Android peer for the restoration half. Android's `CoreForegroundService`
+  /// keeps the process alive, so there is no restoration relaunch to resume from, and its launch
+  /// auto-connect is an ordinary cold start.
+  @discardableResult
+  func resumeRideRecording(boardId: String?, recordingId: String) -> String? {
+    queue.sync {
+      guard !databaseSwapInProgress, recordingCommitBoundary.isAccepting() else { return nil }
+      if let open = currentRecording {
+        return open.id == recordingId && open.boardId == boardId ? open.id : nil
+      }
+      var recording: RideRecording?
+      guard recordingCommitBoundary.commit({
+        recording = try TelemetryDatabase.requirePool().read { db in
+          try openRideRecording(db, id: recordingId, boardId: boardId)
+        }
+      }), let recording else { return nil }
+      currentRecording = recording
+      lastFlushedTrackPoint = nil
+      return recording.id
+    }
+  }
+
+  /// Close every Ride Recording a dead process left open, stamping each at its own last durable
+  /// write. Called once the launch is known not to be adopting one: an unswept row has no
+  /// `ended_at_ms`, and #449's reader shows only finished recordings, so leaving it open hides that
+  /// ride from history until some later recording happens to sweep it — possibly never.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `closeAbandonedRideRecordings`
+  func closeAbandonedRideRecordings() {
+    queue.sync {
+      guard !databaseSwapInProgress else { return }
+      _ = recordingCommitBoundary.commit {
+        _ = try TelemetryDatabase.requirePool().write { db in
+          try VescapeCore.closeAbandonedRideRecordings(
+            db, reason: RIDE_RECORDING_END_DISCONNECTED, except: currentRecording?.id)
+        }
+      }
+    }
+  }
+
+  /// Keep the open Ride Recording when it belongs to `boardId`; end it as a Board change otherwise.
+  /// Returns the identity still open, or nil when nothing is.
+  ///
+  /// One decision, one critical section: reading the open recording's Board and then acting on it
+  /// from outside would let a concurrent begin/end land in between and answer for the wrong ride.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `retainRideRecording`
+  @discardableResult
+  func retainRideRecording(forBoardId boardId: String?) -> String? {
+    closeOpenRideRecording(reason: RIDE_RECORDING_END_BOARD_CHANGE, keepingBoardId: boardId)
+  }
+
+  /// Open a **Ride Recording**: mint its durable identity and stamp its start boundary.
+  ///
+  /// Board attribution and recording identity are separate facts. `boardId` says which Board is
+  /// riding; the returned id says which capture, so two recordings of one Board — even inside the
+  /// same minute — never merge in storage or in the summaries built from it.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `beginRideRecording`
+  @discardableResult
+  func beginRideRecording(boardId: String?) -> String? {
+    queue.sync {
+      guard !databaseSwapInProgress, recordingCommitBoundary.isAccepting() else { return nil }
+      flushOnQueue()
+      let recording = RideRecording(id: UUID().uuidString, boardId: boardId,
+        startedAtMs: telemetryNowMs(), endedAtMs: nil, endedReason: nil)
+      guard recordingCommitBoundary.commit({
+        try TelemetryDatabase.requirePool().write { db in
+          try beginRideRecordingRow(db, recording: recording, replacingId: currentRecording?.id)
+        }
+      }) else { return nil }
+      currentRecording = recording
+      lastFlushedTrackPoint = nil
+      return recording.id
+    }
+  }
+
+  /// Close the open Ride Recording, if any. Everything already admitted is flushed first, under the
+  /// Board and recording it was captured with — a late fix from the old session is never
+  /// re-attributed to whatever comes next.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `endRideRecording`
+  func endRideRecording(reason: String) {
+    _ = closeOpenRideRecording(reason: reason, keepingBoardId: nil, keepAnyBoard: false)
+  }
+
+  /// Read, decide and clear in one critical section: a concurrent `beginRideRecording` between the
+  /// steps would nil out the *new* recording's identity while its row stayed open, and a Board read
+  /// from outside could answer for a ride that has already been replaced.
+  ///
+  /// `keepAnyBoard` distinguishes "keep the recording of this Board" from "close whatever is open",
+  /// which a plain `nil` `keepingBoardId` cannot: nil is itself a valid Board attribution.
+  @discardableResult
+  private func closeOpenRideRecording(
+    reason: String,
+    keepingBoardId: String?,
+    keepAnyBoard: Bool = true
+  ) -> String? {
+    queue.sync {
+      guard !databaseSwapInProgress, let recording = currentRecording else { return nil }
+      if keepAnyBoard && recording.boardId == keepingBoardId { return recording.id }
+      flushOnQueue()
+      guard recordingCommitBoundary.commit({
+        try TelemetryDatabase.requirePool().write { db in
+          try closeRideRecordingRow(db, id: recording.id, endedAtMs: telemetryNowMs(), reason: reason)
+        }
+      }) else { return nil }
+      currentRecording = nil
+      lastFlushedTrackPoint = nil
+      return nil
+    }
+  }
+
+  /// Offer one GPS Fix to the **Ride Track**.
+  ///
+  /// Stored with the accuracy the platform reported, poor fixes included: write-time discard is
+  /// unrecoverable and would bake one consumer's threshold into everyone's data (ADR 0038). The fix
+  /// does not have to line up with a telemetry frame, so a board dropout no longer erases the route.
+  ///
+  /// Two gates still drop a fix, and both are shared with the Telemetry Sample stream: an enabled
+  /// Privacy Zone (ADR 0009 — a separate stream leaks straight through a zone otherwise), and the
+  /// Ride Recording being closed or in Idle Pause, which the caller owns (ADR 0021).
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `recordGpsFix`
+  func recordGpsFix(_ location: TelemetryLocationCapture) {
     queue.async {
+      guard !self.databaseSwapInProgress, self.recordingCommitBoundary.isAccepting(), let recording = self.currentRecording else { return }
+      let latitudeE7 = Int64((location.latitude * 10_000_000.0).rounded())
+      let longitudeE7 = Int64((location.longitude * 10_000_000.0).rounded())
+      // The one Privacy Zone geometry check, shared with the Telemetry Sample filter below.
+      guard
+        !isInsideAnyPrivacyZone(
+          latitudeE7: Int(latitudeE7),
+          longitudeE7: Int(longitudeE7),
+          zones: self.enabledPrivacyZones
+        )
+      else { return }
+      self.pendingTrack.append(
+        RideTrackPoint(
+          recordingId: recording.id,
+          boardId: recording.boardId,
+          fixAtMs: location.timestamp,
+          latitudeE7: latitudeE7,
+          longitudeE7: longitudeE7,
+          accuracyCm: location.accuracyM.map { telemetryCenti($0) },
+          gpsSpeedCentiMps: location.speedMps.map { telemetryCenti($0) },
+          bearingCentiDeg: location.bearingDeg.map { telemetryCenti($0) },
+          altitudeCm: location.altitudeM.map { telemetryCenti($0) }
+        )
+      )
+      if self.pendingTrack.count >= 25 { self.flushOnQueue() }
+    }
+  }
+
+  func recordTelemetry(_ capture: TelemetryCapture) {
+    queue.async {
+      // Stamped here, not at flush: a flush can land after this recording closed, and reading the
+      // current recording then would file these frames under whatever opened next.
       guard !self.databaseSwapInProgress, self.recordingCommitBoundary.isAccepting() else { return }
+      let state = FullTelemetryState(capture: capture, recordingId: self.currentRecording?.id)
       let gapMs = self.lastHistoryAtMs.map { capture.capturedAtMs - $0 }
       let gap = (gapMs ?? 0) > GAP_BOUNDARY_MS
       let keyframe = self.lastHistoryAtMs == nil || gap || self.lastKeyframeAtMs == nil ||
@@ -123,6 +304,9 @@ internal final class TelemetryRepository {
       pendingStates.removeAll()
       pendingPersisted.removeAll()
       pendingMarkers.removeAll()
+      pendingTrack.removeAll()
+      lastFlushedTrackPoint = nil
+      currentRecording = nil
       lastFrameAtMs = nil
       lastHistoryAtMs = nil
       lastKeyframeAtMs = nil
@@ -143,7 +327,7 @@ internal final class TelemetryRepository {
     return try pool.read { db in
       [
         "sampleCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames") ?? 0,
-        "gpsPointCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM telemetry_frames WHERE latitude_e7 IS NOT NULL") ?? 0,
+        "gpsPointCount": try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM ride_track_points") ?? 0,
         "firstAtMs": try Int64.fetchOne(db, sql: "SELECT MIN(captured_at_ms) FROM telemetry_frames"),
         "lastAtMs": try Int64.fetchOne(db, sql: "SELECT MAX(captured_at_ms) FROM telemetry_frames"),
         "droppedPendingSamples": 0,
@@ -188,6 +372,7 @@ internal final class TelemetryRepository {
     let toMs = telemetryLong(options["toMs"]) ?? telemetryNowMs()
     let limit = min(MAX_SAMPLE_LIMIT, max(1, telemetryInt(options["limit"]) ?? DEFAULT_SAMPLE_LIMIT))
     let boardId = options["boardId"] as? String
+    let recordingId = options["recordingId"] as? String
     // Battery configs, board names and the smoothing window are read up front (each opens its own
     // DB read) so the estimate stays a pure computation inside the frames read below.
     let windowMs = try socWindowMs()
@@ -200,10 +385,11 @@ internal final class TelemetryRepository {
         sql: """
           SELECT * FROM telemetry_frames
           WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
+            AND (? IS NULL OR COALESCE(recording_id, '') = ?)
           ORDER BY captured_at_ms ASC
           LIMIT ?
           """,
-        arguments: [fromMs, toMs, boardId, boardId, limit]
+        arguments: [fromMs, toMs, boardId, boardId, recordingId, recordingId, limit]
       )
       let percents = self.batteryPercents(rows, configs: configs, windowMs: windowMs)
       return zip(rows, percents).map { sampleMap($0.0, batteryPercent: $0.1, boardNames: boardNames) }
@@ -325,10 +511,8 @@ internal final class TelemetryRepository {
       name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName,
       nowMs: nowMs, newId: { UUID().uuidString },
       loadSummary: { requested, owner in
-        let points = try pool.read { db in
-          try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY captured_at_ms ASC", arguments: [requested.startMs, requested.endMs, owner, owner]).compactMap(bucketPoint)
-        }
-        return Self.favoriteSummary(points, config: config)
+        let inputs = try self.favoriteSummaryInputs(startMs: requested.startMs, endMs: requested.endMs, boardId: owner)
+        return Self.favoriteSummary(inputs.points, track: inputs.track, config: config)
       }
     )!
     let boardNames = try Self.boardNamesById()
@@ -379,10 +563,8 @@ internal final class TelemetryRepository {
       name: (trimmedName?.isEmpty ?? true) ? nil : trimmedName,
       nowMs: telemetryNowMs(), newId: { UUID().uuidString },
       loadSummary: { requested, owner in
-        let points = try pool.read { db in
-          try Row.fetchAll(db, sql: "SELECT * FROM telemetry_frames WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?) ORDER BY captured_at_ms ASC", arguments: [requested.startMs, requested.endMs, owner, owner]).compactMap(bucketPoint)
-        }
-        return Self.favoriteSummary(points, config: config)
+        let inputs = try self.favoriteSummaryInputs(startMs: requested.startMs, endMs: requested.endMs, boardId: owner)
+        return Self.favoriteSummary(inputs.points, track: inputs.track, config: config)
       }
     )
     guard let stored = persisted else { return nil }
@@ -436,19 +618,52 @@ internal final class TelemetryRepository {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryRepository.kt `favoriteSummary`
   /// @parity /src/modules/history/lib/favoritePreview.ts `summarizeFavoriteRange`
   /// @platform-diff JS is a live preview over loaded samples; this is the durable sanitized summary.
+  /// Both halves of a Favorite's summary input: the Telemetry Samples in the range and the Ride
+  /// Track over it. Read together because a Favorite spans two streams on two clocks (ADR 0038).
+  private func favoriteSummaryInputs(
+    startMs: Int64,
+    endMs: Int64,
+    boardId: String?
+  ) throws -> (points: [BucketTelemetryPoint], track: [RideTrackPoint]) {
+    let pool = try TelemetryDatabase.requirePool()
+    return try pool.read { db in
+      let rows = try Row.fetchAll(
+        db,
+        sql: """
+          SELECT * FROM telemetry_frames
+          WHERE captured_at_ms >= ? AND captured_at_ms <= ? AND (? IS NULL OR board_id = ?)
+          ORDER BY captured_at_ms ASC
+          """,
+        arguments: [startMs, endMs, boardId, boardId]
+      )
+      let track = try fetchRideTrackForAggregation(db, fromMs: startMs, toMs: endMs, boardId: boardId)
+        .map(rideTrackPoint)
+      return (rows.compactMap(bucketPoint), track)
+    }
+  }
+
   internal static func favoriteSummary(
     _ points: [BucketTelemetryPoint],
+    track: [RideTrackPoint] = [],
     config: MetricSanitizerConfig
   ) -> FavoriteSummary {
-    guard !points.isEmpty else { return FavoriteSummary() }
-    let sanitization = sanitizeTelemetrySamples(points, config: config)
+    guard !points.isEmpty || !track.isEmpty else { return FavoriteSummary() }
+    let sanitization = sanitizeTelemetrySamples(points, track: track, config: config)
     var sanitized = points
     for i in sanitized.indices {
       sanitized[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
       sanitized[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
       sanitized[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
     }
-    return buildFavoriteSummary(buildTelemetryBuckets(sanitized))
+    return buildFavoriteSummary(
+      buildTelemetryBuckets(
+        sanitized,
+        locationPoints: rideTrackBucketPoints(
+          track,
+          movingThresholdCentiKmh: config.movingSpeedThresholdCentiKmh
+        )
+      )
+    )
   }
 
   func deleteBefore(_ beforeMs: Int64) throws -> Int {
@@ -467,7 +682,7 @@ internal final class TelemetryRepository {
       deleteRange: TelemetryTimeRange(startMs: fromMs, endMs: toMs),
       protectedRanges: favoriteTelemetryRanges()
     )
-    return try TelemetryMaintenancePersistence(writer: pool).deleteRanges(deletable, boardId: boardId, allBoards: false)
+    return try TelemetryMaintenancePersistence(writer: pool).deleteRanges(deletable, boardId: boardId, allBoards: false, recordingId: options["recordingId"] as? String)
   }
 
   func rebuildBuckets(onProgress: (Int, Int) -> Void = { _, _ in }) throws -> Int {
@@ -485,6 +700,8 @@ internal final class TelemetryRepository {
       pendingStates.removeAll()
       pendingPersisted.removeAll()
       pendingMarkers.removeAll()
+      pendingTrack.removeAll()
+      lastFlushedTrackPoint = nil
       lastFrameAtMs = nil
       lastHistoryAtMs = nil
       lastKeyframeAtMs = nil
@@ -509,32 +726,56 @@ internal final class TelemetryRepository {
   }
 
   private func flushOnQueue() {
-    guard let pool, (!pendingStates.isEmpty || !pendingPersisted.isEmpty || !pendingMarkers.isEmpty) else { return }
+    guard recordingCommitBoundary.isAccepting(),
+      (!pendingStates.isEmpty || !pendingPersisted.isEmpty || !pendingMarkers.isEmpty
+        || !pendingTrack.isEmpty)
+    else { return }
     let markers = pendingMarkers
+    let previousTrackPoint = lastFlushedTrackPoint
     // Drop any fix inside an enabled Privacy Zone before it reaches storage. Fixes without a
-    // location always pass. Bucket source (full rate) and persisted frames are filtered alike so
-    // aggregates and detail traces stay consistent.
+    // location always pass. Bucket source (full rate), persisted frames and the Ride Track are all
+    // filtered here, against the zones enabled *now*: a zone switched on mid-ride must suppress
+    // what is still buffered, in both streams alike (ADR 0009).
     let zones = enabledPrivacyZones
     let states = zones.isEmpty ? pendingStates : pendingStates.filter { !Self.isInPrivacyZone($0, zones) }
     let persisted = zones.isEmpty ? pendingPersisted : pendingPersisted.filter { !Self.isInPrivacyZone($0, zones) }
+    let track = zones.isEmpty ? pendingTrack : pendingTrack.filter { point in
+      !isInsideAnyPrivacyZone(
+        latitudeE7: Int(point.latitudeE7),
+        longitudeE7: Int(point.longitudeE7),
+        zones: zones
+      )
+    }
     pendingStates.removeAll(keepingCapacity: true)
     pendingPersisted.removeAll(keepingCapacity: true)
     pendingMarkers.removeAll(keepingCapacity: true)
-    guard !states.isEmpty || !persisted.isEmpty || !markers.isEmpty else { return }
+    pendingTrack.removeAll(keepingCapacity: true)
+    lastFlushedTrackPoint = track.last(where: rideTrackFixIsPrecise) ?? previousTrackPoint
+    guard !states.isEmpty || !persisted.isEmpty || !markers.isEmpty || !track.isEmpty else { return }
 
     let telemetryPoints = states.map { $0.toBucketPoint() }
-    let sanitization = sanitizeTelemetrySamples(telemetryPoints, config: metricConfig)
+    let sanitization = sanitizeTelemetrySamples(telemetryPoints, track: track, config: metricConfig)
     var sanitized = telemetryPoints
     for i in sanitized.indices {
       sanitized[i].excludedFromAvgSpeed = sanitization.samples[i].excludedFromAvgSpeed
       sanitized[i].excludedFromMaxSpeed = sanitization.samples[i].excludedFromMaxSpeed
       sanitized[i].excludedFromMaxDuty = sanitization.samples[i].excludedFromMaxDuty
     }
-    let buckets = buildTelemetryBuckets(sanitized)
+    // Minute buckets aggregate the Ride Track that was admitted, not the fix stamped onto a frame:
+    // the two streams keep their own clocks and are joined here only for the summary.
+    let buckets = buildTelemetryBuckets(
+      sanitized,
+      locationPoints: rideTrackBucketPoints(
+        track,
+        previous: previousTrackPoint,
+        movingThresholdCentiKmh: metricConfig.movingSpeedThresholdCentiKmh
+      )
+    )
 
     recordingCommitBoundary.commit {
-      try pool.write { db in
+      try TelemetryDatabase.requirePool().write { db in
         for state in persisted { try insertFrame(db, state) }
+        for point in track { try insertRideTrackPoint(db, point) }
         for bucket in buckets { try upsertBucket(db, bucket) }
         for marker in markers { try insertMarker(db, marker) }
         for range in sanitization.exclusions { try insertExclusion(db, range) }

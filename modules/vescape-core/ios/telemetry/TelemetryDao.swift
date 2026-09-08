@@ -11,11 +11,10 @@ private struct TelemetryFrameRecord: PersistableRecord {
   let state: FullTelemetryState
   func encode(to row: inout PersistenceContainer) {
     let t = state.t
-    let loc = state.location
     row["captured_at_ms"] = state.capturedAtMs; row["elapsed_realtime_ms"] = state.elapsedRealtimeMs
-    row["board_id"] = state.boardId; row["can_id"] = state.capture.canId
-    row["flags"] = TELEMETRY_FLAG_KEYFRAME | (loc == nil ? 0 : TELEMETRY_FLAG_HAS_LOCATION)
-    row["changed_mask_1"] = Int.max; row["changed_mask_2"] = 1
+    row["board_id"] = state.boardId; row["recording_id"] = state.recordingId; row["can_id"] = state.capture.canId
+    row["flags"] = TELEMETRY_FLAG_KEYFRAME
+    row["changed_mask_1"] = Int.max; row["changed_mask_2"] = 0
     row["speed_centi_kmh"] = telemetryCenti(t.speed); row["battery_voltage_mv"] = telemetryMilli(t.batteryVoltage)
     row["motor_current_ma"] = telemetryMilli(t.motorCurrent); row["battery_current_ma"] = telemetryMilli(t.batteryCurrent)
     row["duty_permille"] = telemetryMilli(t.dutyCycle); row["pitch_centi_deg"] = telemetryCenti(t.pitch)
@@ -25,11 +24,6 @@ private struct TelemetryFrameRecord: PersistableRecord {
     row["adc1_milli"] = telemetryMilli(t.adc1); row["adc2_milli"] = telemetryMilli(t.adc2)
     row["odometer_cm"] = t.odometer.map { Int64(($0 * 100.0).rounded()) }
     row["temp_mosfet_deci_c"] = t.tempMosfet.map { telemetryDeci($0) }; row["temp_motor_deci_c"] = t.tempMotor.map { telemetryDeci($0) }
-    row["latitude_e7"] = loc.map { Int64(($0.latitude * 10_000_000.0).rounded()) }
-    row["longitude_e7"] = loc.map { Int64(($0.longitude * 10_000_000.0).rounded()) }
-    row["gps_speed_centi_mps"] = loc?.speedMps.map { telemetryCenti($0) }; row["bearing_centi_deg"] = loc?.bearingDeg.map { telemetryCenti($0) }
-    row["accuracy_cm"] = loc?.accuracyM.map { telemetryCenti($0) }; row["altitude_cm"] = loc?.altitudeM.map { telemetryCenti($0) }
-    row["location_timestamp_ms"] = loc?.timestamp
   }
 }
 
@@ -53,11 +47,13 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
     return Double(max(0, last - first)) / 100.0
   }()
   return [
-    "id": "\(row["board_id"] as String):\(row["bucket_start_ms"] as Int64)",
+    // Two recordings of one Board can share a minute, so the recording is part of the identity.
+    "id": "\(row["board_id"] as String):\(row["recording_id"] as String):\(row["bucket_start_ms"] as Int64)",
     "startAtMs": row["first_sample_at_ms"] as Int64,
     "endAtMs": row["last_sample_at_ms"] as Int64,
     "bucketStartMs": row["bucket_start_ms"] as Int64,
     "boardId": (row["board_id"] as String).isEmpty ? nil : row["board_id"] as String,
+    "recordingId": (row["recording_id"] as String).isEmpty ? nil : row["recording_id"] as String,
     "boardName": boardNames[row["board_id"] as String] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
     "sampleCount": sampleCount,
     "gpsPointCount": row["gps_point_count"] as Int,
@@ -86,7 +82,11 @@ internal func historyMap(_ row: Row, markers: [Row], boardNames: [String: String
   ]
 }
 
-internal func sampleMap(_ row: Row, batteryPercent: Double?, boardNames: [String: String]) -> [String: Any?] {
+internal func sampleMap(
+  _ row: Row,
+  batteryPercent: Double?,
+  boardNames: [String: String]
+) -> [String: Any?] {
   [
     "id": row["id"] as Int64,
     "capturedAtMs": row["captured_at_ms"] as Int64,
@@ -110,8 +110,6 @@ internal func sampleMap(_ row: Row, batteryPercent: Double?, boardNames: [String
     "odometer": (row["odometer_cm"] as Int64?).map { Double($0) / 100.0 },
     "tempMosfet": (row["temp_mosfet_deci_c"] as Int?).map { Double($0) / 10.0 },
     "tempMotor": (row["temp_motor_deci_c"] as Int?).map { Double($0) / 10.0 },
-    "latitude": (row["latitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
-    "longitude": (row["longitude_e7"] as Int64?).map { Double($0) / 10_000_000.0 },
   ]
 }
 
@@ -145,35 +143,6 @@ internal func exclusionMap(_ row: Row) -> [String: Any?] {
   ]
 }
 
-internal func gpsMaps(_ rows: [Row], boardNames: [String: String]) -> [[String: Any?]] {
-  var previousByBoard: [String: (lat: Double, lon: Double)] = [:]
-  return rows.compactMap { row in
-    guard let latitudeE7 = row["latitude_e7"] as Int64?, let longitudeE7 = row["longitude_e7"] as Int64? else {
-      return nil
-    }
-    let latitude = Double(latitudeE7) / 10_000_000.0
-    let longitude = Double(longitudeE7) / 10_000_000.0
-    let boardId = row["board_id"] as String? ?? ""
-    let previous = previousByBoard[boardId]
-    previousByBoard[boardId] = (latitude, longitude)
-    return [
-      "id": row["id"] as Int64,
-      "capturedAtMs": row["captured_at_ms"] as Int64,
-      "boardId": (row["board_id"] as String?) ?? nil,
-      "boardName": boardNames[boardId] ?? UNKNOWN_TELEMETRY_BOARD_NAME,
-      "latitude": latitude,
-      "longitude": longitude,
-      "speedMps": (row["gps_speed_centi_mps"] as Int?).map { Double($0) / 100.0 },
-      "bearingDeg": (row["bearing_centi_deg"] as Int?).map { Double($0) / 100.0 },
-      "accuracyM": (row["accuracy_cm"] as Int?).map { Double($0) / 100.0 },
-      "altitudeM": (row["altitude_cm"] as Int?).map { Double($0) / 100.0 },
-      "timestamp": (row["location_timestamp_ms"] as Int64?) ?? (row["captured_at_ms"] as Int64),
-      "precise": ((row["accuracy_cm"] as Int?) ?? Int.max) <= 2_000,
-      "distanceFromPreviousM": previous.map { telemetryHaversineM($0.lat, $0.lon, latitude, longitude) },
-    ]
-  }
-}
-
 internal func appendNullableDouble(_ data: inout Data, _ value: Double?) {
   appendDouble(&data, value ?? Double.nan)
 }
@@ -181,16 +150,6 @@ internal func appendNullableDouble(_ data: inout Data, _ value: Double?) {
 internal func appendDouble(_ data: inout Data, _ value: Double) {
   var bits = value.bitPattern.littleEndian
   withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
-}
-
-internal func telemetryHaversineM(_ lat1: Double, _ lon1: Double, _ lat2: Double, _ lon2: Double) -> Double {
-  let radius = 6_371_000.0
-  let dLat = (lat2 - lat1) * .pi / 180.0
-  let dLon = (lon2 - lon1) * .pi / 180.0
-  let a = sin(dLat / 2) * sin(dLat / 2) +
-    cos(lat1 * .pi / 180.0) * cos(lat2 * .pi / 180.0) *
-    sin(dLon / 2) * sin(dLon / 2)
-  return radius * 2 * atan2(sqrt(a), sqrt(1 - a))
 }
 
 internal func mergeTelemetryPayload(_ lhs: [String: Any?], _ rhs: [String: Any?]) -> [String: Any?] {

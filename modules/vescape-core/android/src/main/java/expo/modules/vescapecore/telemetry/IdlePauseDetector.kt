@@ -5,8 +5,11 @@ import kotlin.math.abs
 /** Keepalive poll spacing while in an Idle Pause: ~1 Hz keeps the resume signal alive. */
 internal const val IDLE_PAUSE_POLL_INTERVAL_MS = 1_000L
 
-/** Continuous non-moving time before a Ride Recording enters an Idle Pause. */
-internal const val DEFAULT_IDLE_PAUSE_AFTER_MS = 180_000L
+/**
+ * Continuous non-moving time before a Ride Recording enters an Idle Pause.
+ * @parity /modules/vescape-core/ios/telemetry/IdlePauseDetector.swift `DEFAULT_IDLE_PAUSE_AFTER_MS`
+ */
+internal const val DEFAULT_IDLE_PAUSE_AFTER_MS = 30_000L
 
 internal enum class IdlePauseTransition { Paused, Resumed }
 

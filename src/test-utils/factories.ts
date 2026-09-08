@@ -6,6 +6,7 @@ const BLOCK_DEFAULTS: TelemetryMinuteBucket = {
   endAtMs: 60_000,
   bucketStartMs: 0,
   boardId: 'dev-a',
+  recordingId: null,
   boardName: 'Board A',
   sampleCount: 10,
   gpsPointCount: 5,
@@ -71,8 +72,6 @@ const SAMPLE_DEFAULTS: TelemetrySample = {
   odometer: null,
   tempMosfet: null,
   tempMotor: null,
-  latitude: null,
-  longitude: null,
 }
 
 export function makeSample(overrides: Partial<TelemetrySample> = {}): TelemetrySample {

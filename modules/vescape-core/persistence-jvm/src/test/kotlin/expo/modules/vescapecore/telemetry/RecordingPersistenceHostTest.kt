@@ -33,9 +33,7 @@ class RecordingPersistenceHostTest {
       batteryCurrentMa = 500, dutyPermille = 100, pitchCentiDeg = 0, rollCentiDeg = 0,
       balancePitchCentiDeg = 0, balanceCurrentMa = 0, erpm = 1_000, state = 1,
       switchState = 1, adc1Milli = 0, adc2Milli = 0, odometerCm = at,
-      tempMosfetDeciC = 300, tempMotorDeciC = 300, latitudeE7 = null, longitudeE7 = null,
-      gpsSpeedCentiMps = null, bearingCentiDeg = null, accuracyCm = null, altitudeCm = null,
-      locationTimestampMs = null,
+      tempMosfetDeciC = 300, tempMotorDeciC = 300,
     )
     dao.insertFrames((0 until frames.length()).map { index ->
       frames.getJSONObject(index).let { frame(it.getLong("at"), it.getString("boardId")) }
@@ -334,7 +332,7 @@ class RecordingPersistenceHostTest {
     val samples = input.getJSONArray("samples")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), null, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
         80_000, 0, 0, 100, sample.getLong("odometerCm"), 300, 300)
     }
     val summary = buildFavoriteSummary(buildTelemetryBuckets(points, emptyList()))
@@ -519,7 +517,7 @@ class RecordingPersistenceHostTest {
     val samples = recording.getJSONArray("samples")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val current = buildTelemetryBuckets(points, emptyList()).single()
@@ -650,14 +648,12 @@ class RecordingPersistenceHostTest {
         pitchCentiDeg = 0, rollCentiDeg = 0, balancePitchCentiDeg = 0, balanceCurrentMa = 0,
         erpm = 1000, state = 1, switchState = 2, adc1Milli = 1000, adc2Milli = 1000,
         odometerCm = sample.getLong("odometerCm"), tempMosfetDeciC = 300, tempMotorDeciC = 350,
-        latitudeE7 = null, longitudeE7 = null, gpsSpeedCentiMps = null, bearingCentiDeg = null,
-        accuracyCm = null, altitudeCm = null, locationTimestampMs = null,
       )
     }
     val expected = fixture.getJSONObject("expected")
     val points = (0 until samples.length()).map { index ->
       val sample = samples.getJSONObject(index)
-      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, sample.getInt("speedCentiKmh"),
+      BucketTelemetryPoint(sample.getLong("capturedAtMs"), boardId, LEGACY_RIDE_RECORDING_ID, sample.getInt("speedCentiKmh"),
         sample.getInt("batteryVoltageMv"), 5000, 2000, 200, sample.getLong("odometerCm"), 300, 350)
     }
     val buckets = buildTelemetryBuckets(points, emptyList())

@@ -30,6 +30,8 @@ class DatabaseRestoreHostTest {
         dao.upsertTuneProfile(TuneProfileEntity("cross-tune", "cross-board", "2.0", "Cross Tune", fieldsJson = "{\"kp\":2}", createdAt = 103, updatedAt = 104))
         dao.insertFavorite(FavoriteEntity("cross-favorite", "cross-board", "Cross Favorite", 900, 1100, 105, 106, 1, 0, 200, 100, 2400, 2468, 2))
         dao.upsertBoardConfigValues(BoardConfigValuesEntity("cross-board", "2.0", "{\"motor_current_max\":55.5}", 107))
+        dao.insertRideRecording(RideRecordingEntity("cross-recording", "cross-board", 900, 1500, "stopped"))
+        dao.insertRideTrackPoints(listOf(RideTrackPointEntity(recordingId = "cross-recording", boardId = "cross-board", fixAtMs = 1200, latitudeE7 = 510000000, longitudeE7 = 170000000, accuracyCm = 3500, gpsSpeedCentiMps = 400, bearingCentiDeg = 9000, altitudeCm = 12300)))
         room.close()
         val connection = BundledSQLiteDriver().open(database.path)
         connection.execSQL("INSERT INTO telemetry_frames (captured_at_ms,elapsed_realtime_ms,board_id,flags,changed_mask_1,changed_mask_2,speed_centi_kmh) VALUES (1000,10,'cross-board',1,1,0,2468)")
@@ -63,6 +65,17 @@ class DatabaseRestoreHostTest {
         assertEquals("cross-board", frame.boardId)
         assertEquals(1000L, frame.capturedAtMs)
         assertEquals(2468, frame.speedCentiKmh)
+        val track = dao.getRideTrackPoints(0, 2000, "cross-board", 10).single()
+        assertEquals("cross-recording", track.recordingId)
+        assertEquals(1200L, track.fixAtMs)
+        assertEquals(3500, track.accuracyCm)
+        assertEquals(510000000, track.latitudeE7)
+        val verification = BundledSQLiteDriver().open(database.path)
+        verification.prepare("SELECT ended_reason FROM ride_recordings WHERE id='cross-recording'").use { row ->
+          assertTrue(row.step())
+          assertEquals("stopped", row.getText(0))
+        }
+        verification.close()
         assertEquals(listOf(1000L), dao.getVescFaultCaptureSamples("cross-fault").map { it.capturedAtMs })
         room.close()
       }
@@ -72,8 +85,8 @@ class DatabaseRestoreHostTest {
   @Test
   fun productionMigrationGraphRejectsVersionsWithoutAPath() {
     assertTrue((3..36).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
-    assertTrue((40..42).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
-    assertTrue(listOf(1, 2, 37, 38, 39, 43).all { it !in SUPPORTED_ANDROID_DATABASE_VERSIONS })
+    assertTrue((40..43).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
+    assertTrue(listOf(1, 2, 37, 38, 39, 44).all { it !in SUPPORTED_ANDROID_DATABASE_VERSIONS })
     assertTrue((14..36).all { it in EXPORTED_ANDROID_DATABASE_VERSIONS })
     assertTrue((3..13).all { it !in EXPORTED_ANDROID_DATABASE_VERSIONS })
     assertEquals(1, roomVersionForBackup("ios", 1))

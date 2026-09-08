@@ -9,7 +9,6 @@ import expo.modules.vescapecore.alerts.ALERT_BEEP_COUNT_DEFAULT
 
 // @parity /modules/vescape-core/ios/alerts/AlertEngine.swift
 const val TELEMETRY_FLAG_KEYFRAME = 1
-const val TELEMETRY_FLAG_HAS_LOCATION = 1 shl 2
 
 const val TELEMETRY_MASK_SPEED = 1
 const val TELEMETRY_MASK_BATTERY_VOLTAGE = 1 shl 1
@@ -29,13 +28,12 @@ const val TELEMETRY_MASK_ODOMETER = 1 shl 14
 const val TELEMETRY_MASK_TEMP_MOSFET = 1 shl 15
 const val TELEMETRY_MASK_TEMP_MOTOR = 1 shl 16
 
-const val TELEMETRY_MASK2_LOCATION = 1
-
 @Entity(
   tableName = "telemetry_frames",
   indices = [
     Index(value = ["captured_at_ms"]),
     Index(value = ["board_id", "captured_at_ms"]),
+    Index(value = ["recording_id", "captured_at_ms"]),
   ],
 )
 data class TelemetryFrameEntity(
@@ -52,6 +50,13 @@ data class TelemetryFrameEntity(
    */
   @ColumnInfo(name = "board_id")
   val boardId: String?,
+  /**
+   * Owning Ride Recording (`ride_recordings.id`), or null for rows recorded before durable
+   * recording identity existed. Board attribution and recording identity are separate facts: one
+   * Board produces many recordings, and two of them can share a minute (ADR 0038).
+   */
+  @ColumnInfo(name = "recording_id")
+  val recordingId: String? = null,
   @ColumnInfo(name = "can_id")
   val canId: Int?,
   val flags: Int,
@@ -91,25 +96,124 @@ data class TelemetryFrameEntity(
   val tempMosfetDeciC: Int?,
   @ColumnInfo(name = "temp_motor_deci_c")
   val tempMotorDeciC: Int?,
+)
+
+/**
+ * One **Ride Recording**: durable identity and explicit start/end boundaries for a capture, held
+ * apart from the Board that produced it (ADR 0038).
+ *
+ * `board_id` stays Board attribution — it says *which Board*, never *which recording*. Two
+ * recordings of one Board minutes (or seconds) apart are two rows here, which is what keeps their
+ * frames, track and minute buckets from being merged on read.
+ *
+ * [endedAtMs] is null while the recording is open. Only an explicit rider Stop Recording or
+ * Disconnect closes it: an unexpected drop, an Idle Pause, a process restart or an hour of silence
+ * in both streams leave it open.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RideRecording`
+ */
+@Entity(
+  tableName = "ride_recordings",
+  indices = [
+    Index(value = ["started_at_ms"]),
+    Index(value = ["board_id", "started_at_ms"]),
+  ],
+)
+data class RideRecordingEntity(
+  @PrimaryKey
+  val id: String,
+  /** Owning Board (`boards.id`), or null when the recording matched no saved Board. */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  @ColumnInfo(name = "started_at_ms")
+  val startedAtMs: Long,
+  /** Null while the recording is open. */
+  @ColumnInfo(name = "ended_at_ms")
+  val endedAtMs: Long? = null,
+  /**
+   * Why the recording ended: [RIDE_RECORDING_END_STOPPED], [RIDE_RECORDING_END_DISCONNECTED] or
+   * [RIDE_RECORDING_END_BOARD_CHANGE]. Null while open.
+   */
+  @ColumnInfo(name = "ended_reason")
+  val endedReason: String? = null,
+)
+
+/** Rider stopped recording explicitly. */
+const val RIDE_RECORDING_END_STOPPED = "stopped"
+
+/** Rider disconnected the Board explicitly. */
+const val RIDE_RECORDING_END_DISCONNECTED = "disconnected"
+
+/** An explicit connection attempt to another Board ended this one, however that attempt turned out. */
+const val RIDE_RECORDING_END_BOARD_CHANGE = "board_change"
+
+/**
+ * One point of a **Ride Track**: a single GPS Fix recorded during a Ride Recording, on the GPS
+ * clock (ADR 0038).
+ *
+ * Every admitted fix is stored with the accuracy the platform reported, poor ones included — the
+ * precision rule is a read-side decision, and a write-time discard is unrecoverable. The two gates
+ * that do drop a fix are the Ride Recording state (Idle Pause halts both streams) and Privacy Zones
+ * (ADR 0009), which must filter this stream on its own now that position no longer rides along on a
+ * suppressed Telemetry Sample.
+ *
+ * [fixAtMs] is the GPS clock, deliberately not aligned to any telemetry frame's capture time: a fix
+ * survives a board dropout, and the two streams are joined on read, not on write.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `RideTrackPoint`
+ */
+@Entity(
+  tableName = "ride_track_points",
+  indices = [
+    Index(value = ["fix_at_ms"]),
+    Index(value = ["board_id", "fix_at_ms"]),
+    Index(value = ["recording_id", "fix_at_ms"]),
+  ],
+)
+data class RideTrackPointEntity(
+  @PrimaryKey(autoGenerate = true)
+  val id: Long = 0,
+  /**
+   * Owning Ride Recording (`ride_recordings.id`), or null for points migrated out of
+   * `telemetry_frames`, which predate durable recording identity. Legacy history keeps its
+   * gap-based grouping (`rideSplitGapMinutes`) rather than having recordings invented for it.
+   */
+  @ColumnInfo(name = "recording_id")
+  val recordingId: String?,
+  /** Owning Board (`boards.id`), or null when the fix matched no saved Board (ADR 0028). */
+  @ColumnInfo(name = "board_id")
+  val boardId: String?,
+  /** GPS clock: when the platform says the fix was taken. */
+  @ColumnInfo(name = "fix_at_ms")
+  val fixAtMs: Long,
   @ColumnInfo(name = "latitude_e7")
-  val latitudeE7: Int?,
+  val latitudeE7: Int,
   @ColumnInfo(name = "longitude_e7")
-  val longitudeE7: Int?,
-  @ColumnInfo(name = "gps_speed_centi_mps")
-  val gpsSpeedCentiMps: Int?,
-  @ColumnInfo(name = "bearing_centi_deg")
-  val bearingCentiDeg: Int?,
+  val longitudeE7: Int,
+  /** Reported horizontal accuracy. Stored as reported; never a filter at write time. */
   @ColumnInfo(name = "accuracy_cm")
   val accuracyCm: Int?,
+  @ColumnInfo(name = "gps_speed_centi_mps")
+  val gpsSpeedCentiMps: Int?,
+  /** Raw platform bearing, not the derived course. */
+  @ColumnInfo(name = "bearing_centi_deg")
+  val bearingCentiDeg: Int?,
   @ColumnInfo(name = "altitude_cm")
   val altitudeCm: Int?,
-  @ColumnInfo(name = "location_timestamp_ms")
-  val locationTimestampMs: Long?,
 )
+
+/**
+ * Stand-in Ride Recording id for minute buckets aggregated from rows without durable recording
+ * identity. `recording_id` is part of the bucket primary key, so legacy rows need a value rather
+ * than null.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/RideTrackStore.swift `LEGACY_RIDE_RECORDING_ID`
+ */
+const val LEGACY_RIDE_RECORDING_ID = ""
 
 @Entity(
   tableName = "telemetry_minute_buckets",
-  primaryKeys = ["bucket_start_ms", "board_id"],
+  primaryKeys = ["bucket_start_ms", "board_id", "recording_id"],
   indices = [Index(value = ["bucket_start_ms"])],
 )
 data class TelemetryMinuteBucketEntity(
@@ -122,6 +226,13 @@ data class TelemetryMinuteBucketEntity(
    */
   @ColumnInfo(name = "board_id")
   val boardId: String,
+  /**
+   * Owning Ride Recording (`ride_recordings.id`), or [LEGACY_RIDE_RECORDING_ID] for buckets built
+   * before durable recording identity. Part of the key so two recordings of one Board inside one
+   * minute aggregate separately instead of being merged (ADR 0038).
+   */
+  @ColumnInfo(name = "recording_id")
+  val recordingId: String = LEGACY_RIDE_RECORDING_ID,
   @ColumnInfo(name = "sample_count")
   val sampleCount: Int,
   @ColumnInfo(name = "first_sample_at_ms")

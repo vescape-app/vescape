@@ -15,7 +15,7 @@ import org.junit.Test
 
 /** Executes every supported start with the production migration algorithms on real SQLite. */
 class TelemetryMigrationMatrixHostTest {
-  private val supportedStarts = (3..36).toList() + listOf(40, 41, 42)
+  private val supportedStarts = (3..36).toList() + listOf(40, 41, 42, 43)
 
   private fun manifest() = JSONObject(
     Files.readString(java.nio.file.Path.of("../shared/migration-fixture-manifest.json")),
@@ -154,7 +154,7 @@ class TelemetryMigrationMatrixHostTest {
   @Test fun everySupportedStartPreservesEraValuesAndReachesEveryEdge() {
     val reached = mutableSetOf<Pair<Int, Int>>()
     for (start in supportedStarts) {
-      val path = Files.createTempFile("vescape-v$start-to-v42-", ".db")
+      val path = Files.createTempFile("vescape-v$start-to-v43-", ".db")
       BundledSQLiteDriver().open(path.toString()).use { db ->
         createAuthenticV3(db)
         migrate(db, 3, start, reached, seedFixtureValues = true)
@@ -186,7 +186,7 @@ class TelemetryMigrationMatrixHostTest {
   }
 
   @Test fun missingAndUnsupportedStartsFailWithoutCreatingTargetData() {
-    for (start in listOf(1, 2, 37, 38, 39, 43)) {
+    for (start in listOf(1, 2, 37, 38, 39, 44)) {
       val path = Files.createTempFile("vescape-unsupported-v$start-", ".db")
       BundledSQLiteDriver().open(path.toString()).use { db ->
         db.exec("CREATE TABLE sentinel(value TEXT NOT NULL)")

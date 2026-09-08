@@ -24,39 +24,52 @@ final class SessionResumeStoreTests: XCTestCase {
 
   func testSaveRoundTrips() {
     let store = SessionResumeStore(defaults: defaults)
-    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, nowMs: 1234)
+    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, recordingId: "rec-1")
     XCTAssertEqual(
       store.pending,
-      SessionResumeMarker(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, savedAtMs: 1234)
+      SessionResumeMarker(
+        appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, recordingId: "rec-1")
     )
   }
 
   /// The marker outlives the process, so a second store instance (the next launch) must read it.
   func testMarkerSurvivesANewStoreInstance() {
     SessionResumeStore(defaults: defaults)
-      .save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: false, nowMs: 1)
+      .save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: false, recordingId: nil)
     XCTAssertEqual(SessionResumeStore(defaults: defaults).pending?.appBoardId, "board-1")
   }
 
-  func testRecordingFlagIsRefreshedInPlace() {
+  /// The recording flag *and* the identity it names are refreshed in place: the recording is minted
+  /// after the session begins, so the marker written at begin does not know its id yet.
+  func testRecordingIsRefreshedInPlace() {
     let store = SessionResumeStore(defaults: defaults)
-    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: false, nowMs: 7)
-    store.setRecordingActive(true)
+    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: false, recordingId: nil)
+    store.setRecording(active: true, recordingId: "rec-1")
     XCTAssertEqual(store.pending?.recordingActive, true)
+    XCTAssertEqual(store.pending?.recordingId, "rec-1")
     XCTAssertEqual(store.pending?.appBoardId, "board-1")
-    XCTAssertEqual(store.pending?.savedAtMs, 7)
+  }
+
+  /// Stopping recording drops the identity too: a marker still naming an ended recording would ask
+  /// the next launch to rejoin a ride the rider finished.
+  func testStoppingRecordingClearsTheIdentity() {
+    let store = SessionResumeStore(defaults: defaults)
+    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, recordingId: "rec-1")
+    store.setRecording(active: false, recordingId: nil)
+    XCTAssertEqual(store.pending?.recordingActive, false)
+    XCTAssertNil(store.pending?.recordingId)
   }
 
   /// Recording can be toggled with no session on: that must not conjure a marker.
   func testRecordingFlagWithoutMarkerIsANoop() {
     let store = SessionResumeStore(defaults: defaults)
-    store.setRecordingActive(true)
+    store.setRecording(active: true, recordingId: "rec-1")
     XCTAssertNil(store.pending)
   }
 
   func testClearDropsTheMarker() {
     let store = SessionResumeStore(defaults: defaults)
-    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, nowMs: 1)
+    store.save(appBoardId: "board-1", bleId: "BLE-UUID", recordingActive: true, recordingId: "rec-1")
     store.clear()
     XCTAssertNil(store.pending)
   }

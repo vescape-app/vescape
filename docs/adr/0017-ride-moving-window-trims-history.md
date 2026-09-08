@@ -27,3 +27,7 @@ A Ride Recording with **zero** moving samples (board on, never actually ridden) 
 - Time changes meaning from wall-clock to riding span; Distance (odometer) and Avg Speed (already moving-based) are unchanged, as are durable Telemetry Samples and the grey "Low speed" / "Free spin" chart coloring.
 - Zero-movement rides disappear from history and `rideCount`. Edge case: a genuine ride where GPS dropped and free-spin over-excluded every sample reads as zero movement and is hidden — accepted as rare.
 - The trim window and the hide rule are two independent slices: hiding needs no schema change; trimming + matching Time needs the two columns.
+
+## Ride Track amendment
+
+Movement evidenced by Ride Track can extend the Moving Window through GPS-only stretches, including after the last moving Telemetry Sample. History seek bounds and the Time stat use this combined, natively precomputed window. Leading and trailing non-moving spans remain trimmed, internal stops remain inside the window, and existing display padding stays display-only. Telemetry gaps remain gaps rather than carried-forward or interpolated Board readings. Distance remains board-odometer-based.

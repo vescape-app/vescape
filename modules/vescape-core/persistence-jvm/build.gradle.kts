@@ -18,6 +18,8 @@ val extractProductionPersistence by tasks.registering {
       "expo/modules/vescapecore/config/BoardConfigChangeNotice.kt",
       "expo/modules/vescapecore/config/RefloatConfigSchema.kt",
       "expo/modules/vescapecore/telemetry/TelemetryEntities.kt",
+      "expo/modules/vescapecore/telemetry/HistoryGpsProjection.kt",
+      "expo/modules/vescapecore/location/GpsAccuracy.kt",
       "expo/modules/vescapecore/telemetry/TelemetryDao.kt",
       "expo/modules/vescapecore/telemetry/ConfigPersistence.kt",
       "expo/modules/vescapecore/telemetry/TuneAlertPersistence.kt",

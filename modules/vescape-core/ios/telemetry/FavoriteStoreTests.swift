@@ -23,6 +23,35 @@ final class FavoriteStoreTests: XCTestCase {
     queue = nil
   }
 
+  /// GPS movement after the display cap still contributes to the saved Favorite summary.
+  /// @parity /modules/vescape-core/android/src/androidTest/java/expo/modules/vescapecore/telemetry/RideReadQueriesTest.kt
+  func testFavoriteSummaryReadsMovementBeyondTheDisplayCap() throws {
+    let database = try DatabaseQueue()
+    try TelemetryDatabase.migrator.migrate(database)
+    try database.write { db in
+      for index in 0..<(MAX_SAMPLE_LIMIT + 2) {
+        try insertRideTrackPoint(db, RideTrackPoint(
+          recordingId: "recording-1", boardId: "board-1",
+          fixAtMs: Int64(index) * 60_000, latitudeE7: 500_000_000, longitudeE7: 190_000_000,
+          accuracyCm: 300, gpsSpeedCentiMps: index >= MAX_SAMPLE_LIMIT ? 1_000 : 0,
+          bearingCentiDeg: nil, altitudeCm: nil
+        ))
+      }
+    }
+    let summary = try database.read { db in
+      let displayed = try fetchRideTrack(db, fromMs: 0, toMs: Int64.max, boardId: "board-1")
+      XCTAssertEqual(displayed.count, MAX_SAMPLE_LIMIT)
+      let complete = try fetchRideTrackForAggregation(db, fromMs: 0, toMs: Int64.max, boardId: "board-1")
+      XCTAssertEqual(complete.count, MAX_SAMPLE_LIMIT + 2)
+      return TelemetryRepository.favoriteSummary([], track: complete.map(rideTrackPoint), config: MetricSanitizerConfig())
+    }
+    XCTAssertEqual(summary.movingDurationMs, 60_000)
+    XCTAssertEqual(summary.gpsPointCount, MAX_SAMPLE_LIMIT + 2)
+    let favorite = makeFavorite(id: "long-ride", startMs: 0, endMs: Int64.max, summary: summary)
+    try store.insert(favorite)
+    XCTAssertEqual(try store.list().first?.summary.movingDurationMs, 60_000)
+  }
+
   // MARK: - Store
 
   func testInsertedFavoriteRoundTripsThroughTheStore() throws {
@@ -311,15 +340,7 @@ final class FavoriteStoreTests: XCTestCase {
         dutyPermille: 400,
         odometerCm: (startMs + offset) / 10,
         tempMosfetDeciC: nil,
-        tempMotorDeciC: nil,
-        gpsSpeedCentiMps: nil,
-        gpsTimestampMs: nil,
-        gpsAccuracyCm: nil,
-        latitudeE7: nil,
-        longitudeE7: nil,
-        bearingCentiDeg: nil,
-        altitudeCm: nil,
-        preciseGps: false
+        tempMotorDeciC: nil
       )
     }
   }
