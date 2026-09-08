@@ -20,11 +20,16 @@ function SelectPrompt<T extends string>({
   const { exit } = useApp()
   const [index, setIndex] = useState(0)
   useInput((input, key) => {
-    if (key.upArrow) setIndex((value) => (value - 1 + options.length) % options.length)
-    else if (key.downArrow) setIndex((value) => (value + 1) % options.length)
-    else if (isEnter(input, key)) {
-      finish(options[index].value)
+    const nextIndex = key.upArrow
+      ? (index - 1 + options.length) % options.length
+      : key.downArrow
+        ? (index + 1) % options.length
+        : index
+    if (isEnter(input, key)) {
+      finish(options[nextIndex].value)
       exit()
+    } else if (key.upArrow || key.downArrow) {
+      setIndex(nextIndex)
     } else if (key.escape) {
       exit()
     }

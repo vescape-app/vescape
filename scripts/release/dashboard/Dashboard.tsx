@@ -6,35 +6,20 @@ import type { ReleaseState, TrackRow } from './state'
 
 const column = (value: string, width: number) => value.padEnd(width)
 
-function TrackLine({
-  name,
-  track,
-  row,
-  extra,
-}: {
-  name: string
-  track: string | undefined
-  row: TrackRow | null
-  extra?: string
-}) {
+function TrackLine({ name, row }: { name: string; row: TrackRow | null }) {
   if (!row) {
     return (
       <Text dimColor>
-        {column(name, 13)}
-        {column('—', 10)}
-        {column('', 24)}
-        {track ?? ''}
+        {column(name, 18)}
+        {column('—', 12)}—
       </Text>
     )
   }
   return (
     <Text>
-      {column(name, 13)}
-      <Text bold>{column(row.marketingVersion, 10)}</Text>
-      {column(`${row.phone} / ${row.wear}`, 24)}
-      {row.detail}
-      {extra ? <Text color="yellow">{extra}</Text> : null}
-      {row.age ? <Text dimColor> · {row.age}</Text> : null}
+      {column(name, 18)}
+      <Text bold>{column(row.marketingVersion, 12)}</Text>
+      <Text dimColor>{row.age ?? '—'}</Text>
     </Text>
   )
 }
@@ -48,49 +33,22 @@ export function Dashboard({
   actions: readonly DashboardAction[]
   index: number
 }) {
-  const { tracks } = state
   return (
     <Box flexDirection="column">
       <Rule />
-      <Text>
-        {column('dev', 13)}
-        <Text bold>{column(state.devVersion ?? '…', 10)}</Text>
-        <Text dimColor>{state.notesPath ?? ''}</Text>
-      </Text>
-      <Rule />
       <Text dimColor>
-        {column('TRACK', 13)}
-        {column('VERSION', 10)}
-        {column('PHONE / WEAR', 24)}
-        STATE
+        {column('TRACK', 18)}
+        {column('VERSION', 12)}
+        UPDATED
       </Text>
-      <TrackLine name="internal" track={tracks?.phoneInternal} row={state.internal} />
-      <TrackLine name="open" track={tracks?.phoneOpen} row={state.open} />
-      <TrackLine name="production" track={tracks?.phoneProduction} row={state.production} />
+      <TrackLine name="Internal" row={state.internal} />
+      <TrackLine name="Open testing" row={state.open} />
+      <TrackLine name="Production" row={state.production} />
       <Rule />
-      {state.pendingInternal > 0 && (
-        <Text>
-          {column('pending', 13)}
-          {state.pendingInternal} internal build
-          {state.pendingInternal === 1 ? '' : 's'} not on open
-        </Text>
-      )}
-      {state.pendingOpen > 0 && (
-        <Text>
-          {column('pending', 13)}
-          {state.pendingOpen} open promotion
-          {state.pendingOpen === 1 ? '' : 's'} not on production
-        </Text>
-      )}
-      {state.prereleases.length > 0 && (
-        <Text>
-          {column('prerelease', 13)}
-          {state.prereleases.join(', ')} not on production
-        </Text>
-      )}
+      {state.guidance ? <Text color="yellow">{state.guidance}</Text> : null}
       {state.alerts.map((alert) => (
         <Text key={alert} color="yellow">
-          {column('failed', 13)}
+          {column('Problem', 18)}
           {alert}
         </Text>
       ))}
@@ -103,7 +61,7 @@ export function Dashboard({
       )}
       <Rule />
       <Box flexDirection="column" marginTop={1}>
-        <Text bold>Actions</Text>
+        <Text bold>What would you like to do?</Text>
         <Menu
           items={actions.map((action) => ({ key: action.id, label: action.label }))}
           index={index}

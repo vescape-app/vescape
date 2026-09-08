@@ -10,7 +10,6 @@ import {
   downloadPromotionManifest,
   listArtifactRuns,
   listInternalWorkflowRuns,
-  listPrereleaseTags,
   newestSuccessfulArtifact,
   releaseTrackConfig,
   repositoryName,
@@ -18,7 +17,13 @@ import {
   type ArtifactRun,
   type ReleaseTrackConfig,
 } from '../github'
-import { currentMarketingVersion, releaseNotesPath } from '../prepare'
+import {
+  currentMarketingVersion,
+  currentPreparedReleaseVersion,
+  currentReleaseDraft,
+  releaseNotesPath,
+  type VersionBump,
+} from '../prepare'
 
 export interface TrackRow {
   marketingVersion: string
@@ -27,6 +32,8 @@ export interface TrackRow {
   detail: string
   runId: number
   age: string | null
+  /** Upstream workflow run this track consumed, when it is a promotion. */
+  sourceRunId?: number
 }
 
 /** Compact age for the overview table; the exact timestamp is never the decision-relevant part. */
@@ -57,36 +64,42 @@ export interface ProductionRow extends TrackRow {
 export interface ReleaseState {
   repo: string | null
   devVersion: string | null
+  preparedVersion: string | null
+  draft: { version: string; bump: VersionBump } | null
   notesPath: string | null
   tracks: ReleaseTrackConfig | null
   internal: TrackRow | null
   open: TrackRow | null
   production: ProductionRow | null
-  pendingInternal: number
-  pendingOpen: number
-  prereleases: string[]
   alerts: string[]
   activeRun: WorkflowRun | null
+  failedRun: WorkflowRun | null
   loading: boolean
   error: string | null
+  promotableInternalRunId: number | null
+  productionEligibleOpenRunId: number | null
+  guidance: string | null
 }
 
 export function initialReleaseState(): ReleaseState {
   return {
     repo: null,
     devVersion: null,
+    preparedVersion: null,
+    draft: null,
     notesPath: null,
     tracks: null,
     internal: null,
     open: null,
     production: null,
-    pendingInternal: 0,
-    pendingOpen: 0,
-    prereleases: [],
     alerts: [],
     activeRun: null,
+    failedRun: null,
     loading: true,
     error: null,
+    promotableInternalRunId: null,
+    productionEligibleOpenRunId: null,
+    guidance: null,
   }
 }
 
@@ -101,6 +114,25 @@ export function internalRow(manifest: HistoricalReleaseManifest, age: string | n
   }
 }
 
+export function hasCurrentPromotionProof(manifest: HistoricalReleaseManifest): boolean {
+  const proof = (
+    manifest as HistoricalReleaseManifest & {
+      storageContracts?: {
+        sourceSha?: string
+        androidRoom?: string
+        iosGrdb?: string
+        crossPlatformArchives?: string
+      }
+    }
+  ).storageContracts
+  return (
+    proof?.sourceSha === manifest.sourceSha &&
+    proof.androidRoom === 'passed' &&
+    proof.iosGrdb === 'passed' &&
+    proof.crossPlatformArchives === 'passed'
+  )
+}
+
 export function openRow(manifest: PromotionManifest, runId: number, age: string | null): TrackRow {
   return {
     marketingVersion: manifest.marketingVersion,
@@ -109,6 +141,7 @@ export function openRow(manifest: PromotionManifest, runId: number, age: string 
     detail: manifest.phone.status === 'already-open' ? 'already open' : 'promoted',
     runId,
     age,
+    sourceRunId: manifest.candidateRunId,
   }
 }
 
@@ -125,6 +158,7 @@ export function productionRow(
     runId,
     openPromotionRunId: manifest.openPromotionRunId,
     age,
+    sourceRunId: manifest.openPromotionRunId,
   }
 }
 
@@ -137,24 +171,6 @@ const ageOf = (runs: readonly ArtifactRun[], runId: number | undefined): string 
  * pending work that no promotion can act on. Only failures inside the scan window are known;
  * an older failure beyond it can still be overcounted.
  */
-export function pendingCount(
-  runs: readonly ArtifactRun[],
-  consumedRunId: number | null,
-  failedRunIds: readonly number[] = [],
-): number {
-  const failed = new Set(failedRunIds)
-  return runs.filter(
-    (run) => !failed.has(run.runId) && (consumedRunId === null || run.runId > consumedRunId),
-  ).length
-}
-
-export function unreleasedPrereleases(
-  tags: readonly string[],
-  productionVersion: string | null,
-): string[] {
-  return tags.filter((tag) => tag !== `v${productionVersion}`)
-}
-
 /**
  * A truncated scan renders the track as if it were never published, which would silently hide
  * the version actually on it. Say so instead of showing an empty row as fact.
@@ -177,9 +193,15 @@ export type ReleaseStatePatch = Partial<ReleaseState>
  */
 export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void): Promise<void> {
   try {
-    const devVersion = await currentMarketingVersion()
+    const [devVersion, preparedVersion, draft] = await Promise.all([
+      currentMarketingVersion(),
+      currentPreparedReleaseVersion(),
+      currentReleaseDraft(),
+    ])
     emit({
       devVersion,
+      preparedVersion,
+      draft,
       notesPath: releaseNotesPath(devVersion),
     })
 
@@ -187,18 +209,15 @@ export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void)
     const repo = await repositoryName()
     emit({ repo })
 
-    const [tracks, internalRuns, openRuns, productionRuns, prereleases, workflowRuns] =
-      await Promise.all([
-        releaseTrackConfig(repo),
-        listArtifactRuns(repo, 'release-manifest'),
-        listArtifactRuns(repo, 'promotion-manifest'),
-        listArtifactRuns(repo, 'production-manifest'),
-        listPrereleaseTags(repo),
-        listInternalWorkflowRuns(repo),
-      ])
+    const [tracks, internalRuns, openRuns, productionRuns, workflowRuns] = await Promise.all([
+      releaseTrackConfig(repo),
+      listArtifactRuns(repo, 'release-manifest'),
+      listArtifactRuns(repo, 'promotion-manifest'),
+      listArtifactRuns(repo, 'production-manifest'),
+      listInternalWorkflowRuns(repo),
+    ])
     emit({
       tracks,
-      prereleases,
       activeRun: workflowRuns.find((run) => run.status !== 'completed') ?? null,
     })
 
@@ -228,25 +247,49 @@ export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void)
           ageOf(productionRuns, production.success.runId),
         )
       : null
+    const internalState = internal.success
+      ? internalRow(internal.success.artifact, ageOf(internalRuns, internal.success.runId))
+      : null
+    const promotableInternalRunId =
+      internal.success && hasCurrentPromotionProof(internal.success.artifact)
+        ? internal.success.runId
+        : null
+    let openSource: HistoricalReleaseManifest | null = null
+    let openProofUnavailable = false
+    if (open.success) {
+      try {
+        openSource = await downloadHistoricalManifest(open.success.artifact.candidateRunId)
+      } catch {
+        openProofUnavailable = true
+      }
+    }
+    const productionEligibleOpenRunId =
+      open.success && openSource && hasCurrentPromotionProof(openSource) ? open.success.runId : null
     emit({
-      internal: internal.success
-        ? internalRow(internal.success.artifact, ageOf(internalRuns, internal.success.runId))
-        : null,
+      internal: internalState,
       open: open.success
         ? openRow(open.success.artifact, open.success.runId, ageOf(openRuns, open.success.runId))
         : null,
       production: productionState,
-      pendingInternal: pendingCount(
-        internalRuns,
-        open.success?.artifact.candidateRunId ?? null,
-        internal.failures.map((failure) => failure.runId),
-      ),
-      pendingOpen: pendingCount(
-        openRuns,
-        production.success?.artifact.openPromotionRunId ?? null,
-        open.failures.map((failure) => failure.runId),
-      ),
-      prereleases: unreleasedPrereleases(prereleases, productionState?.marketingVersion ?? null),
+      failedRun:
+        workflowRuns.find(
+          (run) =>
+            run.status === 'completed' &&
+            run.conclusion !== 'success' &&
+            run.id > (internalState?.runId ?? 0),
+        ) ?? null,
+      promotableInternalRunId,
+      productionEligibleOpenRunId,
+      guidance:
+        internalState && internalState.runId !== promotableInternalRunId
+          ? `${internalState.marketingVersion} cannot be promoted because it predates the current release checks. Prepare a new release.`
+          : openProofUnavailable && open.success
+            ? `Could not verify whether ${open.success.artifact.marketingVersion} is eligible for production.`
+            : open.success &&
+                open.success.runId !== productionEligibleOpenRunId &&
+                open.success.runId !== productionState?.sourceRunId
+              ? `${open.success.artifact.marketingVersion} cannot be published because it lacks current promotion proof.`
+              : null,
       alerts: [
         ...internal.failures.map(
           (failure) =>

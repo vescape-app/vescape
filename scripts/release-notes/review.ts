@@ -13,35 +13,76 @@ export async function reviewReleaseNoteDraft(options: {
   editorCommand: string[]
   initialPrompt: string
   replace?: boolean
-}): Promise<'accepted' | 'discarded'> {
+  persist?: boolean
+  initialDraft?: { markdown: string; threadId: string }
+  allowVersionChange?: boolean
+  acceptLabel?: string
+  onDraft?: (draft: { markdown: string; threadId: string }) => void | Promise<void>
+  select?: (title: string, options: readonly { value: string; label: string }[]) => Promise<string>
+}): Promise<
+  | { kind: 'accepted'; markdown: string; threadId: string }
+  | { kind: 'change-version'; markdown: string; threadId: string }
+  | { kind: 'discarded' }
+  | { kind: 'paused' }
+> {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'vescape-release-notes-'))
   const draftFile = join(temporaryDirectory, 'draft.md')
 
   try {
-    console.log('\nAsking local Codex to inspect the compared changes…')
-    let result = await runCodexDraft({
-      root: options.root,
-      outputFile: draftFile,
-      prompt: options.initialPrompt,
-    })
+    let result = options.initialDraft
+    if (!result) {
+      console.log('\nAsking local Codex to inspect the compared changes…')
+      const startedAt = Date.now()
+      const progress = setInterval(() => {
+        console.log(`Still drafting… ${Math.round((Date.now() - startedAt) / 1_000)}s`)
+      }, 15_000)
+      try {
+        result = await runCodexDraft({
+          root: options.root,
+          outputFile: draftFile,
+          prompt: options.initialPrompt,
+        })
+      } finally {
+        clearInterval(progress)
+      }
+      console.log(`Draft ready in ${Math.round((Date.now() - startedAt) / 1_000)}s`)
+    } else {
+      await writeFile(draftFile, result.markdown)
+    }
+    await options.onDraft?.(result)
 
     while (true) {
       preview(result.markdown)
-      const choice = await selectPrompt('Review release-note draft', [
-        { value: 'accept', label: 'Accept canonical notes' },
-        { value: 'revise', label: 'Revise with Codex' },
-        { value: 'edit', label: `Edit in ${options.editorCommand[0]}` },
-        { value: 'discard', label: 'Discard draft' },
-      ] as const)
+      let choice
+      try {
+        choice = await (options.select ?? selectPrompt)('Review release-note draft', [
+          { value: 'accept', label: options.acceptLabel ?? 'Accept canonical notes' },
+          { value: 'revise', label: 'Revise with Codex' },
+          { value: 'edit', label: `Edit in ${options.editorCommand[0]}` },
+          ...(options.allowVersionChange
+            ? [{ value: 'change-version' as const, label: 'Change patch / minor / major' }]
+            : []),
+          { value: 'discard', label: 'Cancel release' },
+        ] as const)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'Selection cancelled') {
+          return { kind: 'paused' }
+        }
+        throw error
+      }
 
       if (choice === 'discard') {
         console.log('Draft discarded; canonical release notes unchanged')
-        return 'discarded'
+        return { kind: 'discarded' }
+      }
+      if (choice === 'change-version') {
+        return { kind: 'change-version', ...result }
       }
       if (choice === 'edit') {
         try {
           await openEditor(draftFile, options.editorCommand)
           result = { ...result, markdown: await readFile(draftFile, 'utf8') }
+          await options.onDraft?.(result)
         } catch (error) {
           console.error(error instanceof Error ? error.message : String(error))
         }
@@ -56,6 +97,7 @@ export async function reviewReleaseNoteDraft(options: {
           threadId: result.threadId,
           prompt: `Revise the release-note draft. Return only the complete Markdown replacement.\n\nAuthor instruction: ${instruction}\n\nCurrent draft:\n${result.markdown}`,
         })
+        await options.onDraft?.(result)
         continue
       }
 
@@ -65,13 +107,19 @@ export async function reviewReleaseNoteDraft(options: {
         console.error(error instanceof Error ? error.message : String(error))
         continue
       }
-      await mkdir(dirname(options.destination), { recursive: true })
-      await writeFile(options.destination, ensureTrailingNewline(result.markdown), {
-        flag: options.replace ? 'w' : 'wx',
-      })
-      await buildReleaseNotes()
-      console.log(`Accepted ${options.destination}`)
-      return 'accepted'
+      if (options.persist !== false) {
+        await mkdir(dirname(options.destination), { recursive: true })
+        await writeFile(options.destination, ensureTrailingNewline(result.markdown), {
+          flag: options.replace ? 'w' : 'wx',
+        })
+        await buildReleaseNotes()
+        console.log(`Accepted ${options.destination}`)
+      }
+      return {
+        kind: 'accepted',
+        markdown: ensureTrailingNewline(result.markdown),
+        threadId: result.threadId,
+      }
     }
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true })

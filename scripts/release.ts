@@ -8,6 +8,16 @@ while (true) {
   if (result.kind !== 'prepare') break
   try {
     const prepared = await prepareReleaseCandidate(result.bump)
+    if (prepared.kind === 'discarded') {
+      console.log('\nRelease draft discarded; working tree unchanged')
+      options = {}
+      continue
+    }
+    if (prepared.kind === 'paused') {
+      console.log('\nDraft saved; working tree unchanged')
+      options = {}
+      continue
+    }
     console.log(`\n✓ Prepared and pushed v${prepared.marketingVersion}`)
     options = { initialPhase: 'build-source', initialSourceRef: prepared.sourceSha }
   } catch (error) {
