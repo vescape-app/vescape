@@ -299,13 +299,8 @@ export function BoardSelectorSheet({
 }
 
 const styles = StyleSheet.create({
-  // The picker is not the drawer's width: rows that run the whole phone read as a settings screen
-  // rather than a choice, so the list and its add row stay a centered column.
   frame: {
     width: '100%',
-    minWidth: 260,
-    maxWidth: 300,
-    alignSelf: 'center',
   },
   // The active board is a card, not a list row — it takes the drawer's full width and the same
   // surface every other widget in there wears.
