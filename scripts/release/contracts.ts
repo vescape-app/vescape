@@ -108,7 +108,23 @@ export interface ProductionManifest {
   githubRelease: 'released' | 'already-released' | 'skipped' | 'failed'
 }
 
+/** Recorded upload history predates the storage attestation required for new promotions. */
+export type HistoricalReleaseManifest = Omit<ReleaseManifest, 'storageContracts'>
+
 export function parseReleaseManifest(value: unknown): ReleaseManifest {
+  const manifest = parseHistoricalReleaseManifest(value) as ReleaseManifest
+  if (
+    manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
+    manifest.storageContracts.androidRoom !== 'passed' ||
+    manifest.storageContracts.iosGrdb !== 'passed' ||
+    manifest.storageContracts.crossPlatformArchives !== 'passed'
+  ) {
+    throw new Error('Release manifest has an invalid shape')
+  }
+  return manifest
+}
+
+export function parseHistoricalReleaseManifest(value: unknown): HistoricalReleaseManifest {
   if (!value || typeof value !== 'object') throw new Error('Release manifest is not an object')
   const manifest = value as Partial<ReleaseManifest>
   if (
@@ -125,10 +141,6 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     !manifest.workflow ||
     typeof manifest.workflow.runId !== 'number' ||
     typeof manifest.workflow.runUrl !== 'string' ||
-    manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
-    manifest.storageContracts.androidRoom !== 'passed' ||
-    manifest.storageContracts.iosGrdb !== 'passed' ||
-    manifest.storageContracts.crossPlatformArchives !== 'passed' ||
     !manifest.artifacts?.phone ||
     !manifest.artifacts.wear ||
     !manifest.uploads ||
@@ -137,7 +149,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   ) {
     throw new Error('Release manifest has an invalid shape')
   }
-  return manifest as ReleaseManifest
+  return manifest as HistoricalReleaseManifest
 }
 
 export type ReleaseOutcome =

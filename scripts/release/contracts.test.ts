@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { ReleaseManifest } from './contracts'
 import {
+  parseHistoricalReleaseManifest,
   parsePromotionManifest,
   parseProductionManifest,
   parseReleaseManifest,
@@ -68,6 +69,18 @@ describe('open promotion manifest', () => {
 })
 
 describe('release manifest', () => {
+  test('reads historical uploads without allowing unattested builds through promotion validation', () => {
+    const { storageContracts: _, ...historical } = manifest('succeeded', 'succeeded')
+    expect(parseHistoricalReleaseManifest(historical)).toEqual(historical)
+    expect(() => parseReleaseManifest(historical)).toThrow('invalid shape')
+    expect(() =>
+      parseHistoricalReleaseManifest({
+        ...historical,
+        uploads: { phone: 'unknown', wear: 'succeeded' },
+      }),
+    ).toThrow('invalid shape')
+  })
+
   test('parses the workflow contract', () => {
     const valid = manifest('succeeded', 'succeeded')
     expect(parseReleaseManifest(valid).sourceSha).toBe('a'.repeat(40))

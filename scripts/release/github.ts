@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
+  HistoricalReleaseManifest,
   ProductionManifest,
   ProductionOperation,
   PromotionManifest,
@@ -9,7 +10,12 @@ import type {
   WorkflowJob,
   WorkflowRun,
 } from './contracts'
-import { parseProductionManifest, parsePromotionManifest, parseReleaseManifest } from './contracts'
+import {
+  parseHistoricalReleaseManifest,
+  parseProductionManifest,
+  parsePromotionManifest,
+  parseReleaseManifest,
+} from './contracts'
 import { releaseNotesPath } from './prepare'
 
 const WORKFLOW_FILE = 'release-android.yml'
@@ -532,7 +538,15 @@ export async function failedWorkflowJobs(repo: string, runId: number): Promise<s
   return parseFailedWorkflowJobs(JSON.parse(output))
 }
 
-export async function downloadManifest(runId: number): Promise<ReleaseManifest> {
+export function downloadManifest(runId: number): Promise<ReleaseManifest> {
+  return downloadReleaseManifest(runId, parseReleaseManifest)
+}
+
+export function downloadHistoricalManifest(runId: number): Promise<HistoricalReleaseManifest> {
+  return downloadReleaseManifest(runId, parseHistoricalReleaseManifest)
+}
+
+async function downloadReleaseManifest<T>(runId: number, parse: (value: unknown) => T): Promise<T> {
   const directory = await mkdtemp(join(tmpdir(), 'vescape-release-'))
   try {
     await checkedGh(
@@ -540,7 +554,7 @@ export async function downloadManifest(runId: number): Promise<ReleaseManifest> 
       'Cannot download release manifest',
     )
     const contents = await readFile(join(directory, 'release-manifest.json'), 'utf8')
-    return parseWorkflowArtifact(contents, 'Release manifest', parseReleaseManifest)
+    return parseWorkflowArtifact(contents, 'Release manifest', parse)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

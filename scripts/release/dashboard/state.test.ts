@@ -108,7 +108,7 @@ describe('truncationAlerts', () => {
         ['Production', true],
       ]),
     ).toEqual([
-      'Production history is all failures within the scan window; state shown may be incomplete',
+      'Production history scan found no readable successful release within the scan window; state shown may be incomplete',
     ])
   })
 })

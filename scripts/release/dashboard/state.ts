@@ -1,11 +1,11 @@
 import type {
   ProductionManifest,
   PromotionManifest,
-  ReleaseManifest,
+  HistoricalReleaseManifest,
   WorkflowRun,
 } from '../contracts'
 import {
-  downloadManifest,
+  downloadHistoricalManifest,
   downloadProductionManifest,
   downloadPromotionManifest,
   listArtifactRuns,
@@ -90,7 +90,7 @@ export function initialReleaseState(): ReleaseState {
   }
 }
 
-export function internalRow(manifest: ReleaseManifest, age: string | null): TrackRow {
+export function internalRow(manifest: HistoricalReleaseManifest, age: string | null): TrackRow {
   return {
     marketingVersion: manifest.marketingVersion,
     phone: manifest.versionCodes.phone,
@@ -164,7 +164,7 @@ export function truncationAlerts(scans: ReadonlyArray<[string, boolean]>): strin
     .filter(([, truncated]) => truncated)
     .map(
       ([label]) =>
-        `${label} history is all failures within the scan window; state shown may be incomplete`,
+        `${label} history scan found no readable successful release within the scan window; state shown may be incomplete`,
     )
 }
 
@@ -205,7 +205,7 @@ export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void)
     const [internal, open, production] = await Promise.all([
       newestSuccessfulArtifact(
         internalRuns.map((run) => run.runId),
-        downloadManifest,
+        downloadHistoricalManifest,
         (manifest) =>
           manifest.uploads.phone === 'succeeded' && manifest.uploads.wear === 'succeeded',
       ),
