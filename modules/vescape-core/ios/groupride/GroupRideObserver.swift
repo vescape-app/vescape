@@ -15,6 +15,7 @@ import Foundation
 internal final class GroupRideObserver: NSObject {
   private let emit: (String, [String: Any?]) -> Void
   private let online: OnlineCapability
+  private let scheduler: Scheduler
 
   private lazy var session = URLSession(
     configuration: .default,
@@ -41,13 +42,18 @@ internal final class GroupRideObserver: NSObject {
   private var lastRoster: [[String: Any?]] = []
   /// Remover for the App Status listener; non-nil only while observing.
   private var onlineUnsub: (() -> Void)?
-  private var reconnectWork: DispatchWorkItem?
-  private var heartbeatWork: DispatchWorkItem?
-  private var pingWork: DispatchWorkItem?
+  private var reconnectWork: Cancellable?
+  private var heartbeatWork: Cancellable?
+  private var pingWork: Cancellable?
 
-  init(emit: @escaping (String, [String: Any?]) -> Void, online: OnlineCapability) {
+  init(
+    emit: @escaping (String, [String: Any?]) -> Void,
+    online: OnlineCapability,
+    scheduler: Scheduler = MainQueueScheduler()
+  ) {
     self.emit = emit
     self.online = online
+    self.scheduler = scheduler
   }
 
   /// True while the observe connection should be kept alive.
@@ -291,9 +297,7 @@ internal final class GroupRideObserver: NSObject {
     emitConnection("disconnected")
     let delay = Self.reconnectDelaysSeconds[min(reconnectAttempt, Self.reconnectDelaysSeconds.count - 1)]
     reconnectAttempt += 1
-    let work = DispatchWorkItem { [weak self] in self?.connect() }
-    reconnectWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    reconnectWork = scheduler.postDelayed(Int64(delay * 1000)) { [weak self] in self?.connect() }
   }
 
   private func cancelReconnect() {
@@ -494,13 +498,11 @@ internal final class GroupRideObserver: NSObject {
   }
 
   private func scheduleHeartbeat() {
-    let work = DispatchWorkItem { [weak self] in
+    heartbeatWork = scheduler.postDelayed(Int64(Self.heartbeatIntervalSeconds * 1000)) { [weak self] in
       guard let self, !self.stopped, let ws = self.webSocket, self.joinedRideId != nil else { return }
       self.send(ws, ["type": "heartbeat"])
       self.scheduleHeartbeat()
     }
-    heartbeatWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + Self.heartbeatIntervalSeconds, execute: work)
   }
 
   private func stopHeartbeat() {
@@ -512,13 +514,11 @@ internal final class GroupRideObserver: NSObject {
   /// the interval is scheduled by hand.
   /// @platform-diff Android configures `pingInterval` on the shared OkHttp client.
   private func schedulePing() {
-    let work = DispatchWorkItem { [weak self] in
+    pingWork = scheduler.postDelayed(Int64(Self.pingIntervalSeconds * 1000)) { [weak self] in
       guard let self, !self.stopped, let ws = self.webSocket else { return }
       ws.sendPing { _ in }
       self.schedulePing()
     }
-    pingWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + Self.pingIntervalSeconds, execute: work)
   }
 
   private func stopPing() {

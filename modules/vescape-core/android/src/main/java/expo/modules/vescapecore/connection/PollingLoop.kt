@@ -12,6 +12,7 @@ import expo.modules.vescapecore.runtime.Scheduler
 import expo.modules.vescapecore.runtime.postDelayedForSession
 import kotlin.math.max
 
+/** @parity /modules/vescape-core/ios/connection/PollingLoop.swift */
 internal class PollingLoop(
     private val scheduler: Scheduler,
     private val isCurrentSession: (BoardSession) -> Boolean,

@@ -7,6 +7,26 @@ import XCTest
 ///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/config/ConfigRWControllerSharedReadTest.kt
 final class ConfigRWControllerSharedReadTests: XCTestCase {
+  func testReadTimeoutUsesVirtualTime() {
+    let scheduler = TestScheduler()
+    let controller = ConfigRWController(scheduler: scheduler)
+    var errors: [String] = []
+
+    controller.consumeRead(
+      connection: connection(),
+      onSuccess: { _ in XCTFail("read should not succeed") },
+      onError: { code, _ in errors.append(code) }
+    )
+
+    scheduler.advance(9_999)
+    XCTAssertTrue(errors.isEmpty)
+    XCTAssertTrue(controller.isInFlight)
+
+    scheduler.advance(1)
+    XCTAssertEqual([RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT.rawValue], errors)
+    XCTAssertFalse(controller.isInFlight)
+  }
+
   func testSecondReaderJoinsTheInFlightRead() {
     let controller = ConfigRWController()
     var errors: [String] = []

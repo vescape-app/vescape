@@ -92,7 +92,7 @@ private final class GeigerLoop {
   let soundType: String
   var rangeDepth: Double
   let sustained: Bool
-  var workItem: DispatchWorkItem?
+  var workItem: Cancellable?
   /// Token used to cancel the sustained re-schedule cycle. A still-registered token with the same
   /// UUID means the completion-handler should keep looping; a changed/removed loop stops it.
   var sustainToken: UUID?
@@ -114,8 +114,8 @@ private final class GeigerLoop {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/alerts/AlertEngine.kt `AlertFeedback`
 /// @platform-diff iOS uses `AVAudioEngine` + `AVAudioPlayerNode` with pre-loaded `AVAudioPCMBuffer`s
-/// instead of `SoundPool`; geiger tick scheduling uses `DispatchQueue.asyncAfter` instead of a
-/// `Handler`; sustained loops schedule the buffer with a completion callback instead of SoundPool
+/// instead of `SoundPool`; geiger tick scheduling uses a dedicated dispatch-backed scheduler;
+/// sustained loops schedule the buffer with a completion callback instead of SoundPool
 /// loop index. TTS uses `AVSpeechSynthesizer` instead of Android `TextToSpeech`.
 internal final class AlertAudioPlayer {
   private static let audioSessionLock = NSLock()
@@ -123,7 +123,8 @@ internal final class AlertAudioPlayer {
 
   private let engine = AVAudioEngine()
   private static let geigerQueueMarker = DispatchSpecificKey<ObjectIdentifier>()
-  private let geigerQueue = DispatchQueue(label: "vescape.alerts.geiger", qos: .userInitiated)
+  private let geigerQueue: DispatchQueue
+  private let scheduler: Scheduler
   private let synthesizer = AVSpeechSynthesizer()
   private let assetsDirectory: URL?
   private var buffersByFileName: [String: AVAudioPCMBuffer] = [:]
@@ -139,8 +140,15 @@ internal final class AlertAudioPlayer {
   /// `assetsDirectory` overrides the bundled `VescapeCoreAssets.bundle` lookup. Production passes
   /// nil; the SPM test target has no resource bundle and points at the repo's wav directory so the
   /// engine graph is exercised for real.
-  init(assetsDirectory: URL? = nil, outputVolume: Float = 1) {
+  init(
+    assetsDirectory: URL? = nil,
+    outputVolume: Float = 1,
+    geigerQueue: DispatchQueue = DispatchQueue(label: "vescape.alerts.geiger", qos: .userInitiated),
+    scheduler: Scheduler? = nil
+  ) {
     self.assetsDirectory = assetsDirectory
+    self.geigerQueue = geigerQueue
+    self.scheduler = scheduler ?? DispatchQueueScheduler(queue: geigerQueue)
     geigerQueue.setSpecific(key: Self.geigerQueueMarker, value: ObjectIdentifier(self))
     acquireAudioSession()
     let standardFormat = makeStandardFormat()
@@ -169,6 +177,14 @@ internal final class AlertAudioPlayer {
     releasedLock.lock()
     defer { releasedLock.unlock() }
     return released
+  }
+
+  /// Scheduler callbacks may be virtual in tests, but audio state always belongs to this queue.
+  private func onGeigerQueue(_ block: @escaping (AlertAudioPlayer) -> Void) {
+    geigerQueue.async { [weak self] in
+      guard let self, !self.isReleased else { return }
+      block(self)
+    }
   }
 
   /// Flip `released` once; returns false when another caller already released.
@@ -353,8 +369,8 @@ internal final class AlertAudioPlayer {
     guard beeps > 1 else { return }
     let spacing = alertBeepSpacingMs / 1000
     for index in 1..<beeps {
-      geigerQueue.asyncAfter(deadline: .now() + spacing * Double(index)) { [weak self] in
-        self?.playOnQueue(preset.fileName)
+      scheduler.postDelayed(Int64(spacing * Double(index) * 1000)) { [weak self] in
+        self?.onGeigerQueue { $0.playOnQueue(preset.fileName) }
       }
     }
   }
@@ -452,15 +468,14 @@ internal final class AlertAudioPlayer {
   }
 
   private func scheduleGeigerTick(loop: GeigerLoop, ruleId: String, fileName: String, delayMs: Int) {
-    let workItem = DispatchWorkItem { [weak self] in
-      guard let self else { return }
-      guard let existing = self.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
-      self.playOnQueue(fileName)
-      let interval = self.geigerIntervalMs(rangeDepth: loop.rangeDepth)
-      self.scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: interval)
+    loop.workItem = scheduler.postDelayed(Int64(delayMs)) { [weak self] in
+      self?.onGeigerQueue { owner in
+        guard let existing = owner.geigerLoops[ruleId], existing === loop, !existing.sustained else { return }
+        owner.playOnQueue(fileName)
+        let interval = owner.geigerIntervalMs(rangeDepth: loop.rangeDepth)
+        owner.scheduleGeigerTick(loop: loop, ruleId: ruleId, fileName: fileName, delayMs: interval)
+      }
     }
-    loop.workItem = workItem
-    geigerQueue.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0, execute: workItem)
   }
 
   /// Loop the buffer continuously until the loop is cancelled by `stopGeiger`/`stopAllGeiger`.

@@ -3,6 +3,7 @@ package expo.modules.vescapecore.runtime
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+// @parity /modules/vescape-core/ios/runtime/SchedulerTests.swift
 class SessionGuardedSchedulerTest {
     @Test
     fun `guarded callback runs for active current session`() {

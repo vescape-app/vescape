@@ -59,6 +59,7 @@ private struct ConfigWriteContext {
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/ConfigRWController.kt
 internal final class ConfigRWController {
+  private let scheduler: Scheduler
   private var state: ConfigRWState = .idle
   /// Every consumer waiting on the current read. A read started in the background (post-trust config
   /// acquisition) is joined by a later caller instead of rejecting it with `CONFIG_REQUEST_IN_FLIGHT`
@@ -66,6 +67,10 @@ internal final class ConfigRWController {
   private var readCallbacks: [PendingConfigRead] = []
   private var writeCallbacks: PendingConfigWrite?
   private var timeoutGeneration: Int64 = 0
+
+  init(scheduler: Scheduler = MainQueueScheduler()) {
+    self.scheduler = scheduler
+  }
 
   var isInFlight: Bool {
     if case .idle = state { return false }
@@ -609,7 +614,7 @@ internal final class ConfigRWController {
   ) {
     timeoutGeneration += 1
     let generation = timeoutGeneration
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeoutMs) / 1000.0) { [weak self] in
+    scheduler.postDelayed(timeoutMs) { [weak self] in
       guard let self, self.timeoutGeneration == generation, self.isInFlight else { return }
       self.abort(code: code, message: "Timed out reading Refloat config", resumePolling: nil, connection: connection)
     }

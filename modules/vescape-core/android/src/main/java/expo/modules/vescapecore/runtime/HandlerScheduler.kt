@@ -2,6 +2,7 @@ package expo.modules.vescapecore.runtime
 
 import android.os.Handler
 
+// @parity /modules/vescape-core/ios/runtime/Scheduler.swift `MainQueueScheduler`
 class HandlerScheduler(private val handler: Handler) : Scheduler {
     override fun post(block: () -> Unit): Cancellable {
         val runnable = Runnable { block() }
