@@ -38,7 +38,7 @@ import {
   verifyRemoteCommit,
 } from './github'
 import { publishGithubRelease } from './githubRelease'
-import { internalReleaseProgress, workflowElapsed } from './progress'
+import { internalReleaseProgress, releaseWorkflowProgress, workflowElapsed } from './progress'
 import {
   bumpMarketingVersion,
   currentMarketingVersion,
@@ -115,6 +115,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [sourceChecking, setSourceChecking] = useState(false)
   const [phase, setPhase] = useState<Phase>(initialPhase)
   const [status, setStatus] = useState('')
+  const [activity, setActivity] = useState('Release')
   const [releaseState, setReleaseState] = useState<ReleaseState>(initialReleaseState)
   const [index, setIndex] = useState(0)
   const [plan, setPlan] = useState<Plan | null>(null)
@@ -133,6 +134,9 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const [error, setError] = useState<string | null>(null)
   const [retryRunId, setRetryRunId] = useState<number | null>(null)
   const inputTransitioning = useRef(false)
+  const retryContext = useRef<{ repo: string; finish: (run: WorkflowRun) => Promise<void> } | null>(
+    null,
+  )
 
   useEffect(() => {
     inputTransitioning.current = false
@@ -156,6 +160,12 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
   const loadDashboard = () => {
     setReleaseState(initialReleaseState())
     setStatus('')
+    setRun(null)
+    setIosRun(null)
+    setWatchedRun(null)
+    setWorkflowJobs([])
+    setRetryRunId(null)
+    setError(null)
     goto('dashboard')
     void loadReleaseState((patch) => setReleaseState((previous) => ({ ...previous, ...patch })))
   }
@@ -418,15 +428,15 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     goto('complete')
   }
 
-  const watchInternalRun = async (repo: string, initialRun: WorkflowRun) => {
+  const watchReleaseRun = async (repo: string, initialRun: WorkflowRun) => {
     let workflowRun = initialRun
-    setClock(Date.now())
+    setRetryRunId(null)
     setRun({ id: workflowRun.id, url: workflowRun.html_url })
     setWatchedRun(workflowRun)
     setWorkflowJobs(await getWorkflowJobs(repo, workflowRun.id))
+    setClock(Date.now())
     goto('running')
     while (workflowRun.status !== 'completed') {
-      setStatus(`Building and uploading for Internal testing…`)
       await sleep(10_000)
       const [nextRun, jobs] = await Promise.all([
         getWorkflowRun(repo, workflowRun.id),
@@ -436,7 +446,16 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       setWatchedRun(nextRun)
       setWorkflowJobs(jobs)
     }
-    await finishInternalRun(repo, workflowRun)
+    if (workflowRun.conclusion !== 'success') setRetryRunId(workflowRun.id)
+    return workflowRun
+  }
+
+  const watchInternalRun = async (repo: string, initialRun: WorkflowRun) => {
+    setActivity('Android build')
+    retryContext.current = { repo, finish: (run) => finishInternalRun(repo, run) }
+    setStatus('Building and uploading for Internal testing…')
+    const finished = await watchReleaseRun(repo, initialRun)
+    await finishInternalRun(repo, finished)
   }
 
   const resumeInternalRun = async (runIndex: number) => {
@@ -469,11 +488,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     goto('checking')
     setStatus('Checking what went wrong…')
     try {
-      const jobs = await failedWorkflowJobs(releaseState.repo, releaseState.failedRun.id)
-      setRun({ id: releaseState.failedRun.id, url: releaseState.failedRun.html_url })
-      setRetryRunId(releaseState.failedRun.id)
-      setStatus(`Internal release failed${jobs.length ? ` in ${jobs.join(', ')}` : ''}`)
-      goto('complete')
+      const latest = await getWorkflowRun(releaseState.repo, releaseState.failedRun.id)
+      await watchInternalRun(releaseState.repo, latest)
     } catch (caught) {
       fail(caught)
     }
@@ -515,7 +531,23 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     }
   }
 
+  const finishOpenRun = async (workflowRun: WorkflowRun) => {
+    setStatus('Checking whether phone and watch are available to testers…')
+    const manifest = await downloadPromotionManifest(workflowRun.id)
+    setStatus(
+      manifest.phone.status === 'failed' || manifest.wear.status === 'failed'
+        ? 'Open testing was not fully updated. Retry the failed steps.'
+        : manifest.marketingVersion + ' is available in Open testing on phone and watch.',
+    )
+    if (manifest.phone.status === 'failed' || manifest.wear.status === 'failed') {
+      setRetryRunId(workflowRun.id)
+    }
+    goto('complete')
+  }
+
   const promote = async (confirmedPlan: PromotionPlan) => {
+    setActivity('Open testing update')
+    retryContext.current = { repo: confirmedPlan.repo, finish: finishOpenRun }
     goto('dispatching')
     setStatus(`Sending ${confirmedPlan.candidate.marketingVersion} to Open testing…`)
     try {
@@ -538,30 +570,38 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         throw new Error(
           'GitHub accepted the request, but has not reported progress yet. Check GitHub before sending again.',
         )
-      setRun({ id: workflowRun.id, url: workflowRun.html_url })
-      goto('running')
-      while (workflowRun.status !== 'completed') {
-        setStatus(`Sending the build to Open testing…`)
-        await sleep(10_000)
-        workflowRun = await getWorkflowRun(confirmedPlan.repo, workflowRun.id)
-      }
-      setStatus('Checking whether phone and watch are available to testers…')
-      const manifest = await downloadPromotionManifest(workflowRun.id)
-      setStatus(
-        manifest.phone.status === 'failed' || manifest.wear.status === 'failed'
-          ? 'Open testing was not fully updated. Retry the failed steps.'
-          : manifest.marketingVersion + ' is available in Open testing on phone and watch.',
-      )
-      if (manifest.phone.status === 'failed' || manifest.wear.status === 'failed') {
-        setRetryRunId(workflowRun.id)
-      }
-      goto('complete')
+      workflowRun = await watchReleaseRun(confirmedPlan.repo, workflowRun)
+      await finishOpenRun(workflowRun)
     } catch (caught) {
       fail(caught)
     }
   }
 
+  const finishProductionRun = async (workflowRun: WorkflowRun) => {
+    setStatus('Checking what is live on Google Play…')
+    const manifest = await downloadProductionManifest(workflowRun.id)
+    setStatus(
+      manifest.phone.status === 'failed' || manifest.wear.status === 'failed'
+        ? 'Google Play was not fully updated. Retry the failed steps.'
+        : manifest.githubRelease === 'failed'
+          ? 'Google Play is updated, but updating the GitHub release failed.'
+          : manifest.marketingVersion + ' is live on Google Play for phone and watch.',
+    )
+    if (
+      manifest.phone.status === 'failed' ||
+      manifest.wear.status === 'failed' ||
+      manifest.githubRelease === 'failed'
+    ) {
+      setRetryRunId(workflowRun.id)
+    }
+    goto('complete')
+  }
+
   const runProduction = async (confirmedPlan: ProductionPlan) => {
+    setActivity(
+      confirmedPlan.operation === 'status' ? 'Release status check' : 'Production release',
+    )
+    retryContext.current = { repo: confirmedPlan.repo, finish: finishProductionRun }
     goto('dispatching')
     setStatus(`Starting the Google Play update…`)
     try {
@@ -585,30 +625,8 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
         throw new Error(
           'GitHub accepted the request, but has not reported progress yet. Check GitHub before publishing again.',
         )
-      setRun({ id: workflowRun.id, url: workflowRun.html_url })
-      goto('running')
-      while (workflowRun.status !== 'completed') {
-        setStatus(`Checking the Google Play update…`)
-        await sleep(10_000)
-        workflowRun = await getWorkflowRun(confirmedPlan.repo, workflowRun.id)
-      }
-      setStatus('Checking what is live on Google Play…')
-      const manifest = await downloadProductionManifest(workflowRun.id)
-      setStatus(
-        manifest.phone.status === 'failed' || manifest.wear.status === 'failed'
-          ? 'Google Play was not fully updated. Retry the failed steps.'
-          : manifest.githubRelease === 'failed'
-            ? 'Google Play is updated, but updating the GitHub release failed.'
-            : manifest.marketingVersion + ' is live on Google Play for phone and watch.',
-      )
-      if (
-        manifest.phone.status === 'failed' ||
-        manifest.wear.status === 'failed' ||
-        manifest.githubRelease === 'failed'
-      ) {
-        setRetryRunId(workflowRun.id)
-      }
-      goto('complete')
+      workflowRun = await watchReleaseRun(confirmedPlan.repo, workflowRun)
+      await finishProductionRun(workflowRun)
     } catch (caught) {
       fail(caught)
     }
@@ -722,17 +740,34 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       } else if (key.escape) gotoBuildSource()
       return
     }
-    if (phase === 'complete' && retryRunId && input.toLowerCase() === 'r') {
+    if ((phase === 'complete' || phase === 'error') && retryRunId && input.toLowerCase() === 'r') {
+      const context = retryContext.current
+      if (!context) return
+      const id = retryRunId
       setRetryRunId(null)
+      setError(null)
       setWatchedRun(null)
-      goto('running')
+      goto('waiting')
       setStatus('Retrying the failed steps…')
-      void retryFailedJobs(retryRunId)
-        .then(() => {
-          setStatus(`Retry started. Open the GitHub progress link below to follow it.`)
-          goto('complete')
-        })
-        .catch(fail)
+      void (async () => {
+        const previous = await getWorkflowRun(context.repo, id)
+        await retryFailedJobs(id)
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const next = await getWorkflowRun(context.repo, id)
+          if (
+            next.status !== 'completed' ||
+            (next.run_attempt ?? 1) > (previous.run_attempt ?? 1)
+          ) {
+            const finished = await watchReleaseRun(context.repo, next)
+            await context.finish(finished)
+            return
+          }
+          await sleep(2_000)
+        }
+        throw new Error(
+          'GitHub accepted the retry but has not started it yet. Check the run on GitHub.',
+        )
+      })().catch(fail)
       return
     }
     if (phase === 'complete' || phase === 'error') {
@@ -750,13 +785,30 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     return () => clearInterval(timer)
   }, [phase, watchedRun])
 
-  const progress = watchedRun ? internalReleaseProgress(workflowJobs) : null
+  const progress = watchedRun ? releaseWorkflowProgress(workflowJobs, watchedRun) : null
+  const buildEstimate =
+    watchedRun?.status !== 'completed' &&
+    workflowJobs.some((job) => job.name === 'Build signed artifacts once')
+      ? internalReleaseProgress(workflowJobs, clock).remaining
+      : null
 
   return (
     <Box flexDirection="column" gap={1}>
       <Text bold color="cyan">
-        Vescape · Android Release{releaseState.repo ? `  ${releaseState.repo}` : ''}
+        Vescape · Releases{releaseState.repo ? `  ${releaseState.repo}` : ''}
       </Text>
+      {phase === 'complete' && (
+        <Text bold color={retryRunId ? 'red' : 'green'}>
+          {retryRunId
+            ? `✗ ${activity} did not fully complete`
+            : `✓ ${activity} completed successfully`}
+        </Text>
+      )}
+      {phase === 'error' && (
+        <Text bold color="red">
+          Could not finish this release step
+        </Text>
+      )}
       {status ? <Text>{status}</Text> : null}
       {phase === 'dashboard' && <Dashboard state={releaseState} actions={actions} index={index} />}
       {phase === 'more' && (
@@ -883,7 +935,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
           index={index}
         />
       )}
-      {phase === 'running' && watchedRun && progress && (
+      {['running', 'complete', 'error'].includes(phase) && watchedRun && progress && (
         <Box flexDirection="column">
           <Text>
             <Text color="cyan">[{progress.bar}]</Text> {progress.completed}/{progress.total} stages
@@ -920,24 +972,35 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             ))}
           </Box>
           <Text>
-            Elapsed: {workflowElapsed(watchedRun, clock)} · Remaining: {progress.remaining}
+            {watchedRun.status === 'completed' ? 'Finished in' : 'Elapsed:'}{' '}
+            {workflowElapsed(watchedRun, clock)}
+            {buildEstimate ? ` · Remaining: ${buildEstimate}` : null}
           </Text>
         </Box>
       )}
-      {run && phase !== 'dashboard' && <Text>View progress on GitHub: {run.url}</Text>}
-      {iosRun && phase !== 'dashboard' && <Text>iOS build progress: {iosRun.url}</Text>}
+      {run && ['running', 'complete', 'error'].includes(phase) && (
+        <Text>
+          {watchedRun?.status === 'completed'
+            ? 'View details on GitHub'
+            : 'View progress on GitHub'}
+          : {run.url}
+        </Text>
+      )}
+      {iosRun && phase !== 'dashboard' && <Text>iOS build on GitHub: {iosRun.url}</Text>}
       {phase === 'complete' && (
         <Box flexDirection="column">
           <Rule />
           <Hint>
-            {retryRunId ? 'R retries failed jobs only · ' : ''}Enter returns to dashboard · Q quits
+            {retryRunId ? 'R retries failed steps · ' : ''}Enter returns to dashboard · Q quits
           </Hint>
         </Box>
       )}
       {phase === 'error' && (
         <Box flexDirection="column">
           <Text color="red">{error}</Text>
-          <Hint>Enter returns to dashboard · Q quits</Hint>
+          <Hint>
+            {retryRunId ? 'R retries failed steps · ' : ''}Enter returns to dashboard · Q quits
+          </Hint>
         </Box>
       )}
     </Box>

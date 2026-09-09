@@ -81,3 +81,77 @@ describe('internal release progress', () => {
     expect(workflowElapsed(run, Date.parse('2026-08-01T10:00:00Z'))).toBe('42m 10s')
   })
 })
+
+import { releaseWorkflowProgress } from './progress'
+
+describe('shared release progress', () => {
+  const run = { status: 'completed', conclusion: 'success' } as WorkflowRun
+  const productionJobs = (failed: boolean): WorkflowJob[] => [
+    {
+      id: 1,
+      name: 'Exact production release and GitHub Release',
+      status: 'completed',
+      conclusion: failed ? 'failure' : 'success',
+      steps: [
+        {
+          name: 'Prove exact artifacts passed open testing',
+          status: 'completed',
+          conclusion: 'success',
+        },
+        { name: 'Apply phone production operation', status: 'completed', conclusion: 'success' },
+        {
+          name: 'Apply Wear production operation',
+          status: 'completed',
+          conclusion: failed ? 'failure' : 'success',
+        },
+        {
+          name: 'Flip existing GitHub prerelease to latest release',
+          status: 'completed',
+          conclusion: failed ? 'skipped' : 'success',
+        },
+      ],
+    } as WorkflowJob,
+  ]
+
+  test('keeps the completed production checklist visible with human labels', () => {
+    const progress = releaseWorkflowProgress(productionJobs(false), run)
+    expect(progress.current).toBe('Completed successfully')
+    expect(progress.completed).toBe(progress.total)
+    expect(progress.stages.map((stage) => stage.name)).toEqual([
+      'Check the selected build',
+      'Update the phone release',
+      'Update the watch release',
+      'Update the GitHub release',
+    ])
+    expect(progress.stages.every((stage) => stage.state === 'done')).toBe(true)
+  })
+
+  test('distinguishes failed and skipped steps even when the workflow is finished', () => {
+    const progress = releaseWorkflowProgress(productionJobs(true), {
+      ...run,
+      conclusion: 'failure',
+    })
+    expect(progress.current).toBe('Stopped before completing')
+    expect(progress.stages[2]?.state).toBe('failed')
+    expect(progress.stages[3]?.state).toBe('skipped')
+  })
+
+  test('uses job progress for build workflows without promotion steps', () => {
+    const progress = releaseWorkflowProgress(
+      [
+        {
+          id: 2,
+          started_at: null,
+          completed_at: null,
+          name: 'Build signed artifacts once',
+          status: 'in_progress',
+          conclusion: null,
+          steps: [],
+        } as WorkflowJob,
+      ],
+      { ...run, status: 'in_progress', conclusion: null },
+    )
+    expect(progress.stages[0]?.state).toBe('active')
+    expect(progress.completed).toBe(0)
+  })
+})
