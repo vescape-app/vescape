@@ -69,10 +69,10 @@ describe('open promotion manifest', () => {
 })
 
 describe('release manifest', () => {
-  test('reads historical uploads without allowing unattested builds through promotion validation', () => {
+  test('allows already uploaded historical builds to be promoted', () => {
     const { storageContracts: _, ...historical } = manifest('succeeded', 'succeeded')
     expect(parseHistoricalReleaseManifest(historical)).toEqual(historical)
-    expect(() => parseReleaseManifest(historical)).toThrow('invalid shape')
+    expect(parseReleaseManifest(historical)).toEqual(historical)
     expect(() =>
       parseHistoricalReleaseManifest({
         ...historical,
@@ -84,8 +84,8 @@ describe('release manifest', () => {
   test('parses the workflow contract', () => {
     const valid = manifest('succeeded', 'succeeded')
     expect(parseReleaseManifest(valid).sourceSha).toBe('a'.repeat(40))
-    expect(() => parseReleaseManifest({ ...valid, storageContracts: undefined })).toThrow(
-      'invalid shape',
+    expect(parseReleaseManifest({ ...valid, storageContracts: undefined }).sourceSha).toBe(
+      valid.sourceSha,
     )
     expect(() =>
       parseReleaseManifest({

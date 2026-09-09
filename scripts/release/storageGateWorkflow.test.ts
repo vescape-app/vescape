@@ -42,7 +42,7 @@ describe('native storage release gate', () => {
     }
   })
 
-  test('rejects a missing or mismatched attestation before store credentials or mutations', () => {
+  test('validates recorded attestations without retroactively requiring them on old builds', () => {
     const attestation = '.storageContracts.crossPlatformArchives'
     const openProof = open.indexOf(attestation)
     const productionProof = production.indexOf(attestation)
@@ -51,6 +51,9 @@ describe('native storage release gate', () => {
     expect(productionProof).toBeGreaterThan(0)
     expect(productionProof).toBeLessThan(production.indexOf('Write Play credentials'))
     for (const workflow of [open, production]) {
+      expect(workflow).toContain(
+        `if jq -e 'has("storageContracts")' candidate/release-manifest.json > /dev/null; then`,
+      )
       expect(workflow).toContain(
         'test "$(jq -r .storageContracts.sourceSha candidate/release-manifest.json)" = "$SOURCE_SHA"',
       )

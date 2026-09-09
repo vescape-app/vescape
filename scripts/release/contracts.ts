@@ -20,7 +20,7 @@ export interface ReleaseManifest {
     runUrl: string
     runAttempt: number
   }
-  storageContracts: {
+  storageContracts?: {
     sourceSha: string
     androidRoom: 'passed'
     iosGrdb: 'passed'
@@ -108,16 +108,17 @@ export interface ProductionManifest {
   githubRelease: 'released' | 'already-released' | 'skipped' | 'failed'
 }
 
-/** Recorded upload history predates the storage attestation required for new promotions. */
+/** Older builds may lack storage-test metadata, but remain valid promotion candidates. */
 export type HistoricalReleaseManifest = Omit<ReleaseManifest, 'storageContracts'>
 
 export function parseReleaseManifest(value: unknown): ReleaseManifest {
   const manifest = parseHistoricalReleaseManifest(value) as ReleaseManifest
   if (
-    manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
-    manifest.storageContracts.androidRoom !== 'passed' ||
-    manifest.storageContracts.iosGrdb !== 'passed' ||
-    manifest.storageContracts.crossPlatformArchives !== 'passed'
+    manifest.storageContracts !== undefined &&
+    (manifest.storageContracts?.sourceSha !== manifest.sourceSha ||
+      manifest.storageContracts.androidRoom !== 'passed' ||
+      manifest.storageContracts.iosGrdb !== 'passed' ||
+      manifest.storageContracts.crossPlatformArchives !== 'passed')
   ) {
     throw new Error('Release manifest has an invalid shape')
   }

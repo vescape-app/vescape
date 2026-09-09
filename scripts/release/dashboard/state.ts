@@ -1,3 +1,4 @@
+import { parseReleaseManifest } from '../contracts'
 import type {
   ProductionManifest,
   PromotionManifest,
@@ -115,22 +116,12 @@ export function internalRow(manifest: HistoricalReleaseManifest, age: string | n
 }
 
 export function hasCurrentPromotionProof(manifest: HistoricalReleaseManifest): boolean {
-  const proof = (
-    manifest as HistoricalReleaseManifest & {
-      storageContracts?: {
-        sourceSha?: string
-        androidRoom?: string
-        iosGrdb?: string
-        crossPlatformArchives?: string
-      }
-    }
-  ).storageContracts
-  return (
-    proof?.sourceSha === manifest.sourceSha &&
-    proof.androidRoom === 'passed' &&
-    proof.iosGrdb === 'passed' &&
-    proof.crossPlatformArchives === 'passed'
-  )
+  try {
+    parseReleaseManifest(manifest)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function openRow(manifest: PromotionManifest, runId: number, age: string | null): TrackRow {
@@ -282,7 +273,7 @@ export async function loadReleaseState(emit: (patch: ReleaseStatePatch) => void)
       productionEligibleOpenRunId,
       guidance:
         internalState && internalState.runId !== promotableInternalRunId
-          ? `${internalState.marketingVersion} cannot be promoted because it predates the current release checks. Prepare a new release.`
+          ? `${internalState.marketingVersion} has invalid release metadata; inspect the build details before promoting.`
           : openProofUnavailable && open.success
             ? `Could not verify whether ${open.success.artifact.marketingVersion} is eligible for production.`
             : open.success &&
