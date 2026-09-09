@@ -31,7 +31,7 @@ export async function reviewReleaseNoteDraft(options: {
   try {
     let result = options.initialDraft
     if (!result) {
-      console.log('\nAsking local Codex to inspect the compared changes…')
+      console.log('\nWriting release notes with Codex…')
       const startedAt = Date.now()
       const progress = setInterval(() => {
         console.log(`Still drafting… ${Math.round((Date.now() - startedAt) / 1_000)}s`)
@@ -55,9 +55,9 @@ export async function reviewReleaseNoteDraft(options: {
       preview(result.markdown)
       let choice
       try {
-        choice = await (options.select ?? selectPrompt)('Review release-note draft', [
-          { value: 'accept', label: options.acceptLabel ?? 'Accept canonical notes' },
-          { value: 'revise', label: 'Revise with Codex' },
+        choice = await (options.select ?? selectPrompt)('Review your release notes', [
+          { value: 'accept', label: options.acceptLabel ?? 'Accept release notes' },
+          { value: 'revise', label: 'Ask Codex to change something' },
           { value: 'edit', label: `Edit in ${options.editorCommand[0]}` },
           ...(options.allowVersionChange
             ? [{ value: 'change-version' as const, label: 'Change patch / minor / major' }]
@@ -72,7 +72,7 @@ export async function reviewReleaseNoteDraft(options: {
       }
 
       if (choice === 'discard') {
-        console.log('Draft discarded; canonical release notes unchanged')
+        console.log('Draft discarded; release notes unchanged')
         return { kind: 'discarded' }
       }
       if (choice === 'change-version') {

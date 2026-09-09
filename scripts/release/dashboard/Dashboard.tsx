@@ -56,7 +56,7 @@ export function Dashboard({
         <Text color="red">{state.error}</Text>
       ) : (
         <Hint>
-          {state.loading ? 'Loading…' : 'Last known from workflow manifests, not live Play state'}
+          {state.loading ? 'Loading…' : 'Last recorded release status · Refresh under More options'}
         </Hint>
       )}
       <Rule />
