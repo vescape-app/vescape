@@ -1394,7 +1394,7 @@ export interface GroupRideRider {
  * down) the relay socket while App Status is Online Blocked or App Blocked, so JS renders an
  * update-required surface instead of a disconnect loop.
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/GroupRideObserver.kt `emitConnection`
- * TODO(iOS parity): no iOS peer — Group Ride is not ported yet.
+ * @parity /modules/vescape-core/ios/groupride/GroupRideObserver.swift `emitConnection`
  */
 export type GroupRideConnectionState =
   | 'idle'

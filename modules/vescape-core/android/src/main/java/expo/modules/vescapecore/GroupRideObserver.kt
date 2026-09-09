@@ -42,6 +42,13 @@ internal class GroupRideObserver(
     private var joinedRideId: String? = null
     private var desiredRideId: String? = null
     private var lastPresence: RiderPresence? = null
+    /** Last state handed to JS, replayed by [resync] so a fresh JS runtime is not stuck on `idle`. */
+    private var lastConnection = "idle"
+    /** Active rides as last known from the relay, keyed by id; the relay only sends a full
+     *  snapshot on connect, so the cache is what a re-subscribing JS runtime gets. */
+    private val knownRides = LinkedHashMap<String, Map<String, Any?>>()
+    private var lastRosterRideId: String? = null
+    private var lastRoster: List<Map<String, Any?>> = emptyList()
     /** Remover for the App Status listener; non-null only while observing. */
     private var onlineUnsub: (() -> Unit)? = null
     private val reconnectRunnable = Runnable { connect() }
@@ -67,7 +74,13 @@ internal class GroupRideObserver(
     val participating: Boolean get() = !stopped && (joinedRideId != null || desiredRideId != null)
 
     fun start(url: String) {
-        if (!stopped && url == serverUrl) return
+        // The observer outlives the JS runtime (it runs in the foreground service), so a relaunch
+        // re-subscribes to a socket that will emit nothing on its own. Replay instead of returning
+        // silently, or JS renders `idle`/OFFLINE over a live connection.
+        if (!stopped && url == serverUrl) {
+            resync()
+            return
+        }
         stopped = false
         serverUrl = url
         reconnectAttempt = 0
@@ -88,8 +101,20 @@ internal class GroupRideObserver(
         joinedRideId = null
         desiredRideId = null
         lastPresence = null
+        knownRides.clear()
+        lastRosterRideId = null
+        lastRoster = emptyList()
         stopHeartbeat()
         emitConnection("idle")
+    }
+
+    /** Replay the current observe state to a JS runtime that just re-subscribed. */
+    private fun resync() {
+        emitConnection(lastConnection)
+        // Snapshot first: JS drops an active ride that is missing from the ride list.
+        emit("onGroupRideSnapshot", mapOf("rides" to knownRides.values.toList()))
+        emit("onGroupRideJoined", mapOf("rideId" to joinedRideId))
+        emitRoster(lastRosterRideId, lastRoster)
     }
 
     /**
@@ -117,9 +142,10 @@ internal class GroupRideObserver(
         reconnectAttempt = 0
         joinedRideId = null
         desiredRideId = null
+        knownRides.clear()
         stopHeartbeat()
         emit("onGroupRideJoined", mapOf("rideId" to null))
-        emit("onGroupRideRoster", mapOf("rideId" to null, "riders" to emptyList<Map<String, Any?>>()))
+        emitRoster(null, emptyList())
         emitConnection("blocked")
     }
 
@@ -188,7 +214,7 @@ internal class GroupRideObserver(
             desiredRideId = null
             stopHeartbeat()
             emit("onGroupRideJoined", mapOf("rideId" to null))
-            emit("onGroupRideRoster", mapOf("rideId" to null, "riders" to emptyList<Map<String, Any?>>()))
+            emitRoster(null, emptyList())
         }
     }
 
@@ -309,26 +335,30 @@ internal class GroupRideObserver(
                         rideSummary(ridesJson.optJSONObject(i))?.let(rides::add)
                     }
                 }
+                knownRides.clear()
+                rides.forEach { ride -> (ride["id"] as? String)?.let { knownRides[it] = ride } }
                 emit("onGroupRideSnapshot", mapOf("rides" to rides))
             }
             "ride-created" -> rideSummary(json.optJSONObject("ride"))?.let {
+                rememberRide(it)
                 emit("onGroupRideCreated", mapOf("ride" to it))
             }
             "ride-updated" -> rideSummary(json.optJSONObject("ride"))?.let {
+                rememberRide(it)
                 emit("onGroupRideUpdated", mapOf("ride" to it))
             }
             "ride-ended" -> {
                 val rideId = json.optString("rideId")
-                if (rideId.isNotEmpty()) emit("onGroupRideEnded", mapOf("rideId" to rideId))
+                if (rideId.isNotEmpty()) {
+                    knownRides.remove(rideId)
+                    emit("onGroupRideEnded", mapOf("rideId" to rideId))
+                }
                 if (rideId.isNotEmpty() && rideId == joinedRideId) {
                     joinedRideId = null
                     desiredRideId = null
                     stopHeartbeat()
                     emit("onGroupRideJoined", mapOf("rideId" to null))
-                    emit(
-                        "onGroupRideRoster",
-                        mapOf("rideId" to null, "riders" to emptyList<Map<String, Any?>>()),
-                    )
+                    emitRoster(null, emptyList())
                 }
             }
             "joined" -> {
@@ -348,12 +378,9 @@ internal class GroupRideObserver(
                         riderView(ridersJson.optJSONObject(i))?.let(riders::add)
                     }
                 }
-                emit(
-                    "onGroupRideRoster",
-                    mapOf(
-                        "rideId" to if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() },
-                        "riders" to riders,
-                    ),
+                emitRoster(
+                    if (json.isNull("rideId")) null else json.optString("rideId").takeIf { it.isNotEmpty() },
+                    riders,
                 )
             }
             "error" -> {
@@ -374,7 +401,7 @@ internal class GroupRideObserver(
             desiredRideId = null
             stopHeartbeat()
             emit("onGroupRideJoined", mapOf("rideId" to null))
-            emit("onGroupRideRoster", mapOf("rideId" to null, "riders" to emptyList<Map<String, Any?>>()))
+            emitRoster(null, emptyList())
         }
         emit("onGroupRideError", mapOf("message" to message))
     }
@@ -482,8 +509,19 @@ internal class GroupRideObserver(
         )
     }
 
+    private fun rememberRide(ride: Map<String, Any?>) {
+        (ride["id"] as? String)?.let { knownRides[it] = ride }
+    }
+
+    private fun emitRoster(rideId: String?, riders: List<Map<String, Any?>>) {
+        lastRosterRideId = rideId
+        lastRoster = riders
+        emit("onGroupRideRoster", mapOf("rideId" to rideId, "riders" to riders))
+    }
+
     // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
     private fun emitConnection(state: String) {
+        lastConnection = state
         emit("onGroupRideConnection", mapOf("state" to state))
     }
 

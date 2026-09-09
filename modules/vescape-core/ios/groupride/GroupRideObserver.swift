@@ -32,6 +32,13 @@ internal final class GroupRideObserver: NSObject {
   private var joinedRideId: String?
   private var desiredRideId: String?
   private var lastPresence: RiderPresence?
+  /// Last state handed to JS, replayed by `resync()` so a fresh JS runtime is not stuck on `idle`.
+  private var lastConnection = "idle"
+  /// Active rides as last known from the relay, in arrival order; the relay only sends a full
+  /// snapshot on connect, so the cache is what a re-subscribing JS runtime gets.
+  private var knownRides: [(id: String, ride: [String: Any?])] = []
+  private var lastRosterRideId: String?
+  private var lastRoster: [[String: Any?]] = []
   /// Remover for the App Status listener; non-nil only while observing.
   private var onlineUnsub: (() -> Void)?
   private var reconnectWork: DispatchWorkItem?
@@ -52,7 +59,13 @@ internal final class GroupRideObserver: NSObject {
   var participating: Bool { !stopped && (joinedRideId != nil || desiredRideId != nil) }
 
   func start(_ url: String) {
-    if !stopped && url == serverUrl { return }
+    // The observer outlives the JS runtime, so a relaunch re-subscribes to a socket that will emit
+    // nothing on its own. Replay instead of returning silently, or JS renders `idle`/OFFLINE over a
+    // live connection.
+    if !stopped && url == serverUrl {
+      resync()
+      return
+    }
     stopped = false
     serverUrl = url
     reconnectAttempt = 0
@@ -73,9 +86,21 @@ internal final class GroupRideObserver: NSObject {
     joinedRideId = nil
     desiredRideId = nil
     lastPresence = nil
+    knownRides = []
+    lastRosterRideId = nil
+    lastRoster = []
     stopHeartbeat()
     stopPing()
     emitConnection("idle")
+  }
+
+  /// Replay the current observe state to a JS runtime that just re-subscribed.
+  private func resync() {
+    emitConnection(lastConnection)
+    // Snapshot first: JS drops an active ride that is missing from the ride list.
+    emit("onGroupRideSnapshot", ["rides": knownRides.map { $0.ride }])
+    emit("onGroupRideJoined", ["rideId": joinedRideId])
+    emitRoster(lastRosterRideId, lastRoster)
   }
 
   /// React to an App Status change while observing: tear down the moment online work is blocked,
@@ -102,10 +127,11 @@ internal final class GroupRideObserver: NSObject {
     reconnectAttempt = 0
     joinedRideId = nil
     desiredRideId = nil
+    knownRides = []
     stopHeartbeat()
     stopPing()
     emit("onGroupRideJoined", ["rideId": nil])
-    emit("onGroupRideRoster", ["rideId": nil, "riders": []])
+    emitRoster(nil, [])
     emitConnection("blocked")
   }
 
@@ -167,7 +193,7 @@ internal final class GroupRideObserver: NSObject {
       desiredRideId = nil
       stopHeartbeat()
       emit("onGroupRideJoined", ["rideId": nil])
-      emit("onGroupRideRoster", ["rideId": nil, "riders": []])
+      emitRoster(nil, [])
     }
   }
 
@@ -286,24 +312,28 @@ internal final class GroupRideObserver: NSObject {
     switch json["type"] as? String {
     case "snapshot":
       let rides = (json["rides"] as? [Any] ?? []).compactMap { rideSummary($0 as? [String: Any]) }
+      knownRides = rides.compactMap { ride in (ride["id"] as? String).map { (id: $0, ride: ride) } }
       emit("onGroupRideSnapshot", ["rides": rides])
     case "ride-created":
       if let ride = rideSummary(json["ride"] as? [String: Any]) {
+        rememberRide(ride)
         emit("onGroupRideCreated", ["ride": ride])
       }
     case "ride-updated":
       if let ride = rideSummary(json["ride"] as? [String: Any]) {
+        rememberRide(ride)
         emit("onGroupRideUpdated", ["ride": ride])
       }
     case "ride-ended":
       guard let rideId = json["rideId"] as? String, !rideId.isEmpty else { return }
+      knownRides.removeAll { $0.id == rideId }
       emit("onGroupRideEnded", ["rideId": rideId])
       if rideId == joinedRideId {
         joinedRideId = nil
         desiredRideId = nil
         stopHeartbeat()
         emit("onGroupRideJoined", ["rideId": nil])
-        emit("onGroupRideRoster", ["rideId": nil, "riders": []])
+        emitRoster(nil, [])
       }
     case "joined":
       guard let rideId = json["rideId"] as? String, !rideId.isEmpty else { return }
@@ -313,10 +343,7 @@ internal final class GroupRideObserver: NSObject {
       emit("onGroupRideJoined", ["rideId": rideId])
     case "roster":
       let riders = (json["riders"] as? [Any] ?? []).compactMap { riderView($0 as? [String: Any]) }
-      emit("onGroupRideRoster", [
-        "rideId": (json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-        "riders": riders,
-      ])
+      emitRoster((json["rideId"] as? String).flatMap { $0.isEmpty ? nil : $0 }, riders)
     case "error":
       if let message = json["message"] as? String, !message.isEmpty { handleError(message) }
     default:
@@ -334,7 +361,7 @@ internal final class GroupRideObserver: NSObject {
       desiredRideId = nil
       stopHeartbeat()
       emit("onGroupRideJoined", ["rideId": nil])
-      emit("onGroupRideRoster", ["rideId": nil, "riders": []])
+      emitRoster(nil, [])
     }
     emit("onGroupRideError", ["message": message])
   }
@@ -440,8 +467,24 @@ internal final class GroupRideObserver: NSObject {
     ]
   }
 
+  private func rememberRide(_ ride: [String: Any?]) {
+    guard let id = ride["id"] as? String else { return }
+    if let index = knownRides.firstIndex(where: { $0.id == id }) {
+      knownRides[index] = (id: id, ride: ride)
+    } else {
+      knownRides.append((id: id, ride: ride))
+    }
+  }
+
+  private func emitRoster(_ rideId: String?, _ riders: [[String: Any?]]) {
+    lastRosterRideId = rideId
+    lastRoster = riders
+    emit("onGroupRideRoster", ["rideId": rideId, "riders": riders])
+  }
+
   // @parity /modules/vescape-core/src/index.ts `GroupRideConnectionState`
   private func emitConnection(_ state: String) {
+    lastConnection = state
     emit("onGroupRideConnection", ["state": state])
   }
 
