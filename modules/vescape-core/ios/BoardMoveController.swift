@@ -42,28 +42,23 @@ internal final class BoardMoveController {
   /// Picks the wire format from the linked Refloat version.
   private let generation: () -> BoardMoveGeneration
   private let send: (_ payload: [UInt8]) -> Bool
-  private let schedule: (_ delayMs: Int, _ block: @escaping () -> Void) -> DispatchWorkItem
+  private let scheduler: Scheduler
 
   private var input: Int?
-  private var repeatWork: DispatchWorkItem?
+  private var repeatWork: Cancellable?
 
   init(
     transport: @escaping () -> BoardTransport?,
     canMove: @escaping () -> Bool,
     generation: @escaping () -> BoardMoveGeneration,
     send: @escaping (_ payload: [UInt8]) -> Bool,
-    schedule: @escaping (_ delayMs: Int, _ block: @escaping () -> Void) -> DispatchWorkItem = {
-      delayMs, block in
-      let work = DispatchWorkItem(block: block)
-      DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0, execute: work)
-      return work
-    }
+    scheduler: Scheduler = MainQueueScheduler()
   ) {
     self.transport = transport
     self.canMove = canMove
     self.generation = generation
     self.send = send
-    self.schedule = schedule
+    self.scheduler = scheduler
   }
 
   /// The input currently being streamed (`-127...127`), or `nil` when idle.
@@ -101,7 +96,7 @@ internal final class BoardMoveController {
   }
 
   private func scheduleRepeat(generation: BoardMoveGeneration) {
-    repeatWork = schedule(boardMoveRepeatMs(generation)) { [weak self] in
+    repeatWork = scheduler.postDelayed(Int64(boardMoveRepeatMs(generation))) { [weak self] in
       guard let self else { return }
       guard let input = self.input, let transport = self.transport() else {
         self.clear()

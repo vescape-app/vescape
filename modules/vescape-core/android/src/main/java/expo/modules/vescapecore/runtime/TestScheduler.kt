@@ -1,5 +1,7 @@
 package expo.modules.vescapecore.runtime
 
+// @parity /modules/vescape-core/ios/runtime/Scheduler.swift `TestScheduler`
+
 class TestScheduler : Scheduler {
     private data class Task(
         val dueAt: Long,

@@ -34,6 +34,7 @@ private final class ActiveBoardProbe {
 /// TODO(iOS parity): port Group Ride, debug recording, and Refloat config subsystems to match
 /// Android API/events/errors.
 public class VescapeCoreModule: Module {
+  private let scheduler = MainQueueScheduler()
 
   // MARK: - Session state
 
@@ -1615,7 +1616,7 @@ public class VescapeCoreModule: Module {
       promise.reject("PROBE_CONFIG_TIMEOUT", "Full Refloat config was not acquired")
       return
     }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+    scheduler.postDelayed(250) { [weak self] in
       self?.awaitProbeConfig(
         probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
         previousCapturedAt: previousCapturedAt, previousMotorCapturedAt: previousMotorCapturedAt,
@@ -1659,7 +1660,7 @@ public class VescapeCoreModule: Module {
       )
       return
     }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+    scheduler.postDelayed(250) { [weak self] in
       self?.awaitProbeMotorConfig(
         probeId: probeId, boardId: boardId, bleId: bleId, candidate: candidate,
         previousCapturedAt: previousCapturedAt,

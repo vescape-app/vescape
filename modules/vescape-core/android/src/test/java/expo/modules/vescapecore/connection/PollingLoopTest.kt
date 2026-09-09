@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+/** @parity /modules/vescape-core/ios/connection/PollingLoopTests.swift */
 class PollingLoopTest {
     private val scheduler = TestScheduler()
     private val session = BoardSession(1)

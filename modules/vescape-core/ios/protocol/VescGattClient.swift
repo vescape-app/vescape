@@ -55,6 +55,7 @@ internal final class VescGattClient: NSObject, SessionTransport {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `recorder`
   var recorder: (() -> SessionRecorder?)?
   private weak var listener: VescGattListener?
+  private let scheduler: Scheduler
   /// Stable across app versions on purpose: iOS keys the preserved central state on this string, so
   /// changing it throws away every in-flight restoration. Only the Board Session client passes it;
   /// the Board Probe's client (`BoardTransportDetector`) stays bare — probing never needs
@@ -101,9 +102,14 @@ internal final class VescGattClient: NSObject, SessionTransport {
   private var reconnectTargetScan = false
 
   /// `restoreIdentifier` opts this client's central into CoreBluetooth state restoration (ADR 0034).
-  init(listener: VescGattListener, restoreIdentifier: String? = nil) {
+  init(
+    listener: VescGattListener,
+    restoreIdentifier: String? = nil,
+    scheduler: Scheduler = MainQueueScheduler()
+  ) {
     self.listener = listener
     self.restoreIdentifier = restoreIdentifier
+    self.scheduler = scheduler
     super.init()
     _ = central // Kick off state updates so poweredOn arrives before first use.
   }
@@ -488,7 +494,7 @@ extension VescGattClient: CBPeripheralDelegate {
       peripheral.setNotifyValue(true, for: characteristic)
     }
     // Some boards never ack the subscribe; resolve after a grace period so connect never hangs.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+    scheduler.postDelayed(4_000) { [weak self] in
       self?.resolveReady()
     }
   }

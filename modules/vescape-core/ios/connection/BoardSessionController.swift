@@ -121,7 +121,8 @@ internal final class BoardSessionController: VescGattListener {
   /// central's state into `onGattRestored`.
   private lazy var gatt = VescGattClient(
     listener: self,
-    restoreIdentifier: VescGattClient.sessionRestoreIdentifier
+    restoreIdentifier: VescGattClient.sessionRestoreIdentifier,
+    scheduler: scheduler
   )
   /// Transport seam (ADR 0024): a replay session swaps in a `ReplayTransport` for its lifetime;
   /// everything else drives the real GATT client. Set on connect, cleared on session end. All
@@ -137,7 +138,8 @@ internal final class BoardSessionController: VescGattListener {
     },
     canMove: { [weak self] in self?.firmwareCommandsTrusted() ?? false },
     generation: { [weak self] in BoardMoveGeneration.forBaseVersion(self?.config?.refloatBaseVersion) },
-    send: { [weak self] payload in self?.transport.sendPayload(payload) ?? false }
+    send: { [weak self] payload in self?.transport.sendPayload(payload) ?? false },
+    scheduler: scheduler
   )
   /// The clock this session stamps and compares its data against. Wall time for every real session;
   /// a replay swaps in its own for the session's lifetime so a warmed-up playback writes a timeline
@@ -185,7 +187,7 @@ internal final class BoardSessionController: VescGattListener {
   private let batteryEstimator = BatterySocEstimator()
   /// Median window producing the Battery SoC Estimate for display + alerts (ADR-0016).
   private let socWindow = SocMedianWindow()
-  private let liveSeries = LiveSeriesEmitter()
+  private lazy var liveSeries = LiveSeriesEmitter(scheduler: scheduler)
   /// Live BMS Series retention (window from `liveHistoryLimitMinutes`); push gated by `bmsSeriesFocused`.
   private let bmsSeriesRing = BmsSeriesRing()
   /// Telemetry-scoped cell-spread Board Warning detector; fed each BMS frame, reset per session.
@@ -195,6 +197,7 @@ internal final class BoardSessionController: VescGattListener {
   /// True while the battery-detail view is focused (JS intent); gates the `onBmsSeries` push only.
   private var bmsSeriesFocused = false
   private let appData: AppDataRepository
+  private let scheduler: Scheduler
   private lazy var recordingCoordinator: RecordingCoordinator = {
     let value = RecordingCoordinator(appData: appData)
     value.onFailure = { [weak self] in self?.onStateChanged?() }
@@ -202,7 +205,7 @@ internal final class BoardSessionController: VescGattListener {
   }()
 
   func recordingFailure() -> RecordingStorageFailureKind? { RecordingStorageFailure.value() }
-  private lazy var configController = ConfigRWController()
+  private lazy var configController = ConfigRWController(scheduler: scheduler)
   private lazy var locationTracker = LocationTracker(
     recentWindowMs: { [weak self] in Int64(max(1, self?.config?.liveHistoryLimitMinutes ?? 5)) * 60_000 },
     recordLocation: { [weak self] in self?.recordingCoordinator.recordLocation($0) },
@@ -220,7 +223,8 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groupRideObserver`
   private lazy var groupRideObserver = GroupRideObserver(
     emit: { [weak self] event, payload in self?.emit?(event, payload) },
-    online: AppStatusCoordinator.shared
+    online: AppStatusCoordinator.shared,
+    scheduler: scheduler
   )
 
   /// Enabled Privacy Zones cached for the Group Ride presence egress gate (issue #144). Refreshed
@@ -300,7 +304,6 @@ internal final class BoardSessionController: VescGattListener {
 
   private var polling = false
   /// Effective poll-interval floor (ms). Widens to `IDLE_PAUSE_POLL_INTERVAL_MS` while idle-paused.
-  private var floorMs = 0
   /// Idle Pause state machine (ADR-0021): throttles polling and halts recording while stationary.
   private let idlePauseDetector = IdlePauseDetector()
   /// Cached moving threshold shared with the metric sanitizer; fed to the detector each frame.
@@ -311,15 +314,17 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardWarningsEnabled`
   private var boardWarningsEnabled = true
   private var connectionSoundsEnabled = false
-  private var lastPollAt: Int64 = 0
-  private var smoothedPeriodMs = 0.0
-  private var pollTick: Int64 = 0
   /// BMS values change slowly and their cell-voltage replies are large; poll them at 1/stride of the
   /// telemetry rate to spare the BLE link. Mirrors Android `PollingLoop.BMS_POLL_STRIDE`.
-  private let bmsPollStride: Int64 = 8
-  private var pollWorkItem: DispatchWorkItem?
-  private var safetyWorkItem: DispatchWorkItem?
-  private var staleWorkItem: DispatchWorkItem?
+  private lazy var pollingLoop = PollingLoop(
+    scheduler: scheduler,
+    isCurrentSession: { [weak self] in $0 === self?.session },
+    sendPayload: { [weak self] payload, session in
+      self?.sendPayloadWithRetry(payload, session: session) ?? false
+    },
+    nowMs: { [weak self] in self?.nowMs() ?? 0 }
+  )
+  private var staleWorkItem: Cancellable?
 
   // Batched history flush cadence (cold path); the hot `onLiveTick` fires every frame.
   private var historyBuffer: [[String: Any?]] = []
@@ -331,8 +336,9 @@ internal final class BoardSessionController: VescGattListener {
   private var latestBatteryVoltage: Double?
   private var lastBatteryPersistedAt: Int64 = 0
 
-  init(appData: AppDataRepository = .shared) {
+  init(appData: AppDataRepository = .shared, scheduler: Scheduler = MainQueueScheduler()) {
     self.appData = appData
+    self.scheduler = scheduler
   }
 
   // MARK: - Scan API
@@ -457,7 +463,8 @@ internal final class BoardSessionController: VescGattListener {
         recordingName: recordingName,
         listener: self,
         onLocation: { [weak self] fix in self?.onReplayLocation(fix) },
-        clock: ReplayClock(warmupMs: warmupMs, warmupSpeed: warmupSpeed)
+        clock: ReplayClock(warmupMs: warmupMs, warmupSpeed: warmupSpeed),
+        scheduler: scheduler
       ),
       onSuccess: onSuccess,
       onError: onError
@@ -906,7 +913,7 @@ internal final class BoardSessionController: VescGattListener {
         scheduleBoardConfigRead()
       }
     }
-    floorMs = effectivePollIntervalMs()
+    pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
     liveSeries.setWindowMinutes(liveHistoryLimit)
     socWindow.windowMs = Int64(AppDataRepository.intValue(settings["socEstimateWindowSeconds"] ?? nil) ?? 20) * 1000
     recordingCoordinator.applySettings(settings)
@@ -937,7 +944,7 @@ internal final class BoardSessionController: VescGattListener {
   /// adopted (or the wait expires). While set, the Live Activity counts as claimed so the launch
   /// reap does not kill the surface the resume is about to reuse.
   private var pendingResume: SessionResumeMarker?
-  private var pendingResumeExpiry: DispatchWorkItem?
+  private var pendingResumeExpiry: Cancellable?
   /// How long a launch waits for `willRestoreState` before deciding no restoration is coming.
   /// CoreBluetooth delivers it inside the launch sequence, so this only guards the case where it
   /// never arrives at all (marker outlived the connection).
@@ -951,9 +958,9 @@ internal final class BoardSessionController: VescGattListener {
     guard session == nil, pendingResume == nil else { return }
     guard let marker = SessionResumeStore.shared.pending else { return }
     pendingResume = marker
-    let expiry = DispatchWorkItem { [weak self] in self?.expirePendingResume() }
-    pendingResumeExpiry = expiry
-    DispatchQueue.main.asyncAfter(deadline: .now() + pendingResumeWindowSeconds, execute: expiry)
+    pendingResumeExpiry = scheduler.postDelayed(Int64(pendingResumeWindowSeconds * 1000)) {
+      [weak self] in self?.expirePendingResume()
+    }
     // Touching the lazy client is the whole point: its init builds the restore-identified central.
     _ = gatt
   }
@@ -1351,9 +1358,13 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func armConnectTimeout() {
-    let token = session
-    DispatchQueue.main.asyncAfter(deadline: .now() + connectTimeoutSeconds) { [weak self] in
-      guard let self, let token, token === self.session, token.isActive else { return }
+    guard let token = session else { return }
+    scheduler.postDelayedForSession(
+      token,
+      delayMs: Int64(connectTimeoutSeconds * 1000),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] _ in
+      guard let self else { return }
       let stuckPhase = self.phase
       if stuckPhase == .connecting || stuckPhase == .discovering || stuckPhase == .subscribing {
         self.recordConnectionDiagnostic(
@@ -1382,9 +1393,12 @@ internal final class BoardSessionController: VescGattListener {
   /// and `markBoardReady` flips the phase off `waitingForTelemetry` so the fire guard falls through.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `armBoardReadyTimeout`
   private func armBoardReadyTimeout(session: BoardSession) {
-    let token = session
-    DispatchQueue.main.asyncAfter(deadline: .now() + boardReadyTimeoutSeconds) { [weak self] in
-      guard let self, token === self.session, token.isActive else { return }
+    scheduler.postDelayedForSession(
+      session,
+      delayMs: Int64(boardReadyTimeoutSeconds * 1000),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] _ in
+      guard let self else { return }
       guard self.phase == .waitingForTelemetry, self.lastTelemetryAt == nil else { return }
       self.recordConnectionDiagnostic(
         "board_ready_timeout",
@@ -1404,15 +1418,16 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryPipeline.kt `armStaleWatchdog`
   private func armStaleWatchdog(session: BoardSession) {
     staleWorkItem?.cancel()
-    let token = session
     let armedAt = lastTelemetryAt
-    let work = DispatchWorkItem { [weak self] in
-      guard let self, token === self.session, token.isActive else { return }
+    staleWorkItem = scheduler.postDelayedForSession(
+      session,
+      delayMs: Int64(telemetryStaleSeconds * 1000),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] _ in
+      guard let self else { return }
       self.staleWorkItem = nil
       self.onTelemetryStaleFired(armedAt: armedAt)
     }
-    staleWorkItem = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + telemetryStaleSeconds, execute: work)
   }
 
   private func cancelStaleWatchdog() {
@@ -1561,11 +1576,19 @@ internal final class BoardSessionController: VescGattListener {
     guard reconnecting, session === self.session, session.isActive else { return }
     setPhase(.rescanning)
     transport.startReconnectScan()
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(rescanWindowMs) / 1000.0) { [weak self] in
-      guard let self, self.reconnecting, session === self.session, session.isActive else { return }
+    scheduler.postDelayedForSession(
+      session,
+      delayMs: Int64(rescanWindowMs),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] session in
+      guard let self, self.reconnecting else { return }
       self.transport.stopReconnectScan()
       if self.phase == .rescanning { self.setPhase(.reconnecting) }
-      DispatchQueue.main.asyncAfter(deadline: .now() + Double(self.rescanIdleMs) / 1000.0) { [weak self] in
+      self.scheduler.postDelayedForSession(
+        session,
+        delayMs: Int64(self.rescanIdleMs),
+        isCurrent: { [weak self] in $0 === self?.session }
+      ) { [weak self] session in
         self?.scheduleRescanCycle(session: session)
       }
     }
@@ -1726,12 +1749,12 @@ internal final class BoardSessionController: VescGattListener {
       payload: payload,
       avgLatency: latency(at: now),
       packetAt: now,
-      pullRateHz: measuredRateHz()
+      pullRateHz: pollingLoop.measuredRateHz()
     ) else { return }
 
     // A valid mode-69 response still paces the response-driven poll loop — the frame is a real
     // answer, it just carries no metrics.
-    onPollResponse(session: session)
+    pollingLoop.onResponse()
     lastTelemetryAt = now
     armStaleWatchdog(session: session)
     markBoardReady()
@@ -2034,13 +2057,21 @@ internal final class BoardSessionController: VescGattListener {
     sendPayloadWithRetry(config.transport.frame([UInt8(COMM_FW_VERSION)]), session: session)
     sendPayloadWithRetry(RefloatConfigProtocol.buildGetInfo(transport: config.transport), session: session)
     if config.hasBms == true {
-      DispatchQueue.main.asyncAfter(deadline: .now() + linkIntegrityBmsTimeoutSeconds) { [weak self, weak session] in
-        guard let self, let session, session === self.session, session.isActive, let config = self.config else { return }
+      scheduler.postDelayedForSession(
+        session,
+        delayMs: Int64(linkIntegrityBmsTimeoutSeconds * 1000),
+        isCurrent: { [weak self] in $0 === self?.session }
+      ) { [weak self] session in
+        guard let self, let config = self.config else { return }
         self.updateLinkIntegrity(session.markBmsMissing(expected: config.linkIdentity()))
       }
     }
-    DispatchQueue.main.asyncAfter(deadline: .now() + linkIntegrityCheckTimeoutSeconds) { [weak self, weak session] in
-      guard let self, let session, session === self.session, session.isActive else { return }
+    scheduler.postDelayedForSession(
+      session,
+      delayMs: Int64(linkIntegrityCheckTimeoutSeconds * 1000),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] session in
+      guard let self else { return }
       self.updateLinkIntegrity(session.markCheckTimedOut())
     }
   }
@@ -2101,8 +2132,12 @@ internal final class BoardSessionController: VescGattListener {
   private func scheduleBoardConfigRead() {
     guard !boardConfigReadScheduled, let session else { return }
     boardConfigReadScheduled = true
-    DispatchQueue.main.asyncAfter(deadline: .now() + configSafetyReadDelaySeconds) { [weak self, weak session] in
-      guard let self, let session else { return }
+    scheduler.postDelayedForSession(
+      session,
+      delayMs: Int64(configSafetyReadDelaySeconds * 1000),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] session in
+      guard let self else { return }
       self.triggerBoardConfigRead(session)
     }
   }
@@ -2322,9 +2357,12 @@ internal final class BoardSessionController: VescGattListener {
   }
 
   private func scheduleFaultLogTick(session: BoardSession) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + VescFaultLogReader.tickSeconds) {
-      [weak self, weak session] in
-      guard let self, let session, session === self.session, session.isActive else { return }
+    scheduler.postDelayedForSession(
+      session,
+      delayMs: Int64(VescFaultLogReader.tickSeconds * 1000),
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] session in
+      guard let self else { return }
       guard let reader = self.faultLogReader else { return }
       guard reader.poll(self.nowMs()) else {
         self.scheduleFaultLogTick(session: session)
@@ -2604,12 +2642,8 @@ internal final class BoardSessionController: VescGattListener {
   /// transport rather than re-deriving one.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `currentBoardTransport`
   private func startPolling(session: BoardSession) {
-    stopScheduledPolls()
+    pollingLoop.stop()
     idlePauseDetector.reset()
-    floorMs = effectivePollIntervalMs()
-    lastPollAt = 0
-    smoothedPeriodMs = 0
-    pollTick = 0
     lastHistoryFlushAt = 0
     historyBuffer.removeAll(keepingCapacity: true)
     polling = true
@@ -2635,12 +2669,17 @@ internal final class BoardSessionController: VescGattListener {
       extra: ["polling_mode": pollingMode, "poll_interval_ms": config?.pollIntervalMs]
     )
     liveSeries.start()
-    sendPoll(session: session)
+    pollingLoop.start(
+      session: session,
+      pollPayload: pollPayload(),
+      bmsPayload: config?.hasBms == true ? bmsPayload() : nil,
+      pollIntervalMs: effectivePollIntervalMs()
+    )
   }
 
   private func stopPolling() {
     polling = false
-    stopScheduledPolls()
+    pollingLoop.stop()
     cancelStaleWatchdog()
     idlePauseDetector.reset()
     liveSeries.stop()
@@ -2675,13 +2714,13 @@ internal final class BoardSessionController: VescGattListener {
     if transition == .paused, let config {
       recordingCoordinator.recordIdlePauseMarker(config: config)
     }
-    floorMs = effectivePollIntervalMs()
+    pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
     onStateChanged?()
   }
 
   private func resetIdlePause() {
     idlePauseDetector.reset()
-    floorMs = effectivePollIntervalMs()
+    pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
   }
 
   /// Send a payload, re-sending once shortly after if the transport refused it (busy GATT queue,
@@ -2693,8 +2732,12 @@ internal final class BoardSessionController: VescGattListener {
     if let session, !(session === self.session && session.isActive) { return false }
     let sent = transport.sendPayload(payload)
     if !sent, let session {
-      DispatchQueue.main.asyncAfter(deadline: .now() + sendRetryDelaySeconds) { [weak self, weak session] in
-        guard let self, let session, session === self.session, session.isActive else { return }
+      scheduler.postDelayedForSession(
+        session,
+        delayMs: Int64(sendRetryDelaySeconds * 1000),
+        isCurrent: { [weak self] in $0 === self?.session }
+      ) { [weak self] _ in
+        guard let self else { return }
         _ = self.transport.sendPayload(payload)
       }
     }
@@ -2766,72 +2809,8 @@ internal final class BoardSessionController: VescGattListener {
     return transport.frame([UInt8(COMM_BMS_GET_VALUES)])
   }
 
-  private func sendPoll(session: BoardSession) {
-    guard polling, session === self.session, session.isActive else { return }
-    pollWorkItem = nil
-    let now = nowMs()
-    if lastPollAt > 0 {
-      let delta = Double(now - lastPollAt)
-      smoothedPeriodMs = smoothedPeriodMs <= 0 ? delta : smoothedPeriodMs + 0.2 * (delta - smoothedPeriodMs)
-    }
-    lastPollAt = now
-    _ = transport.sendPayload(pollPayload())
-    // Interleave a BMS request every `bmsPollStride` ticks, only when the probe proved one present.
-    // Checked before the tick advances, matching Android.
-    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/PollingLoop.kt (sendNow BMS interleave)
-    if config?.hasBms == true, pollTick % bmsPollStride == 0 {
-      _ = transport.sendPayload(bmsPayload())
-    }
-    pollTick += 1
-    armSafety(session: session, tick: pollTick)
-  }
-
-  private func onPollResponse(session: BoardSession) {
-    guard polling, session === self.session, session.isActive else { return }
-    cancelSafetyPoll()
-    let elapsed = nowMs() - lastPollAt
-    let delayMs = max(0, Int64(floorMs) - elapsed)
-    pollWorkItem?.cancel()
-    let work = DispatchWorkItem { [weak self] in
-      guard let self else { return }
-      self.pollWorkItem = nil
-      self.sendPoll(session: session)
-    }
-    pollWorkItem = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0, execute: work)
-  }
-
-  /// Safety re-poll: if no reply lands within the window, assume a dropped request/reply and
-  /// re-poll so the loop self-heals instead of stalling.
-  private func armSafety(session: BoardSession, tick: Int64) {
-    cancelSafetyPoll()
-    let timeoutMs = max(Int64(floorMs) * 4, 1000)
-    let work = DispatchWorkItem { [weak self] in
-      guard let self, self.polling, session === self.session, session.isActive, self.pollTick == tick else { return }
-      self.safetyWorkItem = nil
-      self.sendPoll(session: session)
-    }
-    safetyWorkItem = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeoutMs) / 1000.0, execute: work)
-  }
-
-  private func stopScheduledPolls() {
-    pollWorkItem?.cancel()
-    pollWorkItem = nil
-    cancelSafetyPoll()
-  }
-
-  private func cancelSafetyPoll() {
-    safetyWorkItem?.cancel()
-    safetyWorkItem = nil
-  }
-
-  private func measuredRateHz() -> Double? {
-    smoothedPeriodMs > 0 ? 1000.0 / smoothedPeriodMs : nil
-  }
-
   private func latency(at now: Int64) -> Int? {
-    lastPollAt > 0 ? Int(max(0, now - lastPollAt)) : nil
+    pollingLoop.latency(at: now)
   }
 
   /// - SeeAlso: `SessionClock`

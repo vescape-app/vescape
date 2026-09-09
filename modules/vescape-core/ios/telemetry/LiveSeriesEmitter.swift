@@ -38,6 +38,11 @@ internal final class LiveSeriesEmitter {
   /// Metric keys the mounted `/control` detail charts are focused on (JS intent); empty = none.
   /// Mutated and read on the main queue alongside the tick.
   private var focusedMetrics: Set<String> = []
+  private let scheduler: Scheduler
+
+  init(scheduler: Scheduler = MainQueueScheduler()) {
+    self.scheduler = scheduler
+  }
 
   /// Set the live-history window (minutes) from the `liveHistoryLimit` setting.
   func setWindowMinutes(_ minutes: Int) {
@@ -113,13 +118,12 @@ internal final class LiveSeriesEmitter {
     guard active else { return }
     tickSeq &+= 1
     let expected = tickSeq
-    let work = DispatchWorkItem { [weak self] in
+    scheduler.postDelayed(Int64(scaledIntervalMs())) { [weak self] in
       guard let self, self.active, self.tickSeq == expected else { return }
       self.emitSeries()
       self.emitFocusedSeries()
       self.scheduleTick()
     }
-    DispatchQueue.main.asyncAfter(deadline: .now() + Double(scaledIntervalMs()) / 1000.0, execute: work)
   }
 
   private func emitSeries() {
