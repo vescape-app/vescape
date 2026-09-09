@@ -67,7 +67,6 @@ type Phase =
   | 'candidate'
   | 'production-candidate'
   | 'confirm'
-  | 'production-confirm'
   | 'dispatching'
   | 'waiting'
   | 'running'
@@ -93,7 +92,6 @@ const versionBumps: ReadonlyArray<{ bump: VersionBump; label: string }> = [
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
 const CONFIRM_INDEX = 0
-const CANCEL_INDEX = 1
 
 export interface ReleaseCliOptions {
   initialPhase?: 'dashboard' | 'build-source'
@@ -309,8 +307,7 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
     const next = { ...basePlan, candidate, notesPath }
     setProductionPlan(next)
     setStatus('')
-    if (next.operation === 'status') await runProduction(next)
-    else goto('production-confirm', CANCEL_INDEX)
+    await runProduction(next)
   }
 
   /**
@@ -725,14 +722,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
       } else if (key.escape) gotoBuildSource()
       return
     }
-    if (phase === 'production-confirm') {
-      moveIndex(key, 2)
-      if (enter) {
-        if (index === CONFIRM_INDEX && productionPlan) void runProduction(productionPlan)
-        else loadDashboard()
-      } else if (key.escape) loadDashboard()
-      return
-    }
     if (phase === 'complete' && retryRunId && input.toLowerCase() === 'r') {
       setRetryRunId(null)
       setWatchedRun(null)
@@ -891,26 +880,6 @@ function App({ finish, initialPhase = 'dashboard', initialSourceRef }: AppProps)
             },
           ]}
           confirmLabel="Start build"
-          index={index}
-        />
-      )}
-      {productionPlan && phase === 'production-confirm' && (
-        <Confirm
-          title={
-            productionPlan.operation === 'promote'
-              ? `Publish ${productionPlan.candidate.manifest.marketingVersion} to production?`
-              : `Refresh ${productionPlan.candidate.manifest.marketingVersion} status?`
-          }
-          fields={[
-            { label: 'Version', value: productionPlan.candidate.manifest.marketingVersion },
-            {
-              label: 'Audience',
-              value: productionPlan.operation === 'promote' ? 'All Android users' : 'Read only',
-            },
-          ]}
-          confirmLabel={
-            productionPlan.operation === 'promote' ? 'Publish to production' : 'Refresh status'
-          }
           index={index}
         />
       )}
