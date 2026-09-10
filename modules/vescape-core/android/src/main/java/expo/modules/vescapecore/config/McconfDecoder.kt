@@ -54,6 +54,7 @@ internal object McconfDecoder {
     private fun readValue(bytes: ByteArray, field: McconfField): Double = when (field.type) {
         McconfValueType.U8 -> (bytes[field.offset].toInt() and 0xff).toDouble()
         McconfValueType.U16 -> VescNumeric.uint16(bytes, field.offset).toDouble()
+        McconfValueType.I16 -> VescNumeric.int16(bytes, field.offset).toDouble()
         McconfValueType.U32 -> VescNumeric.uint32(bytes, field.offset).toDouble()
         McconfValueType.I32 -> VescNumeric.int32(bytes, field.offset).toDouble()
         McconfValueType.F16 -> VescNumeric.int16(bytes, field.offset) / field.scale

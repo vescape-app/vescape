@@ -36,7 +36,7 @@ enum RefloatConfigProtocol {
     return String(version[match])
   }
 
-  static func buildGetInfo(transport: BoardTransport, version: Int = 1) -> [UInt8] {
+  static func buildGetInfo(transport: BoardTransport, version: Int = 2) -> [UInt8] {
     precondition((0...255).contains(version), "version must fit uint8")
     return transport.frame([
       UInt8(COMM_CUSTOM_APP_DATA),
@@ -221,7 +221,8 @@ enum RefloatConfigProtocol {
       return .failure("Short Refloat info v1 response: \(payload.count - dataOffset) bytes")
     }
     let versionCode = Int(payload[dataOffset])
-    return .success(RefloatPackageInfo(version: "Refloat \(versionCode / 10).\(versionCode % 10)"))
+    // Legacy INFO has no package name. Float and Refloat share this response format.
+    return .success(RefloatPackageInfo(version: "Float/Refloat \(versionCode / 10).\(versionCode % 10)"))
   }
 
   private static func parseGetInfoV2(

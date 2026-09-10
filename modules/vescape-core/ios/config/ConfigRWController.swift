@@ -40,6 +40,7 @@ private struct ConfigReadContext {
   let appBoardId: String?
   let fwVersion: String?
   var refloatVersion: String?
+  var xmlRetried = false
 }
 
 private struct ConfigWriteContext {
@@ -260,11 +261,14 @@ internal final class ConfigRWController {
 
   private func applyXml(_ payload: [UInt8], _ connection: ConfigRWConnection) {
     switch state {
-    case .readCollectingXml(let ctx, let xmlBytes, _):
+    case .readCollectingXml(var ctx, let xmlBytes, _):
       switch RefloatConfigProtocol.parseCustomConfigXmlResponse(payload) {
       case .failure(let message):
         fail(code: .UNEXPECTED_CONFIG_RESPONSE, message: message, rawConfig: nil, connection: connection)
       case .success(let chunk):
+        // A delayed reply to a retried request must not append the same bytes twice.
+        guard chunk.offset == xmlBytes.count else { return }
+        ctx.xmlRetried = false
         let merged = xmlBytes + chunk.chunk
         let nextOffset = chunk.offset + chunk.chunk.count
         if nextOffset >= chunk.totalLength {
@@ -616,6 +620,13 @@ internal final class ConfigRWController {
     let generation = timeoutGeneration
     scheduler.postDelayed(timeoutMs) { [weak self] in
       guard let self, self.timeoutGeneration == generation, self.isInFlight else { return }
+      if case .readCollectingXml(var ctx, let bytes, let expected) = self.state, !ctx.xmlRetried {
+        ctx.xmlRetried = true
+        self.state = .readCollectingXml(ctx, bytes, expected)
+        self.scheduleTimeout(.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS, connection)
+        _ = self.send(connection, self.buildXmlRequest(ctx.transport, expected: expected, nextOffset: bytes.count))
+        return
+      }
       self.abort(code: code, message: "Timed out reading Refloat config", resumePolling: nil, connection: connection)
     }
   }

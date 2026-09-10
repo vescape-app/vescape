@@ -23,6 +23,9 @@ final class ConfigRWControllerSharedReadTests: XCTestCase {
     XCTAssertTrue(controller.isInFlight)
 
     scheduler.advance(1)
+    XCTAssertTrue(errors.isEmpty)
+    XCTAssertTrue(controller.isInFlight)
+    scheduler.advance(10_000)
     XCTAssertEqual([RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT.rawValue], errors)
     XCTAssertFalse(controller.isInFlight)
   }

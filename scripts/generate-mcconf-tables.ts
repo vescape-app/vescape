@@ -11,7 +11,7 @@
 
 import { parseMcconfLayout } from './mcconf-layout'
 
-const BRANCHES = ['release_6_05', 'release_6_06', 'release_7_00'] as const
+const BRANCHES = ['release_6_02', 'release_6_05', 'release_6_06', 'release_7_00'] as const
 const RAW = 'https://raw.githubusercontent.com/vedderb/bldc'
 
 const KOTLIN_OUT =
@@ -54,6 +54,7 @@ async function loadBranch(branch: string) {
 const KIND_KT: Record<string, string> = {
   u8: 'U8',
   uint16: 'U16',
+  int16: 'I16',
   uint32: 'U32',
   int32: 'I32',
   f32auto: 'F32Auto',
@@ -86,6 +87,7 @@ package expo.modules.vescapecore.config
 internal enum class McconfValueType(val byteSize: Int) {
     U8(1),
     U16(2),
+    I16(2),
     U32(4),
     I32(4),
     F16(2),
@@ -117,6 +119,7 @@ ${entries}
 const KIND_SWIFT: Record<string, string> = {
   u8: 'u8',
   uint16: 'u16',
+  int16: 'i16',
   uint32: 'u32',
   int32: 'i32',
   f32auto: 'f32Auto',
@@ -147,12 +150,12 @@ import Foundation
 
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/config/McconfLayouts.kt
 enum McconfValueType {
-  case u8, u16, u32, i32, f16, f32Auto
+  case u8, u16, i16, u32, i32, f16, f32Auto
 
   var byteSize: Int {
     switch self {
     case .u8: return 1
-    case .u16, .f16: return 2
+    case .u16, .i16, .f16: return 2
     case .u32, .i32, .f32Auto: return 4
     }
   }
