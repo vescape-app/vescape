@@ -230,7 +230,7 @@ export function FloatingActionPillShowcase() {
       name="FloatingActionPill"
       controls={
         <ChipRow
-          label="state"
+          label="state (paused gray, recording red)"
           options={['REC', 'STOP', 'PAUSED']}
           selected={state}
           onSelect={(v) => setState(v as typeof state)}

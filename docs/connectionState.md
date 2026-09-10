@@ -178,13 +178,14 @@ History only shows finished recordings, so a row left open is a ride missing fro
 
 ### Idle Pause and disconnection
 
-While **connected**, the Board controls Idle Pause (ADR 0021): after 30s of non-moving Board samples
-both telemetry and Ride Track writes pause, even if the phone is moving, and Board movement resumes
-both. A moving phone never overrides a stationary connected Board, and nothing captured while paused
-is backfilled on resume.
+While **connected**, the Board controls Idle Pause (ADR 0021): the first disengaged Refloat sample
+pauses both telemetry and Ride Track writes. RUNNING, TILTBACK, and WHEELSLIP are engaged states;
+the next sample in any of those states resumes both streams, even at zero speed. Polling remains
+at about 1 Hz while paused, accepting about a second of resume latency to save battery.
+Phone movement cannot override the Board, and paused samples are never backfilled.
 
 On **unexpected disconnection the pause gate is released**, because it halts GPS too and off the link
-there is no Board movement signal to ever reopen it. Recording continues on GPS alone until the rider
+there is no Board engagement signal to ever reopen it. Recording continues on GPS alone until the rider
 stops it. On reconnection the detector takes over again from the next board-ready.
 
 ### Changing Boards

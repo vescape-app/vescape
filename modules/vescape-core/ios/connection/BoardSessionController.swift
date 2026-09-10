@@ -317,10 +317,9 @@ internal final class BoardSessionController: VescGattListener {
 
   private var polling = false
   /// Effective poll-interval floor (ms). Widens to `IDLE_PAUSE_POLL_INTERVAL_MS` while idle-paused.
-  /// Idle Pause state machine (ADR-0021): throttles polling and halts recording while stationary.
+  /// Idle Pause state machine (ADR-0021): throttles polling and halts recording while disengaged.
   private let idlePauseDetector = IdlePauseDetector()
   /// Cached moving threshold shared with the metric sanitizer; fed to the detector each frame.
-  private var movingThresholdCentiKmh = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH
   /// Board Warnings master switch (kill switch, #219). Off ⇒ no detector evaluation, no registry
   /// writes, no session-end clean pass. Cached from settings in `beginSession` and
   /// `reloadTelemetrySettings` so the BMS path never re-reads settings.
@@ -934,7 +933,6 @@ internal final class BoardSessionController: VescGattListener {
       liveHistoryLimitMinutes: liveHistoryLimit,
       recordingEnabled: current.recordingEnabled
     )
-    movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: settings).movingSpeedThresholdCentiKmh
     let warningsWereEnabled = boardWarningsEnabled
     // `VESC Fault Collection` is its own kill switch — deliberately not gated on
     // `boardWarningsEnabled`, so turning warnings off keeps fault evidence flowing.
@@ -1235,7 +1233,6 @@ internal final class BoardSessionController: VescGattListener {
       RecordingStorageFailure.reportRead(operation: "session_settings_read", error: error)
       return
     }
-    movingThresholdCentiKmh = MetricSanitizerConfig.from(settings: sessionSettings).movingSpeedThresholdCentiKmh
     VescFaultCoordinator.shared.collectionEnabled = sessionSettings["vescFaultCollectionEnabled"] as? Bool ?? true
     wireFaultCaptures()
     boardWarningsEnabled = sessionSettings["boardWarningsEnabled"] as? Bool ?? true
@@ -1586,7 +1583,7 @@ internal final class BoardSessionController: VescGattListener {
     // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
     // halts *both* streams, GPS included — so a board that went stationary and then dropped would
     // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
-    // Off the link there is no Board movement signal and no GPS-based Idle Pause (ADR 0021), so
+    // Off the link there is no Board engagement signal and no GPS-based Idle Pause (ADR 0021), so
     // recording continues until the rider stops it; the detector takes over again on the next
     // board-ready.
     resetIdlePause()
@@ -2744,7 +2741,7 @@ internal final class BoardSessionController: VescGattListener {
     return idlePauseDetector.isPaused ? max(IDLE_PAUSE_POLL_INTERVAL_MS, configured) : configured
   }
 
-  /// Feeds each sample's speed to the Idle Pause detector and applies its transitions: writes the
+  /// Feeds each sample's Refloat state to the Idle Pause detector and applies its transitions: writes the
   /// `auto_pause` marker on pause, retunes the poll floor, and republishes live state (ADR-0021).
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `updateIdlePause`
   private func updateIdlePause(_ capture: TelemetryCapture) {
@@ -2757,9 +2754,7 @@ internal final class BoardSessionController: VescGattListener {
       return
     }
     let transition = idlePauseDetector.onSample(
-      speedCentiKmh: Int((capture.telemetry.speed * 100.0).rounded()),
-      movingThresholdCentiKmh: movingThresholdCentiKmh,
-      atMs: capture.capturedAtMs
+      state: capture.telemetry.state
     )
     guard let transition else { return }
     if transition == .paused, let config {

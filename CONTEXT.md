@@ -105,7 +105,7 @@ The span of a Ride Recording from its first to its last movement evidenced by **
 _Avoid_: Trim range, active range, ride duration
 
 **Idle Pause**:
-A temporary state of a Ride Recording in which both **Telemetry Sample** and **Ride Track** persistence halt because the Board has produced no moving Telemetry Sample for a sustained interval, while the Board Session stays live at a reduced poll rate and auto-resumes on the next moving sample. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
+A temporary state of a Ride Recording in which both **Telemetry Sample** and **Ride Track** persistence halt on the first disengaged Refloat Telemetry Sample, while the Board Session stays live at a reduced poll rate and auto-resumes on the next engaged sample. RUNNING, TILTBACK, and WHEELSLIP count as engaged, even at zero speed. Paused polling stays at about 1 Hz, accepting about a second of resume latency. Cuts battery, stored frames, and bucket sample counts together while the board is parked.
 _Avoid_: Stop recording, auto-stop, sleep, parked mode
 
 **Favorite**:
@@ -434,7 +434,7 @@ _Avoid_: Position update, presence ping, location share, group telemetry
 - A **Moving Window** belongs to one **Ride Recording** and spans movement evidenced by **Telemetry Samples** or **Ride Track**; a Ride Recording without one is excluded from **Ride History**.
 - A gap in both streams remains inside the **Moving Window**, and counts toward Time, when movement is evidenced on both sides within the same **Ride Recording**.
 - A **Ride History Marker** belongs to **Ride History** and may explain where a **Ride Recording** lost or regained board data.
-- An **Idle Pause** belongs to one **Ride Recording**, begins after a sustained absence of moving **Telemetry Samples**, keeps the **Board Session** live at a reduced poll rate, and produces a **Ride History Marker**; its sample gap stays inside the **Moving Window** (and counts toward ride time) when it occurs between two moving spans.
+- An **Idle Pause** belongs to one **Ride Recording**, begins on the first disengaged Refloat **Telemetry Sample**, keeps the **Board Session** live at a reduced poll rate, and produces a **Ride History Marker**; its sample gap stays inside the **Moving Window** (and counts toward ride time) when it occurs between two moving spans.
 - A **Favorite** is a durable time range over **Ride History**; its telemetry is pinned against deletion, and a deleted ride leaves its favorited sub-ranges intact.
 - **Favorite Media** belongs to one **Favorite**, is copied into app storage, and is placed from a nearby recording-backed **GPS Fix** by capture time.
 - A **Tune Snapshot** belongs to the currently connected **Board** and is read-only.

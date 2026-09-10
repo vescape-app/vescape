@@ -158,7 +158,6 @@ import expo.modules.vescapecore.runtime.postDelayedForSession
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.AppSettings
 import expo.modules.vescapecore.telemetry.BatterySocEstimator
-import expo.modules.vescapecore.telemetry.DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH
 import expo.modules.vescapecore.telemetry.IDLE_PAUSE_POLL_INTERVAL_MS
 import expo.modules.vescapecore.telemetry.IdlePauseDetector
 import expo.modules.vescapecore.telemetry.IdlePauseTransition
@@ -239,12 +238,10 @@ internal class BoardSessionController(private val service: CoreForegroundService
         isCurrentSession = ::isCurrentBoardSession,
         sendPayloadWithRetry = { payload, session -> sendPayloadWithRetry(payload, session) },
     )
-    // Idle Pause (ADR-0021): while recording a stationary board, throttle polling to ~1 Hz and stop
-    // persisting samples. configuredPollIntervalMs / movingThresholdCentiKmh are cached from settings
-    // so the hot path can flip pacing without re-reading settings.
+    // Idle Pause (ADR-0021): while recording a disengaged board, throttle polling to ~1 Hz and stop
+    // persisting samples. Cache the configured interval to restore it when the board engages.
     private val idlePauseDetector = IdlePauseDetector()
     private var configuredPollIntervalMs: Long = 0L
-    private var movingThresholdCentiKmh: Int = DEFAULT_MOVING_SPEED_THRESHOLD_CENTI_KMH
     private val connectionCoordinator = ConnectionCoordinator(
         scheduler = scheduler,
         isCurrentSession = ::isCurrentBoardSession,
@@ -1349,7 +1346,7 @@ private var wearAutoLaunchOnConnect = true
                 recordingCoordinator.finishDebugRecording("error")
                 // No reconnect is coming, but the Ride Recording stays open (nothing tore the
                 // session down), so release the connected-Board pause gate here too. Off the link
-                // there is no Board movement signal to ever reopen it, and a gate stuck closed
+                // there is no Board engagement signal to ever reopen it, and a gate stuck closed
                 // silently discards every later GPS Fix.
                 resetIdlePause()
             }
@@ -2826,7 +2823,7 @@ private var wearAutoLaunchOnConnect = true
         // Release the connected-Board pause gate. While connected the Board decides Idle Pause and it
         // halts *both* streams, GPS included — so a board that went stationary and then dropped would
         // leave that gate stuck closed for the whole reconnect, silently discarding the rider's fixes.
-        // Off the link there is no Board movement signal and no GPS-based Idle Pause (ADR 0021), so
+        // Off the link there is no Board engagement signal and no GPS-based Idle Pause (ADR 0021), so
         // recording continues until the rider stops it; the detector takes over again on the next
         // board-ready.
         resetIdlePause()
@@ -3358,7 +3355,6 @@ private var wearAutoLaunchOnConnect = true
             }
         }
         configuredPollIntervalMs = pollIntervalMsForHz(settings.telemetryPollRateHz)
-        movingThresholdCentiKmh = settings.toMetricSanitizerConfig().movingSpeedThresholdCentiKmh
         pollingLoop.setPollIntervalMs(effectivePollIntervalMs())
         configuredWatchIntervalMs = pollIntervalMsForHz(settings.wearPushRateHz)
         applyWatchInterval()
@@ -3386,9 +3382,7 @@ private var wearAutoLaunchOnConnect = true
             return
         }
         val transition = idlePauseDetector.onSample(
-            speedCentiKmh = (capture.speed * 100.0).roundToInt(),
-            movingThresholdCentiKmh = movingThresholdCentiKmh,
-            atMs = capture.capturedAtMs,
+            state = capture.state,
         ) ?: return
         if (transition == IdlePauseTransition.Paused) {
             recordingCoordinator.recordIdlePauseMarker(boardConfig)
