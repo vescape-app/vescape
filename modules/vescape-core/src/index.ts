@@ -2209,7 +2209,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   revokeDeviceCredential(): Promise<void>
   clearDeviceCredential(): void
   openAppUpdate(): void
-  getRemoteTiltState(): RemoteTiltState | null
+  getRemoteTiltState(): Promise<RemoteTiltState | null>
   setSelectedBoard(boardId: string | null): void
   setCompanionPresenceEnabled(enabled: boolean): Promise<void>
   getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]>
@@ -2760,7 +2760,9 @@ export function openAppUpdate(): void {
 }
 
 /** Read remote tilt without reseeding native telemetry into the JS history buffer. */
-export function getRemoteTiltState(): RemoteTiltState | null {
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRemoteTiltState`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRemoteTiltState`
+export async function getRemoteTiltState(): Promise<RemoteTiltState | null> {
   if (E2E_ENABLED) return null
   return native.getRemoteTiltState()
 }
@@ -3013,12 +3015,16 @@ export async function getRefloatConfigSnapshot(): Promise<RefloatConfigSnapshot>
  * Stream Floaty's temporary remote-tilt input. `value` is the 0..255 slider
  * (128 = neutral). Requires `inputtilt_remote_type` = UART in the board config.
  */
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setRemoteTilt`
 export async function setRemoteTilt(value: number): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.setRemoteTilt(value)
 }
 
 /** Lock the held tilt indefinitely (lock band) until cancelled. */
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `lockRemoteTilt`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `lockRemoteTilt`
 export async function lockRemoteTilt(value: number): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.lockRemoteTilt(value)
@@ -3028,6 +3034,8 @@ export async function lockRemoteTilt(value: number): Promise<boolean> {
  * Release the pad: ease `value` (0..255) linearly back to neutral over
  * `durationMs`, then stop. A zero duration snaps straight to neutral.
  */
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `releaseRemoteTilt`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `releaseRemoteTilt`
 export async function releaseRemoteTilt(value: number, durationMs: number): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.releaseRemoteTilt(value, durationMs)
@@ -3038,6 +3046,8 @@ export async function releaseRemoteTilt(value: number, durationMs: number): Prom
  * bounded rate. It does not snap — stepping to neutral from a large tilt makes a self-balancing
  * board surge to correct the angle error and throws the rider.
  */
+// @parity /modules/vescape-core/ios/VescapeCoreModule.swift `stopRemoteTilt`
+// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopRemoteTilt`
 export async function stopRemoteTilt(): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.stopRemoteTilt()

@@ -478,9 +478,11 @@ public class VescapeCoreModule: Module {
       self.liveState()
     }
 
-    Function("getRemoteTiltState") { () -> [String: Any?]? in
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRemoteTiltState`
+    // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
+    AsyncFunction("getRemoteTiltState") { () -> [String: Any?]? in
       self.coordinator.remoteTiltState()
-    }
+    }.runOnQueue(.main)
 
     Function("setSelectedBoard") { (boardId: String?) in
       do {
@@ -849,21 +851,29 @@ public class VescapeCoreModule: Module {
       )
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
     AsyncFunction("setRemoteTilt") { (value: Int) -> Bool in
       self.coordinator.setRemoteTilt(value: value)
-    }
+    }.runOnQueue(.main)
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `lockRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `lockRemoteTilt`
     AsyncFunction("lockRemoteTilt") { (value: Int) -> Bool in
       self.coordinator.lockRemoteTilt(value: value)
-    }
+    }.runOnQueue(.main)
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `releaseRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `releaseRemoteTilt`
     AsyncFunction("releaseRemoteTilt") { (value: Int, durationMs: Int) -> Bool in
       self.coordinator.releaseRemoteTilt(value: value, durationMs: Int64(durationMs))
-    }
+    }.runOnQueue(.main)
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `stopRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `stopRemoteTilt`
     AsyncFunction("stopRemoteTilt") { () -> Bool in
       self.coordinator.stopRemoteTilt()
-    }
+    }.runOnQueue(.main)
 
     AsyncFunction("setBoardLights") { (enabled: Bool, headlightsEnabled: Bool) -> Bool in
       self.coordinator.setBoardLights(enabled: enabled, headlightsEnabled: headlightsEnabled)

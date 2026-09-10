@@ -655,8 +655,9 @@ internal final class BoardSessionController: VescGattListener {
   /// tilt makes the board surge to correct the angle error and throws the rider.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopRemoteTilt`
+  // Cancellation must remain available if link trust changes during an active tilt.
   func stopRemoteTilt() -> Bool {
-    firmwareCommandsTrusted() && remoteTiltController.cancel()
+    remoteTiltController.cancel()
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startBoardMove`

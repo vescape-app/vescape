@@ -24,6 +24,8 @@
 
 ### Features
 
+- [remote-tilt.md](./remote-tilt.md) — Remote Tilt gesture ownership, native command timing, and latency checks
+
 - [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)

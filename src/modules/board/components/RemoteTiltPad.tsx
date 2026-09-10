@@ -1,330 +1,384 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  type GestureResponderEvent,
-  type LayoutChangeEvent,
-  PanResponder,
-  StyleSheet,
-  View,
-} from 'react-native'
+import { type LayoutChangeEvent, StyleSheet, View } from 'react-native'
+import { Canvas } from '@shopify/react-native-skia'
+import { MonoText } from '@/components/base/MonoValue'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import Animated, {
   Easing,
+  ReduceMotion,
+  useDerivedValue,
   useAnimatedStyle,
+  useFrameCallback,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
 import { Text } from '@/components/base/Text'
-
 import { Button } from '@/components/base/Button'
 import { theme } from '@/constants/theme'
-import { useBleStore } from '@/modules/board/store/bleStore'
-import type { RemoteTiltPhase, RemoteTiltState } from 'vescape-core'
+import {
+  createTiltPresentationOwner,
+  TILT_CENTER,
+  idleTiltPresentation,
+  sampleTiltPresentation,
+  type TiltPresentation,
+} from '@/modules/board/lib/remoteTiltPresentation'
+import { createTiltCommands } from '@/modules/board/lib/remoteTiltCommands'
+import type { RemoteTiltState } from 'vescape-core'
 
-/** Neutral tilt (0..255), matching native `REMOTE_TILT_CENTER`. */
-const TILT_CENTER = 128
 const TILT_MAX = 255
-/** Longest ease-to-center the top of the (non-lock) pad maps to. */
 const MAX_DECAY_MS = 60_000
 const PAD_HEIGHT = 240
 const THUMB_RADIUS = 14
-/** Top band: releasing here locks the tilt forever (no ease). */
 const LOCK_BAND = 32
-/**
- * Decay time grows with the square of the vertical position, so the lower
- * (short-time) part of the pad gets most of the travel — fine control for quick
- * eases, while long durations are still reachable near the top.
- */
-const DECAY_EXP = 2
-/**
- * How long the thumb takes to glide to a new native position that is not a decay (lock, or the
- * board taking over a hold). Decay uses the native ramp's own remaining time instead.
- */
-const SETTLE_MS = 160
-/** Seconds drawn as horizontal grid lines (0 = bottom, 60 = top edge). */
 const TIME_MARKS = [1, 3, 8, 20, 40] as const
-/** Tilt percentages drawn as vertical grid lines (0 = center, edges omitted). */
 const TILT_MARKS = [-50, 50] as const
-/** Tilt percentages that get a text label. */
 const TILT_LABELS = [-50, 0, 50] as const
 
-function clampUnit(t: number) {
-  return Math.min(1, Math.max(0, t))
-}
-
-/** Vertical travel (0 bottom .. 1 top of decay zone) → decay ms. */
-function decayFromTravel(travel: number) {
-  return Math.round(MAX_DECAY_MS * clampUnit(travel) ** DECAY_EXP)
-}
-
-/** Decay ms → vertical travel (inverse of {@link decayFromTravel}). */
-function travelFromDecay(ms: number) {
-  return clampUnit(ms / MAX_DECAY_MS) ** (1 / DECAY_EXP)
-}
-
-/** Y pixel for a given decay time inside a pad of `height`. */
 function yForDecay(ms: number, height: number) {
-  const span = Math.max(1, height - LOCK_BAND)
-  return height - travelFromDecay(ms) * span
+  'worklet'
+  return height - Math.sqrt(Math.min(1, Math.max(0, ms / MAX_DECAY_MS))) * (height - LOCK_BAND)
 }
 
-/** X fraction (0..1) for a tilt percentage (-100..100). */
 function xFractionForTilt(percent: number) {
   return (TILT_CENTER + (percent / 100) * (TILT_MAX - TILT_CENTER)) / TILT_MAX
 }
 
 interface RemoteTiltPadProps {
   disabled?: boolean
-  /** Live tilt while the finger is down (0..255, 128 neutral). */
-  onChange: (value: number) => void
-  /** On lift below the lock band: ease `value` back to neutral over `durationMs`. */
-  onRelease: (value: number, durationMs: number) => void
-  /** On lift in the lock band: hold `value` indefinitely until cancelled. */
-  onLock: (value: number) => void
-  /** Abort the active tilt: native eases it back to neutral at a bounded rate. */
-  onCancel: () => void
+  connected?: boolean
+  readState: () => Promise<RemoteTiltState | null>
+  onChange: (value: number) => Promise<boolean>
+  onRelease: (value: number, durationMs: number) => Promise<boolean>
+  onLock: (value: number) => Promise<boolean>
+  onCancel: () => Promise<boolean>
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
-
-/** Pad position (px) → tilt value (X), decay duration and lock flag (Y). */
-function positionToIntent(x: number, y: number, width: number, height: number) {
-  const value = Math.round(clamp(x / width, 0, 1) * TILT_MAX)
-  const locked = y <= LOCK_BAND
-  const span = Math.max(1, height - LOCK_BAND)
-  const durationMs = decayFromTravel((height - y) / span)
-  return { value, durationMs, locked }
-}
-
-interface PadLayout {
-  width: number
-  height: number
-}
-
-interface PadPresentation {
-  thumb: { x: number; y: number }
-  display: { value: number; durationMs: number; phase: RemoteTiltPhase }
-  active: boolean
-}
-
-function restingPresentation({ width, height }: PadLayout): PadPresentation {
-  return {
-    thumb: { x: width * (TILT_CENTER / TILT_MAX), y: height - THUMB_RADIUS },
-    display: { value: TILT_CENTER, durationMs: 0, phase: 'idle' },
-    active: false,
-  }
-}
-
-function nativePresentation(
-  remoteTilt: RemoteTiltState | null,
-  layout: PadLayout,
-): PadPresentation {
-  if (!remoteTilt) return restingPresentation(layout)
-
-  // A decay is heading for neutral: aim the thumb at the rest point and let the local animation
-  // cover the ramp. Interpolating the reported `elapsedMs` instead would make the thumb move only
-  // as often as a telemetry tick happens to arrive, which reads as a frozen control.
-  const decaying = remoteTilt.phase === 'decaying'
-
-  return {
-    thumb: {
-      x: decaying
-        ? layout.width * (TILT_CENTER / TILT_MAX)
-        : (remoteTilt.value / TILT_MAX) * layout.width,
-      y: remoteTilt.phase === 'locked' ? LOCK_BAND / 2 : layout.height - THUMB_RADIUS,
-    },
-    display: { value: remoteTilt.value, durationMs: 0, phase: remoteTilt.phase },
-    active: true,
-  }
-}
-
-/**
- * Two-dimensional remote-tilt pad. Horizontal sets the nose tilt; vertical sets
- * how long it eases back to center after release. One drag picks both: lift, and
- * the board glides tilt → center over the chosen time. Purely presentational —
- * it emits intents and never touches native.
- */
+/** Native owns commands. This component owns one visual timeline, independent of telemetry. */
 export function RemoteTiltPad({
-  disabled,
+  disabled = false,
+  connected = true,
+  readState,
   onChange,
   onRelease,
   onLock,
   onCancel,
 }: RemoteTiltPadProps) {
-  const layoutRef = useRef({ width: 0, height: PAD_HEIGHT })
-  const intentRef = useRef({ value: TILT_CENTER, durationMs: 0, locked: false })
-  const disabledRef = useRef(disabled)
-  const onChangeRef = useRef(onChange)
-  const onReleaseRef = useRef(onRelease)
-  const onLockRef = useRef(onLock)
-  const onCancelRef = useRef(onCancel)
-  const remoteTilt = useBleStore((state) => state.remoteTilt)
-
-  useEffect(() => {
-    disabledRef.current = disabled
-    onChangeRef.current = onChange
-    onReleaseRef.current = onRelease
-    onLockRef.current = onLock
-    onCancelRef.current = onCancel
-  })
-
-  const [layout, setLayout] = useState<PadLayout>({ width: 0, height: PAD_HEIGHT })
-  const [gesturePresentation, setGesturePresentation] = useState<PadPresentation | null>(null)
-  const { thumb, display, active } = gesturePresentation ?? nativePresentation(remoteTilt, layout)
-
-  // The thumb runs on its own clock. Native reports where the tilt is only as often as a telemetry
-  // tick arrives, which is far coarser than the decay ramp and made a cancelled tilt look frozen;
-  // here the target comes from native and the motion between targets is local and continuous.
-  const thumbX = useSharedValue(thumb.x)
-  const thumbY = useSharedValue(thumb.y)
-  const decayRemainingMs =
-    remoteTilt?.phase === 'decaying' && remoteTilt.decay
-      ? Math.max(0, remoteTilt.decay.totalMs - remoteTilt.decay.elapsedMs)
-      : null
-  const tracking = gesturePresentation !== null
-
-  useEffect(() => {
-    // A finger owns the thumb outright; a decay glides over exactly what native says is left of
-    // its ramp, and everything else just settles.
-    const duration = tracking ? 0 : (decayRemainingMs ?? SETTLE_MS)
-    const options = { duration, easing: Easing.linear }
-    thumbX.value = duration === 0 ? thumb.x : withTiming(thumb.x, options)
-    thumbY.value = duration === 0 ? thumb.y : withTiming(thumb.y, options)
-  }, [thumb.x, thumb.y, tracking, decayRemainingMs, thumbX, thumbY])
-
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: thumbX.value }, { translateY: thumbY.value }],
-  }))
-
-  const track = useCallback((event: GestureResponderEvent) => {
-    const { width, height } = layoutRef.current
-    if (width === 0) return
-    const x = clamp(event.nativeEvent.locationX, 0, width)
-    const y = clamp(event.nativeEvent.locationY, 0, height)
-    const next = positionToIntent(x, y, width, height)
-    intentRef.current = next
-    setGesturePresentation({
-      thumb: { x, y },
-      display: { ...next, phase: 'holding' },
-      active: true,
-    })
-    onChangeRef.current(next.value)
-  }, [])
-
-  // Release intent hands ownership straight back to native; no JS decay clock.
-  const end = useCallback(() => {
-    setGesturePresentation(null)
-    const { value, durationMs, locked } = intentRef.current
-
-    // Lock band: hold the tilt forever. Native is already streaming the held
-    // value, so just freeze the thumb and keep it active until cancelled.
-    if (locked) {
-      onLockRef.current(value)
-      return
-    }
-
-    onReleaseRef.current(value, durationMs)
-  }, [])
-
-  const cancel = useCallback(() => {
-    setGesturePresentation(null)
-    onCancelRef.current()
-  }, [])
-
-  const panResponder = useMemo(
+  const owner = useMemo(createTiltPresentationOwner, [])
+  const alive = useRef(true)
+  const [error, setError] = useState<string | null>(null)
+  const [active, setActive] = useState(false)
+  const commands = useMemo(
     () =>
-      // eslint-disable-next-line react-hooks/refs -- refs only read inside PanResponder callbacks, not during render
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !disabledRef.current,
-        onMoveShouldSetPanResponder: () => !disabledRef.current,
-        onPanResponderGrant: track,
-        onPanResponderMove: track,
-        onPanResponderRelease: end,
-        onPanResponderTerminate: end,
+      createTiltCommands(() => {
+        if (alive.current) setError('Tilt command failed. Check board connection.')
       }),
-    [track, end],
+    [],
+  )
+  const presentation = useSharedValue<TiltPresentation>(idleTiltPresentation)
+  const progress = useSharedValue(0)
+  const width = useSharedValue(0)
+  const tracking = useSharedValue(false)
+  const fingerX = useSharedValue(0)
+  const fingerY = useSharedValue(PAD_HEIGHT - THUMB_RADIUS)
+  const fromY = useSharedValue(PAD_HEIGHT - THUMB_RADIUS)
+  const lastSentAt = useSharedValue(0)
+  const lastSentValue = useSharedValue(-1)
+
+  const apply = useCallback(
+    (next: TiltPresentation | null, preservePosition = false) => {
+      if (!next || !alive.current || tracking.value) return
+      const current = sampleTiltPresentation(presentation.value, progress.value)
+      const y =
+        presentation.value.phase === 'decaying'
+          ? fromY.value + (PAD_HEIGHT - THUMB_RADIUS - fromY.value) * progress.value
+          : fromY.value
+      presentation.value =
+        preservePosition && next.phase === 'decaying' ? { ...next, value: current.value } : next
+      fromY.value =
+        preservePosition && (next.phase === 'decaying' || next.phase === 'locked')
+          ? y
+          : next.phase === 'locked'
+            ? LOCK_BAND / 2
+            : next.phase === 'decaying'
+              ? yForDecay(next.durationMs, PAD_HEIGHT)
+              : PAD_HEIGHT - THUMB_RADIUS
+      progress.value = 0
+      if (next.phase === 'decaying')
+        progress.value = withTiming(1, {
+          duration: next.durationMs,
+          easing: Easing.linear,
+          reduceMotion: ReduceMotion.Never,
+        })
+      setActive(next.phase !== 'idle')
+    },
+    [fromY, presentation, progress, tracking],
   )
 
-  const onLayout = (event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout
-    layoutRef.current = { width, height }
-    setLayout({ width, height })
-  }
+  useEffect(() => {
+    alive.current = true
+    let disposed = false
+    let reading = false
+    const refresh = async () => {
+      const token = owner.readToken()
+      if (reading || disposed || !connected || token === null) return
+      reading = true
+      try {
+        const state = await readState()
+        if (!disposed) apply(owner.refresh(state, token))
+      } catch {
+        if (!disposed && owner.readToken() === token) setError('Cannot refresh tilt state.')
+      } finally {
+        reading = false
+      }
+    }
+    void refresh()
+    const timer = setInterval(() => {
+      void refresh()
+    }, 100)
+    return () => {
+      disposed = true
+      alive.current = false
+      owner.invalidate()
+      commands.clear()
+      if (tracking.value) {
+        tracking.value = false
+        void commands(onCancel)
+      }
+      clearInterval(timer)
+    }
+  }, [apply, commands, connected, onCancel, owner, readState, tracking])
 
-  const tiltPercent = Math.round(((display.value - TILT_CENTER) / (TILT_MAX - TILT_CENTER)) * 100)
-  const decaySeconds = (display.durationMs / 1000).toFixed(1)
-  const remainingDecaySeconds =
-    remoteTilt?.phase === 'decaying' && remoteTilt.decay
-      ? (Math.max(0, remoteTilt.decay.totalMs - remoteTilt.decay.elapsedMs) / 1000).toFixed(1)
-      : null
+  const begin = useCallback(() => {
+    owner.begin()
+    setError(null)
+    setActive(true)
+  }, [owner])
+
+  const hold = useCallback(
+    (value: number) => {
+      void commands(() => onChange(value), true)
+    },
+    [commands, onChange],
+  )
+
+  const finish = useCallback(
+    async (value: number, durationMs: number, locked: boolean, cancel: boolean) => {
+      const token = owner.pending()
+      const accepted = await commands(() =>
+        cancel ? onCancel() : locked ? onLock(value) : onRelease(value, durationMs),
+      )
+      try {
+        const state = await readState()
+        if (alive.current) apply(owner.accept(token, state), accepted)
+      } catch {
+        if (alive.current && owner.fail(token)) {
+          setError('Cannot refresh tilt state.')
+        }
+      }
+    },
+    [apply, commands, onCancel, onLock, onRelease, owner, readState],
+  )
+
+  const cancel = useCallback(() => {
+    tracking.value = false
+    void finish(TILT_CENTER, 0, false, true)
+  }, [finish, tracking])
+
+  useEffect(() => {
+    if (!connected) {
+      commands.clear()
+      tracking.value = false
+      owner.invalidate()
+      apply(idleTiltPresentation)
+    } else if (disabled && tracking.value) cancel()
+  }, [apply, cancel, commands, connected, disabled, owner, tracking])
+
+  // Gesture samples stay on UI. Only the newest changed command crosses to JS at 10 Hz.
+  useFrameCallback(({ timestamp }) => {
+    if (!tracking.value || width.value <= 0 || timestamp - lastSentAt.value < 100) return
+    const value = Math.round((fingerX.value / width.value) * TILT_MAX)
+    lastSentAt.value = timestamp
+    if (value === lastSentValue.value) return
+    lastSentValue.value = value
+    scheduleOnRN(hold, value)
+  })
+
+  const gesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!disabled)
+        .minDistance(0)
+        .onStart((event) => {
+          tracking.value = true
+          progress.value = 0
+          fingerX.value = Math.min(width.value, Math.max(0, event.x))
+          fingerY.value = Math.min(PAD_HEIGHT, Math.max(0, event.y))
+          lastSentValue.value = -1
+          lastSentAt.value = 0
+          scheduleOnRN(begin)
+        })
+        .onUpdate((event) => {
+          fingerX.value = Math.min(width.value, Math.max(0, event.x))
+          fingerY.value = Math.min(PAD_HEIGHT, Math.max(0, event.y))
+        })
+        .onFinalize((_event, success) => {
+          if (!tracking.value || width.value <= 0) return
+          const value = Math.round((fingerX.value / width.value) * TILT_MAX)
+          const locked = fingerY.value <= LOCK_BAND
+          const durationMs = Math.round(
+            MAX_DECAY_MS * ((PAD_HEIGHT - fingerY.value) / (PAD_HEIGHT - LOCK_BAND)) ** 2,
+          )
+          tracking.value = false
+          fromY.value = fingerY.value
+          presentation.value = { value, durationMs, phase: 'pending' }
+          progress.value = 0
+          scheduleOnRN(finish, value, durationMs, locked, !success)
+        }),
+    [
+      begin,
+      disabled,
+      fingerX,
+      fingerY,
+      finish,
+      fromY,
+      lastSentAt,
+      lastSentValue,
+      presentation,
+      progress,
+      tracking,
+      width,
+    ],
+  )
+
+  const thumbStyle = useAnimatedStyle(() => {
+    const sample = sampleTiltPresentation(presentation.value, progress.value)
+    return {
+      transform: [
+        { translateX: tracking.value ? fingerX.value : (sample.value / TILT_MAX) * width.value },
+        {
+          translateY: tracking.value
+            ? fingerY.value
+            : presentation.value.phase === 'decaying'
+              ? fromY.value + (PAD_HEIGHT - THUMB_RADIUS - fromY.value) * progress.value
+              : fromY.value,
+        },
+      ],
+    }
+  })
+  const valueText = useDerivedValue(() => {
+    const value =
+      tracking.value && width.value > 0
+        ? (fingerX.value / width.value) * TILT_MAX
+        : sampleTiltPresentation(presentation.value, progress.value).value
+    const percent = Math.round(((value - TILT_CENTER) / (TILT_MAX - TILT_CENTER)) * 100)
+    const text = `${percent > 0 ? '+' : ''}${percent}%`
+    return text
+  })
+  const timeText = useDerivedValue(() => {
+    const sample = sampleTiltPresentation(presentation.value, progress.value)
+    const seconds = (sample.remainingMs / 1000).toFixed(1)
+    const selectedSeconds = (
+      (MAX_DECAY_MS * ((PAD_HEIGHT - fingerY.value) / (PAD_HEIGHT - LOCK_BAND)) ** 2) /
+      1000
+    ).toFixed(1)
+    const text = tracking.value
+      ? fingerY.value <= LOCK_BAND
+        ? 'release to lock'
+        : `ease ${selectedSeconds}s`
+      : presentation.value.phase === 'pending'
+        ? 'Applying…'
+        : presentation.value.phase === 'locked'
+          ? 'LOCKED ∞'
+          : presentation.value.phase === 'decaying' && progress.value < 1
+            ? `RETURNING ${seconds}s`
+            : presentation.value.phase === 'holding'
+              ? 'ACTIVE'
+              : 'ease 0.0s'
+    return text
+  })
+  const readoutWidth = useDerivedValue(() => width.value)
+  const onLayout = (event: LayoutChangeEvent) => {
+    width.value = event.nativeEvent.layout.width
+  }
 
   return (
     <View>
-      <View
-        {...panResponder.panHandlers}
-        onLayout={onLayout}
-        style={[styles.pad, disabled && styles.padDisabled]}
-      >
-        {TILT_MARKS.map((percent) => (
-          <View
-            key={`v${percent}`}
-            pointerEvents="none"
-            style={[styles.gridLineV, { left: `${xFractionForTilt(percent) * 100}%` }]}
-          />
-        ))}
-        <View pointerEvents="none" style={[styles.gridLineV, styles.centerLine]} />
-        {TILT_LABELS.map((percent) => (
-          <Text
-            key={`vl${percent}`}
-            pointerEvents="none"
-            style={[
-              styles.tiltLabel,
-              percent === 0 && styles.zeroTiltLabel,
-              { left: `${xFractionForTilt(percent) * 100}%` },
-            ]}
-          >
-            {percent > 0 ? `+${percent}` : percent}%
-          </Text>
-        ))}
-        {TIME_MARKS.map((sec) => (
-          <View
-            key={`h${sec}`}
-            pointerEvents="none"
-            style={[styles.gridLineH, { top: yForDecay(sec * 1000, PAD_HEIGHT) }]}
-          >
-            <Text style={styles.gridLabel}>{sec}s</Text>
+      <GestureDetector gesture={gesture}>
+        <View
+          onLayout={onLayout}
+          style={[styles.pad, disabled && styles.padDisabled]}
+          collapsable={false}
+        >
+          {TILT_MARKS.map((percent) => (
+            <View
+              key={`v${percent}`}
+              pointerEvents="none"
+              style={[styles.gridLineV, { left: `${xFractionForTilt(percent) * 100}%` }]}
+            />
+          ))}
+          <View pointerEvents="none" style={[styles.gridLineV, styles.centerLine]} />
+          {TILT_LABELS.map((percent) => (
+            <Text
+              key={`vl${percent}`}
+              pointerEvents="none"
+              style={[
+                styles.tiltLabel,
+                percent === 0 && styles.zeroTiltLabel,
+                { left: `${xFractionForTilt(percent) * 100}%` },
+              ]}
+            >
+              {percent > 0 ? `+${percent}` : percent}%
+            </Text>
+          ))}
+          {TIME_MARKS.map((sec) => (
+            <View
+              key={`h${sec}`}
+              pointerEvents="none"
+              style={[styles.gridLineH, { top: yForDecay(sec * 1000, PAD_HEIGHT) }]}
+            >
+              <Text style={styles.gridLabel}>{sec}s</Text>
+            </View>
+          ))}
+          <View pointerEvents="none" style={styles.lockBand}>
+            <Text style={styles.lockBandText}>lock</Text>
           </View>
-        ))}
-        <View pointerEvents="none" style={styles.lockBand}>
-          <Text style={styles.lockBandText}>lock</Text>
+          <Text pointerEvents="none" style={[styles.axisLabel, styles.axisTop]}>
+            {(MAX_DECAY_MS / 1000).toFixed(0)}s
+          </Text>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.thumb, !active && styles.thumbRest, thumbStyle]}
+          />
         </View>
-        <Text pointerEvents="none" style={[styles.axisLabel, styles.axisTop]}>
-          {(MAX_DECAY_MS / 1000).toFixed(0)}s
-        </Text>
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.thumb, !active && styles.thumbRest, thumbStyle]}
+      </GestureDetector>
+      <Canvas style={styles.readout} pointerEvents="none">
+        <MonoText
+          text={valueText}
+          size={16}
+          color={theme.palette.sky.text}
+          width={readoutWidth}
+          height={24}
+        />
+        <MonoText
+          text={timeText}
+          size={14}
+          color={theme.neutral.textSecondary}
+          align="right"
+          width={readoutWidth}
+          height={24}
+        />
+      </Canvas>
+      {error ? <Text accessibilityRole="alert">{error}</Text> : null}
+      <View style={styles.cancelRow}>
+        <Button
+          label="Cancel tilt"
+          onPress={cancel}
+          disabled={!active}
+          variant="destructive"
+          size="sm"
         />
       </View>
-      <View style={styles.readout}>
-        <Text style={styles.readoutValue}>
-          {tiltPercent > 0 ? `+${tiltPercent}` : tiltPercent}%
-        </Text>
-        <Text style={styles.readoutTime}>
-          {display.phase === 'locked'
-            ? 'LOCKED ∞'
-            : display.phase === 'decaying'
-              ? `RETURNING ${remainingDecaySeconds ?? '0.0'}s`
-              : display.phase === 'holding'
-                ? 'ACTIVE'
-                : `ease ${decaySeconds}s`}
-        </Text>
-      </View>
-      {active ? (
-        <View style={styles.cancelRow}>
-          <Button label="Cancel tilt" onPress={cancel} variant="destructive" size="sm" />
-        </View>
-      ) : null}
     </View>
   )
 }
@@ -432,23 +486,8 @@ const styles = StyleSheet.create({
     borderColor: theme.neutral.border,
   },
   readout: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    height: 24,
     marginTop: 8,
-  },
-  readoutValue: {
-    color: theme.palette.sky.text,
-    fontFamily: 'monospace',
-    fontSize: 16,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  readoutTime: {
-    color: theme.neutral.textSecondary,
-    fontFamily: 'monospace',
-    fontSize: 14,
-    fontVariant: ['tabular-nums'],
   },
   cancelRow: {
     alignItems: 'center',

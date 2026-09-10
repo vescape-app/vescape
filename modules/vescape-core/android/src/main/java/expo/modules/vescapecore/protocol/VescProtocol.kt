@@ -177,6 +177,8 @@ internal fun parseLightsControlResponse(payload: ByteArray): BoardLightsState? {
 }
 
 /** Neutral position of the remote-tilt slider (0..255). */
+// @parity /modules/vescape-core/ios/protocol/VescProtocol.swift `REMOTE_TILT_CENTER`
+// @parity /src/modules/board/lib/remoteTiltPresentation.ts `TILT_CENTER`
 internal const val REMOTE_TILT_CENTER = 128
 
 /**
