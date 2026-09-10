@@ -23,7 +23,7 @@ final class BoardMoveControllerTests: XCTestCase {
       transport: { self.transport },
       canMove: { self.canMove },
       generation: { self.generation },
-      send: { payload in
+      send: { payload, _ in
         self.sent.append(payload)
         return true
       },

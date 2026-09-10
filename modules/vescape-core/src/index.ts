@@ -538,7 +538,7 @@ export type GpsPhase = 'idle' | 'starting' | 'active' | 'error'
 export type ScanPhase = ScanStatus
 /**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RemoteTiltController.kt `RemoteTiltPhase`
- * TODO(iOS parity): no iOS peer — Remote Tilt is not ported yet.
+ * @parity /modules/vescape-core/ios/RemoteTiltController.swift `RemoteTiltPhase`
  */
 export type RemoteTiltPhase = 'idle' | 'holding' | 'decaying' | 'locked'
 
@@ -3033,7 +3033,11 @@ export async function releaseRemoteTilt(value: number, durationMs: number): Prom
   return native.releaseRemoteTilt(value, durationMs)
 }
 
-/** Stop streaming tilt and snap the board back to neutral. */
+/**
+ * Cancel the active tilt: the board eases from whatever is currently commanded back to neutral at a
+ * bounded rate. It does not snap — stepping to neutral from a large tilt makes a self-balancing
+ * board surge to correct the angle error and throws the rider.
+ */
 export async function stopRemoteTilt(): Promise<boolean> {
   if (E2E_ENABLED) return true
   return native.stopRemoteTilt()

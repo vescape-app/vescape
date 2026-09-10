@@ -2396,8 +2396,12 @@ private var wearAutoLaunchOnConnect = true
     fun releaseRemoteTilt(value: Int, durationMs: Long): Boolean =
         firmwareCommandsTrusted() && remoteTiltController.release(value, durationMs)
 
+    /**
+     * Eases the active tilt back to neutral rather than snapping — a step to neutral from a large
+     * tilt makes the board surge to correct the angle error and throws the rider.
+     */
     fun stopRemoteTilt(): Boolean =
-        firmwareCommandsTrusted() && remoteTiltController.stop()
+        firmwareCommandsTrusted() && remoteTiltController.cancel()
 
     /**
      * The board's lights as its last echo reported them, or `null` while this session has never

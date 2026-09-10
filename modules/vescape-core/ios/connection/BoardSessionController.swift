@@ -130,6 +130,17 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `transport`
   private var replayTransport: ReplayTransport?
   private var transport: SessionTransport { replayTransport ?? gatt }
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `remoteTiltController`
+  private lazy var remoteTiltController = RemoteTiltController(
+    transport: { [weak self] in
+      guard let self, self.phase == .connected, let config = self.config else { return nil }
+      return config.transport ?? .direct
+    },
+    send: { [weak self] payload, urgent in
+      self?.transport.sendRemoteInput(payload, urgent: urgent) ?? false
+    },
+    scheduler: scheduler
+  )
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `boardMoveController`
   private lazy var boardMoveController = BoardMoveController(
     transport: { [weak self] in
@@ -138,7 +149,9 @@ internal final class BoardSessionController: VescGattListener {
     },
     canMove: { [weak self] in self?.firmwareCommandsTrusted() ?? false },
     generation: { [weak self] in BoardMoveGeneration.forBaseVersion(self?.config?.refloatBaseVersion) },
-    send: { [weak self] payload in self?.transport.sendPayload(payload) ?? false },
+    send: { [weak self] payload, urgent in
+      self?.transport.sendRemoteInput(payload, urgent: urgent) ?? false
+    },
     scheduler: scheduler
   )
   /// The clock this session stamps and compares its data against. Wall time for every real session;
@@ -524,7 +537,21 @@ internal final class BoardSessionController: VescGattListener {
 
   // MARK: - Live-state snapshot
 
-  func remoteTiltState() -> [String: Any?]? { nil }
+  /// Exact native remote-tilt command. Raw values avoid asymmetric percent rounding.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/LiveStateMapper.kt `remoteTiltWire`
+  func remoteTiltState() -> [String: Any?]? {
+    let phase = remoteTiltController.phase
+    if phase == .idle { return nil }
+    var wire: [String: Any?] = [
+      "value": remoteTiltController.currentValue,
+      "phase": phase.wireValue,
+    ]
+    if let decay = remoteTiltController.decayProgress {
+      wire["decay"] = ["elapsedMs": decay.elapsedMs, "totalMs": decay.totalMs]
+    }
+    return wire
+  }
 
   /// The board's lights as its last echo reported them, or `nil` while this session has never heard
   /// one — the board is not saying, so JS shows nothing rather than a guess.
@@ -608,6 +635,29 @@ internal final class BoardSessionController: VescGattListener {
       ),
       session: session
     )
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setRemoteTilt`
+  func setRemoteTilt(value: Int) -> Bool {
+    firmwareCommandsTrusted() && remoteTiltController.hold(value)
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lockRemoteTilt`
+  func lockRemoteTilt(value: Int) -> Bool {
+    firmwareCommandsTrusted() && remoteTiltController.lock(value)
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `releaseRemoteTilt`
+  func releaseRemoteTilt(value: Int, durationMs: Int64) -> Bool {
+    firmwareCommandsTrusted() && remoteTiltController.release(value, durationMs: durationMs)
+  }
+
+  /// Eases the active tilt back to neutral rather than snapping — a step to neutral from a large
+  /// tilt makes the board surge to correct the angle error and throws the rider.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopRemoteTilt`
+  func stopRemoteTilt() -> Bool {
+    firmwareCommandsTrusted() && remoteTiltController.cancel()
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startBoardMove`
@@ -1289,6 +1339,7 @@ internal final class BoardSessionController: VescGattListener {
     SessionResumeStore.shared.clear()
     clearPendingResume()
     boardMoveController.stop()
+    _ = remoteTiltController.stop()
     // Final write so the persisted last battery is fresh, not up to 30s stale (runs before config clears).
     persistLastBattery(percent: latestBatterySoc, voltage: latestBatteryVoltage, now: nowMs(), force: true)
     latestBatterySoc = nil
@@ -2172,7 +2223,7 @@ internal final class BoardSessionController: VescGattListener {
     latestTelemetry = telemetry
     persistLastBattery(percent: batteryEstimate, voltage: telemetry.batteryVoltage, now: telemetry.lastPacketAt)
     tick["generation"] = connectionSeq
-    tick["remoteTilt"] = nil
+    tick["remoteTilt"] = remoteTiltState()
     if let latestPreciseLocation = locationTracker.latestPreciseLocation {
       tick["location"] = latestPreciseLocation.map
     }

@@ -125,6 +125,7 @@ internal final class ReplayTransport: SessionTransport {
   /// Replay swallows all writes; request/response FSMs get replies on the recording's schedule.
   @discardableResult
   func sendPayload(_ payload: [UInt8]) -> Bool { !cancelled }
+  func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool { !cancelled }
 
   func disconnect() { cancelled = true }
   func reconnect() {}

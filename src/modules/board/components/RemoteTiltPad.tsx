@@ -6,6 +6,12 @@ import {
   StyleSheet,
   View,
 } from 'react-native'
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated'
 import { Text } from '@/components/base/Text'
 
 import { Button } from '@/components/base/Button'
@@ -28,6 +34,11 @@ const LOCK_BAND = 32
  * eases, while long durations are still reachable near the top.
  */
 const DECAY_EXP = 2
+/**
+ * How long the thumb takes to glide to a new native position that is not a decay (lock, or the
+ * board taking over a hold). Decay uses the native ramp's own remaining time instead.
+ */
+const SETTLE_MS = 160
 /** Seconds drawn as horizontal grid lines (0 = bottom, 60 = top edge). */
 const TIME_MARKS = [1, 3, 8, 20, 40] as const
 /** Tilt percentages drawn as vertical grid lines (0 = center, edges omitted). */
@@ -68,7 +79,7 @@ interface RemoteTiltPadProps {
   onRelease: (value: number, durationMs: number) => void
   /** On lift in the lock band: hold `value` indefinitely until cancelled. */
   onLock: (value: number) => void
-  /** Abort the active tilt: snap straight to neutral. */
+  /** Abort the active tilt: native eases it back to neutral at a bounded rate. */
   onCancel: () => void
 }
 
@@ -110,18 +121,18 @@ function nativePresentation(
 ): PadPresentation {
   if (!remoteTilt) return restingPresentation(layout)
 
-  const restY = layout.height - THUMB_RADIUS
-  const decayStartY = remoteTilt.decay ? yForDecay(remoteTilt.decay.totalMs, layout.height) : restY
-  const y =
-    remoteTilt.phase === 'locked'
-      ? LOCK_BAND / 2
-      : remoteTilt.phase === 'decaying' && remoteTilt.decay
-        ? decayStartY +
-          (restY - decayStartY) * Math.min(1, remoteTilt.decay.elapsedMs / remoteTilt.decay.totalMs)
-        : restY
+  // A decay is heading for neutral: aim the thumb at the rest point and let the local animation
+  // cover the ramp. Interpolating the reported `elapsedMs` instead would make the thumb move only
+  // as often as a telemetry tick happens to arrive, which reads as a frozen control.
+  const decaying = remoteTilt.phase === 'decaying'
 
   return {
-    thumb: { x: (remoteTilt.value / TILT_MAX) * layout.width, y },
+    thumb: {
+      x: decaying
+        ? layout.width * (TILT_CENTER / TILT_MAX)
+        : (remoteTilt.value / TILT_MAX) * layout.width,
+      y: remoteTilt.phase === 'locked' ? LOCK_BAND / 2 : layout.height - THUMB_RADIUS,
+    },
     display: { value: remoteTilt.value, durationMs: 0, phase: remoteTilt.phase },
     active: true,
   }
@@ -160,6 +171,30 @@ export function RemoteTiltPad({
   const [layout, setLayout] = useState<PadLayout>({ width: 0, height: PAD_HEIGHT })
   const [gesturePresentation, setGesturePresentation] = useState<PadPresentation | null>(null)
   const { thumb, display, active } = gesturePresentation ?? nativePresentation(remoteTilt, layout)
+
+  // The thumb runs on its own clock. Native reports where the tilt is only as often as a telemetry
+  // tick arrives, which is far coarser than the decay ramp and made a cancelled tilt look frozen;
+  // here the target comes from native and the motion between targets is local and continuous.
+  const thumbX = useSharedValue(thumb.x)
+  const thumbY = useSharedValue(thumb.y)
+  const decayRemainingMs =
+    remoteTilt?.phase === 'decaying' && remoteTilt.decay
+      ? Math.max(0, remoteTilt.decay.totalMs - remoteTilt.decay.elapsedMs)
+      : null
+  const tracking = gesturePresentation !== null
+
+  useEffect(() => {
+    // A finger owns the thumb outright; a decay glides over exactly what native says is left of
+    // its ramp, and everything else just settles.
+    const duration = tracking ? 0 : (decayRemainingMs ?? SETTLE_MS)
+    const options = { duration, easing: Easing.linear }
+    thumbX.value = duration === 0 ? thumb.x : withTiming(thumb.x, options)
+    thumbY.value = duration === 0 ? thumb.y : withTiming(thumb.y, options)
+  }, [thumb.x, thumb.y, tracking, decayRemainingMs, thumbX, thumbY])
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: thumbX.value }, { translateY: thumbY.value }],
+  }))
 
   const track = useCallback((event: GestureResponderEvent) => {
     const { width, height } = layoutRef.current
@@ -266,16 +301,10 @@ export function RemoteTiltPad({
         <Text pointerEvents="none" style={[styles.axisLabel, styles.axisTop]}>
           {(MAX_DECAY_MS / 1000).toFixed(0)}s
         </Text>
-        {thumb ? (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.thumb,
-              !active && styles.thumbRest,
-              { left: thumb.x - THUMB_RADIUS, top: thumb.y - THUMB_RADIUS },
-            ]}
-          />
-        ) : null}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.thumb, !active && styles.thumbRest, thumbStyle]}
+        />
       </View>
       <View style={styles.readout}>
         <Text style={styles.readoutValue}>
@@ -388,6 +417,9 @@ const styles = StyleSheet.create({
   },
   thumb: {
     position: 'absolute',
+    // Anchored at the pad origin; `translate` carries it, so the move stays transform-only.
+    left: -THUMB_RADIUS,
+    top: -THUMB_RADIUS,
     width: THUMB_RADIUS * 2,
     height: THUMB_RADIUS * 2,
     borderRadius: 999,

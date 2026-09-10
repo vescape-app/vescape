@@ -31,8 +31,6 @@ private func boardMoveRepeatMs(_ generation: BoardMoveGeneration) -> Int {
 /// disengaging.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/BoardMoveController.kt
-/// @platform-diff iOS has no replaceable remote-input write slot, so writes go through the plain
-/// payload path and the stop input is not prioritised ahead of queued telemetry polls.
 internal final class BoardMoveController {
   /// Supplies the active transport only while the session can talk to the board; `nil` otherwise.
   private let transport: () -> BoardTransport?
@@ -41,7 +39,8 @@ internal final class BoardMoveController {
   private let canMove: () -> Bool
   /// Picks the wire format from the linked Refloat version.
   private let generation: () -> BoardMoveGeneration
-  private let send: (_ payload: [UInt8]) -> Bool
+  /// `urgent` means the neutral stop, which must pass normal traffic at the next write boundary.
+  private let send: (_ payload: [UInt8], _ urgent: Bool) -> Bool
   private let scheduler: Scheduler
 
   private var input: Int?
@@ -51,7 +50,7 @@ internal final class BoardMoveController {
     transport: @escaping () -> BoardTransport?,
     canMove: @escaping () -> Bool,
     generation: @escaping () -> BoardMoveGeneration,
-    send: @escaping (_ payload: [UInt8]) -> Bool,
+    send: @escaping (_ payload: [UInt8], _ urgent: Bool) -> Bool,
     scheduler: Scheduler = MainQueueScheduler()
   ) {
     self.transport = transport
@@ -80,7 +79,8 @@ internal final class BoardMoveController {
     if alreadyStreaming { return true }
 
     let generation = generation()
-    let sent = send(buildBoardMoveCommand(transport: transport, generation: generation, input: clamped))
+    let sent = send(
+      buildBoardMoveCommand(transport: transport, generation: generation, input: clamped), false)
     scheduleRepeat(generation: generation)
     return sent
   }
@@ -90,7 +90,8 @@ internal final class BoardMoveController {
     let wasMoving = input != nil
     clear()
     if let transport = transport() {
-      _ = send(buildBoardMoveCommand(transport: transport, generation: generation(), input: 0))
+      _ = send(
+        buildBoardMoveCommand(transport: transport, generation: generation(), input: 0), true)
     }
     return wasMoving
   }
@@ -107,7 +108,8 @@ internal final class BoardMoveController {
         return
       }
       let generation = self.generation()
-      _ = self.send(buildBoardMoveCommand(transport: transport, generation: generation, input: input))
+      _ = self.send(
+        buildBoardMoveCommand(transport: transport, generation: generation, input: input), false)
       self.scheduleRepeat(generation: generation)
     }
   }

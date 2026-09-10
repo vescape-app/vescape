@@ -6,12 +6,32 @@ import expo.modules.vescapecore.protocol.buildRemoteTiltCommand
 
 import expo.modules.vescapecore.runtime.Cancellable
 import expo.modules.vescapecore.runtime.Scheduler
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private const val REMOTE_TILT_REPEAT_MS = 40L
+/**
+ * Remote input lapses in firmware after ~1s of silence, so the held tilt only has to be refreshed
+ * inside that window. It used to tick at 40ms, which left Remote Tilt claiming a write slot in every
+ * alternating pair and starved telemetry polling while the pad was held. 100ms keeps a 10x margin on
+ * the firmware timeout, matches Board Move's remote cadence, and leaves the link to telemetry.
+ *
+ * @parity /modules/vescape-core/ios/RemoteTiltController.swift `REMOTE_TILT_REPEAT_MS`
+ */
+private const val REMOTE_TILT_REPEAT_MS = 100L
+
+/**
+ * Time a full-range cancel takes to ease back to neutral; smaller tilts take proportionally less.
+ *
+ * Dropping a large tilt straight to neutral is not safe on a self-balancing board: the firmware
+ * reads the step as a big angle error and surges to correct it, which throws the rider forward.
+ * Cancel therefore eases at a bounded rate instead of snapping.
+ *
+ * @parity /modules/vescape-core/ios/RemoteTiltController.swift `REMOTE_TILT_CANCEL_FULL_RANGE_MS`
+ */
+private const val REMOTE_TILT_CANCEL_FULL_RANGE_MS = 600L
 
 // @parity /modules/vescape-core/src/index.ts `RemoteTiltPhase`
-// TODO(iOS parity): no iOS peer — Remote Tilt is not ported yet.
+// @parity /modules/vescape-core/ios/RemoteTiltController.swift `RemoteTiltPhase`
 internal enum class RemoteTiltPhase(val wireValue: String) {
     Idle("idle"),
     Holding("holding"),
@@ -47,6 +67,8 @@ internal data class RemoteTiltDecayProgress(
  *   allowed (board connected with a loaded config); `null` otherwise.
  * @param send writes a framed payload to the board. `urgent` means neutral cancel
  *   input, which must pass normal traffic at the next write boundary.
+ *
+ * @parity /modules/vescape-core/ios/RemoteTiltController.swift
  */
 internal class RemoteTiltController(
     private val scheduler: Scheduler,
@@ -141,6 +163,21 @@ internal class RemoteTiltController(
         return started
     }
 
+    /**
+     * Cancel the active tilt the way a rider expects: ease whatever is currently commanded back to
+     * neutral at a bounded rate ([REMOTE_TILT_CANCEL_FULL_RANGE_MS] for a full-range tilt) rather
+     * than snapping. Use [stop] only for teardown, where an immediate neutral is the point.
+     */
+    fun cancel(): Boolean {
+        val value = currentValue
+        val distance = abs(value - REMOTE_TILT_CENTER)
+        if (distance == 0) return stop()
+        val durationMs =
+            distance * REMOTE_TILT_CANCEL_FULL_RANGE_MS / (255 - REMOTE_TILT_CENTER)
+        return release(value, durationMs)
+    }
+
+    /** Immediate neutral, no ease. Teardown only — see [cancel] for the rider-facing cancel. */
     fun stop(): Boolean {
         val wasActive = stream != null
         clear()

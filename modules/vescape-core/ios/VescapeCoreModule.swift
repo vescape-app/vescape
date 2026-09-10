@@ -478,8 +478,8 @@ public class VescapeCoreModule: Module {
       self.liveState()
     }
 
-    Function("getRemoteTiltState") { () -> [String: Any]? in
-      nil
+    Function("getRemoteTiltState") { () -> [String: Any?]? in
+      self.coordinator.remoteTiltState()
     }
 
     Function("setSelectedBoard") { (boardId: String?) in
@@ -849,20 +849,20 @@ public class VescapeCoreModule: Module {
       )
     }
 
-    AsyncFunction("setRemoteTilt") { (_: Int) -> Bool in
-      false
+    AsyncFunction("setRemoteTilt") { (value: Int) -> Bool in
+      self.coordinator.setRemoteTilt(value: value)
     }
 
-    AsyncFunction("lockRemoteTilt") { (_: Int) -> Bool in
-      false
+    AsyncFunction("lockRemoteTilt") { (value: Int) -> Bool in
+      self.coordinator.lockRemoteTilt(value: value)
     }
 
-    AsyncFunction("releaseRemoteTilt") { (_: Int, _: Int) -> Bool in
-      false
+    AsyncFunction("releaseRemoteTilt") { (value: Int, durationMs: Int) -> Bool in
+      self.coordinator.releaseRemoteTilt(value: value, durationMs: Int64(durationMs))
     }
 
     AsyncFunction("stopRemoteTilt") { () -> Bool in
-      false
+      self.coordinator.stopRemoteTilt()
     }
 
     AsyncFunction("setBoardLights") { (enabled: Bool, headlightsEnabled: Bool) -> Bool in

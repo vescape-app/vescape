@@ -39,6 +39,10 @@ internal protocol SessionTransport: AnyObject {
   func stopReconnectScan()
   @discardableResult
   func sendPayload(_ payload: [UInt8]) -> Bool
+  /// Enqueue transient remote input (tilt or Board Move) into the replaceable slot.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`
+  @discardableResult
+  func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool
 }
 
 /// CoreBluetooth wrapper around a single VESC board connection plus BLE scanning. Owns one
@@ -79,6 +83,8 @@ internal final class VescGattClient: NSObject, SessionTransport {
   private var peripheral: CBPeripheral?
   private var txChar: CBCharacteristic?
   private var writeType: CBCharacteristicWriteType = .withoutResponse
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `writeQueue`
+  private let writeQueue = VescWriteQueue()
   private var pendingNotifyEnables = 0
   private var readyResolved = false
   private var intentionalDisconnect = false
@@ -284,11 +290,43 @@ internal final class VescGattClient: NSObject, SessionTransport {
   }
 
   func sendPayload(_ payload: [UInt8]) -> Bool {
+    guard peripheral != nil, txChar != nil else { return false }
+    writeQueue.enqueueNormal(VescPacketCodec.encode(payload))
+    return drainWriteQueue()
+  }
+
+  /// Enqueue transient remote input (tilt or Board Move). Only the latest unsent value survives, so
+  /// an emergency neutral command cannot sit behind stale tilt commands.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `sendRemoteInput`
+  func sendRemoteInput(_ payload: [UInt8], urgent: Bool) -> Bool {
+    guard peripheral != nil, txChar != nil else { return false }
+    writeQueue.replaceRemoteInput(VescPacketCodec.encode(payload), urgent: urgent)
+    return drainWriteQueue()
+  }
+
+  /// One outstanding write at a time. Serializing all writes stops telemetry polling and held
+  /// remote controls from dropping each other, and keeps the queue short enough that a neutral
+  /// reaches the board while the rider's finger is still lifting.
+  ///
+  /// `.withResponse` writes resume from `didWriteValueFor`; `.withoutResponse` writes have no
+  /// completion callback, so they complete inline and back off on `canSendWriteWithoutResponse`,
+  /// resuming from `peripheralIsReady`.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `drainWriteQueue`
+  @discardableResult
+  private func drainWriteQueue() -> Bool {
     guard let peripheral, let txChar else { return false }
-    let bytes = VescPacketCodec.encode(payload)
-    peripheral.writeValue(Data(bytes), for: txChar, type: writeType)
-    recorder?()?.recordChunk(direction: "tx", bytes: bytes)
-    return true
+    while true {
+      if writeType == .withoutResponse, !peripheral.canSendWriteWithoutResponse {
+        return true
+      }
+      guard let write = writeQueue.startNext() else { return true }
+      peripheral.writeValue(Data(write.bytes), for: txChar, type: writeType)
+      recorder?()?.recordChunk(direction: "tx", bytes: write.bytes)
+      if writeType == .withResponse { return true }
+      writeQueue.completeInFlight()
+    }
   }
 
   // MARK: - Teardown
@@ -306,6 +344,7 @@ internal final class VescGattClient: NSObject, SessionTransport {
     }
     peripheral = nil
     txChar = nil
+    writeQueue.clear()
     pendingNotifyEnables = 0
   }
 
@@ -448,6 +487,26 @@ extension VescGattClient: CBCentralManagerDelegate {
 // MARK: - CBPeripheralDelegate
 
 extension VescGattClient: CBPeripheralDelegate {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescGattClient.kt `onCharacteristicWrite`
+  func peripheral(
+    _ peripheral: CBPeripheral,
+    didWriteValueFor characteristic: CBCharacteristic,
+    error: Error?
+  ) {
+    guard peripheral === self.peripheral, characteristic.uuid == VescGattUUIDs.tx else { return }
+    let completed = writeQueue.completeInFlight()
+    if let error {
+      NSLog("gatt write callback failed bytes=\(completed?.bytes.count ?? 0): \(error.localizedDescription)")
+    }
+    drainWriteQueue()
+  }
+
+  /// `.withoutResponse` back-pressure released: resume draining.
+  func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+    guard peripheral === self.peripheral else { return }
+    drainWriteQueue()
+  }
+
   func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
     guard peripheral === self.peripheral else { return }
     listener?.onGattSubscribing()
