@@ -85,10 +85,10 @@ object AccessoryProtocol {
 
         // Session identity is checked before anything else is read: a message from a previous
         // session must not renew or influence this one.
-        if (root.optString("sessionId") != sessionId || root.optInt("requestId", -1) != requestId) {
+        if ((root.opt("sessionId") as? String) != sessionId || wholeNumber(root.opt("requestId")) != requestId) {
             return ManifestResult.Failed(AccessoryHandshakeError.SESSION_MISMATCH)
         }
-        if (root.optString("type") != "manifest") {
+        if ((root.opt("type") as? String) != "manifest") {
             return ManifestResult.Failed(AccessoryHandshakeError.INVALID)
         }
         if (!root.has("protocolVersion")) {
@@ -105,7 +105,7 @@ object AccessoryProtocol {
         val protocolVersion = if (root.isNull("protocolVersion")) {
             null
         } else {
-            (root.opt("protocolVersion") as? Number)?.toInt()
+            wholeNumber(root.opt("protocolVersion"))
                 ?: return ManifestResult.Failed(AccessoryHandshakeError.INVALID)
         }
         val versionAgreed = protocolVersion != null && SUPPORTED_VERSIONS.contains(protocolVersion)
@@ -113,7 +113,7 @@ object AccessoryProtocol {
         val supportedVersions = when (val offered = root.opt("supportedVersions")) {
             null, JSONObject.NULL -> emptyList()
             is JSONArray -> (0 until offered.length()).map {
-                (offered.opt(it) as? Number)?.toInt()
+                wholeNumber(offered.opt(it))
                     ?: return ManifestResult.Failed(AccessoryHandshakeError.INVALID)
             }
             else -> return ManifestResult.Failed(AccessoryHandshakeError.INVALID)
@@ -161,10 +161,20 @@ object AccessoryProtocol {
         val id = requiredString(entry, "id") ?: return null
         val type = requiredString(entry, "type") ?: return null
         val unit = (entry.opt("unit") as? String)?.takeIf { it.isNotEmpty() }
-        val range = entry.optJSONObject("range")
+        val range = when (val raw = entry.opt("range")) {
+            null, JSONObject.NULL -> null
+            is JSONObject -> raw
+            else -> return null
+        }
         val rangeMin = (range?.opt("min") as? Number)?.toDouble()
         val rangeMax = (range?.opt("max") as? Number)?.toDouble()
-        val ratesRaw = entry.optJSONArray("ratesHz")
+        // A present-but-wrong-typed `ratesHz` is a broken manifest, not an absent field. `optJSONArray`
+        // cannot tell those apart, and treating them alike let Android accept manifests iOS rejects.
+        val ratesRaw = when (val raw = entry.opt("ratesHz")) {
+            null, JSONObject.NULL -> null
+            is JSONArray -> raw
+            else -> return null
+        }
         val ratesHz = buildList {
             if (ratesRaw != null) {
                 for (i in 0 until ratesRaw.length()) {
@@ -203,6 +213,21 @@ object AccessoryProtocol {
             rangeMin.isFinite() && rangeMax.isFinite() && rangeMin < rangeMax &&
             ratesHz.isNotEmpty() && ratesHz.all { it.isFinite() && it > 0.0 }
         else -> false
+    }
+
+    /**
+     * A JSON number that is genuinely a whole number.
+     *
+     * `Number.toInt()` truncates, which would let `protocolVersion: 1.9` pass as the v1 this app
+     * speaks, and `optInt` additionally coerces numeric strings — so Android accepted envelopes iOS
+     * refused. A version or request id is an integer or it is nothing.
+     */
+    private fun wholeNumber(value: Any?): Int? {
+        val number = value as? Number ?: return null
+        val asDouble = number.toDouble()
+        if (!asDouble.isFinite() || asDouble != Math.floor(asDouble)) return null
+        if (asDouble < Int.MIN_VALUE.toDouble() || asDouble > Int.MAX_VALUE.toDouble()) return null
+        return asDouble.toInt()
     }
 
     private fun requiredString(json: JSONObject, key: String): String? {

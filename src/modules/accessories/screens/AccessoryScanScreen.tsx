@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PlugsConnectedIcon } from 'phosphor-react-native'
@@ -31,33 +31,53 @@ export function AccessoryScanScreen({
   onOpenAccessory: (accessoryId: string) => void
 }) {
   const { status, request } = usePermissions()
-  const { devices, scanning, scanError, inspecting, startScan, stopScan, inspect } =
-    useAccessoryDiscoveryStore(
-      useShallow((s) => ({
-        devices: s.devices,
-        scanning: s.scanning,
-        scanError: s.scanError,
-        inspecting: s.inspecting,
-        startScan: s.startScan,
-        stopScan: s.stopScan,
-        inspect: s.inspect,
-      })),
-    )
+  const {
+    devices,
+    scanning,
+    scanError,
+    inspecting,
+    startScan,
+    stopScan,
+    inspect,
+    cancelInspection,
+  } = useAccessoryDiscoveryStore(
+    useShallow((s) => ({
+      devices: s.devices,
+      scanning: s.scanning,
+      scanError: s.scanError,
+      inspecting: s.inspecting,
+      startScan: s.startScan,
+      stopScan: s.stopScan,
+      inspect: s.inspect,
+      cancelInspection: s.cancelInspection,
+    })),
+  )
   const [result, setResult] = useState<AccessoryInspection | null>(null)
+  /**
+   * False once the rider has left. A handshake outlives this screen by up to its timeout, and a
+   * result landing after that must not drag them back out of wherever they went.
+   */
+  const live = useRef(true)
 
   useEffect(() => {
     void request()
   }, [request])
 
   useEffect(() => {
+    live.current = true
     if (status === 'granted') startScan()
-    return () => stopScan()
-  }, [status, startScan, stopScan])
+    return () => {
+      live.current = false
+      stopScan()
+      cancelInspection()
+    }
+  }, [status, startScan, stopScan, cancelInspection])
 
   const onSelect = useCallback(
     async (deviceId: string) => {
       setResult(null)
       const inspection = await inspect(deviceId)
+      if (!live.current) return
       setResult(inspection)
       // Straight through on success: the rider picked a device to configure, not to read about.
       if (inspection.manifest) onOpenAccessory(inspection.manifest.accessoryId)
@@ -89,7 +109,11 @@ export function AccessoryScanScreen({
             id={item.id}
             name={item.name ?? 'Unnamed accessory'}
             rssi={item.rssi}
-            onPress={() => void onSelect(item.id)}
+            // One handshake at a time: a second tap would be refused natively anyway, and the row
+            // going dead is a clearer answer than a tap that quietly does nothing.
+            onPress={() => {
+              if (!inspecting) void onSelect(item.id)
+            }}
           />
         )}
         ListHeaderComponent={

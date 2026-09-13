@@ -13,21 +13,32 @@ interface CapabilityPresentation {
   icon: Icon
 }
 
-const PRESENTATION: Record<AccessoryCapabilityType, CapabilityPresentation> = {
-  ground_clearance: {
-    title: 'Ground clearance',
-    description: 'Measures how far the board sits above the ground and can drive Remote Tilt.',
-    icon: ArrowsVerticalIcon,
-  },
-  brake_light: {
-    title: 'Brake light',
-    description: 'Shows riding, braking and parked states from the Board’s own telemetry.',
-    icon: LightbulbFilamentIcon,
-  },
-}
+/**
+ * A `Map`, not an object literal: the key is a wire string from an accessory, and an object lookup
+ * would happily answer `constructor` or `toString` with something inherited from `Object.prototype`
+ * — truthy, and missing every field this returns.
+ */
+const PRESENTATION = new Map<AccessoryCapabilityType, CapabilityPresentation>([
+  [
+    'ground_clearance',
+    {
+      title: 'Ground clearance',
+      description: 'Measures how far the board sits above the ground and can drive Remote Tilt.',
+      icon: ArrowsVerticalIcon,
+    },
+  ],
+  [
+    'brake_light',
+    {
+      title: 'Brake light',
+      description: 'Shows riding, braking and parked states from the Board’s own telemetry.',
+      icon: LightbulbFilamentIcon,
+    },
+  ],
+])
 
 export function capabilityPresentation(capability: AccessoryCapability): CapabilityPresentation {
-  const known = PRESENTATION[capability.type as AccessoryCapabilityType]
+  const known = PRESENTATION.get(capability.type as AccessoryCapabilityType)
   if (known) return known
   return {
     // An unrecognized type is named by its wire slug rather than hidden — an accessory advertising

@@ -28,59 +28,121 @@ final class AccessoryDiscovery: NSObject {
   private var scanRequested = false
   private var handshake: AccessoryGattHandshake?
   private var pendingInspection: (deviceId: String, onResult: ([String: Any?]) -> Void)?
+  /// Bounds the wait for a central that is still starting up, so a state that never arrives cannot
+  /// leave an `inspectAccessory` promise hanging forever.
+  private var pendingTimeout: DispatchWorkItem?
   /// Peripherals the scan saw, retained so a later `inspect` has something to connect to.
   private var seen: [UUID: CBPeripheral] = [:]
 
-  func startScan() {
-    scanRequested = true
-    guard central.state == .poweredOn else {
-      // The central reports `.poweredOn` asynchronously on first use; the scan starts there.
-      _ = central
-      return
+  /// How long a deferred inspection waits for the central to report a usable state.
+  private static let centralStartupTimeout: TimeInterval = 5
+
+  /// Everything below runs on the main queue.
+  ///
+  /// The central is created with `queue: nil`, so CoreBluetooth delivers on main, but the module's
+  /// entry points do not all arrive there: `inspectAccessory` is an `AsyncFunction` on Expo's own
+  /// queue while the scan intents come off the JS thread. Hopping here is what stops a scan callback
+  /// mutating `seen` underneath a lookup, or a cancel racing a handshake's completion.
+  private func onMain(_ work: @escaping () -> Void) {
+    if Thread.isMainThread {
+      work()
+    } else {
+      DispatchQueue.main.async(execute: work)
     }
-    beginScan()
+  }
+
+  func startScan() {
+    onMain {
+      self.scanRequested = true
+      guard self.central.state == .poweredOn else {
+        // The central reports `.poweredOn` asynchronously on first use; the scan starts there.
+        _ = self.central
+        return
+      }
+      self.beginScan()
+    }
   }
 
   func stopScan() {
-    scanRequested = false
-    if central.state == .poweredOn { central.stopScan() }
+    onMain {
+      self.scanRequested = false
+      if self.central.state == .poweredOn { self.central.stopScan() }
+    }
   }
 
   /// Connects to one discovered device and reads its manifest. `onResult` receives the bridge
   /// payload exactly once, whether the handshake succeeded, was rejected, or timed out.
   func inspect(deviceId: String, onResult: @escaping ([String: Any?]) -> Void) {
-    guard handshake == nil, pendingInspection == nil else {
-      return onResult(Self.payload(deviceId: deviceId, advertisedName: nil, manifest: nil, error: "busy"))
-    }
-    guard let uuid = UUID(uuidString: deviceId) else {
-      return onResult(
-        Self.payload(deviceId: deviceId, advertisedName: nil, manifest: nil, error: "connect-failed")
-      )
-    }
-    // Scanning while a handshake runs slows the connection down for no benefit: the rider has
-    // already picked a row.
-    stopScan()
+    onMain {
+      guard self.handshake == nil, self.pendingInspection == nil else {
+        return onResult(
+          Self.payload(deviceId: deviceId, advertisedName: nil, manifest: nil, error: "busy"))
+      }
+      guard let uuid = UUID(uuidString: deviceId) else {
+        return onResult(
+          Self.payload(
+            deviceId: deviceId, advertisedName: nil, manifest: nil, error: "connect-failed")
+        )
+      }
+      // Scanning while a handshake runs slows the connection down for no benefit: the rider has
+      // already picked a row.
+      self.scanRequested = false
+      if self.central.state == .poweredOn { self.central.stopScan() }
 
-    guard central.state == .poweredOn else {
-      pendingInspection = (deviceId, onResult)
-      _ = central
-      return
+      switch self.central.state {
+      case .poweredOn:
+        break
+      case .unknown, .resetting:
+        // Genuinely transient: the central publishes its first state asynchronously. Wait, but not
+        // indefinitely — a state that never arrives would strand the promise.
+        self.pendingInspection = (deviceId, onResult)
+        _ = self.central
+        let timeout = DispatchWorkItem { [weak self] in
+          self?.resolvePending(error: "timeout")
+        }
+        self.pendingTimeout = timeout
+        DispatchQueue.main.asyncAfter(
+          deadline: .now() + Self.centralStartupTimeout, execute: timeout)
+        return
+      default:
+        // Off, unauthorized or unsupported: no later state change is coming to rescue this, so
+        // answer now rather than waiting for one.
+        return onResult(
+          Self.payload(
+            deviceId: deviceId, advertisedName: nil, manifest: nil, error: "bluetooth-unavailable")
+        )
+      }
+
+      guard let peripheral = self.resolve(uuid) else {
+        return onResult(
+          Self.payload(
+            deviceId: deviceId, advertisedName: nil, manifest: nil, error: "connect-failed")
+        )
+      }
+      self.begin(peripheral: peripheral, deviceId: deviceId, onResult: onResult)
     }
-    guard let peripheral = resolve(uuid) else {
-      return onResult(
-        Self.payload(deviceId: deviceId, advertisedName: nil, manifest: nil, error: "connect-failed")
-      )
-    }
-    begin(peripheral: peripheral, deviceId: deviceId, onResult: onResult)
   }
 
-  /// Abandons an inspection the rider walked away from.
+  /// Abandons an inspection the rider walked away from. The caller still gets its one answer.
   func cancelInspection() {
-    pendingInspection = nil
-    handshake?.cancel()
+    onMain {
+      self.resolvePending(error: "cancelled")
+      self.handshake?.cancel()
+    }
   }
 
   // MARK: - Internals
+
+  /// Answers a deferred inspection and clears it. No-op when nothing is deferred.
+  private func resolvePending(error: String) {
+    pendingTimeout?.cancel()
+    pendingTimeout = nil
+    guard let pending = pendingInspection else { return }
+    pendingInspection = nil
+    pending.onResult(
+      Self.payload(deviceId: pending.deviceId, advertisedName: nil, manifest: nil, error: error)
+    )
+  }
 
   private func beginScan() {
     seen.removeAll()
@@ -142,21 +204,22 @@ final class AccessoryDiscovery: NSObject {
 extension AccessoryDiscovery: CBCentralManagerDelegate {
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
     guard central.state == .poweredOn else {
+      // `.unknown` and `.resetting` are the central still settling; anything else is a real refusal
+      // and the deferred inspection has nothing left to wait for.
+      guard central.state != .unknown, central.state != .resetting else { return }
       if scanRequested || pendingInspection != nil {
         emit?("onAccessoryScanError", ["error": "bluetooth-unavailable"])
       }
-      if let pending = pendingInspection {
-        pendingInspection = nil
-        pending.onResult(
-          Self.payload(
-            deviceId: pending.deviceId, advertisedName: nil, manifest: nil,
-            error: "bluetooth-unavailable")
-        )
-      }
+      // A scan cannot survive the radio going away, and leaving the intent armed would restart one
+      // later with nothing listening to it.
+      scanRequested = false
+      resolvePending(error: "bluetooth-unavailable")
       return
     }
     if let pending = pendingInspection {
       pendingInspection = nil
+      pendingTimeout?.cancel()
+      pendingTimeout = nil
       guard let uuid = UUID(uuidString: pending.deviceId), let peripheral = resolve(uuid) else {
         return pending.onResult(
           Self.payload(

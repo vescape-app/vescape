@@ -40,8 +40,19 @@ object AccessoryDiscovery {
     private var scanContext: Context? = null
     private var inFlight: AccessoryGattHandshake? = null
 
+    /**
+     * Every entry point runs on the main looper.
+     *
+     * The module's `Function` bodies arrive on the JS thread while scan callbacks, the handshake and
+     * its timeouts all run here, and `scanCallback` / `inFlight` are shared between them. Posting is
+     * what stops a stop racing the start that was meant to precede it.
+     */
     fun startScan(context: Context) {
-        stopScan()
+        handler.post { startScanNow(context) }
+    }
+
+    private fun startScanNow(context: Context) {
+        stopScanNow()
         val app = context.applicationContext
         val scanner = (app.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
             ?.adapter
@@ -87,6 +98,10 @@ object AccessoryDiscovery {
     }
 
     fun stopScan() {
+        handler.post { stopScanNow() }
+    }
+
+    private fun stopScanNow() {
         val callback = scanCallback ?: return
         val app = scanContext
         scanCallback = null
@@ -113,7 +128,7 @@ object AccessoryDiscovery {
             }
             // Scanning while a handshake runs slows the connection down for no benefit: the rider
             // has already picked a row.
-            stopScan()
+            stopScanNow()
             val sessionId = UUID.randomUUID().toString()
             val handshake = AccessoryGattHandshake(
                 context.applicationContext,

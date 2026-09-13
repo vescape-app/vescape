@@ -111,11 +111,13 @@ internal class AccessoryGattHandshake(
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            if (g !== gatt) {
-                try { g.close() } catch (e: Exception) { Log.w(TAG, "stale close: ${e.message}") }
-                return
-            }
+            // Posted before anything is read: every field this class keeps lives on the main looper,
+            // and GATT callbacks arrive on a binder thread.
             handler.post {
+                if (g !== gatt) {
+                    try { g.close() } catch (e: Exception) { Log.w(TAG, "stale close: ${e.message}") }
+                    return@post
+                }
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     g.requestMtu(REQUESTED_MTU)
                 } else {
@@ -235,9 +237,9 @@ internal class AccessoryGattHandshake(
     }
 
     private fun deliver(g: BluetoothGatt, uuid: UUID, value: ByteArray) {
-        if (g !== gatt || uuid != AccessoryProtocol.NOTIFY_UUID) return
+        if (uuid != AccessoryProtocol.NOTIFY_UUID) return
         handler.post {
-            if (finished) return@post
+            if (finished || g !== gatt) return@post
             val result = framer.feed(value)
             for (line in result.lines) {
                 when (val parsed = AccessoryProtocol.parseManifest(line, sessionId)) {
