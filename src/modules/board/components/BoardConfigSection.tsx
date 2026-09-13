@@ -200,20 +200,20 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
-    color: theme.palette.slate.textSecondary,
+    color: theme.neutral.textSecondary,
     fontSize: 14,
   },
   value: {
-    color: theme.palette.slate.textPrimary,
+    color: theme.neutral.textPrimary,
     fontSize: 14,
     fontWeight: '600',
   },
   note: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 12,
   },
   stale: {
-    color: theme.palette.slate.textDim,
+    color: theme.neutral.textDim,
     fontSize: 12,
   },
   empty: {
