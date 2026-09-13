@@ -92,7 +92,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState", "onAccessoryReading")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -203,6 +203,8 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onAccessoryScanError") { self.observedEvents.remove("onAccessoryScanError") }
     OnStartObserving("onAccessoryState") { self.observedEvents.insert("onAccessoryState") }
     OnStopObserving("onAccessoryState") { self.observedEvents.remove("onAccessoryState") }
+    OnStartObserving("onAccessoryReading") { self.observedEvents.insert("onAccessoryReading") }
+    OnStopObserving("onAccessoryReading") { self.observedEvents.remove("onAccessoryReading") }
 
     OnCreate {
       // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
@@ -344,6 +346,31 @@ public class VescapeCoreModule: Module {
 
     Function("getAccessories") {
       AccessorySessionController.shared.snapshot()
+    }
+
+    // Ground clearance. JS asks for measurements and offers numbers; native decides whether the
+    // sensor runs and whether the numbers are a calibration.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryPreview`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryPreview`
+    Function("setAccessoryPreview") { (accessoryId: String, capabilityId: String, open: Bool) in
+      AccessorySessionController.shared.setPreview(
+        accessoryId: accessoryId, capabilityId: capabilityId, open: open)
+    }
+
+    AsyncFunction("saveGroundClearanceCalibration") {
+      (
+        accessoryId: String, capabilityId: String, nearCm: Double, farCm: Double, direction: String,
+        strengthPercent: Int, promise: Promise
+      ) in
+      AccessorySessionController.shared.saveGroundClearance(
+        accessoryId: accessoryId, capabilityId: capabilityId, nearCm: nearCm, farCm: farCm,
+        direction: direction, strengthPercent: strengthPercent) { promise.resolve($0) }
+    }
+
+    AsyncFunction("clearGroundClearanceCalibration") {
+      (accessoryId: String, capabilityId: String, promise: Promise) in
+      AccessorySessionController.shared.clearGroundClearance(
+        accessoryId: accessoryId, capabilityId: capabilityId) { promise.resolve($0) }
     }
 
     // MARK: Location

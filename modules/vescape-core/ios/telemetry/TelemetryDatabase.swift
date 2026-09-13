@@ -830,6 +830,11 @@ enum TelemetryDatabase {
       try PersistenceSchema.createAccessories(db)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_44_45`
+    migrator.registerMigration("v45_accessory_ground_clearance") { db in
+      try PersistenceSchema.createAccessoryGroundClearance(db)
+    }
+
     return migrator
   }
 }

@@ -2,7 +2,8 @@
 
 Design in progress. Most of this is agreed requirements, not implemented behavior.
 
-**Implemented so far**: discovery, enrollment, and the reconnecting session.
+**Implemented so far**: discovery, enrollment, the reconnecting session, and the ground-clearance
+reading and calibration path.
 
 Scanning matches the Vescape Accessory service UUID rather than a name; connecting reads the
 manifest and reports identity, firmware version, protocol compatibility and capability types.
@@ -17,10 +18,16 @@ while it is alive and willing, and the accessory falls back to its own behavior 
 stop. Identity is always the manifest's accessory ID, so a renamed or re-flashed unit on a new BLE
 handle stays one accessory, and a different unit answering on a remembered handle is refused.
 
-**Not implemented**: calibration, measurements, tilt bindings, and brake-light behavior. An enrolled
-accessory's session holds each capability at the protocol's neutral state — a clearance sensor in
-measurement standby, a light told Board telemetry is unavailable — which is what the slices below
-replace with the rider's actual demand.
+A ground-clearance capability's row opens its own screen, which shows the live distance in
+centimetres and holds the sensor measuring while it is open. Near and far distances, mounting
+direction and strength save automatically once they are complete and valid; there is no Save step.
+What is saved is durable, keyed on the accessory id plus the capability id, and re-validated against
+the manifest on every session.
+
+**Not implemented**: tilt bindings and brake-light behavior. A brake-light capability's session
+still holds the protocol's neutral state — the light is told Board telemetry is unavailable — which
+is what the light's own slice replaces. Ground-clearance samples are read, validated and arbitrated
+natively, but nothing yet consumes the resulting tilt input.
 
 ## Initial scope
 
@@ -55,6 +62,12 @@ replace with the rider's actual demand.
 - Disable sensor measurements and sensor-driven tilt while not riding, to save accessory power and prevent unwanted input. Keep BLE connected in standby so Vescape can resume measurements when riding starts. Reuse the existing native riding-state predicate after checking its implementation; standby commands are specified in protocol v1.
 - Reuse existing app controls and native Remote Tilt behavior.
 - The sensor accessory screen shows live distance in centimetres and lets the rider configure near/far distances, correction direction, and strength. Measurements run while this screen is open even when not riding; sensor-driven tilt remains disabled while not riding.
+- The screen is reached from the Board selector's Accessories section: the accessory row opens that accessory, and its ground-clearance capability row opens the calibration. Capability setup hangs off the accessory rather than replacing it, because one unit may declare several capabilities and only some of them have a screen in this build.
+- A reading carries an explicit status and never a substituted number. `out_of_range`, `error`, a stalled stream and measurement standby are four different sentences on the screen; none of them shows the last good distance, and none of them shows the top of the range.
+- Measurement demand is the union of an open sensor screen and riding a board this capability is calibrated for. Leaving the screen while not riding drops the demand and the accessory stops measuring; the BLE session is untouched. Backgrounding the app drops it too.
+- Riding is decided natively from the Board Session's own engagement predicate — the same one Idle Pause uses — not from anything JS sends.
+- Riding without a complete calibration measures nothing: there would be no binding to consume the samples.
+- Saving a calibration that fits the accessory's current manifest is also how the rider accepts declared limits that moved since enrollment. It is the only thing that rewrites the saved capability baseline, and therefore the only thing that clears the "limits changed" warning.
 - The rider supplies Board-specific calibration during initial setup; firmware does not supply an assumed mounting calibration. Once configured, the binding operates automatically during riding with no separate arming step.
 - Calibration edits save automatically when complete and valid, with near distance strictly below far distance. There is no Save or Apply step; a complete valid calibration activates the binding automatically for riding.
 - The eventual hardware includes front and rear sensors. This PoC focuses on capability types and defers arbitration between competing tilt inputs; stable capability IDs leave room for both later.

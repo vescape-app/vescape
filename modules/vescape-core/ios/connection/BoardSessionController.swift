@@ -2241,6 +2241,10 @@ internal final class BoardSessionController: VescGattListener {
 
     if let capture = telemetryCapture(telemetry) {
       updateIdlePause(capture)
+      // Measurement demand follows the Board's own engagement, not the recorder's: a rider with
+      // recording turned off is still riding. #479 reads the arbitrated input back out of the same
+      // runtime to drive Remote Tilt.
+      AccessorySessionController.shared.setRiding(isRefloatEngaged(state: capture.telemetry.state))
       // Skip persistence while idle-paused; the live tick, series, and Live Activity above keep
       // running off the ~1 Hz keepalive. When recording is off, recordTelemetry is already a no-op.
       if !idlePauseDetector.isPaused {

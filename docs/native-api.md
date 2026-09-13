@@ -92,6 +92,50 @@ and saves what the hardware actually said, so an enrollment cannot record a mani
 
 A drop is `connecting`, not an error: both platforms keep the reconnect alive on their own.
 
+## Ground clearance
+
+JS asks for measurements and offers numbers; native decides whether the sensor runs and whether the
+numbers are a calibration. There is no Save step for the rider: send what they have as they change
+it and read the answer.
+
+| fn                                                                       | sync  | returns                                                |
+| ------------------------------------------------------------------------ | ----- | ------------------------------------------------------ |
+| `setAccessoryPreview(accessoryId, capabilityId, open)`                   | sync  | void. Demand to _measure_, never to tilt               |
+| `saveGroundClearanceCalibration(accessoryId, capabilityId, calibration)` | async | `{saved, problem}` — `problem` names the rule it broke |
+| `clearGroundClearanceCalibration(accessoryId, capabilityId)`             | async | `boolean` — whether a calibration was removed          |
+
+Measurement demand is the **union** of an open preview and the rider riding a board this capability
+is calibrated for. Neither alone permits sensor-driven tilt: a preview shows numbers on a parked
+board and commands nothing. Dropping both demands sends `configure{enabled:false}`, which stops the
+accessory's continuous measurement while its BLE session stays up. Riding is decided natively from
+the Board Session's own engagement predicate, never from a value that crossed the bridge.
+
+`onAccessoryReading` pushes one accepted sample, and **only** while that capability has a preview
+open — nothing else in the app consumes single samples. Every sample is range-checked against the
+live manifest before it crosses:
+
+```ts
+{
+  accessoryId: string
+  capabilityId: string
+  seq: number // per capability, restarts with each protocol session
+  sampleTimeMs: number // the accessory's own monotonic clock; orders samples, nothing else
+  status: 'ok' | 'out_of_range' | 'error'
+  valueCm: number | null // non-null ONLY when status is 'ok'
+}
+```
+
+The one rule everything else rests on: a missing or unreadable measurement is never a distance, and
+never the maximum of the declared range. A value outside the declared window arrives as
+`out_of_range` with no value rather than clamped to the nearest limit; an `ok` carrying no number,
+a null, text, or a status this build does not know all arrive as `error`.
+
+Each `AccessoryCapability` in the snapshot carries `calibration` (with its own `problem`, re-decided
+against the live manifest on every push) and `measuring`, the demand native actually resolved.
+Saving a calibration that fits the current manifest is also how the rider accepts declared limits
+that moved since enrollment — it rewrites the frozen `capabilities_json` baseline and clears
+`capabilitiesChanged`.
+
 ## Location
 
 | fn                       | sync | returns                                                |

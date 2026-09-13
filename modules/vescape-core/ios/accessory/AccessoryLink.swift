@@ -61,6 +61,34 @@ final class AccessoryLink {
   private let central: CBCentralManager
   private let onChanged: () -> Void
   private let onManifest: (AccessoryManifest, String) -> Void
+  /// One accepted sample off the reading stream, with the monotonic time it landed.
+  ///
+  /// Handed over rather than buffered here: this class owns the radio and the session, and what a
+  /// distance *means* belongs to the capability that declared it.
+  private let onReading: (AccessoryReading, TimeInterval) -> Void
+  /// The protocol session this link held is gone.
+  ///
+  /// Fired on every path that clears `sessionId`, because sequence numbers restart with the next
+  /// hello: a tracker still holding the old session's newest sample would refuse the new session's
+  /// first ones as duplicates, and a screen would show a distance measured before the accessory
+  /// rebooted.
+  private let onSessionLost: () -> Void
+
+  /// What each capability last said it actually applied.
+  ///
+  /// The accessory resolves the requested rate against its own list and answers with the one it
+  /// runs at, which is not always the one asked for. Anything derived from the sample cadence — the
+  /// missing-stream window above all — has to use the rate the hardware confirmed, not the rate the
+  /// app hoped for.
+  private var appliedByCapability: [String: [String: String]] = [:]
+
+  /// Rate the accessory acknowledged for `capabilityId`, or nil before its first ack.
+  func appliedRateHz(_ capabilityId: String) -> Double? {
+    guard let text = appliedByCapability[capabilityId]?["rateHz"], let rate = Double(text),
+      rate.isFinite, rate > 0
+    else { return nil }
+    return rate
+  }
 
   private var writeCharacteristic: CBCharacteristic?
   private let framer = AccessoryNdjsonFramer()
@@ -101,12 +129,16 @@ final class AccessoryLink {
     accessoryId: String,
     central: CBCentralManager,
     onChanged: @escaping () -> Void,
-    onManifest: @escaping (AccessoryManifest, String) -> Void
+    onManifest: @escaping (AccessoryManifest, String) -> Void,
+    onReading: @escaping (AccessoryReading, TimeInterval) -> Void = { _, _ in },
+    onSessionLost: @escaping () -> Void = {}
   ) {
     self.accessoryId = accessoryId
     self.central = central
     self.onChanged = onChanged
     self.onManifest = onManifest
+    self.onReading = onReading
+    self.onSessionLost = onSessionLost
   }
 
   var deviceId: String? { peripheral?.identifier.uuidString }
@@ -194,6 +226,10 @@ final class AccessoryLink {
     outstanding = nil
     manifest = nil
     lastAckAt = nil
+    // Nothing an old session applied describes this one. A rate remembered across a reconnect would
+    // set the stale window for a stream the accessory has not agreed to send yet.
+    appliedByCapability.removeAll()
+    onSessionLost()
     if let peripheral {
       peripheral.delegate = nil
       central.cancelPeripheralConnection(peripheral)
@@ -257,6 +293,8 @@ final class AccessoryLink {
     outstanding = nil
     manifest = nil
     lastAckAt = nil
+    appliedByCapability.removeAll()
+    onSessionLost()
     requestTimeoutWork?.cancel(); requestTimeoutWork = nil
     renewWork?.cancel(); renewWork = nil
     guard started, let peripheral else { return setPhase(.idle, error: nil) }
@@ -359,10 +397,14 @@ final class AccessoryLink {
 
   private func handleSessionLine(_ line: String, session: String) {
     switch AccessoryResponse.parse(line: line, sessionId: session) {
-    case .ack(let requestId, _, _, _):
+    case .ack(let requestId, let capabilityId, _, let applied):
       guard let pending = outstanding, pending.requestId == requestId else { return }
       requestTimeoutWork?.cancel(); requestTimeoutWork = nil
       outstanding = nil
+      // Recorded before the phase change, because this is what the accessory says it is actually
+      // doing — not what the app asked for. The rate here is the one the stale window is measured
+      // against.
+      appliedByCapability[capabilityId] = applied
       lastAckAt = ProcessInfo.processInfo.systemUptime
       setPhase(.connected, error: nil)
       pump()
@@ -374,6 +416,12 @@ final class AccessoryLink {
       // The refusal is the accessory's answer, not a broken link: stay connected and say what it
       // refused, rather than dropping a session that is otherwise healthy.
       setPhase(.unavailable, error: code)
+
+    case .sample(let reading):
+      // Readings are unacknowledged and renew nothing. A stream that keeps arriving while commands
+      // go unanswered must not look like a healthy session, so this deliberately does not touch
+      // `lastAckAt`, the phase or the pump.
+      onReading(reading, ProcessInfo.processInfo.systemUptime)
 
     case .malformed: fail("malformed")
     case .ignored: break

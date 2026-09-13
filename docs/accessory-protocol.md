@@ -3,19 +3,26 @@
 Status: implementation draft for the PoC. Product behavior is in [accessories.md](./accessories.md). Timing, rate, and size limits below are proposed PoC defaults, not measured reliability guarantees.
 
 **Implemented so far**: BLE transport, NDJSON framing with its bounds, the `hello`/`manifest`
-handshake, version negotiation, capability recognition, and the operational command channel —
-`configure`, `state`, acknowledgements, request-id discipline and leases. `reading` is still a
-draft; nothing streams samples yet.
+handshake, version negotiation, capability recognition, the operational command channel —
+`configure`, `state`, acknowledgements, request-id discipline and leases — and the `reading` stream
+for `ground_clearance`, including its status discipline, sequence/sample-time progress rules and the
+missing-stream timeout. `brake_light` state is still held at its neutral value by its session.
 
 The implemented half has an executable form: `shared/fixtures/accessory-protocol/` holds the
 framing, handshake and session corpus that Android Kotlin, iOS Swift and the ESP32 firmware all run
 (`bun run test:android`, `bun run test:ios`, and `pio test -e native` in `vescape-hardware`). Change
 the fixtures first; three implementations of one wire format drift silently otherwise.
 
-`session.json` pins three things the prose below only describes: the exact bytes of every command
-the app writes, what each accessory line must mean to a live session, and — through its `peer`
-sequences — the replies an accessory must produce for a stale id, a reused id, and the app's one
-permitted retry.
+`session.json` pins four things the prose below only describes: the exact bytes of every command the
+app writes; what each accessory line must mean to a live session; through its `peer` sequences, the
+replies an accessory must produce for a stale id, a reused id, and the app's one permitted retry;
+and under `readings` and `groundClearance`, every way a sample can fail to be a measurement together
+with what a saved calibration turns a distance into.
+
+The reading cases exist to pin one rule in executable form: **a missing measurement is never a
+distance.** A missing `value`, a null one, a textual one, a status this app does not know, and a
+number outside the declared window each have a case, and none of them resolves to the top of the
+range.
 
 Two rules below are app-side decisions the fixtures pin down, rather than wire format:
 

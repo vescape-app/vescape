@@ -166,6 +166,7 @@ import expo.modules.vescapecore.telemetry.METRIC_MAX_DUTY
 import expo.modules.vescapecore.telemetry.PrivacyZoneEntity
 import expo.modules.vescapecore.telemetry.SocMedianWindow
 import expo.modules.vescapecore.telemetry.TelemetryCapture
+import expo.modules.vescapecore.telemetry.isRefloatEngaged
 import expo.modules.vescapecore.telemetry.TelemetryPipeline
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.telemetry.isInsideAnyPrivacyZone
@@ -1528,6 +1529,10 @@ private var wearAutoLaunchOnConnect = true
                 // First sample of the session also drives the first sparkline frame immediately.
                 liveSeriesEmitter.primeLiveSeriesIfNeeded()
                 updateIdlePause(processed.capture)
+                // Measurement demand follows the Board's own engagement, not the recorder's: a
+                // rider with recording turned off is still riding. #479 reads the arbitrated input
+                // back out of the same runtime to drive Remote Tilt.
+                AccessorySessionManager.setRiding(isRefloatEngaged(processed.capture.state))
                 // Skip persistence while paused; live display, watch, and presence keep running off the
                 // paths above. When recording is off, recordTelemetry is already a no-op.
                 if (!idlePauseDetector.isPaused) {
@@ -2222,6 +2227,9 @@ private var wearAutoLaunchOnConnect = true
 
     private fun stopPolling() {
         pollingLoop.stop()
+        // No telemetry means no evidence of riding. An Accessory left measuring on the strength of
+        // the last sample before the Board went away would keep its sensor running indefinitely.
+        AccessorySessionManager.setRiding(false)
         idlePauseDetector.reset()
         telemetryPipeline.cancelStaleWatchdog()
         liveSeriesEmitter.stop()

@@ -233,6 +233,10 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.editBoardConfig} options={{ title: 'Board Config' }} />
             <Stack.Screen name={stackScreens.accessoryScan} options={{ title: 'Add Accessory' }} />
             <Stack.Screen name={stackScreens.accessory} options={{ title: 'Accessory' }} />
+            <Stack.Screen
+              name={stackScreens.accessoryGroundClearance}
+              options={{ title: 'Ground clearance' }}
+            />
           </Stack>
           {/* Above navigation so a Release surface covers every screen. Only ever one at a time. */}
           <ReleaseSurfaces />

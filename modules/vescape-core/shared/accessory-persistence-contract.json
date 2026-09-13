@@ -23,6 +23,40 @@
     "protocolVersion": 1,
     "deviceId": "AA:BB:CC:DD:EE:02",
     "capabilitiesJson": "[{\"id\":\"rear_light\",\"type\":\"brake_light\",\"supported\":true,\"unit\":null,\"rangeMin\":null,\"rangeMax\":null,\"ratesHz\":[]}]",
-    "enrolledAt": 1700000001000
+    "enrolledAt": 1700000001000,
+    "capabilityId": "rear_clearance",
+    "calibration": {
+      "nearCm": 6,
+      "farCm": 22,
+      "direction": "tail",
+      "strengthPercent": 55,
+      "updatedAt": 1700000400000
+    }
+  },
+  "groundClearance": {
+    "$comment": "What the rider calibrated, keyed on the Accessory *and* the capability. The scenario proves the composite key does real work: one unit declaring a nose sensor and a tail sensor keeps two independent calibrations, and re-saving one leaves the other exactly as it was. Revalidating a manifest must not disturb a calibration; forgetting the Accessory must take every calibration made against it, because a re-enrollment that inherited old numbers would drive the board to a mounting position the rider has since changed. `adoptCapabilities` is the other half of the frozen baseline: saving a calibration that fits the current manifest is how the rider accepts limits that moved, and it is the only operation allowed to rewrite `capabilities_json`.",
+    "capabilityId": "clearance",
+    "tailCapabilityId": "clearance_tail",
+    "calibration": {
+      "nearCm": 5,
+      "farCm": 20,
+      "direction": "nose",
+      "strengthPercent": 60,
+      "updatedAt": 1700000100000
+    },
+    "recalibrated": {
+      "nearCm": 7.5,
+      "farCm": 24,
+      "direction": "nose",
+      "strengthPercent": 80,
+      "updatedAt": 1700000200000
+    },
+    "tailCalibration": {
+      "nearCm": 4,
+      "farCm": 18,
+      "direction": "tail",
+      "strengthPercent": 40,
+      "updatedAt": 1700000300000
+    }
   }
 }

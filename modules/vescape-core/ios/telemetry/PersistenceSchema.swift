@@ -56,4 +56,14 @@ enum PersistenceSchema {
   static func createAccessories(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessories (accessory_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, firmware_version TEXT NOT NULL, protocol_version INTEGER, device_id TEXT, capabilities_json TEXT NOT NULL, enrolled_at INTEGER NOT NULL, last_connected_at INTEGER)")
   }
+
+  /// Ground-clearance calibration, keyed on the Accessory and the capability it was made for.
+  ///
+  /// A table rather than a column on `accessories`: one unit may declare several measurement
+  /// capabilities — the eventual hardware has a nose sensor and a tail sensor on one board — and
+  /// they cannot share near/far distances or a correction direction.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_44_45`
+  static func createAccessoryGroundClearance(_ db: Database) throws {
+    try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_ground_clearance (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, near_cm REAL NOT NULL, far_cm REAL NOT NULL, direction TEXT NOT NULL, strength_percent INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
+  }
 }

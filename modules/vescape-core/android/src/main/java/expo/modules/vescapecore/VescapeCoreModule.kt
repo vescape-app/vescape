@@ -198,6 +198,7 @@ class VescapeCoreModule : Module() {
       "onAccessoryDevice",
       "onAccessoryScanError",
       "onAccessoryState",
+      "onAccessoryReading",
     )
 
     // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
@@ -393,6 +394,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onAccessoryScanError") { stopObserving("onAccessoryScanError") }
     OnStartObserving("onAccessoryState") { startObserving("onAccessoryState") }
     OnStopObserving("onAccessoryState") { stopObserving("onAccessoryState") }
+    OnStartObserving("onAccessoryReading") { startObserving("onAccessoryReading") }
+    OnStopObserving("onAccessoryReading") { stopObserving("onAccessoryReading") }
 
     OnCreate {
       val storageOutageEvents = StorageOutageEventBridge(
@@ -472,6 +475,39 @@ class VescapeCoreModule : Module() {
       AccessorySessionManager.forget(context.applicationContext, accessoryId) { promise.resolve(it) }
     }
     Function("getAccessories") { AccessorySessionManager.snapshot() }
+
+    // Ground clearance. JS asks for measurements and offers numbers; native decides whether the
+    // sensor runs and whether the numbers are a calibration.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryPreview`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryPreview`
+    Function("setAccessoryPreview") { accessoryId: String, capabilityId: String, open: Boolean ->
+      AccessorySessionManager.setPreview(accessoryId, capabilityId, open)
+    }
+    AsyncFunction("saveGroundClearanceCalibration") {
+      accessoryId: String,
+      capabilityId: String,
+      nearCm: Double,
+      farCm: Double,
+      direction: String,
+      strengthPercent: Int,
+      promise: Promise,
+      ->
+      AccessorySessionManager.saveGroundClearance(
+        accessoryId = accessoryId,
+        capabilityId = capabilityId,
+        nearCm = nearCm,
+        farCm = farCm,
+        direction = direction,
+        strengthPercent = strengthPercent,
+      ) { promise.resolve(it) }
+    }
+    AsyncFunction("clearGroundClearanceCalibration") {
+      accessoryId: String,
+      capabilityId: String,
+      promise: Promise,
+      ->
+      AccessorySessionManager.clearGroundClearance(accessoryId, capabilityId) { promise.resolve(it) }
+    }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }

@@ -47,5 +47,36 @@ internal class AccessoryPersistence(private val dao: TelemetryDao) {
       connectedAt = accessory.lastConnectedAt,
     ) > 0
 
-  suspend fun forget(accessoryId: String): Boolean = dao.deleteAccessory(accessoryId) > 0
+  /**
+   * Adopts the capability set the current manifest declares as the new baseline.
+   *
+   * The counterpart to [revalidate] leaving `capabilities_json` alone. That preservation is what
+   * keeps "this Accessory now declares different limits" alive across a restart; this is the rider
+   * answering it, by saving a calibration that fits what the hardware says today. Update-only for
+   * the same reason revalidation is.
+   */
+  suspend fun adoptCapabilities(accessoryId: String, capabilitiesJson: String): Boolean =
+    dao.adoptAccessoryCapabilities(accessoryId, capabilitiesJson) > 0
+
+  /** Forgetting takes the enrollment and every calibration made against it, in one transaction. */
+  suspend fun forget(accessoryId: String): Boolean = dao.forgetAccessory(accessoryId) > 0
+
+  suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity> = dao.getGroundClearances()
+
+  suspend fun getGroundClearance(accessoryId: String, capabilityId: String): AccessoryGroundClearanceEntity? =
+    dao.getGroundClearance(accessoryId, capabilityId)
+
+  /**
+   * Saves one complete calibration.
+   *
+   * There is no Save button behind this and no draft state in the table: the screen calls it when
+   * what the rider has entered is complete and valid, so every row here was usable at the moment it
+   * was written. Validity against the *current* manifest is re-decided on every session.
+   */
+  suspend fun saveGroundClearance(calibration: AccessoryGroundClearanceEntity) {
+    dao.upsertGroundClearance(calibration)
+  }
+
+  suspend fun clearGroundClearance(accessoryId: String, capabilityId: String): Boolean =
+    dao.deleteGroundClearance(accessoryId, capabilityId) > 0
 }

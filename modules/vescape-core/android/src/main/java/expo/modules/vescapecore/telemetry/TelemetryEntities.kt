@@ -930,3 +930,36 @@ data class SavedAccessoryEntity(
   @ColumnInfo(name = "enrolled_at") val enrolledAt: Long,
   @ColumnInfo(name = "last_connected_at") val lastConnectedAt: Long?,
 )
+
+/**
+ * What the rider calibrated for one ground-clearance capability.
+ *
+ * Keyed on the Accessory *and* the capability, never on the Accessory alone: the protocol lets one
+ * unit declare several measurement capabilities, and the eventual hardware has a nose sensor and a
+ * tail sensor on the same board. Collapsing this onto the Accessory row would make those two share
+ * a calibration, which is the one thing they can never do.
+ *
+ * There is no partial row and no draft. A calibration is written when it is complete and valid, so
+ * anything stored here was a usable calibration at the moment it was saved. Whether it is still one
+ * is decided against the live manifest every session — a firmware that narrowed its measurement
+ * range invalidates a row it no longer fits, and the rider is asked to set it again rather than
+ * having their numbers quietly squeezed into the new limits.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedGroundClearance`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceCalibration`
+ */
+@Entity(tableName = "accessory_ground_clearance", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryGroundClearanceEntity(
+  @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  /** Stable within the Accessory and across firmware updates, exactly as the manifest declares it. */
+  @ColumnInfo(name = "capability_id") val capabilityId: String,
+  /** Clearance at which correction is at full strength. Always below [farCm]. */
+  @ColumnInfo(name = "near_cm") val nearCm: Double,
+  /** Clearance at which correction starts. Above it nothing is commanded. */
+  @ColumnInfo(name = "far_cm") val farCm: Double,
+  /** Raw wire value for where the sensor is mounted. A value this app cannot read is incomplete. */
+  val direction: String,
+  /** Maximum Remote Tilt input this binding may command, as a percentage. */
+  @ColumnInfo(name = "strength_percent") val strengthPercent: Int,
+  @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)

@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.service.CoreForegroundService
+import expo.modules.vescapecore.telemetry.AccessoryGroundClearanceEntity
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.telemetry.SavedAccessoryEntity
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
@@ -46,6 +47,27 @@ object AccessorySessionManager {
     private val saved = LinkedHashMap<String, SavedAccessoryEntity>()
 
     /**
+     * Live ground-clearance state, one per enrolled capability.
+     *
+     * Keyed on the Accessory *and* the capability, exactly as the durable row is: one unit may
+     * declare a nose sensor and a tail sensor, and they share neither a calibration nor a stream.
+     */
+    private val clearance = LinkedHashMap<CapabilityKey, GroundClearanceRuntime>()
+
+    /**
+     * Whether the Board is carrying a rider, as the Board Session last saw it.
+     *
+     * One flag for every Accessory: v1 binds to whichever Board is connected, so there is exactly
+     * one riding state in the app and no per-Accessory version of it to disagree with.
+     *
+     * Volatile because the Board Session writes it from its telemetry thread while the main looper
+     * reads it to decide demand.
+     */
+    @Volatile private var riding = false
+
+    private data class CapabilityKey(val accessoryId: String, val capabilityId: String)
+
+    /**
      * The last snapshot built on the main looper.
      *
      * The bridge's synchronous getter runs on the JS thread while [saved] and [links] are written
@@ -67,17 +89,31 @@ object AccessorySessionManager {
         val app = context.applicationContext
         appContext = app
         scope.launch {
+            val store = persistence(app)
             val rows = try {
-                persistence(app).getAccessories()
+                store.getAccessories()
             } catch (error: Throwable) {
                 // Nothing starts, and the outage is reported rather than looking like "no
                 // Accessories" — a rider whose database is unreadable has not lost their hardware.
                 RecordingStorageFailure.reportRead("accessory_list", error)
                 return@launch
             }
+            val calibrations = try {
+                store.getGroundClearances()
+            } catch (error: Throwable) {
+                // The Accessories still connect. A calibration that could not be read is reported
+                // and treated as absent, which shows the rider "not set up" rather than driving the
+                // board from numbers this process never actually saw.
+                RecordingStorageFailure.reportRead("accessory_ground_clearance", error)
+                emptyList()
+            }
             handler.post {
                 saved.clear()
                 rows.forEach { saved[it.accessoryId] = it }
+                clearance.clear()
+                calibrations.forEach { row ->
+                    runtime(row.accessoryId, row.capabilityId).calibration = row.toCalibration()
+                }
                 rows.forEach { link(it).start(it.deviceId) }
                 publish()
             }
@@ -167,6 +203,10 @@ object AccessorySessionManager {
             handler.post {
                 links.remove(accessoryId)?.stop()
                 saved.remove(accessoryId)
+                // The calibrations went with the row in the same transaction; the live runtimes go
+                // with them, so a re-enrollment starts from "not set up" rather than from whatever
+                // this process still happened to be holding.
+                clearance.keys.removeAll { it.accessoryId == accessoryId }
                 publish()
                 onResult(removed)
             }
@@ -198,7 +238,8 @@ object AccessorySessionManager {
             "phase" to (link?.phase ?: AccessoryLinkPhase.IDLE).wire,
             "error" to link?.lastError,
             "compatibility" to live?.compatibility?.wire,
-            "capabilities" to (live?.capabilities?.map { it.toMap() } ?: decodeCapabilities(row.capabilitiesJson)),
+            "capabilities" to (live?.capabilities?.map { it.toMap() } ?: decodeCapabilities(row.capabilitiesJson))
+                .map { describeCapability(row.accessoryId, it) },
             // Derived from the frozen baseline rather than remembered in memory: a flag held only
             // for the life of the process would clear itself on the next launch, which is the one
             // moment the rider is least likely to be looking.
@@ -206,6 +247,38 @@ object AccessorySessionManager {
                 live != null && encodeCapabilityList(live.capabilities) != row.capabilitiesJson
                 ),
             "leaseHeldMs" to link?.lastAckAtMs?.let { SystemClock.elapsedRealtime() - it },
+        )
+    }
+
+    /**
+     * One capability as JS sees it, with whatever this app has saved and decided about it.
+     *
+     * The saved calibration rides along with the capability rather than in a list of its own: it is
+     * keyed on the capability and meaningless without it, and a screen that had to join two arrays
+     * by id would be a place for them to disagree.
+     *
+     * `measuring` is the demand native actually resolved, not a restatement of what the screen
+     * asked for — a preview on a capability with no usable rate is a screen that is open and a
+     * sensor that is not measuring, and the row should say so.
+     */
+    private fun describeCapability(accessoryId: String, capability: Map<String, Any?>): Map<String, Any?> {
+        val capabilityId = capability["id"] as? String ?: return capability
+        val state = clearance[CapabilityKey(accessoryId, capabilityId)] ?: return capability
+        val saved = state.calibration
+        return capability + mapOf(
+            "calibration" to saved?.let {
+                mapOf(
+                    "nearCm" to it.nearCm,
+                    "farCm" to it.farCm,
+                    "direction" to it.direction,
+                    "strengthPercent" to it.strengthPercent,
+                    // Re-decided against the live manifest on every publish. A firmware that
+                    // narrowed its range turns a saved calibration into one that needs redoing, and
+                    // the row says which rule it now breaks.
+                    "problem" to it.problem(state.rangeMin, state.rangeMax)?.wire,
+                )
+            },
+            "measuring" to state.measurementDemanded,
         )
     }
 
@@ -228,7 +301,9 @@ object AccessorySessionManager {
                 accessoryId = row.accessoryId,
                 onChanged = { publish() },
                 onManifest = { manifest, deviceId -> onManifestValidated(manifest, deviceId) },
-            ).also { it.setDesiredAll(row) }
+                onReading = { reading, at -> onReading(row.accessoryId, reading, at) },
+                onSessionLost = { onSessionLost(row.accessoryId) },
+            ).also { it.applyDemand(row) }
         }
 
     /**
@@ -253,7 +328,7 @@ object AccessorySessionManager {
             lastConnectedAt = System.currentTimeMillis(),
         )
         saved[manifest.accessoryId] = row
-        links[manifest.accessoryId]?.setDesiredAll(row, manifest)
+        links[manifest.accessoryId]?.applyDemand(row, manifest)
         val app = appContext ?: return
         scope.launch {
             try {
@@ -269,15 +344,19 @@ object AccessorySessionManager {
     }
 
     /**
-     * The baseline every session establishes for each capability it can drive.
+     * What every capability of one Accessory should currently be doing.
      *
-     * Both are the protocol's own neutral state, not a feature: a clearance sensor is held in
-     * measurement standby, and a light is told plainly that Board telemetry is unavailable. They
-     * exist so the session has a real acknowledged command to hold — which is what makes the lease,
-     * the retry and the expiry observable before any capability's own behaviour is built. The
-     * slices that own those capabilities replace these with the rider's actual demand.
+     * The whole demand decision lives here and nowhere else. A ground-clearance capability measures
+     * when someone actually needs the numbers — the rider has its screen open, or the rider is on a
+     * calibrated board — and sits in the protocol's own measurement standby otherwise. Standby is
+     * not a pause in the app: `enabled: false` stops the sensor's continuous measurement on the
+     * accessory while BLE stays up, so leaving the screen genuinely stops measuring rather than
+     * throwing away samples the hardware is still burning power to produce.
+     *
+     * The brake light still gets #480's neutral baseline. It is the protocol's own unavailable
+     * state, and the slice that owns that capability replaces it with real telemetry.
      */
-    private fun AccessoryLink.setDesiredAll(
+    private fun AccessoryLink.applyDemand(
         row: SavedAccessoryEntity,
         manifest: AccessoryManifest? = null,
     ) {
@@ -289,7 +368,23 @@ object AccessorySessionManager {
                 AccessoryProtocol.TYPE_GROUND_CLEARANCE -> {
                     val rate = AccessorySession.resolveRateHz(PREFERRED_RATE_HZ, capability.ratesHz)
                         ?: continue
-                    setDesired(AccessoryCommand.Configure(capability.id, enabled = false, rateHz = rate))
+                    val state = runtime(row.accessoryId, capability.id)
+                    // Only a live manifest carries limits worth trusting. The decoded baseline is
+                    // what the Accessory said at enrollment, which is exactly the thing a changed
+                    // firmware invalidates — so the runtime keeps whatever the last handshake set
+                    // rather than being reset to a stale window by an offline re-apply.
+                    if (manifest != null) {
+                        state.rangeMin = capability.rangeMin
+                        state.rangeMax = capability.rangeMax
+                    }
+                    state.riding = riding
+                    setDesired(
+                        AccessoryCommand.Configure(
+                            capabilityId = capability.id,
+                            enabled = state.measurementDemanded,
+                            rateHz = rate,
+                        ),
+                    )
                 }
 
                 AccessoryProtocol.TYPE_BRAKE_LIGHT -> setDesired(
@@ -305,6 +400,227 @@ object AccessorySessionManager {
             }
         }
     }
+
+    /** Re-decides demand for every enrolled Accessory, from whatever its session currently knows. */
+    private fun reapplyDemand() {
+        for ((accessoryId, link) in links) {
+            val row = saved[accessoryId] ?: continue
+            link.applyDemand(row, link.manifest)
+        }
+    }
+
+    // MARK: - Ground clearance
+
+    private fun runtime(accessoryId: String, capabilityId: String): GroundClearanceRuntime =
+        clearance.getOrPut(CapabilityKey(accessoryId, capabilityId)) {
+            GroundClearanceRuntime(capabilityId)
+        }
+
+    /**
+     * The configuration screen for one capability opened or closed.
+     *
+     * The only demand JS is allowed to express, and it is a request to *measure*, never to tilt: a
+     * preview shows numbers on a parked board, and [groundClearanceInput] refuses to drive anything
+     * that is not being ridden regardless of what this says.
+     *
+     * A screen that is gone — backgrounded, unmounted, or its JS runtime killed — stops the sensor,
+     * which is what "leaving the screen stops measurements" means at the hardware.
+     */
+    fun setPreview(accessoryId: String, capabilityId: String, open: Boolean) {
+        handler.post {
+            val state = runtime(accessoryId, capabilityId)
+            if (state.previewOpen == open) return@post
+            state.previewOpen = open
+            reapplyDemand()
+            publish()
+        }
+    }
+
+    /**
+     * Board engagement, from the Board Session's own predicate.
+     *
+     * Native's, never JS's: this decides whether a sensor runs while the screen is off, and a value
+     * that arrived over the bridge would stop being true the moment the runtime died.
+     *
+     * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `setRiding`
+     */
+    fun setRiding(riding: Boolean) {
+        // Compared before the hop, not inside it. This arrives with every telemetry sample for the
+        // whole of a ride, and posting a Runnable per sample to discover that nothing changed is a
+        // few thousand allocations an hour for no decision.
+        if (this.riding == riding) return
+        this.riding = riding
+        handler.post {
+            reapplyDemand()
+            publish()
+        }
+    }
+
+    /**
+     * Saves one calibration, if it is one.
+     *
+     * There is no Save button behind this: the screen sends what the rider has so far and native
+     * decides whether it is complete. Validity is judged against the limits the Accessory declares
+     * *now*, so a calibration is never written that the hardware in front of the rider would refuse.
+     *
+     * Saving a calibration that fits the current manifest is also how the rider accepts limits that
+     * moved since enrollment: the frozen `capabilities_json` baseline is rewritten to what the
+     * session just validated against, which is what clears "this Accessory now declares different
+     * limits". Nothing else in the app may rewrite that baseline.
+     */
+    fun saveGroundClearance(
+        accessoryId: String,
+        capabilityId: String,
+        nearCm: Double,
+        farCm: Double,
+        direction: String,
+        strengthPercent: Int,
+        onResult: (Map<String, Any?>) -> Unit,
+    ) {
+        handler.post {
+            val app = appContext
+            if (app == null || saved[accessoryId] == null) {
+                onResult(mapOf("saved" to false, "problem" to "unknown-capability"))
+                return@post
+            }
+            val state = runtime(accessoryId, capabilityId)
+            val candidate = GroundClearanceCalibration(nearCm, farCm, direction, strengthPercent)
+            val problem = candidate.problem(state.rangeMin, state.rangeMax)
+            if (problem != null) {
+                onResult(mapOf("saved" to false, "problem" to problem.wire))
+                return@post
+            }
+            val liveCapabilities = links[accessoryId]?.manifest?.capabilities
+            val row = AccessoryGroundClearanceEntity(
+                accessoryId = accessoryId,
+                capabilityId = capabilityId,
+                nearCm = nearCm,
+                farCm = farCm,
+                direction = direction,
+                strengthPercent = strengthPercent,
+                updatedAt = System.currentTimeMillis(),
+            )
+            scope.launch {
+                val store = persistence(app)
+                try {
+                    store.saveGroundClearance(row)
+                } catch (error: Throwable) {
+                    // Nothing is applied in memory either. A binding that drove from a calibration
+                    // the database never took would come back uncalibrated on the next launch, with
+                    // the rider believing they had set it.
+                    RecordingStorageFailure.report("accessory_ground_clearance", "write_failed", error)
+                    handler.post { onResult(mapOf("saved" to false, "problem" to "storage-unavailable")) }
+                    return@launch
+                }
+                val baseline = liveCapabilities?.let { encodeCapabilityList(it) }
+                if (baseline != null) {
+                    try {
+                        store.adoptCapabilities(accessoryId, baseline)
+                    } catch (error: Throwable) {
+                        // The calibration is saved and correct; only the warning outlives the
+                        // acceptance, and the next save clears it.
+                        RecordingStorageFailure.report("accessory_revalidate", "write_failed", error)
+                    }
+                }
+                handler.post {
+                    state.calibration = candidate
+                    if (baseline != null) {
+                        saved[accessoryId]?.let { saved[accessoryId] = it.copy(capabilitiesJson = baseline) }
+                    }
+                    reapplyDemand()
+                    publish()
+                    onResult(mapOf("saved" to true, "problem" to null))
+                }
+            }
+        }
+    }
+
+    /** Drops a calibration. The binding stops driving and the screen goes back to explaining setup. */
+    fun clearGroundClearance(accessoryId: String, capabilityId: String, onResult: (Boolean) -> Unit) {
+        handler.post {
+            val app = appContext ?: return@post onResult(false)
+            scope.launch {
+                val removed = try {
+                    persistence(app).clearGroundClearance(accessoryId, capabilityId)
+                } catch (error: Throwable) {
+                    RecordingStorageFailure.report("accessory_ground_clearance", "write_failed", error)
+                    handler.post { onResult(false) }
+                    return@launch
+                }
+                handler.post {
+                    runtime(accessoryId, capabilityId).calibration = null
+                    reapplyDemand()
+                    publish()
+                    onResult(removed)
+                }
+            }
+        }
+    }
+
+    /**
+     * What a Remote Tilt binding may do with this capability right now. The seam #479 consumes.
+     *
+     * Two outcomes and no third: a scaled, signed input built from a fresh in-range measurement, or
+     * a named reason to release. Nothing here can be read as "hold the last value" — a consumer that
+     * gets a release has been told to let go, and why.
+     *
+     * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceInput`
+     */
+    fun groundClearanceInput(accessoryId: String, capabilityId: String): GroundClearanceInput {
+        val state = clearance[CapabilityKey(accessoryId, capabilityId)]
+            ?: return GroundClearanceInput.Release(GroundClearanceRelease.NOT_CALIBRATED)
+        val link = links[accessoryId]
+        state.rateHz = link?.appliedRateHz(capabilityId) ?: 0.0
+        return state.input(
+            nowMs = SystemClock.elapsedRealtime(),
+            linkConnected = link?.phase == AccessoryLinkPhase.CONNECTED,
+        )
+    }
+
+    /**
+     * One sample off an Accessory's reading stream.
+     *
+     * Range-checked against the limits the *live* manifest declares before anything else sees it, so
+     * a number the hardware no longer promises is carried onward as `out_of_range` with no value
+     * rather than as a distance. A sample older than the newest one held is dropped outright.
+     *
+     * The bridge only hears about it while a screen is open. Nothing else in the app consumes single
+     * samples — the tilt binding pulls [groundClearanceInput] on its own cadence — so emitting at
+     * the sensor's rate with nothing mounted would be pure bridge traffic.
+     */
+    private fun onReading(accessoryId: String, reading: AccessoryReading, receivedAtMs: Long) {
+        val state = clearance[CapabilityKey(accessoryId, reading.capabilityId)] ?: return
+        state.rateHz = links[accessoryId]?.appliedRateHz(reading.capabilityId) ?: state.rateHz
+        val checked = reading.withinDeclaredRange(state.rangeMin, state.rangeMax)
+        if (!state.tracker.accept(checked, receivedAtMs)) return
+        if (!state.previewOpen) return
+        emit?.invoke(
+            "onAccessoryReading",
+            mapOf(
+                "accessoryId" to accessoryId,
+                "capabilityId" to checked.capabilityId,
+                "seq" to checked.seq,
+                "sampleTimeMs" to checked.sampleTimeMs,
+                "status" to checked.status.wire,
+                "valueCm" to checked.valueCm,
+            ),
+        )
+    }
+
+    /**
+     * The protocol session for one Accessory ended.
+     *
+     * Sequence numbers restart with the next hello, so anything the tracker still holds would make
+     * the new session's first samples look like duplicates. The calibration is durable and stays.
+     */
+    private fun onSessionLost(accessoryId: String) {
+        for ((key, state) in clearance) {
+            if (key.accessoryId == accessoryId) state.onSessionLost()
+        }
+    }
+
+    private fun AccessoryGroundClearanceEntity.toCalibration() =
+        GroundClearanceCalibration(nearCm, farCm, direction, strengthPercent)
 
     /** `docs/accessory-protocol.md` PoC default, resolved against whatever the manifest offers. */
     private const val PREFERRED_RATE_HZ = 20.0

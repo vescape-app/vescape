@@ -84,6 +84,22 @@ internal class AccessoryLink(
     private val accessoryId: String,
     private val onChanged: () -> Unit,
     private val onManifest: (AccessoryManifest, deviceId: String) -> Unit,
+    /**
+     * One accepted sample off the reading stream, with the monotonic time it landed.
+     *
+     * Handed over rather than buffered here: this class owns the radio and the session, and what a
+     * distance *means* belongs to the capability that declared it.
+     */
+    private val onReading: (AccessoryReading, receivedAtMs: Long) -> Unit = { _, _ -> },
+    /**
+     * The protocol session this link held is gone.
+     *
+     * Fired on every path that clears [sessionId], because sequence numbers restart with the next
+     * hello: a tracker still holding the old session's newest sample would refuse the new session's
+     * first ones as duplicates, and a screen would show a distance measured before the accessory
+     * rebooted.
+     */
+    private val onSessionLost: () -> Unit = {},
 ) {
     var phase: AccessoryLinkPhase = AccessoryLinkPhase.IDLE
         private set
@@ -99,6 +115,20 @@ internal class AccessoryLink(
     /** Monotonic timestamp of the last ack, for the lease the accessory is holding. */
     var lastAckAtMs: Long? = null
         private set
+
+    /**
+     * What each capability last said it actually applied.
+     *
+     * The accessory resolves the requested rate against its own list and answers with the one it
+     * runs at, which is not always the one asked for. Anything derived from the sample cadence —
+     * the missing-stream window above all — has to use the rate the hardware confirmed, not the
+     * rate the app hoped for.
+     */
+    private val appliedByCapability = HashMap<String, Map<String, String>>()
+
+    /** Rate the accessory acknowledged for [capabilityId], or null before its first ack. */
+    fun appliedRateHz(capabilityId: String): Double? =
+        appliedByCapability[capabilityId]?.get("rateHz")?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
 
     private var deviceId: String? = null
     private var gatt: BluetoothGatt? = null
@@ -219,6 +249,10 @@ internal class AccessoryLink(
         outstanding = null
         manifest = null
         lastAckAtMs = null
+        // Nothing an old session applied describes this one. A rate remembered across a reconnect
+        // would set the stale window for a stream the accessory has not agreed to send yet.
+        appliedByCapability.clear()
+        onSessionLost()
         val target = gatt
         gatt = null
         try {
@@ -284,6 +318,8 @@ internal class AccessoryLink(
                 outstanding = null
                 manifest = null
                 lastAckAtMs = null
+                appliedByCapability.clear()
+                onSessionLost()
                 cancel(requestTimeout); requestTimeout = null
                 cancel(renewTick); renewTick = null
                 if (started) {
@@ -438,6 +474,10 @@ internal class AccessoryLink(
                 if (response.requestId != pending.requestId) return
                 cancel(requestTimeout); requestTimeout = null
                 outstanding = null
+                // Recorded before the phase change, because this is what the accessory says it is
+                // actually doing — not what the app asked for. The rate here is the one the stale
+                // window is measured against.
+                appliedByCapability[response.capabilityId] = response.applied
                 lastAckAtMs = SystemClock.elapsedRealtime()
                 setPhase(AccessoryLinkPhase.CONNECTED, error = null)
                 pump()
@@ -451,6 +491,13 @@ internal class AccessoryLink(
                 // The refusal is the accessory's answer, not a broken link: stay connected and say
                 // what it refused, rather than dropping a session that is otherwise healthy.
                 setPhase(AccessoryLinkPhase.UNAVAILABLE, error = response.code)
+            }
+
+            is AccessoryResponse.Sample -> {
+                // Readings are unacknowledged and renew nothing. A stream that keeps arriving while
+                // commands go unanswered must not look like a healthy session, so this deliberately
+                // does not touch [lastAckAtMs], the phase or the pump.
+                onReading(response.reading, SystemClock.elapsedRealtime())
             }
 
             AccessoryResponse.Malformed -> fail("malformed")

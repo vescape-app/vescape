@@ -120,6 +120,82 @@ private fun number(value: Double): String =
     }
 
 /**
+ * What a sample says about itself. The status is carried, never inferred.
+ *
+ * There is no fourth case and no "unknown": a line this app cannot read as a measurement resolves
+ * to [ERROR], because the alternative — quietly treating it as the far end of the range — is a
+ * board told it has all the clearance in the world at the exact moment its sensor stopped working.
+ *
+ * @parity /modules/vescape-core/ios/accessory/AccessorySession.swift `AccessoryReadingStatus`
+ * @parity /modules/vescape-core/src/index.ts `AccessoryReadingStatus`
+ */
+enum class AccessoryReadingStatus(val wire: String) {
+    /** A real measurement. The only status that carries a value. */
+    OK("ok"),
+
+    /** The sensor answered, and the answer is not a distance this capability promises. */
+    OUT_OF_RANGE("out_of_range"),
+
+    /** The sensor could not measure, or the app could not read what it sent. */
+    ERROR("error");
+
+    companion object {
+        /**
+         * Whatever a line claimed, as a status this app can act on.
+         *
+         * A status string from the future is [ERROR] rather than a guess. It cannot be [OK] — that
+         * would invent a measurement — and it cannot be [OUT_OF_RANGE] either, which would claim
+         * the sensor answered when nobody here knows that it did.
+         */
+        fun fromWire(value: String?): AccessoryReadingStatus =
+            entries.firstOrNull { it.wire == value } ?: ERROR
+    }
+}
+
+/**
+ * One sample from a measurement capability.
+ *
+ * [valueCm] exists **only** when [status] is [AccessoryReadingStatus.OK]; the constructor enforces
+ * it, so there is no way to hold a reading whose status and value disagree. That invariant is the
+ * whole safety property of this slice: a consumer that has a value has a measurement.
+ *
+ * [sampleTimeMs] is the accessory's own monotonic clock since its session began, never comparable
+ * to a phone timestamp. Freshness is judged on local receipt time; this field only orders samples.
+ *
+ * @parity /modules/vescape-core/ios/accessory/AccessorySession.swift `AccessoryReading`
+ * @parity /modules/vescape-core/src/index.ts `AccessoryReadingEvent`
+ */
+data class AccessoryReading(
+    val capabilityId: String,
+    val seq: Int,
+    val sampleTimeMs: Long,
+    val status: AccessoryReadingStatus,
+    val valueCm: Double?,
+) {
+    init {
+        require(status == AccessoryReadingStatus.OK || valueCm == null) {
+            "only an ok reading carries a value"
+        }
+    }
+
+    /**
+     * The same sample judged against the limits the capability declared.
+     *
+     * A number outside the declared window is reported as out of range rather than clamped into it.
+     * Clamping is how a sensor staring at nothing ends up reporting the maximum distance, which is
+     * exactly the reading that would tell the board it is safe to tilt.
+     */
+    fun withinDeclaredRange(rangeMin: Double?, rangeMax: Double?): AccessoryReading {
+        val value = valueCm ?: return this
+        if (rangeMin == null || rangeMax == null) return this
+        if (value < rangeMin || value > rangeMax) {
+            return copy(status = AccessoryReadingStatus.OUT_OF_RANGE, valueCm = null)
+        }
+        return this
+    }
+}
+
+/**
  * What one received line means to a live session.
  *
  * [Ignored] is deliberately distinct from [Malformed]: a line for another session, or of a type
@@ -144,6 +220,11 @@ sealed class AccessoryResponse {
 
     /** The accessory refused a request. Nothing partial was applied. */
     data class Failed(val requestId: Int?, val code: String) : AccessoryResponse()
+
+    /**
+     * One sample off the unacknowledged reading stream. Answers nothing and renews no lease.
+     */
+    data class Sample(val reading: AccessoryReading) : AccessoryResponse()
 
     object Ignored : AccessoryResponse()
 
@@ -190,8 +271,44 @@ sealed class AccessoryResponse {
                     Failed(wholeNumber(root.opt("requestId")), code)
                 }
 
+                "reading" -> parseReading(root)
+
                 else -> Ignored
             }
+        }
+
+        /**
+         * One sample, or [Ignored] when the envelope is not one.
+         *
+         * The envelope fields — capability, sequence, sample time — must all be there, because
+         * without them a sample cannot be ordered against its neighbours and an unorderable sample
+         * is not evidence of anything. The *status* is the opposite: whatever it says, this returns
+         * a reading, because "the sensor sent something this app cannot read" is itself information
+         * the consumer needs, and dropping it would leave the last good sample standing.
+         */
+        private fun parseReading(root: JSONObject): AccessoryResponse {
+            val capabilityId = (root.opt("capabilityId") as? String)
+                ?.takeIf { it.isNotBlank() } ?: return Ignored
+            val seq = wholeNumber(root.opt("seq")) ?: return Ignored
+            val sampleTimeMs = wholeNumber(root.opt("sampleTimeMs"))?.toLong() ?: return Ignored
+            val status = AccessoryReadingStatus.fromWire(root.opt("status") as? String)
+            // An `ok` is only an `ok` once it produced a finite number. A missing, null or
+            // non-numeric value demotes the sample to `error` — never to the top of the range.
+            val value = (root.opt("value") as? Number)?.toDouble()?.takeIf { it.isFinite() }
+            val resolved = if (status == AccessoryReadingStatus.OK && value == null) {
+                AccessoryReadingStatus.ERROR
+            } else {
+                status
+            }
+            return Sample(
+                AccessoryReading(
+                    capabilityId = capabilityId,
+                    seq = seq,
+                    sampleTimeMs = sampleTimeMs,
+                    status = resolved,
+                    valueCm = if (resolved == AccessoryReadingStatus.OK) value else null,
+                ),
+            )
         }
 
         /** One applied value as text, printing whole numbers without a decimal point. */

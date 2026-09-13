@@ -869,6 +869,53 @@ interface TelemetryDao {
   suspend fun deleteAccessory(accessoryId: String): Int
 
   /**
+   * Forgetting, with everything the rider calibrated against this Accessory.
+   *
+   * One transaction, and the calibration goes first. Deleting the identity alone would leave rows
+   * nothing can reach and nothing can clean up — and re-adding the same hardware later would find
+   * them and drive the board to numbers the rider set for a mounting position they have since
+   * changed. "Forget" means forget.
+   */
+  @Transaction
+  suspend fun forgetAccessory(accessoryId: String): Int {
+    deleteGroundClearances(accessoryId)
+    return deleteAccessory(accessoryId)
+  }
+
+  /**
+   * Adopts what the last handshake declared as the new baseline for saved settings.
+   *
+   * Separate from [revalidateAccessory] on purpose: that one deliberately preserves the baseline so
+   * the "declared limits changed" warning survives a restart. This is the other half — the rider
+   * saved a calibration that fits the *current* manifest, which is the moment the new limits stop
+   * being a change to warn about and start being the limits.
+   */
+  @Query("UPDATE accessories SET capabilities_json = :capabilitiesJson WHERE accessory_id = :accessoryId")
+  suspend fun adoptAccessoryCapabilities(accessoryId: String, capabilitiesJson: String): Int
+
+  // Ground-clearance calibration, keyed on the Accessory *and* the capability.
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `GroundClearanceStore`
+
+  @Query("SELECT * FROM accessory_ground_clearance ORDER BY accessory_id ASC, capability_id ASC")
+  suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity>
+
+  @Query(
+    "SELECT * FROM accessory_ground_clearance WHERE accessory_id = :accessoryId AND capability_id = :capabilityId LIMIT 1",
+  )
+  suspend fun getGroundClearance(accessoryId: String, capabilityId: String): AccessoryGroundClearanceEntity?
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertGroundClearance(calibration: AccessoryGroundClearanceEntity)
+
+  @Query(
+    "DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId AND capability_id = :capabilityId",
+  )
+  suspend fun deleteGroundClearance(accessoryId: String, capabilityId: String): Int
+
+  @Query("DELETE FROM accessory_ground_clearance WHERE accessory_id = :accessoryId")
+  suspend fun deleteGroundClearances(accessoryId: String): Int
+
+  /**
    * Records what the last handshake observed, for a row that still exists.
    *
    * Update-only on purpose: a handshake landing just after the rider forgot the Accessory must not

@@ -92,6 +92,104 @@ export interface AccessoryCapability {
   rangeMin: number | null
   rangeMax: number | null
   ratesHz: number[]
+  /**
+   * What the rider has saved for this capability, or null when they have not finished a setup.
+   *
+   * Rides along with the capability rather than in a list of its own: it is keyed on the capability
+   * and meaningless without it. Absent on capability types that have nothing to calibrate, and on
+   * a manifest read by `inspectAccessory`, which reads hardware rather than saved settings.
+   */
+  calibration?: GroundClearanceCalibration | null
+  /**
+   * Whether native currently has this capability measuring.
+   *
+   * The demand native actually resolved, not a restatement of what a screen asked for: a preview on
+   * a capability with no usable rate is a screen that is open and a sensor that is not measuring.
+   */
+  measuring?: boolean
+}
+
+/**
+ * Which way a mounted ground-clearance sensor corrects.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceDirection`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceDirection`
+ */
+export type GroundClearanceDirection = 'nose' | 'tail'
+
+/**
+ * Why a calibration is not one yet. Native's verdict, never re-derived here: a second definition of
+ * "valid" in JS could disagree with the one the binding actually uses.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceProblem`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceProblem`
+ */
+export type GroundClearanceProblem =
+  | 'not-a-number'
+  | 'near-not-below-far'
+  | 'unknown-direction'
+  | 'strength-out-of-bounds'
+  | 'outside-declared-range'
+
+/**
+ * What the rider calibrated for one ground-clearance capability.
+ *
+ * `farCm` is where correction starts and `nearCm` is where it is at full strength, so `near < far`
+ * always — less clearance means more correction. `problem` is re-decided against the *live* manifest
+ * on every push: a firmware that narrowed its measurement range turns a saved calibration into one
+ * that needs redoing, and this says which rule it now breaks.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceCalibration`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceCalibration`
+ */
+export interface GroundClearanceCalibration {
+  nearCm: number
+  farCm: number
+  /** Raw wire value. A direction this build does not know makes the calibration incomplete. */
+  direction: GroundClearanceDirection | (string & {})
+  strengthPercent: number
+  /** Null while this calibration still fits what the Accessory declares. */
+  problem: GroundClearanceProblem | null
+}
+
+/**
+ * What a sample says about itself. Carried, never inferred.
+ *
+ * There is no fourth case and no "unknown": a line the app cannot read as a measurement is `error`,
+ * because the alternative — quietly treating it as the far end of the range — is a board told it has
+ * all the clearance in the world at the exact moment its sensor stopped working.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySession.kt `AccessoryReadingStatus`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySession.swift `AccessoryReadingStatus`
+ */
+export type AccessoryReadingStatus = 'ok' | 'out_of_range' | 'error'
+
+/**
+ * One accepted sample, pushed while a capability's configuration screen is open.
+ *
+ * `valueCm` is non-null **only** when `status` is `ok`. Native enforces that before this crosses the
+ * bridge, so a reading with a number is a measurement and a reading without one is never a distance.
+ *
+ * `sampleTimeMs` is the accessory's own monotonic clock since its session began. It orders samples
+ * against each other and nothing else — subtracting it from a phone timestamp compares two
+ * unsynchronised clocks.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `onReading`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `onReading`
+ */
+export interface AccessoryReadingEvent {
+  accessoryId: string
+  capabilityId: string
+  seq: number
+  sampleTimeMs: number
+  status: AccessoryReadingStatus
+  valueCm: number | null
+}
+
+/** What `saveGroundClearanceCalibration` decided. `problem` says why nothing was saved. */
+export interface GroundClearanceSaveResult {
+  saved: boolean
+  problem: GroundClearanceProblem | 'unknown-capability' | 'storage-unavailable' | null
 }
 
 /**
@@ -2321,6 +2419,8 @@ type VescapeCoreEvents = {
   onAccessoryScanError: (event: AccessoryScanErrorEvent) => void
   /** Every enrolled Accessory and its native link state, on every change and on subscribe. */
   onAccessoryState: (event: AccessoryStateEvent) => void
+  /** One accepted measurement sample, only while that capability's screen asked for a preview. */
+  onAccessoryReading: (event: AccessoryReadingEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2345,6 +2445,16 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   enrollAccessory(deviceId: string): Promise<AccessoryEnrollment>
   forgetAccessory(accessoryId: string): Promise<boolean>
   getAccessories(): SavedAccessory[]
+  setAccessoryPreview(accessoryId: string, capabilityId: string, open: boolean): void
+  saveGroundClearanceCalibration(
+    accessoryId: string,
+    capabilityId: string,
+    nearCm: number,
+    farCm: number,
+    direction: string,
+    strengthPercent: number,
+  ): Promise<GroundClearanceSaveResult>
+  clearGroundClearanceCalibration(accessoryId: string, capabilityId: string): Promise<boolean>
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
@@ -2611,9 +2721,66 @@ export function enrollAccessory(deviceId: string): Promise<AccessoryEnrollment> 
   return native.enrollAccessory(deviceId)
 }
 
-/** Forget an Accessory: the saved identity goes, and its session with it. */
+/**
+ * Forget an Accessory: the saved identity goes, and its session and calibrations with it.
+ *
+ * One transaction natively, calibrations first. Re-adding the same hardware later starts from "not
+ * set up" rather than from numbers the rider set for a mounting position they have since changed.
+ */
 export function forgetAccessory(accessoryId: string): Promise<boolean> {
   return native.forgetAccessory(accessoryId)
+}
+
+/**
+ * Ask native to keep one measurement capability running while its screen is open.
+ *
+ * A request to *measure*, never to tilt. Native's arbitration takes the union of this and the rider
+ * actually riding a calibrated board; a preview alone never permits sensor-driven tilt. Closing the
+ * screen — or backgrounding the app — drops the demand, and the accessory stops its continuous
+ * measurement while keeping BLE up.
+ */
+export function setAccessoryPreview(
+  accessoryId: string,
+  capabilityId: string,
+  open: boolean,
+): void {
+  native.setAccessoryPreview(accessoryId, capabilityId, open)
+}
+
+/**
+ * Offer a ground-clearance calibration. Native saves it if it is a complete and valid one.
+ *
+ * There is no Save step for the rider: send what they have as they change it, and native answers
+ * with whether it took and, if not, which rule it broke. Validity is judged against the limits the
+ * Accessory declares right now, and a calibration that fits them is also how the rider accepts
+ * limits that moved since enrollment.
+ */
+export function saveGroundClearanceCalibration(
+  accessoryId: string,
+  capabilityId: string,
+  calibration: {
+    nearCm: number
+    farCm: number
+    direction: GroundClearanceDirection
+    strengthPercent: number
+  },
+): Promise<GroundClearanceSaveResult> {
+  return native.saveGroundClearanceCalibration(
+    accessoryId,
+    capabilityId,
+    calibration.nearCm,
+    calibration.farCm,
+    calibration.direction,
+    calibration.strengthPercent,
+  )
+}
+
+/** Drop a calibration. The binding stops driving and the screen goes back to explaining setup. */
+export function clearGroundClearanceCalibration(
+  accessoryId: string,
+  capabilityId: string,
+): Promise<boolean> {
+  return native.clearGroundClearanceCalibration(accessoryId, capabilityId)
 }
 
 /** Current saved Accessories and their link state, for a late subscriber or a foreground restore. */
@@ -3703,6 +3870,18 @@ export function addAccessoryStateListener(
   cb: (event: AccessoryStateEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onAccessoryState', cb)
+}
+
+/**
+ * Live measurement samples for whichever capabilities asked for a preview.
+ *
+ * Native only pushes while `setAccessoryPreview` is open for that capability, so subscribing without
+ * asking for measurements is silent rather than merely quiet.
+ */
+export function addAccessoryReadingListener(
+  cb: (event: AccessoryReadingEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryReading', cb)
 }
 
 export function addErrorListener(cb: (event: ErrorEvent) => void): EventSubscription {

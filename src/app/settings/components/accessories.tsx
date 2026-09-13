@@ -7,6 +7,7 @@ import { AccessorySelectorSectionShowcase } from '@/screens/showcase/accessories
 import {
   AccessoryCapabilityRowShowcase,
   AccessoryCompatibilityNoticeShowcase,
+  GroundClearanceReadoutShowcase,
 } from '@/screens/showcase/accessories/AccessoryManifestShowcase'
 import { theme } from '@/constants/theme'
 
@@ -16,11 +17,12 @@ export default function AccessoryComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={PlugsConnectedIcon}
-          description="Accessory discovery: the selector's Accessories section, compatibility verdicts, and capability rows."
+          description="Accessories: the selector's section, compatibility verdicts, capability rows, and the live ground-clearance readout."
         />
         <AccessorySelectorSectionShowcase />
         <AccessoryCompatibilityNoticeShowcase />
         <AccessoryCapabilityRowShowcase />
+        <GroundClearanceReadoutShowcase />
       </ScrollView>
     </SafeAreaView>
   )

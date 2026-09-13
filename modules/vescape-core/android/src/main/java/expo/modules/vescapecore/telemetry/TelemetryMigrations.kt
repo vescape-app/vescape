@@ -1521,6 +1521,30 @@ internal object TelemetryMigrations {
         )
     }
 
+    /**
+     * Ground-clearance calibration, keyed on the Accessory and the capability it was made for.
+     *
+     * A table rather than a column on `accessories`: one unit may declare several measurement
+     * capabilities — the eventual hardware has a nose sensor and a tail sensor on one board — and
+     * they cannot share near/far distances or a correction direction.
+     */
+    internal val MIGRATION_44_45 = migration(44, 45) { db ->
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS accessory_ground_clearance (
+            accessory_id TEXT NOT NULL,
+            capability_id TEXT NOT NULL,
+            near_cm REAL NOT NULL,
+            far_cm REAL NOT NULL,
+            direction TEXT NOT NULL,
+            strength_percent INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY(accessory_id, capability_id)
+          )
+          """.trimIndent(),
+        )
+    }
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1561,6 +1585,7 @@ internal object TelemetryMigrations {
       MIGRATION_41_42,
       MIGRATION_42_43,
       MIGRATION_43_44,
+      MIGRATION_44_45,
     )
 
 }

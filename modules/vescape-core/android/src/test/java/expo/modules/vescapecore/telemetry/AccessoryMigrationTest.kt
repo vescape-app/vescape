@@ -5,31 +5,60 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The schema edge that made Accessories durable.
+ * The schema edges that made Accessories, and the rider's calibration for them, durable.
  *
  * Pinned to the columns rather than to the SQL text: what matters is that an enrolled Accessory
- * survives a reboot keyed on its manifest identity, and that a restored database from an older
- * app reaches this shape without losing the Accessories it never had.
+ * survives a reboot keyed on its manifest identity, that what the rider calibrated for it is keyed
+ * on the capability as well, and that a restored database from an older app reaches this shape
+ * without losing the Accessories it never had.
  *
  * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createAccessories`
+ * @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createAccessoryGroundClearance`
  */
 class AccessoryMigrationTest {
-  private fun migrationSql(): List<String> {
+  private fun migrationSql(step: TelemetryMigrationStep): List<String> {
     val sql = mutableListOf<String>()
     val db = object : TelemetryMigrationDatabase {
       override fun execSQL(statement: String) { sql += statement }
       override fun hasColumn(tableName: String, columnName: String) = false
     }
-    TelemetryMigrations.MIGRATION_43_44.migrate(db)
+    step.migrate(db)
     return sql
   }
 
+  private fun migrationSql(): List<String> = migrationSql(TelemetryMigrations.MIGRATION_43_44)
+
   @Test
-  fun accessoriesAreTheCurrentTailOfTheMigrationGraph() {
-    assertEquals(44, TELEMETRY_DATABASE_VERSION)
+  fun theAccessoryEdgesAreContiguousAndCalibrationIsTheCurrentTail() {
+    assertEquals(45, TELEMETRY_DATABASE_VERSION)
     assertEquals(43, TelemetryMigrations.MIGRATION_43_44.startVersion)
-    assertEquals(TELEMETRY_DATABASE_VERSION, TelemetryMigrations.MIGRATION_43_44.endVersion)
-    assertEquals(TelemetryMigrations.all.last(), TelemetryMigrations.MIGRATION_43_44)
+    assertEquals(44, TelemetryMigrations.MIGRATION_43_44.endVersion)
+    assertEquals(44, TelemetryMigrations.MIGRATION_44_45.startVersion)
+    assertEquals(TELEMETRY_DATABASE_VERSION, TelemetryMigrations.MIGRATION_44_45.endVersion)
+    assertEquals(TelemetryMigrations.all.last(), TelemetryMigrations.MIGRATION_44_45)
+  }
+
+  @Test
+  fun aCalibrationIsKeyedOnTheAccessoryAndTheCapability() {
+    val create = migrationSql(TelemetryMigrations.MIGRATION_44_45).single()
+    // The composite key is the point: one unit may declare a nose sensor and a tail sensor, and
+    // they cannot share near/far distances or a correction direction. Keying on the Accessory alone
+    // would make the second one overwrite the first.
+    assertTrue(create, create.contains("PRIMARY KEY(accessory_id, capability_id)"))
+    for (column in listOf(
+      "accessory_id TEXT NOT NULL",
+      "capability_id TEXT NOT NULL",
+      "near_cm REAL NOT NULL",
+      "far_cm REAL NOT NULL",
+      "direction TEXT NOT NULL",
+      "strength_percent INTEGER NOT NULL",
+      "updated_at INTEGER NOT NULL",
+    )) {
+      assertTrue("missing `$column`", create.contains(column))
+    }
+    // Same reconciliation reason as the Accessories table: a database restored from iOS already
+    // holds it under the GRDB migration id.
+    assertTrue(create, create.contains("CREATE TABLE IF NOT EXISTS accessory_ground_clearance"))
   }
 
   @Test
