@@ -107,30 +107,44 @@ export const useAccessoryDiscoveryStore = create<
     deviceSub = null
     errorSub?.remove()
     errorSub = null
-    if (get().scanning) nativeStopScan()
-    set({ scanning: false })
+    // Unconditional: a scan that failed natively already cleared this store's `scanning` flag, and
+    // gating the stop on it left the native scan intent armed — on iOS that resumed a listener-less
+    // scan as soon as Bluetooth came back.
+    nativeStopScan()
+    // Sightings belong to the scan that gathered them. Keeping them would leave every accessory
+    // reading "Nearby" indefinitely, which is the one thing the row's status must not lie about.
+    set({ scanning: false, devices: [] })
   },
 
   inspect: async (deviceId) => {
+    // One handshake at a time, decided here as well as natively: a second tap would otherwise take
+    // back `inspecting` from the running one, hiding its spinner and letting its result arrive
+    // after the rider already moved on.
+    if (get().inspecting) {
+      return { deviceId, advertisedName: null, manifest: null, error: 'busy' }
+    }
     set({ inspecting: deviceId })
     // Native stops the scan for the duration of a handshake; mirror that so the UI agrees.
     if (get().scanning) set({ scanning: false })
     try {
       const result = await nativeInspect(deviceId)
       set((state) => ({
-        inspecting: null,
+        inspecting: state.inspecting === deviceId ? null : state.inspecting,
         accessories: mergeInspection(state.accessories, deviceId, result),
       }))
       return result
     } catch (error) {
-      set({ inspecting: null })
+      set((state) => ({
+        inspecting: state.inspecting === deviceId ? null : state.inspecting,
+      }))
       throw error
     }
   },
 
   cancelInspection: () => {
     nativeCancelInspection()
-    set({ inspecting: null })
+    // `inspecting` is left to the in-flight `inspect` call to clear when native answers with
+    // `cancelled`, so the two writers cannot disagree about which handshake is running.
   },
 }))
 
@@ -164,11 +178,17 @@ function mergeInspection(
   return accessories.map((a) => (a.deviceId === deviceId ? { ...a, lastError: error } : a))
 }
 
-/** What the Accessory's row should say about its link, given whatever the scan is hearing. */
+/**
+ * What the Accessory's row should say about its link, given whatever the scan is hearing.
+ *
+ * A failed handshake outranks a sighting. An accessory can advertise perfectly and still refuse to
+ * answer — saying "Nearby" then would describe the radio rather than the thing the rider cares
+ * about, which is whether Vescape can talk to it.
+ */
 export function accessoryLinkStatus(
   accessory: KnownAccessory,
   devices: DiscoveredAccessoryDevice[],
 ): AccessoryLinkStatus {
-  if (devices.some((d) => d.id === accessory.deviceId)) return 'advertising'
-  return accessory.lastError ? 'unreachable' : 'idle'
+  if (accessory.lastError) return 'unreachable'
+  return devices.some((d) => d.id === accessory.deviceId) ? 'advertising' : 'idle'
 }

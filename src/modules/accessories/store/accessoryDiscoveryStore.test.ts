@@ -108,10 +108,35 @@ test('a failed re-check marks a known accessory unreachable instead of dropping 
   const accessory = useAccessoryDiscoveryStore.getState().accessories[0]!
   expect(accessory.lastError).toBe('connect-failed')
   expect(accessoryLinkStatus(accessory, [])).toBe('unreachable')
-  // Hearing it again outranks the stale failure: the scan is the fresher fact.
+  // Still advertising and still refusing to answer is exactly the case the rider needs told: the
+  // failed handshake is the useful fact, not the radio carrier.
   expect(
     accessoryLinkStatus(accessory, [
       { id: 'AA:01', name: null, rssi: -50, lastSeenAt: Date.now() },
     ]),
-  ).toBe('advertising')
+  ).toBe('unreachable')
+})
+
+test('a second selection is refused while a handshake is running', async () => {
+  const { useAccessoryDiscoveryStore } =
+    await import('@/modules/accessories/store/accessoryDiscoveryStore')
+
+  let release: (() => void) | null = null
+  inspectAccessory.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => {
+      release = resolve
+    })
+    return { deviceId: 'AA:01', advertisedName: null, manifest: manifest(), error: null }
+  })
+
+  const first = useAccessoryDiscoveryStore.getState().inspect('AA:01')
+  const second = await useAccessoryDiscoveryStore.getState().inspect('BB:02')
+
+  expect(second.error).toBe('busy')
+  // The refused tap must not take `inspecting` away from the handshake that is still running.
+  expect(useAccessoryDiscoveryStore.getState().inspecting).toBe('AA:01')
+
+  release!()
+  await first
+  expect(useAccessoryDiscoveryStore.getState().inspecting).toBeNull()
 })

@@ -251,7 +251,11 @@ enum AccessoryProtocol {
       return nil
     }
     let unit = (entry["unit"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    let range = entry["range"] as? [String: Any]
+    var range: [String: Any]?
+    if let raw = entry["range"], !(raw is NSNull) {
+      guard let object = raw as? [String: Any] else { return nil }
+      range = object
+    }
     let rangeMin = double(range?["min"])
     let rangeMax = double(range?["max"])
 
@@ -314,8 +318,16 @@ enum AccessoryProtocol {
     return CFGetTypeID(number) == CFBooleanGetTypeID()
   }
 
+  /// A JSON number that is genuinely a whole number.
+  ///
+  /// `intValue` truncates, which would let `protocolVersion: 1.9` pass as the v1 this app speaks.
+  /// A version or request id is an integer or it is nothing.
   private static func integer(_ value: Any?) -> Int? {
     guard let number = value as? NSNumber, !isBoolean(value) else { return nil }
+    let asDouble = number.doubleValue
+    guard asDouble.isFinite, asDouble == asDouble.rounded(.down),
+      asDouble >= Double(Int32.min), asDouble <= Double(Int32.max)
+    else { return nil }
     return number.intValue
   }
 
