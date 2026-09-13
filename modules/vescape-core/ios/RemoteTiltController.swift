@@ -15,7 +15,7 @@ private let REMOTE_TILT_REPEAT_MS: Int64 = 100
 /// Cancel therefore eases at a bounded rate instead of snapping.
 ///
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RemoteTiltController.kt `REMOTE_TILT_CANCEL_FULL_RANGE_MS`
-private let REMOTE_TILT_CANCEL_FULL_RANGE_MS: Int64 = 600
+internal let REMOTE_TILT_CANCEL_FULL_RANGE_MS: Int64 = 600
 
 /// @parity /modules/vescape-core/src/index.ts `RemoteTiltPhase`
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RemoteTiltController.kt `RemoteTiltPhase`

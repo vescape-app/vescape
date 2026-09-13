@@ -2,8 +2,8 @@
 
 Design in progress. Most of this is agreed requirements, not implemented behavior.
 
-**Implemented so far**: discovery, enrollment, the reconnecting session, and the ground-clearance
-reading and calibration path.
+**Implemented so far**: discovery, enrollment, the reconnecting session, the ground-clearance reading
+and calibration path, and the Remote Tilt binding that acts on it.
 
 Scanning matches the Vescape Accessory service UUID rather than a name; connecting reads the
 manifest and reports identity, firmware version, protocol compatibility and capability types.
@@ -24,10 +24,17 @@ direction and strength save automatically once they are complete and valid; ther
 What is saved is durable, keyed on the accessory id plus the capability id, and re-validated against
 the manifest on every session.
 
-**Not implemented**: tilt bindings and brake-light behavior. A brake-light capability's session
-still holds the protocol's neutral state — the light is told Board telemetry is unavailable — which
-is what the light's own slice replaces. Ground-clearance samples are read, validated and arbitrated
-natively, but nothing yet consumes the resulting tilt input.
+A calibrated sensor commands Remote Tilt on its own, natively, with no arming step and no JS in the
+loop. Correction is linear between the calibrated far and near distances, clamped at both ends, and
+signed by the mounting direction. While a configured sensor is connected the tilt pad becomes a
+read-only indicator of the commanded tilt. Everything that can go wrong releases the input through
+the pad's existing smooth return — a missing, stale, out-of-range or erroring reading, a dropped
+accessory session, and equally an untrusted or silent Board. See
+[remote-tilt.md](./remote-tilt.md#command-ownership) for who owns the Board's one remote-input slot.
+
+**Not implemented**: brake-light behavior. A brake-light capability's session still holds the
+protocol's neutral state — the light is told Board telemetry is unavailable — which is what the
+light's own slice replaces.
 
 ## Initial scope
 

@@ -10,6 +10,7 @@ export function RemoteTiltPadShowcase() {
   const [received, setReceived] = useState({ value: 128, count: 0 })
   const [slow, setSlow] = useState(true)
   const [connected, setConnected] = useState(true)
+  const [sensorBound, setSensorBound] = useState(false)
   const native = useMemo(() => {
     let state: RemoteTiltState | null = null
     let startedAt = 0
@@ -68,13 +69,29 @@ export function RemoteTiltPadShowcase() {
         <>
           <ToggleRow label="450ms command latency" value={slow} onToggle={setSlow} />
           <ToggleRow label="connected" value={connected} onToggle={setConnected} />
+          <ToggleRow
+            label="ground-clearance sensor bound (read-only)"
+            value={sensorBound}
+            onToggle={setSensorBound}
+          />
         </>
       }
     >
       <Text>
         Simulated native received: {received.value}, {received.count} drag commands
       </Text>
-      <RemoteTiltPad key={String(slow)} {...native} connected={connected} disabled={!connected} />
+      <RemoteTiltPad
+        key={String(slow)}
+        {...native}
+        connected={connected}
+        // A bound pad is never dimmed: it is an indicator of a tilt the rider is standing on.
+        disabled={!connected && !sensorBound}
+        readOnly={sensorBound}
+        readOnlyLabel="Ground clearance sensor is controlling tilt."
+      />
+      {sensorBound ? (
+        <Text>Drag is disabled and Cancel is replaced by the owner caption.</Text>
+      ) : null}
     </ShowcaseCard>
   )
 }

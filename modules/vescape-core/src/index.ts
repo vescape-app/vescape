@@ -153,6 +153,52 @@ export interface GroundClearanceCalibration {
 }
 
 /**
+ * Why the ground-clearance binding is not commanding tilt.
+ *
+ * Carried rather than collapsed to a bare "off" because these are nothing alike to explain: a rider
+ * who has not calibrated, a sensor that is erroring, a Board whose link stopped being trusted and a
+ * pair of sensors that cancel each other out all read as the same absent number and need four
+ * different sentences.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceRelease`
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceRelease`
+ */
+export type GroundClearanceRelease =
+  | 'not-riding'
+  | 'no-link'
+  | 'not-calibrated'
+  | 'stale'
+  | 'out-of-range'
+  | 'sensor-error'
+  | 'board-untrusted'
+  | 'board-stale'
+  | 'contested'
+  | 'board-move'
+  | 'manual-tilt'
+
+/**
+ * What the ground-clearance Remote Tilt binding is doing, as native decided it.
+ *
+ * `bound` is what makes the tilt pad a read-only indicator: a configured Accessory is connected, so
+ * manual input is not this Board's input method any more. It is deliberately independent of
+ * `driving` — a binding waiting for the rider to set off is still the thing that owns the pad.
+ *
+ * Nothing here is a request. JS renders it; native decided it and will keep deciding it with the
+ * screen closed, the app backgrounded, or the JS runtime dead.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groundClearanceTiltState`
+ * @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `groundClearanceTiltState`
+ */
+export interface GroundClearanceTiltState {
+  /** A configured ground-clearance Accessory is connected. The manual pad is read-only. */
+  bound: boolean
+  /** The binding is commanding tilt right now. */
+  driving: boolean
+  /** Why it is not, or `null` while it is. */
+  release: GroundClearanceRelease | null
+}
+
+/**
  * What a sample says about itself. Carried, never inferred.
  *
  * There is no fourth case and no "unknown": a line the app cannot read as a measurement is `error`,
@@ -834,6 +880,19 @@ export type ScanPhase = ScanStatus
  */
 export type RemoteTiltPhase = 'idle' | 'holding' | 'decaying' | 'locked'
 
+/**
+ * Who asked for the tilt the Board is currently holding.
+ *
+ * Refloat has one temporary remote input and three things want it — the pad, Board Move, and a
+ * ground-clearance Accessory — so native arbitrates and reports the winner. The pad renders the same
+ * stream either way, but "the Board is holding a tilt you did not command" is not the same sentence
+ * as "the Board is holding yours".
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/RemoteInputArbiter.kt `RemoteInputOwner`
+ * @parity /modules/vescape-core/ios/RemoteInputArbiter.swift `RemoteInputOwner`
+ */
+export type RemoteTiltOwner = 'none' | 'manual' | 'sensor' | 'move'
+
 export interface RemoteTiltDecay {
   elapsedMs: number
   totalMs: number
@@ -843,6 +902,8 @@ export interface RemoteTiltDecay {
 export interface RemoteTiltState {
   value: number
   phase: Exclude<RemoteTiltPhase, 'idle'>
+  /** Who commanded it. `move` never appears here — Board Move does not stream a tilt. */
+  owner?: RemoteTiltOwner
   /** Present only while native is executing a release decay. */
   decay?: RemoteTiltDecay
 }
@@ -2527,6 +2588,7 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   clearDeviceCredential(): void
   openAppUpdate(): void
   getRemoteTiltState(): Promise<RemoteTiltState | null>
+  getGroundClearanceTilt(): Promise<GroundClearanceTiltState>
   setSelectedBoard(boardId: string | null): void
   setCompanionPresenceEnabled(enabled: boolean): Promise<void>
   getCompanionPresenceBoards(): Promise<CompanionPresenceBoard[]>
@@ -3191,6 +3253,21 @@ export function openAppUpdate(): void {
 export async function getRemoteTiltState(): Promise<RemoteTiltState | null> {
   if (E2E_ENABLED) return null
   return native.getRemoteTiltState()
+}
+
+/**
+ * What the ground-clearance Remote Tilt binding is doing.
+ *
+ * Polled rather than pushed: the only consumer is the tilt pad, which already reads the commanded
+ * tilt on its own interval, and a 10 Hz event carrying a release reason that mostly does not change
+ * would be bridge traffic for nothing.
+ *
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getGroundClearanceTilt`
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getGroundClearanceTilt`
+ */
+export async function getGroundClearanceTilt(): Promise<GroundClearanceTiltState> {
+  if (E2E_ENABLED) return { bound: false, driving: false, release: null }
+  return native.getGroundClearanceTilt()
 }
 
 /** Persist native auto-connect target. Native can use this while JS is frozen. */

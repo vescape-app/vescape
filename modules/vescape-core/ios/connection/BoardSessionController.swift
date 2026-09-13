@@ -154,6 +154,16 @@ internal final class BoardSessionController: VescGattListener {
     },
     scheduler: scheduler
   )
+
+  /// The single writer of the Board's remote-input slot: the rider's pad, Board Move, and a
+  /// ground-clearance Accessory all reach the two controllers above only through this.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `remoteInput`
+  private lazy var remoteInput = RemoteInputArbiter(
+    tilt: remoteTiltController,
+    move: boardMoveController,
+    nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+  )
   /// The clock this session stamps and compares its data against. Wall time for every real session;
   /// a replay swaps in its own for the session's lifetime so a warmed-up playback writes a timeline
   /// that agrees with itself. Never read directly — go through `nowMs()`.
@@ -545,11 +555,122 @@ internal final class BoardSessionController: VescGattListener {
     var wire: [String: Any?] = [
       "value": remoteTiltController.currentValue,
       "phase": phase.wireValue,
+      // Who asked for this tilt. The pad renders the same stream either way, but "the board is
+      // holding a tilt you did not command" and "the board is holding yours" are not the same
+      // sentence to read while standing on it.
+      "owner": remoteInput.owner.wire,
     ]
     if let decay = remoteTiltController.decayProgress {
       wire["decay"] = ["elapsedMs": decay.elapsedMs, "totalMs": decay.totalMs]
     }
     return wire
+  }
+
+
+  // MARK: - Ground-clearance tilt
+
+  /// How often the ground-clearance binding re-decides what the Board is told.
+  ///
+  /// The same 100 ms `RemoteTiltController` repeats a held value on, so a decision never sits unsent
+  /// for longer than the stream it feeds. It is a *timer*, not a reaction to samples, and that is the
+  /// point: a sensor that stops sending produces no events to react to, and releasing on silence is
+  /// the behaviour this whole slice exists for.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groundClearanceTickMs`
+  private let groundClearanceTickMs: Int64 = 100
+
+  private var groundClearanceTick: Cancellable?
+
+  /// Whether a configured ground-clearance Accessory is connected; makes the pad read-only.
+  private var groundClearanceBound = false
+
+  /// Why the binding is not commanding, or `nil` while it is.
+  private var groundClearanceRelease: GroundClearanceRelease? = .notCalibrated
+
+  private func startGroundClearanceTilt(session: BoardSession) {
+    guard groundClearanceTick == nil else { return }
+    scheduleGroundClearanceTilt(session: session)
+  }
+
+  private func scheduleGroundClearanceTilt(session: BoardSession) {
+    groundClearanceTick = scheduler.postDelayedForSession(
+      session,
+      delayMs: groundClearanceTickMs,
+      isCurrent: { [weak self] in $0 === self?.session }
+    ) { [weak self] session in
+      guard let self else { return }
+      self.onGroundClearanceTick()
+      self.scheduleGroundClearanceTilt(session: session)
+    }
+  }
+
+  /// Stops the binding and lets go of anything it was commanding.
+  ///
+  /// The release happens here rather than being left to the next tick, because the next tick is the
+  /// thing being cancelled. A binding whose timer was stopped while it held a tilt would leave the
+  /// Board holding that tilt until the firmware's own ~1s remote-input timeout.
+  private func stopGroundClearanceTilt() {
+    groundClearanceTick?.cancel()
+    groundClearanceTick = nil
+    _ = remoteInput.sensorRelease()
+    groundClearanceBound = false
+    groundClearanceRelease = .boardUntrusted
+  }
+
+  /// What the binding may do right now, Board side first.
+  ///
+  /// #478 decided everything about the *sensor* — calibration, freshness, range, riding — and
+  /// deliberately judged nothing about the Board. This is that half. It comes first because the
+  /// Accessory's reasons all presuppose a Board this app is entitled to command, and an untrusted or
+  /// silent Board is not one: `linkIntegrity` is how this app knows it is still talking to Refloat on
+  /// the Board it thinks, and telemetry freshness is how it knows the engagement the binding is
+  /// riding on is not a memory.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groundClearanceTiltInput`
+  private func groundClearanceTiltInput() -> GroundClearanceInput {
+    guard firmwareCommandsTrusted() else { return .release(reason: .boardUntrusted) }
+    guard latestTelemetry != nil, !isTelemetryStale() else { return .release(reason: .boardStale) }
+    switch remoteInput.owner {
+    case .move: return .release(reason: .boardMove)
+    case .manual: return .release(reason: .manualTilt)
+    case .none, .sensor: return AccessorySessionController.shared.groundClearanceTilt()
+    }
+  }
+
+  private func onGroundClearanceTick() {
+    let bound = AccessorySessionController.shared.groundClearanceBound()
+    // Arming takes the pad away from the rider, so it also takes back what the pad was holding. A
+    // locked manual tilt never ends on its own and would hold the slot against the binding for the
+    // rest of the session.
+    if bound && !groundClearanceBound { _ = remoteInput.releaseManual() }
+    groundClearanceBound = bound
+
+    switch groundClearanceTiltInput() {
+    case .drive(let tiltInput, _):
+      let commanded = remoteInput.sensorDrive(GroundClearance.tiltCommand(tiltInput: tiltInput))
+      // A refusal this late means the transport went away between the trust check and the write,
+      // which is the same thing the rider is told about an untrusted Board.
+      groundClearanceRelease = commanded ? nil : .boardUntrusted
+    case .release(let reason):
+      _ = remoteInput.sensorRelease()
+      groundClearanceRelease = reason
+    }
+  }
+
+  /// What the binding is doing, for the Remote Tilt pad to render.
+  ///
+  /// Read synchronously off the bridge by the pad's own poll rather than pushed as live state: the
+  /// only consumer is a screen that is already polling the commanded tilt at the same rate, and a
+  /// 10 Hz event carrying a release reason that mostly does not change would be pure bridge traffic.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `groundClearanceTiltState`
+  /// @parity /modules/vescape-core/src/index.ts `GroundClearanceTiltState`
+  func groundClearanceTiltState() -> [String: Any?] {
+    [
+      "bound": groundClearanceBound,
+      "driving": remoteInput.owner == .sensor,
+      "release": groundClearanceRelease?.rawValue,
+    ]
   }
 
   /// The board's lights as its last echo reported them, or `nil` while this session has never heard
@@ -638,17 +759,17 @@ internal final class BoardSessionController: VescGattListener {
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `setRemoteTilt`
   func setRemoteTilt(value: Int) -> Bool {
-    firmwareCommandsTrusted() && remoteTiltController.hold(value)
+    firmwareCommandsTrusted() && remoteInput.manualHold(value)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `lockRemoteTilt`
   func lockRemoteTilt(value: Int) -> Bool {
-    firmwareCommandsTrusted() && remoteTiltController.lock(value)
+    firmwareCommandsTrusted() && remoteInput.manualLock(value)
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `releaseRemoteTilt`
   func releaseRemoteTilt(value: Int, durationMs: Int64) -> Bool {
-    firmwareCommandsTrusted() && remoteTiltController.release(value, durationMs: durationMs)
+    firmwareCommandsTrusted() && remoteInput.manualRelease(value, durationMs: durationMs)
   }
 
   /// Eases the active tilt back to neutral rather than snapping — a step to neutral from a large
@@ -657,19 +778,21 @@ internal final class BoardSessionController: VescGattListener {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopRemoteTilt`
   // Cancellation must remain available if link trust changes during an active tilt.
   func stopRemoteTilt() -> Bool {
-    remoteTiltController.cancel()
+    remoteInput.cancelTilt()
   }
 
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `startBoardMove`
+  /// Board Move takes the remote-input slot from any tilt stream still holding it, and is refused
+  /// outright while a sensor is correcting — see `RemoteInputArbiter.startMove`.
   func startBoardMove(input: Int) -> Bool {
-    boardMoveController.hold(input)
+    remoteInput.startMove(input)
   }
 
   /// Deliberately ungated: a stop must reach the board even if the link lost trust mid-hold,
   /// otherwise the rider's release does nothing and the board coasts to the firmware timeout.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `stopBoardMove`
   func stopBoardMove() -> Bool {
-    boardMoveController.stop()
+    remoteInput.stopMove()
   }
 
   private func firmwareCommandsTrusted() -> Bool {
@@ -1336,8 +1459,8 @@ internal final class BoardSessionController: VescGattListener {
     // Nothing left to resurrect: drop the trapdoor so the next cold start stays BLE-free (ADR 0034).
     SessionResumeStore.shared.clear()
     clearPendingResume()
-    boardMoveController.stop()
-    _ = remoteTiltController.stop()
+    stopGroundClearanceTilt()
+    remoteInput.reset()
     // Final write so the persisted last battery is fresh, not up to 30s stale (runs before config clears).
     persistLastBattery(percent: latestBatterySoc, voltage: latestBatteryVoltage, now: nowMs(), force: true)
     latestBatterySoc = nil
@@ -2734,11 +2857,16 @@ internal final class BoardSessionController: VescGattListener {
       bmsPayload: config?.hasBms == true ? bmsPayload() : nil,
       pollIntervalMs: effectivePollIntervalMs()
     )
+    startGroundClearanceTilt(session: session)
   }
 
   private func stopPolling() {
     polling = false
     pollingLoop.stop()
+    // The binding reads riding off telemetry, so a Board that stopped being polled is a Board that
+    // stopped being evidence. The tick is what releases the tilt, so it outlives the poll loop by
+    // exactly one pass: `stopGroundClearanceTilt` cancels before the timer dies.
+    stopGroundClearanceTilt()
     // No telemetry means no evidence of riding. An Accessory left measuring on the strength of the
     // last sample before the Board went away would keep its sensor running indefinitely.
     AccessorySessionController.shared.setRiding(false)

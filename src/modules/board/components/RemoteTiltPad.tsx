@@ -47,6 +47,16 @@ function xFractionForTilt(percent: number) {
 interface RemoteTiltPadProps {
   disabled?: boolean
   connected?: boolean
+  /**
+   * The pad is an indicator, not a control: something else owns the tilt channel.
+   *
+   * Distinct from `disabled`, which means "nothing can command tilt right now" and dims the pad.
+   * A read-only pad is fully legible on purpose — it is showing a live commanded tilt the rider is
+   * standing on, and that is the moment to be readable rather than greyed out.
+   */
+  readOnly?: boolean
+  /** One line under a read-only pad saying who owns it and what it is doing. */
+  readOnlyLabel?: string
   readState: () => Promise<RemoteTiltState | null>
   onChange: (value: number) => Promise<boolean>
   onRelease: (value: number, durationMs: number) => Promise<boolean>
@@ -58,6 +68,8 @@ interface RemoteTiltPadProps {
 export function RemoteTiltPad({
   disabled = false,
   connected = true,
+  readOnly = false,
+  readOnlyLabel,
   readState,
   onChange,
   onRelease,
@@ -191,8 +203,8 @@ export function RemoteTiltPad({
       tracking.value = false
       owner.invalidate()
       apply(idleTiltPresentation)
-    } else if (disabled && tracking.value) cancel()
-  }, [apply, cancel, commands, connected, disabled, owner, tracking])
+    } else if ((disabled || readOnly) && tracking.value) cancel()
+  }, [apply, cancel, commands, connected, disabled, owner, readOnly, tracking])
 
   // Gesture samples stay on UI. Only the newest changed command crosses to JS at 10 Hz.
   useFrameCallback(({ timestamp }) => {
@@ -207,7 +219,7 @@ export function RemoteTiltPad({
   const gesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!disabled)
+        .enabled(!disabled && !readOnly)
         .minDistance(0)
         .onStart((event) => {
           tracking.value = true
@@ -238,6 +250,7 @@ export function RemoteTiltPad({
     [
       begin,
       disabled,
+      readOnly,
       fingerX,
       fingerY,
       finish,
@@ -370,15 +383,19 @@ export function RemoteTiltPad({
         />
       </Canvas>
       {error ? <Text accessibilityRole="alert">{error}</Text> : null}
-      <View style={styles.cancelRow}>
-        <Button
-          label="Cancel tilt"
-          onPress={cancel}
-          disabled={!active}
-          variant="destructive"
-          size="sm"
-        />
-      </View>
+      {readOnly ? (
+        <Text style={styles.readOnlyNote}>{readOnlyLabel ?? 'Sensor controlled'}</Text>
+      ) : (
+        <View style={styles.cancelRow}>
+          <Button
+            label="Cancel tilt"
+            onPress={cancel}
+            disabled={!active}
+            variant="destructive"
+            size="sm"
+          />
+        </View>
+      )}
     </View>
   )
 }
@@ -492,5 +509,11 @@ const styles = StyleSheet.create({
   cancelRow: {
     alignItems: 'center',
     marginTop: 8,
+  },
+  readOnlyNote: {
+    marginTop: 8,
+    textAlign: 'center',
+    color: theme.neutral.textSecondary,
+    fontSize: 12,
   },
 })

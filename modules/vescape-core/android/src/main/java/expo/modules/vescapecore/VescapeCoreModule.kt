@@ -627,6 +627,11 @@ class VescapeCoreModule : Module() {
         Log.w(TAG, "Cannot open the download route: ${e.message}")
       }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getGroundClearanceTilt`
+    // @parity /modules/vescape-core/src/index.ts `getGroundClearanceTilt`
+    AsyncFunction("getGroundClearanceTilt") {
+      CoreForegroundService.currentGroundClearanceTilt()
+    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRemoteTiltState`
     // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
     AsyncFunction("getRemoteTiltState") {

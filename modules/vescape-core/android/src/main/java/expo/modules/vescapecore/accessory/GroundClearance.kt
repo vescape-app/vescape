@@ -1,6 +1,8 @@
 package expo.modules.vescapecore.accessory
 
+import expo.modules.vescapecore.protocol.REMOTE_TILT_CENTER
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 /**
@@ -36,6 +38,23 @@ object GroundClearance {
     fun staleAfterMs(rateHz: Double): Long {
         if (!rateHz.isFinite() || rateHz <= 0.0) return MISSING_STREAM_FLOOR_MS
         return max(MISSING_STREAM_FLOOR_MS, (3_000.0 / rateHz).roundToLong())
+    }
+
+    /**
+     * The Refloat remote-input byte one signed correction asks for.
+     *
+     * The scale is the pad's: 128 is neutral and 255 is full nose-up, so a correction of 1.0 is the
+     * same command a rider dragging the pad to its right edge would send. Defined here rather than
+     * at the call site because both platforms and the tests have to agree on it byte for byte.
+     *
+     * A non-finite input is neutral, not a clamp to an extreme. Nothing should be able to produce
+     * one — [GroundClearanceCalibration.tiltInput] returns 0.0 for a non-finite distance — but the
+     * one place that decides what a board is told is not where to find out.
+     */
+    fun tiltCommand(tiltInput: Double): Int {
+        if (!tiltInput.isFinite()) return REMOTE_TILT_CENTER
+        val span = 255 - REMOTE_TILT_CENTER
+        return (REMOTE_TILT_CENTER + tiltInput.coerceIn(-1.0, 1.0) * span).roundToInt().coerceIn(0, 255)
     }
 }
 
@@ -172,6 +191,44 @@ enum class GroundClearanceProblem(val wire: String) {
 enum class GroundClearanceRelease(val wire: String) {
     /** Sensor-driven tilt is for riding. A parked board is not corrected. */
     NOT_RIDING("not-riding"),
+
+    /**
+     * The Board is not connected, or its link is not Trusted.
+     *
+     * Decided by the Board Session, not here: this file knows what the sensor is saying and nothing
+     * about whether the thing on the other end is the Board the rider thinks it is.
+     */
+    BOARD_UNTRUSTED("board-untrusted"),
+
+    /**
+     * The Board is connected but has stopped answering.
+     *
+     * Riding is read off telemetry, so telemetry that stopped is evidence that has stopped being
+     * evidence. Holding the last engaged frame's worth of permission would let a sensor keep tilting
+     * a Board nobody can hear.
+     */
+    BOARD_STALE("board-stale"),
+
+    /**
+     * More than one calibrated ground-clearance capability wants the tilt channel.
+     *
+     * The PoC deliberately has no arbitration between a nose sensor and a tail sensor, and picking
+     * one of them arbitrarily would be picking a correction direction arbitrarily. Two claimants is
+     * a configuration the rider has to resolve, not one this app guesses its way through.
+     */
+    CONTESTED("contested"),
+
+    /** Board Move holds the remote-input slot. Both cannot write it, and a jog is the parked one. */
+    BOARD_MOVE("board-move"),
+
+    /**
+     * A rider-commanded tilt still holds the slot.
+     *
+     * Only reachable in the moment a binding arms under a tilt that was started before it: the pad
+     * refuses new manual input for as long as a binding is bound, and the arming itself cancels
+     * whatever was held. It is named because an unexplained silent second is worse than a sentence.
+     */
+    MANUAL_TILT("manual-tilt"),
 
     /** No session, or a session that is not acknowledging commands. */
     NO_LINK("no-link"),

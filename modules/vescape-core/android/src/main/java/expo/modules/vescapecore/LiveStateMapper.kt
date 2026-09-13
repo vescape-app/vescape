@@ -29,6 +29,7 @@ internal data class VescLiveStateSnapshot(
     val remoteTiltValue: Int,
     val remoteTiltPhase: RemoteTiltPhase,
     val remoteTiltDecay: RemoteTiltDecayProgress?,
+    val remoteTiltOwner: RemoteInputOwner,
     val linkIntegrity: LinkIntegrity,
     val settings: AppSettings,
 )
@@ -40,11 +41,16 @@ internal fun remoteTiltWire(
     value: Int,
     phase: RemoteTiltPhase,
     decay: RemoteTiltDecayProgress?,
+    owner: RemoteInputOwner,
 ): Map<String, Any?>? {
     if (phase == RemoteTiltPhase.Idle) return null
     return buildMap {
         put("value", value)
         put("phase", phase.wireValue)
+        // Who asked for this tilt. The pad renders the same stream either way, but "the board is
+        // holding a tilt you did not command" and "the board is holding yours" are not the same
+        // sentence to read while standing on it.
+        put("owner", owner.wire)
         if (decay != null) {
             put("decay", mapOf("elapsedMs" to decay.elapsedMs, "totalMs" to decay.totalMs))
         }
@@ -69,6 +75,7 @@ internal fun buildLiveState(snapshot: VescLiveStateSnapshot): Map<String, Any?> 
                 snapshot.remoteTiltValue,
                 snapshot.remoteTiltPhase,
                 snapshot.remoteTiltDecay,
+                snapshot.remoteTiltOwner,
             ),
         ),
         "gps" to mapOf(

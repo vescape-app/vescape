@@ -565,6 +565,51 @@ public final class AccessorySessionController: NSObject {
       linkConnected: link?.phase == .connected)
   }
 
+  /// Every ground-clearance capability that is set up and answering right now.
+  ///
+  /// "Set up and answering" is the whole definition of a bound binding: a saved calibration that
+  /// still fits the live manifest, on a session that is connected. It says nothing about riding —
+  /// that is `GroundClearanceRuntime.input`'s question, and keeping the two apart is what lets the
+  /// pad go read-only the moment the Accessory is there rather than only once the rider sets off.
+  ///
+  /// Main queue only, like everything else that touches `clearance` and `links`. The Board Session's
+  /// tick runs there too.
+  private func boundCapabilities() -> [CapabilityKey] {
+    clearance
+      .filter { key, state in state.isCalibrated && links[key.accessoryId]?.phase == .connected }
+      .map { key, _ in key }
+  }
+
+  /// Whether a configured ground-clearance Accessory is connected.
+  ///
+  /// What makes the Remote Tilt pad a read-only indicator. Deliberately true even when the bindings
+  /// are `GroundClearanceRelease.contested` and none of them is driving: a rider whose two sensors
+  /// cancel each other out must not silently get their manual pad back, because the pad is not what
+  /// this board is configured for.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `groundClearanceBound`
+  func groundClearanceBound() -> Bool { !boundCapabilities().isEmpty }
+
+  /// The single ground-clearance input a Remote Tilt binding may act on, across every Accessory.
+  ///
+  /// v1 binds to whichever Board is connected and has no arbitration between a nose sensor and a
+  /// tail sensor — the eventual hardware has both. Two claimants therefore release rather than
+  /// resolve: choosing one of them would be choosing a correction *direction* on the rider's behalf,
+  /// and the wrong choice tilts the board the wrong way.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `groundClearanceTilt`
+  func groundClearanceTilt() -> GroundClearanceInput {
+    let bound = boundCapabilities()
+    if bound.count > 1 { return .release(reason: .contested) }
+    guard let key = bound.first else {
+      // A calibration with no session behind it is a link problem, not a setup problem, and the two
+      // read very differently to someone holding the accessory.
+      return .release(
+        reason: clearance.values.contains(where: { $0.isCalibrated }) ? .noLink : .notCalibrated)
+    }
+    return groundClearanceInput(accessoryId: key.accessoryId, capabilityId: key.capabilityId)
+  }
+
   /// One sample off an Accessory's reading stream.
   ///
   /// Range-checked against the limits the *live* manifest declares before anything else sees it, so

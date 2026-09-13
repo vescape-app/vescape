@@ -146,6 +146,50 @@ Saving a calibration that fits the current manifest is also how the rider accept
 that moved since enrollment — it rewrites the frozen `capabilities_json` baseline and clears
 `capabilitiesChanged`.
 
+## Ground-clearance tilt
+
+The binding that turns those readings into Remote Tilt is entirely native: a 100 ms timer inside the
+Board Session, not a reaction to samples. A sensor that stops sending produces no events to react to,
+and releasing on silence is the whole point.
+
+| fn                         | sync  | returns                                |
+| -------------------------- | ----- | -------------------------------------- |
+| `getGroundClearanceTilt()` | async | `GroundClearanceTiltState` — see below |
+
+```ts
+{
+  bound: boolean // a configured ground-clearance Accessory is connected → the tilt pad is read-only
+  driving: boolean // the binding is commanding tilt right now
+  release: GroundClearanceRelease | null // why it is not, or null while it is
+}
+```
+
+Polled, not pushed: the only consumer is the tilt pad, which already reads the commanded tilt on its
+own interval. `bound` is independent of `driving` — a binding waiting for the rider to set off still
+owns the pad, because manual input is not this Board's input method any more.
+
+`release` is the full list of ways the binding lets go. The first six are the Accessory's own,
+decided by the capability runtime; the last five are the Board Session's, and did not exist before
+sensor readings could command tilt:
+
+| release           | means                                                                |
+| ----------------- | -------------------------------------------------------------------- |
+| `not-riding`      | The Board is not engaged. A parked Board is not corrected.           |
+| `no-link`         | No Accessory session, or one not acknowledging commands.             |
+| `not-calibrated`  | Nothing saved, or what is saved no longer fits the declared limits.  |
+| `stale`           | Samples stopped arriving inside the acked rate's window.             |
+| `out-of-range`    | The sensor answered, and the answer is not a distance.               |
+| `sensor-error`    | The sensor could not measure, or sent something unreadable.          |
+| `board-untrusted` | The Board is not connected, or its Board Link is not Trusted.        |
+| `board-stale`     | The Board is connected but has stopped answering.                    |
+| `contested`       | More than one calibrated ground-clearance capability wants the slot. |
+| `board-move`      | Board Move holds the remote-input slot.                              |
+| `manual-tilt`     | A rider-commanded tilt still holds the slot while the binding arms.  |
+
+Every path that writes the Board's one remote-input slot — the pad, Board Move, and the sensor — goes
+through a single native arbiter. `remoteTilt.owner` on the live state and on `getRemoteTiltState()`
+names the winner (`none | manual | sensor | move`). See [remote-tilt.md](./remote-tilt.md).
+
 ## Location
 
 | fn                       | sync | returns                                                |

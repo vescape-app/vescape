@@ -648,6 +648,62 @@ object AccessorySessionManager {
     }
 
     /**
+     * Every ground-clearance capability that is set up and answering right now.
+     *
+     * "Set up and answering" is the whole definition of a bound binding: a saved calibration that
+     * still fits the live manifest, on a session that is connected. It says nothing about riding —
+     * that is [GroundClearanceRuntime.input]'s question, and keeping the two apart is what lets the
+     * pad go read-only the moment the Accessory is there rather than only once the rider sets off.
+     *
+     * Main looper only, like everything else that touches [clearance] and [links]. The Board
+     * Session's tick runs there too.
+     */
+    private fun boundCapabilities(): List<CapabilityKey> =
+        clearance.entries
+            .filter { (key, state) ->
+                state.isCalibrated && links[key.accessoryId]?.phase == AccessoryLinkPhase.CONNECTED
+            }
+            .map { it.key }
+
+    /**
+     * Whether a configured ground-clearance Accessory is connected.
+     *
+     * What makes the Remote Tilt pad a read-only indicator. Deliberately true even when the bindings
+     * are [GroundClearanceRelease.CONTESTED] and none of them is driving: a rider whose two sensors
+     * cancel each other out must not silently get their manual pad back, because the pad is not what
+     * this board is configured for.
+     *
+     * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceBound`
+     */
+    fun groundClearanceBound(): Boolean = boundCapabilities().isNotEmpty()
+
+    /**
+     * The single ground-clearance input a Remote Tilt binding may act on, across every Accessory.
+     *
+     * v1 binds to whichever Board is connected and has no arbitration between a nose sensor and a
+     * tail sensor — the eventual hardware has both. Two claimants therefore release rather than
+     * resolve: choosing one of them would be choosing a correction *direction* on the rider's behalf,
+     * and the wrong choice tilts the board the wrong way.
+     *
+     * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceTilt`
+     */
+    fun groundClearanceTilt(): GroundClearanceInput {
+        val bound = boundCapabilities()
+        if (bound.size > 1) return GroundClearanceInput.Release(GroundClearanceRelease.CONTESTED)
+        val key = bound.firstOrNull()
+            ?: return GroundClearanceInput.Release(
+                // A calibration with no session behind it is a link problem, not a setup problem,
+                // and the two read very differently to someone holding the accessory.
+                if (clearance.values.any { it.isCalibrated }) {
+                    GroundClearanceRelease.NO_LINK
+                } else {
+                    GroundClearanceRelease.NOT_CALIBRATED
+                },
+            )
+        return groundClearanceInput(key.accessoryId, key.capabilityId)
+    }
+
+    /**
      * One sample off an Accessory's reading stream.
      *
      * Range-checked against the limits the *live* manifest declares before anything else sees it, so

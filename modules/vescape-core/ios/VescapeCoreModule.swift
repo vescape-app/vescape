@@ -574,6 +574,11 @@ public class VescapeCoreModule: Module {
       self.liveState()
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getGroundClearanceTilt`
+    // @parity /modules/vescape-core/src/index.ts `getGroundClearanceTilt`
+    AsyncFunction("getGroundClearanceTilt") { () -> [String: Any?] in
+      self.coordinator.groundClearanceTiltState()
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `getRemoteTiltState`
     // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
     AsyncFunction("getRemoteTiltState") { () -> [String: Any?]? in

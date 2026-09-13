@@ -496,6 +496,14 @@ class CoreForegroundService : Service() {
 
         fun currentRemoteTiltState(): Map<String, Any?>? = instance?.controller?.remoteTiltState()
 
+        /**
+         * What the ground-clearance binding is doing, or an unbound state while no Board Session is
+         * up — with no Board there is no tilt channel for a sensor to hold.
+         */
+        fun currentGroundClearanceTilt(): Map<String, Any?> =
+            instance?.controller?.groundClearanceTiltState()
+                ?: mapOf("bound" to false, "driving" to false, "release" to null)
+
         /** Live rider position for Navigation; null while the service is not up. */
         fun currentRiderPosition(): LocationSnapshot? = instance?.controller?.riderPosition()
 
