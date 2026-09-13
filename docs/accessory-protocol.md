@@ -10,7 +10,7 @@ missing-stream timeout. `brake_light` state is still held at its neutral value b
 
 The implemented half has an executable form: `shared/fixtures/accessory-protocol/` holds the
 framing, handshake and session corpus that Android Kotlin, iOS Swift and the ESP32 firmware all run
-(`bun run test:android`, `bun run test:ios`, and `pio test -e native` in `vescape-hardware`). Change
+(`bun run test:android`, `bun run test:ios`, and `pio test -e native` in `vescape-accessory-firmware`). Change
 the fixtures first; three implementations of one wire format drift silently otherwise.
 
 `session.json` pins four things the prose below only describes: the exact bytes of every command the
