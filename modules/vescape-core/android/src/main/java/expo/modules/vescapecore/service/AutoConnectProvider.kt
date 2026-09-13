@@ -13,7 +13,12 @@ import android.net.Uri
  */
 class AutoConnectProvider : ContentProvider() {
     override fun onCreate(): Boolean {
-        context?.applicationContext?.let(CoreForegroundService::autoConnectSelectedBoard)
+        context?.applicationContext?.let { app ->
+            CoreForegroundService.autoConnectSelectedBoard(app)
+            // Enrolled Accessories come up on the same trigger but through their own path: they are
+            // not gated on a selected Board, the Board auto-connect setting, or a manual Board stop.
+            CoreForegroundService.autoConnectAccessories(app)
+        }
         return true
     }
 

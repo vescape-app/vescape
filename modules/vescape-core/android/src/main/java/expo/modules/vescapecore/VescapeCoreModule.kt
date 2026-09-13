@@ -6,6 +6,7 @@ import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
 import expo.modules.vescapecore.accessory.AccessoryDiscovery
+import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
@@ -196,11 +197,19 @@ class VescapeCoreModule : Module() {
       "onWeather",
       "onAccessoryDevice",
       "onAccessoryScanError",
+      "onAccessoryState",
     )
 
     // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessoryDiscovery`
     AccessoryDiscovery.emit = { name, body ->
+      mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
+    }
+
+    // Enrolled Accessory sessions are native-owned and outlive this module; the bridge only mirrors
+    // their state while a JS runtime happens to exist.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessorySessionController`
+    AccessorySessionManager.emit = { name, body ->
       mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
     }
 
@@ -382,6 +391,8 @@ class VescapeCoreModule : Module() {
     OnStopObserving("onAccessoryDevice") { stopObserving("onAccessoryDevice") }
     OnStartObserving("onAccessoryScanError") { startObserving("onAccessoryScanError") }
     OnStopObserving("onAccessoryScanError") { stopObserving("onAccessoryScanError") }
+    OnStartObserving("onAccessoryState") { startObserving("onAccessoryState") }
+    OnStopObserving("onAccessoryState") { stopObserving("onAccessoryState") }
 
     OnCreate {
       val storageOutageEvents = StorageOutageEventBridge(
@@ -428,6 +439,9 @@ class VescapeCoreModule : Module() {
       AccessoryDiscovery.emit = null
       AccessoryDiscovery.stopScan()
       AccessoryDiscovery.cancelInspection()
+      // Only the mirror is dropped. The sessions belong to the foreground service, and JS going
+      // away is not a reason for an enrolled Accessory to stop working.
+      AccessorySessionManager.emit = null
       if (CoreForegroundService.emitEvent != null) {
         CoreForegroundService.emitEvent = null
       }
@@ -446,6 +460,18 @@ class VescapeCoreModule : Module() {
     AsyncFunction("inspectAccessory") { deviceId: String, promise: Promise ->
       AccessoryDiscovery.inspect(context.applicationContext, deviceId) { promise.resolve(it) }
     }
+
+    // Enrollment and the saved sessions. JS sends the intent and renders the snapshot; identity,
+    // the manifest and the session all stay native.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `enrollAccessory`
+    // @parity /modules/vescape-core/src/index.ts `enrollAccessory`
+    AsyncFunction("enrollAccessory") { deviceId: String, promise: Promise ->
+      AccessorySessionManager.enroll(context.applicationContext, deviceId) { promise.resolve(it) }
+    }
+    AsyncFunction("forgetAccessory") { accessoryId: String, promise: Promise ->
+      AccessorySessionManager.forget(context.applicationContext, accessoryId) { promise.resolve(it) }
+    }
+    Function("getAccessories") { AccessorySessionManager.snapshot() }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }

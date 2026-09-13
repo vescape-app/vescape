@@ -49,4 +49,11 @@ enum PersistenceSchema {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS vesc_fault_capture_samples (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, occurrence_id TEXT NOT NULL, captured_at INTEGER NOT NULL, speed REAL, duty_cycle REAL, erpm REAL, battery_voltage REAL, battery_current REAL, motor_current REAL, temp_mosfet REAL, temp_motor REAL, pitch REAL, roll REAL, balance_pitch REAL, adc1 REAL, adc2 REAL, state INTEGER)")
     try db.execute(sql: "CREATE INDEX IF NOT EXISTS index_vesc_fault_capture_samples_occurrence_id_captured_at ON vesc_fault_capture_samples(occurrence_id, captured_at)")
   }
+
+  /// Enrolled Accessories. Keyed on the manifest's persistent accessory id, so the same hardware
+  /// renamed, re-flashed or seen on a different peripheral id stays one row.
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_43_44`
+  static func createAccessories(_ db: Database) throws {
+    try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessories (accessory_id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, firmware_version TEXT NOT NULL, protocol_version INTEGER, device_id TEXT, capabilities_json TEXT NOT NULL, enrolled_at INTEGER NOT NULL, last_connected_at INTEGER)")
+  }
 }

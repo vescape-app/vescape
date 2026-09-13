@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.connection
 
+import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.service.foregroundServiceType
 import expo.modules.vescapecore.service.ACTION_CONNECT_FROM_NOTIFICATION
 import expo.modules.vescapecore.service.ACTION_DISCONNECT_FROM_NOTIFICATION
@@ -963,7 +964,11 @@ private var wearAutoLaunchOnConnect = true
     val isStopping: Boolean get() = isStoppingService
 
     fun stopIfIdle() {
-        if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active) {
+        // Accessory sessions keep the host alive on their own. They are not a Board's property: a
+        // rider with no Board selected and a light enrolled still has a link that must stay up.
+        if (boardConfig == null && !gpsMonitor.active && !groupRideObserver.active &&
+            !AccessorySessionManager.hasSessions()
+        ) {
             isStoppingService = true
             notificationController.cancel()
             service.stopSelf()
@@ -987,7 +992,7 @@ private var wearAutoLaunchOnConnect = true
             return
         }
         stop.onSuccess()
-        if (!gpsMonitor.active && !groupRideObserver.active) {
+        if (!gpsMonitor.active && !groupRideObserver.active && !AccessorySessionManager.hasSessions()) {
             isStoppingService = true
             service.stopSelf()
         }
@@ -1186,6 +1191,7 @@ private var wearAutoLaunchOnConnect = true
         return foregroundServiceType(
             boardActive = boardConfig != null,
             gpsActive = gpsMonitor.active,
+            accessoryActive = AccessorySessionManager.hasSessions(),
         )
     }
 

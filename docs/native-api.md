@@ -55,6 +55,43 @@ activated by finding it. Contract: [accessory-protocol.md](./accessory-protocol.
 
 `compatibility` and each capability's `supported` are native's verdict, not JS's to re-derive.
 
+## Enrolled Accessories
+
+Durable. Only an Accessory the rider added gets a session, and native keeps that session running
+with the JS runtime dead — Android from `CoreForegroundService`, iOS from a restore-identified
+central created in `didFinishLaunchingWithOptions`. JS sends intents and renders `onAccessoryState`.
+
+`enrollAccessory` takes a **device handle**, never an identity: native performs its own handshake
+and saves what the hardware actually said, so an enrollment cannot record a manifest JS invented.
+
+| fn                             | sync  | returns                                                          |
+| ------------------------------ | ----- | ---------------------------------------------------------------- |
+| `enrollAccessory(deviceId)`    | async | `AccessoryEnrollment` — `{accessoryId, error}`                   |
+| `forgetAccessory(accessoryId)` | async | `boolean` — whether a saved Accessory was removed                |
+| `getAccessories()`             | sync  | `SavedAccessory[]` — the same snapshot `onAccessoryState` pushes |
+
+### SavedAccessory shape
+
+```ts
+{
+  accessoryId: string        // manifest identity; the row's primary key
+  name: string               // live manifest name while connected, else the saved one
+  firmwareVersion: string
+  protocolVersion: number | null
+  deviceId: string | null    // where it answered last; a reconnect hint, never identity
+  enrolledAt: number
+  lastConnectedAt: number | null
+  phase: 'idle' | 'connecting' | 'handshaking' | 'connected' | 'unavailable' | 'incompatible'
+  error: string | null       // native's wire string for the last failure
+  compatibility: AccessoryCompatibility | null   // null until a session reads a manifest
+  capabilities: AccessoryCapability[]
+  capabilitiesChanged: boolean   // declared limits moved since enrollment; saved settings suspect
+  leaseHeldMs: number | null     // since the accessory last acknowledged a command
+}
+```
+
+A drop is `connecting`, not an error: both platforms keep the reconnect alive on their own.
+
 ## Location
 
 | fn                       | sync | returns                                                |
@@ -391,6 +428,7 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 | `onLocation`           | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
 | `onAccessoryDevice`    | `{id, name, rssi}`                 | Vescape Accessory service advertisement                                                                          |
 | `onAccessoryScanError` | `{error}`                          | The accessory scan could not run (`bluetooth-unavailable`, `scan-failed`)                                        |
+| `onAccessoryState`     | `{accessories}`                    | Every enrolled Accessory and its native link phase, on every change and on subscribe                             |
 
 ### TelemetryEvent shape (live, not history)
 

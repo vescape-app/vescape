@@ -52,12 +52,11 @@ beforeEach(async () => {
     scanning: false,
     scanError: null,
     devices: [],
-    accessories: [],
     inspecting: null,
   })
 })
 
-test('an accessory is keyed on its manifest identity, not the BLE handle it answered on', async () => {
+test('inspecting a device remembers nothing — only enrollment does', async () => {
   const { useAccessoryDiscoveryStore } =
     await import('@/modules/accessories/store/accessoryDiscoveryStore')
 
@@ -67,54 +66,24 @@ test('an accessory is keyed on its manifest identity, not the BLE handle it answ
     manifest: manifest(),
     error: null,
   }
-  await useAccessoryDiscoveryStore.getState().inspect('AA:01')
+  const result = await useAccessoryDiscoveryStore.getState().inspect('AA:01')
 
-  // Same unit, new address — an Android MAC can rotate and an iOS peripheral id is per-device.
-  inspection = {
-    deviceId: 'BB:02',
-    advertisedName: 'Vescape-HW',
-    manifest: manifest({ firmwareVersion: '0.2.0' }),
-    error: null,
-  }
-  await useAccessoryDiscoveryStore.getState().inspect('BB:02')
-
-  const { accessories } = useAccessoryDiscoveryStore.getState()
-  expect(accessories).toHaveLength(1)
-  expect(accessories[0]!.deviceId).toBe('BB:02')
-  expect(accessories[0]!.manifest.firmwareVersion).toBe('0.2.0')
+  // The manifest is the answer to "what is this", handed straight back to the screen. Anything
+  // durable is native's, reached through `enrollAccessory`, and never inferred from a scan.
+  expect(result.manifest?.accessoryId).toBe('acc-1')
+  expect(useAccessoryDiscoveryStore.getState()).not.toHaveProperty('accessories')
+  expect(useAccessoryDiscoveryStore.getState().inspecting).toBeNull()
 })
 
-test('a device that never answered with a manifest is not remembered as an accessory', async () => {
+test('a device that never answered clears the running handshake', async () => {
   const { useAccessoryDiscoveryStore } =
     await import('@/modules/accessories/store/accessoryDiscoveryStore')
 
   inspection = { deviceId: 'AA:01', advertisedName: null, manifest: null, error: 'timeout' }
-  await useAccessoryDiscoveryStore.getState().inspect('AA:01')
+  const result = await useAccessoryDiscoveryStore.getState().inspect('AA:01')
 
-  expect(useAccessoryDiscoveryStore.getState().accessories).toEqual([])
+  expect(result.error).toBe('timeout')
   expect(useAccessoryDiscoveryStore.getState().inspecting).toBeNull()
-})
-
-test('a failed re-check marks a known accessory unreachable instead of dropping it', async () => {
-  const { accessoryLinkStatus, useAccessoryDiscoveryStore } =
-    await import('@/modules/accessories/store/accessoryDiscoveryStore')
-
-  inspection = { deviceId: 'AA:01', advertisedName: null, manifest: manifest(), error: null }
-  await useAccessoryDiscoveryStore.getState().inspect('AA:01')
-
-  inspection = { deviceId: 'AA:01', advertisedName: null, manifest: null, error: 'connect-failed' }
-  await useAccessoryDiscoveryStore.getState().inspect('AA:01')
-
-  const accessory = useAccessoryDiscoveryStore.getState().accessories[0]!
-  expect(accessory.lastError).toBe('connect-failed')
-  expect(accessoryLinkStatus(accessory, [])).toBe('unreachable')
-  // Still advertising and still refusing to answer is exactly the case the rider needs told: the
-  // failed handshake is the useful fact, not the radio carrier.
-  expect(
-    accessoryLinkStatus(accessory, [
-      { id: 'AA:01', name: null, rssi: -50, lastSeenAt: Date.now() },
-    ]),
-  ).toBe('unreachable')
 })
 
 test('a second selection is refused while a handshake is running', async () => {

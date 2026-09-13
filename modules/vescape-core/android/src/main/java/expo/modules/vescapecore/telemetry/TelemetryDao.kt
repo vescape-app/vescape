@@ -847,6 +847,31 @@ interface TelemetryDao {
   @Query("DELETE FROM board_warnings WHERE board_id = :boardId")
   suspend fun deleteBoardWarnings(boardId: String): Int
 
+  // Enrolled Accessories. Deliberately unrelated to `boards`: an Accessory Binding targets whichever
+  // Board is connected, so deleting a Board must not forget the rider's hardware.
+  // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift
+
+  @Query("SELECT * FROM accessories ORDER BY enrolled_at ASC")
+  suspend fun getAccessories(): List<SavedAccessoryEntity>
+
+  @Query("SELECT * FROM accessories WHERE accessory_id = :accessoryId LIMIT 1")
+  suspend fun getAccessory(accessoryId: String): SavedAccessoryEntity?
+
+  /**
+   * Enroll or re-validate. `REPLACE` on the manifest identity is the whole duplicate defence: the
+   * same hardware under a new name, a new firmware version or a new BLE handle updates its row
+   * instead of adding one.
+   */
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertAccessory(accessory: SavedAccessoryEntity)
+
+  @Query("DELETE FROM accessories WHERE accessory_id = :accessoryId")
+  suspend fun deleteAccessory(accessoryId: String): Int
+
+  /** Records a successful session without rewriting the manifest facts the handshake validated. */
+  @Query("UPDATE accessories SET device_id = :deviceId, last_connected_at = :connectedAt WHERE accessory_id = :accessoryId")
+  suspend fun touchAccessory(accessoryId: String, deviceId: String?, connectedAt: Long): Int
+
   // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
   // `deleteBoardWithSettings`: fault evidence outlives the Board record.
   // @parity /modules/vescape-core/ios/faults/VescFaultStore.swift

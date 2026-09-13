@@ -8,15 +8,22 @@ import {
   AccessorySelectorSection,
   type AccessorySelectorItem,
 } from '@/modules/accessories/components/AccessorySelectorSection'
-import type { AccessoryLinkStatus } from '@/modules/accessories/lib/accessoryStatus'
 import { theme } from '@/constants/theme'
+import type { AccessoryLinkPhase } from 'vescape-core'
 
-const STATUSES: AccessoryLinkStatus[] = ['advertising', 'idle', 'unreachable']
+const PHASES: AccessoryLinkPhase[] = [
+  'connected',
+  'connecting',
+  'handshaking',
+  'unavailable',
+  'incompatible',
+  'idle',
+]
 
 export function AccessorySelectorSectionShowcase() {
-  const [status, setStatus] = useState<AccessoryLinkStatus>('advertising')
+  const [phase, setPhase] = useState<AccessoryLinkPhase>('connected')
   const [empty, setEmpty] = useState(false)
-  const [incompatible, setIncompatible] = useState(false)
+  const [needsSetup, setNeedsSetup] = useState(false)
   const [lastAction, setLastAction] = useState('Tap a row to see its action here.')
 
   const accessories: AccessorySelectorItem[] = empty
@@ -26,14 +33,14 @@ export function AccessorySelectorSectionShowcase() {
           accessoryId: 'clearance-1',
           name: 'Clearance sensor',
           detail: 'v0.1.0',
-          status,
-          incompatible,
+          phase,
+          needsSetup,
         },
         {
           accessoryId: 'light-1',
           name: 'Rear light',
           detail: 'v0.2.1',
-          status: 'idle',
+          phase: 'connecting',
         },
       ]
 
@@ -43,16 +50,12 @@ export function AccessorySelectorSectionShowcase() {
       controls={
         <>
           <ChipRow
-            label="status"
-            options={STATUSES}
-            selected={status}
-            onSelect={(next) => setStatus(next as AccessoryLinkStatus)}
+            label="phase"
+            options={PHASES}
+            selected={phase}
+            onSelect={(next) => setPhase(next as AccessoryLinkPhase)}
           />
-          <ToggleRow
-            label="first is incompatible"
-            value={incompatible}
-            onToggle={setIncompatible}
-          />
+          <ToggleRow label="first needs setup" value={needsSetup} onToggle={setNeedsSetup} />
           <ToggleRow label="no accessories yet" value={empty} onToggle={setEmpty} />
         </>
       }

@@ -1,16 +1,8 @@
-import type { AccessoryCompatibility, AccessoryInspectionError } from 'vescape-core'
-
-/**
- * How an Accessory stands with the app right now.
- *
- * - `advertising` — a running scan is hearing it this moment.
- * - `idle` — its manifest was read successfully, and nothing is scanning to say more than that.
- * - `unreachable` — the last handshake with it failed.
- *
- * Discovery holds no connection: the handshake disconnects as soon as the manifest is read, so
- * "connected" is deliberately absent until enrollment gives an Accessory a session to stay in.
- */
-export type AccessoryLinkStatus = 'advertising' | 'idle' | 'unreachable'
+import type {
+  AccessoryCompatibility,
+  AccessoryInspectionError,
+  AccessoryLinkPhase,
+} from 'vescape-core'
 
 export interface AccessoryStatusCopy {
   label: string
@@ -18,14 +10,27 @@ export interface AccessoryStatusCopy {
   tone: 'success' | 'neutral' | 'caution'
 }
 
-export function accessoryStatusCopy(status: AccessoryLinkStatus): AccessoryStatusCopy {
-  switch (status) {
-    case 'advertising':
-      return { label: 'Nearby', tone: 'success' }
-    case 'unreachable':
+/**
+ * Rider-facing phrasing for native's link phase. Native decides; this only phrases it.
+ *
+ * A dropped link reads as "Connecting", not as a failure: both platforms keep the reconnect alive
+ * on their own, so a rider who walked out of range is waiting rather than broken. "Not reachable"
+ * is reserved for a session that actually went wrong.
+ */
+export function accessoryStatusCopy(phase: AccessoryLinkPhase): AccessoryStatusCopy {
+  switch (phase) {
+    case 'connected':
+      return { label: 'Connected', tone: 'success' }
+    case 'connecting':
+      return { label: 'Connecting…', tone: 'neutral' }
+    case 'handshaking':
+      return { label: 'Checking…', tone: 'neutral' }
+    case 'unavailable':
       return { label: 'Not reachable', tone: 'caution' }
+    case 'incompatible':
+      return { label: 'Not supported', tone: 'caution' }
     case 'idle':
-      return { label: 'Paired', tone: 'neutral' }
+      return { label: 'Saved', tone: 'neutral' }
   }
 }
 
@@ -59,8 +64,13 @@ export function compatibilityCopy(compatibility: AccessoryCompatibility): {
   }
 }
 
-/** Why a handshake produced no manifest, in rider language. */
-export function inspectionErrorCopy(error: AccessoryInspectionError): string {
+/**
+ * Why a handshake produced no manifest, in rider language.
+ *
+ * The parameter is widened past the union on purpose: these are native's wire strings, and a code
+ * this app has no copy for is still worth showing verbatim rather than rendering blank.
+ */
+export function inspectionErrorCopy(error: AccessoryInspectionError | (string & {})): string {
   switch (error) {
     case 'malformed':
     case 'invalid':
@@ -85,5 +95,38 @@ export function inspectionErrorCopy(error: AccessoryInspectionError): string {
       return 'Cancelled.'
     case 'busy':
       return 'Another accessory is being checked right now.'
+    default:
+      return error
+  }
+}
+
+/**
+ * Why a live session is unhappy, in rider language.
+ *
+ * These are native's own wire strings, which overlap the handshake errors but add the ones only a
+ * session can produce. An unrecognized code falls through to the handshake phrasing rather than
+ * being hidden — a code this app has no copy for is still worth showing.
+ */
+export function linkErrorCopy(error: string): string {
+  switch (error) {
+    case 'identity-mismatch':
+      return 'A different accessory answered at this address. Vescape will keep looking for yours.'
+    case 'unknown-device':
+      return 'Vescape has not seen this accessory since it was added. Scan for it again.'
+    case 'stale_request':
+    case 'request_id_reused':
+      return 'The accessory and Vescape lost track of each other. The session will restart.'
+    case 'unknown_capability':
+      return 'The accessory no longer offers something Vescape was configuring.'
+    case 'invalid_argument':
+      return 'The accessory refused a setting Vescape sent.'
+    case 'not_ready':
+      return 'The accessory is not ready yet.'
+    case 'hardware_error':
+      return 'The accessory reported a hardware problem.'
+    case 'unsupported_message':
+      return 'The accessory does not understand what Vescape asked for.'
+    default:
+      return inspectionErrorCopy(error)
   }
 }

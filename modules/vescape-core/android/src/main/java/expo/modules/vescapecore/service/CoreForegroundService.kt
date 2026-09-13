@@ -1,5 +1,6 @@
 package expo.modules.vescapecore.service
 
+import expo.modules.vescapecore.accessory.AccessorySessionManager
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.connection.BoardSessionController
 import expo.modules.vescapecore.connection.BoardTransport
@@ -20,10 +21,12 @@ import expo.modules.vescapecore.recording.RecordingStorageFailureKind
 import expo.modules.vescapecore.recording.recordingFailureState
 import expo.modules.vescapecore.liveStateWithStorageFailure
 import expo.modules.vescapecore.protocol.LocationSnapshot
+import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.telemetry.AppDataRepository
 import expo.modules.vescapecore.telemetry.DEFAULT_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MAX_LIVE_HISTORY_LIMIT_MINUTES
 import expo.modules.vescapecore.telemetry.MIN_LIVE_HISTORY_LIMIT_MINUTES
+import expo.modules.vescapecore.telemetry.TelemetryDatabase
 import expo.modules.vescapecore.telemetry.TelemetryRepository
 import expo.modules.vescapecore.watch.WatchLightsSwitch
 import expo.modules.vescapecore.watch.WatchMirrorWakeLevel
@@ -48,6 +51,7 @@ private const val ACTION_STOP_GPS_MONITORING = "expo.modules.vescapecore.ACTION_
 internal const val ACTION_START_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_START_GROUP_RIDE_OBSERVE"
 private const val ACTION_STOP_GROUP_RIDE_OBSERVE = "expo.modules.vescapecore.ACTION_STOP_GROUP_RIDE_OBSERVE"
 internal const val ACTION_AUTO_CONNECT_SELECTED_BOARD = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_SELECTED_BOARD"
+internal const val ACTION_AUTO_CONNECT_ACCESSORIES = "expo.modules.vescapecore.ACTION_AUTO_CONNECT_ACCESSORIES"
 internal const val ACTION_COMPANION_DEVICE_APPEARED = "expo.modules.vescapecore.ACTION_COMPANION_DEVICE_APPEARED"
 internal const val EXTRA_COMPANION_ADDRESS = "expo.modules.vescapecore.EXTRA_COMPANION_ADDRESS"
 internal const val TELEMETRY_STALE_MS = 4_000L
@@ -205,6 +209,31 @@ class CoreForegroundService : Service() {
                     return@launch
                 }
                 instance?.controller?.autoConnectSelectedBoard()
+            }
+        }
+
+        /**
+         * Brings up every enrolled Accessory's session at process start.
+         *
+         * Deliberately separate from the Board's auto-connect: an Accessory is enrolled in its own
+         * right, so it comes up with no Board selected, with Board auto-connect off, and after a
+         * manual Board disconnect. The service is only started when something is actually enrolled
+         * — a rider with no Accessories pays nothing for this path.
+         *
+         * @parity /modules/vescape-core/ios/connection/VescapeLaunchSubscriber.swift
+         */
+        fun autoConnectAccessories(context: Context) {
+            val app = context.applicationContext
+            appDataScope.launch {
+                val enrolled = try {
+                    AccessoryPersistence(TelemetryDatabase.get(app).telemetryDao()).getAccessories()
+                } catch (e: Exception) {
+                    android.util.Log.w(VESC_SESSION_TAG, "Accessory auto-connect read failed: ${e.message}")
+                    return@launch
+                }
+                if (enrolled.isEmpty()) return@launch
+                CoreForegroundServiceLauncher.autoConnectAccessories(app)
+                    .logIfSkipped("Accessory session service start skipped")
             }
         }
 
@@ -542,6 +571,10 @@ class CoreForegroundService : Service() {
                 controller.promoteConnectedDeviceForeground()
                 controller.autoConnectSelectedBoard()
             }
+            ACTION_AUTO_CONNECT_ACCESSORIES -> {
+                controller.promoteConnectedDeviceForeground()
+                AccessorySessionManager.start(applicationContext)
+            }
             ACTION_COMPANION_DEVICE_APPEARED -> {
                 controller.promoteConnectedDeviceForeground()
                 intent.getStringExtra(EXTRA_COMPANION_ADDRESS)?.let(controller::connectCompanionDevice)
@@ -558,6 +591,10 @@ class CoreForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        // The Accessory sessions' host is going away, so the links go with it. Keeping GATT open
+        // past the service is how a background BLE link becomes a leak Android eventually kills
+        // anyway, without the rider ever being told it stopped.
+        AccessorySessionManager.stopAll()
         controller.onServiceDestroy()
         instance = null
         super.onDestroy()

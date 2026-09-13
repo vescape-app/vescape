@@ -51,15 +51,15 @@ const ACCESSORIES: AccessorySelectorItem[] = [
     accessoryId: 'clearance-1',
     name: 'Clearance sensor',
     detail: 'v0.1.0',
-    status: 'advertising',
+    phase: 'connected',
   },
-  { accessoryId: 'light-1', name: 'Rear light', detail: 'v0.2.1', status: 'idle' },
+  { accessoryId: 'light-1', name: 'Rear light', detail: 'v0.2.1', phase: 'connecting' },
   {
     accessoryId: 'horn-1',
     name: 'Air horn',
     detail: 'v1.0.0',
-    status: 'unreachable',
-    incompatible: true,
+    phase: 'incompatible',
+    needsSetup: true,
   },
 ]
 

@@ -11,23 +11,27 @@ import { AccessoryCompatibilityNotice } from '@/modules/accessories/components/A
 import { AccessoryCapabilityRow } from '@/modules/accessories/components/AccessoryCapabilityRow'
 import { inspectionErrorCopy } from '@/modules/accessories/lib/accessoryStatus'
 import { useAccessoryDiscoveryStore } from '@/modules/accessories/store/accessoryDiscoveryStore'
+import { useAccessoryStore } from '@/modules/accessories/store/accessoryStore'
+import { Button } from '@/components/base/Button'
 import { usePermissions } from '@/modules/settings/hooks/usePermissions'
 import { theme } from '@/constants/theme'
 import type { AccessoryInspection } from 'vescape-core'
 
 /**
- * Finding an Accessory and reading what it is.
+ * Finding an Accessory, reading what it is, and adding it if the rider wants it.
  *
  * Every row here is a device advertising the Vescape Accessory service — matched on the service,
  * never the name, so a renamed accessory is still found and a namesake is not mistaken for one.
  * Picking one performs the discovery handshake and shows its identity, protocol version and
- * capabilities. Nothing is enrolled and nothing is commanded: the app disconnects as soon as the
- * manifest is read.
+ * capabilities; nothing is commanded, and the app disconnects as soon as the manifest is read.
+ *
+ * Adding is a separate, explicit tap. That separation is the product rule: a device Vescape merely
+ * found never gets a session, so nothing can be enrolled — or started — by walking past it.
  */
 export function AccessoryScanScreen({
   onOpenAccessory,
 }: {
-  /** Called with a persistent Accessory id once one has answered with a manifest. */
+  /** Called with a persistent Accessory id once one has been added. */
   onOpenAccessory: (accessoryId: string) => void
 }) {
   const { status, request } = usePermissions()
@@ -52,7 +56,10 @@ export function AccessoryScanScreen({
       cancelInspection: s.cancelInspection,
     })),
   )
+  const enroll = useAccessoryStore((s) => s.enroll)
+  const enrolling = useAccessoryStore((s) => s.enrolling)
   const [result, setResult] = useState<AccessoryInspection | null>(null)
+  const [enrollError, setEnrollError] = useState<string | null>(null)
   /**
    * False once the rider has left. A handshake outlives this screen by up to its timeout, and a
    * result landing after that must not drag them back out of wherever they went.
@@ -76,13 +83,28 @@ export function AccessoryScanScreen({
   const onSelect = useCallback(
     async (deviceId: string) => {
       setResult(null)
+      setEnrollError(null)
       const inspection = await inspect(deviceId)
       if (!live.current) return
       setResult(inspection)
-      // Straight through on success: the rider picked a device to configure, not to read about.
-      if (inspection.manifest) onOpenAccessory(inspection.manifest.accessoryId)
     },
-    [inspect, onOpenAccessory],
+    [inspect],
+  )
+
+  const onAdd = useCallback(
+    async (deviceId: string) => {
+      setEnrollError(null)
+      // Native re-reads the manifest before saving anything: this hands over a device handle, never
+      // an identity, so an enrollment can only record what the hardware actually said.
+      const enrollment = await enroll(deviceId)
+      if (!live.current) return
+      if (enrollment.accessoryId) {
+        onOpenAccessory(enrollment.accessoryId)
+        return
+      }
+      setEnrollError(enrollment.error ?? 'connect-failed')
+    },
+    [enroll, onOpenAccessory],
   )
 
   const subtitle =
@@ -92,11 +114,13 @@ export function AccessoryScanScreen({
         ? 'Bluetooth is off or unavailable'
         : scanError === 'scan-failed'
           ? 'The scan could not start'
-          : inspecting
-            ? 'Reading the accessory…'
-            : scanning
-              ? 'Scanning for accessories…'
-              : 'Scan stopped'
+          : enrolling
+            ? 'Adding the accessory…'
+            : inspecting
+              ? 'Reading the accessory…'
+              : scanning
+                ? 'Scanning for accessories…'
+                : 'Scan stopped'
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -112,7 +136,7 @@ export function AccessoryScanScreen({
             // One handshake at a time: a second tap would be refused natively anyway, and the row
             // going dead is a clearer answer than a tap that quietly does nothing.
             onPress={() => {
-              if (!inspecting) void onSelect(item.id)
+              if (!inspecting && !enrolling) void onSelect(item.id)
             }}
           />
         )}
@@ -123,7 +147,7 @@ export function AccessoryScanScreen({
               description="Accessories are found by the service they advertise, not by their name."
             />
             <View style={styles.statusLine}>
-              {(scanning || inspecting) && (
+              {(scanning || inspecting || enrolling) && (
                 <ActivityIndicator color={theme.palette.sky.color} size="small" />
               )}
               <Text style={styles.subtitle}>{subtitle}</Text>
@@ -132,6 +156,9 @@ export function AccessoryScanScreen({
               <Text style={styles.error}>
                 {result.advertisedName ?? result.deviceId}: {inspectionErrorCopy(result.error)}
               </Text>
+            ) : null}
+            {enrollError ? (
+              <Text style={styles.error}>{inspectionErrorCopy(enrollError)}</Text>
             ) : null}
             {result?.manifest ? (
               <View style={styles.preview}>
@@ -142,6 +169,13 @@ export function AccessoryScanScreen({
                 {result.manifest.capabilities.map((capability) => (
                   <AccessoryCapabilityRow key={capability.id} capability={capability} />
                 ))}
+                <Button
+                  label={`Add ${result.manifest.name}`}
+                  onPress={() => onAdd(result.deviceId)}
+                  loading={enrolling === result.deviceId}
+                  disabled={enrolling !== null}
+                  testID="accessory-add"
+                />
               </View>
             ) : null}
           </View>

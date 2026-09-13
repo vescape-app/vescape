@@ -2,17 +2,25 @@
 
 Design in progress. Most of this is agreed requirements, not implemented behavior.
 
-**Implemented so far**: discovery. The Board selector has separate Boards and Accessories sections
-with an Add accessory action; scanning matches the Vescape Accessory service UUID rather than a
-name; connecting reads the manifest and reports identity, firmware version, protocol compatibility
-and capability types. Native owns the radio, the framing, the protocol session and the compatibility
-verdict — `startAccessoryScan` / `inspectAccessory` on both platforms — and JS renders it. Discovery
-disconnects as soon as the manifest is read, so nothing on an accessory can be activated by finding
-it.
+**Implemented so far**: discovery, enrollment, and the reconnecting session.
 
-**Not implemented**: enrollment and saved identities, auto-connect, calibration, measurements, tilt
-bindings, and brake-light behavior. Accessories listed in the selector are what the current session
-discovered, not saved units.
+Scanning matches the Vescape Accessory service UUID rather than a name; connecting reads the
+manifest and reports identity, firmware version, protocol compatibility and capability types.
+Adding an accessory saves that identity durably, and from then on native connects to it on its own
+at process launch — with the app backgrounded, the screen locked, or the JS runtime never started.
+The Board selector's Accessories section lists saved accessories with the link phase native is
+actually in, and each row opens that accessory's configuration.
+
+Every reconnect is a fresh protocol session: a new session ID, request IDs from the start, and the
+current desired state re-sent from scratch. Commands are acknowledged and leased — the app renews
+while it is alive and willing, and the accessory falls back to its own behavior when the renewals
+stop. Identity is always the manifest's accessory ID, so a renamed or re-flashed unit on a new BLE
+handle stays one accessory, and a different unit answering on a remembered handle is refused.
+
+**Not implemented**: calibration, measurements, tilt bindings, and brake-light behavior. An enrolled
+accessory's session holds each capability at the protocol's neutral state — a clearance sensor in
+measurement standby, a light told Board telemetry is unavailable — which is what the slices below
+replace with the rider's actual demand.
 
 ## Initial scope
 

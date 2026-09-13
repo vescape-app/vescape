@@ -19,6 +19,7 @@ import { DiagnosticErrorBoundary } from '@/modules/diagnostics/DiagnosticErrorBo
 import { HeaderBackButton } from '@/components/base/HeaderBackButton'
 import { initSentry } from '@/config/sentry'
 import { stackScreens } from '@/navigation/routes'
+import { startAccessoryStateMirror } from '@/modules/accessories/store/accessoryStore'
 import { startAlertPresetConfigSync } from '@/modules/alerts/lib/alertPresetConfigSync'
 import { startAlertsBoardSync } from '@/bootstrap/alertsBoardSync'
 import { startAppDataSync } from '@/bootstrap/appDataSync'
@@ -106,6 +107,7 @@ function RootLayout() {
     const stopAppStatusSync = startAppStatusSync()
     const stopNavigationSync = startNavigationSync()
     const stopWeatherSync = startWeatherSync()
+    const stopAccessoryStateMirror = startAccessoryStateMirror()
     return () => {
       useGroupRideStore.getState().stopObserving()
       stopAppDataSync()
@@ -120,6 +122,7 @@ function RootLayout() {
       stopAppStatusSync()
       stopNavigationSync()
       stopWeatherSync()
+      stopAccessoryStateMirror()
     }
   }, [fixturesReady])
 

@@ -148,6 +148,78 @@ export interface AccessoryInspection {
 }
 
 /**
+ * Where one enrolled Accessory's link stands, decided natively.
+ *
+ * JS never derives one of these from a boolean, exactly as it never derives a Board phase. A drop
+ * reads as `connecting`, not as an error: the OS keeps the reconnect alive on both platforms, and a
+ * rider who walked out of range has not lost their Accessory.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryLink.kt `AccessoryLinkPhase`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryLink.swift `AccessoryLinkPhase`
+ */
+export type AccessoryLinkPhase =
+  | 'idle'
+  | 'connecting'
+  | 'handshaking'
+  | 'connected'
+  | 'unavailable'
+  | 'incompatible'
+
+/**
+ * One enrolled Accessory, as native currently sees it: the durable row plus whatever the live
+ * session knows.
+ *
+ * Identity is `accessoryId`, the manifest's persistent UUID. `deviceId` is where it answered last
+ * and is a reconnect hint, never identity — a renamed unit on a new BLE handle is the same
+ * Accessory, which is why nothing here is keyed on either.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `buildSnapshot`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `snapshot`
+ */
+export interface SavedAccessory {
+  accessoryId: string
+  /** Manifest name, refreshed on every handshake. */
+  name: string
+  firmwareVersion: string
+  /** Last agreed protocol version, or null when the two sides found none. */
+  protocolVersion: number | null
+  /** Where it answered last. A hint for the next connect, not identity. */
+  deviceId: string | null
+  enrolledAt: number
+  lastConnectedAt: number | null
+  phase: AccessoryLinkPhase
+  /** Wire string for the last failure, or null while nothing is wrong. */
+  error: string | null
+  /** Native's verdict from the live manifest; null while no session is established. */
+  compatibility: AccessoryCompatibility | null
+  /** Live capabilities while connected, else the set validated at the last handshake. */
+  capabilities: AccessoryCapability[]
+  /**
+   * The declared capability limits moved since enrollment. Anything calibrated against the old ones
+   * needs the rider to look at it again before it drives hardware.
+   */
+  capabilitiesChanged: boolean
+  /** How long ago the accessory last acknowledged a command, or null if it never has. */
+  leaseHeldMs: number | null
+}
+
+/**
+ * The saved Accessories and their live sessions, pushed on every change.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `publish`
+ * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `publish`
+ */
+export interface AccessoryStateEvent {
+  accessories: SavedAccessory[]
+}
+
+/** What `enrollAccessory` decided. `accessoryId` is set only when a manifest was read and saved. */
+export interface AccessoryEnrollment {
+  accessoryId: string | null
+  error: AccessoryInspectionError | 'storage-unavailable' | null
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
@@ -2247,6 +2319,8 @@ type VescapeCoreEvents = {
   onAccessoryDevice: (event: AccessoryDeviceEvent) => void
   /** The accessory scan could not run or stopped running. */
   onAccessoryScanError: (event: AccessoryScanErrorEvent) => void
+  /** Every enrolled Accessory and its native link state, on every change and on subscribe. */
+  onAccessoryState: (event: AccessoryStateEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2268,6 +2342,9 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   stopAccessoryScan(): void
   cancelAccessoryInspection(): void
   inspectAccessory(deviceId: string): Promise<AccessoryInspection>
+  enrollAccessory(deviceId: string): Promise<AccessoryEnrollment>
+  forgetAccessory(accessoryId: string): Promise<boolean>
+  getAccessories(): SavedAccessory[]
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
@@ -2521,6 +2598,27 @@ export function inspectAccessory(deviceId: string): Promise<AccessoryInspection>
 /** Abandon an inspection whose screen the rider already left. */
 export function cancelAccessoryInspection(): void {
   native.cancelAccessoryInspection()
+}
+
+/**
+ * Add one discovered Accessory, so it is remembered and auto-connects from now on.
+ *
+ * The manifest is read natively before anything is saved — this takes a device handle, never an
+ * identity. Enrollment is the rider's explicit act and the only thing that gives an Accessory a
+ * session; a device that merely advertises nearby is never added on its own.
+ */
+export function enrollAccessory(deviceId: string): Promise<AccessoryEnrollment> {
+  return native.enrollAccessory(deviceId)
+}
+
+/** Forget an Accessory: the saved identity goes, and its session with it. */
+export function forgetAccessory(accessoryId: string): Promise<boolean> {
+  return native.forgetAccessory(accessoryId)
+}
+
+/** Current saved Accessories and their link state, for a late subscriber or a foreground restore. */
+export function getAccessories(): SavedAccessory[] {
+  return native.getAccessories()
 }
 
 /** Start app-level Android location updates independently of a board session. */
@@ -3599,6 +3697,12 @@ export function addAccessoryScanErrorListener(
   cb: (event: AccessoryScanErrorEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onAccessoryScanError', cb)
+}
+
+export function addAccessoryStateListener(
+  cb: (event: AccessoryStateEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryState', cb)
 }
 
 export function addErrorListener(cb: (event: ErrorEvent) => void): EventSubscription {

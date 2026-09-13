@@ -3,15 +3,15 @@ import { PlusIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { AccessoryRow } from '@/modules/accessories/components/AccessoryRow'
-import type { AccessoryLinkStatus } from '@/modules/accessories/lib/accessoryStatus'
+import type { AccessoryLinkPhase } from 'vescape-core'
 import { interaction, theme } from '@/constants/theme'
 
 export interface AccessorySelectorItem {
   accessoryId: string
   name: string
   detail?: string | undefined
-  status: AccessoryLinkStatus
-  incompatible?: boolean
+  phase: AccessoryLinkPhase
+  needsSetup?: boolean
 }
 
 interface AccessorySelectorSectionProps {
@@ -36,8 +36,8 @@ export function AccessorySelectorSection({
     <View style={styles.frame}>
       {accessories.length === 0 ? (
         <Text style={styles.empty}>
-          No accessories yet. Vescape finds them by the service they advertise, whatever they are
-          named.
+          No accessories yet. Add one and Vescape connects to it on its own from then on, whatever
+          it is named.
         </Text>
       ) : (
         accessories.map((accessory) => (
@@ -45,8 +45,8 @@ export function AccessorySelectorSection({
             key={accessory.accessoryId}
             name={accessory.name}
             detail={accessory.detail}
-            status={accessory.status}
-            incompatible={accessory.incompatible}
+            phase={accessory.phase}
+            needsSetup={accessory.needsSetup}
             onPress={() => onSelectAccessory(accessory.accessoryId)}
           />
         ))

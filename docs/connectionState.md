@@ -142,6 +142,27 @@ on its own, with or without a JS runtime.
 Native owns the connection throughout. On Android the foreground service keeps BLE work
 alive while JS is backgrounded or frozen.
 
+### Accessories
+
+Enrolled Accessories ride the same two launch triggers and are otherwise independent of the Board:
+they come up with no Board selected, with the `autoConnect` setting off, and after a manual Board
+stop, because the rider enrolled the Accessory rather than the Board it happens to ride with.
+
+- Android: `AutoConnectProvider` → `CoreForegroundService.autoConnectAccessories` →
+  `AccessorySessionManager`. The service is started only when something is actually enrolled, and
+  once started, live Accessory sessions keep it alive the way a Board Session or GPS does — a rider
+  with a light and no Board still has a link that must stay up.
+- iOS: `VescapeLaunchSubscriber` → `AccessorySessionController.prepareForLaunch`, after the Board's
+  prepare. Its central carries **its own restore identifier**, so CoreBluetooth can relaunch the app
+  for an Accessory link; like the Board's, it only works when the central is re-created inside
+  `didFinishLaunchingWithOptions`.
+
+An Accessory link never optimistically reports connected. Each reconnect reads the manifest again
+and checks it against the enrolled identity before any saved setting is used; a different unit
+answering on a remembered handle is refused rather than driven. A drop reports `connecting`, not an
+error — Android's `autoConnect` GATT and CoreBluetooth's open-ended `connect` both keep trying — and
+`AccessorySessionManager` / `AccessorySessionController` push every change as `onAccessoryState`.
+
 ### Fast Connect Stability
 
 The fastest stable path is not to wait longer; it is to avoid competing native

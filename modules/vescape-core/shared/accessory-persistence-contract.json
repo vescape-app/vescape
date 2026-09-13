@@ -1,0 +1,28 @@
+{
+  "scenario": "accessory-enrollment-close-reopen",
+  "$comment": "Enrolled Accessories, the same case on Room and GRDB. The point of the scenario is that identity is the manifest's accessory id: the second enrollment is the same physical unit after a rename and a firmware update, seen on a different BLE handle, and it must land on the same row with its original `enrolledAt` intact. `other` exists so the reopen proves rows are kept apart rather than merged.",
+  "accessory": {
+    "accessoryId": "b36ed5bd-1d24-460c-8034-aaeaefc5d016",
+    "name": "Clearance sensor",
+    "renamedTo": "Nose sensor",
+    "firmwareVersion": "0.1.0",
+    "updatedFirmwareVersion": "0.3.0",
+    "protocolVersion": 1,
+    "deviceId": "AA:BB:CC:DD:EE:01",
+    "movedDeviceId": "AA:BB:CC:DD:EE:99",
+    "capabilitiesJson": "[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"supported\":true,\"unit\":\"cm\",\"rangeMin\":3,\"rangeMax\":100,\"ratesHz\":[10,20,30]}]",
+    "changedCapabilitiesJson": "[{\"id\":\"clearance\",\"type\":\"ground_clearance\",\"supported\":true,\"unit\":\"cm\",\"rangeMin\":5,\"rangeMax\":80,\"ratesHz\":[10,20]}]",
+    "enrolledAt": 1700000000000,
+    "reEnrolledAt": 1799999999000,
+    "connectedAt": 1700000060000
+  },
+  "other": {
+    "accessoryId": "0f0be7c8-6d97-4a56-9b1b-2d5f3b6a0c11",
+    "name": "Rear light",
+    "firmwareVersion": "0.2.1",
+    "protocolVersion": 1,
+    "deviceId": "AA:BB:CC:DD:EE:02",
+    "capabilitiesJson": "[{\"id\":\"rear_light\",\"type\":\"brake_light\",\"supported\":true,\"unit\":null,\"rangeMin\":null,\"rangeMax\":null,\"ratesHz\":[]}]",
+    "enrolledAt": 1700000001000
+  }
+}

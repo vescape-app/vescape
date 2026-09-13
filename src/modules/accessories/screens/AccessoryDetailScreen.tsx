@@ -1,33 +1,51 @@
+import { useCallback, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PlugsConnectedIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
+import { Button } from '@/components/base/Button'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { AccessoryCapabilityRow } from '@/modules/accessories/components/AccessoryCapabilityRow'
 import { AccessoryCompatibilityNotice } from '@/modules/accessories/components/AccessoryCompatibilityNotice'
-import { accessoryStatusCopy } from '@/modules/accessories/lib/accessoryStatus'
-import {
-  accessoryLinkStatus,
-  useAccessoryDiscoveryStore,
-} from '@/modules/accessories/store/accessoryDiscoveryStore'
+import { accessoryStatusCopy, linkErrorCopy } from '@/modules/accessories/lib/accessoryStatus'
+import { useAccessoryStore, useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
 import { fmtTimeAgo } from '@/helpers/format'
 import { theme } from '@/constants/theme'
 
 /**
- * One Accessory's configuration screen: who it says it is, whether Vescape can drive it, and what
- * it offers.
+ * One Accessory's configuration screen: who it says it is, whether Vescape can drive it, what it
+ * offers, and where its link stands right now.
  *
  * Identity first, because everything saved about an Accessory keys on it. Per-capability setup —
  * clearance calibration, brake-light behaviour — lives behind each capability in its own slice;
  * this screen is the place they hang off, and the place that says plainly when they cannot.
+ *
+ * Every fact here is native's. The link phase is the one a native session is actually in, which is
+ * running whether or not this screen was ever opened.
  */
-export function AccessoryDetailScreen({ accessoryId }: { accessoryId: string }) {
-  const accessory = useAccessoryDiscoveryStore((s) =>
-    s.accessories.find((a) => a.accessoryId === accessoryId),
-  )
-  const devices = useAccessoryDiscoveryStore((s) => s.devices)
+export function AccessoryDetailScreen({
+  accessoryId,
+  onForgotten,
+}: {
+  accessoryId: string
+  /** Called once the Accessory is gone, so the route that opened this can leave. */
+  onForgotten?: () => void
+}) {
+  const accessory = useSavedAccessory(accessoryId)
+  const forget = useAccessoryStore((s) => s.forget)
+  const [forgetting, setForgetting] = useState(false)
+
+  const onForget = useCallback(async () => {
+    setForgetting(true)
+    try {
+      await forget(accessoryId)
+      onForgotten?.()
+    } finally {
+      setForgetting(false)
+    }
+  }, [accessoryId, forget, onForgotten])
 
   if (!accessory) {
     return (
@@ -35,56 +53,84 @@ export function AccessoryDetailScreen({ accessoryId }: { accessoryId: string }) 
         <IconHero
           icon={PlugsConnectedIcon}
           title="Accessory not found"
-          description="This accessory has not answered yet in this session. Scan for it again from the Board selector."
+          description="This accessory is not saved on this phone. Add it again from the Board selector."
         />
       </SafeAreaView>
     )
   }
 
-  const { manifest } = accessory
-  const status = accessoryLinkStatus(accessory, devices)
+  const status = accessoryStatusCopy(accessory.phase)
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <IconHero icon={PlugsConnectedIcon} title={manifest.name} />
+        <IconHero icon={PlugsConnectedIcon} title={accessory.name} />
 
-        <AccessoryCompatibilityNotice
-          compatibility={manifest.compatibility}
-          supportedVersions={manifest.supportedVersions}
-        />
+        {accessory.compatibility ? (
+          <AccessoryCompatibilityNotice
+            compatibility={accessory.compatibility}
+            supportedVersions={[]}
+          />
+        ) : null}
+
+        {accessory.capabilitiesChanged ? (
+          <Text style={styles.warning}>
+            This accessory now declares different limits than when it was added. Anything calibrated
+            against the old ones needs checking before it drives the board again.
+          </Text>
+        ) : null}
+
+        <SettingsSectionTitle>Connection</SettingsSectionTitle>
+        <View style={styles.card}>
+          <Fact label="Status" value={status.label} />
+          {accessory.error ? (
+            <Fact label="Last problem" value={linkErrorCopy(accessory.error)} />
+          ) : null}
+          <Fact
+            label="Last connected"
+            value={
+              accessory.lastConnectedAt == null ? 'Not yet' : fmtTimeAgo(accessory.lastConnectedAt)
+            }
+          />
+        </View>
 
         <SettingsSectionTitle>Identity</SettingsSectionTitle>
         <View style={styles.card}>
-          <Fact label="Accessory ID" value={manifest.accessoryId} mono />
-          <Fact label="Firmware" value={manifest.firmwareVersion} />
+          <Fact label="Accessory ID" value={accessory.accessoryId} mono />
+          <Fact label="Firmware" value={accessory.firmwareVersion} />
           <Fact
             label="Protocol"
             value={
-              manifest.protocolVersion == null
+              accessory.protocolVersion == null
                 ? 'No common version'
-                : `v${manifest.protocolVersion}`
+                : `v${accessory.protocolVersion}`
             }
           />
-          <Fact
-            label="Link"
-            value={`${accessoryStatusCopy(status).label} · checked ${fmtTimeAgo(accessory.inspectedAt)}`}
-          />
+          <Fact label="Added" value={fmtTimeAgo(accessory.enrolledAt)} />
         </View>
 
         <SettingsSectionTitle>Capabilities</SettingsSectionTitle>
         <View style={styles.card}>
-          {manifest.capabilities.length === 0 ? (
+          {accessory.capabilities.length === 0 ? (
             <Text style={styles.empty}>This accessory declared no capabilities.</Text>
           ) : (
-            manifest.capabilities.map((capability) => (
+            accessory.capabilities.map((capability) => (
               <AccessoryCapabilityRow key={capability.id} capability={capability} />
             ))
           )}
         </View>
 
+        <Button
+          label="Forget accessory"
+          variant="destructive"
+          onPress={onForget}
+          loading={forgetting}
+          testID="accessory-forget"
+        />
+
         <Text style={styles.footnote}>
-          Discovery reads this accessory and disconnects. Nothing on it runs until it is set up.
+          Vescape connects to a saved accessory on its own, including with the app closed.
+          Forgetting it ends that and removes everything saved about it.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -123,6 +169,12 @@ const styles = StyleSheet.create({
   factLabel: { color: theme.neutral.textMuted, fontSize: 12, fontWeight: '600' },
   factValue: { flexShrink: 1, color: theme.neutral.textSecondary, fontSize: 12 },
   factValueMono: { fontFamily: theme.mono('600'), fontSize: 11 },
+  warning: {
+    color: theme.status.caution.text,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 4,
+  },
   empty: {
     color: theme.neutral.textDim,
     fontSize: 12,

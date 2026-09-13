@@ -896,3 +896,37 @@ data class VescFaultCaptureSampleEntity(
   val adc2: Double?,
   val state: Int?,
 )
+
+/**
+ * One enrolled Accessory: the durable half of an Accessory, and the only reason one auto-connects.
+ *
+ * Identity is [accessoryId] — the persistent UUID the manifest carries — never the BLE handle and
+ * never the name. Both of those move: Android reports a rotating MAC, iOS a per-install peripheral
+ * id, and the rider can rename the unit from its own firmware. Keying the row on the manifest id is
+ * what makes a renamed Accessory the same Accessory instead of a second one.
+ *
+ * [deviceId] is a reconnect hint and nothing more. It is where the Accessory answered last time, so
+ * the session has somewhere to look before falling back to a scan; a stale one costs a scan, never
+ * a duplicate row.
+ *
+ * [capabilitiesJson] is the capability set validated at the last successful handshake. Every
+ * reconnect reads the manifest again and compares: a capability whose declared limits moved is a
+ * capability whose saved per-capability settings may no longer fit, and the binding says setup is
+ * required rather than driving hardware to numbers it no longer accepts.
+ *
+ * @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedAccessory`
+ */
+@Entity(tableName = "accessories")
+data class SavedAccessoryEntity(
+  @PrimaryKey @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  /** Manifest name at the last handshake. A label to show, refreshed on every reconnect. */
+  val name: String,
+  @ColumnInfo(name = "firmware_version") val firmwareVersion: String,
+  /** Last agreed protocol version, or null when the two sides found none. */
+  @ColumnInfo(name = "protocol_version") val protocolVersion: Int?,
+  /** Where it answered last. A hint for the next connect, not identity. */
+  @ColumnInfo(name = "device_id") val deviceId: String?,
+  @ColumnInfo(name = "capabilities_json") val capabilitiesJson: String,
+  @ColumnInfo(name = "enrolled_at") val enrolledAt: Long,
+  @ColumnInfo(name = "last_connected_at") val lastConnectedAt: Long?,
+)

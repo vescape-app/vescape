@@ -1500,6 +1500,27 @@ internal object TelemetryMigrations {
     }
 
 
+    /**
+     * Enrolled Accessories. Keyed on the manifest's persistent accessory id, so the same hardware
+     * renamed, re-flashed or seen on a different BLE handle stays one row.
+     */
+    internal val MIGRATION_43_44 = migration(43, 44) { db ->
+        db.execSQL(
+          """
+          CREATE TABLE IF NOT EXISTS accessories (
+            accessory_id TEXT NOT NULL PRIMARY KEY,
+            name TEXT NOT NULL,
+            firmware_version TEXT NOT NULL,
+            protocol_version INTEGER,
+            device_id TEXT,
+            capabilities_json TEXT NOT NULL,
+            enrolled_at INTEGER NOT NULL,
+            last_connected_at INTEGER
+          )
+          """.trimIndent(),
+        )
+    }
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1539,6 +1560,7 @@ internal object TelemetryMigrations {
       MIGRATION_40_41,
       MIGRATION_41_42,
       MIGRATION_42_43,
+      MIGRATION_43_44,
     )
 
 }

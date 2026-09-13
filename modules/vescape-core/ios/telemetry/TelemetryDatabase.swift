@@ -825,6 +825,11 @@ enum TelemetryDatabase {
       try rebuildBucketsOnRecordingId(db)
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_43_44`
+    migrator.registerMigration("v44_accessories") { db in
+      try PersistenceSchema.createAccessories(db)
+    }
+
     return migrator
   }
 }

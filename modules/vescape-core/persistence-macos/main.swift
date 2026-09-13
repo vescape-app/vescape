@@ -979,6 +979,111 @@ if let exchangePath = ProcessInfo.processInfo.environment["VESCAPE_BACKUP_EXCHAN
   try DatabaseBackupArchive.archive(database: iosData, manifest: iosManifest)
     .write(to: exchange.appendingPathComponent("ios.zip"), options: .atomic)
 }
+// MARK: - Enrolled Accessories
+//
+// The scenario that actually matters for this table: an Accessory the rider renamed and re-flashed,
+// met again on a different peripheral id, must stay one Accessory. If identity ever slipped to the
+// name or the handle, this is where a second row would appear.
+//
+// @parity /modules/vescape-core/persistence-jvm/src/test/kotlin/expo/modules/vescapecore/telemetry/AccessoryPersistenceHostTest.kt
+let accessoryFixture = try JSONSerialization.jsonObject(
+  with: Data(contentsOf: root.appendingPathComponent("shared/accessory-persistence-contract.json"))
+) as! [String: Any]
+try require(
+  accessoryFixture["scenario"] as? String == "accessory-enrollment-close-reopen",
+  "unknown accessory scenario")
+let accessorySpec = accessoryFixture["accessory"] as! [String: Any]
+let otherAccessorySpec = accessoryFixture["other"] as! [String: Any]
+let accessoryURL = FileManager.default.temporaryDirectory
+  .appendingPathComponent("vescape-accessories-\(UUID().uuidString).db")
+var accessoryQueue: DatabaseQueue? = try DatabaseQueue(path: accessoryURL.path)
+try TelemetryDatabase.migrator.migrate(accessoryQueue!)
+var accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+
+func savedAccessory(_ spec: [String: Any], overrides: [String: Any] = [:]) -> SavedAccessory {
+  func value(_ key: String) -> Any? { overrides[key] ?? spec[key] }
+  return SavedAccessory(
+    accessoryId: value("accessoryId") as! String,
+    name: value("name") as! String,
+    firmwareVersion: value("firmwareVersion") as! String,
+    protocolVersion: (value("protocolVersion") as? NSNumber)?.intValue,
+    deviceId: value("deviceId") as? String,
+    capabilitiesJson: value("capabilitiesJson") as! String,
+    enrolledAt: Int64(int(value("enrolledAt"))),
+    lastConnectedAt: (value("lastConnectedAt") as? NSNumber)?.int64Value)
+}
+
+try accessoryStore.upsert(savedAccessory(accessorySpec))
+try accessoryStore.upsert(savedAccessory(otherAccessorySpec))
+try accessoryQueue!.close()
+
+accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
+accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+let reopenedAccessories = try accessoryStore.accessories()
+try require(
+  reopenedAccessories.map(\.accessoryId)
+    == [accessorySpec["accessoryId"] as! String, otherAccessorySpec["accessoryId"] as! String],
+  "Accessory reopen order")
+try require(
+  reopenedAccessories.first?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
+  "Accessory capabilities reopen")
+try require(reopenedAccessories.first?.lastConnectedAt == nil, "Accessory connected before it was")
+
+let revalidated = try accessoryStore.upsert(
+  savedAccessory(
+    accessorySpec,
+    overrides: [
+      "name": accessorySpec["renamedTo"]!,
+      "firmwareVersion": accessorySpec["updatedFirmwareVersion"]!,
+      "deviceId": accessorySpec["movedDeviceId"]!,
+      "capabilitiesJson": accessorySpec["changedCapabilitiesJson"]!,
+      "enrolledAt": accessorySpec["reEnrolledAt"]!,
+    ]))
+let afterRevalidation = try accessoryStore.accessories()
+try require(afterRevalidation.count == 2, "rename duplicated an Accessory")
+try require(revalidated.name == accessorySpec["renamedTo"] as? String, "Accessory rename")
+// Reading a manifest again is not adding the Accessory again.
+try require(
+  revalidated.enrolledAt == Int64(int(accessorySpec["enrolledAt"])), "Accessory enrolledAt moved")
+
+let touched = try accessoryStore.touch(
+  accessorySpec["accessoryId"] as! String,
+  deviceId: accessorySpec["movedDeviceId"] as? String,
+  connectedAt: Int64(int(accessorySpec["connectedAt"])))
+try require(touched, "Accessory touch")
+let touchedUnknown = try accessoryStore.touch("not-enrolled", deviceId: nil, connectedAt: 1)
+try require(!touchedUnknown, "touch invented an Accessory")
+try accessoryQueue!.close()
+
+accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
+accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+let persistedAccessory = try accessoryStore.accessory(accessorySpec["accessoryId"] as! String)
+try require(
+  persistedAccessory?.firmwareVersion == accessorySpec["updatedFirmwareVersion"] as? String,
+  "Accessory firmware reopen")
+try require(
+  persistedAccessory?.capabilitiesJson == accessorySpec["changedCapabilitiesJson"] as? String,
+  "Accessory capabilities revalidation")
+try require(
+  persistedAccessory?.lastConnectedAt == Int64(int(accessorySpec["connectedAt"])),
+  "Accessory last connected reopen")
+
+// Forgetting takes the Accessory and nothing else.
+let forgotten = try accessoryStore.forget(accessorySpec["accessoryId"] as! String)
+try require(forgotten, "Accessory forget")
+let forgottenAgain = try accessoryStore.forget(accessorySpec["accessoryId"] as! String)
+try require(!forgottenAgain, "forgetting twice reported a second removal")
+try accessoryQueue!.close()
+
+accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
+accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
+let remainingAccessories = try accessoryStore.accessories()
+try require(
+  remainingAccessories.map(\.accessoryId) == [otherAccessorySpec["accessoryId"] as! String],
+  "forget removed the wrong Accessory")
+try accessoryQueue!.close()
+try? FileManager.default.removeItem(at: accessoryURL)
+
 print("recording-contract macOS runtimeMs=\(Int(Date().timeIntervalSince(started) * 1000)) scenario=\(fixture["scenario"]!)")
 
 private extension String {

@@ -85,8 +85,13 @@ class DatabaseRestoreHostTest {
   @Test
   fun productionMigrationGraphRejectsVersionsWithoutAPath() {
     assertTrue((3..36).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
-    assertTrue((40..43).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
-    assertTrue(listOf(1, 2, 37, 38, 39, 44).all { it !in SUPPORTED_ANDROID_DATABASE_VERSIONS })
+    assertTrue((40..TELEMETRY_DATABASE_VERSION).all { it in SUPPORTED_ANDROID_DATABASE_VERSIONS })
+    // The gap and the generation past the current one: 37-39 never shipped, and a database from a
+    // newer app than this one is not something an older migration graph may guess at.
+    assertTrue(
+      (listOf(1, 2, 37, 38, 39) + (TELEMETRY_DATABASE_VERSION + 1))
+        .all { it !in SUPPORTED_ANDROID_DATABASE_VERSIONS },
+    )
     assertTrue((14..36).all { it in EXPORTED_ANDROID_DATABASE_VERSIONS })
     assertTrue((3..13).all { it !in EXPORTED_ANDROID_DATABASE_VERSIONS })
     assertEquals(1, roomVersionForBackup("ios", 1))

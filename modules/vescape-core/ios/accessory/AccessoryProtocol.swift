@@ -136,7 +136,9 @@ enum AccessoryProtocol {
       + "\"supportedVersions\":[\(versions)]}"
   }
 
-  private static func quote(_ value: String) -> String {
+  /// Shared with `AccessoryCommand.encode`: every line this app writes is quoted the same way, and
+  /// the shared fixture compares the bytes.
+  static func quote(_ value: String) -> String {
     var out = "\""
     for scalar in value.unicodeScalars {
       switch scalar {

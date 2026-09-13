@@ -92,7 +92,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError", "onAccessoryState")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -201,11 +201,21 @@ public class VescapeCoreModule: Module {
     OnStopObserving("onAccessoryDevice") { self.observedEvents.remove("onAccessoryDevice") }
     OnStartObserving("onAccessoryScanError") { self.observedEvents.insert("onAccessoryScanError") }
     OnStopObserving("onAccessoryScanError") { self.observedEvents.remove("onAccessoryScanError") }
+    OnStartObserving("onAccessoryState") { self.observedEvents.insert("onAccessoryState") }
+    OnStopObserving("onAccessoryState") { self.observedEvents.remove("onAccessoryState") }
 
     OnCreate {
       // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
       // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessoryDiscovery`
       AccessoryDiscovery.shared.emit = { [weak self] name, body in
+        guard let self, self.shouldEmitToFrontend(name) else { return }
+        self.sendEvent(name, body)
+      }
+
+      // Enrolled Accessory sessions are native-owned and outlive this module; the bridge only
+      // mirrors their state while a JS runtime happens to exist.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessorySessionManager`
+      AccessorySessionController.shared.emit = { [weak self] name, body in
         guard let self, self.shouldEmitToFrontend(name) else { return }
         self.sendEvent(name, body)
       }
@@ -283,6 +293,9 @@ public class VescapeCoreModule: Module {
       AccessoryDiscovery.shared.emit = nil
       AccessoryDiscovery.shared.stopScan()
       AccessoryDiscovery.shared.cancelInspection()
+      // Only the mirror is dropped. The sessions belong to the launch-created central, and JS going
+      // away is not a reason for an enrolled Accessory to stop working.
+      AccessorySessionController.shared.emit = nil
     }
 
     // MARK: Scan
@@ -315,6 +328,22 @@ public class VescapeCoreModule: Module {
 
     AsyncFunction("inspectAccessory") { (deviceId: String, promise: Promise) in
       AccessoryDiscovery.shared.inspect(deviceId: deviceId) { promise.resolve($0) }
+    }
+
+    // Enrollment and the saved sessions. JS sends the intent and renders the snapshot; identity,
+    // the manifest and the session all stay native.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `enrollAccessory`
+    // @parity /modules/vescape-core/src/index.ts `enrollAccessory`
+    AsyncFunction("enrollAccessory") { (deviceId: String, promise: Promise) in
+      AccessorySessionController.shared.enroll(deviceId: deviceId) { promise.resolve($0) }
+    }
+
+    AsyncFunction("forgetAccessory") { (accessoryId: String, promise: Promise) in
+      AccessorySessionController.shared.forget(accessoryId: accessoryId) { promise.resolve($0) }
+    }
+
+    Function("getAccessories") {
+      AccessorySessionController.shared.snapshot()
     }
 
     // MARK: Location

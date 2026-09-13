@@ -1,0 +1,254 @@
+{
+  "$comment": "Vescape Accessory Protocol v1 operational session contract: the commands an enrolled Accessory's session sends, the acknowledgements it accepts back, and the request-id rules the accessory enforces. Kotlin, Swift and the ESP32 firmware all run these cases. `encode` pins the exact bytes the app writes for one desired command at one request id — a map-backed encoder does not promise key order, and three implementations comparing bytes is what keeps the wire from drifting. `decode` is the app-side parser: what an accessory line must produce, or that it must be ignored without disturbing the session. `peer` drives the firmware: a sequence of received lines and the exact lines it must answer with, which is where stale/reused request ids, duplicate-retry replay and rate resolution are pinned.",
+  "sessionId": "b06b9d76-6c73-4d70-a763-d933b294c45b",
+  "otherSessionId": "1a2b3c4d-0000-4000-8000-000000000000",
+  "helloRequestId": 1,
+  "timing": {
+    "leaseMs": 2000,
+    "renewIntervalMs": 500,
+    "requestTimeoutMs": 500,
+    "handshakeTimeoutMs": 3000
+  },
+  "errorCodes": [
+    "invalid_argument",
+    "unknown_capability",
+    "unsupported_message",
+    "not_ready",
+    "hardware_error",
+    "stale_request",
+    "request_id_reused"
+  ],
+  "encode": [
+    {
+      "name": "configure puts a clearance sensor into measurement standby",
+      "requestId": 2,
+      "command": {
+        "kind": "configure",
+        "capabilityId": "clearance",
+        "enabled": false,
+        "rateHz": 20
+      },
+      "line": "{\"type\":\"configure\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"clearance\",\"enabled\":false,\"rateHz\":20}"
+    },
+    {
+      "name": "configure enables measurement at a resolved rate",
+      "requestId": 3,
+      "command": {
+        "kind": "configure",
+        "capabilityId": "clearance",
+        "enabled": true,
+        "rateHz": 30
+      },
+      "line": "{\"type\":\"configure\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"capabilityId\":\"clearance\",\"enabled\":true,\"rateHz\":30}"
+    },
+    {
+      "name": "state reports Board telemetry unavailable and omits mode",
+      "requestId": 4,
+      "command": {
+        "kind": "state",
+        "capabilityId": "rear_light",
+        "telemetry": "unavailable",
+        "mode": null,
+        "parked": "off",
+        "preview": false
+      },
+      "line": "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":4,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+    },
+    {
+      "name": "state carries a riding mode when Board telemetry is available",
+      "requestId": 5,
+      "command": {
+        "kind": "state",
+        "capabilityId": "rear_light",
+        "telemetry": "available",
+        "mode": "braking",
+        "parked": "glow",
+        "preview": false
+      },
+      "line": "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":5,\"capabilityId\":\"rear_light\",\"telemetry\":\"available\",\"mode\":\"braking\",\"parked\":\"glow\"}"
+    },
+    {
+      "name": "preview labels simulated state and may pair unavailable telemetry with a mode",
+      "requestId": 6,
+      "command": {
+        "kind": "state",
+        "capabilityId": "rear_light",
+        "telemetry": "unavailable",
+        "mode": "hard_braking",
+        "parked": "glow",
+        "preview": true
+      },
+      "line": "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":6,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"mode\":\"hard_braking\",\"parked\":\"glow\",\"preview\":true}"
+    }
+  ],
+  "decode": [
+    {
+      "name": "ack carries the values actually applied and the lease they hold",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"clearance\",\"applied\":{\"enabled\":false,\"rateHz\":20},\"leaseMs\":2000}",
+      "ack": {
+        "requestId": 2,
+        "capabilityId": "clearance",
+        "leaseMs": 2000,
+        "appliedEnabled": false,
+        "appliedRateHz": 20
+      }
+    },
+    {
+      "name": "ack for a state command reports the state the accessory is now in",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":4,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+      "ack": {
+        "requestId": 4,
+        "capabilityId": "rear_light",
+        "leaseMs": 2000,
+        "appliedTelemetry": "unavailable",
+        "appliedParked": "off"
+      }
+    },
+    {
+      "name": "an error names the request it refused",
+      "line": "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"code\":\"invalid_argument\",\"message\":\"rateHz must be positive\"}",
+      "error": { "requestId": 3, "code": "invalid_argument" }
+    },
+    {
+      "name": "an ack from another session is ignored and renews nothing",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"1a2b3c4d-0000-4000-8000-000000000000\",\"requestId\":2,\"capabilityId\":\"clearance\",\"applied\":{\"enabled\":false,\"rateHz\":20},\"leaseMs\":2000}",
+      "ignored": true
+    },
+    {
+      "name": "an ack without a lease is not an applied command",
+      "line": "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"clearance\",\"applied\":{\"enabled\":false,\"rateHz\":20}}",
+      "ignored": true
+    },
+    {
+      "name": "a message type this slice does not handle is ignored, not a protocol failure",
+      "line": "{\"type\":\"reading\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"capabilityId\":\"clearance\",\"seq\":1,\"sampleTimeMs\":125,\"status\":\"ok\",\"value\":12.4}",
+      "ignored": true
+    },
+    {
+      "name": "a line that is not JSON ends the protocol session",
+      "line": "not json at all",
+      "malformed": true
+    }
+  ],
+  "peer": [
+    {
+      "name": "configure is acknowledged with the values actually applied",
+      "requests": [
+        "{\"type\":\"configure\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"enabled\":false,\"rateHz\":20}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"invalid_argument\",\"message\":\"capability does not take a configuration\"}"
+      ]
+    },
+    {
+      "name": "a state command is acknowledged and leased",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}"
+      ]
+    },
+    {
+      "name": "retrying the same request id replays the same reply",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}",
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}"
+      ],
+      "leaseRenewals": 1
+    },
+    {
+      "name": "an older request id is refused as stale",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}",
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"available\",\"mode\":\"riding\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":3,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"stale_request\",\"message\":\"request id is older than the last one applied\"}"
+      ],
+      "leaseRenewals": 1
+    },
+    {
+      "name": "reusing a request id with a different body is refused",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}",
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"available\",\"mode\":\"riding\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"ack\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"applied\":{\"telemetry\":\"unavailable\",\"parked\":\"off\"},\"leaseMs\":2000}",
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"request_id_reused\",\"message\":\"request id was already used with a different body\"}"
+      ],
+      "leaseRenewals": 1
+    },
+    {
+      "name": "an unknown capability id is refused without touching anything",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"front_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"unknown_capability\",\"message\":\"no capability with that id\"}"
+      ],
+      "leaseRenewals": 0
+    },
+    {
+      "name": "a mode without available telemetry is only legal under preview",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"mode\":\"braking\",\"parked\":\"off\"}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"invalid_argument\",\"message\":\"mode requires available telemetry unless preview\"}"
+      ],
+      "leaseRenewals": 0
+    },
+    {
+      "name": "a command from another session never renews a lease",
+      "requests": [
+        "{\"type\":\"state\",\"sessionId\":\"1a2b3c4d-0000-4000-8000-000000000000\",\"requestId\":2,\"capabilityId\":\"rear_light\",\"telemetry\":\"unavailable\",\"parked\":\"off\"}"
+      ],
+      "replies": [],
+      "leaseRenewals": 0
+    },
+    {
+      "name": "a well-formed message type v1 does not define is refused, not disconnected",
+      "requests": [
+        "{\"type\":\"calibrate\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"capabilityId\":\"rear_light\"}"
+      ],
+      "replies": [
+        "{\"type\":\"error\",\"sessionId\":\"b06b9d76-6c73-4d70-a763-d933b294c45b\",\"requestId\":2,\"code\":\"unsupported_message\",\"message\":\"v1 defines no such message\"}"
+      ],
+      "leaseRenewals": 0
+    }
+  ],
+  "rateResolution": [
+    { "name": "exact rate is kept", "ratesHz": [10, 20, 30], "requested": 20, "resolved": 20 },
+    {
+      "name": "nearest supported rate wins",
+      "ratesHz": [10, 20, 30],
+      "requested": 28,
+      "resolved": 30
+    },
+    {
+      "name": "a tie resolves to the lower rate",
+      "ratesHz": [10, 20, 30],
+      "requested": 25,
+      "resolved": 20
+    },
+    {
+      "name": "below the slowest rate clamps to it",
+      "ratesHz": [10, 20, 30],
+      "requested": 1,
+      "resolved": 10
+    },
+    {
+      "name": "above the fastest rate clamps to it",
+      "ratesHz": [10, 20, 30],
+      "requested": 500,
+      "resolved": 30
+    }
+  ]
+}
