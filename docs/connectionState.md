@@ -11,6 +11,8 @@ JS must not optimistically set board connection status. If UI shows `connecting`
 
 ## Legacy firmware identity
 
+Removal boundaries and code markers are tracked in [legacy Float support removal](./legacy-float.md).
+
 Link Integrity compares INFO responses using the precision captured by the saved Board Link.
 INFO v1 supplied only major/minor and no package name. Older app versions saved that response as
 `Refloat 1.2`, even when the package was Float; current versions display `Float/Refloat 1.2`.

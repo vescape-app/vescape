@@ -213,6 +213,8 @@ enum RefloatConfigProtocol {
     return .failure("Unexpected Refloat app response command \(cmd), expected \(COMM_CUSTOM_APP_DATA)")
   }
 
+  // @legacy-float info-v1: remove only when Float AND Refloat INFO v1 support ends.
+  // Removal checklist: /docs/legacy-float.md#info-v1
   private static func parseGetInfoV1(
     _ payload: [UInt8],
     _ dataOffset: Int

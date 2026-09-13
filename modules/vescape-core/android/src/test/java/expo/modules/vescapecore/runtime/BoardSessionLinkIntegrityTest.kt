@@ -90,6 +90,7 @@ class BoardSessionLinkIntegrityTest {
         assertEquals(LinkIntegrity.Mismatched, mismatched.markCheckTimedOut())
     }
 
+    // @legacy-float saved-link: compatibility regression group; see /docs/legacy-float.md#saved-link.
     @Test
     fun legacyInfoCanGainPackageAndPatchPrecisionWithoutInvalidatingLink() {
         val cases = listOf(

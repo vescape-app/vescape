@@ -19,6 +19,7 @@
 - [vescProtocol.md](./vescProtocol.md) — VESC packet framing, CAN forwarding, Refloat commands
 - [refloatAlldata.md](./refloatAlldata.md) — Refloat `COMMAND_GET_ALLDATA` binary layout
 - [mcconf.md](./mcconf.md) — VESC motor config binary layout, signature versioning, decode traps
+- [legacy-float.md](./legacy-float.md) — removal checklist for legacy INFO, saved links, and VESC 6.02 support
 - [chargingDetection.md](./chargingDetection.md) — charging indicator investigation & findings
 - [pin-lock.md](./pin-lock.md) — upstream VESC PIN write-lock: fork firmware, commands, what it blocks (not implemented)
 

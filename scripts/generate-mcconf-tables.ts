@@ -11,6 +11,8 @@
 
 import { parseMcconfLayout } from './mcconf-layout'
 
+// @legacy-float vesc-6.02: independent firmware support; remove only when VESC 6.02 support ends.
+// Removal checklist: /docs/legacy-float.md#vesc-602. Edit this input, then regenerate both native tables.
 const BRANCHES = ['release_6_02', 'release_6_05', 'release_6_06', 'release_7_00'] as const
 const RAW = 'https://raw.githubusercontent.com/vedderb/bldc'
 

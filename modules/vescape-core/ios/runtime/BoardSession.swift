@@ -145,6 +145,8 @@ struct LinkIdentity {
       (hasBms != true || observed.hasBms == true)
   }
 
+  // @legacy-float saved-link: keep until legacy saved links migrate or require explicit re-link.
+  // Removal checklist: /docs/legacy-float.md#saved-link
   // INFO v1 reported only major/minor, and older app versions asserted "Refloat" even for Float.
   // Accept richer observations only for those saved identities. Never discard package, patch or
   // suffix facts already captured by INFO v2, or broaden this to unrelated packages.
