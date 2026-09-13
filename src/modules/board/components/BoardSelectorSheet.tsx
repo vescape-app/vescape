@@ -27,6 +27,14 @@ export interface BoardSelectorLink {
 
 interface BoardSelectorContentProps {
   boards: Board[]
+  /**
+   * The Accessories half of the selector, supplied by the screen composing it.
+   *
+   * A plain node, not accessory data: the selector is the entry point for both domains but knows
+   * only one of them. Accessories target the connected Board rather than any Board in this list, so
+   * they sit beside the Boards section, never inside a Board's row.
+   */
+  accessories?: React.ReactNode
   activeBoardId: string | null
   /** True while the active board has a live telemetry link, so its row shows the pull rate. */
   activeBoardLive?: boolean
@@ -165,6 +173,7 @@ function BoardIcon({ active }: { active: boolean }) {
  */
 export function BoardSelectorContent({
   boards,
+  accessories,
   activeBoardId,
   activeBoardLive = false,
   warnings,
@@ -178,6 +187,8 @@ export function BoardSelectorContent({
 
   return (
     <>
+      {/* Headings appear only once there are two sections to tell apart. */}
+      {accessories ? <Text style={styles.sectionLabel}>Boards</Text> : null}
       {active && (
         <View style={styles.activeBlock}>
           <View style={[styles.row, styles.activeRow]}>
@@ -272,6 +283,14 @@ export function BoardSelectorContent({
           <Text style={styles.addText}>Add new board</Text>
         </Pressable>
       </View>
+
+      {accessories ? (
+        <>
+          <View style={styles.sectionDivider} />
+          <Text style={styles.sectionLabel}>Accessories</Text>
+          {accessories}
+        </>
+      ) : null}
     </>
   )
 }
@@ -287,7 +306,7 @@ export function BoardSelectorSheet({
       visible={visible}
       triggerRef={triggerRef}
       edge="top"
-      title="Boards"
+      title={content.accessories ? 'Boards & accessories' : 'Boards'}
       icon={LightningIcon}
       iconColor={theme.palette.sky.color}
       backdropTestID="board-selector-backdrop"
@@ -301,6 +320,22 @@ export function BoardSelectorSheet({
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
+  },
+  sectionLabel: {
+    color: theme.neutral.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingLeft: 10,
+    paddingBottom: 4,
+  },
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth * 2,
+    alignSelf: 'stretch',
+    backgroundColor: theme.alpha(theme.neutral.border, 0.6),
+    marginTop: 8,
+    marginBottom: 10,
   },
   // The active board is a card, not a list row — it takes the drawer's full width and the same
   // surface every other widget in there wears.

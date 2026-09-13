@@ -5,6 +5,10 @@ import { Text } from '@/components/base/Text'
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ToggleRow } from '@/components/dev/ShowcaseControls'
 import { BoardSelectorContent } from '@/modules/board/components/BoardSelectorSheet'
+import {
+  AccessorySelectorSection,
+  type AccessorySelectorItem,
+} from '@/modules/accessories/components/AccessorySelectorSection'
 import type { Board } from '@/modules/board/store/boardStore'
 import { theme } from '@/constants/theme'
 
@@ -41,6 +45,24 @@ const OTHERS = [
   }),
 ]
 
+/** Accessories are listed flat beside the Boards: they target whichever Board is connected. */
+const ACCESSORIES: AccessorySelectorItem[] = [
+  {
+    accessoryId: 'clearance-1',
+    name: 'Clearance sensor',
+    detail: 'v0.1.0',
+    status: 'advertising',
+  },
+  { accessoryId: 'light-1', name: 'Rear light', detail: 'v0.2.1', status: 'idle' },
+  {
+    accessoryId: 'horn-1',
+    name: 'Air horn',
+    detail: 'v1.0.0',
+    status: 'unreachable',
+    incompatible: true,
+  },
+]
+
 export function BoardSelectorSheetShowcase() {
   const [live, setLive] = useState(true)
   const [warningsOn, setWarningsOn] = useState(true)
@@ -53,6 +75,8 @@ export function BoardSelectorSheetShowcase() {
   const [neverSeen, setNeverSeen] = useState(false)
   const [alone, setAlone] = useState(false)
   const [empty, setEmpty] = useState(false)
+  const [accessoriesOn, setAccessoriesOn] = useState(true)
+  const [noAccessories, setNoAccessories] = useState(false)
   const [lastAction, setLastAction] = useState('Tap a row or link to see its action here.')
 
   const active = unlinked ? UNLINKED_ACTIVE : neverSeen ? NEVER_SEEN : longName ? LONG_NAME : ACTIVE
@@ -82,12 +106,27 @@ export function BoardSelectorSheetShowcase() {
           <ToggleRow label="active board never seen" value={neverSeen} onToggle={setNeverSeen} />
           <ToggleRow label="only one board" value={alone} onToggle={setAlone} />
           <ToggleRow label="no boards yet" value={empty} onToggle={setEmpty} />
+          <ToggleRow
+            label="accessories section"
+            value={accessoriesOn}
+            onToggle={setAccessoriesOn}
+          />
+          <ToggleRow label="no accessories yet" value={noAccessories} onToggle={setNoAccessories} />
         </>
       }
     >
       <View style={styles.sheet}>
         <BoardSelectorContent
           boards={boards}
+          accessories={
+            accessoriesOn ? (
+              <AccessorySelectorSection
+                accessories={noAccessories ? [] : ACCESSORIES}
+                onSelectAccessory={(id) => setLastAction(`Open accessory ${id}`)}
+                onAddAccessory={() => setLastAction('Add accessory')}
+              />
+            ) : undefined
+          }
           activeBoardId={active.id}
           activeBoardLive={live}
           warnings={

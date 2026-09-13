@@ -1,6 +1,25 @@
 # Vescape Accessory Protocol v1
 
-Status: implementation draft for the PoC. Product behavior is in [accessories.md](./accessories.md). This protocol is not implemented yet. Timing, rate, and size limits below are proposed PoC defaults, not measured reliability guarantees.
+Status: implementation draft for the PoC. Product behavior is in [accessories.md](./accessories.md). Timing, rate, and size limits below are proposed PoC defaults, not measured reliability guarantees.
+
+**Implemented so far**: BLE transport, NDJSON framing with its bounds, the `hello`/`manifest`
+handshake, version negotiation, and capability recognition. Everything operational — `configure`,
+`state`, `reading`, leases, acknowledgements — is still a draft; the firmware answers those with
+`unsupported_message` today.
+
+The implemented half has an executable form: `shared/fixtures/accessory-protocol/` holds the framing
+and handshake corpus that Android Kotlin, iOS Swift and the ESP32 firmware all run
+(`bun run test:android`, `bun run test:ios`, and `pio test -e native` in `vescape-hardware`). Change
+the fixtures first; three implementations of one wire format drift silently otherwise.
+
+Two rules below are app-side decisions the fixtures pin down, rather than wire format:
+
+- A recognized capability type is not automatically a usable one. A `ground_clearance` must declare
+  centimetres, a range whose minimum is below its maximum, and at least one positive rate; anything
+  else is reported as an unsupported capability rather than guessed at.
+- Compatibility is one of `supported`, `unsupported-version` (no common protocol version), or
+  `unsupported-capabilities` (version agreed, nothing recognized). A version mismatch marks every
+  capability unsupported, because none of them can be driven.
 
 ## Ownership
 
