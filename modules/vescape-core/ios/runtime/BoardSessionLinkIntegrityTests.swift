@@ -1,6 +1,7 @@
 import XCTest
 @testable import VescapeCore
 
+/// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/runtime/BoardSessionLinkIntegrityTest.kt
 final class BoardSessionLinkIntegrityTests: XCTestCase {
   private let complete = LinkIdentity(
     linkVersion: 4,
@@ -131,5 +132,73 @@ final class BoardSessionLinkIntegrityTests: XCTestCase {
         requestedBoardId: "board-1"
       )
     )
+  }
+
+  func testLegacyInfoCanGainPackageAndPatchPrecisionWithoutInvalidatingLink() {
+    let cases = [
+      ("Refloat 1.2", "Float/Refloat 1.2"),
+      ("Refloat 1.2", "Refloat 1.2.0"),
+      ("Refloat 1.2", "Refloat 1.2.7-beta"),
+      ("Refloat 1.2", "Float 1.2.7"),
+      ("Float/Refloat 1.2", "Refloat 1.2.7"),
+      ("Float/Refloat 1.2", "Float 1.2.0"),
+      ("Float/Refloat 1.2", "Float/Refloat 1.2"),
+    ]
+    for (saved, observed) in cases {
+      var expected = complete
+      expected.refloatVersion = saved
+      expected.refloatBaseVersion = LinkIdentity.normalizeRefloatBaseVersion(saved)
+      let session = BoardSession(id: 1)
+      session.startLinkIntegrityCheck(expected: expected)
+      session.observeFirmware(expected: expected, firmware: "FW 6.05")
+      session.observeBms(expected: expected)
+      XCTAssertEqual(.trusted, session.observeRefloat(expected: expected, refloatVersion: observed), "\(saved) -> \(observed)")
+    }
+  }
+
+  func testCompatibilityPreservesKnownIdentityFacts() {
+    let cases = [
+      ("Refloat 1.2", "Float/Refloat 1.3"),
+      ("Refloat 1.2", "Refloat 2.2.0"),
+      ("Refloat 1.2", "Other 1.2.0"),
+      ("Refloat 1.2.0", "Float 1.2.0"),
+      ("Refloat 1.2.0", "Refloat 1.2.1"),
+      ("Refloat 1.2.0-beta", "Refloat 1.2.0"),
+      ("Refloat 1.2.0", "Float/Refloat 1.2"),
+      ("Refloat 1.2.0", "Refloat 1.2"),
+      ("Refloat 1.2", "Refloat 1.2.0 extra"),
+      ("Refloat 1.2", "Refloat 1.2.0\n"),
+      ("Refloat unknown", "Float/Refloat unknown"),
+    ]
+    for (saved, observed) in cases {
+      var expected = complete
+      expected.refloatVersion = saved
+      expected.refloatBaseVersion = LinkIdentity.normalizeRefloatBaseVersion(saved)
+      let session = BoardSession(id: 1)
+      session.startLinkIntegrityCheck(expected: expected)
+      session.observeFirmware(expected: expected, firmware: "FW 6.05")
+      session.observeBms(expected: expected)
+      XCTAssertEqual(.mismatched, session.observeRefloat(expected: expected, refloatVersion: observed), "\(saved) -> \(observed)")
+    }
+  }
+
+  func testLegacyCompatibilityStillRequiresAllFactsAndConsistentBaseVersion() {
+    var expected = complete
+    expected.refloatVersion = "Refloat 1.2"
+    expected.refloatBaseVersion = "1.2"
+    let session = BoardSession(id: 1)
+    session.startLinkIntegrityCheck(expected: expected)
+    XCTAssertEqual(.checking, session.observeRefloat(expected: expected, refloatVersion: "Refloat 1.2.0"))
+    XCTAssertEqual(.checking, session.observeFirmware(expected: expected, firmware: "FW 6.05"))
+    XCTAssertEqual(.trusted, session.observeBms(expected: expected))
+    XCTAssertEqual(.mismatched, session.observeFirmware(expected: expected, firmware: "FW 6.06"))
+    XCTAssertEqual(.mismatched, session.observeFirmware(expected: expected, firmware: "FW 6.05"))
+
+    var inconsistent = expected
+    inconsistent.refloatBaseVersion = "1.3"
+    XCTAssertEqual(.mismatched, BoardSession(id: 2).observeRefloat(expected: inconsistent, refloatVersion: "Refloat 1.2.0"))
+    let missingBms = BoardSession(id: 3)
+    missingBms.observeRefloat(expected: expected, refloatVersion: "Float/Refloat 1.2")
+    XCTAssertEqual(.mismatched, missingBms.markBmsMissing(expected: expected))
   }
 }

@@ -9,6 +9,20 @@ Native owns live truth. JS sends intents and renders native snapshots.
 JS must not optimistically set board connection status. If UI shows `connecting`,
 `connected`, `stale`, or `error`, that value came from native `LiveState`.
 
+## Legacy firmware identity
+
+Link Integrity compares INFO responses using the precision captured by the saved Board Link.
+INFO v1 supplied only major/minor and no package name. Older app versions saved that response as
+`Refloat 1.2`, even when the package was Float; current versions display `Float/Refloat 1.2`.
+Both saved forms accept Float or Refloat observations with the same major/minor, including richer
+INFO v2 versions such as `Refloat 1.2.7`. This avoids invalidating an unchanged Board after an app
+upgrade. A legacy link cannot detect a package or patch change that INFO v1 never recorded.
+
+Saved INFO v2 identities retain exact package, patch, and suffix checks. Compatibility does not
+allow an observation to drop those known facts. VESC firmware, BMS, and Board Link Version checks
+still apply. The comparison also accepts the corresponding derived base-version precision change;
+it does not rewrite persisted versions or change Tune Compatibility keys.
+
 ## Shape
 
 Native emits `onLiveState` and exposes `getLiveState()`:
