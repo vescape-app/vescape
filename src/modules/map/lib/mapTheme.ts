@@ -1,9 +1,9 @@
 import type { MapStyleKey } from '@/modules/map/constants/mapStyles'
 import type { ResolvedTheme } from '@/constants/theme'
 
-/** Only basemaps with an explicit appearance temporarily override the app theme. */
+/** Appearance to persist when the rider selects a basemap. */
 export function themeOverrideForMapStyle(style: MapStyleKey): ResolvedTheme | null {
-  if (style === 'onedark') return 'dark'
+  if (style === 'onedark' || style === 'satellite') return 'dark'
   if (style === 'outdoors' || style === 'mapy') return 'light'
   return null
 }

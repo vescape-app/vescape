@@ -19,7 +19,7 @@ The app has adaptive light and dark appearances. The durable `themeMode` setting
 - `dark` — always dark.
 - `sun` — light between local sunrise and sunset, dark otherwise, using the current or last known GPS location. It falls back to the system appearance when no location is available.
 
-Selecting the explicit One Dark or Outdoors basemap applies a dark or light appearance override for the current app session. This does not overwrite `themeMode`; Satellite and Mapy.cz clear the session override. When there is no session override, the configured appearance keeps explicit basemaps paired in the other direction: light uses Outdoors and dark uses One Dark. Satellite and Mapy.cz remain unchanged. This also resolves a persisted mismatch on the next app start.
+Selecting One Dark or Satellite persists dark `themeMode`; selecting Outdoors or Mapy.cz persists light `themeMode`. The configured appearance also keeps explicit day/night basemaps paired in the other direction: light uses Outdoors and dark uses One Dark. Satellite and Mapy.cz remain unchanged when appearance is changed separately. This also resolves a persisted One Dark/Outdoors mismatch on the next app start.
 
 Neutral UI colors come from `theme.neutral`, while accent UI colors come from `theme.palette.<hue>`. Both are backed by iOS dynamic colors and Android day/night resources, so values captured by `StyleSheet.create` still update when the active appearance changes. `theme.palette.slate` remains a raw dark swatch for fixed dark map styles; do not use it for app surfaces or text.
 
@@ -33,7 +33,7 @@ Non-React-Native renderers and worklets use the plain-string palettes from `useR
 
 Android native `Switch` color props also receive resolved string colors. Its native color converter does not reliably resolve the adaptive resource-path value used by the rest of the React Native style system.
 
-Satellite keeps its own selected basemap across appearance changes. In light appearance, satellite tiles blend over the light neutral map background and low-opacity telemetry imagery is lifted enough to stay legible; dark appearance keeps the subdued nighttime treatment.
+Selecting Satellite switches the app to dark appearance for its subdued nighttime treatment. It does not inherit the previously selected light appearance.
 
 | Role           | Token                         |
 | -------------- | ----------------------------- |

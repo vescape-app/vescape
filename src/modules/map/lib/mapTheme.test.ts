@@ -3,14 +3,14 @@ import { describe, expect, test } from 'bun:test'
 import { mapStyleForTheme, themeOverrideForMapStyle } from '@/modules/map/lib/mapTheme'
 
 describe('themeOverrideForMapStyle', () => {
-  test('explicit dark and light basemaps override only the current app session', () => {
+  test('basemap selection chooses the appearance to persist', () => {
     expect(themeOverrideForMapStyle('onedark')).toBe('dark')
     expect(themeOverrideForMapStyle('outdoors')).toBe('light')
     expect(themeOverrideForMapStyle('mapy')).toBe('light')
   })
 
-  test('neutral imagery styles restore the configured theme', () => {
-    expect(themeOverrideForMapStyle('satellite')).toBeNull()
+  test('selecting satellite switches to dark instead of preserving light appearance', () => {
+    expect(themeOverrideForMapStyle('satellite')).toBe('dark')
   })
 
   test('configured appearance replaces a conflicting explicit basemap', () => {

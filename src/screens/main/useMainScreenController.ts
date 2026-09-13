@@ -259,7 +259,6 @@ export function useMainScreenController({ mapRef }: UseMainScreenControllerArgs)
   const setMapStyleKey = useCallback(
     (key: typeof mapStyleKey) => {
       // A basemap with an explicit appearance is the rider picking a theme, so it persists as one.
-      // Satellite has no opinion and leaves the configured mode alone.
       const override = themeOverrideForMapStyle(key)
       if (override) void setSetting('themeMode', override)
       void setSetting('mapStyleKey', key)
