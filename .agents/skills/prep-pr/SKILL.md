@@ -15,7 +15,7 @@ Prepare a feature PR as the stable landing place for a PRD or issue group. This 
 - New initial feature PRs start as draft PRs. Use `gh pr create --draft` unless the user explicitly asks for a ready PR.
 - If a PR already exists for the current branch, update that PR instead of creating a duplicate — but only after the Branch safety check confirms the current branch belongs to this feature. Never overwrite an unrelated PR's title/body.
 - Keep the PR useful for navigation: link the PRD, all implementation issues, and any tracking parent issue.
-- Label the PR with the union of linked issues' `area:*` labels and the highest linked `complexity:*` level. Never copy triage/workflow labels.
+- Label the PR with the union of linked issues' `area:*` labels, with `area:db` included only for a migration in scope, and the highest linked `complexity:*` level. Never copy triage/workflow labels.
 - Do not close or modify the PRD/issues unless the user explicitly asks.
 - Use `gh` for GitHub operations. This repo is private; do not fetch GitHub issue/PR pages over unauthenticated HTTP.
 - Follow repo branch rules from `AGENTS.md`: do not add generated prefixes to branch names.
@@ -109,8 +109,8 @@ Use this shape by default:
 <One to three short sentences describing the feature outcome and why it matters.>
 
 > [!NOTE]
-> **Risk:** <Low | Medium | High> — <short reason>
-> **Complexity:** <Low | Medium | High> — <short reason>
+> **Risk:** <Low | Medium | High> <1–10>/10 - <short reason>
+> **Complexity:** <Low | Medium | High> <1–10>/10 - <short reason>
 > **DB:** <category> — <short impact>
 
 ## Tasks
