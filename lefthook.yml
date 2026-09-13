@@ -33,3 +33,14 @@ pre-commit:
     test-android:
       glob: '*.{kt,kts}'
       run: bun run test:android
+
+commit-msg:
+  commands:
+    commit-policy:
+      run: bun run scripts/git-hooks/policy.ts commit-msg "{1}"
+
+pre-push:
+  commands:
+    commit-policy:
+      run: bun run scripts/git-hooks/policy.ts pre-push
+      use_stdin: true
