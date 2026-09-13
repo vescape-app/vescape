@@ -9,6 +9,7 @@ import {
   AccessoryCompatibilityNoticeShowcase,
   GroundClearanceReadoutShowcase,
 } from '@/screens/showcase/accessories/AccessoryManifestShowcase'
+import { BrakeLightStatesShowcase } from '@/screens/showcase/accessories/BrakeLightStatesShowcase'
 import { SensorReadoutShowcase } from '@/screens/showcase/accessories/SensorReadoutShowcase'
 import { theme } from '@/constants/theme'
 
@@ -18,11 +19,12 @@ export default function AccessoryComponentsPage() {
       <ScrollView contentContainerStyle={styles.content}>
         <IconHero
           icon={AccessoryIcon}
-          description="Accessories: the selector's section, compatibility verdicts, capability rows, and the live ground-clearance readout."
+          description="Accessories: the selector's section, compatibility verdicts, capability rows, the brake-light state strip, and the live ground-clearance readout."
         />
         <AccessorySelectorSectionShowcase />
         <AccessoryCompatibilityNoticeShowcase />
         <AccessoryCapabilityRowShowcase />
+        <BrakeLightStatesShowcase />
         <GroundClearanceReadoutShowcase />
         <SensorReadoutShowcase />
       </ScrollView>

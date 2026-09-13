@@ -131,6 +131,7 @@ export function AccessoryDetailScreen({
               <AccessoryCapabilityRow
                 key={capability.id}
                 capability={capability}
+                phase={accessory.phase}
                 {...(capability.supported &&
                 (capability.type === 'ground_clearance' || capability.type === 'brake_light')
                   ? { onPress: () => onConfigureCapability?.(capability.id, capability.type) }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { StyleSheet, View } from 'react-native'
+import { ArrowsVerticalIcon } from 'phosphor-react-native'
 import type {
   AccessoryCapability,
   AccessoryCompatibility,
@@ -91,23 +92,28 @@ export function AccessoryCompatibilityNoticeShowcase() {
 export function AccessoryCapabilityRowShowcase() {
   const [navigable, setNavigable] = useState(true)
   const [enabled, setEnabled] = useState(true)
+  const [connected, setConnected] = useState(true)
 
   return (
     <ShowcaseCard
       name="AccessoryCapabilityRow"
       controls={
-        <ToggleRow
-          label="ground clearance opens its setup"
-          value={navigable}
-          onToggle={setNavigable}
-        />
+        <>
+          <ToggleRow
+            label="ground clearance opens its setup"
+            value={navigable}
+            onToggle={setNavigable}
+          />
+          <ToggleRow label="brake light switched on" value={enabled} onToggle={setEnabled} />
+          <ToggleRow label="link is up" value={connected} onToggle={setConnected} />
+        </>
       }
     >
       <View style={styles.card}>
         {CAPABILITIES.map((capability) => (
           <AccessoryCapabilityRow
             key={capability.id}
-            capability={capability}
+            capability={capability.type === 'brake_light' ? { ...capability, enabled } : capability}
             // Only a capability this build can configure gets a chevron. Everything else stays a
             // flat row rather than a tap that leads somewhere empty.
             {...(navigable && capability.supported && capability.type === 'ground_clearance'
@@ -118,6 +124,7 @@ export function AccessoryCapabilityRowShowcase() {
       </View>
       <View style={styles.stack}>
         <CapabilityEnabledSetting
+          icon={ArrowsVerticalIcon}
           label="Use ground clearance"
           enabled={enabled}
           onChange={setEnabled}
