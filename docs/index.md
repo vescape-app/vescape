@@ -27,7 +27,6 @@
 
 - [accessories.md](./accessories.md) — in-progress accessory design: ground-clearance tilt sensor and brake light
 - [accessory-protocol.md](./accessory-protocol.md) — JSON/BLE protocol v1 draft: discovery, capabilities, commands, readings, and failure handling
-- [accessories-prd-draft.md](./accessories-prd-draft.md) — approved planning snapshot and links to published accessory PRD and implementation issues
 - [history.md](./history.md) — ride history persistence, grouping, markers, and map rendering
 - [tune.md](./tune.md) — Refloat tune screen behavior, basic slider formulas, field groups
 - [tune-preview-pl.md](./tune-preview-pl.md) — Tune vs Tune Preview, explained (Polish)
