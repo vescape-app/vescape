@@ -278,6 +278,7 @@ internal class BoardSessionController(private val service: CoreForegroundService
         tilt = remoteTiltController,
         move = boardMoveController,
         nowMs = { SystemClock.elapsedRealtime() },
+        sensorBound = AccessorySessionManager::groundClearanceBound,
     )
     private val groundClearanceBinding = BoardGroundClearanceBinding(
         remoteInput,
@@ -2258,12 +2259,12 @@ private var wearAutoLaunchOnConnect = true
         pollingLoop.stop()
         // The binding reads riding off telemetry, so a Board that stopped being polled is a Board
         // that stopped being evidence. The tick is what releases the tilt, so it outlives the poll
-        // loop by exactly one pass: `releaseGroundClearanceTilt` cancels before the timer dies.
+        // loop by exactly one pass: `stopGroundClearanceTilt` cancels before the timer dies.
         stopGroundClearanceTilt()
         // No telemetry means no evidence of riding. An Accessory left measuring on the strength of
         // the last sample before the Board went away would keep its sensor running indefinitely.
         AccessorySessionManager.setRiding(false)
-                AccessorySessionManager.clearLightTelemetry()
+        AccessorySessionManager.clearLightTelemetry()
         idlePauseDetector.reset()
         telemetryPipeline.cancelStaleWatchdog()
         liveSeriesEmitter.stop()

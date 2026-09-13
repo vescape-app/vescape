@@ -63,6 +63,15 @@ internal final class RemoteInputArbiter {
   private let move: BoardMoveController
   private let nowMs: () -> Int64
 
+  /// Whether a configured ground-clearance Accessory is connected.
+  ///
+  /// Not the same question as "is the sensor commanding right now". A binding that is bound but
+  /// waiting — parked, or between readings — owns nothing, and without this the slot would look free
+  /// to a manual command that arrives in that window. A manual *lock* taken there never ends on its
+  /// own and the pad is read-only, so the rider has no way to give it back: the binding would be
+  /// refused for the rest of the session.
+  private let sensorBound: () -> Bool
+
   /// Who started the tilt stream that is currently running. Meaningless once it ends, which is why
   /// `owner` consults the stream itself rather than trusting this.
   private var tiltOwner: RemoteInputOwner = .none
@@ -77,11 +86,13 @@ internal final class RemoteInputArbiter {
   init(
     tilt: RemoteTiltController,
     move: BoardMoveController,
-    nowMs: @escaping () -> Int64
+    nowMs: @escaping () -> Int64,
+    sensorBound: @escaping () -> Bool = { false }
   ) {
     self.tilt = tilt
     self.move = move
     self.nowMs = nowMs
+    self.sensorBound = sensorBound
   }
 
   /// Who holds the slot.
@@ -117,6 +128,9 @@ internal final class RemoteInputArbiter {
   }
 
   private func claimManual(_ start: () -> Bool) -> Bool {
+    // Asked before ownership, because a bound binding that is not currently driving leaves the slot
+    // unowned and would otherwise let a manual command in.
+    if sensorBound() { return false }
     switch owner {
     case .sensor, .move: return false
     case .none, .manual: break
@@ -143,9 +157,14 @@ internal final class RemoteInputArbiter {
   /// A manual lock never ends on its own, so a binding arming under one would wait forever. Arming
   /// is exactly the moment the pad stops being the rider's, so the held value stops being theirs
   /// too — eased down, never snapped.
+  ///
+  /// Safe to call on every tick, which is how the binding calls it: an ease already running is left
+  /// alone. Re-cancelling a decay would restart it from a smaller value each time and never arrive,
+  /// and one failed cancel — a transport that blinked — must not strand the lock forever.
   @discardableResult
   func releaseManual() -> Bool {
     guard owner == .manual else { return false }
+    guard tilt.phase != .decaying else { return false }
     return tilt.cancel()
   }
 
@@ -165,9 +184,19 @@ internal final class RemoteInputArbiter {
       break
     }
     let now = nowMs()
-    // A fresh engage starts from neutral rather than from wherever the last engagement left off, so
-    // the ramp is measured from what the board is actually being told (nothing).
-    let from = sensorEngaged ? sensorValue : REMOTE_TILT_CENTER
+    // The ramp is measured from what the board is actually being told, which is not always neutral
+    // at a fresh engage: a release still easing down — this binding's own, or the rider's cancel —
+    // is a live stream holding a real value. Starting from neutral there would step the commanded
+    // tilt by the whole of the unfinished decay in one write, which is exactly the snap the slew
+    // limit exists to prevent.
+    let from: Int
+    if sensorEngaged {
+      from = sensorValue
+    } else if tilt.phase != .idle {
+      from = tilt.currentValue
+    } else {
+      from = REMOTE_TILT_CENTER
+    }
     let elapsed = sensorEngaged ? max(0, now - sensorAtMs) : 0
     let next = slew(from: from, target: min(max(target, 0), 255), elapsedMs: elapsed)
     sensorEngaged = true

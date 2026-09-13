@@ -15,6 +15,7 @@ final class RemoteInputArbiterTests: XCTestCase {
   private var sent: [[UInt8]] = []
   private var transport: BoardTransport? = .direct
   private var canMove = true
+  private var sensorBound = false
   private var scheduler = TestScheduler()
   private var tilt: RemoteTiltController!
   private var move: BoardMoveController!
@@ -44,10 +45,12 @@ final class RemoteInputArbiterTests: XCTestCase {
       },
       scheduler: scheduler
     )
+    sensorBound = false
     arbiter = RemoteInputArbiter(
       tilt: tilt,
       move: move,
-      nowMs: { self.scheduler.currentTimeMs }
+      nowMs: { self.scheduler.currentTimeMs },
+      sensorBound: { self.sensorBound }
     )
   }
 
@@ -193,8 +196,84 @@ final class RemoteInputArbiterTests: XCTestCase {
     // Cancel is not an off switch for the binding: a sensor still holding valid readings takes the
     // slot back on its next tick, ramped from where the cancel left it.
     XCTAssertEqual(arbiter.sensorCommand, REMOTE_TILT_CENTER)
+    scheduler.advance(100)
+    let eased = tilt.currentValue
+    XCTAssertTrue(eased > 0 && eased < 255, "the cancel must have eased some of the tilt off")
     XCTAssertTrue(arbiter.sensorDrive(255))
+    XCTAssertGreaterThanOrEqual(
+      arbiter.sensorCommand, eased, "re-engaging must resume from the eased value, never step")
     XCTAssertNotEqual(arbiter.sensorCommand, 255)
+  }
+
+  func testASensorReEngagingMidReleaseResumesFromTheStreamRatherThanNeutral() {
+    settleSensor(at: 255)
+    // One bad reading releases; the reading after it is good again, which is an ordinary minute of
+    // riding past a puddle, not an exotic case.
+    XCTAssertTrue(arbiter.sensorRelease())
+    scheduler.advance(200)
+    let eased = tilt.currentValue
+    XCTAssertTrue(eased > 0 && eased < 255, "the release must have eased some of the tilt off")
+
+    sent = []
+    XCTAssertTrue(arbiter.sensorDrive(255))
+    scheduler.advance(100)
+    // Resuming from neutral here would hand the firmware the whole unfinished decay as one step — a
+    // ~100-count drop on a board with a rider on it, which is the surge a snapped cancel would cause
+    // and the reason nothing in this class is allowed to step.
+    XCTAssertGreaterThanOrEqual(
+      arbiter.sensorCommand, eased, "re-engage must not step down to neutral")
+    XCTAssertFalse(sent.isEmpty)
+    XCTAssertFalse(
+      sent.contains(tiltPacket(REMOTE_TILT_CENTER)),
+      "no packet may drop the commanded tilt back toward neutral")
+  }
+
+  func testManualTiltIsRefusedWhileABindingIsBoundEvenWithTheSlotFree() {
+    // Bound but not driving: parked, or between readings. The slot is genuinely free, and without
+    // the bound check a manual *lock* taken here would never end on its own — and the pad is
+    // read-only by then, so the rider has no Cancel to press.
+    sensorBound = true
+    XCTAssertEqual(arbiter.owner, RemoteInputOwner.none)
+
+    XCTAssertFalse(arbiter.manualHold(200))
+    XCTAssertFalse(arbiter.manualLock(200))
+    XCTAssertFalse(arbiter.manualRelease(200, durationMs: 1_000))
+    XCTAssertTrue(sent.isEmpty, "a refused manual command writes nothing")
+    XCTAssertEqual(arbiter.owner, RemoteInputOwner.none)
+
+    // The binding can still take the slot it was holding open.
+    XCTAssertTrue(arbiter.sensorDrive(200))
+    XCTAssertEqual(arbiter.owner, .sensor)
+  }
+
+  func testABoundBindingKeepsReleasingAManualTiltItDidNotCatchWhenItArmed() {
+    // A lock taken in the window before the pad learned it was read-only, or one whose arming-time
+    // cancel failed on a transport that blinked.
+    XCTAssertTrue(arbiter.manualLock(255))
+    XCTAssertEqual(arbiter.owner, .manual)
+    sensorBound = true
+
+    let binding = BoardGroundClearanceBinding(
+      remoteInput: arbiter,
+      boundInput: { true },
+      tiltInput: { .drive(tiltInput: 1.0, valueCm: 5.0) })
+    let board = BoardGroundClearanceBinding.BoardInput(commandsTrusted: true, telemetryFresh: true)
+
+    // Already bound on the first tick, so there is no unbound→bound transition to catch it.
+    binding.tick(board)
+    XCTAssertEqual(binding.state()["release"] as? String, "manual-tilt")
+    XCTAssertEqual(tilt.phase, .decaying)
+    let total = tilt.decayProgress?.totalMs
+
+    // Repeating the release must not restart the ease, or it would shrink toward zero forever.
+    scheduler.advance(200)
+    binding.tick(board)
+    XCTAssertEqual(tilt.decayProgress?.totalMs, total)
+
+    scheduler.advance(600)
+    binding.tick(board)
+    XCTAssertEqual(arbiter.owner, .sensor, "the binding takes the slot once the ease finishes")
+    XCTAssertNil(binding.state()["release"] as? String)
   }
 
   func testResetLeavesNothingStreamingOnEitherChannel() {

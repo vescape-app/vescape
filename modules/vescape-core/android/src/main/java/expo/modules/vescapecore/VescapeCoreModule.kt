@@ -641,7 +641,7 @@ class VescapeCoreModule : Module() {
     // @parity /modules/vescape-core/src/index.ts `getGroundClearanceTilt`
     AsyncFunction("getGroundClearanceTilt") {
       CoreForegroundService.currentGroundClearanceTilt()
-    }
+    }.runOnQueue(Queues.MAIN)
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRemoteTiltState`
     // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
     AsyncFunction("getRemoteTiltState") {

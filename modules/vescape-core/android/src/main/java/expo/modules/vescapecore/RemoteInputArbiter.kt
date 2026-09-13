@@ -74,6 +74,16 @@ internal class RemoteInputArbiter(
     private val tilt: RemoteTiltController,
     private val move: BoardMoveController,
     private val nowMs: () -> Long,
+    /**
+     * Whether a configured ground-clearance Accessory is connected.
+     *
+     * Not the same question as "is the sensor commanding right now". A binding that is bound but
+     * waiting — parked, or between readings — owns nothing, and without this the slot would look
+     * free to a manual command that arrives in that window. A manual *lock* taken there never ends
+     * on its own and the pad is read-only, so the rider has no way to give it back: the binding
+     * would be refused for the rest of the session.
+     */
+    private val sensorBound: () -> Boolean = { false },
 ) {
     /**
      * Who started the tilt stream that is currently running. Meaningless once it ends, which is why
@@ -123,6 +133,9 @@ internal class RemoteInputArbiter(
         claimManual { tilt.release(value, durationMs) }
 
     private inline fun claimManual(start: () -> Boolean): Boolean {
+        // Asked before ownership, because a bound binding that is not currently driving leaves the
+        // slot unowned and would otherwise let a manual command in.
+        if (sensorBound()) return false
         when (owner) {
             RemoteInputOwner.SENSOR, RemoteInputOwner.MOVE -> return false
             RemoteInputOwner.NONE, RemoteInputOwner.MANUAL -> Unit
@@ -151,9 +164,14 @@ internal class RemoteInputArbiter(
      * A manual lock never ends on its own, so a binding arming under one would wait forever. Arming
      * is exactly the moment the pad stops being the rider's, so the held value stops being theirs
      * too — eased down, never snapped.
+     *
+     * Safe to call on every tick, which is how the binding calls it: an ease already running is left
+     * alone. Re-cancelling a decay would restart it from a smaller value each time and never arrive,
+     * and one failed cancel — a transport that blinked — must not strand the lock forever.
      */
     fun releaseManual(): Boolean {
         if (owner != RemoteInputOwner.MANUAL) return false
+        if (tilt.phase == RemoteTiltPhase.Decaying) return false
         return tilt.cancel()
     }
 
@@ -175,9 +193,16 @@ internal class RemoteInputArbiter(
             RemoteInputOwner.NONE, RemoteInputOwner.SENSOR -> Unit
         }
         val now = nowMs()
-        // A fresh engage starts from neutral rather than from wherever the last engagement left off,
-        // so the ramp is measured from what the board is actually being told (nothing).
-        val from = if (sensorEngaged) sensorValue else REMOTE_TILT_CENTER
+        // The ramp is measured from what the board is actually being told, which is not always
+        // neutral at a fresh engage: a release still easing down — this binding's own, or the
+        // rider's cancel — is a live stream holding a real value. Starting from neutral there would
+        // step the commanded tilt by the whole of the unfinished decay in one write, which is
+        // exactly the snap the slew limit exists to prevent.
+        val from = when {
+            sensorEngaged -> sensorValue
+            tilt.phase != RemoteTiltPhase.Idle -> tilt.currentValue
+            else -> REMOTE_TILT_CENTER
+        }
         val elapsed = if (sensorEngaged) max(0L, now - sensorAtMs) else 0L
         val next = slew(from, target.coerceIn(0, 255), elapsed)
         sensorEngaged = true

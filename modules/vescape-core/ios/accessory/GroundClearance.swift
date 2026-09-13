@@ -559,9 +559,13 @@ final class BoardGroundClearanceBinding {
   }
 
   func tick(_ board: BoardInput) {
-    let nextBound = boundInput()
-    if nextBound && !bound { _ = remoteInput.releaseManual() }
-    bound = nextBound
+    bound = boundInput()
+    // Every tick, not just the arming one. A manual tilt that survives into a bound session — one
+    // taken in the window before the pad learned it was read-only, or one whose arming-time cancel
+    // failed on a transport that blinked — is a lock that never ends by itself, and the read-only
+    // pad has no Cancel for the rider to press. `releaseManual` no-ops once the ease is running, so
+    // repeating it costs nothing.
+    if bound { _ = remoteInput.releaseManual() }
 
     let input: GroundClearanceInput
     if !board.commandsTrusted {

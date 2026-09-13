@@ -619,9 +619,13 @@ internal class BoardGroundClearanceBinding(
     }
 
     internal fun tick(board: BoardInput) {
-        val nextBound = boundInput()
-        if (nextBound && !bound) remoteInput.releaseManual()
-        bound = nextBound
+        bound = boundInput()
+        // Every tick, not just the arming one. A manual tilt that survives into a bound session —
+        // one taken in the window before the pad learned it was read-only, or one whose arming-time
+        // cancel failed on a transport that blinked — is a lock that never ends by itself, and the
+        // read-only pad has no Cancel for the rider to press. `releaseManual` no-ops once the ease
+        // is running, so repeating it costs nothing.
+        if (bound) remoteInput.releaseManual()
 
         val input = when {
             !board.commandsTrusted -> GroundClearanceInput.Release(GroundClearanceRelease.BOARD_UNTRUSTED)

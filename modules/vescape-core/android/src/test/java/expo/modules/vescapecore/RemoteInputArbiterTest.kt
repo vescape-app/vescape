@@ -15,6 +15,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,10 +48,12 @@ class RemoteInputArbiterTest {
         generation = { BoardMoveGeneration.Remote },
         send = { payload, _ -> sent.add(payload); true },
     )
+    private var sensorBound = false
     private val arbiter = RemoteInputArbiter(
         tilt = tilt,
         move = move,
         nowMs = { scheduler.currentTimeMs },
+        sensorBound = { sensorBound },
     )
 
     private fun tiltPacket(value: Int) = buildRemoteTiltCommand(BoardTransport.Direct, value)
@@ -202,8 +205,87 @@ class RemoteInputArbiterTest {
         // Cancel is not an off switch for the binding: a sensor still holding valid readings takes
         // the slot back on its next tick, ramped from where the cancel left it.
         assertEquals(REMOTE_TILT_CENTER, arbiter.sensorCommand)
+        scheduler.advance(100)
+        val eased = tilt.currentValue
+        assertTrue("the cancel must have eased some of the tilt off", eased in 1 until 255)
         assertTrue(arbiter.sensorDrive(255))
+        assertTrue("re-engaging must resume from the eased value, never step", arbiter.sensorCommand >= eased)
         assertNotEquals(255, arbiter.sensorCommand)
+    }
+
+    @Test
+    fun aSensorReEngagingMidReleaseResumesFromTheStreamRatherThanNeutral() {
+        settleSensorAt(255)
+        // One bad reading releases; the reading after it is good again, which is an ordinary minute
+        // of riding past a puddle, not an exotic case.
+        assertTrue(arbiter.sensorRelease())
+        scheduler.advance(200)
+        val eased = tilt.currentValue
+        assertTrue("the release must have eased some of the tilt off", eased in 1 until 255)
+
+        sent.clear()
+        assertTrue(arbiter.sensorDrive(255))
+        scheduler.advance(100)
+        // Resuming from neutral here would hand the firmware the whole unfinished decay as one step
+        // — a ~100-count drop on a board with a rider on it, which is the surge a snapped cancel
+        // would cause and the reason nothing in this class is allowed to step.
+        assertTrue("re-engage must not step down to neutral", arbiter.sensorCommand >= eased)
+        assertTrue(sent.isNotEmpty())
+        assertTrue(
+            "no packet may drop the commanded tilt back toward neutral",
+            sent.none { it.contentEquals(tiltPacket(REMOTE_TILT_CENTER)) },
+        )
+    }
+
+    @Test
+    fun manualTiltIsRefusedWhileABindingIsBoundEvenWithTheSlotFree() {
+        // Bound but not driving: parked, or between readings. The slot is genuinely free, and
+        // without the bound check a manual *lock* taken here would never end on its own — and the
+        // pad is read-only by then, so the rider has no Cancel to press.
+        sensorBound = true
+        assertEquals(RemoteInputOwner.NONE, arbiter.owner)
+
+        assertFalse(arbiter.manualHold(200))
+        assertFalse(arbiter.manualLock(200))
+        assertFalse(arbiter.manualRelease(200, 1_000))
+        assertTrue("a refused manual command writes nothing", sent.isEmpty())
+        assertEquals(RemoteInputOwner.NONE, arbiter.owner)
+
+        // The binding can still take the slot it was holding open.
+        assertTrue(arbiter.sensorDrive(200))
+        assertEquals(RemoteInputOwner.SENSOR, arbiter.owner)
+    }
+
+    @Test
+    fun aBoundBindingKeepsReleasingAManualTiltItDidNotCatchWhenItArmed() {
+        // A lock taken in the window before the pad learned it was read-only, or one whose
+        // arming-time cancel failed on a transport that blinked.
+        assertTrue(arbiter.manualLock(255))
+        assertEquals(RemoteInputOwner.MANUAL, arbiter.owner)
+        sensorBound = true
+
+        val binding = BoardGroundClearanceBinding(
+            remoteInput = arbiter,
+            boundInput = { true },
+            tiltInput = { GroundClearanceInput.Drive(1.0, 5.0) },
+        )
+        val board = BoardGroundClearanceBinding.BoardInput(commandsTrusted = true, telemetryFresh = true)
+
+        // Already bound on the first tick, so there is no unbound→bound transition to catch it.
+        binding.tick(board)
+        assertEquals("manual-tilt", binding.state()["release"])
+        assertEquals(RemoteTiltPhase.Decaying, tilt.phase)
+        val total = tilt.decayProgress?.totalMs
+
+        // Repeating the release must not restart the ease, or it would shrink toward zero forever.
+        scheduler.advance(200)
+        binding.tick(board)
+        assertEquals(total, tilt.decayProgress?.totalMs)
+
+        scheduler.advance(600)
+        binding.tick(board)
+        assertEquals("the binding takes the slot once the ease finishes", RemoteInputOwner.SENSOR, arbiter.owner)
+        assertNull(binding.state()["release"])
     }
 
     @Test

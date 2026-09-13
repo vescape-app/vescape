@@ -162,7 +162,8 @@ internal final class BoardSessionController: VescGattListener {
   private lazy var remoteInput = RemoteInputArbiter(
     tilt: remoteTiltController,
     move: boardMoveController,
-    nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+    nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) },
+    sensorBound: { AccessorySessionController.shared.groundClearanceBound() }
   )
   private lazy var groundClearanceBinding = BoardGroundClearanceBinding(
     remoteInput: remoteInput,
@@ -2819,7 +2820,7 @@ internal final class BoardSessionController: VescGattListener {
     // No telemetry means no evidence of riding. An Accessory left measuring on the strength of the
     // last sample before the Board went away would keep its sensor running indefinitely.
     AccessorySessionController.shared.setRiding(false)
-      AccessorySessionController.shared.clearLightTelemetry()
+    AccessorySessionController.shared.clearLightTelemetry()
     cancelStaleWatchdog()
     idlePauseDetector.reset()
     liveSeries.stop()
