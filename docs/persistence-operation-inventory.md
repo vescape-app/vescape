@@ -47,3 +47,17 @@ accessory deletes its light settings in the enrollment transaction. Saving requi
 owner in the same transaction. `accessory-persistence-contract.json` drives Room and GRDB
 close/reopen and forget-isolation coverage in `AccessoryPersistenceHostTest` and the macOS host.
 The complete `test:persistence` gate also exchanges production archives across both platforms.
+
+### Accessory capability switches
+
+`AccessoryPersistence.saveCapabilitySettings` / `AccessoryStore.saveCapabilitySettings` store an
+independent enabled flag in `accessory_capability_settings` (schema 47). Missing rows default to
+enabled; failed reads do not enable hardware. Writes require an enrolled owner. Forget removes its
+switches in the enrollment transaction. The shared accessory fixture drives Room/GRDB reopen,
+calibration preservation, owner isolation, and rejected orphan-write coverage in
+`AccessoryPersistenceHostTest` and the macOS host. The migration manifest includes schema 47.
+
+Schema 48 adds nullable `sampling_rate_hz` to these same per-capability settings. Existing switches
+survive migration with no selected rate, using the initial 10 Hz preference. Rate changes preserve
+the enabled flag; enable/disable changes preserve the selected rate. The shared fixture also checks
+that selected rates survive close/reopen and remain isolated across accessories.

@@ -63,5 +63,6 @@
     "capabilityId": "rear_light",
     "sensitivity": 73,
     "parked": "glow"
-  }
+  },
+  "capabilitySettings": { "enabled": false, "samplingRateHz": 20, "otherSamplingRateHz": 30 }
 }

@@ -54,10 +54,10 @@ export function capabilityLimits(capability: AccessoryCapability): string | null
   const parts: string[] = []
   if (capability.rangeMin != null && capability.rangeMax != null) {
     const unit = capability.unit ?? ''
-    parts.push(`${capability.rangeMin}–${capability.rangeMax}${unit ? ` ${unit}` : ''}`)
+    parts.push(`Range: ${capability.rangeMin}–${capability.rangeMax}${unit ? ` ${unit}` : ''}`)
   }
   if (capability.ratesHz.length > 0) {
-    parts.push(`${capability.ratesHz.join(', ')} Hz`)
+    parts.push(`Rates: ${capability.ratesHz.join(', ')} Hz`)
   }
-  return parts.length > 0 ? parts.join(' · ') : null
+  return parts.length > 0 ? parts.join('\n') : null
 }

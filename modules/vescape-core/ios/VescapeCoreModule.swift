@@ -353,6 +353,16 @@ public class VescapeCoreModule: Module {
     AsyncFunction("saveBrakeLightSettings") { (accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise) in
       AccessorySessionController.shared.saveBrakeLight(accessoryId: accessoryId, capabilityId: capabilityId, sensitivity: sensitivity, parked: parked) { promise.resolve($0) }
     }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryCapabilityEnabled`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+    AsyncFunction("setAccessoryCapabilityEnabled") { (accessoryId: String, capabilityId: String, enabled: Bool, promise: Promise) in
+      AccessorySessionController.shared.setCapabilityEnabled(accessoryId: accessoryId, capabilityId: capabilityId, enabled: enabled) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessorySamplingRate`
+    // @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+    AsyncFunction("setAccessorySamplingRate") { (accessoryId: String, capabilityId: String, rateHz: Double, promise: Promise) in
+      AccessorySessionController.shared.setSamplingRate(accessoryId: accessoryId, capabilityId: capabilityId, rateHz: rateHz) { promise.resolve($0) }
+    }
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
     // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
     AsyncFunction("setBrakeLightPreview") { (accessoryId: String, capabilityId: String, mode: String?, promise: Promise) in

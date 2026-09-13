@@ -73,4 +73,9 @@ enum PersistenceSchema {
   static func createAccessoryBrakeLight(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_brake_light (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, sensitivity INTEGER NOT NULL, parked TEXT NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
   }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_46_47`
+  static func createAccessoryCapabilitySettings(_ db: Database) throws {
+    try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_capability_settings (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
+  }
 }

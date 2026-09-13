@@ -192,6 +192,7 @@ enum class GroundClearanceProblem(val wire: String) {
  * @parity /modules/vescape-core/src/index.ts `GroundClearanceRelease`
  */
 enum class GroundClearanceRelease(val wire: String) {
+    DISABLED("disabled"),
     /** Sensor-driven tilt is for riding. A parked board is not corrected. */
     NOT_RIDING("not-riding"),
 
@@ -340,6 +341,7 @@ class AccessoryReadingTracker {
  * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceRuntime`
  */
 internal class GroundClearanceRuntime(val capabilityId: String) {
+    var enabled: Boolean = true
     /** Saved calibration, or null while the rider has not finished one. */
     var calibration: GroundClearanceCalibration? = null
 
@@ -371,7 +373,7 @@ internal class GroundClearanceRuntime(val capabilityId: String) {
      * regardless — that is how the rider *gets* a calibration.
      */
     val measurementDemanded: Boolean
-        get() = previewOpen || (riding && isCalibrated)
+        get() = enabled && (previewOpen || (riding && isCalibrated))
 
     /**
      * What a tilt binding may do right now.
@@ -381,6 +383,7 @@ internal class GroundClearanceRuntime(val capabilityId: String) {
      * would have consumed them is in place.
      */
     fun input(nowMs: Long, linkConnected: Boolean): GroundClearanceInput {
+        if (!enabled) return GroundClearanceInput.Release(GroundClearanceRelease.DISABLED)
         if (!riding) return GroundClearanceInput.Release(GroundClearanceRelease.NOT_RIDING)
         if (!linkConnected) return GroundClearanceInput.Release(GroundClearanceRelease.NO_LINK)
         val saved = calibration?.takeIf { it.isComplete(rangeMin, rangeMax) }
@@ -452,8 +455,11 @@ internal class GroundClearanceBindingController(
         capability: AccessoryCapability,
         liveManifest: Boolean,
         rateHz: Double,
+        enabled: Boolean = true,
     ): AccessoryCommand.Configure {
         val state = runtime(accessoryId, capability.id)
+        if (state.enabled != enabled) state.onSessionLost()
+        state.enabled = enabled
         if (liveManifest) {
             state.rangeMin = capability.rangeMin
             state.rangeMax = capability.rangeMax
@@ -529,7 +535,7 @@ internal class GroundClearanceBindingController(
 
     private fun boundCapabilities(link: (String, String) -> LinkState): List<Key> =
         runtimes.entries
-            .filter { (key, state) -> state.isCalibrated && link(key.accessoryId, key.capabilityId).connected }
+            .filter { (key, state) -> state.enabled && state.isCalibrated && link(key.accessoryId, key.capabilityId).connected }
             .map { it.key }
 
     fun bound(link: (String, String) -> LinkState): Boolean = boundCapabilities(link).isNotEmpty()
@@ -539,7 +545,8 @@ internal class GroundClearanceBindingController(
         if (bound.size > 1) return GroundClearanceInput.Release(GroundClearanceRelease.CONTESTED)
         val key = bound.firstOrNull()
             ?: return GroundClearanceInput.Release(
-                if (runtimes.values.any { it.isCalibrated }) GroundClearanceRelease.NO_LINK
+                if (runtimes.isNotEmpty() && runtimes.values.none { it.enabled }) GroundClearanceRelease.DISABLED
+                else if (runtimes.values.any { it.enabled && it.isCalibrated }) GroundClearanceRelease.NO_LINK
                 else GroundClearanceRelease.NOT_CALIBRATED,
             )
         return input(key.accessoryId, key.capabilityId, link(key.accessoryId, key.capabilityId))
@@ -552,6 +559,7 @@ internal class GroundClearanceBindingController(
         appliedRateHz: Double?,
     ): Map<String, Any?>? {
         val state = runtimes[Key(accessoryId, reading.capabilityId)] ?: return null
+        if (!state.enabled) return null
         if (appliedRateHz != null) state.rateHz = appliedRateHz
         val checked = reading.withinDeclaredRange(state.rangeMin, state.rangeMax)
         if (!state.tracker.accept(checked, receivedAtMs) || !state.previewOpen) return null

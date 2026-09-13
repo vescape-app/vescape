@@ -1200,11 +1200,25 @@ let lightSettings = SavedBrakeLight(accessoryId: clearanceOwner, capabilityId: l
 try clearanceStore.saveBrakeLight(lightSettings)
 let otherLightSettings = SavedBrakeLight(accessoryId: clearanceOtherOwner, capabilityId: lightSettings.capabilityId, sensitivity: lightSettings.sensitivity, parked: lightSettings.parked)
 try clearanceStore.saveBrakeLight(otherLightSettings)
+let switchSpec = accessoryFixture["capabilitySettings"] as! [String: Any]
+let switchSettings = SavedAccessoryCapabilitySettings(accessoryId: clearanceOwner, capabilityId: noseCapability, enabled: switchSpec["enabled"] as! Bool, samplingRateHz: (switchSpec["samplingRateHz"] as! NSNumber).doubleValue)
+let otherSwitchSettings = SavedAccessoryCapabilitySettings(accessoryId: clearanceOtherOwner, capabilityId: noseCapability, enabled: switchSettings.enabled, samplingRateHz: (switchSpec["otherSamplingRateHz"] as! NSNumber).doubleValue)
+try clearanceStore.saveCapabilitySettings(switchSettings)
+try clearanceStore.saveCapabilitySettings(otherSwitchSettings)
 try clearanceQueue!.close()
 clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
 clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
 let reopenedLights = try clearanceStore.brakeLights()
 try require(reopenedLights == [lightSettings, otherLightSettings].sorted { $0.accessoryId < $1.accessoryId }, "light settings survive reopen independently")
+let reopenedSwitches = try clearanceStore.capabilitySettings()
+try require(reopenedSwitches == [switchSettings, otherSwitchSettings].sorted { $0.accessoryId < $1.accessoryId }, "capability switches survive reopen independently")
+let calibrationBeforeToggle = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try clearanceStore.saveCapabilitySettings(.init(accessoryId: clearanceOwner, capabilityId: noseCapability, enabled: true, samplingRateHz: switchSettings.samplingRateHz))
+let switchesAfterToggle = try clearanceStore.capabilitySettings()
+try require(switchesAfterToggle.first { $0.accessoryId == clearanceOwner }?.samplingRateHz == switchSettings.samplingRateHz, "toggle preserves sampling rate")
+let calibrationAfterToggle = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
+try require(calibrationBeforeToggle == calibrationAfterToggle, "toggling must preserve calibration")
+try clearanceStore.saveCapabilitySettings(switchSettings)
 
 // Forgetting takes the Accessory and every calibration made against it, and nothing else.
 let clearanceForgotten = try clearanceStore.forget(clearanceOwner)
@@ -1217,6 +1231,11 @@ let orphanCalibration = try clearanceStore.groundClearance(clearanceOwner, noseC
 try require(orphanCalibration == nil, "forget left a calibration behind")
 let survivingLights = try clearanceStore.brakeLights()
 try require(survivingLights == [otherLightSettings], "forget removes only owned light settings")
+let survivingSwitches = try clearanceStore.capabilitySettings()
+try require(survivingSwitches == [otherSwitchSettings], "forget removes only owned capability switches")
+var rejectedOrphanSwitch = false
+do { try clearanceStore.saveCapabilitySettings(switchSettings) } catch { rejectedOrphanSwitch = true }
+try require(rejectedOrphanSwitch, "cannot save switches for a forgotten accessory")
 let survivingCalibrations = try clearanceStore.groundClearances()
 try require(
   survivingCalibrations.map(\.accessoryId) == [clearanceOtherOwner],

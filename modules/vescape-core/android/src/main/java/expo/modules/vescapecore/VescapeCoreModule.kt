@@ -483,6 +483,16 @@ class VescapeCoreModule : Module() {
     AsyncFunction("saveBrakeLightSettings") { accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise ->
       AccessorySessionManager.saveBrakeLight(accessoryId, capabilityId, sensitivity, parked) { promise.resolve(it) }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryCapabilityEnabled`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+    AsyncFunction("setAccessoryCapabilityEnabled") { accessoryId: String, capabilityId: String, enabled: Boolean, promise: Promise ->
+      AccessorySessionManager.setCapabilityEnabled(accessoryId, capabilityId, enabled) { promise.resolve(it) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessorySamplingRate`
+    // @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+    AsyncFunction("setAccessorySamplingRate") { accessoryId: String, capabilityId: String, rateHz: Double, promise: Promise ->
+      AccessorySessionManager.setSamplingRate(accessoryId, capabilityId, rateHz) { promise.resolve(it) }
+    }
     // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBrakeLightPreview`
     // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
     AsyncFunction("setBrakeLightPreview") { accessoryId: String, capabilityId: String, mode: String?, promise: Promise ->

@@ -14,6 +14,24 @@ import XCTest
 ///
 /// @parity /modules/vescape-core/android/src/test/java/expo/modules/vescapecore/accessory/GroundClearanceTest.kt
 final class GroundClearanceTests: XCTestCase {
+  func testDisablingPreservesCalibrationButStopsPreviewAndReleasesTheBinding() {
+    let controller = GroundClearanceBindingController(nowMs: { 1000 })
+    let capability = AccessoryCapability(id: "clearance", type: "ground_clearance", supported: true, unit: "cm", rangeMin: 3, rangeMax: 100, ratesHz: [10])
+    let link = GroundClearanceBindingController.LinkState(connected: true, appliedRateHz: 10)
+    _ = controller.applyCapability(accessoryId: "accessory", capability: capability, liveManifest: true, rateHz: 10)
+    controller.applyCalibration("accessory", capability.id, GroundClearanceCalibration(nearCm: 5, farCm: 20, direction: "nose", strengthPercent: 60))
+    _ = controller.setRiding(true)
+    _ = controller.setPreview("accessory", capability.id, open: true)
+    XCTAssertEqual(controller.applyCapability(accessoryId: "accessory", capability: capability, liveManifest: true, rateHz: 10), .configure(capabilityId: capability.id, enabled: true, rateHz: 10))
+    XCTAssertTrue(controller.bound { _, _ in link })
+    XCTAssertEqual(controller.applyCapability(accessoryId: "accessory", capability: capability, liveManifest: true, rateHz: 10, enabled: false), .configure(capabilityId: capability.id, enabled: false, rateHz: 10))
+    XCTAssertFalse(controller.bound { _, _ in link })
+    XCTAssertEqual(controller.tilt { _, _ in link }, .release(reason: .disabled))
+    XCTAssertNotNil(controller.describe("accessory", capability.id)?["calibration"] ?? nil)
+    _ = controller.applyCapability(accessoryId: "accessory", capability: capability, liveManifest: true, rateHz: 10, enabled: true)
+    XCTAssertEqual(controller.tilt { _, _ in link }, .release(reason: .stale))
+  }
+
   private func fixture() throws -> [String: Any] { try AccessoryFixtures.load("session.json") }
   private func readings() throws -> [String: Any] {
     try XCTUnwrap(fixture()["readings"] as? [String: Any])

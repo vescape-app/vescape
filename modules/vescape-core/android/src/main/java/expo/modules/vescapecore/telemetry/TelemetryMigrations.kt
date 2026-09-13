@@ -1547,6 +1547,16 @@ internal object TelemetryMigrations {
 
     internal val MIGRATION_45_46 = migration(45, 46) { db -> db.execSQL("CREATE TABLE IF NOT EXISTS accessory_brake_light (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, sensitivity INTEGER NOT NULL, parked TEXT NOT NULL, PRIMARY KEY(accessory_id, capability_id))") }
 
+    // @parity /modules/vescape-core/ios/telemetry/PersistenceSchema.swift `createAccessoryCapabilitySettings`
+    internal val MIGRATION_46_47 = migration(46, 47) { db ->
+      db.execSQL("CREATE TABLE IF NOT EXISTS accessory_capability_settings (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, enabled INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
+    }
+
+    // @parity /modules/vescape-core/ios/telemetry/TelemetryDatabase.swift `v48_accessory_sampling_rate`
+    internal val MIGRATION_47_48 = migration(47, 48) { db ->
+      db.execSQL("ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
+    }
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1589,6 +1599,8 @@ internal object TelemetryMigrations {
       MIGRATION_43_44,
       MIGRATION_44_45,
       MIGRATION_45_46,
+      MIGRATION_46_47,
+      MIGRATION_47_48,
     )
 
 }

@@ -34,6 +34,8 @@ public final class AccessorySessionController: NSObject {
   private var central: CBCentralManager?
   private var links: [String: AccessoryLink] = [:]
   private var saved: [String: SavedAccessory] = [:]
+  private var capabilityEnabled: [GroundClearanceBindingController.Key: Bool] = [:]
+  private var samplingRates: [GroundClearanceBindingController.Key: Double] = [:]
   private var order: [String] = []
   private var store: AccessoryStore { AccessoryStore.shared }
 
@@ -139,6 +141,8 @@ public final class AccessorySessionController: NSObject {
       // happened to be holding.
       self.groundClearance.forget(accessoryId)
       self.brakeLight.forget(accessoryId)
+      self.capabilityEnabled = self.capabilityEnabled.filter { $0.key.accessoryId != accessoryId }
+      self.samplingRates = self.samplingRates.filter { $0.key.accessoryId != accessoryId }
       self.publish()
       onResult(removed)
     }
@@ -198,15 +202,23 @@ public final class AccessorySessionController: NSObject {
   /// `measuring` is the demand native actually resolved, not a restatement of what the screen asked
   /// for — a preview on a capability with no usable rate is a screen that is open and a sensor that
   /// is not measuring, and the row should say so.
+  /// @parity /modules/vescape-core/src/index.ts `AccessoryCapability`
   private func describeCapability(_ accessoryId: String, _ capability: [String: Any?]) -> [String:
     Any?]
   {
+    guard let capabilityId = capability["id"] as? String else { return capability }
+    let capability = capability.merging([
+      "enabled": isCapabilityEnabled(accessoryId, capabilityId),
+      "samplingRateHz": links[accessoryId]?.appliedRateHz(capabilityId),
+      "selectedRateHz": AccessorySession.resolveRateHz(
+        requested: samplingRates[.init(accessoryId: accessoryId, capabilityId: capabilityId)] ?? Self.preferredRateHz,
+        ratesHz: capability["ratesHz"] as? [Double] ?? []),
+    ]) { _, value in value }
     if capability["type"] as? String == AccessoryProtocol.typeBrakeLight,
       let id = capability["id"] as? String {
       return capability.merging(brakeLight.describe(.init(accessoryId: accessoryId, capabilityId: id))) { _, value in value }
     }
-    guard let capabilityId = capability["id"] as? String,
-      let binding = groundClearance.describe(accessoryId, capabilityId)
+    guard let binding = groundClearance.describe(accessoryId, capabilityId)
     else { return capability }
     return capability.merging(binding) { _, bindingValue in bindingValue }
   }
@@ -218,6 +230,20 @@ public final class AccessorySessionController: NSObject {
     } catch {
       // Nothing starts, and the outage is reported rather than looking like "no Accessories".
       RecordingStorageFailure.reportRead(operation: "accessory_list", error: error)
+      return
+    }
+    do {
+      // A failed preference read must not silently re-enable disabled hardware.
+      let settings = try store.capabilitySettings()
+      capabilityEnabled = Dictionary(uniqueKeysWithValues: settings.map {
+        (GroundClearanceBindingController.Key(accessoryId: $0.accessoryId, capabilityId: $0.capabilityId), $0.enabled)
+      })
+      samplingRates.removeAll()
+      for setting in settings {
+        samplingRates[.init(accessoryId: setting.accessoryId, capabilityId: setting.capabilityId)] = setting.samplingRateHz
+      }
+    } catch {
+      RecordingStorageFailure.reportRead(operation: "accessory_capability_settings", error: error)
       return
     }
     let calibrations: [SavedGroundClearance]
@@ -354,14 +380,14 @@ public final class AccessorySessionController: NSObject {
       case AccessoryProtocol.typeGroundClearance:
         guard
           let rate = AccessorySession.resolveRateHz(
-            requested: Self.preferredRateHz, ratesHz: capability.ratesHz)
+            requested: samplingRates[.init(accessoryId: row.accessoryId, capabilityId: capability.id)] ?? Self.preferredRateHz, ratesHz: capability.ratesHz)
         else { continue }
         link.setDesired(
           groundClearance.applyCapability(
             accessoryId: row.accessoryId, capability: capability, liveManifest: manifest != nil,
-            rateHz: rate))
+            rateHz: rate, enabled: isCapabilityEnabled(row.accessoryId, capability.id)))
       case AccessoryProtocol.typeBrakeLight:
-        link.setDesired(brakeLight.command(.init(accessoryId: row.accessoryId, capabilityId: capability.id)))
+        link.setDesired(brakeLight.command(.init(accessoryId: row.accessoryId, capabilityId: capability.id), enabled: isCapabilityEnabled(row.accessoryId, capability.id)))
       default:
         continue
       }
@@ -377,6 +403,46 @@ public final class AccessorySessionController: NSObject {
   }
 
   // MARK: - Brake light
+
+  private func isCapabilityEnabled(_ accessoryId: String, _ capabilityId: String) -> Bool {
+    capabilityEnabled[.init(accessoryId: accessoryId, capabilityId: capabilityId)] != false
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `setCapabilityEnabled`
+  /// @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+  func setCapabilityEnabled(accessoryId: String, capabilityId: String, enabled: Bool, onResult: @escaping (Bool) -> Void) {
+    updateCapabilitySettings(accessoryId: accessoryId, capabilityId: capabilityId, enabled: enabled, rateHz: nil, onResult: onResult)
+  }
+
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `setSamplingRate`
+  /// @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+  func setSamplingRate(accessoryId: String, capabilityId: String, rateHz: Double, onResult: @escaping (Bool) -> Void) {
+    updateCapabilitySettings(accessoryId: accessoryId, capabilityId: capabilityId, enabled: nil, rateHz: rateHz, onResult: onResult)
+  }
+
+  private func updateCapabilitySettings(accessoryId: String, capabilityId: String, enabled: Bool?, rateHz: Double?, onResult: @escaping (Bool) -> Void) {
+    onMain {
+      guard let row = self.saved[accessoryId] else { return onResult(false) }
+      let capabilities = self.links[accessoryId]?.manifest?.capabilities ?? Self.capabilitiesFrom(json: row.capabilitiesJson)
+      guard let capability = capabilities.first(where: { $0.id == capabilityId && $0.supported }) else { return onResult(false) }
+      if let rateHz, capability.type != AccessoryProtocol.typeGroundClearance || !rateHz.isFinite || !capability.ratesHz.contains(rateHz) { return onResult(false) }
+      let key = GroundClearanceBindingController.Key(accessoryId: accessoryId, capabilityId: capabilityId)
+      let candidate = SavedAccessoryCapabilitySettings(accessoryId: accessoryId, capabilityId: capabilityId,
+        enabled: enabled ?? self.isCapabilityEnabled(accessoryId, capabilityId), samplingRateHz: rateHz ?? self.samplingRates[key])
+      do {
+        try self.store.saveCapabilitySettings(candidate)
+      } catch {
+        RecordingStorageFailure.report(operation: "accessory_capability_settings", category: "write_failed", error: error)
+        return onResult(false)
+      }
+      self.capabilityEnabled[key] = candidate.enabled
+      self.samplingRates[key] = candidate.samplingRateHz
+      if !candidate.enabled { _ = self.brakeLight.preview(.init(accessoryId: accessoryId, capabilityId: capabilityId), mode: nil) }
+      self.reapplyDemand()
+      self.publish()
+      onResult(true)
+    }
+  }
 
   func setLightTelemetry(speedKmh: Double, riding: Bool) {
     let receivedAt = Int64(ProcessInfo.processInfo.systemUptime * 1000)
@@ -404,6 +470,7 @@ public final class AccessorySessionController: NSObject {
 
   func setLightPreview(accessoryId: String, capabilityId: String, mode: String?, onResult: @escaping (Bool) -> Void) {
     onMain {
+      if mode != nil && !self.isCapabilityEnabled(accessoryId, capabilityId) { return onResult(false) }
       let accepted = self.brakeLight.preview(.init(accessoryId: accessoryId, capabilityId: capabilityId), mode: mode)
       if accepted { self.reapplyDemand(); self.publish() }
       onResult(accepted)

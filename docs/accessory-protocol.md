@@ -228,14 +228,14 @@ Parked preview sends the same state schema with `preview: true`. This optional f
 
 ## PoC timing and failure defaults
 
-| Setting                    | Proposed default                                          |
-| -------------------------- | --------------------------------------------------------- |
-| Preferred sensor rate      | 10 Hz, resolved against manifest and confirmed by ack     |
-| Missing sensor stream      | 300 ms, starting at enabled ack or latest accepted sample |
-| Runtime command lease      | 2000 ms per capability                                    |
-| App renewal interval       | 500 ms, send state changes immediately                    |
-| Request response timeout   | 500 ms; retry once with the same ID                       |
-| Handshake response timeout | 3000 ms; disconnect and use normal reconnect policy       |
+| Setting                    | Proposed default                                             |
+| -------------------------- | ------------------------------------------------------------ |
+| Initial sensor rate        | 10 Hz; rider can select an advertised rate, confirmed by ack |
+| Missing sensor stream      | 300 ms, starting at enabled ack or latest accepted sample    |
+| Runtime command lease      | 2000 ms per capability                                       |
+| App renewal interval       | 500 ms, send state changes immediately                       |
+| Request response timeout   | 500 ms; retry once with the same ID                          |
+| Handshake response timeout | 3000 ms; disconnect and use normal reconnect policy          |
 
 For a selected rate below 10 Hz, use `max(300 ms, 3 * sample period)` for missing-stream detection. These values need validation under concurrent Board and accessory BLE traffic on Android and iOS.
 

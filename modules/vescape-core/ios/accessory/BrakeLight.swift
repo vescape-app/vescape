@@ -115,8 +115,9 @@ final class BrakeLightController {
       "lightPreview": light.preview,
     ]
   }
-  func command(_ key: Key) -> AccessoryCommand {
+  func command(_ key: Key, enabled: Bool = true) -> AccessoryCommand {
     let light = light(key)
+    if !enabled { return .state(capabilityId: key.capabilityId, telemetry: "available", mode: "not_riding", parked: "off", preview: false) }
     return .state(
       capabilityId: key.capabilityId,
       telemetry: light.detector.mode == nil ? "unavailable" : "available",

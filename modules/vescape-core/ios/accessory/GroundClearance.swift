@@ -158,6 +158,7 @@ enum GroundClearanceProblem: String {
 /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceRelease`
 /// @parity /modules/vescape-core/src/index.ts `GroundClearanceRelease`
 enum GroundClearanceRelease: String {
+  case disabled
   /// Sensor-driven tilt is for riding. A parked board is not corrected.
   case notRiding = "not-riding"
   /// The Board is not connected, or its link is not Trusted.
@@ -308,7 +309,8 @@ final class GroundClearanceRuntime {
   /// Riding without a calibration measures nothing, because nothing could act on the result: the
   /// sensor would burn power to produce samples with no binding behind them. Preview measures
   /// regardless — that is how the rider *gets* a calibration.
-  var measurementDemanded: Bool { previewOpen || (riding && isCalibrated) }
+  var enabled = true
+  var measurementDemanded: Bool { enabled && (previewOpen || (riding && isCalibrated)) }
 
   /// What a tilt binding may do right now.
   ///
@@ -316,6 +318,7 @@ final class GroundClearanceRuntime {
   /// resting state and not a fault; the sensor's own problems come last, when everything that would
   /// have consumed them is in place.
   func input(nowMs: Int64, linkConnected: Bool) -> GroundClearanceInput {
+    if !enabled { return .release(reason: .disabled) }
     guard riding else { return .release(reason: .notRiding) }
     guard linkConnected else { return .release(reason: .noLink) }
     guard let saved = calibration, saved.isComplete(rangeMin: rangeMin, rangeMax: rangeMax) else {
@@ -385,9 +388,12 @@ final class GroundClearanceBindingController {
   }
 
   func applyCapability(
-    accessoryId: String, capability: AccessoryCapability, liveManifest: Bool, rateHz: Double
+    accessoryId: String, capability: AccessoryCapability, liveManifest: Bool, rateHz: Double,
+    enabled: Bool = true
   ) -> AccessoryCommand {
     let state = runtime(accessoryId, capability.id)
+    if state.enabled != enabled { state.onSessionLost() }
+    state.enabled = enabled
     if liveManifest {
       state.rangeMin = capability.rangeMin
       state.rangeMax = capability.rangeMax
@@ -460,7 +466,7 @@ final class GroundClearanceBindingController {
 
   private func boundCapabilities(_ link: (String, String) -> LinkState) -> [Key] {
     runtimes.compactMap { key, state in
-      state.isCalibrated && link(key.accessoryId, key.capabilityId).connected ? key : nil
+      state.enabled && state.isCalibrated && link(key.accessoryId, key.capabilityId).connected ? key : nil
     }
   }
 
@@ -470,7 +476,8 @@ final class GroundClearanceBindingController {
     let bound = boundCapabilities(link)
     if bound.count > 1 { return .release(reason: .contested) }
     guard let key = bound.first else {
-      return .release(reason: runtimes.values.contains(where: { $0.isCalibrated }) ? .noLink : .notCalibrated)
+      if !runtimes.isEmpty && !runtimes.values.contains(where: { $0.enabled }) { return .release(reason: .disabled) }
+      return .release(reason: runtimes.values.contains(where: { $0.enabled && $0.isCalibrated }) ? .noLink : .notCalibrated)
     }
     return input(key.accessoryId, key.capabilityId, link: link(key.accessoryId, key.capabilityId))
   }
@@ -480,6 +487,7 @@ final class GroundClearanceBindingController {
   ) -> [String: Any?]? {
     let key = Key(accessoryId: accessoryId, capabilityId: reading.capabilityId)
     guard let state = runtimes[key] else { return nil }
+    guard state.enabled else { return nil }
     if let appliedRateHz { state.rateHz = appliedRateHz }
     let checked = reading.withinDeclaredRange(rangeMin: state.rangeMin, rangeMax: state.rangeMax)
     guard state.tracker.accept(checked, receivedAtMs: receivedAtMs), state.previewOpen else { return nil }

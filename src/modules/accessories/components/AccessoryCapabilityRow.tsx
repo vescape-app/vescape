@@ -3,10 +3,7 @@ import { CaretRightIcon } from 'phosphor-react-native'
 import type { AccessoryCapability } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import {
-  capabilityLimits,
-  capabilityPresentation,
-} from '@/modules/accessories/constants/accessoryCapabilities'
+import { capabilityPresentation } from '@/modules/accessories/constants/accessoryCapabilities'
 import { interaction, theme } from '@/constants/theme'
 
 /**
@@ -28,7 +25,6 @@ export function AccessoryCapabilityRow({
   onPress?: () => void
 }) {
   const { title, description, icon: CapabilityIcon } = capabilityPresentation(capability)
-  const limits = capabilityLimits(capability)
   const tint = capability.supported ? theme.palette.sky.color : theme.neutral.textDim
 
   const body = (
@@ -41,17 +37,13 @@ export function AccessoryCapabilityRow({
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
-          <View style={[styles.badge, { borderColor: tint }]}>
-            <Text style={[styles.badgeText, { color: tint }]}>
-              {capability.supported ? 'Supported' : 'Unsupported'}
-            </Text>
-          </View>
+          {!capability.supported ? (
+            <View style={[styles.badge, { borderColor: tint }]}>
+              <Text style={[styles.badgeText, { color: tint }]}>Unsupported</Text>
+            </View>
+          ) : null}
         </View>
         <Text style={styles.description}>{description}</Text>
-        <Text style={styles.meta}>
-          {capability.id}
-          {limits ? ` · ${limits}` : ''}
-        </Text>
       </View>
       {onPress ? <CaretRightIcon size={16} color={theme.neutral.textDim} weight="bold" /> : null}
     </>
@@ -111,20 +103,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 1,
   },
-  badgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
   description: {
     color: theme.neutral.textSecondary,
     fontSize: 12,
     lineHeight: 16,
   },
-  meta: {
-    fontFamily: theme.mono('600'),
-    color: theme.neutral.textDim,
-    fontSize: 11,
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
 })

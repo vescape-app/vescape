@@ -92,6 +92,21 @@ export interface AccessoryCapability {
   rangeMin: number | null
   rangeMax: number | null
   ratesHz: number[]
+  /** Saved switch, independent of calibration and current measurement demand.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `describeCapability`
+   * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `describeCapability`
+   */
+  enabled?: boolean
+  /** Acknowledged sensor rate, null before configuration is acknowledged.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `describeCapability`
+   * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `describeCapability`
+   */
+  samplingRateHz?: number | null
+  /** Saved rate resolved against the manifest; 10 Hz preferred until the rider chooses.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `describeCapability`
+   * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `describeCapability`
+   */
+  selectedRateHz?: number | null
   /**
    * What the rider has saved for this capability, or null when they have not finished a setup.
    *
@@ -182,6 +197,7 @@ export interface GroundClearanceCalibration {
  * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceRelease`
  */
 export type GroundClearanceRelease =
+  | 'disabled'
   | 'not-riding'
   | 'no-link'
   | 'not-calibrated'
@@ -2547,6 +2563,16 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   enrollAccessory(deviceId: string): Promise<AccessoryEnrollment>
   forgetAccessory(accessoryId: string): Promise<boolean>
   getAccessories(): SavedAccessory[]
+  setAccessoryCapabilityEnabled(
+    accessoryId: string,
+    capabilityId: string,
+    enabled: boolean,
+  ): Promise<boolean>
+  setAccessorySamplingRate(
+    accessoryId: string,
+    capabilityId: string,
+    rateHz: number,
+  ): Promise<boolean>
   saveBrakeLightSettings(
     accessoryId: string,
     capabilityId: string,
@@ -4219,6 +4245,28 @@ export function saveBrakeLightSettings(
     settings.sensitivity,
     settings.parked,
   )
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessoryCapabilityEnabled`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessoryCapabilityEnabled`
+ */
+export function setAccessoryCapabilityEnabled(
+  accessoryId: string,
+  capabilityId: string,
+  enabled: boolean,
+): Promise<boolean> {
+  return native.setAccessoryCapabilityEnabled(accessoryId, capabilityId, enabled)
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setAccessorySamplingRate`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setAccessorySamplingRate`
+ */
+export function setAccessorySamplingRate(
+  accessoryId: string,
+  capabilityId: string,
+  rateHz: number,
+): Promise<boolean> {
+  return native.setAccessorySamplingRate(accessoryId, capabilityId, rateHz)
 }
 /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
  * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBrakeLightPreview`

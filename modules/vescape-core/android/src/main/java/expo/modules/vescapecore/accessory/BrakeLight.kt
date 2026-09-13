@@ -79,7 +79,8 @@ class BrakeLightController {
     fun describe(key: Key): Map<String, Any?> = lights.getOrPut(key) { Light() }.let {
         mapOf("brakeLight" to it.settings.toMap(), "lightMode" to it.detector.mode, "lightPreview" to it.preview)
     }
-    fun command(key: Key): AccessoryCommand.State = lights.getOrPut(key) { Light() }.let {
+    fun command(key: Key, enabled: Boolean = true): AccessoryCommand.State = lights.getOrPut(key) { Light() }.let {
+        if (!enabled) return AccessoryCommand.State(key.capabilityId, "available", "not_riding", "off", false)
         AccessoryCommand.State(key.capabilityId, if(it.detector.mode == null) "unavailable" else "available", it.preview ?: it.detector.mode, it.settings.parked, it.preview != null)
     }
     companion object { val MODES = setOf("riding", "braking", "hard_braking", "not_riding") }

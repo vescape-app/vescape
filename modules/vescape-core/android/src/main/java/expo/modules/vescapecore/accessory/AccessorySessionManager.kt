@@ -7,6 +7,7 @@ import android.os.SystemClock
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.telemetry.AccessoryBrakeLightEntity
+import expo.modules.vescapecore.telemetry.AccessoryCapabilitySettingsEntity
 import expo.modules.vescapecore.telemetry.AccessoryGroundClearanceEntity
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.telemetry.SavedAccessoryEntity
@@ -72,6 +73,9 @@ object AccessorySessionManager {
 
     private val links = LinkedHashMap<String, AccessoryLink>()
     private val saved = LinkedHashMap<String, SavedAccessoryEntity>()
+    private val capabilityEnabled = HashMap<GroundClearanceBindingController.Key, Boolean>()
+    private val samplingRates = HashMap<GroundClearanceBindingController.Key, Double>()
+    private val capabilityMutations = HashMap<GroundClearanceBindingController.Key, Long>()
 
     /**
      * Live ground-clearance state, one per enrolled capability.
@@ -124,17 +128,28 @@ object AccessorySessionManager {
             val calibrations = try {
                 store.getGroundClearances()
             } catch (error: Throwable) {
-                // The Accessories still connect. A calibration that could not be read is reported
-                // and treated as absent, which shows the rider "not set up" rather than driving the
-                // board from numbers this process never actually saw.
                 RecordingStorageFailure.reportRead("accessory_ground_clearance", error)
                 emptyList()
+            }
+            val capabilitySettings = try {
+                // A failed preference read must not silently re-enable disabled hardware.
+                store.getCapabilitySettings()
+            } catch (error: Throwable) {
+                RecordingStorageFailure.reportRead("accessory_capability_settings", error)
+                return@launch
             }
             val lightSettings = try { store.getBrakeLights() } catch (error: Throwable) {
                 RecordingStorageFailure.reportRead("accessory_brake_light", error)
                 emptyList()
             }
             handler.post {
+                capabilityEnabled.clear()
+                samplingRates.clear()
+                capabilitySettings.forEach {
+                    val key = GroundClearanceBindingController.Key(it.accessoryId, it.capabilityId)
+                    capabilityEnabled[key] = it.enabled
+                    it.samplingRateHz?.let { rate -> samplingRates[key] = rate }
+                }
                 lightSettings.forEach { brakeLight.configure(BrakeLightController.Key(it.accessoryId, it.capabilityId), BrakeLightSettings(it.sensitivity, it.parked)) }
                 saved.clear()
                 rows.forEach { saved[it.accessoryId] = it }
@@ -235,6 +250,11 @@ object AccessorySessionManager {
                 // this process still happened to be holding.
                 groundClearance.forget(accessoryId)
                 brakeLight.forget(accessoryId)
+                capabilityEnabled.keys.removeAll { it.accessoryId == accessoryId }
+                samplingRates.keys.removeAll { it.accessoryId == accessoryId }
+                capabilityMutations.keys.filter { it.accessoryId == accessoryId }.forEach {
+                    capabilityMutations[it] = (capabilityMutations[it] ?: 0L) + 1
+                }
                 for (key in lightMutations.keys.filter { it.accessoryId == accessoryId }) {
                     lightMutations[key] = (lightMutations[key] ?: 0L) + 1
                 }
@@ -297,10 +317,69 @@ object AccessorySessionManager {
      * asked for — a preview on a capability with no usable rate is a screen that is open and a
      * sensor that is not measuring, and the row should say so.
      */
+    // @parity /modules/vescape-core/src/index.ts `AccessoryCapability`
     private fun describeCapability(accessoryId: String, capability: Map<String, Any?>): Map<String, Any?> {
         val capabilityId = capability["id"] as? String ?: return capability
-        if (capability["type"] == AccessoryProtocol.TYPE_BRAKE_LIGHT) return capability + brakeLight.describe(BrakeLightController.Key(accessoryId, capabilityId))
-        return capability + (groundClearance.describe(accessoryId, capabilityId) ?: return capability)
+        val base = capability + mapOf(
+            "enabled" to isCapabilityEnabled(accessoryId, capabilityId),
+            "samplingRateHz" to links[accessoryId]?.appliedRateHz(capabilityId),
+            "selectedRateHz" to capabilityFromMap(capability)?.let {
+                AccessorySession.resolveRateHz(samplingRates[GroundClearanceBindingController.Key(accessoryId, capabilityId)] ?: PREFERRED_RATE_HZ, it.ratesHz)
+            },
+        )
+        if (capability["type"] == AccessoryProtocol.TYPE_BRAKE_LIGHT) return base + brakeLight.describe(BrakeLightController.Key(accessoryId, capabilityId))
+        return base + (groundClearance.describe(accessoryId, capabilityId) ?: emptyMap())
+    }
+
+    private fun isCapabilityEnabled(accessoryId: String, capabilityId: String): Boolean =
+        capabilityEnabled[GroundClearanceBindingController.Key(accessoryId, capabilityId)] != false
+
+    // @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `setCapabilityEnabled`
+    // @parity /modules/vescape-core/src/index.ts `setAccessoryCapabilityEnabled`
+    fun setCapabilityEnabled(accessoryId: String, capabilityId: String, enabled: Boolean, onResult: (Boolean) -> Unit) {
+        updateCapabilitySettings(accessoryId, capabilityId, enabled, null, onResult)
+    }
+
+    // @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `setSamplingRate`
+    // @parity /modules/vescape-core/src/index.ts `setAccessorySamplingRate`
+    fun setSamplingRate(accessoryId: String, capabilityId: String, rateHz: Double, onResult: (Boolean) -> Unit) {
+        updateCapabilitySettings(accessoryId, capabilityId, null, rateHz, onResult)
+    }
+
+    private fun updateCapabilitySettings(accessoryId: String, capabilityId: String, enabled: Boolean?, rateHz: Double?, onResult: (Boolean) -> Unit) {
+        handler.post {
+            val app = appContext ?: return@post onResult(false)
+            val row = saved[accessoryId] ?: return@post onResult(false)
+            val capabilities = links[accessoryId]?.manifest?.capabilities
+                ?: decodeCapabilities(row.capabilitiesJson).mapNotNull(::capabilityFromMap)
+            val capability = capabilities.firstOrNull { it.id == capabilityId && it.supported } ?: return@post onResult(false)
+            if (rateHz != null && (capability.type != AccessoryProtocol.TYPE_GROUND_CLEARANCE || !rateHz.isFinite() || rateHz !in capability.ratesHz)) return@post onResult(false)
+            val key = GroundClearanceBindingController.Key(accessoryId, capabilityId)
+            val mutation = (capabilityMutations[key] ?: 0L) + 1
+            capabilityMutations[key] = mutation
+            calibrationScope.launch {
+                val candidate = try {
+                    val store = persistence(app)
+                    val previous = store.getCapabilitySettings().firstOrNull { it.accessoryId == accessoryId && it.capabilityId == capabilityId }
+                    AccessoryCapabilitySettingsEntity(accessoryId, capabilityId, enabled ?: previous?.enabled ?: true, rateHz ?: previous?.samplingRateHz)
+                        .also { store.saveCapabilitySettings(it) }
+                } catch (error: Throwable) {
+                    RecordingStorageFailure.report("accessory_capability_settings", "write_failed", error)
+                    handler.post { onResult(false) }
+                    return@launch
+                }
+                handler.post {
+                    if (saved.containsKey(accessoryId) && capabilityMutations[key] == mutation) {
+                        capabilityEnabled[key] = candidate.enabled
+                        candidate.samplingRateHz?.let { samplingRates[key] = it }
+                        if (!candidate.enabled) brakeLight.preview(BrakeLightController.Key(accessoryId, capabilityId), null)
+                        reapplyDemand()
+                        publish()
+                    }
+                    onResult(true)
+                }
+            }
+        }
     }
 
     private fun publish() {
@@ -386,12 +465,14 @@ object AccessorySessionManager {
             if (!capability.supported) continue
             when (capability.type) {
                 AccessoryProtocol.TYPE_GROUND_CLEARANCE -> {
-                    val rate = AccessorySession.resolveRateHz(PREFERRED_RATE_HZ, capability.ratesHz)
+                    val rate = AccessorySession.resolveRateHz(samplingRates[GroundClearanceBindingController.Key(row.accessoryId, capability.id)] ?: PREFERRED_RATE_HZ, capability.ratesHz)
                         ?: continue
-                    setDesired(groundClearance.applyCapability(row.accessoryId, capability, manifest != null, rate))
+                    setDesired(groundClearance.applyCapability(row.accessoryId, capability, manifest != null, rate, isCapabilityEnabled(row.accessoryId, capability.id)))
                 }
 
-                AccessoryProtocol.TYPE_BRAKE_LIGHT -> setDesired(brakeLight.command(BrakeLightController.Key(row.accessoryId, capability.id)))
+                AccessoryProtocol.TYPE_BRAKE_LIGHT -> setDesired(
+                    brakeLight.command(BrakeLightController.Key(row.accessoryId, capability.id), isCapabilityEnabled(row.accessoryId, capability.id))
+                )
 
                 else -> Unit
             }
@@ -434,6 +515,7 @@ object AccessorySessionManager {
 
     fun setLightPreview(accessoryId: String, capabilityId: String, mode: String?, onResult: (Boolean) -> Unit) {
         handler.post {
+            if (mode != null && !isCapabilityEnabled(accessoryId, capabilityId)) return@post onResult(false)
             val accepted = brakeLight.preview(BrakeLightController.Key(accessoryId, capabilityId), mode)
             if (accepted) { reapplyDemand(); publish() }
             onResult(accepted)

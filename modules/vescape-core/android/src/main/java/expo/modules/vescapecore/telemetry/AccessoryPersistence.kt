@@ -63,6 +63,10 @@ internal class AccessoryPersistence(private val dao: TelemetryDao) {
 
   suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity> = dao.getBrakeLights()
 
+  suspend fun getCapabilitySettings(): List<AccessoryCapabilitySettingsEntity> = dao.getAccessoryCapabilitySettings()
+
+  suspend fun saveCapabilitySettings(settings: AccessoryCapabilitySettingsEntity) = dao.saveAccessoryCapabilitySettings(settings)
+
   suspend fun saveBrakeLight(settings: AccessoryBrakeLightEntity) = dao.saveBrakeLight(settings)
 
   suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity> = dao.getGroundClearances()

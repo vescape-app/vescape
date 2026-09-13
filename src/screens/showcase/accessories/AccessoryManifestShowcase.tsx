@@ -9,6 +9,7 @@ import type {
 import { ShowcaseCard } from '@/components/dev/ShowcaseCard'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
 import { AccessoryCapabilityRow } from '@/modules/accessories/components/AccessoryCapabilityRow'
+import { CapabilityEnabledSetting } from '@/modules/accessories/components/CapabilityEnabledControl'
 import { AccessoryCompatibilityNotice } from '@/modules/accessories/components/AccessoryCompatibilityNotice'
 import { GroundClearanceReadout } from '@/modules/accessories/components/GroundClearanceReadout'
 import { theme } from '@/constants/theme'
@@ -89,6 +90,7 @@ export function AccessoryCompatibilityNoticeShowcase() {
 
 export function AccessoryCapabilityRowShowcase() {
   const [navigable, setNavigable] = useState(true)
+  const [enabled, setEnabled] = useState(true)
 
   return (
     <ShowcaseCard
@@ -113,6 +115,13 @@ export function AccessoryCapabilityRowShowcase() {
               : {})}
           />
         ))}
+      </View>
+      <View style={styles.stack}>
+        <CapabilityEnabledSetting
+          label="Use ground clearance"
+          enabled={enabled}
+          onChange={setEnabled}
+        />
       </View>
     </ShowcaseCard>
   )

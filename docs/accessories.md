@@ -39,6 +39,30 @@ are starting values, not validated ones, and no physical LED hardware has been c
 
 ## Initial scope
 
+### Capability controls and status
+
+The capability list contains navigation rows only. Each capability's setup screen holds its **Use**
+switch, live status, and settings; hardware metadata sits under Sensor details. The switch defaults
+on; native persists it by accessory ID and capability ID before applying a
+change. Turning it off preserves calibration and light settings. Disabled clearance capabilities
+stop measuring (including setup preview), release sensor tilt through its existing smooth return,
+and no longer claim the manual tilt pad. Re-enabling requires fresh measurements.
+
+A disabled light receives the protocol's `not_riding` state with `parked: off`, regardless of Board
+state. Its saved parked preference remains unchanged. Preview cannot override the switch. Loss of
+connection still leaves appearance to firmware; the app cannot promise physical darkness offline.
+
+Sensor setup offers a sampling-rate button for each rate advertised by the device. Native saves
+the selected rate per capability and reapplies it on reconnect; changing it preserves the enabled
+switch and calibration. The initial preference is 10 Hz. If firmware removes a saved rate, the
+nearest supported rate is selected (ties choose the lower rate). The active acknowledged rate is
+shown separately from the selection. Hardware range limits are distinct from near/far calibration.
+
+Light setup displays the requested riding/braking/parked/preview state, or disconnected/no-telemetry
+status. Clearance setup reads the existing native Remote Tilt command and release reason while
+visible, at most four times per second with no overlapping reads. The percentage is the Board's
+sensor-owned Remote Tilt input, including its return to neutral, not a measured physical angle.
+
 - A board-mounted distance sensor controls Remote Tilt from ground clearance.
 - A separate light accessory responds to Board braking telemetry.
 - Enrolled accessories auto-connect when the app starts and operate through the native runtime while the screen is locked or the app is backgrounded.

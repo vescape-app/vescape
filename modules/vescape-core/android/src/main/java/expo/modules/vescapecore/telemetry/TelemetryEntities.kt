@@ -972,3 +972,12 @@ data class AccessoryBrakeLightEntity(
  val sensitivity: Int,
  val parked: String,
 )
+
+/** @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedAccessoryCapabilitySettings` */
+@Entity(tableName = "accessory_capability_settings", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryCapabilitySettingsEntity(
+  @ColumnInfo(name = "accessory_id") val accessoryId: String,
+  @ColumnInfo(name = "capability_id") val capabilityId: String,
+  val enabled: Boolean,
+  @ColumnInfo(name = "sampling_rate_hz") val samplingRateHz: Double? = null,
+)

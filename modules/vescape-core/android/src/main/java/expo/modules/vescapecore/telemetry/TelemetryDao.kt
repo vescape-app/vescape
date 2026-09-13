@@ -880,6 +880,7 @@ interface TelemetryDao {
   suspend fun forgetAccessory(accessoryId: String): Int {
     deleteGroundClearances(accessoryId)
     deleteBrakeLights(accessoryId)
+    deleteAccessoryCapabilitySettings(accessoryId)
     return deleteAccessory(accessoryId)
   }
 
@@ -897,6 +898,21 @@ interface TelemetryDao {
   // Ground-clearance calibration, keyed on the Accessory *and* the capability.
   @Query("SELECT * FROM accessory_brake_light ORDER BY accessory_id, capability_id")
   suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity>
+
+  @Query("SELECT * FROM accessory_capability_settings ORDER BY accessory_id, capability_id")
+  suspend fun getAccessoryCapabilitySettings(): List<AccessoryCapabilitySettingsEntity>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertAccessoryCapabilitySettings(settings: AccessoryCapabilitySettingsEntity)
+
+  @Transaction
+  suspend fun saveAccessoryCapabilitySettings(settings: AccessoryCapabilitySettingsEntity) {
+    check(getAccessory(settings.accessoryId) != null) { "Accessory is no longer enrolled" }
+    upsertAccessoryCapabilitySettings(settings)
+  }
+
+  @Query("DELETE FROM accessory_capability_settings WHERE accessory_id = :accessoryId")
+  suspend fun deleteAccessoryCapabilitySettings(accessoryId: String): Int
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun upsertBrakeLight(settings: AccessoryBrakeLightEntity)

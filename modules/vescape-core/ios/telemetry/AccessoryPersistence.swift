@@ -153,6 +153,10 @@ struct AccessoryStore {
     try PersistenceSchema.createAccessories(db)
     try PersistenceSchema.createAccessoryGroundClearance(db)
     try PersistenceSchema.createAccessoryBrakeLight(db)
+    try PersistenceSchema.createAccessoryCapabilitySettings(db)
+    if try !db.columns(in: "accessory_capability_settings").contains(where: { $0.name == "sampling_rate_hz" }) {
+      try db.execute(sql: "ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
+    }
   }
 
   private func writer() throws -> DatabaseWriter {
@@ -201,6 +205,7 @@ struct AccessoryStore {
         sql: "DELETE FROM accessory_ground_clearance WHERE accessory_id = ?",
         arguments: [accessoryId])
       try db.execute(sql: "DELETE FROM accessory_brake_light WHERE accessory_id = ?", arguments: [accessoryId])
+      try db.execute(sql: "DELETE FROM accessory_capability_settings WHERE accessory_id = ?", arguments: [accessoryId])
       return try Record.deleteOne(db, key: ["accessory_id": accessoryId])
     }
   }
@@ -222,6 +227,19 @@ struct AccessoryStore {
 
   func brakeLights() throws -> [SavedBrakeLight] {
     try writer().read { db in try SavedBrakeLight.order(Column("accessory_id"), Column("capability_id")).fetchAll(db) }
+  }
+
+  func capabilitySettings() throws -> [SavedAccessoryCapabilitySettings] {
+    try writer().read { db in
+      try SavedAccessoryCapabilitySettings.order(Column("accessory_id"), Column("capability_id")).fetchAll(db)
+    }
+  }
+
+  func saveCapabilitySettings(_ settings: SavedAccessoryCapabilitySettings) throws {
+    try writer().write { db in
+      guard try Record.fetchOne(db, key: ["accessory_id": settings.accessoryId]) != nil else { throw WriterUnavailable() }
+      try settings.save(db)
+    }
   }
 
   func saveBrakeLight(_ settings: SavedBrakeLight) throws {
@@ -298,5 +316,18 @@ struct SavedBrakeLight: Codable, FetchableRecord, PersistableRecord, Equatable {
   let parked: String
   enum CodingKeys: String, CodingKey {
     case accessoryId = "accessory_id", capabilityId = "capability_id", sensitivity, parked
+  }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AccessoryCapabilitySettingsEntity`
+struct SavedAccessoryCapabilitySettings: Codable, FetchableRecord, PersistableRecord, Equatable {
+  static let databaseTableName = "accessory_capability_settings"
+  let accessoryId: String
+  let capabilityId: String
+  let enabled: Bool
+  var samplingRateHz: Double? = nil
+  enum CodingKeys: String, CodingKey {
+    case accessoryId = "accessory_id", capabilityId = "capability_id", enabled
+    case samplingRateHz = "sampling_rate_hz"
   }
 }

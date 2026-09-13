@@ -838,6 +838,13 @@ enum TelemetryDatabase {
     migrator.registerMigration("v46_accessory_brake_light") { db in
       try PersistenceSchema.createAccessoryBrakeLight(db)
     }
+    migrator.registerMigration("v47_accessory_capability_settings") { db in
+      try PersistenceSchema.createAccessoryCapabilitySettings(db)
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_47_48`
+    migrator.registerMigration("v48_accessory_sampling_rate") { db in
+      try db.execute(sql: "ALTER TABLE accessory_capability_settings ADD COLUMN sampling_rate_hz REAL")
+    }
 
     return migrator
   }

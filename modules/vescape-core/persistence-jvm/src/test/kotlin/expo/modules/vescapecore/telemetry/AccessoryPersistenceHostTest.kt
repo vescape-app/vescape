@@ -166,6 +166,11 @@ class AccessoryPersistenceHostTest {
     val lightRow = AccessoryBrakeLightEntity(accessoryId, light.getString("capabilityId"), light.getInt("sensitivity"), light.getString("parked"))
     store.saveBrakeLight(lightRow)
     store.saveBrakeLight(lightRow.copy(accessoryId = otherId))
+    val switchSpec = contract.getJSONObject("capabilitySettings")
+    val switchRow = AccessoryCapabilitySettingsEntity(accessoryId, nose, switchSpec.getBoolean("enabled"), switchSpec.getDouble("samplingRateHz"))
+    val otherSwitch = switchRow.copy(accessoryId = otherId, samplingRateHz = switchSpec.getDouble("otherSamplingRateHz"))
+    store.saveCapabilitySettings(switchRow)
+    store.saveCapabilitySettings(otherSwitch)
     store.saveGroundClearance(row(accessoryId, nose, clearance.getJSONObject("calibration")))
     store.saveGroundClearance(row(accessoryId, tail, clearance.getJSONObject("tailCalibration")))
     store.saveGroundClearance(
@@ -177,6 +182,7 @@ class AccessoryPersistenceHostTest {
     db = open()
     store = AccessoryPersistence(db.telemetryDao())
     assertEquals(listOf(lightRow, lightRow.copy(accessoryId = otherId)).sortedBy { it.accessoryId }, store.getBrakeLights())
+    assertEquals(listOf(switchRow, otherSwitch).sortedBy { it.accessoryId }, store.getCapabilitySettings())
     val reopened = store.getGroundClearance(accessoryId, nose)!!
     assertEquals(clearance.getJSONObject("calibration").getDouble("nearCm"), reopened.nearCm, 0.0)
     assertEquals(clearance.getJSONObject("calibration").getDouble("farCm"), reopened.farCm, 0.0)
@@ -214,6 +220,13 @@ class AccessoryPersistenceHostTest {
     // ...and it must not move the baseline either. Only accepting new limits does that.
     assertEquals(spec.getString("capabilitiesJson"), store.getAccessory(accessoryId)!!.capabilitiesJson)
 
+    // Toggling preserves calibration and the other accessory's switch.
+    store.saveCapabilitySettings(switchRow.copy(enabled = true))
+    assertEquals(switchRow.samplingRateHz, store.getCapabilitySettings().first { it.accessoryId == accessoryId }.samplingRateHz)
+    assertEquals(3, store.getGroundClearances().size)
+    assertEquals(otherSwitch, store.getCapabilitySettings().first { it.accessoryId == otherId })
+    store.saveCapabilitySettings(switchRow)
+
     // Accepting limits that moved, which is what saving a fitting calibration means.
     assertTrue(store.adoptCapabilities(accessoryId, spec.getString("changedCapabilitiesJson")))
     assertEquals(
@@ -232,6 +245,10 @@ class AccessoryPersistenceHostTest {
     // Forgetting takes the Accessory and every calibration made against it, and nothing else.
     assertTrue(store.forget(accessoryId))
     assertEquals(listOf(lightRow.copy(accessoryId = otherId)), store.getBrakeLights())
+    assertEquals(listOf(otherSwitch), store.getCapabilitySettings())
+    var rejectedOrphan = false
+    try { store.saveCapabilitySettings(switchRow) } catch (_: IllegalStateException) { rejectedOrphan = true }
+    assertTrue(rejectedOrphan)
     db.close()
 
     db = open()

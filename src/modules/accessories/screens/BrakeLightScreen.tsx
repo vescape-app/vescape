@@ -18,6 +18,8 @@ import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle
 import { useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
 import { accessoryStatusCopy } from '@/modules/accessories/lib/accessoryStatus'
 import { theme } from '@/constants/theme'
+import { CapabilityEnabledControl } from '../components/CapabilityEnabledControl'
+import { capabilityStateCopy } from '../lib/capabilityStateCopy'
 
 const previewOptions: { value: BrakeLightMode; label: string }[] = [
   { value: 'riding', label: 'Riding' },
@@ -98,6 +100,13 @@ export function BrakeLightScreen({
         ) : (
           <>
             <Text>{accessoryStatusCopy(accessory.phase).label}</Text>
+            <CapabilityEnabledControl accessoryId={accessoryId} capability={capability} />
+            <SettingsSectionTitle>Current light state</SettingsSectionTitle>
+            <Text>{capabilityStateCopy(capability, accessory.phase)}</Text>
+            <Text>
+              State requested by the app. When disconnected or without telemetry, the accessory
+              chooses its own appearance.
+            </Text>
             <SettingsSectionTitle>Sensitivity</SettingsSectionTitle>
             <Stepper
               value={draft.sensitivity}
@@ -130,7 +139,7 @@ export function BrakeLightScreen({
                 label={label}
                 variant={capability.lightPreview === value ? 'primary' : 'secondary'}
                 onPress={() => preview(value)}
-                disabled={accessory.phase !== 'connected'}
+                disabled={accessory.phase !== 'connected' || capability.enabled === false}
               />
             ))}
             <Button label="Return to automatic" variant="secondary" onPress={() => preview(null)} />

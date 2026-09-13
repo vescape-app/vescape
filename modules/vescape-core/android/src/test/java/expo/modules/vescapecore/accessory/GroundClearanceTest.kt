@@ -20,6 +20,25 @@ import org.junit.Test
  * @parity /modules/vescape-core/ios/accessory/GroundClearanceTests.swift
  */
 class GroundClearanceTest {
+    @Test
+    fun disablingPreservesCalibrationButStopsPreviewAndReleasesTheBinding() {
+        val controller = GroundClearanceBindingController { 1000L }
+        val capability = AccessoryCapability("clearance", "ground_clearance", true, "cm", 3.0, 100.0, listOf(10.0))
+        val link = GroundClearanceBindingController.LinkState(true, 10.0)
+        controller.applyCapability("accessory", capability, true, 10.0)
+        controller.applyCalibration("accessory", capability.id, GroundClearanceCalibration(5.0, 20.0, "nose", 60))
+        controller.setRiding(true)
+        controller.setPreview("accessory", capability.id, true)
+        assertTrue(controller.applyCapability("accessory", capability, true, 10.0).enabled)
+        assertTrue(controller.bound { _, _ -> link })
+        assertFalse(controller.applyCapability("accessory", capability, true, 10.0, enabled = false).enabled)
+        assertFalse(controller.bound { _, _ -> link })
+        assertEquals(GroundClearanceInput.Release(GroundClearanceRelease.DISABLED), controller.tilt { _, _ -> link })
+        assertTrue(controller.describe("accessory", capability.id)?.get("calibration") != null)
+        assertTrue(controller.applyCapability("accessory", capability, true, 10.0, enabled = true).enabled)
+        assertEquals(GroundClearanceInput.Release(GroundClearanceRelease.STALE), controller.tilt { _, _ -> link })
+    }
+
     private val fixture = AccessoryFixtures.load("session.json")
     private val sessionId = fixture.getString("sessionId")
     private val readings = fixture.getJSONObject("readings")

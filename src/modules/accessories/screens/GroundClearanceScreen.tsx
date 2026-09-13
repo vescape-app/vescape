@@ -5,6 +5,7 @@ import { ArrowsVerticalIcon } from 'phosphor-react-native'
 import {
   clearGroundClearanceCalibration,
   saveGroundClearanceCalibration,
+  setAccessorySamplingRate,
   type GroundClearanceDirection,
 } from 'vescape-core'
 
@@ -15,6 +16,9 @@ import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { GroundClearanceTelemetry } from '@/modules/accessories/components/GroundClearanceTelemetry'
+import { CapabilityEnabledControl } from '../components/CapabilityEnabledControl'
+import { GroundClearanceTiltStatus } from '../components/GroundClearanceTiltStatus'
+import { capabilityLimits } from '../constants/accessoryCapabilities'
 import {
   calibrationProblemCopy,
   directionCopy,
@@ -64,6 +68,8 @@ export function GroundClearanceScreen({
 
   const [draft, setDraft] = useState<Draft | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [savingRate, setSavingRate] = useState(false)
+  const [rateFailed, setRateFailed] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** The edit the debounce has not offered to native yet. Flushed rather than dropped on exit. */
   const pending = useRef<Draft | null>(null)
@@ -150,6 +156,18 @@ export function GroundClearanceScreen({
     })
   }, [accessoryId, capabilityId])
 
+  const changeRate = async (rateHz: number) => {
+    setSavingRate(true)
+    setRateFailed(false)
+    try {
+      setRateFailed(!(await setAccessorySamplingRate(accessoryId, capabilityId, rateHz)))
+    } catch {
+      setRateFailed(true)
+    } finally {
+      setSavingRate(false)
+    }
+  }
+
   if (!accessory || !capability) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -176,11 +194,38 @@ export function GroundClearanceScreen({
           <Text style={styles.fieldLabel}>{accessory.name}</Text>
           <Text style={styles.hint}>{status.label}</Text>
         </View>
-        <GroundClearanceTelemetry
-          accessoryId={accessoryId}
-          capabilityId={capabilityId}
-          range={{ min: capability.rangeMin ?? 3, max: capability.rangeMax ?? 100 }}
-        />
+        <CapabilityEnabledControl accessoryId={accessoryId} capability={capability} />
+        <SettingsSectionTitle>Sampling rate</SettingsSectionTitle>
+        <View style={styles.rates}>
+          {capability.ratesHz.map((rateHz) => (
+            <Button
+              key={rateHz}
+              label={`${rateHz} Hz`}
+              variant={capability.selectedRateHz === rateHz ? 'primary' : 'secondary'}
+              onPress={() => {
+                void changeRate(rateHz)
+              }}
+              disabled={savingRate || !capability.supported}
+              style={styles.rateButton}
+            />
+          ))}
+        </View>
+        {rateFailed ? (
+          <Text style={styles.warning}>Could not save sampling rate. Try again.</Text>
+        ) : null}
+        <GroundClearanceTiltStatus />
+        <Text style={styles.hint}>Commanded Remote Tilt, not the board’s measured angle.</Text>
+        {capability.enabled !== false ? (
+          <GroundClearanceTelemetry
+            accessoryId={accessoryId}
+            capabilityId={capabilityId}
+            range={{ min: capability.rangeMin ?? 3, max: capability.rangeMax ?? 100 }}
+          />
+        ) : (
+          <Text style={styles.hint}>
+            Sensor disabled. Measurements and automatic tilt are stopped.
+          </Text>
+        )}
 
         {!configured ? (
           <Text style={styles.explainer}>
@@ -268,6 +313,16 @@ export function GroundClearanceScreen({
           <Button label="Clear calibration" variant="destructive" onPress={onClear} />
         ) : null}
 
+        <SettingsSectionTitle>Sensor details</SettingsSectionTitle>
+        <Text style={styles.hint}>{capabilityLimits(capability)}</Text>
+        <Text style={styles.hint}>
+          Hardware limits
+          {capability.samplingRateHz
+            ? ` · currently sampling at ${capability.samplingRateHz} Hz`
+            : ''}
+          .
+        </Text>
+
         <Text style={styles.footnote}>
           Calibration belongs to this sensor in this mounting position. Moving it to another board,
           or to the other end of this one, means setting these again. Sensor-driven tilt only runs
@@ -300,6 +355,8 @@ function Field({
 }
 
 const styles = StyleSheet.create({
+  rates: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  rateButton: { flexGrow: 1 },
   statusHeader: { padding: 12, gap: 4 },
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 8, paddingBottom: 40 },
