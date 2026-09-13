@@ -92,7 +92,7 @@ public class VescapeCoreModule: Module {
 
     // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `Events`
     // @parity /modules/vescape-core/src/index.ts `VescapeCoreEvents`
-    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather")
+    Events("onDevice", "onError", "onLiveState", "onLiveTick", "onLiveSeries", "onFocusedSeries", "onTelemetryHistory", "onBms", "onBmsSeries", "onLocation", "onReplayPhoneHeading", "onTelemetryRebuildProgress", "onBoardProbeProgress", "onAppDataChanged", "onGroupRideConnection", "onGroupRideSnapshot", "onGroupRideCreated", "onGroupRideUpdated", "onGroupRideEnded", "onGroupRideJoined", "onGroupRideRoster", "onGroupRideError", "onBoardWarnings", "onVescFaults", "onBoardConfigValues", "onMotorConfigValues", "onBoardConfigChangeNotice", "onBoardLights", "onAppStatus", "onNavigation", "onRouteProgress", "onWeather", "onAccessoryDevice", "onAccessoryScanError")
 
     // Track per-event JS listeners so native skips emitting into the void, and gate the whole
     // firehose on app foreground (see `frontendActive`). Mirrors Android's observing + lifecycle
@@ -197,8 +197,19 @@ public class VescapeCoreModule: Module {
       self.sendEvent("onWeather", ["weather": WeatherCoordinator.shared.current?.map])
     }
     OnStopObserving("onWeather") { self.observedEvents.remove("onWeather") }
+    OnStartObserving("onAccessoryDevice") { self.observedEvents.insert("onAccessoryDevice") }
+    OnStopObserving("onAccessoryDevice") { self.observedEvents.remove("onAccessoryDevice") }
+    OnStartObserving("onAccessoryScanError") { self.observedEvents.insert("onAccessoryScanError") }
+    OnStopObserving("onAccessoryScanError") { self.observedEvents.remove("onAccessoryScanError") }
 
     OnCreate {
+      // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
+      // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `AccessoryDiscovery`
+      AccessoryDiscovery.shared.emit = { [weak self] name, body in
+        guard let self, self.shouldEmitToFrontend(name) else { return }
+        self.sendEvent(name, body)
+      }
+
       RecordingStorageFailure.observeOutage { [weak self] in
         guard let self, self.shouldEmitToFrontend("onLiveState") else { return }
         self.sendEvent("onLiveState", self.liveState())
@@ -269,6 +280,9 @@ public class VescapeCoreModule: Module {
       self.observedEvents.removeAll()
       self.cancelActiveProbe(reason: "module_destroyed")
       self.stopAlertTest()
+      AccessoryDiscovery.shared.emit = nil
+      AccessoryDiscovery.shared.stopScan()
+      AccessoryDiscovery.shared.cancelInspection()
     }
 
     // MARK: Scan
@@ -279,6 +293,28 @@ public class VescapeCoreModule: Module {
 
     Function("stopScan") {
       self.coordinator.stopScan()
+    }
+
+    // MARK: Accessory discovery
+
+    // Read-only: it scans for the Vescape Accessory service, reads one manifest, and disconnects.
+    // No Board or Accessory control can start from here.
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `startAccessoryScan`
+    // @parity /modules/vescape-core/src/index.ts `startAccessoryScan`
+    Function("startAccessoryScan") {
+      AccessoryDiscovery.shared.startScan()
+    }
+
+    Function("stopAccessoryScan") {
+      AccessoryDiscovery.shared.stopScan()
+    }
+
+    Function("cancelAccessoryInspection") {
+      AccessoryDiscovery.shared.cancelInspection()
+    }
+
+    AsyncFunction("inspectAccessory") { (deviceId: String, promise: Promise) in
+      AccessoryDiscovery.shared.inspect(deviceId: deviceId) { promise.resolve($0) }
     }
 
     // MARK: Location
