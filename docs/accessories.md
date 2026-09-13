@@ -32,9 +32,10 @@ the pad's existing smooth return — a missing, stale, out-of-range or erroring 
 accessory session, and equally an untrusted or silent Board. See
 [remote-tilt.md](./remote-tilt.md#command-ownership) for who owns the Board's one remote-input slot.
 
-**Not implemented**: brake-light behavior. A brake-light capability's session still holds the
-protocol's neutral state — the light is told Board telemetry is unavailable — which is what the
-light's own slice replaces.
+Brake-light behavior is implemented as a PoC: braking is derived natively from Board speed and sent
+as semantic states, with sensitivity, a parked preference and a parked preview. The thresholds below
+are starting values, not validated ones, and no physical LED hardware has been chosen — see
+[Brake-light PoC implementation](#brake-light-poc-implementation).
 
 ## Initial scope
 
@@ -104,7 +105,7 @@ light's own slice replaces.
 
 - Vescape sends semantic states: riding, braking, hard braking, and not riding. Accessory firmware owns brightness, colors, and blink patterns. The initial light's intended behavior is dim red while riding, brighter red when braking, and blinking red under hard braking.
 - Detect braking from decreasing Board speed magnitude over time, in either travel direction. Constant-speed riding does not activate braking, including downhill riding.
-- One sensitivity control adjusts the deceleration thresholds for brighter red and hard-braking blinking. Smoothing and threshold values remain to be resolved.
+- One sensitivity control adjusts the deceleration thresholds for brighter red and hard-braking blinking. The PoC smoothing and threshold values are listed below and still need ride-data validation.
 - While not riding, the rider can choose between light off and a steady red glow, for example while leaving the Board outside a shop.
 - Non-riding light behavior is independent of the sensor's measurement standby.
 - Accessory firmware owns the visual behavior when disconnected or when Board telemetry is unavailable; Vescape does not prescribe a loading pattern or fallback color.
@@ -114,8 +115,7 @@ light's own slice replaces.
 
 ## Remaining work
 
-- Implement and validate the protocol draft across firmware and native app runtimes.
-- Reuse native riding detection and Board telemetry freshness rules.
+- Validate the protocol draft against real firmware on physical hardware.
 - Tune brake detection smoothing and sensitivity thresholds using ride data.
 - Validate protocol timing defaults under concurrent Board and accessory traffic.
 

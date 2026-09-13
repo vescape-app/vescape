@@ -382,12 +382,16 @@ public final class AccessorySessionController: NSObject {
     let receivedAt = Int64(ProcessInfo.processInfo.systemUptime * 1000)
     onMain {
       guard Int64(ProcessInfo.processInfo.systemUptime * 1000) - receivedAt < 1500 else { return }
-      self.brakeLight.sample(speed: speedKmh, engaged: riding, at: receivedAt)
+      let changed = self.brakeLight.sample(speed: speedKmh, engaged: riding, at: receivedAt)
       self.lightExpiry?.cancel()
       let expiry = DispatchWorkItem { [weak self] in self?.clearLightTelemetry() }
       self.lightExpiry = expiry
       DispatchQueue.main.asyncAfter(deadline: .now() + Double(1500 - (Int64(ProcessInfo.processInfo.systemUptime * 1000) - receivedAt)) / 1000, execute: expiry)
       self.reapplyDemand()
+      // Only when the rider would see something different. A steady-speed ride produces one sample
+      // after another that says the same thing, and publishing each of them would be a full snapshot
+      // per telemetry sample for no change on screen.
+      if changed { self.publish() }
     }
   }
 

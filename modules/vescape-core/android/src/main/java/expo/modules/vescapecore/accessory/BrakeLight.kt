@@ -54,9 +54,18 @@ class BrakeLightController {
     private var riding = false
     fun configure(key: Key, settings: BrakeLightSettings) { lights.getOrPut(key) { Light() }.settings = settings }
     fun forget(accessoryId: String) { lights.keys.removeAll { it.accessoryId == accessoryId } }
-    fun sample(speed: Double, engaged: Boolean, at: Long) {
+    /** Returns whether anything a screen renders changed, so an unchanged sample publishes nothing. */
+    fun sample(speed: Double, engaged: Boolean, at: Long): Boolean {
         riding = engaged
-        lights.values.forEach { if (engaged) it.preview = null; it.detector.sample(speed, engaged, at, it.settings.sensitivity) }
+        var changed = false
+        lights.values.forEach { light ->
+            // Riding ends a preview: the rider is on the board and the light follows the board.
+            if (engaged && light.preview != null) { light.preview = null; changed = true }
+            val before = light.detector.mode
+            light.detector.sample(speed, engaged, at, light.settings.sensitivity)
+            if (light.detector.mode != before) changed = true
+        }
+        return changed
     }
     fun clear() { riding = false; lights.values.forEach { it.detector.clear() } }
     fun releasePreviews() { lights.values.forEach { it.preview = null } }

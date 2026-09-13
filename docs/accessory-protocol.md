@@ -6,7 +6,8 @@ Status: implementation draft for the PoC. Product behavior is in [accessories.md
 handshake, version negotiation, capability recognition, the operational command channel —
 `configure`, `state`, acknowledgements, request-id discipline and leases — and the `reading` stream
 for `ground_clearance`, including its status discipline, sequence/sample-time progress rules and the
-missing-stream timeout. `brake_light` state is still held at its neutral value by its session.
+missing-stream timeout. `brake_light` state is driven from Board speed: see the PoC defaults in
+[accessories.md](./accessories.md#brake-light-poc-implementation).
 
 The implemented half has an executable form: `shared/fixtures/accessory-protocol/` holds the
 framing, handshake and session corpus that Android Kotlin, iOS Swift and the ESP32 firmware all run
@@ -255,4 +256,8 @@ If the Board link is itself gone, the app cannot promise to deliver a neutral co
 
 ## Remaining implementation work
 
-Inspect and reuse the existing native riding-state predicate and Board telemetry freshness rules. Define braking smoothing and sensitivity thresholds in the app, outside this wire protocol. Choose the real sensor manifest limits from driver configuration and measurements. Authenticated enrollment and simultaneous front/rear tilt arbitration remain outside this PoC draft.
+Braking smoothing and sensitivity thresholds are defined in the app, outside this wire protocol, and
+are listed as PoC defaults in [accessories.md](./accessories.md#brake-light-poc-implementation); they
+still need rider and hardware validation. Choose the real sensor manifest limits from driver
+configuration and measurements. Authenticated enrollment and simultaneous front/rear tilt arbitration
+remain outside this PoC draft.

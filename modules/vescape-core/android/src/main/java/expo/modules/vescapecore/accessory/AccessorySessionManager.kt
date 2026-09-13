@@ -412,10 +412,14 @@ object AccessorySessionManager {
         handler.post {
             // Keep receive time across the thread hop; queued samples cannot renew stale evidence.
             if (SystemClock.elapsedRealtime() - receivedAt >= 1500) return@post
-            brakeLight.sample(speedKmh, riding, receivedAt)
+            val changed = brakeLight.sample(speedKmh, riding, receivedAt)
             handler.removeCallbacks(lightExpiry)
             handler.postDelayed(lightExpiry, 1500 - (SystemClock.elapsedRealtime() - receivedAt))
             reapplyDemand()
+            // Only when the rider would see something different. A steady-speed ride produces one
+            // sample after another that says the same thing, and publishing each of them would be a
+            // full snapshot per telemetry sample for no change on screen.
+            if (changed) publish()
         }
     }
 

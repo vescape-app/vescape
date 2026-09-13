@@ -78,13 +78,23 @@ final class BrakeLightController {
   func forget(_ accessoryId: String) {
     lights = lights.filter { $0.key.accessoryId != accessoryId }
   }
-  func sample(speed: Double, engaged: Bool, at: Int64) {
+  /// Returns whether anything a screen renders changed, so an unchanged sample publishes nothing.
+  @discardableResult
+  func sample(speed: Double, engaged: Bool, at: Int64) -> Bool {
     riding = engaged
+    var changed = false
     for light in lights.values {
-      if engaged { light.preview = nil }
+      // Riding ends a preview: the rider is on the board and the light follows the board.
+      if engaged, light.preview != nil {
+        light.preview = nil
+        changed = true
+      }
+      let before = light.detector.mode
       light.detector.sample(
         speedKmh: speed, riding: engaged, at: at, sensitivity: light.settings.sensitivity)
+      if light.detector.mode != before { changed = true }
     }
+    return changed
   }
   func clear() {
     riding = false
