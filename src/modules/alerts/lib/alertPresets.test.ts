@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   ALERT_PRESET_ACTIVE_LEVELS,
-  ALERT_PRESET_GEIGER_SOUND_TYPE,
   ALERT_PRESET_LEVELS,
   describeAlertPreset,
   generateAlertPresetRules,
@@ -135,7 +134,7 @@ describe('generateAlertPresetRules — speed / duty (geiger)', () => {
     for (const rules of [safe, normal, minimal]) {
       expect(rules).toHaveLength(1)
       expect(rules[0].thresholdMax).not.toBeNull()
-      expect(rules[0].soundType).toBe(ALERT_PRESET_GEIGER_SOUND_TYPE)
+      expect(rules[0].soundType).toBe('preset:tick')
     }
 
     // Fixed ceiling across levels; start drops as protection increases.
@@ -143,6 +142,13 @@ describe('generateAlertPresetRules — speed / duty (geiger)', () => {
     expect(normal[0].thresholdMax).toBe(minimal[0].thresholdMax)
     expect(safe[0].threshold).toBeLessThan(normal[0].threshold)
     expect(normal[0].threshold).toBeLessThan(minimal[0].threshold)
+  })
+
+  test('speed and duty sound different so a rider can tell the two ramps apart', () => {
+    const speed = generateAlertPresetRules('speed', 'normal', { boardTopSpeedKmh: 40 })
+    const duty = generateAlertPresetRules('duty', 'normal')
+
+    expect(speed[0].soundType).not.toBe(duty[0].soundType)
   })
 
   test('speed thresholds resolve as a percentage of Board Top Speed', () => {

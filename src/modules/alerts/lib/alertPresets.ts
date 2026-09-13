@@ -113,9 +113,6 @@ const { battery, temp, duty } = TELEMETRY_THRESHOLDS
 const batteryWarningPct = Math.round(battery.warning * 100)
 const batteryCriticalPct = Math.round(battery.critical * 100)
 
-/** Geiger tick preset shared by every range-based preset rule. */
-export const ALERT_PRESET_GEIGER_SOUND_TYPE = 'preset:tick'
-
 /** Seconds between repeats on a ladder's top rung — slow enough to stay information, not alarm. */
 const TEMP_NAG_INTERVAL_SECONDS = 10
 
@@ -164,7 +161,9 @@ const CONTROLLER_TEMP_LEVELS: Record<ActiveLevel, DiscretePoint[]> = {
 export const ALERT_PRESET_LEVELS: Record<AlertPresetMetric, AlertPresetMetricConfig> = {
   speed: {
     family: 'geiger',
-    soundType: ALERT_PRESET_GEIGER_SOUND_TYPE,
+    // Speed and duty ramp over almost the same part of a ride, so they must not sound alike:
+    // a rider who hears ticking has to know which one is talking without looking.
+    soundType: 'preset:gamma',
     scaledByTopSpeed: true,
     levels: {
       safe: { start: 0.6, ceiling: 0.9 },
@@ -174,7 +173,7 @@ export const ALERT_PRESET_LEVELS: Record<AlertPresetMetric, AlertPresetMetricCon
   },
   duty: {
     family: 'geiger',
-    soundType: ALERT_PRESET_GEIGER_SOUND_TYPE,
+    soundType: 'preset:tick',
     levels: {
       safe: { start: 75, ceiling: duty.critical },
       normal: { start: duty.warning, ceiling: duty.critical },
