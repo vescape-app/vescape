@@ -228,6 +228,19 @@ export interface GroundClearanceTiltState {
  */
 export type AccessoryReadingStatus = 'ok' | 'out_of_range' | 'error'
 
+/** Native-owned 20-second preview window. Invalid/missing samples split chart segments.
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/ClearancePreviewLog.kt
+ * @parity /modules/vescape-core/ios/accessory/ClearancePreviewLog.swift
+ */
+export interface ClearancePreviewDiagnostics {
+  /** Each segment is flattened sampleTimeMs/valueCm pairs. */
+  segments: number[][]
+  deliveredHz: number
+  dropped: number
+  invalid: number
+  samples: number
+}
+
 /**
  * One accepted sample, pushed while a capability's configuration screen is open.
  *
@@ -241,7 +254,9 @@ export type AccessoryReadingStatus = 'ok' | 'out_of_range' | 'error'
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `onReading`
  * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `onReading`
  */
+
 export interface AccessoryReadingEvent {
+  diagnostics?: ClearancePreviewDiagnostics | null
   accessoryId: string
   capabilityId: string
   seq: number

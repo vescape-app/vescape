@@ -727,7 +727,7 @@ object AccessorySessionManager {
         GroundClearanceCalibration(nearCm, farCm, direction, strengthPercent)
 
     /** `docs/accessory-protocol.md` PoC default, resolved against whatever the manifest offers. */
-    private const val PREFERRED_RATE_HZ = 20.0
+    private const val PREFERRED_RATE_HZ = 10.0
 
     /**
      * The capability set as one canonical line.

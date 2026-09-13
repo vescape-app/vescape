@@ -294,6 +294,7 @@ final class GroundClearanceRuntime {
   var riding = false
 
   let tracker = AccessoryReadingTracker()
+  let previewLog = ClearancePreviewLog()
 
   init(capabilityId: String) { self.capabilityId = capabilityId }
 
@@ -339,6 +340,7 @@ final class GroundClearanceRuntime {
   /// Everything a fresh protocol session invalidates. Calibration is durable and stays.
   func onSessionLost() {
     tracker.reset()
+    previewLog.reset()
     rateHz = 0
   }
 }
@@ -397,6 +399,7 @@ final class GroundClearanceBindingController {
   func setPreview(_ accessoryId: String, _ capabilityId: String, open: Bool) -> Bool {
     let state = runtime(accessoryId, capabilityId)
     guard state.previewOpen != open else { return false }
+    state.previewLog.reset()
     state.previewOpen = open
     return true
   }
@@ -480,7 +483,10 @@ final class GroundClearanceBindingController {
     if let appliedRateHz { state.rateHz = appliedRateHz }
     let checked = reading.withinDeclaredRange(rangeMin: state.rangeMin, rangeMax: state.rangeMax)
     guard state.tracker.accept(checked, receivedAtMs: receivedAtMs), state.previewOpen else { return nil }
+    state.previewLog.record(at: receivedAtMs, time: checked.sampleTimeMs, seq: Int64(checked.seq), value: checked.valueCm)
+    guard state.previewLog.shouldEmit(at: receivedAtMs) else { return nil }
     return [
+      "diagnostics": state.previewLog.snapshot(at: receivedAtMs),
       "accessoryId": accessoryId,
       "capabilityId": checked.capabilityId,
       "seq": checked.seq,

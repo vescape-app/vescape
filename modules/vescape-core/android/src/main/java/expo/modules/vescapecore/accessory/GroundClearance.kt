@@ -357,6 +357,7 @@ internal class GroundClearanceRuntime(val capabilityId: String) {
     var riding: Boolean = false
 
     val tracker = AccessoryReadingTracker()
+    val previewLog = ClearancePreviewLog()
 
     /** Whether what is saved still fits what the accessory currently declares. */
     val isCalibrated: Boolean
@@ -409,6 +410,7 @@ internal class GroundClearanceRuntime(val capabilityId: String) {
     /** Everything a fresh protocol session invalidates. Calibration is durable and stays. */
     fun onSessionLost() {
         tracker.reset()
+        previewLog.reset()
         rateHz = 0.0
     }
 }
@@ -463,6 +465,7 @@ internal class GroundClearanceBindingController(
     fun setPreview(accessoryId: String, capabilityId: String, open: Boolean): Boolean {
         val state = runtime(accessoryId, capabilityId)
         if (state.previewOpen == open) return false
+        state.previewLog.reset()
         state.previewOpen = open
         return true
     }
@@ -552,7 +555,10 @@ internal class GroundClearanceBindingController(
         if (appliedRateHz != null) state.rateHz = appliedRateHz
         val checked = reading.withinDeclaredRange(state.rangeMin, state.rangeMax)
         if (!state.tracker.accept(checked, receivedAtMs) || !state.previewOpen) return null
+        state.previewLog.record(receivedAtMs, checked.sampleTimeMs, checked.seq.toLong(), checked.valueCm)
+        if (!state.previewLog.shouldEmit(receivedAtMs)) return null
         return mapOf(
+            "diagnostics" to state.previewLog.snapshot(receivedAtMs),
             "accessoryId" to accessoryId,
             "capabilityId" to checked.capabilityId,
             "seq" to checked.seq,

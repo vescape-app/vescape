@@ -45,6 +45,8 @@ export interface SeriesLayerProps {
   plot: ChartPlotBox
   camera: SharedValue<ChartCamera>
   dataKey: string
+  domainStartMs: number
+  domainEndMs: number
 }
 
 /**
@@ -64,6 +66,8 @@ export function SeriesLayer({
   plot,
   camera,
   dataKey,
+  domainStartMs,
+  domainEndMs,
 }: SeriesLayerProps) {
   // React Compiler memoises hook results by its own rules, which do not know that a derived
   // value must be rebuilt when its declared dependencies change.
@@ -106,7 +110,7 @@ export function SeriesLayer({
   const linePath = useDerivedValue(() => {
     // Reading the counter is what subscribes this mapper to the nudge; it never goes negative.
     if (repaint.value < 0 || paths.isEmpty || plot.width <= 0) return Skia.Path.Make()
-    const viewport = viewportFor(camera.value, dataKey, paths.domainStartMs, paths.domainEndMs)
+    const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
     const level = pickLevel(paths.bucketMs, msPerPixel(viewport, plot.width))
     const source = level < 0 ? paths.raw : paths.levels[level]
     const matrix = viewportMatrix(viewport, paths.domainStartMs, yRange, plot.width, plot.height)
@@ -114,30 +118,30 @@ export function SeriesLayer({
     const fromSec = (viewport.startMs - paths.domainStartMs) / 1000
     const toSec = (viewport.endMs - paths.domainStartMs) / 1000
     return composeVisibleTiles(source, fromSec, toSec, matrix)
-  }, [dataKey, paths, plot.height, plot.width, yRange])
+  }, [dataKey, domainStartMs, domainEndMs, paths, plot.height, plot.width, yRange])
 
   // Marking samples reuses the line that is already projected, so nothing extra is stored per
   // dataset and only the points actually on screen are read.
   const dotPath = useDerivedValue(() => {
     if (paths.isEmpty || plot.width <= 0) return Skia.Path.Make()
-    const viewport = viewportFor(camera.value, dataKey, paths.domainStartMs, paths.domainEndMs)
+    const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
     if (!shouldMarkSamples(paths.sampleMs, msPerPixel(viewport, plot.width))) {
       return Skia.Path.Make()
     }
     return visiblePointDots(linePath.value, plot.width)
-  }, [dataKey, paths, plot.height, plot.width, yRange])
+  }, [dataKey, domainStartMs, domainEndMs, paths, plot.height, plot.width, yRange])
 
   // The head only moves when the camera or the data does, so it is one mapper that sleeps through
   // a scrub — and it is parked off-canvas rather than hidden when there is nothing to mark.
   const head = paths.head
   const headTransform = useDerivedValue(() => {
     if (head == null || plot.width <= 0) return [{ translateX: OFFSCREEN }, { translateY: 0 }]
-    const viewport = viewportFor(camera.value, dataKey, paths.domainStartMs, paths.domainEndMs)
+    const viewport = viewportFor(camera.value, dataKey, domainStartMs, domainEndMs)
     return [
       { translateX: projectX(paths.domainStartMs + head.sec * 1000, viewport, plot.width) },
       { translateY: projectY(head.value, yRange, plot.height) },
     ]
-  }, [camera, dataKey, head, paths, plot.height, plot.width, yRange])
+  }, [camera, dataKey, domainStartMs, domainEndMs, head, paths, plot.height, plot.width, yRange])
 
   const shader = gradient ? (
     <LinearGradient

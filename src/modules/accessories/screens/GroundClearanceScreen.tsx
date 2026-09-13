@@ -14,8 +14,7 @@ import { Stepper } from '@/components/forms/Stepper'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
-import { GroundClearanceReadout } from '@/modules/accessories/components/GroundClearanceReadout'
-import { useGroundClearancePreview } from '@/modules/accessories/hooks/useGroundClearancePreview'
+import { GroundClearanceTelemetry } from '@/modules/accessories/components/GroundClearanceTelemetry'
 import {
   calibrationProblemCopy,
   directionCopy,
@@ -63,10 +62,6 @@ export function GroundClearanceScreen({
   const capability = accessory?.capabilities.find((entry) => entry.id === capabilityId)
   const saved = capability?.calibration ?? null
 
-  const { reading, stalled } = useGroundClearancePreview(
-    accessoryId,
-    capability ? capabilityId : undefined,
-  )
   const [draft, setDraft] = useState<Draft | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -177,17 +172,14 @@ export function GroundClearanceScreen({
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <IconHero
-          icon={ArrowsVerticalIcon}
-          title="Ground clearance"
-          description={`${accessory.name} · ${status.label}`}
-        />
-
-        <GroundClearanceReadout
-          status={reading?.status ?? null}
-          valueCm={reading?.valueCm ?? null}
-          measuring={capability.measuring === true}
-          stalled={stalled}
+        <View style={styles.statusHeader}>
+          <Text style={styles.fieldLabel}>{accessory.name}</Text>
+          <Text style={styles.hint}>{status.label}</Text>
+        </View>
+        <GroundClearanceTelemetry
+          accessoryId={accessoryId}
+          capabilityId={capabilityId}
+          range={{ min: capability.rangeMin ?? 3, max: capability.rangeMax ?? 100 }}
         />
 
         {!configured ? (
@@ -308,6 +300,7 @@ function Field({
 }
 
 const styles = StyleSheet.create({
+  statusHeader: { padding: 12, gap: 4 },
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 8, paddingBottom: 40 },
   card: {

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSharedValue, type SharedValue } from 'react-native-reanimated'
 import { AppState } from 'react-native'
 import {
   addAccessoryReadingListener,
   setAccessoryPreview,
   type AccessoryReadingEvent,
+  type ClearancePreviewDiagnostics,
 } from 'vescape-core'
 
 /** The newest sample native accepted, or null when there is not one to show. */
@@ -12,6 +14,8 @@ export type LiveReading = Pick<AccessoryReadingEvent, 'status' | 'valueCm' | 'se
 export interface GroundClearancePreview {
   /** Null before the first sample, and again once the stream goes quiet. */
   reading: LiveReading
+  liveValue: SharedValue<number>
+  diagnostics: ClearancePreviewDiagnostics | null
   /**
    * A sample arrived and then the stream stopped.
    *
@@ -43,6 +47,8 @@ export function useGroundClearancePreview(
   accessoryId: string,
   capabilityId: string | undefined,
 ): GroundClearancePreview {
+  const liveValue = useSharedValue(Number.NaN)
+  const [diagnostics, setDiagnostics] = useState<ClearancePreviewDiagnostics | null>(null)
   const [reading, setReading] = useState<LiveReading>(null)
   const [stalled, setStalled] = useState(false)
   const expiry = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -64,6 +70,8 @@ export function useGroundClearancePreview(
         // Released: the last sample described the ground under a board at a moment that has passed,
         // and it is not stale either — nothing is being measured at all.
         clearExpiry()
+        liveValue.value = Number.NaN
+        setDiagnostics(null)
         setReading(null)
         setStalled(false)
       }
@@ -71,11 +79,16 @@ export function useGroundClearancePreview(
 
     const subscription = addAccessoryReadingListener((event) => {
       if (event.accessoryId !== accessoryId || event.capabilityId !== capabilityId) return
-      setReading({ status: event.status, valueCm: event.valueCm, seq: event.seq })
+      liveValue.value = event.status === 'ok' ? (event.valueCm ?? Number.NaN) : Number.NaN
+      if (event.diagnostics) {
+        setDiagnostics(event.diagnostics)
+        setReading({ status: event.status, valueCm: event.valueCm, seq: event.seq })
+      }
       setStalled(false)
       clearExpiry()
       expiry.current = setTimeout(() => {
         expiry.current = null
+        liveValue.value = Number.NaN
         setReading(null)
         setStalled(true)
       }, event.staleAfterMs)
@@ -92,7 +105,7 @@ export function useGroundClearancePreview(
       demand(false)
       clearExpiry()
     }
-  }, [accessoryId, capabilityId])
+  }, [accessoryId, capabilityId, liveValue])
 
-  return { reading, stalled }
+  return { reading, stalled, liveValue, diagnostics }
 }

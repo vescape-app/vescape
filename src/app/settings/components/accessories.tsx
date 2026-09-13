@@ -9,6 +9,7 @@ import {
   AccessoryCompatibilityNoticeShowcase,
   GroundClearanceReadoutShowcase,
 } from '@/screens/showcase/accessories/AccessoryManifestShowcase'
+import { SensorReadoutShowcase } from '@/screens/showcase/accessories/SensorReadoutShowcase'
 import { theme } from '@/constants/theme'
 
 export default function AccessoryComponentsPage() {
@@ -23,6 +24,7 @@ export default function AccessoryComponentsPage() {
         <AccessoryCompatibilityNoticeShowcase />
         <AccessoryCapabilityRowShowcase />
         <GroundClearanceReadoutShowcase />
+        <SensorReadoutShowcase />
       </ScrollView>
     </SafeAreaView>
   )

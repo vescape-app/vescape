@@ -24,7 +24,7 @@ public final class AccessorySessionController: NSObject {
   public static let shared = AccessorySessionController()
 
   /// `docs/accessory-protocol.md` PoC default, resolved against whatever the manifest offers.
-  private static let preferredRateHz: Double = 20
+  private static let preferredRateHz: Double = 10
 
   private static let restoreIdentifier = "com.vescape.accessory.sessions"
 

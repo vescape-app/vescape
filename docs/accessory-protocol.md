@@ -230,7 +230,7 @@ Parked preview sends the same state schema with `preview: true`. This optional f
 
 | Setting                    | Proposed default                                          |
 | -------------------------- | --------------------------------------------------------- |
-| Preferred sensor rate      | 20 Hz, resolved against manifest and confirmed by ack     |
+| Preferred sensor rate      | 10 Hz, resolved against manifest and confirmed by ack     |
 | Missing sensor stream      | 300 ms, starting at enabled ack or latest accepted sample |
 | Runtime command lease      | 2000 ms per capability                                    |
 | App renewal interval       | 500 ms, send state changes immediately                    |
