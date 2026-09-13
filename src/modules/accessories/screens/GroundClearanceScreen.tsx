@@ -9,7 +9,6 @@ import {
 } from 'vescape-core'
 
 import { Text } from '@/components/base/Text'
-import { Button } from '@/components/base/Button'
 import { Stepper } from '@/components/forms/Stepper'
 import { SegmentedToggle } from '@/components/controls/SegmentedToggle'
 import { IconHero } from '@/components/settings/IconHero'
@@ -179,19 +178,25 @@ export function GroundClearanceScreen({
         <SettingsSectionTitle>Ground clearance</SettingsSectionTitle>
         <CapabilityEnabledControl accessoryId={accessoryId} capability={capability} />
         <SettingsSectionTitle>Sampling rate</SettingsSectionTitle>
-        <View style={styles.rates}>
-          {capability.ratesHz.map((rateHz) => (
-            <Button
-              key={rateHz}
-              label={`${rateHz} Hz`}
-              variant={capability.selectedRateHz === rateHz ? 'primary' : 'secondary'}
-              onPress={() => {
-                void changeRate(rateHz)
-              }}
-              disabled={savingRate || !capability.supported}
-              style={styles.rateButton}
-            />
-          ))}
+        <View style={styles.card}>
+          <Field
+            label="Rate"
+            hint="How often the sensor reports a distance."
+            control={
+              <Choice
+                options={capability.ratesHz.map((rateHz) => ({
+                  value: String(rateHz),
+                  label: `${rateHz} Hz`,
+                }))}
+                value={String(capability.selectedRateHz ?? capability.ratesHz[0] ?? '')}
+                onChange={(rate) => {
+                  void changeRate(Number(rate))
+                }}
+                disabled={savingRate || !capability.supported}
+                testID="ground-clearance-rate"
+              />
+            }
+          />
         </View>
         {rateFailed ? (
           <Text style={styles.warning}>Could not save sampling rate. Try again.</Text>
@@ -259,18 +264,21 @@ export function GroundClearanceScreen({
 
             <SettingsSectionTitle>Mounting</SettingsSectionTitle>
             <View style={styles.card}>
-              <View style={styles.fieldColumn}>
-                <SegmentedToggle
-                  options={[
-                    { value: 'nose', label: 'Nose' },
-                    { value: 'tail', label: 'Tail' },
-                  ]}
-                  value={draft.direction}
-                  onChange={(direction) => edit({ direction })}
-                  testID="ground-clearance-direction"
-                />
-                <Text style={styles.hint}>{directionCopy(draft.direction)}</Text>
-              </View>
+              <Field
+                label="Mounted at"
+                hint={directionCopy(draft.direction)}
+                control={
+                  <Choice
+                    options={[
+                      { value: 'nose', label: 'Nose' },
+                      { value: 'tail', label: 'Tail' },
+                    ]}
+                    value={draft.direction}
+                    onChange={(direction) => edit({ direction })}
+                    testID="ground-clearance-direction"
+                  />
+                }
+              />
               <Field
                 label="Strength"
                 hint="The most Remote Tilt this sensor may command, at the near distance."
@@ -311,6 +319,38 @@ export function GroundClearanceScreen({
   )
 }
 
+/**
+ * A `SegmentedToggle` on a settings row's trailing edge.
+ *
+ * The toggle has no disabled state of its own — a control that still answers taps while a save is
+ * in flight would let the rider queue two rates native has to pick between.
+ */
+function Choice<T extends string>({
+  options,
+  value,
+  onChange,
+  disabled,
+  testID,
+}: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (value: T) => void
+  disabled?: boolean
+  testID: string
+}) {
+  return (
+    <View pointerEvents={disabled ? 'none' : 'auto'} style={disabled ? styles.inert : undefined}>
+      <SegmentedToggle
+        options={options}
+        value={value}
+        onChange={onChange}
+        variant="secondary"
+        testID={testID}
+      />
+    </View>
+  )
+}
+
 function Field({
   label,
   hint,
@@ -332,8 +372,7 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  rates: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  rateButton: { flexGrow: 1 },
+  inert: { opacity: 0.45 },
   statusHeader: { padding: 12, gap: 4 },
   container: { flex: 1, backgroundColor: theme.neutral.bg },
   content: { padding: 12, gap: 8, paddingBottom: 40 },
@@ -352,7 +391,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 11,
   },
-  fieldColumn: { gap: 8, paddingHorizontal: 14, paddingVertical: 11 },
   fieldText: { flexShrink: 1, gap: 2 },
   fieldLabel: { color: theme.neutral.textPrimary, fontSize: 14, fontWeight: '700' },
   hint: { color: theme.neutral.textSecondary, fontSize: 12, lineHeight: 16 },
