@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { PlugsConnectedIcon } from 'phosphor-react-native'
 import { useShallow } from 'zustand/react/shallow'
 
 import { Text } from '@/components/base/Text'
@@ -9,6 +8,7 @@ import { DeviceRow } from '@/components/base/DeviceRow'
 import { IconHero } from '@/components/settings/IconHero'
 import { AccessoryCompatibilityNotice } from '@/modules/accessories/components/AccessoryCompatibilityNotice'
 import { AccessoryCapabilityRow } from '@/modules/accessories/components/AccessoryCapabilityRow'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { inspectionErrorCopy } from '@/modules/accessories/lib/accessoryStatus'
 import { useAccessoryDiscoveryStore } from '@/modules/accessories/store/accessoryDiscoveryStore'
 import { useAccessoryStore } from '@/modules/accessories/store/accessoryStore'
@@ -143,7 +143,7 @@ export function AccessoryScanScreen({
         ListHeaderComponent={
           <View style={styles.header}>
             <IconHero
-              icon={PlugsConnectedIcon}
+              icon={AccessoryIcon}
               description="Accessories are found by the service they advertise, not by their name."
             />
             <View style={styles.statusLine}>

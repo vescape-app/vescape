@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import {
@@ -90,6 +91,17 @@ export function startAccessoryStateMirror(): () => void {
 /** One enrolled Accessory by identity, or undefined when it has been forgotten. */
 export function useSavedAccessory(accessoryId: string): SavedAccessory | undefined {
   return useAccessoryStore((s) => s.accessories.find((a) => a.accessoryId === accessoryId))
+}
+
+/**
+ * Every Accessory native currently holds a live link to.
+ *
+ * Memoized on the array native last pushed rather than filtered inside the selector: a selector
+ * returning a fresh array every read would make the store look changed on every render.
+ */
+export function useConnectedAccessories(): SavedAccessory[] {
+  const accessories = useAccessoryStore((s) => s.accessories)
+  return useMemo(() => accessories.filter((a) => a.phase === 'connected'), [accessories])
 }
 
 /**

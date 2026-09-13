@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, View } from 'react-native'
-import { PlugsConnectedIcon, WarningCircleIcon } from 'phosphor-react-native'
+import { WarningCircleIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { accessoryStatusCopy } from '@/modules/accessories/lib/accessoryStatus'
 import type { AccessoryLinkPhase } from 'vescape-core'
 import { interaction, theme } from '@/constants/theme'
@@ -48,7 +49,7 @@ export function AccessoryRow({ name, detail, phase, needsSetup, onPress }: Acces
         {warn ? (
           <WarningCircleIcon size={16} color={TONE.caution} weight="duotone" />
         ) : (
-          <PlugsConnectedIcon size={16} color={theme.neutral.textMuted} weight="regular" />
+          <AccessoryIcon size={16} color={theme.neutral.textMuted} weight="regular" />
         )}
       </View>
       <View style={styles.info}>

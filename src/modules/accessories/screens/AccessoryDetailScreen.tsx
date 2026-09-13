@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { PlugsConnectedIcon } from 'phosphor-react-native'
 
 import { Text } from '@/components/base/Text'
 import { Button } from '@/components/base/Button'
@@ -9,6 +8,7 @@ import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { AccessoryCapabilityRow } from '@/modules/accessories/components/AccessoryCapabilityRow'
 import { AccessoryCompatibilityNotice } from '@/modules/accessories/components/AccessoryCompatibilityNotice'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { accessoryStatusCopy, linkErrorCopy } from '@/modules/accessories/lib/accessoryStatus'
 import { useAccessoryStore, useSavedAccessory } from '@/modules/accessories/store/accessoryStore'
 import { fmtTimeAgo } from '@/helpers/format'
@@ -64,7 +64,7 @@ export function AccessoryDetailScreen({
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <IconHero
-          icon={PlugsConnectedIcon}
+          icon={AccessoryIcon}
           title="Accessory not found"
           description="This accessory is not saved on this phone. Add it again from the Board selector."
         />
@@ -77,7 +77,7 @@ export function AccessoryDetailScreen({
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <IconHero icon={PlugsConnectedIcon} title={accessory.name} />
+        <IconHero icon={AccessoryIcon} title={accessory.name} />
 
         {accessory.compatibility ? (
           <AccessoryCompatibilityNotice

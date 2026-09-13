@@ -19,6 +19,18 @@ interface PillAction {
   ref?: RefObject<View | null>
 }
 
+/**
+ * A live Accessory link, handed in already resolved.
+ *
+ * The icon and the label arrive as props because the pill belongs to the Board domain and must not
+ * learn what an Accessory is — the same seam the Board selector uses for its Accessories section.
+ */
+export interface BoardPillAccessory {
+  icon: Icon
+  label: string
+  onPress: () => void
+}
+
 interface BoardPillProps {
   maxWidth: number
   name: string | null
@@ -31,6 +43,8 @@ interface BoardPillProps {
   onStopRecording?: () => void
   warning?: PillAction & { severity: BoardWarningSeverity }
   fault?: PillAction
+  /** Present only while at least one Accessory is actually connected. */
+  accessory?: BoardPillAccessory
 }
 
 /** Shared presentation for the live board bar and its state-controlled design preview. */
@@ -46,6 +60,7 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
     onStopRecording,
     warning,
     fault,
+    accessory,
   },
   ref,
 ) {
@@ -64,6 +79,18 @@ export const BoardPill = forwardRef<View, BoardPillProps>(function BoardPill(
 
   return (
     <View ref={ref} collapsable={false} style={[styles.pill, { maxWidth }]}>
+      {/* Leads the pill, green, only while a link is up: a rider glancing down sees that the
+          hardware is talking without opening anything. */}
+      {accessory && (
+        <BoardPillButton
+          icon={accessory.icon}
+          onPress={accessory.onPress}
+          label={accessory.label}
+          testID="board-accessory-button"
+          color={theme.status.success.color}
+          dividerSide="after"
+        />
+      )}
       <Pressable
         style={({ pressed }) => [styles.boardButton, pressed && styles.pressed]}
         onPress={onOpenSelector}
@@ -135,6 +162,7 @@ function BoardPillButton({
   label,
   testID,
   color = theme.control.text,
+  dividerSide = 'before',
 }: {
   icon: Icon
   onPress?: () => void
@@ -142,10 +170,13 @@ function BoardPillButton({
   label: string
   testID: string
   color?: string
+  /** Which edge the separator sits on, so a leading button is cut off from the name, not the air. */
+  dividerSide?: 'before' | 'after'
 }) {
+  const divider = <View style={styles.divider} />
   return (
     <>
-      <View style={styles.divider} />
+      {dividerSide === 'before' && divider}
       <View ref={anchorRef} collapsable={false}>
         <Pressable
           style={({ pressed }) => [
@@ -167,6 +198,7 @@ function BoardPillButton({
           />
         </Pressable>
       </View>
+      {dividerSide === 'after' && divider}
     </>
   )
 }

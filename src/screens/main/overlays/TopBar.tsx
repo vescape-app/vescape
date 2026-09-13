@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import {
   ArrowFatLinesUpIcon,
@@ -18,6 +18,8 @@ import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
 import { BoardSelectorAccessories } from '@/screens/main/overlays/BoardSelectorAccessories'
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
+import { useConnectedAccessories } from '@/modules/accessories/store/accessoryStore'
 import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
@@ -126,6 +128,26 @@ export function TopBar({
   const navigationDistance =
     routeProgress && activeNavigationTarget ? fmtDistance(routeProgress.remainingMeters) : DASH
 
+  // The pill's leading badge. Only a live link earns it — a saved Accessory that is merely
+  // reconnecting must not read as one that is answering.
+  const connectedAccessories = useConnectedAccessories()
+  const accessoryBadge = useMemo(() => {
+    if (connectedAccessories.length === 0) return undefined
+    const only = connectedAccessories.length === 1 ? connectedAccessories[0] : undefined
+    return {
+      icon: AccessoryIcon,
+      label: only
+        ? `${only.name}, connected accessory`
+        : `${connectedAccessories.length} accessories connected`,
+      // One link has a detail screen to open. Several have no single "its details", so the badge
+      // opens the selector, which lists them all with their own state.
+      onPress: () =>
+        only
+          ? router.push({ pathname: routes.accessory, params: { accessoryId: only.accessoryId } })
+          : setSelectorOpen(true),
+    }
+  }, [connectedAccessories])
+
   return (
     <View style={[styles.wrap, { paddingTop: Math.max(insets.top, 8) }]} pointerEvents="box-none">
       <View style={styles.row}>
@@ -145,6 +167,7 @@ export function TopBar({
               boardPill={
                 <ConnectedBoardPill
                   maxWidth={boardPillMaxWidth}
+                  accessory={accessoryBadge}
                   activeBoard={activeBoard}
                   bleStatus={bleStatus}
                   isReplay={isReplay}
@@ -173,6 +196,7 @@ export function TopBar({
           <ConnectedBoardPill
             ref={pillRef}
             maxWidth={boardPillMaxWidth}
+            accessory={accessoryBadge}
             activeBoard={activeBoard}
             bleStatus={bleStatus}
             isReplay={isReplay}

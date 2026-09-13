@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import type { View } from 'react-native'
 
-import { BoardPill } from '@/modules/board/components/BoardPill'
+import { BoardPill, type BoardPillAccessory } from '@/modules/board/components/BoardPill'
 import type { BoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import type { Board } from '@/modules/board/store/boardStore'
@@ -21,6 +21,8 @@ interface ConnectedBoardPillProps {
   onOpenSelector: () => void
   onDisconnect: () => void
   onConnect?: () => void
+  /** Passed straight through: the Board domain never resolves this, the composition layer does. */
+  accessory?: BoardPillAccessory
 }
 
 /** Store subscriptions and drawer intents stay outside the pill's presentation. */

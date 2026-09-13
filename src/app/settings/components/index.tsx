@@ -14,12 +14,12 @@ import {
   GearSixIcon,
   LightningIcon,
   MarkdownLogoIcon,
-  PlugsConnectedIcon,
   SquaresFourIcon,
   StackIcon,
   TextAaIcon,
 } from 'phosphor-react-native'
 
+import { AccessoryIcon } from '@/modules/accessories/constants/accessoryIcon'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsRow } from '@/components/settings/SettingsRow'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
@@ -115,7 +115,7 @@ const groups = [
         label: 'Accessories',
         hint: 'Accessory rows, compatibility verdicts, and capability listings',
         route: '/settings/components/accessories',
-        icon: PlugsConnectedIcon,
+        icon: AccessoryIcon,
         color: theme.palette.teal.color,
       },
       {
