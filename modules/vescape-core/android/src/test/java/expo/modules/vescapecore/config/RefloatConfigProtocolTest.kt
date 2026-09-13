@@ -27,7 +27,7 @@ class RefloatConfigProtocolTest {
         COMM_CUSTOM_APP_DATA.toByte(),
         REFLOAT_MAGIC.toByte(),
         REFLOAT_GET_INFO.toByte(),
-        1,
+        2,
       ),
       payload,
     )
@@ -46,7 +46,7 @@ class RefloatConfigProtocolTest {
 
     val parsed = RefloatConfigProtocol.parseGetInfoResponse(payload).success()
 
-    assertEquals("Refloat 1.2", parsed.version)
+    assertEquals("Float/Refloat 1.2", parsed.version)
   }
 
   @Test

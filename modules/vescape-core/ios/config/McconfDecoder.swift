@@ -48,6 +48,7 @@ enum McconfDecoder {
     switch field.type {
     case .u8: return Double(bytes[field.offset])
     case .u16: return Double(VescNumeric.uint16(bytes, field.offset))
+    case .i16: return Double(VescNumeric.int16(bytes, field.offset))
     case .u32: return Double(VescNumeric.uint32(bytes, field.offset))
     case .i32: return Double(VescNumeric.int32(bytes, field.offset))
     case .f16: return Double(VescNumeric.int16(bytes, field.offset)) / field.scale

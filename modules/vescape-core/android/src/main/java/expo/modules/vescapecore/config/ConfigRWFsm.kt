@@ -124,7 +124,8 @@ internal object ConfigRWFsm {
     private fun onXml(
         state: ConfigRWState,
         event: ConfigRWEvent.XmlPayloadReceived,
-    ): Pair<ConfigRWState, List<ConfigRWEffect>> = when (state) {
+    ): Pair<ConfigRWState, List<ConfigRWEffect>> {
+      return when (state) {
         is ConfigRWState.ReadCollectingXml -> {
             when (val parsed = RefloatConfigProtocol.parseCustomConfigXmlResponse(event.payload)) {
                 is RefloatConfigProtocolResult.Failure -> readFailure(
@@ -135,6 +136,8 @@ internal object ConfigRWFsm {
                 )
                 is RefloatConfigProtocolResult.Success -> {
                     val chunk = parsed.value
+                    // A delayed reply to a retried request must not append the same bytes twice.
+                    if (chunk.offset != state.nextOffset) return state to emptyList()
                     val merged = ByteArray(state.xmlBytes.size + chunk.chunk.size)
                     state.xmlBytes.copyInto(merged)
                     chunk.chunk.copyInto(merged, state.xmlBytes.size)
@@ -215,6 +218,8 @@ internal object ConfigRWFsm {
         }
 
         else -> state to emptyList()
+    }
+
     }
 
     private fun onConfigBytes(
@@ -310,7 +315,12 @@ internal object ConfigRWFsm {
     ): Pair<ConfigRWState, List<ConfigRWEffect>> {
         val message = "Timed out reading Refloat config"
         return when (state) {
-            is ConfigRWState.ReadCollectingXml -> readFailure(state.ctx, event.code, message, rawConfig = null)
+            is ConfigRWState.ReadCollectingXml -> if (!state.retried) {
+                state.copy(retried = true) to listOf(
+                    ConfigRWEffect.ScheduleTimeout(RefloatConfigErrorCode.CONFIG_SCHEMA_TIMEOUT, CONFIG_SCHEMA_TIMEOUT_MS),
+                    ConfigRWEffect.SendFrame(buildXmlRequest(state.ctx.transport, state.expectedXmlLength, state.nextOffset)),
+                )
+            } else readFailure(state.ctx, event.code, "$message at XML offset ${state.nextOffset}", rawConfig = null)
             is ConfigRWState.ReadAwaitingConfig -> readFailure(state.ctx, event.code, message, rawConfig = null)
             is ConfigRWState.WriteCollectingXml -> writeFailure(
                 state.ctx, event.code, message,

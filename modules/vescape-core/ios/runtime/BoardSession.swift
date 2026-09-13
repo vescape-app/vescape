@@ -133,16 +133,37 @@ struct LinkIdentity {
 
   func mismatches(_ observed: LinkIdentity) -> Bool {
     (observed.firmware != nil && observed.firmware != firmware) ||
-      (observed.refloatVersion != nil && observed.refloatVersion != refloatVersion) ||
-      (observed.refloatBaseVersion != nil && observed.refloatBaseVersion != refloatBaseVersion) ||
+      (observed.refloatVersion != nil && !packageVersionMatches(observed)) ||
+      (observed.refloatBaseVersion != nil && !baseVersionMatches(observed)) ||
       (hasBms != nil && observed.hasBms != nil && observed.hasBms != hasBms)
   }
 
   func matches(_ observed: LinkIdentity) -> Bool {
     observed.firmware == firmware &&
-      observed.refloatVersion == refloatVersion &&
-      observed.refloatBaseVersion == refloatBaseVersion &&
+      packageVersionMatches(observed) &&
+      baseVersionMatches(observed) &&
       (hasBms != true || observed.hasBms == true)
+  }
+
+  // INFO v1 reported only major/minor, and older app versions asserted "Refloat" even for Float.
+  // Accept richer observations only for those saved identities. Never discard package, patch or
+  // suffix facts already captured by INFO v2, or broaden this to unrelated packages.
+  private func packageVersionMatches(_ observed: LinkIdentity) -> Bool {
+    if refloatVersion == observed.refloatVersion { return true }
+    guard let expected = refloatVersion, let current = observed.refloatVersion,
+      expected.range(of: #"^(?:Refloat|Float/Refloat) (\d+\.\d+)$"#, options: .regularExpression) == expected.startIndex..<expected.endIndex,
+      current.range(of: #"^(?:Float|Refloat|Float/Refloat) (\d+\.\d+)(?:\.\d+(?:-.+)?)?$"#, options: .regularExpression) == current.startIndex..<current.endIndex
+    else { return false }
+    // Both patterns require major/minor; the legacy value deliberately has no patch precision.
+    return Self.normalizeRefloatBaseVersion(expected) ==
+      Self.normalizeRefloatBaseVersion(current)?.split(separator: ".").prefix(2).joined(separator: ".")
+  }
+
+  private func baseVersionMatches(_ observed: LinkIdentity) -> Bool {
+    refloatBaseVersion == observed.refloatBaseVersion ||
+      (packageVersionMatches(observed) &&
+        refloatBaseVersion == Self.normalizeRefloatBaseVersion(refloatVersion) &&
+        observed.refloatBaseVersion == Self.normalizeRefloatBaseVersion(observed.refloatVersion))
   }
 
   static func normalizeRefloatBaseVersion(_ version: String?) -> String? {
