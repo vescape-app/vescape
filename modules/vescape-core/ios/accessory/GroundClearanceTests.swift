@@ -241,4 +241,70 @@ final class GroundClearanceTests: XCTestCase {
       capabilityId: "clearance", seq: 1, sampleTimeMs: 100, status: .outOfRange, valueCm: 12)
     XCTAssertNil(reading.valueCm)
   }
+
+  func testBindingControllerPreservesDemandLimitsAndContestedOwnership() throws {
+    let controller = GroundClearanceBindingController(nowMs: { 1_100 })
+    func capability(_ id: String, min: Double = 3, max: Double = 100) -> AccessoryCapability {
+      AccessoryCapability(
+        id: id, type: AccessoryProtocol.typeGroundClearance, supported: true, unit: "cm",
+        rangeMin: min, rangeMax: max, ratesHz: [20])
+    }
+    _ = controller.applyCapability(
+      accessoryId: "front", capability: capability("clearance"), liveManifest: true, rateHz: 20)
+    controller.applyCalibration(
+      "front", "clearance",
+      GroundClearanceCalibration(nearCm: 5, farCm: 30, direction: "nose", strengthPercent: 60))
+    XCTAssertTrue(controller.setRiding(true))
+    _ = controller.applyCapability(
+      accessoryId: "front", capability: capability("clearance", min: 10, max: 20),
+      liveManifest: false, rateHz: 20)
+    let description = try XCTUnwrap(controller.describe("front", "clearance"))
+    let calibration = try XCTUnwrap(description["calibration"] as? [String: Any?])
+    XCTAssertNil(calibration["problem"] ?? nil)
+
+    XCTAssertTrue(controller.setPreview("front", "clearance", open: true))
+    XCTAssertTrue(controller.releasePreviews())
+    XCTAssertEqual(controller.describe("front", "clearance")?["measuring"] as? Bool, true)
+
+    _ = controller.applyCapability(
+      accessoryId: "rear", capability: capability("clearance"), liveManifest: true, rateHz: 20)
+    controller.applyCalibration(
+      "rear", "clearance",
+      GroundClearanceCalibration(nearCm: 5, farCm: 30, direction: "tail", strengthPercent: 60))
+    _ = controller.applyCapability(
+      accessoryId: "rear", capability: capability("clearance"), liveManifest: false, rateHz: 20)
+    let connected = { (_: String, _: String) in
+      GroundClearanceBindingController.LinkState(connected: true, appliedRateHz: 20)
+    }
+    XCTAssertTrue(controller.bound(connected))
+    XCTAssertEqual(controller.tilt(connected), .release(reason: .contested))
+  }
+
+  func testBindingControllerEmitsOnlyForPreviewAndInvalidatesSessionReadings() {
+    let controller = GroundClearanceBindingController(nowMs: { 1_100 })
+    let capability = AccessoryCapability(
+      id: "clearance", type: AccessoryProtocol.typeGroundClearance, supported: true, unit: "cm",
+      rangeMin: 3, rangeMax: 100, ratesHz: [20])
+    _ = controller.applyCapability(
+      accessoryId: "sensor", capability: capability, liveManifest: true, rateHz: 20)
+    controller.applyCalibration(
+      "sensor", "clearance",
+      GroundClearanceCalibration(nearCm: 5, farCm: 20, direction: "nose", strengthPercent: 100))
+    _ = controller.setRiding(true)
+    _ = controller.applyCapability(
+      accessoryId: "sensor", capability: capability, liveManifest: false, rateHz: 20)
+    let reading = AccessoryReading(
+      capabilityId: "clearance", seq: 1, sampleTimeMs: 100, status: .ok, valueCm: 12.5)
+    XCTAssertNil(controller.acceptReading("sensor", reading, receivedAtMs: 1_000, appliedRateHz: 20))
+    _ = controller.setPreview("sensor", "clearance", open: true)
+    let next = AccessoryReading(
+      capabilityId: "clearance", seq: 2, sampleTimeMs: 110, status: .ok, valueCm: 12.5)
+    XCTAssertNotNil(controller.acceptReading("sensor", next, receivedAtMs: 1_000, appliedRateHz: 20))
+    controller.onSessionLost("sensor")
+    XCTAssertEqual(
+      controller.input(
+        "sensor", "clearance",
+        link: GroundClearanceBindingController.LinkState(connected: true, appliedRateHz: 20)),
+      .release(reason: .stale))
+  }
 }

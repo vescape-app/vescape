@@ -342,3 +342,255 @@ final class GroundClearanceRuntime {
     rateHz = 0
   }
 }
+
+/// Owns every live ground-clearance binding across enrolled Accessories.
+///
+/// The generic session coordinator supplies connection facts and protocol commands. Capability
+/// state, demand, readings, calibration application, and claimant selection live here.
+///
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `GroundClearanceBindingController`
+final class GroundClearanceBindingController {
+  struct Key: Hashable {
+    let accessoryId: String
+    let capabilityId: String
+  }
+
+  struct LinkState {
+    let connected: Bool
+    let appliedRateHz: Double
+  }
+
+  private let nowMs: () -> Int64
+  private var runtimes: [Key: GroundClearanceRuntime] = [:]
+  private var riding = false
+
+  init(nowMs: @escaping () -> Int64) { self.nowMs = nowMs }
+
+  func reset(_ calibrations: [(Key, GroundClearanceCalibration)]) {
+    runtimes.removeAll()
+    for (key, calibration) in calibrations { runtime(key).calibration = calibration }
+  }
+
+  private func runtime(_ accessoryId: String, _ capabilityId: String) -> GroundClearanceRuntime {
+    runtime(Key(accessoryId: accessoryId, capabilityId: capabilityId))
+  }
+
+  private func runtime(_ key: Key) -> GroundClearanceRuntime {
+    if let existing = runtimes[key] { return existing }
+    let created = GroundClearanceRuntime(capabilityId: key.capabilityId)
+    runtimes[key] = created
+    return created
+  }
+
+  func applyCapability(
+    accessoryId: String, capability: AccessoryCapability, liveManifest: Bool, rateHz: Double
+  ) -> AccessoryCommand {
+    let state = runtime(accessoryId, capability.id)
+    if liveManifest {
+      state.rangeMin = capability.rangeMin
+      state.rangeMax = capability.rangeMax
+    }
+    state.riding = riding
+    return .configure(capabilityId: capability.id, enabled: state.measurementDemanded, rateHz: rateHz)
+  }
+
+  func setPreview(_ accessoryId: String, _ capabilityId: String, open: Bool) -> Bool {
+    let state = runtime(accessoryId, capabilityId)
+    guard state.previewOpen != open else { return false }
+    state.previewOpen = open
+    return true
+  }
+
+  func releasePreviews() -> Bool {
+    var changed = false
+    for state in runtimes.values where state.previewOpen {
+      state.previewOpen = false
+      changed = true
+    }
+    return changed
+  }
+
+  func setRiding(_ value: Bool) -> Bool {
+    guard riding != value else { return false }
+    riding = value
+    return true
+  }
+
+  func validate(
+    _ accessoryId: String, _ capabilityId: String, _ calibration: GroundClearanceCalibration
+  ) -> GroundClearanceProblem? {
+    let state = runtime(accessoryId, capabilityId)
+    return calibration.problem(rangeMin: state.rangeMin, rangeMax: state.rangeMax)
+  }
+
+  func applyCalibration(
+    _ accessoryId: String, _ capabilityId: String, _ calibration: GroundClearanceCalibration
+  ) { runtime(accessoryId, capabilityId).calibration = calibration }
+
+  func clearCalibration(_ accessoryId: String, _ capabilityId: String) {
+    runtime(accessoryId, capabilityId).calibration = nil
+  }
+
+  func describe(_ accessoryId: String, _ capabilityId: String) -> [String: Any?]? {
+    guard let state = runtimes[Key(accessoryId: accessoryId, capabilityId: capabilityId)] else {
+      return nil
+    }
+    let calibration: [String: Any?]? = state.calibration.map {
+      [
+        "nearCm": $0.nearCm,
+        "farCm": $0.farCm,
+        "direction": $0.direction,
+        "strengthPercent": $0.strengthPercent,
+        "problem": $0.problem(rangeMin: state.rangeMin, rangeMax: state.rangeMax)?.rawValue,
+      ]
+    }
+    return ["calibration": calibration, "measuring": state.measurementDemanded]
+  }
+
+  func input(_ accessoryId: String, _ capabilityId: String, link: LinkState) -> GroundClearanceInput {
+    guard let state = runtimes[Key(accessoryId: accessoryId, capabilityId: capabilityId)] else {
+      return .release(reason: .notCalibrated)
+    }
+    state.rateHz = link.appliedRateHz
+    return state.input(nowMs: nowMs(), linkConnected: link.connected)
+  }
+
+  private func boundCapabilities(_ link: (String, String) -> LinkState) -> [Key] {
+    runtimes.compactMap { key, state in
+      state.isCalibrated && link(key.accessoryId, key.capabilityId).connected ? key : nil
+    }
+  }
+
+  func bound(_ link: (String, String) -> LinkState) -> Bool { !boundCapabilities(link).isEmpty }
+
+  func tilt(_ link: (String, String) -> LinkState) -> GroundClearanceInput {
+    let bound = boundCapabilities(link)
+    if bound.count > 1 { return .release(reason: .contested) }
+    guard let key = bound.first else {
+      return .release(reason: runtimes.values.contains(where: { $0.isCalibrated }) ? .noLink : .notCalibrated)
+    }
+    return input(key.accessoryId, key.capabilityId, link: link(key.accessoryId, key.capabilityId))
+  }
+
+  func acceptReading(
+    _ accessoryId: String, _ reading: AccessoryReading, receivedAtMs: Int64, appliedRateHz: Double?
+  ) -> [String: Any?]? {
+    let key = Key(accessoryId: accessoryId, capabilityId: reading.capabilityId)
+    guard let state = runtimes[key] else { return nil }
+    if let appliedRateHz { state.rateHz = appliedRateHz }
+    let checked = reading.withinDeclaredRange(rangeMin: state.rangeMin, rangeMax: state.rangeMax)
+    guard state.tracker.accept(checked, receivedAtMs: receivedAtMs), state.previewOpen else { return nil }
+    return [
+      "accessoryId": accessoryId,
+      "capabilityId": checked.capabilityId,
+      "seq": checked.seq,
+      "sampleTimeMs": checked.sampleTimeMs,
+      "status": checked.status.rawValue,
+      "valueCm": checked.valueCm,
+      "staleAfterMs": GroundClearance.staleAfterMs(rateHz: state.rateHz),
+    ]
+  }
+
+  func onSessionLost(_ accessoryId: String) {
+    for (key, state) in runtimes where key.accessoryId == accessoryId { state.onSessionLost() }
+  }
+
+  func forget(_ accessoryId: String) {
+    runtimes = runtimes.filter { $0.key.accessoryId != accessoryId }
+  }
+}
+
+/// Board-side lifecycle and arbitration for the ground-clearance Accessory Binding.
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `BoardGroundClearanceBinding`
+final class BoardGroundClearanceBinding {
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `TICK_MS`
+  static let tickMs: Int64 = 100
+
+  struct BoardInput {
+    let commandsTrusted: Bool
+    let telemetryFresh: Bool
+  }
+
+  private let remoteInput: RemoteInputArbiter
+  private let boundInput: () -> Bool
+  private let tiltInput: () -> GroundClearanceInput
+  private var scheduled: Cancellable?
+  private var schedule: ((@escaping () -> Void) -> Cancellable)?
+  private var boardInput: (() -> BoardInput)?
+  private var bound = false
+  private var release: GroundClearanceRelease? = .notCalibrated
+
+  init(
+    remoteInput: RemoteInputArbiter,
+    boundInput: @escaping () -> Bool,
+    tiltInput: @escaping () -> GroundClearanceInput
+  ) {
+    self.remoteInput = remoteInput
+    self.boundInput = boundInput
+    self.tiltInput = tiltInput
+  }
+
+  func start(
+    schedule: @escaping (@escaping () -> Void) -> Cancellable,
+    boardInput: @escaping () -> BoardInput
+  ) {
+    guard scheduled == nil else { return }
+    self.schedule = schedule
+    self.boardInput = boardInput
+    scheduleNext()
+  }
+
+  private func scheduleNext() {
+    scheduled = schedule? { [weak self] in
+      guard let self, let boardInput = self.boardInput else { return }
+      self.tick(boardInput())
+      self.scheduleNext()
+    }
+  }
+
+  func stop() {
+    scheduled?.cancel()
+    scheduled = nil
+    schedule = nil
+    boardInput = nil
+    _ = remoteInput.sensorRelease()
+    bound = false
+    release = .boardUntrusted
+  }
+
+  func tick(_ board: BoardInput) {
+    let nextBound = boundInput()
+    if nextBound && !bound { _ = remoteInput.releaseManual() }
+    bound = nextBound
+
+    let input: GroundClearanceInput
+    if !board.commandsTrusted {
+      input = .release(reason: .boardUntrusted)
+    } else if !board.telemetryFresh {
+      input = .release(reason: .boardStale)
+    } else {
+      switch remoteInput.owner {
+      case .move: input = .release(reason: .boardMove)
+      case .manual: input = .release(reason: .manualTilt)
+      case .none, .sensor: input = tiltInput()
+      }
+    }
+
+    switch input {
+    case .drive(let tiltInput, _):
+      release = remoteInput.sensorDrive(GroundClearance.tiltCommand(tiltInput: tiltInput))
+        ? nil : .boardUntrusted
+    case .release(let reason):
+      _ = remoteInput.sensorRelease()
+      release = reason
+    }
+  }
+
+  func state() -> [String: Any?] {
+    [
+      "bound": bound,
+      "driving": remoteInput.owner == .sensor,
+      "release": release?.rawValue,
+    ]
+  }
+}

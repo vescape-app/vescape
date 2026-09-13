@@ -275,4 +275,52 @@ class GroundClearanceTest {
         }
         assertTrue("a non-ok reading must not carry a value", thrown.isFailure)
     }
+
+    @Test
+    fun bindingControllerPreservesDemandLimitsAndContestedOwnership() {
+        val controller = GroundClearanceBindingController { 1_100 }
+        fun capability(id: String, min: Double = 3.0, max: Double = 100.0) = AccessoryCapability(
+            id, AccessoryProtocol.TYPE_GROUND_CLEARANCE, true, "cm", min, max, listOf(20.0),
+        )
+        controller.applyCapability("front", capability("clearance"), liveManifest = true, rateHz = 20.0)
+        controller.applyCalibration("front", "clearance", GroundClearanceCalibration(5.0, 30.0, "nose", 60))
+        controller.setRiding(true)
+        controller.applyCapability("front", capability("clearance", 10.0, 20.0), liveManifest = false, rateHz = 20.0)
+        assertEquals(null, (controller.describe("front", "clearance")?.get("calibration") as Map<*, *>)["problem"])
+
+        assertTrue(controller.setPreview("front", "clearance", true))
+        assertTrue(controller.releasePreviews())
+        assertEquals(true, controller.describe("front", "clearance")?.get("measuring"))
+
+        controller.applyCapability("rear", capability("clearance"), liveManifest = true, rateHz = 20.0)
+        controller.applyCalibration("rear", "clearance", GroundClearanceCalibration(5.0, 30.0, "tail", 60))
+        controller.applyCapability("rear", capability("clearance"), liveManifest = false, rateHz = 20.0)
+        val connected = { _: String, _: String -> GroundClearanceBindingController.LinkState(true, 20.0) }
+        assertTrue(controller.bound(connected))
+        assertEquals(
+            GroundClearanceInput.Release(GroundClearanceRelease.CONTESTED),
+            controller.tilt(connected),
+        )
+    }
+
+    @Test
+    fun bindingControllerEmitsReadingsOnlyForPreviewAndInvalidatesThemWithTheSession() {
+        val controller = GroundClearanceBindingController { 1_100 }
+        val capability = AccessoryCapability(
+            "clearance", AccessoryProtocol.TYPE_GROUND_CLEARANCE, true, "cm", 3.0, 100.0, listOf(20.0),
+        )
+        controller.applyCapability("sensor", capability, liveManifest = true, rateHz = 20.0)
+        controller.applyCalibration("sensor", "clearance", GroundClearanceCalibration(5.0, 20.0, "nose", 100))
+        controller.setRiding(true)
+        controller.applyCapability("sensor", capability, liveManifest = false, rateHz = 20.0)
+        val reading = AccessoryReading("clearance", 1, 100, AccessoryReadingStatus.OK, 12.5)
+        assertNull(controller.acceptReading("sensor", reading, 1_000, 20.0))
+        controller.setPreview("sensor", "clearance", true)
+        assertTrue(controller.acceptReading("sensor", reading.copy(seq = 2), 1_000, 20.0) != null)
+        controller.onSessionLost("sensor")
+        assertEquals(
+            GroundClearanceInput.Release(GroundClearanceRelease.STALE),
+            controller.input("sensor", "clearance", GroundClearanceBindingController.LinkState(true, 20.0)),
+        )
+    }
 }

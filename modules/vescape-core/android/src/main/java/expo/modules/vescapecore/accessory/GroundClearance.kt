@@ -1,6 +1,9 @@
 package expo.modules.vescapecore.accessory
 
+import expo.modules.vescapecore.RemoteInputArbiter
+import expo.modules.vescapecore.RemoteInputOwner
 import expo.modules.vescapecore.protocol.REMOTE_TILT_CENTER
+import expo.modules.vescapecore.runtime.Cancellable
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -408,4 +411,243 @@ internal class GroundClearanceRuntime(val capabilityId: String) {
         tracker.reset()
         rateHz = 0.0
     }
+}
+
+/**
+ * Owns every live ground-clearance binding across enrolled Accessories.
+ *
+ * The generic session coordinator supplies connection facts and carries protocol commands; this
+ * controller owns capability state, demand, readings, calibration application, and claimant
+ * selection. Keeping those decisions here prevents a new capability from growing another parallel
+ * subsystem inside `AccessorySessionManager`.
+ *
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceBindingController`
+ */
+internal class GroundClearanceBindingController(
+    private val nowMs: () -> Long,
+) {
+    data class Key(val accessoryId: String, val capabilityId: String)
+
+    data class LinkState(val connected: Boolean, val appliedRateHz: Double)
+
+    private val runtimes = LinkedHashMap<Key, GroundClearanceRuntime>()
+
+    @Volatile private var riding = false
+
+    fun reset(calibrations: Iterable<Pair<Key, GroundClearanceCalibration>>) {
+        runtimes.clear()
+        calibrations.forEach { (key, calibration) -> runtime(key).calibration = calibration }
+    }
+
+    private fun runtime(accessoryId: String, capabilityId: String): GroundClearanceRuntime =
+        runtime(Key(accessoryId, capabilityId))
+
+    private fun runtime(key: Key): GroundClearanceRuntime =
+        runtimes.getOrPut(key) { GroundClearanceRuntime(key.capabilityId) }
+
+    fun applyCapability(
+        accessoryId: String,
+        capability: AccessoryCapability,
+        liveManifest: Boolean,
+        rateHz: Double,
+    ): AccessoryCommand.Configure {
+        val state = runtime(accessoryId, capability.id)
+        if (liveManifest) {
+            state.rangeMin = capability.rangeMin
+            state.rangeMax = capability.rangeMax
+        }
+        state.riding = riding
+        return AccessoryCommand.Configure(capability.id, state.measurementDemanded, rateHz)
+    }
+
+    fun setPreview(accessoryId: String, capabilityId: String, open: Boolean): Boolean {
+        val state = runtime(accessoryId, capabilityId)
+        if (state.previewOpen == open) return false
+        state.previewOpen = open
+        return true
+    }
+
+    fun releasePreviews(): Boolean {
+        var changed = false
+        runtimes.values.forEach { state ->
+            if (state.previewOpen) {
+                state.previewOpen = false
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    fun setRiding(value: Boolean): Boolean {
+        if (riding == value) return false
+        riding = value
+        return true
+    }
+
+    fun validate(
+        accessoryId: String,
+        capabilityId: String,
+        calibration: GroundClearanceCalibration,
+    ): GroundClearanceProblem? {
+        val state = runtime(accessoryId, capabilityId)
+        return calibration.problem(state.rangeMin, state.rangeMax)
+    }
+
+    fun applyCalibration(accessoryId: String, capabilityId: String, calibration: GroundClearanceCalibration) {
+        runtime(accessoryId, capabilityId).calibration = calibration
+    }
+
+    fun clearCalibration(accessoryId: String, capabilityId: String) {
+        runtime(accessoryId, capabilityId).calibration = null
+    }
+
+    fun describe(accessoryId: String, capabilityId: String): Map<String, Any?>? {
+        val state = runtimes[Key(accessoryId, capabilityId)] ?: return null
+        return mapOf(
+            "calibration" to state.calibration?.let {
+                mapOf(
+                    "nearCm" to it.nearCm,
+                    "farCm" to it.farCm,
+                    "direction" to it.direction,
+                    "strengthPercent" to it.strengthPercent,
+                    "problem" to it.problem(state.rangeMin, state.rangeMax)?.wire,
+                )
+            },
+            "measuring" to state.measurementDemanded,
+        )
+    }
+
+    fun input(accessoryId: String, capabilityId: String, link: LinkState): GroundClearanceInput {
+        val state = runtimes[Key(accessoryId, capabilityId)]
+            ?: return GroundClearanceInput.Release(GroundClearanceRelease.NOT_CALIBRATED)
+        state.rateHz = link.appliedRateHz
+        return state.input(nowMs(), link.connected)
+    }
+
+    private fun boundCapabilities(link: (String, String) -> LinkState): List<Key> =
+        runtimes.entries
+            .filter { (key, state) -> state.isCalibrated && link(key.accessoryId, key.capabilityId).connected }
+            .map { it.key }
+
+    fun bound(link: (String, String) -> LinkState): Boolean = boundCapabilities(link).isNotEmpty()
+
+    fun tilt(link: (String, String) -> LinkState): GroundClearanceInput {
+        val bound = boundCapabilities(link)
+        if (bound.size > 1) return GroundClearanceInput.Release(GroundClearanceRelease.CONTESTED)
+        val key = bound.firstOrNull()
+            ?: return GroundClearanceInput.Release(
+                if (runtimes.values.any { it.isCalibrated }) GroundClearanceRelease.NO_LINK
+                else GroundClearanceRelease.NOT_CALIBRATED,
+            )
+        return input(key.accessoryId, key.capabilityId, link(key.accessoryId, key.capabilityId))
+    }
+
+    fun acceptReading(
+        accessoryId: String,
+        reading: AccessoryReading,
+        receivedAtMs: Long,
+        appliedRateHz: Double?,
+    ): Map<String, Any?>? {
+        val state = runtimes[Key(accessoryId, reading.capabilityId)] ?: return null
+        if (appliedRateHz != null) state.rateHz = appliedRateHz
+        val checked = reading.withinDeclaredRange(state.rangeMin, state.rangeMax)
+        if (!state.tracker.accept(checked, receivedAtMs) || !state.previewOpen) return null
+        return mapOf(
+            "accessoryId" to accessoryId,
+            "capabilityId" to checked.capabilityId,
+            "seq" to checked.seq,
+            "sampleTimeMs" to checked.sampleTimeMs,
+            "status" to checked.status.wire,
+            "valueCm" to checked.valueCm,
+            "staleAfterMs" to GroundClearance.staleAfterMs(state.rateHz),
+        )
+    }
+
+    fun onSessionLost(accessoryId: String) {
+        runtimes.forEach { (key, state) -> if (key.accessoryId == accessoryId) state.onSessionLost() }
+    }
+
+    fun forget(accessoryId: String) {
+        runtimes.keys.removeAll { it.accessoryId == accessoryId }
+    }
+}
+
+/**
+ * Board-side lifecycle and arbitration for the ground-clearance Accessory Binding.
+ * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `BoardGroundClearanceBinding`
+ */
+internal class BoardGroundClearanceBinding(
+    private val remoteInput: RemoteInputArbiter,
+    private val boundInput: () -> Boolean,
+    private val tiltInput: () -> GroundClearanceInput,
+) {
+    /** @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `tickMs` */
+    companion object {
+        const val TICK_MS = 100L
+    }
+
+    data class BoardInput(val commandsTrusted: Boolean, val telemetryFresh: Boolean)
+
+    private var scheduled: Cancellable? = null
+    private var schedule: (((() -> Unit)) -> Cancellable)? = null
+    private var boardInput: (() -> BoardInput)? = null
+    private var bound = false
+    private var release: GroundClearanceRelease? = GroundClearanceRelease.NOT_CALIBRATED
+
+    fun start(schedule: ((() -> Unit)) -> Cancellable, boardInput: () -> BoardInput) {
+        if (scheduled != null) return
+        this.schedule = schedule
+        this.boardInput = boardInput
+        scheduleNext()
+    }
+
+    private fun scheduleNext() {
+        scheduled = schedule?.invoke {
+            tick(requireNotNull(boardInput).invoke())
+            scheduleNext()
+        }
+    }
+
+    fun stop() {
+        scheduled?.cancel()
+        scheduled = null
+        schedule = null
+        boardInput = null
+        remoteInput.sensorRelease()
+        bound = false
+        release = GroundClearanceRelease.BOARD_UNTRUSTED
+    }
+
+    internal fun tick(board: BoardInput) {
+        val nextBound = boundInput()
+        if (nextBound && !bound) remoteInput.releaseManual()
+        bound = nextBound
+
+        val input = when {
+            !board.commandsTrusted -> GroundClearanceInput.Release(GroundClearanceRelease.BOARD_UNTRUSTED)
+            !board.telemetryFresh -> GroundClearanceInput.Release(GroundClearanceRelease.BOARD_STALE)
+            remoteInput.owner == RemoteInputOwner.MOVE -> GroundClearanceInput.Release(GroundClearanceRelease.BOARD_MOVE)
+            remoteInput.owner == RemoteInputOwner.MANUAL -> GroundClearanceInput.Release(GroundClearanceRelease.MANUAL_TILT)
+            else -> tiltInput()
+        }
+        when (input) {
+            is GroundClearanceInput.Drive -> {
+                release = if (remoteInput.sensorDrive(GroundClearance.tiltCommand(input.tiltInput))) {
+                    null
+                } else {
+                    GroundClearanceRelease.BOARD_UNTRUSTED
+                }
+            }
+            is GroundClearanceInput.Release -> {
+                remoteInput.sensorRelease()
+                release = input.reason
+            }
+        }
+    }
+
+    fun state(): Map<String, Any?> = mapOf(
+        "bound" to bound,
+        "driving" to (remoteInput.owner == RemoteInputOwner.SENSOR),
+        "release" to release?.wire,
+    )
 }

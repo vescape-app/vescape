@@ -232,4 +232,47 @@ final class RemoteInputArbiterTests: XCTestCase {
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: -4), 1)
     XCTAssertEqual(GroundClearance.tiltCommand(tiltInput: .nan), REMOTE_TILT_CENTER)
   }
+
+  func testBoardBindingOwnsTickCancellationAndBoardReasonPrecedence() {
+    var sourceReads = 0
+    let binding = BoardGroundClearanceBinding(
+      remoteInput: arbiter,
+      boundInput: {
+        sourceReads += 1
+        return true
+      },
+      tiltInput: { .drive(tiltInput: 1, valueCm: 5) })
+    let schedule = { (tick: @escaping () -> Void) -> Cancellable in
+      self.scheduler.postDelayed(BoardGroundClearanceBinding.tickMs, tick)
+    }
+
+    binding.start(schedule: schedule) {
+      BoardGroundClearanceBinding.BoardInput(commandsTrusted: false, telemetryFresh: false)
+    }
+    scheduler.advance(BoardGroundClearanceBinding.tickMs)
+    XCTAssertEqual(binding.state()["release"] as? String, "board-untrusted")
+    XCTAssertEqual(arbiter.owner, .none)
+
+    binding.stop()
+    let readsAfterStop = sourceReads
+    binding.start(schedule: schedule) {
+      BoardGroundClearanceBinding.BoardInput(commandsTrusted: true, telemetryFresh: false)
+    }
+    scheduler.advance(BoardGroundClearanceBinding.tickMs)
+    XCTAssertEqual(binding.state()["release"] as? String, "board-stale")
+    XCTAssertEqual(sourceReads, readsAfterStop + 1)
+
+    binding.stop()
+    binding.start(schedule: schedule) {
+      BoardGroundClearanceBinding.BoardInput(commandsTrusted: true, telemetryFresh: true)
+    }
+    scheduler.advance(BoardGroundClearanceBinding.tickMs * 2)
+    XCTAssertEqual(arbiter.owner, .sensor)
+    binding.stop()
+    XCTAssertEqual(arbiter.sensorCommand, REMOTE_TILT_CENTER)
+    XCTAssertEqual(tilt.phase, .decaying)
+    let finalReads = sourceReads
+    scheduler.advance(BoardGroundClearanceBinding.tickMs * 2)
+    XCTAssertEqual(sourceReads, finalReads, "a stopped session cannot receive its old callback")
+  }
 }

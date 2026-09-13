@@ -65,7 +65,7 @@ object AccessorySessionManager {
      * would undo a newer one. Each mutation carries the number it was given and applies nothing if a
      * later one has since been asked for.
      */
-    private val calibrationSeq = HashMap<CapabilityKey, Long>()
+    private val calibrationSeq = HashMap<GroundClearanceBindingController.Key, Long>()
 
     private val links = LinkedHashMap<String, AccessoryLink>()
     private val saved = LinkedHashMap<String, SavedAccessoryEntity>()
@@ -76,20 +76,7 @@ object AccessorySessionManager {
      * Keyed on the Accessory *and* the capability, exactly as the durable row is: one unit may
      * declare a nose sensor and a tail sensor, and they share neither a calibration nor a stream.
      */
-    private val clearance = LinkedHashMap<CapabilityKey, GroundClearanceRuntime>()
-
-    /**
-     * Whether the Board is carrying a rider, as the Board Session last saw it.
-     *
-     * One flag for every Accessory: v1 binds to whichever Board is connected, so there is exactly
-     * one riding state in the app and no per-Accessory version of it to disagree with.
-     *
-     * Volatile because the Board Session writes it from its telemetry thread while the main looper
-     * reads it to decide demand.
-     */
-    @Volatile private var riding = false
-
-    private data class CapabilityKey(val accessoryId: String, val capabilityId: String)
+    private val groundClearance = GroundClearanceBindingController(SystemClock::elapsedRealtime)
 
     /**
      * The last snapshot built on the main looper.
@@ -134,10 +121,9 @@ object AccessorySessionManager {
             handler.post {
                 saved.clear()
                 rows.forEach { saved[it.accessoryId] = it }
-                clearance.clear()
-                calibrations.forEach { row ->
-                    runtime(row.accessoryId, row.capabilityId).calibration = row.toCalibration()
-                }
+                groundClearance.reset(calibrations.map { row ->
+                    GroundClearanceBindingController.Key(row.accessoryId, row.capabilityId) to row.toCalibration()
+                })
                 rows.forEach { link(it).start(it.deviceId) }
                 publish()
             }
@@ -230,7 +216,7 @@ object AccessorySessionManager {
                 // The calibrations went with the row in the same transaction; the live runtimes go
                 // with them, so a re-enrollment starts from "not set up" rather than from whatever
                 // this process still happened to be holding.
-                clearance.keys.removeAll { it.accessoryId == accessoryId }
+                groundClearance.forget(accessoryId)
                 // A save still in flight for this Accessory must not land on the runtime after the
                 // rider forgot it. Bumping the counter is what makes its completion a no-op.
                 for (key in calibrationSeq.keys.filter { it.accessoryId == accessoryId }) {
@@ -292,23 +278,7 @@ object AccessorySessionManager {
      */
     private fun describeCapability(accessoryId: String, capability: Map<String, Any?>): Map<String, Any?> {
         val capabilityId = capability["id"] as? String ?: return capability
-        val state = clearance[CapabilityKey(accessoryId, capabilityId)] ?: return capability
-        val saved = state.calibration
-        return capability + mapOf(
-            "calibration" to saved?.let {
-                mapOf(
-                    "nearCm" to it.nearCm,
-                    "farCm" to it.farCm,
-                    "direction" to it.direction,
-                    "strengthPercent" to it.strengthPercent,
-                    // Re-decided against the live manifest on every publish. A firmware that
-                    // narrowed its range turns a saved calibration into one that needs redoing, and
-                    // the row says which rule it now breaks.
-                    "problem" to it.problem(state.rangeMin, state.rangeMax)?.wire,
-                )
-            },
-            "measuring" to state.measurementDemanded,
-        )
+        return capability + (groundClearance.describe(accessoryId, capabilityId) ?: return capability)
     }
 
     private fun publish() {
@@ -397,23 +367,7 @@ object AccessorySessionManager {
                 AccessoryProtocol.TYPE_GROUND_CLEARANCE -> {
                     val rate = AccessorySession.resolveRateHz(PREFERRED_RATE_HZ, capability.ratesHz)
                         ?: continue
-                    val state = runtime(row.accessoryId, capability.id)
-                    // Only a live manifest carries limits worth trusting. The decoded baseline is
-                    // what the Accessory said at enrollment, which is exactly the thing a changed
-                    // firmware invalidates — so the runtime keeps whatever the last handshake set
-                    // rather than being reset to a stale window by an offline re-apply.
-                    if (manifest != null) {
-                        state.rangeMin = capability.rangeMin
-                        state.rangeMax = capability.rangeMax
-                    }
-                    state.riding = riding
-                    setDesired(
-                        AccessoryCommand.Configure(
-                            capabilityId = capability.id,
-                            enabled = state.measurementDemanded,
-                            rateHz = rate,
-                        ),
-                    )
+                    setDesired(groundClearance.applyCapability(row.accessoryId, capability, manifest != null, rate))
                 }
 
                 AccessoryProtocol.TYPE_BRAKE_LIGHT -> setDesired(
@@ -440,11 +394,6 @@ object AccessorySessionManager {
 
     // MARK: - Ground clearance
 
-    private fun runtime(accessoryId: String, capabilityId: String): GroundClearanceRuntime =
-        clearance.getOrPut(CapabilityKey(accessoryId, capabilityId)) {
-            GroundClearanceRuntime(capabilityId)
-        }
-
     /**
      * The configuration screen for one capability opened or closed.
      *
@@ -457,9 +406,7 @@ object AccessorySessionManager {
      */
     fun setPreview(accessoryId: String, capabilityId: String, open: Boolean) {
         handler.post {
-            val state = runtime(accessoryId, capabilityId)
-            if (state.previewOpen == open) return@post
-            state.previewOpen = open
+            if (!groundClearance.setPreview(accessoryId, capabilityId, open)) return@post
             reapplyDemand()
             publish()
         }
@@ -479,13 +426,7 @@ object AccessorySessionManager {
      */
     fun releasePreviews() {
         handler.post {
-            var changed = false
-            for (state in clearance.values) {
-                if (!state.previewOpen) continue
-                state.previewOpen = false
-                changed = true
-            }
-            if (!changed) return@post
+            if (!groundClearance.releasePreviews()) return@post
             reapplyDemand()
             publish()
         }
@@ -503,8 +444,7 @@ object AccessorySessionManager {
         // Compared before the hop, not inside it. This arrives with every telemetry sample for the
         // whole of a ride, and posting a Runnable per sample to discover that nothing changed is a
         // few thousand allocations an hour for no decision.
-        if (this.riding == riding) return
-        this.riding = riding
+        if (!groundClearance.setRiding(riding)) return
         handler.post {
             reapplyDemand()
             publish()
@@ -538,15 +478,14 @@ object AccessorySessionManager {
                 onResult(mapOf("saved" to false, "problem" to "unknown-capability"))
                 return@post
             }
-            val state = runtime(accessoryId, capabilityId)
             val candidate = GroundClearanceCalibration(nearCm, farCm, direction, strengthPercent)
-            val problem = candidate.problem(state.rangeMin, state.rangeMax)
+            val problem = groundClearance.validate(accessoryId, capabilityId, candidate)
             if (problem != null) {
                 onResult(mapOf("saved" to false, "problem" to problem.wire))
                 return@post
             }
             val liveCapabilities = links[accessoryId]?.manifest?.capabilities
-            val key = CapabilityKey(accessoryId, capabilityId)
+            val key = GroundClearanceBindingController.Key(accessoryId, capabilityId)
             val mutation = (calibrationSeq[key] ?: 0L) + 1
             calibrationSeq[key] = mutation
             val row = AccessoryGroundClearanceEntity(
@@ -589,7 +528,7 @@ object AccessorySessionManager {
                         onResult(mapOf("saved" to true, "problem" to null))
                         return@post
                     }
-                    state.calibration = candidate
+                    groundClearance.applyCalibration(accessoryId, capabilityId, candidate)
                     if (baseline != null) {
                         saved[accessoryId]?.let { saved[accessoryId] = it.copy(capabilitiesJson = baseline) }
                     }
@@ -605,7 +544,7 @@ object AccessorySessionManager {
     fun clearGroundClearance(accessoryId: String, capabilityId: String, onResult: (Boolean) -> Unit) {
         handler.post {
             val app = appContext ?: return@post onResult(false)
-            val key = CapabilityKey(accessoryId, capabilityId)
+            val key = GroundClearanceBindingController.Key(accessoryId, capabilityId)
             val mutation = (calibrationSeq[key] ?: 0L) + 1
             calibrationSeq[key] = mutation
             calibrationScope.launch {
@@ -618,7 +557,7 @@ object AccessorySessionManager {
                 }
                 handler.post {
                     if (calibrationSeq[key] != mutation) return@post onResult(removed)
-                    runtime(accessoryId, capabilityId).calibration = null
+                    groundClearance.clearCalibration(accessoryId, capabilityId)
                     reapplyDemand()
                     publish()
                     onResult(removed)
@@ -637,33 +576,8 @@ object AccessorySessionManager {
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceInput`
      */
     fun groundClearanceInput(accessoryId: String, capabilityId: String): GroundClearanceInput {
-        val state = clearance[CapabilityKey(accessoryId, capabilityId)]
-            ?: return GroundClearanceInput.Release(GroundClearanceRelease.NOT_CALIBRATED)
-        val link = links[accessoryId]
-        state.rateHz = link?.appliedRateHz(capabilityId) ?: 0.0
-        return state.input(
-            nowMs = SystemClock.elapsedRealtime(),
-            linkConnected = link?.phase == AccessoryLinkPhase.CONNECTED,
-        )
+        return groundClearance.input(accessoryId, capabilityId, linkState(accessoryId, capabilityId))
     }
-
-    /**
-     * Every ground-clearance capability that is set up and answering right now.
-     *
-     * "Set up and answering" is the whole definition of a bound binding: a saved calibration that
-     * still fits the live manifest, on a session that is connected. It says nothing about riding —
-     * that is [GroundClearanceRuntime.input]'s question, and keeping the two apart is what lets the
-     * pad go read-only the moment the Accessory is there rather than only once the rider sets off.
-     *
-     * Main looper only, like everything else that touches [clearance] and [links]. The Board
-     * Session's tick runs there too.
-     */
-    private fun boundCapabilities(): List<CapabilityKey> =
-        clearance.entries
-            .filter { (key, state) ->
-                state.isCalibrated && links[key.accessoryId]?.phase == AccessoryLinkPhase.CONNECTED
-            }
-            .map { it.key }
 
     /**
      * Whether a configured ground-clearance Accessory is connected.
@@ -675,7 +589,7 @@ object AccessorySessionManager {
      *
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceBound`
      */
-    fun groundClearanceBound(): Boolean = boundCapabilities().isNotEmpty()
+    fun groundClearanceBound(): Boolean = groundClearance.bound(::linkState)
 
     /**
      * The single ground-clearance input a Remote Tilt binding may act on, across every Accessory.
@@ -688,19 +602,15 @@ object AccessorySessionManager {
      * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `groundClearanceTilt`
      */
     fun groundClearanceTilt(): GroundClearanceInput {
-        val bound = boundCapabilities()
-        if (bound.size > 1) return GroundClearanceInput.Release(GroundClearanceRelease.CONTESTED)
-        val key = bound.firstOrNull()
-            ?: return GroundClearanceInput.Release(
-                // A calibration with no session behind it is a link problem, not a setup problem,
-                // and the two read very differently to someone holding the accessory.
-                if (clearance.values.any { it.isCalibrated }) {
-                    GroundClearanceRelease.NO_LINK
-                } else {
-                    GroundClearanceRelease.NOT_CALIBRATED
-                },
-            )
-        return groundClearanceInput(key.accessoryId, key.capabilityId)
+        return groundClearance.tilt(::linkState)
+    }
+
+    private fun linkState(accessoryId: String, capabilityId: String): GroundClearanceBindingController.LinkState {
+        val link = links[accessoryId]
+        return GroundClearanceBindingController.LinkState(
+            connected = link?.phase == AccessoryLinkPhase.CONNECTED,
+            appliedRateHz = link?.appliedRateHz(capabilityId) ?: 0.0,
+        )
     }
 
     /**
@@ -715,26 +625,13 @@ object AccessorySessionManager {
      * the sensor's rate with nothing mounted would be pure bridge traffic.
      */
     private fun onReading(accessoryId: String, reading: AccessoryReading, receivedAtMs: Long) {
-        val state = clearance[CapabilityKey(accessoryId, reading.capabilityId)] ?: return
-        state.rateHz = links[accessoryId]?.appliedRateHz(reading.capabilityId) ?: state.rateHz
-        val checked = reading.withinDeclaredRange(state.rangeMin, state.rangeMax)
-        if (!state.tracker.accept(checked, receivedAtMs)) return
-        if (!state.previewOpen) return
-        emit?.invoke(
-            "onAccessoryReading",
-            mapOf(
-                "accessoryId" to accessoryId,
-                "capabilityId" to checked.capabilityId,
-                "seq" to checked.seq,
-                "sampleTimeMs" to checked.sampleTimeMs,
-                "status" to checked.status.wire,
-                "valueCm" to checked.valueCm,
-                // The window this sample stays evidence for, from the rate the accessory confirmed.
-                // Sent with every sample so a screen can stop showing a distance the moment it stops
-                // describing the ground, without re-deriving the rule JS does not own.
-                "staleAfterMs" to GroundClearance.staleAfterMs(state.rateHz),
-            ),
-        )
+        val payload = groundClearance.acceptReading(
+            accessoryId,
+            reading,
+            receivedAtMs,
+            links[accessoryId]?.appliedRateHz(reading.capabilityId),
+        ) ?: return
+        emit?.invoke("onAccessoryReading", payload)
     }
 
     /**
@@ -744,9 +641,7 @@ object AccessorySessionManager {
      * the new session's first samples look like duplicates. The calibration is durable and stays.
      */
     private fun onSessionLost(accessoryId: String) {
-        for ((key, state) in clearance) {
-            if (key.accessoryId == accessoryId) state.onSessionLost()
-        }
+        groundClearance.onSessionLost(accessoryId)
     }
 
     private fun AccessoryGroundClearanceEntity.toCalibration() =

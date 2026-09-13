@@ -41,18 +41,8 @@ public final class AccessorySessionController: NSObject {
   ///
   /// Keyed on the Accessory *and* the capability, exactly as the durable row is: one unit may
   /// declare a nose sensor and a tail sensor, and they share neither a calibration nor a stream.
-  private var clearance: [CapabilityKey: GroundClearanceRuntime] = [:]
-
-  /// Whether the Board is carrying a rider, as the Board Session last saw it.
-  ///
-  /// One flag for every Accessory: v1 binds to whichever Board is connected, so there is exactly
-  /// one riding state in the app and no per-Accessory version of it to disagree with.
-  private var riding = false
-
-  private struct CapabilityKey: Hashable {
-    let accessoryId: String
-    let capabilityId: String
-  }
+  private let groundClearance = GroundClearanceBindingController(
+    nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) })
 
   /// Peripherals handed back by state restoration before the saved rows have been read.
   private var restored: [UUID: CBPeripheral] = [:]
@@ -144,7 +134,7 @@ public final class AccessorySessionController: NSObject {
       // The calibrations went with the row in the same transaction; the live runtimes go with them,
       // so a re-enrollment starts from "not set up" rather than from whatever this process still
       // happened to be holding.
-      self.clearance = self.clearance.filter { $0.key.accessoryId != accessoryId }
+      self.groundClearance.forget(accessoryId)
       self.publish()
       onResult(removed)
     }
@@ -208,23 +198,9 @@ public final class AccessorySessionController: NSObject {
     Any?]
   {
     guard let capabilityId = capability["id"] as? String,
-      let state = clearance[CapabilityKey(accessoryId: accessoryId, capabilityId: capabilityId)]
+      let binding = groundClearance.describe(accessoryId, capabilityId)
     else { return capability }
-    var out = capability
-    out["calibration"] = state.calibration.map { saved -> [String: Any?] in
-      [
-        "nearCm": saved.nearCm,
-        "farCm": saved.farCm,
-        "direction": saved.direction,
-        "strengthPercent": saved.strengthPercent,
-        // Re-decided against the live manifest on every publish. A firmware that narrowed its range
-        // turns a saved calibration into one that needs redoing, and the row says which rule it now
-        // breaks.
-        "problem": saved.problem(rangeMin: state.rangeMin, rangeMax: state.rangeMax)?.rawValue,
-      ]
-    }
-    out["measuring"] = state.measurementDemanded
-    return out
+    return capability.merging(binding) { _, bindingValue in bindingValue }
   }
 
   private func loadSaved() {
@@ -248,12 +224,15 @@ public final class AccessorySessionController: NSObject {
     }
     saved.removeAll()
     order.removeAll()
-    clearance.removeAll()
-    for row in calibrations {
-      runtime(row.accessoryId, row.capabilityId).calibration = GroundClearanceCalibration(
-        nearCm: row.nearCm, farCm: row.farCm, direction: row.direction,
-        strengthPercent: row.strengthPercent)
-    }
+    groundClearance.reset(calibrations.map { row in
+      (
+        GroundClearanceBindingController.Key(
+          accessoryId: row.accessoryId, capabilityId: row.capabilityId),
+        GroundClearanceCalibration(
+          nearCm: row.nearCm, farCm: row.farCm, direction: row.direction,
+          strengthPercent: row.strengthPercent)
+      )
+    })
     rows.forEach { remember($0) }
     rows.forEach { start($0) }
     publish()
@@ -365,19 +344,10 @@ public final class AccessorySessionController: NSObject {
           let rate = AccessorySession.resolveRateHz(
             requested: Self.preferredRateHz, ratesHz: capability.ratesHz)
         else { continue }
-        let state = runtime(row.accessoryId, capability.id)
-        // Only a live manifest carries limits worth trusting. The decoded baseline is what the
-        // Accessory said at enrollment, which is exactly the thing a changed firmware invalidates —
-        // so the runtime keeps whatever the last handshake set rather than being reset to a stale
-        // window by an offline re-apply.
-        if manifest != nil {
-          state.rangeMin = capability.rangeMin
-          state.rangeMax = capability.rangeMax
-        }
-        state.riding = riding
         link.setDesired(
-          .configure(
-            capabilityId: capability.id, enabled: state.measurementDemanded, rateHz: rate))
+          groundClearance.applyCapability(
+            accessoryId: row.accessoryId, capability: capability, liveManifest: manifest != nil,
+            rateHz: rate))
       case AccessoryProtocol.typeBrakeLight:
         link.setDesired(
           .state(
@@ -399,14 +369,6 @@ public final class AccessorySessionController: NSObject {
 
   // MARK: - Ground clearance
 
-  private func runtime(_ accessoryId: String, _ capabilityId: String) -> GroundClearanceRuntime {
-    let key = CapabilityKey(accessoryId: accessoryId, capabilityId: capabilityId)
-    if let existing = clearance[key] { return existing }
-    let created = GroundClearanceRuntime(capabilityId: capabilityId)
-    clearance[key] = created
-    return created
-  }
-
   /// The configuration screen for one capability opened or closed.
   ///
   /// The only demand JS is allowed to express, and it is a request to *measure*, never to tilt: a
@@ -417,9 +379,7 @@ public final class AccessorySessionController: NSObject {
   /// which is what "leaving the screen stops measurements" means at the hardware.
   func setPreview(accessoryId: String, capabilityId: String, open: Bool) {
     onMain {
-      let state = self.runtime(accessoryId, capabilityId)
-      guard state.previewOpen != open else { return }
-      state.previewOpen = open
+      guard self.groundClearance.setPreview(accessoryId, capabilityId, open: open) else { return }
       self.reapplyDemand()
       self.publish()
     }
@@ -437,12 +397,7 @@ public final class AccessorySessionController: NSObject {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `releasePreviews`
   func releasePreviews() {
     onMain {
-      var changed = false
-      for state in self.clearance.values where state.previewOpen {
-        state.previewOpen = false
-        changed = true
-      }
-      guard changed else { return }
+      guard self.groundClearance.releasePreviews() else { return }
       self.reapplyDemand()
       self.publish()
     }
@@ -459,8 +414,7 @@ public final class AccessorySessionController: NSObject {
       // Compared before anything is re-applied. This arrives with every telemetry sample for the
       // whole of a ride, and re-deriving demand per sample to discover that nothing changed would
       // re-send the same command to every enrolled Accessory at telemetry rate.
-      guard self.riding != riding else { return }
-      self.riding = riding
+      guard self.groundClearance.setRiding(riding) else { return }
       self.reapplyDemand()
       self.publish()
     }
@@ -484,10 +438,9 @@ public final class AccessorySessionController: NSObject {
       guard let row = self.saved[accessoryId] else {
         return onResult(["saved": false, "problem": "unknown-capability"])
       }
-      let state = self.runtime(accessoryId, capabilityId)
       let candidate = GroundClearanceCalibration(
         nearCm: nearCm, farCm: farCm, direction: direction, strengthPercent: strengthPercent)
-      if let problem = candidate.problem(rangeMin: state.rangeMin, rangeMax: state.rangeMax) {
+      if let problem = self.groundClearance.validate(accessoryId, capabilityId, candidate) {
         return onResult(["saved": false, "problem": problem.rawValue])
       }
       do {
@@ -521,7 +474,7 @@ public final class AccessorySessionController: NSObject {
             operation: "accessory_revalidate", category: "write_failed", error: error)
         }
       }
-      state.calibration = candidate
+      self.groundClearance.applyCalibration(accessoryId, capabilityId, candidate)
       self.reapplyDemand()
       self.publish()
       onResult(["saved": true, "problem": nil])
@@ -541,7 +494,7 @@ public final class AccessorySessionController: NSObject {
           operation: "accessory_ground_clearance", category: "write_failed", error: error)
         return onResult(false)
       }
-      self.runtime(accessoryId, capabilityId).calibration = nil
+      self.groundClearance.clearCalibration(accessoryId, capabilityId)
       self.reapplyDemand()
       self.publish()
       onResult(removed)
@@ -556,28 +509,7 @@ public final class AccessorySessionController: NSObject {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `groundClearanceInput`
   func groundClearanceInput(accessoryId: String, capabilityId: String) -> GroundClearanceInput {
-    let key = CapabilityKey(accessoryId: accessoryId, capabilityId: capabilityId)
-    guard let state = clearance[key] else { return .release(reason: .notCalibrated) }
-    let link = links[accessoryId]
-    state.rateHz = link?.appliedRateHz(capabilityId) ?? 0
-    return state.input(
-      nowMs: Int64(ProcessInfo.processInfo.systemUptime * 1000),
-      linkConnected: link?.phase == .connected)
-  }
-
-  /// Every ground-clearance capability that is set up and answering right now.
-  ///
-  /// "Set up and answering" is the whole definition of a bound binding: a saved calibration that
-  /// still fits the live manifest, on a session that is connected. It says nothing about riding —
-  /// that is `GroundClearanceRuntime.input`'s question, and keeping the two apart is what lets the
-  /// pad go read-only the moment the Accessory is there rather than only once the rider sets off.
-  ///
-  /// Main queue only, like everything else that touches `clearance` and `links`. The Board Session's
-  /// tick runs there too.
-  private func boundCapabilities() -> [CapabilityKey] {
-    clearance
-      .filter { key, state in state.isCalibrated && links[key.accessoryId]?.phase == .connected }
-      .map { key, _ in key }
+    groundClearance.input(accessoryId, capabilityId, link: linkState(accessoryId, capabilityId))
   }
 
   /// Whether a configured ground-clearance Accessory is connected.
@@ -588,7 +520,7 @@ public final class AccessorySessionController: NSObject {
   /// this board is configured for.
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `groundClearanceBound`
-  func groundClearanceBound() -> Bool { !boundCapabilities().isEmpty }
+  func groundClearanceBound() -> Bool { groundClearance.bound(linkState) }
 
   /// The single ground-clearance input a Remote Tilt binding may act on, across every Accessory.
   ///
@@ -599,15 +531,15 @@ public final class AccessorySessionController: NSObject {
   ///
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `groundClearanceTilt`
   func groundClearanceTilt() -> GroundClearanceInput {
-    let bound = boundCapabilities()
-    if bound.count > 1 { return .release(reason: .contested) }
-    guard let key = bound.first else {
-      // A calibration with no session behind it is a link problem, not a setup problem, and the two
-      // read very differently to someone holding the accessory.
-      return .release(
-        reason: clearance.values.contains(where: { $0.isCalibrated }) ? .noLink : .notCalibrated)
-    }
-    return groundClearanceInput(accessoryId: key.accessoryId, capabilityId: key.capabilityId)
+    groundClearance.tilt(linkState)
+  }
+
+  private func linkState(_ accessoryId: String, _ capabilityId: String)
+    -> GroundClearanceBindingController.LinkState
+  {
+    let link = links[accessoryId]
+    return GroundClearanceBindingController.LinkState(
+      connected: link?.phase == .connected, appliedRateHz: link?.appliedRateHz(capabilityId) ?? 0)
   }
 
   /// One sample off an Accessory's reading stream.
@@ -622,26 +554,11 @@ public final class AccessorySessionController: NSObject {
   private func onReading(
     _ accessoryId: String, _ reading: AccessoryReading, _ receivedAt: TimeInterval
   ) {
-    let key = CapabilityKey(accessoryId: accessoryId, capabilityId: reading.capabilityId)
-    guard let state = clearance[key] else { return }
-    state.rateHz = links[accessoryId]?.appliedRateHz(reading.capabilityId) ?? state.rateHz
-    let checked = reading.withinDeclaredRange(rangeMin: state.rangeMin, rangeMax: state.rangeMax)
-    guard state.tracker.accept(checked, receivedAtMs: Int64(receivedAt * 1000)) else { return }
-    guard state.previewOpen else { return }
-    emit?(
-      "onAccessoryReading",
-      [
-        "accessoryId": accessoryId,
-        "capabilityId": checked.capabilityId,
-        "seq": checked.seq,
-        "sampleTimeMs": checked.sampleTimeMs,
-        "status": checked.status.rawValue,
-        "valueCm": checked.valueCm,
-        // The window this sample stays evidence for, from the rate the accessory confirmed. Sent
-        // with every sample so a screen can stop showing a distance the moment it stops describing
-        // the ground, without re-deriving the rule JS does not own.
-        "staleAfterMs": GroundClearance.staleAfterMs(rateHz: state.rateHz),
-      ])
+    guard let payload = groundClearance.acceptReading(
+      accessoryId, reading, receivedAtMs: Int64(receivedAt * 1000),
+      appliedRateHz: links[accessoryId]?.appliedRateHz(reading.capabilityId))
+    else { return }
+    emit?("onAccessoryReading", payload)
   }
 
   /// The protocol session for one Accessory ended.
@@ -649,7 +566,7 @@ public final class AccessorySessionController: NSObject {
   /// Sequence numbers restart with the next hello, so anything the tracker still holds would make
   /// the new session's first samples look like duplicates. The calibration is durable and stays.
   private func onSessionLost(_ accessoryId: String) {
-    for (key, state) in clearance where key.accessoryId == accessoryId { state.onSessionLost() }
+    groundClearance.onSessionLost(accessoryId)
   }
 
   // MARK: - Capability encoding

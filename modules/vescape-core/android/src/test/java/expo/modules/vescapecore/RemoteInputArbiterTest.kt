@@ -1,6 +1,9 @@
 package expo.modules.vescapecore
 
 import expo.modules.vescapecore.accessory.GroundClearance
+import expo.modules.vescapecore.accessory.BoardGroundClearanceBinding
+import expo.modules.vescapecore.accessory.GroundClearanceInput
+import expo.modules.vescapecore.accessory.GroundClearanceRelease
 import expo.modules.vescapecore.connection.BoardTransport
 import expo.modules.vescapecore.protocol.BOARD_MOVE_INPUT_MAX
 import expo.modules.vescapecore.protocol.BoardMoveGeneration
@@ -240,5 +243,46 @@ class RemoteInputArbiterTest {
         assertEquals(255, GroundClearance.tiltCommand(4.0))
         assertEquals(1, GroundClearance.tiltCommand(-4.0))
         assertEquals(REMOTE_TILT_CENTER, GroundClearance.tiltCommand(Double.NaN))
+    }
+
+    @Test
+    fun boardBindingOwnsTickCancellationAndBoardReasonPrecedence() {
+        var sourceReads = 0
+        val binding = BoardGroundClearanceBinding(
+            remoteInput = arbiter,
+            boundInput = { sourceReads += 1; true },
+            tiltInput = { GroundClearanceInput.Drive(1.0, 5.0) },
+        )
+        fun schedule(tick: () -> Unit) =
+            scheduler.postDelayed(BoardGroundClearanceBinding.TICK_MS, tick)
+
+        binding.start(::schedule) {
+            BoardGroundClearanceBinding.BoardInput(commandsTrusted = false, telemetryFresh = false)
+        }
+        scheduler.advance(BoardGroundClearanceBinding.TICK_MS)
+        assertEquals("board trust wins over stale telemetry and a valid sensor", "board-untrusted", binding.state()["release"])
+        assertEquals(RemoteInputOwner.NONE, arbiter.owner)
+
+        binding.stop()
+        val readsAfterStop = sourceReads
+        binding.start(::schedule) {
+            BoardGroundClearanceBinding.BoardInput(commandsTrusted = true, telemetryFresh = false)
+        }
+        scheduler.advance(BoardGroundClearanceBinding.TICK_MS)
+        assertEquals("board-stale", binding.state()["release"])
+        assertEquals(readsAfterStop + 1, sourceReads)
+
+        binding.stop()
+        binding.start(::schedule) {
+            BoardGroundClearanceBinding.BoardInput(commandsTrusted = true, telemetryFresh = true)
+        }
+        scheduler.advance(BoardGroundClearanceBinding.TICK_MS * 2)
+        assertEquals(RemoteInputOwner.SENSOR, arbiter.owner)
+        binding.stop()
+        assertEquals(REMOTE_TILT_CENTER, arbiter.sensorCommand)
+        assertEquals(RemoteTiltPhase.Decaying, tilt.phase)
+        val finalReads = sourceReads
+        scheduler.advance(BoardGroundClearanceBinding.TICK_MS * 2)
+        assertEquals("a stopped session cannot receive its old callback", finalReads, sourceReads)
     }
 }
