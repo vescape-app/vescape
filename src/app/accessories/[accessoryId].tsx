@@ -11,9 +11,10 @@ export default function AccessoryRoute() {
       onForgotten={() => {
         if (router.canGoBack()) router.back()
       }}
-      onConfigureCapability={(capabilityId) =>
+      onConfigureCapability={(capabilityId, type) =>
         router.push({
-          pathname: routes.accessoryGroundClearance,
+          pathname:
+            type === 'brake_light' ? routes.accessoryBrakeLight : routes.accessoryGroundClearance,
           params: { accessoryId, capabilityId },
         })
       }

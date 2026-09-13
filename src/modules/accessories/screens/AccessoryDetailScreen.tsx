@@ -22,7 +22,7 @@ import { theme } from '@/constants/theme'
  * clearance calibration, brake-light behaviour — lives behind each capability in its own slice;
  * this screen is the place they hang off, and the place that says plainly when they cannot. A
  * capability row is a way in only when this build has a screen for that type: ground clearance
- * opens its calibration, and everything else stays a row that describes itself.
+ * opens calibration, brake light opens controls and parked preview.
  *
  * Every fact here is native's. The link phase is the one a native session is actually in, which is
  * running whether or not this screen was ever opened.
@@ -36,7 +36,7 @@ export function AccessoryDetailScreen({
   /** Called once the Accessory is gone, so the route that opened this can leave. */
   onForgotten?: () => void
   /** Open one capability's own configuration. Only offered for types this build can configure. */
-  onConfigureCapability?: (capabilityId: string) => void
+  onConfigureCapability?: (capabilityId: string, type: string) => void
 }) {
   const accessory = useSavedAccessory(accessoryId)
   const forget = useAccessoryStore((s) => s.forget)
@@ -131,8 +131,9 @@ export function AccessoryDetailScreen({
               <AccessoryCapabilityRow
                 key={capability.id}
                 capability={capability}
-                {...(capability.supported && capability.type === 'ground_clearance'
-                  ? { onPress: () => onConfigureCapability?.(capability.id) }
+                {...(capability.supported &&
+                (capability.type === 'ground_clearance' || capability.type === 'brake_light')
+                  ? { onPress: () => onConfigureCapability?.(capability.id, capability.type) }
                   : {})}
               />
             ))

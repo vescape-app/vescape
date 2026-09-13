@@ -41,6 +41,9 @@ public final class AccessorySessionController: NSObject {
   ///
   /// Keyed on the Accessory *and* the capability, exactly as the durable row is: one unit may
   /// declare a nose sensor and a tail sensor, and they share neither a calibration nor a stream.
+  private let brakeLight = BrakeLightController()
+  private var lightExpiry: DispatchWorkItem?
+
   private let groundClearance = GroundClearanceBindingController(
     nowMs: { Int64(ProcessInfo.processInfo.systemUptime * 1000) })
 
@@ -135,6 +138,7 @@ public final class AccessorySessionController: NSObject {
       // so a re-enrollment starts from "not set up" rather than from whatever this process still
       // happened to be holding.
       self.groundClearance.forget(accessoryId)
+      self.brakeLight.forget(accessoryId)
       self.publish()
       onResult(removed)
     }
@@ -197,6 +201,10 @@ public final class AccessorySessionController: NSObject {
   private func describeCapability(_ accessoryId: String, _ capability: [String: Any?]) -> [String:
     Any?]
   {
+    if capability["type"] as? String == AccessoryProtocol.typeBrakeLight,
+      let id = capability["id"] as? String {
+      return capability.merging(brakeLight.describe(.init(accessoryId: accessoryId, capabilityId: id))) { _, value in value }
+    }
     guard let capabilityId = capability["id"] as? String,
       let binding = groundClearance.describe(accessoryId, capabilityId)
     else { return capability }
@@ -222,6 +230,11 @@ public final class AccessorySessionController: NSObject {
       RecordingStorageFailure.reportRead(operation: "accessory_ground_clearance", error: error)
       calibrations = []
     }
+    do {
+      for settings in try store.brakeLights() {
+        brakeLight.configure(.init(accessoryId: settings.accessoryId, capabilityId: settings.capabilityId), .init(sensitivity: settings.sensitivity, parked: settings.parked))
+      }
+    } catch { RecordingStorageFailure.reportRead(operation: "accessory_brake_light", error: error) }
     saved.removeAll()
     order.removeAll()
     groundClearance.reset(calibrations.map { row in
@@ -330,8 +343,7 @@ public final class AccessorySessionController: NSObject {
   /// while BLE stays up, so leaving the screen genuinely stops measuring rather than throwing away
   /// samples the hardware is still burning power to produce.
   ///
-  /// The brake light still gets #480's neutral baseline. It is the protocol's own unavailable state,
-  /// and the slice that owns that capability replaces it with real telemetry.
+  /// Brake-light state comes from native speed samples or an explicitly parked preview.
   private func applyDemand(
     to link: AccessoryLink, row: SavedAccessory, manifest: AccessoryManifest?
   ) {
@@ -349,10 +361,7 @@ public final class AccessorySessionController: NSObject {
             accessoryId: row.accessoryId, capability: capability, liveManifest: manifest != nil,
             rateHz: rate))
       case AccessoryProtocol.typeBrakeLight:
-        link.setDesired(
-          .state(
-            capabilityId: capability.id, telemetry: "unavailable", mode: nil, parked: "off",
-            preview: false))
+        link.setDesired(brakeLight.command(.init(accessoryId: row.accessoryId, capabilityId: capability.id)))
       default:
         continue
       }
@@ -364,6 +373,53 @@ public final class AccessorySessionController: NSObject {
     for (accessoryId, link) in links {
       guard let row = saved[accessoryId] else { continue }
       applyDemand(to: link, row: row, manifest: link.manifest)
+    }
+  }
+
+  // MARK: - Brake light
+
+  func setLightTelemetry(speedKmh: Double, riding: Bool) {
+    let receivedAt = Int64(ProcessInfo.processInfo.systemUptime * 1000)
+    onMain {
+      guard Int64(ProcessInfo.processInfo.systemUptime * 1000) - receivedAt < 1500 else { return }
+      self.brakeLight.sample(speed: speedKmh, engaged: riding, at: receivedAt)
+      self.lightExpiry?.cancel()
+      let expiry = DispatchWorkItem { [weak self] in self?.clearLightTelemetry() }
+      self.lightExpiry = expiry
+      DispatchQueue.main.asyncAfter(deadline: .now() + Double(1500 - (Int64(ProcessInfo.processInfo.systemUptime * 1000) - receivedAt)) / 1000, execute: expiry)
+      self.reapplyDemand()
+    }
+  }
+
+  func clearLightTelemetry() {
+    onMain {
+      self.lightExpiry?.cancel(); self.lightExpiry = nil
+      self.brakeLight.clear(); self.reapplyDemand(); self.publish()
+    }
+  }
+
+  func setLightPreview(accessoryId: String, capabilityId: String, mode: String?, onResult: @escaping (Bool) -> Void) {
+    onMain {
+      let accepted = self.brakeLight.preview(.init(accessoryId: accessoryId, capabilityId: capabilityId), mode: mode)
+      if accepted { self.reapplyDemand(); self.publish() }
+      onResult(accepted)
+    }
+  }
+
+  func saveBrakeLight(accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, onResult: @escaping (Bool) -> Void) {
+    onMain {
+      let candidate = BrakeLightSettings(sensitivity: sensitivity, parked: parked)
+      let capabilities = self.links[accessoryId]?.manifest?.capabilities
+        ?? self.saved[accessoryId].map { Self.capabilitiesFrom(json: $0.capabilitiesJson) } ?? []
+      guard candidate.valid, capabilities.contains(where: { $0.id == capabilityId && $0.type == AccessoryProtocol.typeBrakeLight && $0.supported }) else { return onResult(false) }
+      do {
+        try self.store.saveBrakeLight(.init(accessoryId: accessoryId, capabilityId: capabilityId, sensitivity: sensitivity, parked: parked))
+        self.brakeLight.configure(.init(accessoryId: accessoryId, capabilityId: capabilityId), candidate)
+        self.reapplyDemand(); self.publish(); onResult(true)
+      } catch {
+        RecordingStorageFailure.report(operation: "accessory_brake_light", category: "write_failed", error: error)
+        onResult(false)
+      }
     }
   }
 
@@ -397,7 +453,8 @@ public final class AccessorySessionController: NSObject {
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `releasePreviews`
   func releasePreviews() {
     onMain {
-      guard self.groundClearance.releasePreviews() else { return }
+      self.groundClearance.releasePreviews()
+      self.brakeLight.releasePreviews()
       self.reapplyDemand()
       self.publish()
     }

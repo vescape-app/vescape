@@ -38,3 +38,12 @@ corruption, I/O, cannot-open, and read-only classifications additionally enter t
 storage failure state and stop storage actions. Ordinary query/schema/domain failures reject their
 operation without disabling BLE, live gauges, or in-memory Alert evaluation. Startup clears a saved
 outage only after a real transactional create/write/drop check succeeds.
+
+### Accessory brake-light settings
+
+`AccessoryPersistence.saveBrakeLight` / `AccessoryStore.saveBrakeLight` persist sensitivity and
+parked preference per accessory/capability in `accessory_brake_light`, schema 46. Forgetting an
+accessory deletes its light settings in the enrollment transaction. Saving requires an enrolled
+owner in the same transaction. `accessory-persistence-contract.json` drives Room and GRDB
+close/reopen and forget-isolation coverage in `AccessoryPersistenceHostTest` and the macOS host.
+The complete `test:persistence` gate also exchanges production archives across both platforms.

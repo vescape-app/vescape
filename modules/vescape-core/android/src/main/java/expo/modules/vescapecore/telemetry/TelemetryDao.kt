@@ -879,6 +879,7 @@ interface TelemetryDao {
   @Transaction
   suspend fun forgetAccessory(accessoryId: String): Int {
     deleteGroundClearances(accessoryId)
+    deleteBrakeLights(accessoryId)
     return deleteAccessory(accessoryId)
   }
 
@@ -894,6 +895,21 @@ interface TelemetryDao {
   suspend fun adoptAccessoryCapabilities(accessoryId: String, capabilitiesJson: String): Int
 
   // Ground-clearance calibration, keyed on the Accessory *and* the capability.
+  @Query("SELECT * FROM accessory_brake_light ORDER BY accessory_id, capability_id")
+  suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity>
+
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun upsertBrakeLight(settings: AccessoryBrakeLightEntity)
+
+  @Transaction
+  suspend fun saveBrakeLight(settings: AccessoryBrakeLightEntity) {
+    check(getAccessory(settings.accessoryId) != null) { "Accessory is no longer enrolled" }
+    upsertBrakeLight(settings)
+  }
+
+  @Query("DELETE FROM accessory_brake_light WHERE accessory_id = :accessoryId")
+  suspend fun deleteBrakeLights(accessoryId: String): Int
+
   // @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `GroundClearanceStore`
 
   @Query("SELECT * FROM accessory_ground_clearance ORDER BY accessory_id ASC, capability_id ASC")

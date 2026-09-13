@@ -234,6 +234,10 @@ function RootLayout() {
             <Stack.Screen name={stackScreens.accessoryScan} options={{ title: 'Add Accessory' }} />
             <Stack.Screen name={stackScreens.accessory} options={{ title: 'Accessory' }} />
             <Stack.Screen
+              name={stackScreens.accessoryBrakeLight}
+              options={{ title: 'Brake light' }}
+            />
+            <Stack.Screen
               name={stackScreens.accessoryGroundClearance}
               options={{ title: 'Ground clearance' }}
             />

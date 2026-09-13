@@ -29,13 +29,15 @@ class AccessoryMigrationTest {
   private fun migrationSql(): List<String> = migrationSql(TelemetryMigrations.MIGRATION_43_44)
 
   @Test
-  fun theAccessoryEdgesAreContiguousAndCalibrationIsTheCurrentTail() {
-    assertEquals(45, TELEMETRY_DATABASE_VERSION)
+  fun theAccessoryEdgesAreContiguousAndLightSettingsAreTheCurrentTail() {
+    assertEquals(46, TELEMETRY_DATABASE_VERSION)
     assertEquals(43, TelemetryMigrations.MIGRATION_43_44.startVersion)
     assertEquals(44, TelemetryMigrations.MIGRATION_43_44.endVersion)
     assertEquals(44, TelemetryMigrations.MIGRATION_44_45.startVersion)
-    assertEquals(TELEMETRY_DATABASE_VERSION, TelemetryMigrations.MIGRATION_44_45.endVersion)
-    assertEquals(TelemetryMigrations.all.last(), TelemetryMigrations.MIGRATION_44_45)
+    assertEquals(45, TelemetryMigrations.MIGRATION_44_45.endVersion)
+    assertEquals(45, TelemetryMigrations.MIGRATION_45_46.startVersion)
+    assertEquals(TELEMETRY_DATABASE_VERSION, TelemetryMigrations.MIGRATION_45_46.endVersion)
+    assertEquals(TelemetryMigrations.all.last(), TelemetryMigrations.MIGRATION_45_46)
   }
 
   @Test

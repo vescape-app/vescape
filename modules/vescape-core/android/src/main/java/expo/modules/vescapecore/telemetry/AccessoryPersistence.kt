@@ -61,6 +61,10 @@ internal class AccessoryPersistence(private val dao: TelemetryDao) {
   /** Forgetting takes the enrollment and every calibration made against it, in one transaction. */
   suspend fun forget(accessoryId: String): Boolean = dao.forgetAccessory(accessoryId) > 0
 
+  suspend fun getBrakeLights(): List<AccessoryBrakeLightEntity> = dao.getBrakeLights()
+
+  suspend fun saveBrakeLight(settings: AccessoryBrakeLightEntity) = dao.saveBrakeLight(settings)
+
   suspend fun getGroundClearances(): List<AccessoryGroundClearanceEntity> = dao.getGroundClearances()
 
   suspend fun getGroundClearance(accessoryId: String, capabilityId: String): AccessoryGroundClearanceEntity? =

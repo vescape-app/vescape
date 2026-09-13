@@ -162,6 +162,10 @@ class AccessoryPersistenceHostTest {
         ),
       )
     }
+    val light = contract.getJSONObject("brakeLight")
+    val lightRow = AccessoryBrakeLightEntity(accessoryId, light.getString("capabilityId"), light.getInt("sensitivity"), light.getString("parked"))
+    store.saveBrakeLight(lightRow)
+    store.saveBrakeLight(lightRow.copy(accessoryId = otherId))
     store.saveGroundClearance(row(accessoryId, nose, clearance.getJSONObject("calibration")))
     store.saveGroundClearance(row(accessoryId, tail, clearance.getJSONObject("tailCalibration")))
     store.saveGroundClearance(
@@ -172,6 +176,7 @@ class AccessoryPersistenceHostTest {
     // Settings survive restart: the whole reason this is a table and not process state.
     db = open()
     store = AccessoryPersistence(db.telemetryDao())
+    assertEquals(listOf(lightRow, lightRow.copy(accessoryId = otherId)).sortedBy { it.accessoryId }, store.getBrakeLights())
     val reopened = store.getGroundClearance(accessoryId, nose)!!
     assertEquals(clearance.getJSONObject("calibration").getDouble("nearCm"), reopened.nearCm, 0.0)
     assertEquals(clearance.getJSONObject("calibration").getDouble("farCm"), reopened.farCm, 0.0)
@@ -226,6 +231,7 @@ class AccessoryPersistenceHostTest {
 
     // Forgetting takes the Accessory and every calibration made against it, and nothing else.
     assertTrue(store.forget(accessoryId))
+    assertEquals(listOf(lightRow.copy(accessoryId = otherId)), store.getBrakeLights())
     db.close()
 
     db = open()

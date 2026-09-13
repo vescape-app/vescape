@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import expo.modules.vescapecore.recording.RecordingStorageFailure
 import expo.modules.vescapecore.service.CoreForegroundService
+import expo.modules.vescapecore.telemetry.AccessoryBrakeLightEntity
 import expo.modules.vescapecore.telemetry.AccessoryGroundClearanceEntity
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.telemetry.SavedAccessoryEntity
@@ -14,6 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -76,6 +79,15 @@ object AccessorySessionManager {
      * Keyed on the Accessory *and* the capability, exactly as the durable row is: one unit may
      * declare a nose sensor and a tail sensor, and they share neither a calibration nor a stream.
      */
+    private val brakeLight = BrakeLightController()
+    private val lightSaveMutex = Mutex()
+    private val lightMutations = HashMap<BrakeLightController.Key, Long>()
+    private val lightExpiry = Runnable {
+        brakeLight.clear()
+        reapplyDemand()
+        publish()
+    }
+
     private val groundClearance = GroundClearanceBindingController(SystemClock::elapsedRealtime)
 
     /**
@@ -118,7 +130,12 @@ object AccessorySessionManager {
                 RecordingStorageFailure.reportRead("accessory_ground_clearance", error)
                 emptyList()
             }
+            val lightSettings = try { store.getBrakeLights() } catch (error: Throwable) {
+                RecordingStorageFailure.reportRead("accessory_brake_light", error)
+                emptyList()
+            }
             handler.post {
+                lightSettings.forEach { brakeLight.configure(BrakeLightController.Key(it.accessoryId, it.capabilityId), BrakeLightSettings(it.sensitivity, it.parked)) }
                 saved.clear()
                 rows.forEach { saved[it.accessoryId] = it }
                 groundClearance.reset(calibrations.map { row ->
@@ -217,6 +234,10 @@ object AccessorySessionManager {
                 // with them, so a re-enrollment starts from "not set up" rather than from whatever
                 // this process still happened to be holding.
                 groundClearance.forget(accessoryId)
+                brakeLight.forget(accessoryId)
+                for (key in lightMutations.keys.filter { it.accessoryId == accessoryId }) {
+                    lightMutations[key] = (lightMutations[key] ?: 0L) + 1
+                }
                 // A save still in flight for this Accessory must not land on the runtime after the
                 // rider forgot it. Bumping the counter is what makes its completion a no-op.
                 for (key in calibrationSeq.keys.filter { it.accessoryId == accessoryId }) {
@@ -278,6 +299,7 @@ object AccessorySessionManager {
      */
     private fun describeCapability(accessoryId: String, capability: Map<String, Any?>): Map<String, Any?> {
         val capabilityId = capability["id"] as? String ?: return capability
+        if (capability["type"] == AccessoryProtocol.TYPE_BRAKE_LIGHT) return capability + brakeLight.describe(BrakeLightController.Key(accessoryId, capabilityId))
         return capability + (groundClearance.describe(accessoryId, capabilityId) ?: return capability)
     }
 
@@ -352,8 +374,7 @@ object AccessorySessionManager {
      * accessory while BLE stays up, so leaving the screen genuinely stops measuring rather than
      * throwing away samples the hardware is still burning power to produce.
      *
-     * The brake light still gets #480's neutral baseline. It is the protocol's own unavailable
-     * state, and the slice that owns that capability replaces it with real telemetry.
+     * Brake-light state comes from native speed samples or an explicitly parked preview.
      */
     private fun AccessoryLink.applyDemand(
         row: SavedAccessoryEntity,
@@ -370,14 +391,7 @@ object AccessorySessionManager {
                     setDesired(groundClearance.applyCapability(row.accessoryId, capability, manifest != null, rate))
                 }
 
-                AccessoryProtocol.TYPE_BRAKE_LIGHT -> setDesired(
-                    AccessoryCommand.State(
-                        capabilityId = capability.id,
-                        telemetry = "unavailable",
-                        mode = null,
-                        parked = "off",
-                    ),
-                )
+                AccessoryProtocol.TYPE_BRAKE_LIGHT -> setDesired(brakeLight.command(BrakeLightController.Key(row.accessoryId, capability.id)))
 
                 else -> Unit
             }
@@ -389,6 +403,66 @@ object AccessorySessionManager {
         for ((accessoryId, link) in links) {
             val row = saved[accessoryId] ?: continue
             link.applyDemand(row, link.manifest)
+        }
+    }
+
+    // MARK: - Brake light
+
+    fun setLightTelemetry(speedKmh: Double, riding: Boolean, receivedAt: Long = SystemClock.elapsedRealtime()) {
+        handler.post {
+            // Keep receive time across the thread hop; queued samples cannot renew stale evidence.
+            if (SystemClock.elapsedRealtime() - receivedAt >= 1500) return@post
+            brakeLight.sample(speedKmh, riding, receivedAt)
+            handler.removeCallbacks(lightExpiry)
+            handler.postDelayed(lightExpiry, 1500 - (SystemClock.elapsedRealtime() - receivedAt))
+            reapplyDemand()
+        }
+    }
+
+    fun clearLightTelemetry() {
+        handler.post {
+            handler.removeCallbacks(lightExpiry)
+            brakeLight.clear()
+            reapplyDemand()
+            publish()
+        }
+    }
+
+    fun setLightPreview(accessoryId: String, capabilityId: String, mode: String?, onResult: (Boolean) -> Unit) {
+        handler.post {
+            val accepted = brakeLight.preview(BrakeLightController.Key(accessoryId, capabilityId), mode)
+            if (accepted) { reapplyDemand(); publish() }
+            onResult(accepted)
+        }
+    }
+
+    fun saveBrakeLight(accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, onResult: (Boolean) -> Unit) {
+        handler.post {
+            val app = appContext ?: return@post onResult(false)
+            val candidate = BrakeLightSettings(sensitivity, parked)
+            val capabilities = links[accessoryId]?.manifest?.capabilities
+                ?: saved[accessoryId]?.let { decodeCapabilities(it.capabilitiesJson).mapNotNull(::capabilityFromMap) }
+            if (!candidate.valid() || capabilities?.any { it.id == capabilityId && it.type == AccessoryProtocol.TYPE_BRAKE_LIGHT && it.supported } != true) return@post onResult(false)
+            val key = BrakeLightController.Key(accessoryId, capabilityId)
+            val mutation = (lightMutations[key] ?: 0L) + 1
+            lightMutations[key] = mutation
+            calibrationScope.launch {
+              lightSaveMutex.withLock {
+                try {
+                    persistence(app).saveBrakeLight(AccessoryBrakeLightEntity(accessoryId, capabilityId, sensitivity, parked))
+                } catch (error: Throwable) {
+                    RecordingStorageFailure.report("accessory_brake_light", "write_failed", error)
+                    handler.post { onResult(false) }; return@withLock
+                }
+                handler.post {
+                    if (saved.containsKey(accessoryId) && lightMutations[key] == mutation) {
+                        brakeLight.configure(BrakeLightController.Key(accessoryId, capabilityId), candidate)
+                        reapplyDemand(); publish()
+                    }
+                    onResult(true)
+                }
+              }
+            }
         }
     }
 
@@ -426,7 +500,8 @@ object AccessorySessionManager {
      */
     fun releasePreviews() {
         handler.post {
-            if (!groundClearance.releasePreviews()) return@post
+            groundClearance.releasePreviews()
+            brakeLight.releasePreviews()
             reapplyDemand()
             publish()
         }

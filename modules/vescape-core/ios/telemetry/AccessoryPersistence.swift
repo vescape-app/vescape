@@ -152,6 +152,7 @@ struct AccessoryStore {
   static func createTables(_ db: Database) throws {
     try PersistenceSchema.createAccessories(db)
     try PersistenceSchema.createAccessoryGroundClearance(db)
+    try PersistenceSchema.createAccessoryBrakeLight(db)
   }
 
   private func writer() throws -> DatabaseWriter {
@@ -199,6 +200,7 @@ struct AccessoryStore {
       try db.execute(
         sql: "DELETE FROM accessory_ground_clearance WHERE accessory_id = ?",
         arguments: [accessoryId])
+      try db.execute(sql: "DELETE FROM accessory_brake_light WHERE accessory_id = ?", arguments: [accessoryId])
       return try Record.deleteOne(db, key: ["accessory_id": accessoryId])
     }
   }
@@ -215,6 +217,17 @@ struct AccessoryStore {
         sql: "UPDATE accessories SET capabilities_json = ? WHERE accessory_id = ?",
         arguments: [capabilitiesJson, accessoryId])
       return db.changesCount > 0
+    }
+  }
+
+  func brakeLights() throws -> [SavedBrakeLight] {
+    try writer().read { db in try SavedBrakeLight.order(Column("accessory_id"), Column("capability_id")).fetchAll(db) }
+  }
+
+  func saveBrakeLight(_ settings: SavedBrakeLight) throws {
+    try writer().write { db in
+      guard try Record.fetchOne(db, key: ["accessory_id": settings.accessoryId]) != nil else { throw WriterUnavailable() }
+      try settings.save(db)
     }
   }
 
@@ -273,5 +286,17 @@ struct AccessoryStore {
         ])
       return db.changesCount > 0
     }
+  }
+}
+
+/// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryEntities.kt `AccessoryBrakeLightEntity`
+struct SavedBrakeLight: Codable, FetchableRecord, PersistableRecord, Equatable {
+  static let databaseTableName = "accessory_brake_light"
+  let accessoryId: String
+  let capabilityId: String
+  let sensitivity: Int
+  let parked: String
+  enum CodingKeys: String, CodingKey {
+    case accessoryId = "accessory_id", capabilityId = "capability_id", sensitivity, parked
   }
 }

@@ -1888,6 +1888,7 @@ internal final class BoardSessionController: VescGattListener {
       // engaged sample standing and keep a sensor measuring — and eligible to drive tilt — for as
       // long as the board keeps faulting.
       AccessorySessionController.shared.setRiding(false)
+      AccessorySessionController.shared.clearLightTelemetry()
       onRefloatFaultFrame(telemetry.faultCode)
       return
     }
@@ -2321,6 +2322,7 @@ internal final class BoardSessionController: VescGattListener {
       // recording turned off is still riding. #479 reads the arbitrated input back out of the same
       // runtime to drive Remote Tilt.
       AccessorySessionController.shared.setRiding(isRefloatEngaged(state: capture.telemetry.state))
+      AccessorySessionController.shared.setLightTelemetry(speedKmh: telemetry.speed, riding: isRefloatEngaged(state: capture.telemetry.state))
       // Skip persistence while idle-paused; the live tick, series, and Live Activity above keep
       // running off the ~1 Hz keepalive. When recording is off, recordTelemetry is already a no-op.
       if !idlePauseDetector.isPaused {
@@ -2817,6 +2819,7 @@ internal final class BoardSessionController: VescGattListener {
     // No telemetry means no evidence of riding. An Accessory left measuring on the strength of the
     // last sample before the Board went away would keep its sensor running indefinitely.
     AccessorySessionController.shared.setRiding(false)
+      AccessorySessionController.shared.clearLightTelemetry()
     cancelStaleWatchdog()
     idlePauseDetector.reset()
     liveSeries.stop()

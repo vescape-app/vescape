@@ -1519,6 +1519,7 @@ private var wearAutoLaunchOnConnect = true
                 markBoardReady()
                 startLinkIntegrityProbe(sessionToken)
                 AccessorySessionManager.setRiding(false)
+                AccessorySessionManager.clearLightTelemetry()
                 onRefloatFaultFrame(parsed.faultCode)
                 return
             }
@@ -1559,6 +1560,7 @@ private var wearAutoLaunchOnConnect = true
                 // rider with recording turned off is still riding. #479 reads the arbitrated input
                 // back out of the same runtime to drive Remote Tilt.
                 AccessorySessionManager.setRiding(isRefloatEngaged(processed.capture.state))
+                AccessorySessionManager.setLightTelemetry(parsed.speed, isRefloatEngaged(processed.capture.state))
                 // Skip persistence while paused; live display, watch, and presence keep running off the
                 // paths above. When recording is off, recordTelemetry is already a no-op.
                 if (!idlePauseDetector.isPaused) {
@@ -2261,6 +2263,7 @@ private var wearAutoLaunchOnConnect = true
         // No telemetry means no evidence of riding. An Accessory left measuring on the strength of
         // the last sample before the Board went away would keep its sensor running indefinitely.
         AccessorySessionManager.setRiding(false)
+                AccessorySessionManager.clearLightTelemetry()
         idlePauseDetector.reset()
         telemetryPipeline.cancelStaleWatchdog()
         liveSeriesEmitter.stop()

@@ -63,6 +63,11 @@ enum PersistenceSchema {
   /// capabilities — the eventual hardware has a nose sensor and a tail sensor on one board — and
   /// they cannot share near/far distances or a correction direction.
   /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_44_45`
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/telemetry/TelemetryMigrations.kt `MIGRATION_45_46`
+  static func createAccessoryBrakeLight(_ db: Database) throws {
+    try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_brake_light (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, sensitivity INTEGER NOT NULL, parked TEXT NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
+  }
+
   static func createAccessoryGroundClearance(_ db: Database) throws {
     try db.execute(sql: "CREATE TABLE IF NOT EXISTS accessory_ground_clearance (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, near_cm REAL NOT NULL, far_cm REAL NOT NULL, direction TEXT NOT NULL, strength_percent INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(accessory_id, capability_id))")
   }

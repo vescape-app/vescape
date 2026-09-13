@@ -963,3 +963,12 @@ data class AccessoryGroundClearanceEntity(
   @ColumnInfo(name = "strength_percent") val strengthPercent: Int,
   @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
+
+/** @parity /modules/vescape-core/ios/telemetry/AccessoryPersistence.swift `SavedBrakeLight` */
+@Entity(tableName = "accessory_brake_light", primaryKeys = ["accessory_id", "capability_id"])
+data class AccessoryBrakeLightEntity(
+ @ColumnInfo(name = "accessory_id") val accessoryId: String,
+ @ColumnInfo(name = "capability_id") val capabilityId: String,
+ val sensitivity: Int,
+ val parked: String,
+)

@@ -478,6 +478,16 @@ class VescapeCoreModule : Module() {
     AsyncFunction("forgetAccessory") { accessoryId: String, promise: Promise ->
       AccessorySessionManager.forget(context.applicationContext, accessoryId) { promise.resolve(it) }
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `saveBrakeLightSettings`
+    // @parity /modules/vescape-core/src/index.ts `saveBrakeLightSettings`
+    AsyncFunction("saveBrakeLightSettings") { accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise ->
+      AccessorySessionManager.saveBrakeLight(accessoryId, capabilityId, sensitivity, parked) { promise.resolve(it) }
+    }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBrakeLightPreview`
+    // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
+    AsyncFunction("setBrakeLightPreview") { accessoryId: String, capabilityId: String, mode: String?, promise: Promise ->
+      AccessorySessionManager.setLightPreview(accessoryId, capabilityId, mode) { promise.resolve(it) }
+    }
     Function("getAccessories") { AccessorySessionManager.snapshot() }
 
     // Ground clearance. JS asks for measurements and offers numbers; native decides whether the

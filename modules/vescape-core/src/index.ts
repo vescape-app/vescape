@@ -107,6 +107,12 @@ export interface AccessoryCapability {
    * a capability with no usable rate is a screen that is open and a sensor that is not measuring.
    */
   measuring?: boolean
+  /** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/BrakeLight.kt `describe`
+   * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `describe`
+   */
+  brakeLight?: BrakeLightSettings
+  lightMode?: BrakeLightMode | null
+  lightPreview?: BrakeLightMode | null
 }
 
 /**
@@ -116,6 +122,18 @@ export interface AccessoryCapability {
  * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `GroundClearanceDirection`
  */
 export type GroundClearanceDirection = 'nose' | 'tail'
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/BrakeLight.kt `BrakeLightSettings`
+ * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `BrakeLightSettings`
+ */
+export interface BrakeLightSettings {
+  sensitivity: number
+  parked: 'off' | 'glow'
+}
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/BrakeLight.kt `MODES`
+ * @parity /modules/vescape-core/ios/accessory/BrakeLight.swift `modes`
+ */
+export type BrakeLightMode = 'riding' | 'braking' | 'hard_braking' | 'not_riding'
 
 /**
  * Why a calibration is not one yet. Native's verdict, never re-derived here: a second definition of
@@ -2514,6 +2532,17 @@ type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   enrollAccessory(deviceId: string): Promise<AccessoryEnrollment>
   forgetAccessory(accessoryId: string): Promise<boolean>
   getAccessories(): SavedAccessory[]
+  saveBrakeLightSettings(
+    accessoryId: string,
+    capabilityId: string,
+    sensitivity: number,
+    parked: string,
+  ): Promise<boolean>
+  setBrakeLightPreview(
+    accessoryId: string,
+    capabilityId: string,
+    mode: BrakeLightMode | null,
+  ): Promise<boolean>
   setAccessoryPreview(accessoryId: string, capabilityId: string, open: boolean): void
   saveGroundClearanceCalibration(
     accessoryId: string,
@@ -4159,4 +4188,30 @@ export function addGroupRideErrorListener(
   cb: (event: GroupRideErrorEvent) => void,
 ): EventSubscription {
   return emitter.addListener('onGroupRideError', cb)
+}
+
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `saveBrakeLightSettings`
+ */
+export function saveBrakeLightSettings(
+  accessoryId: string,
+  capabilityId: string,
+  settings: BrakeLightSettings,
+): Promise<boolean> {
+  return native.saveBrakeLightSettings(
+    accessoryId,
+    capabilityId,
+    settings.sensitivity,
+    settings.parked,
+  )
+}
+/** @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
+ * @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setBrakeLightPreview`
+ */
+export function setBrakeLightPreview(
+  accessoryId: string,
+  capabilityId: string,
+  mode: BrakeLightMode | null,
+): Promise<boolean> {
+  return native.setBrakeLightPreview(accessoryId, capabilityId, mode)
 }

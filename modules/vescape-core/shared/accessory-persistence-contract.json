@@ -58,5 +58,10 @@
       "strengthPercent": 40,
       "updatedAt": 1700000300000
     }
+  },
+  "brakeLight": {
+    "capabilityId": "rear_light",
+    "sensitivity": 73,
+    "parked": "glow"
   }
 }

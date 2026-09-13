@@ -348,6 +348,16 @@ public class VescapeCoreModule: Module {
       AccessorySessionController.shared.forget(accessoryId: accessoryId) { promise.resolve($0) }
     }
 
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `saveBrakeLightSettings`
+    // @parity /modules/vescape-core/src/index.ts `saveBrakeLightSettings`
+    AsyncFunction("saveBrakeLightSettings") { (accessoryId: String, capabilityId: String, sensitivity: Int, parked: String, promise: Promise) in
+      AccessorySessionController.shared.saveBrakeLight(accessoryId: accessoryId, capabilityId: capabilityId, sensitivity: sensitivity, parked: parked) { promise.resolve($0) }
+    }
+    // @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/VescapeCoreModule.kt `setBrakeLightPreview`
+    // @parity /modules/vescape-core/src/index.ts `setBrakeLightPreview`
+    AsyncFunction("setBrakeLightPreview") { (accessoryId: String, capabilityId: String, mode: String?, promise: Promise) in
+      AccessorySessionController.shared.setLightPreview(accessoryId: accessoryId, capabilityId: capabilityId, mode: mode) { promise.resolve($0) }
+    }
     Function("getAccessories") {
       AccessorySessionController.shared.snapshot()
     }

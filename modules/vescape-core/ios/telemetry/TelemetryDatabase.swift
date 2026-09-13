@@ -835,6 +835,10 @@ enum TelemetryDatabase {
       try PersistenceSchema.createAccessoryGroundClearance(db)
     }
 
+    migrator.registerMigration("v46_accessory_brake_light") { db in
+      try PersistenceSchema.createAccessoryBrakeLight(db)
+    }
+
     return migrator
   }
 }

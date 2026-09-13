@@ -1545,6 +1545,8 @@ internal object TelemetryMigrations {
         )
     }
 
+    internal val MIGRATION_45_46 = migration(45, 46) { db -> db.execSQL("CREATE TABLE IF NOT EXISTS accessory_brake_light (accessory_id TEXT NOT NULL, capability_id TEXT NOT NULL, sensitivity INTEGER NOT NULL, parked TEXT NOT NULL, PRIMARY KEY(accessory_id, capability_id))") }
+
     /** Every migration registered with Room, in the graph's production order. */
     val all = listOf(
       MIGRATION_3_4,
@@ -1586,6 +1588,7 @@ internal object TelemetryMigrations {
       MIGRATION_42_43,
       MIGRATION_43_44,
       MIGRATION_44_45,
+      MIGRATION_45_46,
     )
 
 }

@@ -118,3 +118,39 @@ light's own slice replaces.
 - Reuse native riding detection and Board telemetry freshness rules.
 - Tune brake detection smoothing and sensitivity thresholds using ride data.
 - Validate protocol timing defaults under concurrent Board and accessory traffic.
+
+## Brake-light PoC implementation
+
+Brake-light configuration opens from its capability row in the Board selector's Accessories
+section. Sensitivity and parked off/glow save automatically per accessory ID and capability ID.
+They apply to whichever Board is current. No Board-specific light binding is stored.
+
+Android and iOS derive braking natively from the magnitude of Board speed, so forward and reverse
+slowing use the same detector. Motor current is not an input. Initial PoC defaults:
+
+- Convert km/h to m/s before calculating deceleration.
+- Smooth deceleration with a 200 ms first-order filter, using the actual sample interval.
+- At sensitivity 50, enter braking at 1 m/s² and hard braking at 3 m/s².
+- Sensitivity 1–100 scales both thresholds by `1.5 - sensitivity / 100`.
+- Keep the current braking category until deceleration drops below 75% of its entry threshold.
+- A non-increasing timestamp or riding sample gap over 500 ms clears filtering and sends unavailable.
+  The next progressing sample starts from the new baseline. A constant-speed trace stays riding.
+- Missing telemetry for 1500 ms sends unavailable and clears history. This light-specific deadline
+  is stricter than the Board session's disconnect watchdog and tolerates its parked 1 Hz keepalive.
+- Board fault frames, polling stop and disconnect clear light telemetry immediately.
+
+These thresholds need rider and hardware validation in #481. They do not affect Board control or
+Remote Tilt. Firmware owns rendering; the app only sends semantic states through the existing
+acknowledgement, renewal and lease path.
+
+Preview sends real `state` commands with `preview: true`. It is refused while native reports riding,
+ends when riding begins, and restores current automatic state on exit, backgrounding or JS teardown.
+Without Board telemetry, preview explicitly carries `telemetry: "unavailable"`. Native renews the
+preview lease while it is open; firmware expires it if the app disappears.
+
+The rear-light development firmware injects a fake output driver. Its renderer uses red intensity
+32 for riding, 180 for braking, and 255 alternating on/off every 250 ms for hard braking. Parked
+output is off or intensity 12. Telemetry unavailable is steady 64; expired commands pulse 64 for
+100 ms every second. Disconnect and a new session turn output off until a state arrives. Renewing
+unchanged appearance preserves blink phase. These are observable fake-driver values, not measured
+LED brightness. Physical driver, wiring, locked-screen BLE timing and visible output remain #481.

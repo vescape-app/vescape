@@ -1195,6 +1195,17 @@ try require(!clearedTailAgain, "clearing twice reported a second removal")
 let afterClear = try clearanceStore.groundClearances()
 try require(afterClear.count == 2, "clear removed the wrong row")
 
+let lightSpec = accessoryFixture["brakeLight"] as! [String: Any]
+let lightSettings = SavedBrakeLight(accessoryId: clearanceOwner, capabilityId: lightSpec["capabilityId"] as! String, sensitivity: lightSpec["sensitivity"] as! Int, parked: lightSpec["parked"] as! String)
+try clearanceStore.saveBrakeLight(lightSettings)
+let otherLightSettings = SavedBrakeLight(accessoryId: clearanceOtherOwner, capabilityId: lightSettings.capabilityId, sensitivity: lightSettings.sensitivity, parked: lightSettings.parked)
+try clearanceStore.saveBrakeLight(otherLightSettings)
+try clearanceQueue!.close()
+clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
+clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
+let reopenedLights = try clearanceStore.brakeLights()
+try require(reopenedLights == [lightSettings, otherLightSettings].sorted { $0.accessoryId < $1.accessoryId }, "light settings survive reopen independently")
+
 // Forgetting takes the Accessory and every calibration made against it, and nothing else.
 let clearanceForgotten = try clearanceStore.forget(clearanceOwner)
 try require(clearanceForgotten, "calibration-scenario forget")
@@ -1204,6 +1215,8 @@ clearanceQueue = try DatabaseQueue(path: clearanceURL.path)
 clearanceStore = AccessoryStore(dbWriter: clearanceQueue!)
 let orphanCalibration = try clearanceStore.groundClearance(clearanceOwner, noseCapability)
 try require(orphanCalibration == nil, "forget left a calibration behind")
+let survivingLights = try clearanceStore.brakeLights()
+try require(survivingLights == [otherLightSettings], "forget removes only owned light settings")
 let survivingCalibrations = try clearanceStore.groundClearances()
 try require(
   survivingCalibrations.map(\.accessoryId) == [clearanceOtherOwner],
