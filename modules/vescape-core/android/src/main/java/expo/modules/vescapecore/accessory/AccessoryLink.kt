@@ -115,6 +115,16 @@ internal class AccessoryLink(
     /** Desired state per capability. Coalesced: only the latest matters, because commands are absolute. */
     private val desired = LinkedHashMap<String, AccessoryCommand>()
 
+    /**
+     * When each capability's command was last put on the wire, and which ones changed since.
+     *
+     * Without these the pump would re-send the moment an ack arrived, turning a 500 ms renewal into
+     * a continuous command loop at BLE round-trip rate — the accessory's radio never idles and the
+     * lease is renewed twenty times more often than it needs to be.
+     */
+    private val lastSentAtMs = HashMap<String, Long>()
+    private val dirty = HashSet<String>()
+
     /** The one request allowed to be outstanding, with the retry budget it has left. */
     private var outstanding: Outstanding? = null
 
@@ -133,16 +143,14 @@ internal class AccessoryLink(
 
     /** Starts, or re-points at a newly discovered handle. Idempotent. */
     fun start(deviceId: String?) {
-        if (deviceId != null && deviceId != this.deviceId) {
-            this.deviceId = deviceId
-            if (started) {
-                // A different handle is a different peripheral object; the old connection cannot be
-                // re-pointed at it.
-                teardown()
-            }
-        }
-        if (started) return
+        val movedHandle = deviceId != null && deviceId != this.deviceId
+        if (movedHandle) this.deviceId = deviceId
+        if (started && !movedHandle) return
         started = true
+        // A different handle is a different peripheral; the old connection cannot be re-pointed at
+        // it, so it is torn down and a new one opened. Returning here instead would leave the link
+        // armed with no connection and no retry — the state this branch exists to avoid.
+        if (movedHandle) teardown()
         connect()
     }
 
@@ -162,12 +170,9 @@ internal class AccessoryLink(
     fun setDesired(command: AccessoryCommand) {
         if (desired[command.capabilityId] == command) return
         desired[command.capabilityId] = command
+        dirty.add(command.capabilityId)
         // A changed state goes out immediately rather than waiting for the next renewal tick.
         if (phase == AccessoryLinkPhase.CONNECTED) pump()
-    }
-
-    fun clearDesired(capabilityId: String) {
-        desired.remove(capabilityId)
     }
 
     // MARK: - Connection
@@ -180,6 +185,9 @@ internal class AccessoryLink(
         }
         val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
         if (adapter == null || !adapter.isEnabled) {
+            // The retry timer is the recovery path. Android surfaces adapter state through a
+            // broadcast this class does not hold, so it re-asks rather than waiting to be told.
+            // @platform-diff iOS is told directly, through its central's state callback.
             setPhase(AccessoryLinkPhase.CONNECTING, error = "bluetooth-unavailable")
             scheduleRetry()
             return
@@ -362,6 +370,9 @@ internal class AccessoryLink(
         nextRequestId = AccessorySession.FIRST_COMMAND_REQUEST_ID
         outstanding = null
         pendingChunks.clear()
+        // A fresh session has applied nothing, so every desired command is owed again immediately.
+        lastSentAtMs.clear()
+        dirty.addAll(desired.keys)
         write(AccessoryProtocol.encodeHello(fresh))
         cancel(requestTimeout)
         val runnable = Runnable { fail("timeout") }
@@ -449,16 +460,31 @@ internal class AccessoryLink(
 
     // MARK: - Request pump
 
-    /** Sends the next desired command that is not already the one outstanding. */
+    /**
+     * Sends the next capability whose command changed, or whose renewal has come due.
+     *
+     * Called after every ack as well as on the tick, so a link with several capabilities drains all
+     * of their due renewals back to back instead of one per tick — with a 2 s lease and a 500 ms
+     * interval, one-per-tick would let the fourth capability's lease lapse.
+     */
     private fun pump() {
         if (outstanding != null) return
         val session = sessionId ?: return
         val supported = manifest?.capabilities?.filter { it.supported }?.map { it.id }?.toSet() ?: return
-        val next = desired.entries.firstOrNull { it.key in supported }?.value ?: return
+        val now = SystemClock.elapsedRealtime()
+        val capabilityId = desired.keys.firstOrNull { id ->
+            id in supported && (
+                id in dirty ||
+                    now - (lastSentAtMs[id] ?: Long.MIN_VALUE / 2) >= AccessorySession.RENEW_INTERVAL_MS
+                )
+        } ?: return
+        val next = desired.getValue(capabilityId)
         // Round-robin: the capability just sent goes to the back, so one capability cannot starve
         // another's renewal.
-        desired.remove(next.capabilityId)
-        desired[next.capabilityId] = next
+        desired.remove(capabilityId)
+        desired[capabilityId] = next
+        dirty.remove(capabilityId)
+        lastSentAtMs[capabilityId] = now
         val requestId = nextRequestId++
         val line = next.encode(session, requestId)
         outstanding = Outstanding(requestId, next, line, retried = false)

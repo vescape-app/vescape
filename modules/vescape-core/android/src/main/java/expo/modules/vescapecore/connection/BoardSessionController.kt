@@ -1031,10 +1031,7 @@ private var wearAutoLaunchOnConnect = true
     fun stopGroupRideObserve() {
         CoreForegroundService.pendingGroupRideUrl = null
         groupRideObserver.stop()
-        if (boardConfig == null && !gpsMonitor.active) {
-            isStoppingService = true
-            service.stopSelf()
-        }
+        stopIfIdle()
     }
 
     fun createGroupRide(riderId: String, riderName: String, riderColor: String?, name: String?, lat: Double, lng: Double) {
@@ -1088,7 +1085,9 @@ private var wearAutoLaunchOnConnect = true
         CoreForegroundService.pendingGpsStart = false
         stopLocationUpdates()
         emitState()
-        if (boardConfig == null && !groupRideObserver.active) {
+        // Accessory sessions are one of the things that keep this host alive, so the decision goes
+        // through `stopIfIdle` rather than a second copy of the same condition that forgets them.
+        if (boardConfig == null && !groupRideObserver.active && !AccessorySessionManager.hasSessions()) {
             isStoppingService = true
             service.stopSelf()
         } else {

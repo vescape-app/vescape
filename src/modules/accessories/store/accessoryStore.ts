@@ -1,3 +1,4 @@
+import { AppState } from 'react-native'
 import { create } from 'zustand'
 import {
   addAccessoryStateListener,
@@ -55,22 +56,34 @@ export const useAccessoryStore = create<AccessoryState & AccessoryActions>((set)
 }))
 
 let subscription: { remove(): void } | null = null
+let appStateSubscription: { remove(): void } | null = null
 
 /**
  * Subscribes the store to native's pushes, once per app run.
  *
  * Deliberately not tied to a screen: an Accessory's state changes while nothing is mounted, and the
  * Board selector must be able to open onto the truth rather than onto an empty list it then fills.
+ *
+ * Foreground is a second, necessary trigger. Native stops emitting to the bridge while the app is
+ * backgrounded, so everything that happened to a link in the meantime — a reconnect, a drop, a
+ * refused command — arrives as nothing at all. Coming back has to re-read rather than trust the
+ * last push, exactly as `bleStore` does for a Board.
  */
 export function startAccessoryStateMirror(): () => void {
   subscription?.remove()
+  appStateSubscription?.remove()
   subscription = addAccessoryStateListener(({ accessories }) => {
     useAccessoryStore.setState({ accessories })
+  })
+  appStateSubscription = AppState.addEventListener('change', (status) => {
+    if (status === 'active') useAccessoryStore.getState().sync()
   })
   useAccessoryStore.getState().sync()
   return () => {
     subscription?.remove()
     subscription = null
+    appStateSubscription?.remove()
+    appStateSubscription = null
   }
 }
 

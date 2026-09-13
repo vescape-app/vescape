@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import expo.modules.vescapecore.recording.RecordingStorageFailure
+import expo.modules.vescapecore.service.CoreForegroundService
 import expo.modules.vescapecore.telemetry.AccessoryPersistence
 import expo.modules.vescapecore.telemetry.SavedAccessoryEntity
 import expo.modules.vescapecore.telemetry.TelemetryDatabase
@@ -44,8 +45,15 @@ object AccessorySessionManager {
     private val links = LinkedHashMap<String, AccessoryLink>()
     private val saved = LinkedHashMap<String, SavedAccessoryEntity>()
 
-    /** Capabilities whose declared limits moved since enrollment, per accessory. */
-    private val capabilitiesChanged = mutableSetOf<String>()
+    /**
+     * The last snapshot built on the main looper.
+     *
+     * The bridge's synchronous getter runs on the JS thread while [saved] and [links] are written
+     * from the main looper; iterating them from two threads is a `ConcurrentModificationException`
+     * waiting for a badly timed render. Publishing an immutable list instead means the getter never
+     * touches the live maps.
+     */
+    @Volatile private var published: List<Map<String, Any?>> = emptyList()
 
     private var appContext: Context? = null
 
@@ -129,11 +137,14 @@ object AccessorySessionManager {
                 }
                 handler.post {
                     saved[accessoryId] = stored
-                    capabilitiesChanged.remove(accessoryId)
                     link(stored).start(deviceId)
                     publish()
                     onResult(mapOf("accessoryId" to accessoryId, "error" to null))
                 }
+                // The first enrollment arrives when no host is running: process-start auto-connect
+                // already looked and found nothing enrolled. Without this the new link would live
+                // in a bare app process and die the moment the rider backgrounds the app.
+                CoreForegroundService.autoConnectAccessories(app)
             }
         }
     }
@@ -156,7 +167,6 @@ object AccessorySessionManager {
             handler.post {
                 links.remove(accessoryId)?.stop()
                 saved.remove(accessoryId)
-                capabilitiesChanged.remove(accessoryId)
                 publish()
                 onResult(removed)
             }
@@ -170,7 +180,7 @@ object AccessorySessionManager {
      * from the main looper. That is a read of a consistent-enough render state, not a claim of
      * atomicity: the next `onAccessoryState` corrects anything caught mid-change.
      */
-    fun snapshot(): List<Map<String, Any?>> = buildSnapshot()
+    fun snapshot(): List<Map<String, Any?>> = published
 
     private fun buildSnapshot(): List<Map<String, Any?>> = saved.values.map { row ->
         val link = links[row.accessoryId]
@@ -189,15 +199,20 @@ object AccessorySessionManager {
             "error" to link?.lastError,
             "compatibility" to live?.compatibility?.wire,
             "capabilities" to (live?.capabilities?.map { it.toMap() } ?: decodeCapabilities(row.capabilitiesJson)),
-            // The declared limits moved since enrollment, so anything calibrated against the old
-            // ones needs the rider to look at it again.
-            "capabilitiesChanged" to capabilitiesChanged.contains(row.accessoryId),
+            // Derived from the frozen baseline rather than remembered in memory: a flag held only
+            // for the life of the process would clear itself on the next launch, which is the one
+            // moment the rider is least likely to be looking.
+            "capabilitiesChanged" to (
+                live != null && encodeCapabilityList(live.capabilities) != row.capabilitiesJson
+                ),
             "leaseHeldMs" to link?.lastAckAtMs?.let { SystemClock.elapsedRealtime() - it },
         )
     }
 
     private fun publish() {
-        emit?.invoke("onAccessoryState", mapOf("accessories" to buildSnapshot()))
+        val snapshot = buildSnapshot()
+        published = snapshot
+        emit?.invoke("onAccessoryState", mapOf("accessories" to snapshot))
     }
 
     // MARK: - Internals
@@ -226,16 +241,15 @@ object AccessorySessionManager {
      */
     private fun onManifestValidated(manifest: AccessoryManifest, deviceId: String) {
         val previous = saved[manifest.accessoryId] ?: return
-        val capabilitiesJson = encodeCapabilityList(manifest.capabilities)
-        if (capabilitiesJson != previous.capabilitiesJson) {
-            capabilitiesChanged.add(manifest.accessoryId)
-        }
+        // `capabilitiesJson` is deliberately carried over unchanged. It is the baseline the rider's
+        // saved settings were validated against, and the snapshot derives "limits changed" by
+        // comparing the live manifest against it; rewriting it here would answer the question with
+        // the very thing being questioned.
         val row = previous.copy(
             name = manifest.name,
             firmwareVersion = manifest.firmwareVersion,
             protocolVersion = manifest.protocolVersion,
             deviceId = deviceId,
-            capabilitiesJson = capabilitiesJson,
             lastConnectedAt = System.currentTimeMillis(),
         )
         saved[manifest.accessoryId] = row
@@ -243,7 +257,9 @@ object AccessorySessionManager {
         val app = appContext ?: return
         scope.launch {
             try {
-                persistence(app).upsert(row)
+                // Update-only: a handshake completing just as the rider forgets this Accessory must
+                // not write the row back.
+                persistence(app).revalidate(row)
             } catch (error: Throwable) {
                 // The session is live and correct; only the saved copy of what the manifest just
                 // said is stale, which the next successful handshake fixes.

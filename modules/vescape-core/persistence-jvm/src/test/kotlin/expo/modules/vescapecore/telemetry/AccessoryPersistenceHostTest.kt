@@ -74,31 +74,35 @@ class AccessoryPersistenceHostTest {
 
     // The same unit after a rename, a firmware update and a new BLE handle. Anything keyed on a
     // name or an address would add a second row here.
-    val revalidated = store.upsert(
-      enrolled.copy(
-        name = spec.getString("renamedTo"),
-        firmwareVersion = spec.getString("updatedFirmwareVersion"),
-        deviceId = spec.getString("movedDeviceId"),
-        capabilitiesJson = spec.getString("changedCapabilitiesJson"),
-        enrolledAt = spec.getLong("reEnrolledAt"),
-      ),
+    val observed = enrolled.copy(
+      name = spec.getString("renamedTo"),
+      firmwareVersion = spec.getString("updatedFirmwareVersion"),
+      deviceId = spec.getString("movedDeviceId"),
+      capabilitiesJson = spec.getString("changedCapabilitiesJson"),
+      enrolledAt = spec.getLong("reEnrolledAt"),
+      lastConnectedAt = spec.getLong("connectedAt"),
     )
+    assertTrue(store.revalidate(observed))
     assertEquals(2, store.getAccessories().size)
-    assertEquals(spec.getString("renamedTo"), revalidated.name)
-    // Reading a manifest again is not adding the Accessory again.
-    assertEquals(spec.getLong("enrolledAt"), revalidated.enrolledAt)
 
-    assertTrue(store.touch(spec.getString("accessoryId"), spec.getString("movedDeviceId"), spec.getLong("connectedAt")))
-    assertFalse(store.touch("not-enrolled", null, spec.getLong("connectedAt")))
+    // Update-only: a handshake landing after the rider forgot an Accessory must not recreate it.
+    assertFalse(store.revalidate(observed.copy(accessoryId = "not-enrolled")))
+    assertEquals(2, store.getAccessories().size)
     db.close()
 
     db = open()
     store = AccessoryPersistence(db.telemetryDao())
     val persisted = store.getAccessory(spec.getString("accessoryId"))!!
+    assertEquals(spec.getString("renamedTo"), persisted.name)
     assertEquals(spec.getString("updatedFirmwareVersion"), persisted.firmwareVersion)
     assertEquals(spec.getString("movedDeviceId"), persisted.deviceId)
-    assertEquals(spec.getString("changedCapabilitiesJson"), persisted.capabilitiesJson)
     assertEquals(spec.getLong("connectedAt"), persisted.lastConnectedAt)
+    // Reading a manifest again is not adding the Accessory again.
+    assertEquals(spec.getLong("enrolledAt"), persisted.enrolledAt)
+    // The baseline the rider's saved settings were validated against survives revalidation. It is
+    // what the "declared limits changed" warning is derived from, so overwriting it here would make
+    // the warning vanish on the next launch.
+    assertEquals(spec.getString("capabilitiesJson"), persisted.capabilitiesJson)
 
     // Forgetting takes the Accessory and nothing else: the other enrollment is untouched.
     assertTrue(store.forget(spec.getString("accessoryId")))

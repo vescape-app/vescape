@@ -16,10 +16,8 @@ internal class AccessoryPersistence(private val dao: TelemetryDao) {
   suspend fun getAccessory(accessoryId: String): SavedAccessoryEntity? = dao.getAccessory(accessoryId)
 
   /**
-   * Enrollment, and the re-validation every later handshake performs.
-   *
-   * [enrolledAt] is preserved across re-validation: it says when the rider added this Accessory,
-   * and reading a manifest again is not adding it again.
+   * Enrollment. [enrolledAt] is preserved when the row already exists: re-adding an Accessory the
+   * rider already has is not a new enrollment.
    */
   suspend fun upsert(accessory: SavedAccessoryEntity): SavedAccessoryEntity {
     val existing = dao.getAccessory(accessory.accessoryId)
@@ -28,8 +26,26 @@ internal class AccessoryPersistence(private val dao: TelemetryDao) {
     return row
   }
 
-  suspend fun forget(accessoryId: String): Boolean = dao.deleteAccessory(accessoryId) > 0
+  /**
+   * Refreshes what the last handshake observed, for an Accessory that is still enrolled.
+   *
+   * Update-only, and deliberately not an upsert: a handshake that completes just as the rider
+   * forgets the Accessory would otherwise resurrect the row it just deleted, and the next launch
+   * would auto-connect hardware the rider removed. A single UPDATE is a no-op on a missing row.
+   *
+   * `capabilities_json` is **not** touched. It is the baseline the rider's saved settings were
+   * validated against, so it stays put until a capability's own setup accepts the new limits;
+   * overwriting it here would make the "limits changed" warning disappear on the next launch.
+   */
+  suspend fun revalidate(accessory: SavedAccessoryEntity): Boolean =
+    dao.revalidateAccessory(
+      accessoryId = accessory.accessoryId,
+      name = accessory.name,
+      firmwareVersion = accessory.firmwareVersion,
+      protocolVersion = accessory.protocolVersion,
+      deviceId = accessory.deviceId,
+      connectedAt = accessory.lastConnectedAt,
+    ) > 0
 
-  suspend fun touch(accessoryId: String, deviceId: String?, connectedAt: Long): Boolean =
-    dao.touchAccessory(accessoryId, deviceId, connectedAt) > 0
+  suspend fun forget(accessoryId: String): Boolean = dao.deleteAccessory(accessoryId) > 0
 }

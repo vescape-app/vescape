@@ -36,12 +36,20 @@ export function AccessoryDetailScreen({
   const accessory = useSavedAccessory(accessoryId)
   const forget = useAccessoryStore((s) => s.forget)
   const [forgetting, setForgetting] = useState(false)
+  const [forgetFailed, setForgetFailed] = useState(false)
 
   const onForget = useCallback(async () => {
     setForgetting(true)
+    setForgetFailed(false)
     try {
-      await forget(accessoryId)
-      onForgotten?.()
+      // Native answers false when the saved identity is still there — a storage failure means the
+      // Accessory is still enrolled and still connecting, so leaving the screen would claim
+      // something that did not happen.
+      if (await forget(accessoryId)) {
+        onForgotten?.()
+        return
+      }
+      setForgetFailed(true)
     } finally {
       setForgetting(false)
     }
@@ -127,6 +135,12 @@ export function AccessoryDetailScreen({
           loading={forgetting}
           testID="accessory-forget"
         />
+
+        {forgetFailed ? (
+          <Text style={styles.warning}>
+            This accessory could not be removed. It is still saved and still connecting; try again.
+          </Text>
+        ) : null}
 
         <Text style={styles.footnote}>
           Vescape connects to a saved accessory on its own, including with the app closed.

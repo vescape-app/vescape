@@ -35,8 +35,6 @@ public final class AccessorySessionController: NSObject {
   private var links: [String: AccessoryLink] = [:]
   private var saved: [String: SavedAccessory] = [:]
   private var order: [String] = []
-  /// Capabilities whose declared limits moved since enrollment, per accessory.
-  private var capabilitiesChanged: Set<String> = []
   private var store: AccessoryStore { AccessoryStore.shared }
 
   /// Peripherals handed back by state restoration before the saved rows have been read.
@@ -89,14 +87,15 @@ public final class AccessorySessionController: NSObject {
         firmwareVersion: (manifest["firmwareVersion"] as? String) ?? "",
         protocolVersion: manifest["protocolVersion"] as? Int,
         deviceId: deviceId,
-        capabilitiesJson: Self.encodeCapabilities(manifest["capabilities"]),
+        // `?? nil` flattens `Any??`: without it the encoder receives a boxed optional rather than
+        // the array, and every enrollment would record an empty capability set.
+        capabilitiesJson: Self.encodeCapabilities(manifest["capabilities"] ?? nil),
         enrolledAt: Int64(Date().timeIntervalSince1970 * 1000),
         lastConnectedAt: nil)
       self.onMain {
         do {
           let stored = try self.store.upsert(row)
           self.remember(stored)
-          self.capabilitiesChanged.remove(accessoryId)
           self.start(stored)
           self.publish()
           onResult(["accessoryId": accessoryId, "error": nil])
@@ -125,7 +124,6 @@ public final class AccessorySessionController: NSObject {
       self.links.removeValue(forKey: accessoryId)?.stop()
       self.saved.removeValue(forKey: accessoryId)
       self.order.removeAll { $0 == accessoryId }
-      self.capabilitiesChanged.remove(accessoryId)
       self.publish()
       onResult(removed)
     }
@@ -152,9 +150,12 @@ public final class AccessorySessionController: NSObject {
         "compatibility": live?.compatibility.rawValue,
         "capabilities": live?.capabilities.map { $0.toMap() }
           ?? Self.decodeCapabilities(row.capabilitiesJson),
-        // The declared limits moved since enrollment, so anything calibrated against the old ones
-        // needs the rider to look at it again.
-        "capabilitiesChanged": capabilitiesChanged.contains(row.accessoryId),
+        // Derived from the frozen baseline rather than remembered in memory: a flag held only for
+        // the life of the process would clear itself on the next launch, which is the one moment
+        // the rider is least likely to be looking.
+        "capabilitiesChanged": live.map {
+          Self.encodeCapabilities($0.capabilities.map { $0.toMap() }) != row.capabilitiesJson
+        } ?? false,
         "leaseHeldMs": link?.lastAckAt.map {
           Int((ProcessInfo.processInfo.systemUptime - $0) * 1000)
         },
@@ -237,17 +238,17 @@ public final class AccessorySessionController: NSObject {
   /// calibration was made against the old numbers.
   private func onManifestValidated(_ manifest: AccessoryManifest, deviceId: String) {
     guard let previous = saved[manifest.accessoryId] else { return }
-    let capabilitiesJson = Self.encodeCapabilities(manifest.capabilities.map { $0.toMap() })
-    if capabilitiesJson != previous.capabilitiesJson {
-      capabilitiesChanged.insert(manifest.accessoryId)
-    }
+    // `capabilitiesJson` is deliberately carried over unchanged. It is the baseline the rider's
+    // saved settings were validated against, and the snapshot derives "limits changed" by comparing
+    // the live manifest against it; rewriting it here would answer the question with the very thing
+    // being questioned.
     let row = SavedAccessory(
       accessoryId: previous.accessoryId,
       name: manifest.name,
       firmwareVersion: manifest.firmwareVersion,
       protocolVersion: manifest.protocolVersion,
       deviceId: deviceId,
-      capabilitiesJson: capabilitiesJson,
+      capabilitiesJson: previous.capabilitiesJson,
       enrolledAt: previous.enrolledAt,
       lastConnectedAt: Int64(Date().timeIntervalSince1970 * 1000))
     remember(row)
@@ -255,7 +256,9 @@ public final class AccessorySessionController: NSObject {
       applyBaseline(to: link, row: row, manifest: manifest)
     }
     do {
-      try store.upsert(row)
+      // Update-only: a handshake completing just as the rider forgets this Accessory must not write
+      // the row back.
+      try store.revalidate(row)
     } catch {
       // The session is live and correct; only the saved copy of what the manifest just said is
       // stale, which the next successful handshake fixes.
@@ -352,9 +355,10 @@ public final class AccessorySessionController: NSObject {
 extension AccessorySessionController: CBCentralManagerDelegate {
   public func centralManagerDidUpdateState(_ central: CBCentralManager) {
     guard central.state == .poweredOn else { return }
-    // The links were created before the radio was usable; their first connect was refused and this
-    // is where it becomes possible. Re-starting is idempotent.
+    // The links were created before the radio was usable and their first connect was refused. They
+    // are already started, so `start` would decline them — this is the hook that resumes them.
     order.compactMap { saved[$0] }.forEach { start($0) }
+    links.values.forEach { $0.onRadioAvailable() }
   }
 
   /// iOS relaunched the app for a link this controller owned. The peripherals come back before the

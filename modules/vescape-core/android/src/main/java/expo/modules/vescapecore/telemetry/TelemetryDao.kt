@@ -868,9 +868,32 @@ interface TelemetryDao {
   @Query("DELETE FROM accessories WHERE accessory_id = :accessoryId")
   suspend fun deleteAccessory(accessoryId: String): Int
 
-  /** Records a successful session without rewriting the manifest facts the handshake validated. */
-  @Query("UPDATE accessories SET device_id = :deviceId, last_connected_at = :connectedAt WHERE accessory_id = :accessoryId")
-  suspend fun touchAccessory(accessoryId: String, deviceId: String?, connectedAt: Long): Int
+  /**
+   * Records what the last handshake observed, for a row that still exists.
+   *
+   * Update-only on purpose: a handshake landing just after the rider forgot the Accessory must not
+   * resurrect it. `capabilities_json` and `enrolled_at` are left alone — the first is the baseline
+   * saved settings were validated against, the second is when the rider added it.
+   */
+  @Query(
+    """
+    UPDATE accessories
+    SET name = :name,
+        firmware_version = :firmwareVersion,
+        protocol_version = :protocolVersion,
+        device_id = :deviceId,
+        last_connected_at = :connectedAt
+    WHERE accessory_id = :accessoryId
+    """,
+  )
+  suspend fun revalidateAccessory(
+    accessoryId: String,
+    name: String,
+    firmwareVersion: String,
+    protocolVersion: Int?,
+    deviceId: String?,
+    connectedAt: Long?,
+  ): Int
 
   // VESC Fault Occurrences — see VescFaultCoordinator for lifecycle rules. Deliberately absent from
   // `deleteBoardWithSettings`: fault evidence outlives the Board record.

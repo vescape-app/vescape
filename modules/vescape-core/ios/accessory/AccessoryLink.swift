@@ -76,6 +76,14 @@ final class AccessoryLink {
   private var desiredOrder: [String] = []
   private var desired: [String: AccessoryCommand] = [:]
 
+  /// When each capability's command was last put on the wire, and which ones changed since.
+  ///
+  /// Without these the pump would re-send the moment an ack arrived, turning a 500 ms renewal into
+  /// a continuous command loop at BLE round-trip rate — the accessory's radio never idles and the
+  /// lease is renewed twenty times more often than it needs to be.
+  private var lastSentAt: [String: TimeInterval] = [:]
+  private var dirty: Set<String> = []
+
   private struct Outstanding {
     let requestId: Int
     let line: String
@@ -105,12 +113,32 @@ final class AccessoryLink {
 
   /// Starts, or re-points at a newly discovered peripheral. Idempotent.
   func start(peripheral: CBPeripheral?) {
-    if let peripheral, peripheral.identifier != self.peripheral?.identifier {
-      if started { teardown() }
-      self.peripheral = peripheral
-    }
-    guard !started else { return }
+    let movedHandle = peripheral != nil && peripheral?.identifier != self.peripheral?.identifier
+    if movedHandle { self.peripheral = peripheral }
+    guard !started || movedHandle else { return }
     started = true
+    // A different peripheral cannot be reached through the old connection, so it is torn down and
+    // a new one opened. Returning here instead would leave the link armed with no connection and
+    // no retry — the state this branch exists to avoid.
+    if movedHandle {
+      let next = self.peripheral
+      teardown()
+      self.peripheral = next
+    }
+    connect()
+  }
+
+  /// The radio became usable.
+  ///
+  /// A link whose first connect was refused because Bluetooth was off is armed but idle, and
+  /// `start` will not take it any further — it is already started. This is the moment it can
+  /// proceed, and CoreBluetooth reports it straight to the controller's central delegate.
+  ///
+  /// @platform-diff Android has no equivalent hook here and re-asks on its retry timer instead.
+  func onRadioAvailable() {
+    guard started, peripheral != nil, phase == .connecting || phase == .idle else { return }
+    retryWork?.cancel()
+    retryWork = nil
     connect()
   }
 
@@ -129,6 +157,7 @@ final class AccessoryLink {
     if desired[command.capabilityId] == command { return }
     if desired[command.capabilityId] == nil { desiredOrder.append(command.capabilityId) }
     desired[command.capabilityId] = command
+    dirty.insert(command.capabilityId)
     // A changed state goes out immediately rather than waiting for the next renewal tick.
     if phase == .connected { pump() }
   }
@@ -139,6 +168,9 @@ final class AccessoryLink {
     guard let peripheral else { return setPhase(.idle, error: "unknown-device") }
     guard central.state == .poweredOn else {
       setPhase(.connecting, error: "bluetooth-unavailable")
+      // Armed, not abandoned: `onRadioAvailable` normally picks this up, and the retry is the
+      // backstop for a state change that never arrives.
+      scheduleRetry()
       return
     }
     setPhase(.connecting, error: nil)
@@ -292,6 +324,9 @@ final class AccessoryLink {
     nextRequestId = AccessorySession.firstCommandRequestId
     outstanding = nil
     pendingChunks.removeAll()
+    // A fresh session has applied nothing, so every desired command is owed again immediately.
+    lastSentAt.removeAll()
+    dirty.formUnion(desiredOrder)
     write(AccessoryProtocol.encodeHello(sessionId: fresh))
     armTimeout(ms: AccessoryProtocol.handshakeTimeoutMs) { [weak self] in self?.fail("timeout") }
   }
@@ -347,17 +382,31 @@ final class AccessoryLink {
 
   // MARK: - Request pump
 
-  /// Sends the next desired command that is not already the one outstanding.
+  /// Sends the next capability whose command changed, or whose renewal has come due.
+  ///
+  /// Called after every ack as well as on the tick, so a link with several capabilities drains all
+  /// of their due renewals back to back instead of one per tick — with a 2 s lease and a 500 ms
+  /// interval, one-per-tick would let the fourth capability's lease lapse.
   private func pump() {
     guard outstanding == nil, let session = sessionId, let manifest else { return }
     let supported = Set(manifest.capabilities.filter(\.supported).map(\.id))
-    guard let capabilityId = desiredOrder.first(where: { supported.contains($0) }),
+    let now = ProcessInfo.processInfo.systemUptime
+    let interval = TimeInterval(AccessorySession.renewIntervalMs) / 1000
+    guard
+      let capabilityId = desiredOrder.first(where: { id in
+        guard supported.contains(id) else { return false }
+        if dirty.contains(id) { return true }
+        guard let sent = lastSentAt[id] else { return true }
+        return now - sent >= interval
+      }),
       let command = desired[capabilityId]
     else { return }
     // Round-robin: the capability just sent goes to the back, so one capability cannot starve
     // another's renewal.
     desiredOrder.removeAll { $0 == capabilityId }
     desiredOrder.append(capabilityId)
+    dirty.remove(capabilityId)
+    lastSentAt[capabilityId] = now
     let requestId = nextRequestId
     nextRequestId += 1
     let line = command.encode(sessionId: session, requestId: requestId)

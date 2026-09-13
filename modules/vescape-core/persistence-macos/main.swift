@@ -1029,41 +1029,47 @@ try require(
   "Accessory capabilities reopen")
 try require(reopenedAccessories.first?.lastConnectedAt == nil, "Accessory connected before it was")
 
-let revalidated = try accessoryStore.upsert(
-  savedAccessory(
-    accessorySpec,
-    overrides: [
-      "name": accessorySpec["renamedTo"]!,
-      "firmwareVersion": accessorySpec["updatedFirmwareVersion"]!,
-      "deviceId": accessorySpec["movedDeviceId"]!,
-      "capabilitiesJson": accessorySpec["changedCapabilitiesJson"]!,
-      "enrolledAt": accessorySpec["reEnrolledAt"]!,
-    ]))
+let observedAccessory = savedAccessory(
+  accessorySpec,
+  overrides: [
+    "name": accessorySpec["renamedTo"]!,
+    "firmwareVersion": accessorySpec["updatedFirmwareVersion"]!,
+    "deviceId": accessorySpec["movedDeviceId"]!,
+    "capabilitiesJson": accessorySpec["changedCapabilitiesJson"]!,
+    "enrolledAt": accessorySpec["reEnrolledAt"]!,
+    "lastConnectedAt": accessorySpec["connectedAt"]!,
+  ])
+let revalidated = try accessoryStore.revalidate(observedAccessory)
+try require(revalidated, "Accessory revalidate")
 let afterRevalidation = try accessoryStore.accessories()
 try require(afterRevalidation.count == 2, "rename duplicated an Accessory")
-try require(revalidated.name == accessorySpec["renamedTo"] as? String, "Accessory rename")
-// Reading a manifest again is not adding the Accessory again.
-try require(
-  revalidated.enrolledAt == Int64(int(accessorySpec["enrolledAt"])), "Accessory enrolledAt moved")
 
-let touched = try accessoryStore.touch(
-  accessorySpec["accessoryId"] as! String,
-  deviceId: accessorySpec["movedDeviceId"] as? String,
-  connectedAt: Int64(int(accessorySpec["connectedAt"])))
-try require(touched, "Accessory touch")
-let touchedUnknown = try accessoryStore.touch("not-enrolled", deviceId: nil, connectedAt: 1)
-try require(!touchedUnknown, "touch invented an Accessory")
+// Update-only: a handshake landing after the rider forgot an Accessory must not recreate it.
+let revalidatedUnknown = try accessoryStore.revalidate(
+  savedAccessory(accessorySpec, overrides: ["accessoryId": "not-enrolled"]))
+try require(!revalidatedUnknown, "revalidate invented an Accessory")
+let afterUnknownRevalidation = try accessoryStore.accessories()
+try require(afterUnknownRevalidation.count == 2, "revalidate added a row")
 try accessoryQueue!.close()
 
 accessoryQueue = try DatabaseQueue(path: accessoryURL.path)
 accessoryStore = AccessoryStore(dbWriter: accessoryQueue!)
 let persistedAccessory = try accessoryStore.accessory(accessorySpec["accessoryId"] as! String)
 try require(
+  persistedAccessory?.name == accessorySpec["renamedTo"] as? String, "Accessory rename reopen")
+try require(
   persistedAccessory?.firmwareVersion == accessorySpec["updatedFirmwareVersion"] as? String,
   "Accessory firmware reopen")
+// Reading a manifest again is not adding the Accessory again.
 try require(
-  persistedAccessory?.capabilitiesJson == accessorySpec["changedCapabilitiesJson"] as? String,
-  "Accessory capabilities revalidation")
+  persistedAccessory?.enrolledAt == Int64(int(accessorySpec["enrolledAt"])),
+  "Accessory enrolledAt moved")
+// The baseline the rider's saved settings were validated against survives revalidation. It is what
+// the "declared limits changed" warning is derived from, so overwriting it here would make the
+// warning vanish on the next launch.
+try require(
+  persistedAccessory?.capabilitiesJson == accessorySpec["capabilitiesJson"] as? String,
+  "Accessory capability baseline overwritten")
 try require(
   persistedAccessory?.lastConnectedAt == Int64(int(accessorySpec["connectedAt"])),
   "Accessory last connected reopen")

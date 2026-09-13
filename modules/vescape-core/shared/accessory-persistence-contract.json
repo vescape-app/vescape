@@ -1,6 +1,6 @@
 {
   "scenario": "accessory-enrollment-close-reopen",
-  "$comment": "Enrolled Accessories, the same case on Room and GRDB. The point of the scenario is that identity is the manifest's accessory id: the second enrollment is the same physical unit after a rename and a firmware update, seen on a different BLE handle, and it must land on the same row with its original `enrolledAt` intact. `other` exists so the reopen proves rows are kept apart rather than merged.",
+  "$comment": "Enrolled Accessories, the same case on Room and GRDB. The point of the scenario is that identity is the manifest's accessory id: the revalidation is the same physical unit after a rename and a firmware update, seen on a different BLE handle, and it must land on the same row with its original `enrolledAt` and its original `capabilitiesJson` baseline intact. Revalidation is update-only, so it must not recreate a row the rider just forgot. `other` exists so the reopen proves rows are kept apart rather than merged.",
   "accessory": {
     "accessoryId": "b36ed5bd-1d24-460c-8034-aaeaefc5d016",
     "name": "Clearance sensor",
