@@ -123,11 +123,15 @@ const READING_STATES: {
   status: AccessoryReadingStatus | null
   valueCm: number | null
   measuring: boolean
+  stalled?: boolean
 }[] = [
   { label: 'measuring', status: 'ok', valueCm: 12.4, measuring: true },
   { label: 'nothing in range', status: 'out_of_range', valueCm: null, measuring: true },
   { label: 'sensor error', status: 'error', valueCm: null, measuring: true },
   { label: 'waiting', status: null, valueCm: null, measuring: true },
+  // Answered once, then went quiet. Deliberately not the same blank as "waiting": the number is
+  // dropped rather than left on screen, and the rider is told why.
+  { label: 'stalled', status: null, valueCm: null, measuring: true, stalled: true },
   { label: 'standby', status: null, valueCm: null, measuring: false },
 ]
 
@@ -152,6 +156,7 @@ export function GroundClearanceReadoutShowcase() {
           status={state.status}
           valueCm={state.valueCm}
           measuring={state.measuring}
+          stalled={state.stalled === true}
         />
       </View>
     </ShowcaseCard>

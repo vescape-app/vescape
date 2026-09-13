@@ -43,6 +43,30 @@ object AccessorySessionManager {
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Calibration writes, one at a time and in the order the rider asked for them.
+     *
+     * The general [scope] fans out across the IO pool, which is right for independent work and wrong
+     * for this: a save dispatched before a clear can finish after it and put the row back, and two
+     * saves in quick succession can land out of order and leave the older draft on disk. Both are
+     * reachable from one screen — the editor saves on a debounce and clears on a tap.
+     *
+     * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `saveGroundClearance`
+     * @platform-diff iOS writes these on the main queue inside `onMain`, which already orders them.
+     */
+    private val calibrationScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+
+    /**
+     * How many calibration mutations have been *asked for* per capability.
+     *
+     * Ordering the writes is not enough on its own: the in-memory runtime and the published snapshot
+     * are updated after the write, back on the main looper, and an older completion arriving there
+     * would undo a newer one. Each mutation carries the number it was given and applies nothing if a
+     * later one has since been asked for.
+     */
+    private val calibrationSeq = HashMap<CapabilityKey, Long>()
+
     private val links = LinkedHashMap<String, AccessoryLink>()
     private val saved = LinkedHashMap<String, SavedAccessoryEntity>()
 
@@ -207,6 +231,11 @@ object AccessorySessionManager {
                 // with them, so a re-enrollment starts from "not set up" rather than from whatever
                 // this process still happened to be holding.
                 clearance.keys.removeAll { it.accessoryId == accessoryId }
+                // A save still in flight for this Accessory must not land on the runtime after the
+                // rider forgot it. Bumping the counter is what makes its completion a no-op.
+                for (key in calibrationSeq.keys.filter { it.accessoryId == accessoryId }) {
+                    calibrationSeq[key] = (calibrationSeq[key] ?: 0L) + 1
+                }
                 publish()
                 onResult(removed)
             }
@@ -437,6 +466,32 @@ object AccessorySessionManager {
     }
 
     /**
+     * Drops every preview, whoever asked for it.
+     *
+     * Preview demand lives in this process and the screen that asked for it lives in a JS runtime
+     * that can disappear without unmounting anything — a reload, a crash, a development refresh. The
+     * accessory's own lease cannot save it either, because native keeps renewing the configuration
+     * on the screen's behalf. So the runtime going away has to be the release.
+     *
+     * Riding demand is deliberately untouched: it comes from the Board Session, which outlives JS.
+     *
+     * @parity /modules/vescape-core/ios/accessory/AccessorySessionController.swift `releasePreviews`
+     */
+    fun releasePreviews() {
+        handler.post {
+            var changed = false
+            for (state in clearance.values) {
+                if (!state.previewOpen) continue
+                state.previewOpen = false
+                changed = true
+            }
+            if (!changed) return@post
+            reapplyDemand()
+            publish()
+        }
+    }
+
+    /**
      * Board engagement, from the Board Session's own predicate.
      *
      * Native's, never JS's: this decides whether a sensor runs while the screen is off, and a value
@@ -491,6 +546,9 @@ object AccessorySessionManager {
                 return@post
             }
             val liveCapabilities = links[accessoryId]?.manifest?.capabilities
+            val key = CapabilityKey(accessoryId, capabilityId)
+            val mutation = (calibrationSeq[key] ?: 0L) + 1
+            calibrationSeq[key] = mutation
             val row = AccessoryGroundClearanceEntity(
                 accessoryId = accessoryId,
                 capabilityId = capabilityId,
@@ -500,7 +558,7 @@ object AccessorySessionManager {
                 strengthPercent = strengthPercent,
                 updatedAt = System.currentTimeMillis(),
             )
-            scope.launch {
+            calibrationScope.launch {
                 val store = persistence(app)
                 try {
                     store.saveGroundClearance(row)
@@ -523,6 +581,14 @@ object AccessorySessionManager {
                     }
                 }
                 handler.post {
+                    // The row is written either way — the writes are ordered, so the newest ask is
+                    // the one on disk. What is refused here is applying an older ask's *result* over
+                    // a newer one in memory, which is how a save that raced a clear used to put the
+                    // calibration back.
+                    if (calibrationSeq[key] != mutation) {
+                        onResult(mapOf("saved" to true, "problem" to null))
+                        return@post
+                    }
                     state.calibration = candidate
                     if (baseline != null) {
                         saved[accessoryId]?.let { saved[accessoryId] = it.copy(capabilitiesJson = baseline) }
@@ -539,7 +605,10 @@ object AccessorySessionManager {
     fun clearGroundClearance(accessoryId: String, capabilityId: String, onResult: (Boolean) -> Unit) {
         handler.post {
             val app = appContext ?: return@post onResult(false)
-            scope.launch {
+            val key = CapabilityKey(accessoryId, capabilityId)
+            val mutation = (calibrationSeq[key] ?: 0L) + 1
+            calibrationSeq[key] = mutation
+            calibrationScope.launch {
                 val removed = try {
                     persistence(app).clearGroundClearance(accessoryId, capabilityId)
                 } catch (error: Throwable) {
@@ -548,6 +617,7 @@ object AccessorySessionManager {
                     return@launch
                 }
                 handler.post {
+                    if (calibrationSeq[key] != mutation) return@post onResult(removed)
                     runtime(accessoryId, capabilityId).calibration = null
                     reapplyDemand()
                     publish()
@@ -603,6 +673,10 @@ object AccessorySessionManager {
                 "sampleTimeMs" to checked.sampleTimeMs,
                 "status" to checked.status.wire,
                 "valueCm" to checked.valueCm,
+                // The window this sample stays evidence for, from the rate the accessory confirmed.
+                // Sent with every sample so a screen can stop showing a distance the moment it stops
+                // describing the ground, without re-deriving the rule JS does not own.
+                "staleAfterMs" to GroundClearance.staleAfterMs(state.rateHz),
             ),
         )
     }

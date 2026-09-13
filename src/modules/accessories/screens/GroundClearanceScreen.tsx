@@ -63,10 +63,15 @@ export function GroundClearanceScreen({
   const capability = accessory?.capabilities.find((entry) => entry.id === capabilityId)
   const saved = capability?.calibration ?? null
 
-  const reading = useGroundClearancePreview(accessoryId, capability ? capabilityId : undefined)
+  const { reading, stalled } = useGroundClearancePreview(
+    accessoryId,
+    capability ? capabilityId : undefined,
+  )
   const [draft, setDraft] = useState<Draft | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** The edit the debounce has not offered to native yet. Flushed rather than dropped on exit. */
+  const pending = useRef<Draft | null>(null)
 
   // Native's saved calibration seeds the editor once, and only once native has actually said what
   // this capability is. Seeding before the first snapshot lands would fill the steppers with
@@ -96,11 +101,19 @@ export function GroundClearanceScreen({
     })
   }, [known, saved])
 
+  // Leaving flushes, it does not cancel. A screen that saves on its own must not silently throw away
+  // the rider's last change because they navigated back inside the debounce window — they were told
+  // it saves, and nothing on the way out says otherwise.
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current)
+      const unsaved = pending.current
+      pending.current = null
+      if (unsaved) {
+        void saveGroundClearanceCalibration(accessoryId, capabilityId, unsaved)
+      }
     },
-    [],
+    [accessoryId, capabilityId],
   )
 
   const edit = useCallback(
@@ -108,10 +121,14 @@ export function GroundClearanceScreen({
       setDraft((current) => {
         if (!current) return current
         const next = { ...current, ...patch }
+        pending.current = next
         if (timer.current) clearTimeout(timer.current)
         // Debounced, because a stepper held down would otherwise write a row per tap. Native still
-        // decides validity — this only decides how often it is asked.
+        // decides validity — this only decides how often it is asked, and native applies whatever
+        // arrives in the order it arrives.
         timer.current = setTimeout(() => {
+          timer.current = null
+          pending.current = null
           void saveGroundClearanceCalibration(accessoryId, capabilityId, next).then((result) => {
             setProblem(result.saved ? null : (result.problem ?? null))
           })
@@ -123,7 +140,11 @@ export function GroundClearanceScreen({
   )
 
   const onClear = useCallback(() => {
+    // The pending edit goes with the timer: flushing it after a clear would put the calibration
+    // straight back. Native orders the two writes anyway, but asking for both is still nonsense.
     if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    pending.current = null
     void clearGroundClearanceCalibration(accessoryId, capabilityId)
     setProblem(null)
     setDraft({
@@ -166,6 +187,7 @@ export function GroundClearanceScreen({
           status={reading?.status ?? null}
           valueCm={reading?.valueCm ?? null}
           measuring={capability.measuring === true}
+          stalled={stalled}
         />
 
         {!configured ? (

@@ -6,29 +6,33 @@ import { readingCopy } from '@/modules/accessories/lib/groundClearanceCopy'
 import { theme } from '@/constants/theme'
 
 interface GroundClearanceReadoutProps {
-  /** Null while native has accepted no sample yet in this protocol session. */
+  /** Null while native has accepted no sample yet, and again once the stream goes quiet. */
   status: AccessoryReadingStatus | null
   /** Set only when `status` is `ok`. Never borrowed from an earlier sample. */
   valueCm: number | null
   /** Whether native currently has the sensor measuring at all. */
   measuring: boolean
+  /** A sample arrived and then the stream stopped. Distinct from never having had one. */
+  stalled?: boolean
 }
 
 /**
  * The live distance, or an honest account of why there is not one.
  *
- * Four states, and only one of them is a number. A sensor that cannot see the ground, one that
- * failed outright, and one that is not running at all read as three different sentences — because
- * they are three different problems, and a single blank would leave the rider guessing which.
+ * Five states, and only one of them is a number. A sensor that cannot see the ground, one that
+ * failed outright, one that stopped answering, and one that is not running at all read as four
+ * different sentences — because they are four different problems, and a single blank would leave
+ * the rider guessing which.
  *
- * There is deliberately no "last known" fallback. Holding the previous value on the screen while
- * the sensor is silent is exactly the illusion this feature exists to avoid: the rider would read a
- * clearance the board no longer has.
+ * There is deliberately no "last known" fallback, and that is what the stalled state is for.
+ * Holding the previous value on screen while the sensor has gone silent is exactly the illusion
+ * this feature exists to avoid: the rider would read a clearance the board no longer has.
  */
 export function GroundClearanceReadout({
   status,
   valueCm,
   measuring,
+  stalled = false,
 }: GroundClearanceReadoutProps) {
   if (!measuring) {
     return (
@@ -45,8 +49,19 @@ export function GroundClearanceReadout({
   if (status == null) {
     return (
       <View style={styles.frame}>
-        <Text style={[styles.value, { color: theme.neutral.textDim }]}>—</Text>
-        <Text style={styles.detail}>Waiting for the first measurement…</Text>
+        <Text
+          style={[
+            styles.value,
+            { color: stalled ? theme.status.caution.text : theme.neutral.textDim },
+          ]}
+        >
+          —
+        </Text>
+        <Text style={styles.detail}>
+          {stalled
+            ? 'The sensor stopped sending measurements. It may have lost power or moved out of range.'
+            : 'Waiting for the first measurement…'}
+        </Text>
       </View>
     )
   }

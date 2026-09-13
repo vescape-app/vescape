@@ -425,6 +425,29 @@ public final class AccessorySessionController: NSObject {
     }
   }
 
+  /// Drops every preview, whoever asked for it.
+  ///
+  /// Preview demand lives in this process and the screen that asked for it lives in a JS runtime
+  /// that can disappear without unmounting anything — a reload, a crash, a development refresh. The
+  /// accessory's own lease cannot save it either, because native keeps renewing the configuration on
+  /// the screen's behalf. So the runtime going away has to be the release.
+  ///
+  /// Riding demand is deliberately untouched: it comes from the Board Session, which outlives JS.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessorySessionManager.kt `releasePreviews`
+  func releasePreviews() {
+    onMain {
+      var changed = false
+      for state in self.clearance.values where state.previewOpen {
+        state.previewOpen = false
+        changed = true
+      }
+      guard changed else { return }
+      self.reapplyDemand()
+      self.publish()
+    }
+  }
+
   /// Board engagement, from the Board Session's own predicate.
   ///
   /// Native's, never JS's: this decides whether a sensor runs while the screen is off, and a value
@@ -569,6 +592,10 @@ public final class AccessorySessionController: NSObject {
         "sampleTimeMs": checked.sampleTimeMs,
         "status": checked.status.rawValue,
         "valueCm": checked.valueCm,
+        // The window this sample stays evidence for, from the rate the accessory confirmed. Sent
+        // with every sample so a screen can stop showing a distance the moment it stops describing
+        // the ground, without re-deriving the rule JS does not own.
+        "staleAfterMs": GroundClearance.staleAfterMs(rateHz: state.rateHz),
       ])
   }
 

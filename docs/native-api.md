@@ -122,8 +122,18 @@ live manifest before it crosses:
   sampleTimeMs: number // the accessory's own monotonic clock; orders samples, nothing else
   status: 'ok' | 'out_of_range' | 'error'
   valueCm: number | null // non-null ONLY when status is 'ok'
+  staleAfterMs: number // how long this sample stays evidence, from the acked rate
 }
 ```
+
+`staleAfterMs` travels with every sample so a screen can drop the number the moment it stops
+describing the ground, without re-deriving native's window. A frozen distance presented as a live one
+is the same lie as an invalid reading shown as the maximum range, just slower.
+
+A preview is the only demand JS owns, so it dies with JS: native releases every preview when the
+module is destroyed, because a runtime that reloaded or crashed with the screen open would otherwise
+leave the accessory measuring forever — native's own renewals keep the lease alive. Riding demand is
+untouched by that, since it comes from the Board Session.
 
 The one rule everything else rests on: a missing or unreadable measurement is never a distance, and
 never the maximum of the declared range. A value outside the declared window arrives as

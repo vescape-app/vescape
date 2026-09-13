@@ -445,6 +445,10 @@ class VescapeCoreModule : Module() {
       // Only the mirror is dropped. The sessions belong to the foreground service, and JS going
       // away is not a reason for an enrolled Accessory to stop working.
       AccessorySessionManager.emit = null
+      // A preview is the one piece of demand JS owns, so it dies with JS. Without this a runtime
+      // that reloaded or crashed with the sensor screen open would leave the accessory measuring
+      // with nobody watching, and native's own renewals would keep the lease alive forever.
+      AccessorySessionManager.releasePreviews()
       if (CoreForegroundService.emitEvent != null) {
         CoreForegroundService.emitEvent = null
       }

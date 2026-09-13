@@ -184,6 +184,14 @@ export interface AccessoryReadingEvent {
   sampleTimeMs: number
   status: AccessoryReadingStatus
   valueCm: number | null
+  /**
+   * How long this sample stays evidence, from the rate the accessory confirmed.
+   *
+   * A screen showing the number must stop showing it when this elapses without another sample. The
+   * window is native's — derived from the acknowledged rate, floored at the protocol's missing-stream
+   * default — and travels with the sample so JS never re-derives it.
+   */
+  staleAfterMs: number
 }
 
 /** What `saveGroundClearanceCalibration` decided. `problem` says why nothing was saved. */

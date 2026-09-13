@@ -1490,9 +1490,15 @@ private var wearAutoLaunchOnConnect = true
                 // persisting or aggregating it would poison Ride History with a frame of zeros. The
                 // session bookkeeping above it still runs: the board answered, so it is ready and
                 // must not be torn down as unresponsive just because it is faulting.
+                //
+                // It also ends riding as far as Accessories are concerned. A fault frame carries
+                // zeroed metrics and no engagement, so returning without saying so would leave the
+                // last engaged sample standing and keep a sensor measuring — and eligible to drive
+                // tilt — for as long as the board keeps faulting.
                 telemetryPipeline.noteResponse(parsed, sessionToken)
                 markBoardReady()
                 startLinkIntegrityProbe(sessionToken)
+                AccessorySessionManager.setRiding(false)
                 onRefloatFaultFrame(parsed.faultCode)
                 return
             }

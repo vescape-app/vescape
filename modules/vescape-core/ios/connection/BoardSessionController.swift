@@ -1812,6 +1812,12 @@ internal final class BoardSessionController: VescGattListener {
       // Refloat fault mode: a state signal with zeroed metrics, never a Telemetry Sample. It
       // opens/extends a VESC Fault Occurrence and stops here — persisting or aggregating it would
       // poison Ride History with a frame of zeros.
+      //
+      // It also ends riding as far as Accessories are concerned. A fault frame carries zeroed
+      // metrics and no engagement, so falling through to the normal path would leave the last
+      // engaged sample standing and keep a sensor measuring — and eligible to drive tilt — for as
+      // long as the board keeps faulting.
+      AccessorySessionController.shared.setRiding(false)
       onRefloatFaultFrame(telemetry.faultCode)
       return
     }
@@ -2733,6 +2739,9 @@ internal final class BoardSessionController: VescGattListener {
   private func stopPolling() {
     polling = false
     pollingLoop.stop()
+    // No telemetry means no evidence of riding. An Accessory left measuring on the strength of the
+    // last sample before the Board went away would keep its sensor running indefinitely.
+    AccessorySessionController.shared.setRiding(false)
     cancelStaleWatchdog()
     idlePauseDetector.reset()
     liveSeries.stop()
