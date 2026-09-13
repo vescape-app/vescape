@@ -40,7 +40,7 @@ test('preset test rules are the exact visible preset snapshot', () => {
       controlId: 'speed',
       threshold: 28.8,
       thresholdMax: 36,
-      soundType: 'preset:tick',
+      soundType: 'preset:gamma',
       repeatEverySeconds: null,
       beepCount: ALERT_BEEP_COUNT_DEFAULT,
     },
