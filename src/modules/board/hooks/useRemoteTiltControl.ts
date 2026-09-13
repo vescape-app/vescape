@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback } from 'react'
 
 import {
   canRunFirmwareCommand,
@@ -6,7 +6,8 @@ import {
 } from '@/modules/board/lib/boardLinkIntegrity'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import {
-  lockRemoteTilt as lockRemoteTiltNative,
+  getRemoteTiltState,
+  lockRemoteTilt,
   releaseRemoteTilt,
   setRemoteTilt,
   stopRemoteTilt,
@@ -16,27 +17,29 @@ export function useRemoteTiltControl() {
   const boardConnected = useBleStore((state) => state.status === 'connected')
   const linkIntegrity = useBleStore((state) => state.linkIntegrity)
   const canCommand = boardConnected && canRunFirmwareCommand(linkIntegrity)
-  const syncRemoteTilt = useBleStore((state) => state.syncRemoteTilt)
-
-  useEffect(() => {
-    syncRemoteTilt()
-  }, [syncRemoteTilt])
+  const hold = useCallback(
+    (value: number) => (canCommand ? setRemoteTilt(value) : Promise.resolve(false)),
+    [canCommand],
+  )
+  const release = useCallback(
+    (value: number, durationMs: number) =>
+      canCommand ? releaseRemoteTilt(value, durationMs) : stopRemoteTilt(),
+    [canCommand],
+  )
+  const lock = useCallback(
+    (value: number) => (canCommand ? lockRemoteTilt(value) : Promise.resolve(false)),
+    [canCommand],
+  )
 
   return {
     boardConnected,
     canCommand,
     blockedMessage:
       boardConnected && !canCommand ? firmwareCommandBlockedMessage(linkIntegrity) : null,
-    setRemoteTilt: (value: number) => {
-      if (canCommand) void setRemoteTilt(value)
-    },
-    releaseRemoteTilt: (value: number, durationMs: number) =>
-      canCommand ? void releaseRemoteTilt(value, durationMs) : undefined,
-    lockRemoteTilt: (value: number) => {
-      if (canCommand) void lockRemoteTiltNative(value)
-    },
-    stopRemoteTilt: () => {
-      if (canCommand) void stopRemoteTilt()
-    },
+    readState: getRemoteTiltState,
+    setRemoteTilt: hold,
+    releaseRemoteTilt: release,
+    lockRemoteTilt: lock,
+    stopRemoteTilt,
   }
 }

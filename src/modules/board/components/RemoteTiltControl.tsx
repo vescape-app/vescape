@@ -24,6 +24,8 @@ export function RemoteTiltControl() {
 function RemoteTiltBody() {
   const {
     canCommand,
+    boardConnected,
+    readState,
     blockedMessage,
     setRemoteTilt,
     releaseRemoteTilt,
@@ -35,6 +37,8 @@ function RemoteTiltBody() {
     <>
       <RemoteTiltPad
         disabled={!canCommand}
+        connected={boardConnected}
+        readState={readState}
         onChange={setRemoteTilt}
         onRelease={releaseRemoteTilt}
         onLock={lockRemoteTilt}

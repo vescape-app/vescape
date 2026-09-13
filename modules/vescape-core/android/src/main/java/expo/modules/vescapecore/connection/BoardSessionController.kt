@@ -2397,8 +2397,10 @@ private var wearAutoLaunchOnConnect = true
      * Eases the active tilt back to neutral rather than snapping — a step to neutral from a large
      * tilt makes the board surge to correct the angle error and throws the rider.
      */
+    // Cancellation must remain available if link trust changes during an active tilt.
+    // @parity /modules/vescape-core/ios/connection/BoardSessionController.swift `stopRemoteTilt`
     fun stopRemoteTilt(): Boolean =
-        firmwareCommandsTrusted() && remoteTiltController.cancel()
+        remoteTiltController.cancel()
 
     /**
      * The board's lights as its last echo reported them, or `null` while this session has never

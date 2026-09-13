@@ -1,5 +1,7 @@
 package expo.modules.vescapecore
 
+import expo.modules.kotlin.functions.Queues
+
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
@@ -532,9 +534,11 @@ class VescapeCoreModule : Module() {
         Log.w(TAG, "Cannot open the download route: ${e.message}")
       }
     }
-    Function("getRemoteTiltState") {
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `getRemoteTiltState`
+    // @parity /modules/vescape-core/src/index.ts `getRemoteTiltState`
+    AsyncFunction("getRemoteTiltState") {
       CoreForegroundService.currentRemoteTiltState()
-    }
+    }.runOnQueue(Queues.MAIN)
     Function("setSelectedBoard") { boardId: String? ->
       try {
         runBlocking { AppDataRepository.get(context.applicationContext).setSelectedBoardId(boardId) }
@@ -864,18 +868,26 @@ class VescapeCoreModule : Module() {
         onError = { code, message -> promise.reject(code, message, null) },
       )
     }
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `setRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `setRemoteTilt`
     AsyncFunction("setRemoteTilt") { value: Int ->
       CoreForegroundService.setRemoteTilt(value)
-    }
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `lockRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `lockRemoteTilt`
     AsyncFunction("lockRemoteTilt") { value: Int ->
       CoreForegroundService.lockRemoteTilt(value)
-    }
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `releaseRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `releaseRemoteTilt`
     AsyncFunction("releaseRemoteTilt") { value: Int, durationMs: Int ->
       CoreForegroundService.releaseRemoteTilt(value, durationMs.toLong())
-    }
+    }.runOnQueue(Queues.MAIN)
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `stopRemoteTilt`
+    // @parity /modules/vescape-core/src/index.ts `stopRemoteTilt`
     AsyncFunction("stopRemoteTilt") {
       CoreForegroundService.stopRemoteTilt()
-    }
+    }.runOnQueue(Queues.MAIN)
     AsyncFunction("setBoardLights") { enabled: Boolean, headlightsEnabled: Boolean ->
       CoreForegroundService.setBoardLights(enabled, headlightsEnabled)
     }

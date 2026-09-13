@@ -23,6 +23,7 @@ import type { SparklinePoint } from '@/components/charts/Sparkline'
 import { MOTOR_TEMP_CONFIG_ROWS } from '@/modules/board/constants/motorConfigRows'
 import { telemetry } from '@/modules/board/constants/telemetry'
 import { ChipRow, ToggleRow } from '@/components/dev/ShowcaseControls'
+import { RemoteTiltPadShowcase } from '@/screens/showcase/board/RemoteTiltPadShowcase'
 import { BoardPillShowcase } from '@/screens/showcase/board/BoardPillShowcase'
 import { BoardSelectorSheetShowcase } from '@/screens/showcase/board/BoardSelectorSheetShowcase'
 import { FootpadIndicatorShowcase } from '@/screens/showcase/board/FootpadIndicatorShowcase'
@@ -358,6 +359,7 @@ export default function BoardComponentsPage() {
           icon={LightningIcon}
           description="Board pill states, warning and fault rows, telemetry captures, and connection components."
         />
+        <RemoteTiltPadShowcase />
         <BoardPillShowcase />
         <BoardSelectorSheetShowcase />
         <GpsStatusPillShowcase />

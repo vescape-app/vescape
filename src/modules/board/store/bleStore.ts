@@ -18,7 +18,6 @@ import {
   addBmsListener,
   addBmsSeriesListener,
   addLocationListener,
-  getRemoteTiltState as nativeGetRemoteTiltState,
   setBmsSeriesFocused as nativeSetBmsSeriesFocused,
   setFocusedSeriesMetrics as nativeSetFocusedSeriesMetrics,
   type BoardPhase,
@@ -30,7 +29,6 @@ import {
   type BmsEvent,
   type BmsSeriesFrame,
   type BmsSeriesUpdate,
-  type RemoteTiltState,
   isReplayBoardId,
 } from 'vescape-core'
 
@@ -77,8 +75,6 @@ interface BleState {
   bmsSeries: BmsSeriesFrame[]
   bmsSeriesWindowMs: number | null
   linkIntegrity: LinkIntegrity
-  /** Active remote-tilt command mirrored from native telemetry, or null when idle. */
-  remoteTilt: RemoteTiltState | null
 }
 
 interface BleActions {
@@ -88,7 +84,6 @@ interface BleActions {
   disconnect: () => Promise<void>
   setRecordDebugSession: (enabled: boolean) => void
   syncNativeState: () => void
-  syncRemoteTilt: () => void
   setSelectedBoard: (boardId: string | null) => void
   startTelemetryRecording: () => void
   stopTelemetryRecording: () => void
@@ -274,7 +269,6 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
     telemetryRecordingEnabled: state.recording.enabled,
     telemetryRecordingPaused: state.recording.paused,
     recordingFailure: state.recording.failure ?? null,
-    remoteTilt: state.board.remoteTilt,
     linkIntegrity: state.board.linkIntegrity,
     ...(shouldSeedLiveState || !isBoardConnected
       ? {
@@ -285,15 +279,6 @@ function applyLiveState(state: LiveStateEvent, set: BleSet): void {
         }
       : {}),
   })
-}
-
-function sameRemoteTilt(a: RemoteTiltState | null, b: RemoteTiltState | null): boolean {
-  return (
-    a?.value === b?.value &&
-    a?.phase === b?.phase &&
-    a?.decay?.elapsedMs === b?.decay?.elapsedMs &&
-    a?.decay?.totalMs === b?.decay?.totalMs
-  )
 }
 
 function resetLivePresentation(set: BleSet): void {
@@ -386,15 +371,10 @@ function installLiveSubscriptions(set: BleSet): void {
     liveSub = addLiveStateListener((state) => applyLiveState(state, set))
   }
   if (!liveTickSub) {
-    // Hot path: scalar tick drives SharedValues. Remote tilt is the one deliberate
-    // store mirror here: the mounted pad needs each authoritative native command value.
+    // Hot path: scalar ticks drive SharedValues. Tilt reads its own native control state.
     liveTickSub = addLiveTickListener((tick) => {
       if (!acceptsBoardTelemetry(tick.generation)) return
       liveTelemetryRuntime.ingestTick(tick)
-      if (tick.remoteTilt !== undefined) {
-        const remoteTilt = tick.remoteTilt ?? null
-        set((state) => (sameRemoteTilt(state.remoteTilt, remoteTilt) ? {} : { remoteTilt }))
-      }
     })
   }
   if (!liveSeriesSub) {
@@ -521,7 +501,6 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
   bmsSeries: [],
   bmsSeriesWindowMs: null,
   linkIntegrity: 'unknown',
-  remoteTilt: null,
 
   startScan() {
     const currentStatus = get().status
@@ -616,12 +595,6 @@ export const useBleStore = create<BleState & BleActions>((set, get) => ({
     installLiveSubscriptions(set)
     const state = nativeGetLiveState()
     applyLiveState(state, set)
-  },
-
-  syncRemoteTilt() {
-    installLiveSubscriptions(set)
-    const remoteTilt = nativeGetRemoteTiltState()
-    set((state) => (sameRemoteTilt(state.remoteTilt, remoteTilt) ? {} : { remoteTilt }))
   },
 
   setSelectedBoard(boardId: string | null) {
