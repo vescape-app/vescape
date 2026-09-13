@@ -26,6 +26,35 @@ Source of truth: `modules/vescape-core/src/index.ts` (types), `VescapeCoreModule
 | `scan()`     | sync | void. Emits `onDevice` events per advertisement |
 | `stopScan()` | sync | void                                            |
 
+## Accessory discovery
+
+Read-only. Scanning matches the Vescape Accessory service UUID, never a name. One inspection runs at
+a time; it writes one `hello`, reads the manifest, and disconnects, so nothing on an accessory is
+activated by finding it. Contract: [accessory-protocol.md](./accessory-protocol.md).
+
+| fn                            | sync  | returns                                                               |
+| ----------------------------- | ----- | --------------------------------------------------------------------- |
+| `startAccessoryScan()`        | sync  | void. Emits `onAccessoryDevice` per advertisement                     |
+| `stopAccessoryScan()`         | sync  | void                                                                  |
+| `inspectAccessory(deviceId)`  | async | `AccessoryInspection` — `{deviceId, advertisedName, manifest, error}` |
+| `cancelAccessoryInspection()` | sync  | void                                                                  |
+
+### AccessoryManifest shape
+
+```ts
+{
+  accessoryId: string       // persistent identity; saved settings key on it, never on the BLE handle
+  name: string
+  firmwareVersion: string
+  protocolVersion: number | null   // null = no common version
+  supportedVersions: number[]      // what the accessory offers instead, only when none was agreed
+  compatibility: 'supported' | 'unsupported-version' | 'unsupported-capabilities'
+  capabilities: { id, type, supported, unit, rangeMin, rangeMax, ratesHz }[]
+}
+```
+
+`compatibility` and each capability's `supported` are native's verdict, not JS's to re-derive.
+
 ## Location
 
 | fn                       | sync | returns                                                |
@@ -352,14 +381,16 @@ Rejection codes are rider-facing; `src/modules/settings/lib/companionErrors.ts` 
 
 ## Events
 
-| event         | payload                            | when                                                                                                             |
-| ------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `onDevice`    | `{id, name, rssi, serviceUUIDs[]}` | BLE scan advertisement                                                                                           |
-| `onError`     | `{message}`                        | Native error                                                                                                     |
-| `onLiveState` | `LiveStateEvent`                   | Connection/GPS/scan/recording state change                                                                       |
-| `onTelemetry` | `TelemetryEvent`                   | Real-time board data. Includes `firedAlerts[]`                                                                   |
-| `onBms`       | `BmsEvent`                         | Smart-BMS cell-group values, ~1/8 telemetry rate. See [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
-| `onLocation`  | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
+| event                  | payload                            | when                                                                                                             |
+| ---------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `onDevice`             | `{id, name, rssi, serviceUUIDs[]}` | BLE scan advertisement                                                                                           |
+| `onError`              | `{message}`                        | Native error                                                                                                     |
+| `onLiveState`          | `LiveStateEvent`                   | Connection/GPS/scan/recording state change                                                                       |
+| `onTelemetry`          | `TelemetryEvent`                   | Real-time board data. Includes `firedAlerts[]`                                                                   |
+| `onBms`                | `BmsEvent`                         | Smart-BMS cell-group values, ~1/8 telemetry rate. See [vescProtocol.md](./vescProtocol.md#bms-cell-group-values) |
+| `onLocation`           | `LocationEvent`                    | GPS fix from `startLocationUpdates()`                                                                            |
+| `onAccessoryDevice`    | `{id, name, rssi}`                 | Vescape Accessory service advertisement                                                                          |
+| `onAccessoryScanError` | `{error}`                          | The accessory scan could not run (`bluetooth-unavailable`, `scan-failed`)                                        |
 
 ### TelemetryEvent shape (live, not history)
 

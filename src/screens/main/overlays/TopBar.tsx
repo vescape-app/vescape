@@ -17,6 +17,7 @@ import { SocialSheet } from '@/modules/group-ride/components/SocialSheet'
 import { SettingsSheet } from '@/screens/main/overlays/SettingsSheet'
 import { ConnectedBoardPill } from '@/modules/board/components/ConnectedBoardPill'
 import { BoardIssueDrawers } from '@/modules/board/components/BoardIssueDrawers'
+import { BoardSelectorAccessories } from '@/screens/main/overlays/BoardSelectorAccessories'
 import { useBoardIssues } from '@/modules/board/hooks/useBoardIssues'
 import { useBleStore } from '@/modules/board/store/bleStore'
 import { isReplayBoardId } from 'vescape-core'
@@ -81,9 +82,11 @@ export function TopBar({
   const [faultsOpen, setFaultsOpen] = useState(false)
   // What the selector was asked for on its way out. Presenting a modal while another is still
   // dismissing is dropped, so anything opened from inside the selector waits for it to leave.
-  const pendingExit = useRef<{ kind: 'warnings' | 'faults' | 'edit'; boardId?: string } | null>(
-    null,
-  )
+  const pendingExit = useRef<{
+    kind: 'warnings' | 'faults' | 'edit' | 'accessory' | 'add-accessory'
+    boardId?: string
+    accessoryId?: string
+  } | null>(null)
   const [socialOpen, setSocialOpen] = useState(false)
   const settingsRef = useRef<View>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -241,6 +244,18 @@ export function TopBar({
         visible={selectorOpen}
         triggerRef={pillRef}
         boards={boards}
+        accessories={
+          <BoardSelectorAccessories
+            onOpenAccessory={(accessoryId) => {
+              pendingExit.current = { kind: 'accessory', accessoryId }
+              setSelectorOpen(false)
+            }}
+            onAddAccessory={() => {
+              pendingExit.current = { kind: 'add-accessory' }
+              setSelectorOpen(false)
+            }}
+          />
+        }
         activeBoardId={activeBoardId}
         activeBoardLive={bleStatus === 'connected' || bleStatus === 'stale'}
         warnings={
@@ -275,6 +290,10 @@ export function TopBar({
           if (exit?.kind === 'edit' && exit.boardId) {
             router.push({ pathname: routes.editBoard, params: { boardId: exit.boardId } })
           }
+          if (exit?.kind === 'accessory' && exit.accessoryId) {
+            router.push({ pathname: routes.accessory, params: { accessoryId: exit.accessoryId } })
+          }
+          if (exit?.kind === 'add-accessory') router.push(routes.accessoryScan)
         }}
         onSelectBoard={(id) => {
           onSelectBoard(id)

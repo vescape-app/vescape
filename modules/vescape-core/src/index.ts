@@ -34,6 +34,120 @@ export interface ErrorEvent {
 }
 
 /**
+ * An advertisement from something running the Vescape Accessory service. Discovery matches the
+ * service, never the name, so `name` is a label to show and nothing to trust: the Accessory's real
+ * identity only arrives with its manifest.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryDiscovery.kt
+ * @parity /modules/vescape-core/ios/accessory/AccessoryDiscovery.swift
+ */
+export interface AccessoryDeviceEvent {
+  /** BLE address on Android, peripheral UUID on iOS — the handle `inspectAccessory` takes. */
+  id: string
+  name: string | null
+  rssi: number
+}
+
+export interface AccessoryScanErrorEvent {
+  error: 'bluetooth-unavailable' | 'scan-failed'
+}
+
+/**
+ * Capability types protocol v1 recognizes. An Accessory may advertise others; they arrive as raw
+ * strings with `supported: false` rather than being dropped.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `TYPE_GROUND_CLEARANCE`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `typeGroundClearance`
+ */
+export type AccessoryCapabilityType = 'ground_clearance' | 'brake_light'
+
+/**
+ * How much of a discovered Accessory this app can use. `unsupported-version` means the two sides
+ * found no common protocol version; `unsupported-capabilities` means the version is fine but
+ * nothing it offers is a capability type this app knows how to drive.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryCompatibility`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCompatibility`
+ */
+export type AccessoryCompatibility =
+  | 'supported'
+  | 'unsupported-version'
+  | 'unsupported-capabilities'
+
+/**
+ * One capability an Accessory declares. `supported` is native's verdict, not a re-derivation
+ * target: it already accounts for the agreed protocol version and for limits this app can work
+ * within, so JS renders it rather than recomputing it.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryCapability`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryCapability`
+ */
+export interface AccessoryCapability {
+  /** Stable within the Accessory and across firmware updates. Saved settings key on it. */
+  id: string
+  /** Raw wire type. Widen past `AccessoryCapabilityType` on purpose — unknown types are shown. */
+  type: AccessoryCapabilityType | (string & {})
+  supported: boolean
+  unit: string | null
+  rangeMin: number | null
+  rangeMax: number | null
+  ratesHz: number[]
+}
+
+/**
+ * What an Accessory said about itself on this connection.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryManifest`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryManifest`
+ */
+export interface AccessoryManifest {
+  /** Persistent Accessory identity. Survives reboots and firmware updates; a BLE address does not. */
+  accessoryId: string
+  name: string
+  firmwareVersion: string
+  /** Null when the Accessory found no common version — it then accepts no operational commands. */
+  protocolVersion: number | null
+  /** What the Accessory offers instead, present only when no version was agreed. */
+  supportedVersions: number[]
+  compatibility: AccessoryCompatibility
+  capabilities: AccessoryCapability[]
+}
+
+/**
+ * Why a handshake produced no manifest. The first three are protocol rejections, the rest are the
+ * link failing around it.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryProtocol.kt `AccessoryHandshakeError`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryProtocol.swift `AccessoryHandshakeError`
+ */
+export type AccessoryInspectionError =
+  | 'malformed'
+  | 'invalid'
+  | 'session-mismatch'
+  | 'oversized'
+  | 'invalid-utf8'
+  | 'bluetooth-unavailable'
+  | 'connect-failed'
+  | 'service-missing'
+  | 'write-failed'
+  | 'timeout'
+  | 'cancelled'
+  | 'busy'
+
+/**
+ * One completed discovery handshake. Exactly one of `manifest` and `error` is set.
+ *
+ * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/AccessoryDiscovery.kt `payload`
+ * @parity /modules/vescape-core/ios/accessory/AccessoryDiscovery.swift `payload`
+ */
+export interface AccessoryInspection {
+  deviceId: string
+  advertisedName: string | null
+  manifest: AccessoryManifest | null
+  error: AccessoryInspectionError | null
+}
+
+/**
  * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/protocol/VescTelemetryModels.kt `LocationSnapshot`
  * @parity /modules/vescape-core/ios/telemetry/TelemetryPipeline.swift `TelemetryLocationCapture`
  */
@@ -2129,6 +2243,10 @@ type VescapeCoreEvents = {
   onRouteProgress: (event: RouteProgressEvent) => void
   /** Native forecast, on every successful refresh and on subscribe. */
   onWeather: (event: WeatherEvent) => void
+  /** One advertisement from a device running the Vescape Accessory service. */
+  onAccessoryDevice: (event: AccessoryDeviceEvent) => void
+  /** The accessory scan could not run or stopped running. */
+  onAccessoryScanError: (event: AccessoryScanErrorEvent) => void
 }
 
 interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) => void>> {
@@ -2146,6 +2264,10 @@ interface NativeEventEmitter<TEvents extends Record<string, (...args: never[]) =
 type VescapeCoreNativeModule = NativeEventEmitter<VescapeCoreEvents> & {
   scan(): void
   stopScan(): void
+  startAccessoryScan(): void
+  stopAccessoryScan(): void
+  cancelAccessoryInspection(): void
+  inspectAccessory(deviceId: string): Promise<AccessoryInspection>
   exitApp(): void
   startLocationUpdates(): void
   stopLocationUpdates(): void
@@ -2368,6 +2490,37 @@ export function stopScan(): void {
   }
 
   native.stopScan()
+}
+
+/**
+ * Start scanning for Vescape Accessories — emits `onAccessoryDevice` per advertisement.
+ *
+ * Matching is on the Accessory service UUID, so a renamed accessory is still found and a device
+ * that merely copies the name is not. Scanning alone enrolls nothing.
+ */
+export function startAccessoryScan(): void {
+  native.startAccessoryScan()
+}
+
+/** Stop the accessory scan. Also stopped natively for the duration of an inspection. */
+export function stopAccessoryScan(): void {
+  native.stopAccessoryScan()
+}
+
+/**
+ * Connect to one discovered device, read its manifest, and disconnect.
+ *
+ * The whole exchange is one `hello` and one manifest: no configuration is sent, no measurement
+ * starts, and no light changes. Native owns the framing, the session and the compatibility verdict;
+ * this returns what it decided.
+ */
+export function inspectAccessory(deviceId: string): Promise<AccessoryInspection> {
+  return native.inspectAccessory(deviceId)
+}
+
+/** Abandon an inspection whose screen the rider already left. */
+export function cancelAccessoryInspection(): void {
+  native.cancelAccessoryInspection()
 }
 
 /** Start app-level Android location updates independently of a board session. */
@@ -3434,6 +3587,18 @@ export function addDeviceListener(cb: (event: DeviceFoundEvent) => void): EventS
   }
 
   return emitter.addListener('onDevice', cb)
+}
+
+export function addAccessoryDeviceListener(
+  cb: (event: AccessoryDeviceEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryDevice', cb)
+}
+
+export function addAccessoryScanErrorListener(
+  cb: (event: AccessoryScanErrorEvent) => void,
+): EventSubscription {
+  return emitter.addListener('onAccessoryScanError', cb)
 }
 
 export function addErrorListener(cb: (event: ErrorEvent) => void): EventSubscription {

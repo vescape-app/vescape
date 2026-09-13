@@ -1,6 +1,18 @@
 # Accessories
 
-Design in progress. These are agreed requirements, not implemented behavior.
+Design in progress. Most of this is agreed requirements, not implemented behavior.
+
+**Implemented so far**: discovery. The Board selector has separate Boards and Accessories sections
+with an Add accessory action; scanning matches the Vescape Accessory service UUID rather than a
+name; connecting reads the manifest and reports identity, firmware version, protocol compatibility
+and capability types. Native owns the radio, the framing, the protocol session and the compatibility
+verdict — `startAccessoryScan` / `inspectAccessory` on both platforms — and JS renders it. Discovery
+disconnects as soon as the manifest is read, so nothing on an accessory can be activated by finding
+it.
+
+**Not implemented**: enrollment and saved identities, auto-connect, calibration, measurements, tilt
+bindings, and brake-light behavior. Accessories listed in the selector are what the current session
+discovered, not saved units.
 
 ## Initial scope
 

@@ -18,6 +18,7 @@ const ALLOWED_EDGES = new Set([
   'alerts -> battery',
   'board -> battery',
   // settings store is app-settings truth read by domain stores
+  'accessories -> settings',
   'alerts -> settings',
   'board -> settings',
   'history -> settings',

@@ -5,6 +5,7 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.vescapecore.diagnostics.UnexpectedNativeError
 import expo.modules.vescapecore.telemetry.FavoriteMediaCleanupException
 
+import expo.modules.vescapecore.accessory.AccessoryDiscovery
 import expo.modules.vescapecore.alerts.AlertFeedback
 import expo.modules.vescapecore.alerts.normalizedAlertBeepCount
 import expo.modules.vescapecore.alerts.normalizedAlertRepeatSeconds
@@ -193,7 +194,15 @@ class VescapeCoreModule : Module() {
       "onNavigation",
       "onRouteProgress",
       "onWeather",
+      "onAccessoryDevice",
+      "onAccessoryScanError",
     )
+
+    // Accessory discovery pushes devices as the radio finds them; the module is only the pipe.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `AccessoryDiscovery`
+    AccessoryDiscovery.emit = { name, body ->
+      mainHandler.post { if (shouldEmitToFrontend(name)) sendEvent(name, body) }
+    }
 
     // Native owns App Status truth; JS mirrors it. Push every successful refresh (late subscribers
     // pull the current snapshot below and through `getAppStatus`).
@@ -369,6 +378,10 @@ class VescapeCoreModule : Module() {
       sendEvent("onWeather", mapOf("weather" to WeatherCoordinator.get().current?.toMap()))
     }
     OnStopObserving("onWeather") { stopObserving("onWeather") }
+    OnStartObserving("onAccessoryDevice") { startObserving("onAccessoryDevice") }
+    OnStopObserving("onAccessoryDevice") { stopObserving("onAccessoryDevice") }
+    OnStartObserving("onAccessoryScanError") { startObserving("onAccessoryScanError") }
+    OnStopObserving("onAccessoryScanError") { stopObserving("onAccessoryScanError") }
 
     OnCreate {
       val storageOutageEvents = StorageOutageEventBridge(
@@ -412,6 +425,9 @@ class VescapeCoreModule : Module() {
       previewAlertFeedback = null
       stopAlertTest()
       cancelActiveProbe(null, "module_destroyed")
+      AccessoryDiscovery.emit = null
+      AccessoryDiscovery.stopScan()
+      AccessoryDiscovery.cancelInspection()
       if (CoreForegroundService.emitEvent != null) {
         CoreForegroundService.emitEvent = null
       }
@@ -419,6 +435,17 @@ class VescapeCoreModule : Module() {
 
     Function("scan") { startScan(resetRetries = true) }
     Function("stopScan") { stopScanInternal() }
+
+    // Accessory discovery. Read-only: it scans for the Vescape Accessory service, reads one
+    // manifest, and disconnects. No Board or Accessory control can start from here.
+    // @parity /modules/vescape-core/ios/VescapeCoreModule.swift `startAccessoryScan`
+    // @parity /modules/vescape-core/src/index.ts `startAccessoryScan`
+    Function("startAccessoryScan") { AccessoryDiscovery.startScan(context.applicationContext) }
+    Function("stopAccessoryScan") { AccessoryDiscovery.stopScan() }
+    Function("cancelAccessoryInspection") { AccessoryDiscovery.cancelInspection() }
+    AsyncFunction("inspectAccessory") { deviceId: String, promise: Promise ->
+      AccessoryDiscovery.inspect(context.applicationContext, deviceId) { promise.resolve(it) }
+    }
     Function("exitApp") { CoreForegroundService.exitApp(context.applicationContext) }
     Function("startLocationUpdates") { startLocationUpdates() }
     Function("stopLocationUpdates") { stopLocationUpdates() }

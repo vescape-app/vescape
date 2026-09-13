@@ -14,6 +14,7 @@ import {
   GearSixIcon,
   LightningIcon,
   MarkdownLogoIcon,
+  PlugsConnectedIcon,
   SquaresFourIcon,
   StackIcon,
   TextAaIcon,
@@ -109,6 +110,13 @@ const groups = [
         route: '/settings/components/board',
         icon: LightningIcon,
         color: theme.palette.sky.color,
+      },
+      {
+        label: 'Accessories',
+        hint: 'Accessory rows, compatibility verdicts, and capability listings',
+        route: '/settings/components/accessories',
+        icon: PlugsConnectedIcon,
+        color: theme.palette.teal.color,
       },
       {
         label: 'Widgets',
