@@ -272,6 +272,12 @@ export interface ClearancePreviewDiagnostics {
  */
 
 export interface AccessoryReadingEvent {
+  /** Calibration-derived Remote Tilt percentage, independent of Board connection/engagement.
+   * Null for invalid readings or missing calibration. Never a command acknowledgement.
+   * @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/accessory/GroundClearance.kt `acceptReading`
+   * @parity /modules/vescape-core/ios/accessory/GroundClearance.swift `acceptReading`
+   */
+  tiltPreviewPercent?: number | null
   diagnostics?: ClearancePreviewDiagnostics | null
   accessoryId: string
   capabilityId: string

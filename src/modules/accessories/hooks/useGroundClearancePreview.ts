@@ -15,6 +15,7 @@ export interface GroundClearancePreview {
   /** Null before the first sample, and again once the stream goes quiet. */
   reading: LiveReading
   liveValue: SharedValue<number>
+  tiltPreviewPercent: SharedValue<number>
   diagnostics: ClearancePreviewDiagnostics | null
   /**
    * A sample arrived and then the stream stopped.
@@ -48,6 +49,7 @@ export function useGroundClearancePreview(
   capabilityId: string | undefined,
 ): GroundClearancePreview {
   const liveValue = useSharedValue(Number.NaN)
+  const tiltPreviewPercent = useSharedValue(Number.NaN)
   const [diagnostics, setDiagnostics] = useState<ClearancePreviewDiagnostics | null>(null)
   const [reading, setReading] = useState<LiveReading>(null)
   const [stalled, setStalled] = useState(false)
@@ -71,6 +73,7 @@ export function useGroundClearancePreview(
         // and it is not stale either — nothing is being measured at all.
         clearExpiry()
         liveValue.value = Number.NaN
+        tiltPreviewPercent.value = Number.NaN
         setDiagnostics(null)
         setReading(null)
         setStalled(false)
@@ -80,6 +83,8 @@ export function useGroundClearancePreview(
     const subscription = addAccessoryReadingListener((event) => {
       if (event.accessoryId !== accessoryId || event.capabilityId !== capabilityId) return
       liveValue.value = event.status === 'ok' ? (event.valueCm ?? Number.NaN) : Number.NaN
+      tiltPreviewPercent.value =
+        event.status === 'ok' ? (event.tiltPreviewPercent ?? Number.NaN) : Number.NaN
       if (event.diagnostics) {
         setDiagnostics(event.diagnostics)
         setReading({ status: event.status, valueCm: event.valueCm, seq: event.seq })
@@ -89,6 +94,7 @@ export function useGroundClearancePreview(
       expiry.current = setTimeout(() => {
         expiry.current = null
         liveValue.value = Number.NaN
+        tiltPreviewPercent.value = Number.NaN
         setReading(null)
         setStalled(true)
       }, event.staleAfterMs)
@@ -105,7 +111,7 @@ export function useGroundClearancePreview(
       demand(false)
       clearExpiry()
     }
-  }, [accessoryId, capabilityId, liveValue])
+  }, [accessoryId, capabilityId, liveValue, tiltPreviewPercent])
 
-  return { reading, stalled, liveValue, diagnostics }
+  return { reading, stalled, liveValue, tiltPreviewPercent, diagnostics }
 }

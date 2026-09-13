@@ -8,6 +8,7 @@ import type { ChartSpec } from '@/components/charts/line/types'
 import { useResolvedAccentColors } from '@/hooks/useTheme'
 import { theme } from '@/constants/theme'
 import { LiveNumber } from './LiveNumber'
+import { GroundClearanceTiltPreview } from './GroundClearanceTiltPreview'
 import { SensorBar } from './SensorBar'
 import { useGroundClearancePreview } from '../hooks/useGroundClearancePreview'
 import { readingCopy } from '../lib/groundClearanceCopy'
@@ -22,10 +23,8 @@ export function GroundClearanceTelemetry({
   capabilityId: string
   range: { min: number; max: number }
 }) {
-  const { liveValue, diagnostics, reading, stalled } = useGroundClearancePreview(
-    accessoryId,
-    capabilityId,
-  )
+  const { liveValue, tiltPreviewPercent, diagnostics, reading, stalled } =
+    useGroundClearancePreview(accessoryId, capabilityId)
   const colors = useResolvedAccentColors().sky
   const charts = useMemo<ChartSpec[]>(
     () => [
@@ -56,6 +55,7 @@ export function GroundClearanceTelemetry({
   )
   return (
     <>
+      <GroundClearanceTiltPreview value={tiltPreviewPercent} />
       <SettingsSectionTitle>Readings</SettingsSectionTitle>
       <View style={styles.reading}>
         <View style={styles.row}>

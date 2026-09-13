@@ -502,6 +502,10 @@ final class GroundClearanceBindingController {
       "status": checked.status.rawValue,
       "valueCm": checked.valueCm,
       "staleAfterMs": GroundClearance.staleAfterMs(rateHz: state.rateHz),
+      // Preview the same mapping as riding, without granting permission to drive.
+      "tiltPreviewPercent": checked.valueCm.flatMap { value in
+        state.isCalibrated ? state.calibration.map { $0.tiltInput(valueCm: value) * 100 } : nil
+      },
     ]
   }
 

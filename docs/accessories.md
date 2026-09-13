@@ -59,9 +59,10 @@ nearest supported rate is selected (ties choose the lower rate). The active ackn
 shown separately from the selection. Hardware range limits are distinct from near/far calibration.
 
 Light setup displays the requested riding/braking/parked/preview state, or disconnected/no-telemetry
-status. Clearance setup reads the existing native Remote Tilt command and release reason while
-visible, at most four times per second with no overlapping reads. The percentage is the Board's
-sensor-owned Remote Tilt input, including its return to neutral, not a measured physical angle.
+status. Clearance setup shows a **Tilt preview** calculated natively from each fresh reading and
+the saved near/far, mounting direction, and strength. It uses the same mapping as the riding
+binding and works without a Board connection. Invalid/stale readings or missing calibration show
+no percentage. This preview never sends a command or bypasses the riding and connection gates.
 
 - A board-mounted distance sensor controls Remote Tilt from ground clearance.
 - A separate light accessory responds to Board braking telemetry.

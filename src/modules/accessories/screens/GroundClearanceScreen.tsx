@@ -3,7 +3,6 @@ import { ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ArrowsVerticalIcon } from 'phosphor-react-native'
 import {
-  clearGroundClearanceCalibration,
   saveGroundClearanceCalibration,
   setAccessorySamplingRate,
   type GroundClearanceDirection,
@@ -17,7 +16,6 @@ import { IconHero } from '@/components/settings/IconHero'
 import { SettingsSectionTitle } from '@/components/settings/SettingsSectionTitle'
 import { GroundClearanceTelemetry } from '@/modules/accessories/components/GroundClearanceTelemetry'
 import { CapabilityEnabledControl } from '../components/CapabilityEnabledControl'
-import { GroundClearanceTiltStatus } from '../components/GroundClearanceTiltStatus'
 import { capabilityLimits } from '../constants/accessoryCapabilities'
 import {
   calibrationProblemCopy,
@@ -140,22 +138,6 @@ export function GroundClearanceScreen({
     [accessoryId, capabilityId],
   )
 
-  const onClear = useCallback(() => {
-    // The pending edit goes with the timer: flushing it after a clear would put the calibration
-    // straight back. Native orders the two writes anyway, but asking for both is still nonsense.
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = null
-    pending.current = null
-    void clearGroundClearanceCalibration(accessoryId, capabilityId)
-    setProblem(null)
-    setDraft({
-      nearCm: DEFAULT_NEAR_CM,
-      farCm: DEFAULT_FAR_CM,
-      direction: 'nose',
-      strengthPercent: DEFAULT_STRENGTH_PERCENT,
-    })
-  }, [accessoryId, capabilityId])
-
   const changeRate = async (rateHz: number) => {
     setSavingRate(true)
     setRateFailed(false)
@@ -213,8 +195,6 @@ export function GroundClearanceScreen({
         {rateFailed ? (
           <Text style={styles.warning}>Could not save sampling rate. Try again.</Text>
         ) : null}
-        <GroundClearanceTiltStatus />
-        <Text style={styles.hint}>Commanded Remote Tilt, not the board’s measured angle.</Text>
         {capability.enabled !== false ? (
           <GroundClearanceTelemetry
             accessoryId={accessoryId}
@@ -307,10 +287,6 @@ export function GroundClearanceScreen({
               />
             </View>
           </>
-        ) : null}
-
-        {configured ? (
-          <Button label="Clear calibration" variant="destructive" onPress={onClear} />
         ) : null}
 
         <SettingsSectionTitle>Sensor details</SettingsSectionTitle>

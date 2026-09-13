@@ -574,6 +574,10 @@ internal class GroundClearanceBindingController(
             "status" to checked.status.wire,
             "valueCm" to checked.valueCm,
             "staleAfterMs" to GroundClearance.staleAfterMs(state.rateHz),
+            // Preview the same mapping as riding, without granting permission to drive.
+            "tiltPreviewPercent" to checked.valueCm?.let { value ->
+                state.calibration?.takeIf { state.isCalibrated }?.tiltInput(value)?.times(100.0)
+            },
         )
     }
 
