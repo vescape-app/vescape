@@ -176,6 +176,7 @@ export function GroundClearanceScreen({
           <Text style={styles.fieldLabel}>{accessory.name}</Text>
           <Text style={styles.hint}>{status.label}</Text>
         </View>
+        <SettingsSectionTitle>Ground clearance</SettingsSectionTitle>
         <CapabilityEnabledControl accessoryId={accessoryId} capability={capability} />
         <SettingsSectionTitle>Sampling rate</SettingsSectionTitle>
         <View style={styles.rates}>

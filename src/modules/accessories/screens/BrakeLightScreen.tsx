@@ -124,6 +124,7 @@ export function BrakeLightScreen({
           <Text style={styles.hint}>Brake light not available.</Text>
         ) : (
           <>
+            <SettingsSectionTitle>Brake light</SettingsSectionTitle>
             <CapabilityEnabledControl
               accessoryId={accessoryId}
               capability={capability}
@@ -174,8 +175,7 @@ export function BrakeLightScreen({
                 iconWeight="regular"
                 label="While parked"
                 hint="What the light does once the Board stops."
-              >
-                <View style={styles.rowControl}>
+                right={
                   <SegmentedToggle
                     options={[
                       { value: 'off', label: 'Off' },
@@ -187,8 +187,8 @@ export function BrakeLightScreen({
                     variant="secondary"
                     testID="brake-light-parked"
                   />
-                </View>
-              </SettingsRow>
+                }
+              />
             </SettingsCard>
 
             {problem ? <Text style={styles.problem}>{problem}</Text> : null}
@@ -209,6 +209,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   hint: { color: theme.neutral.textMuted, fontSize: 12, lineHeight: 16 },
-  rowControl: { paddingHorizontal: 14, paddingBottom: 14 },
   problem: { color: theme.palette.red.color, fontSize: 12 },
 })
