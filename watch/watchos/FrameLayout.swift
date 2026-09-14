@@ -74,7 +74,15 @@ struct FrameLayout: View {
     Canvas { context, size in
       let rim = Rim.path(in: size, inset: Rim.inset)
       let metrics = Rim.Metrics(size: size, inset: Rim.inset)
-      let glow = ambient.glow(STRONG_GLOW * dimGlow(focus))
+      let glowDim = ambient.glow(dimGlow(focus))
+      let glow = STRONG_GLOW * glowDim
+      let batteryFraction = blind ? 0 : WatchGauge.batteryFraction(frame.battery)
+      let motorFraction = blind ? 0 : WatchGauge.tempFraction(frame.motorTemp)
+      let ctrlFraction = blind ? 0 : WatchGauge.tempFraction(frame.ctrlTemp)
+      // @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `FrameLayout`
+      let batteryGlow = (0.06 + 0.20 * batteryFraction) * glowDim
+      let motorGlow = (0.08 + 0.40 * motorFraction) * glowDim
+      let ctrlGlow = (0.08 + 0.40 * ctrlFraction) * glowDim
       let centre = CGPoint(x: metrics.rect.midX, y: metrics.rect.midY)
 
       context.drawRimGauge(
@@ -89,20 +97,20 @@ struct FrameLayout: View {
       )
       context.drawRimGauge(
         rim, span: metrics.battery,
-        fraction: blind ? 0 : WatchGauge.batteryFraction(frame.battery),
-        color: batteryColor, style: .soft, glow: glow * BATTERY_GLOW_SCALE, center: centre
+        fraction: batteryFraction,
+        color: batteryColor, style: .soft, glow: batteryGlow, center: centre
       )
       context.drawRimGauge(
         rim, span: metrics.motorTemp,
-        fraction: blind ? 0 : WatchGauge.tempFraction(frame.motorTemp),
+        fraction: motorFraction,
         color: ambient.lane(frame.motorTemp, muted: muted, Palette.motorTemp),
-        style: .soft, glow: glow * TEMP_GLOW_SCALE, center: centre
+        style: .soft, glow: motorGlow, center: centre
       )
       context.drawRimGauge(
         rim, span: metrics.ctrlTemp,
-        fraction: blind ? 0 : WatchGauge.tempFraction(frame.ctrlTemp),
+        fraction: ctrlFraction,
         color: ambient.lane(frame.ctrlTemp, muted: muted, Palette.ctrlTemp),
-        style: .soft, glow: glow * TEMP_GLOW_SCALE, center: centre
+        style: .soft, glow: ctrlGlow, center: centre
       )
     }
     .ignoresSafeArea()
@@ -172,7 +180,15 @@ struct FrameLayout: View {
     valuePosition: CGPoint, labelPosition: CGPoint, rotation: Double
   ) -> some View {
     ZStack {
-      secondaryValue(value, color: color)
+      secondaryValue(value.hasSuffix("°") ? String(value.dropLast()) : value, color: color)
+        .overlay(alignment: .trailing) {
+          if value.hasSuffix("°") {
+            GeometryReader { geometry in
+              secondaryValue("°", color: color)
+                .offset(x: geometry.size.width + 1)
+            }
+          }
+        }
         .position(valuePosition)
       Text(label)
         .font(.system(size: 7))
@@ -227,10 +243,6 @@ private let HERO_EMPTY_FONT_SIZE: CGFloat = 20
 private let SECONDARY_FONT_SIZE: CGFloat = 14
 private let TEMP_LABEL_LENGTH: CGFloat = 28
 private let BOTTOM_READOUT_INSET: CGFloat = 12
-
-/// The quieter gauges carry less glow than the headline pair, the same ratios Android uses.
-private let BATTERY_GLOW_SCALE = 0.55
-private let TEMP_GLOW_SCALE = 0.7
 
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `HERO_FOCUS_RISE`
 private let HERO_FOCUS_RISE: CGFloat = 30

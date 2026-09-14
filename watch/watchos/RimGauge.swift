@@ -201,10 +201,8 @@ extension GraphicsContext {
   /// One gauge: a thin guide across its whole span, the value drawn over it, a soft wider pass
   /// underneath for the glow, and a tick at the head.
   ///
-  /// Android fills a pie wedge from the centre of the circle with a radial gradient. A rectangle has
-  /// no centre to sweep from, so the glow is a wider, dimmer pass along the same line — the same
-  /// job (the lit value reads brighter than the guide) with a shape the panel actually has. Ambient
-  /// drops it to the flat line, because the glow is the lit pixels.
+  /// An inward gradient follows the rim's normal, with a perpendicular edge at the value tip.
+  /// Ambient keeps only the line.
   ///
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/FrameGauges.kt `drawGauge`
   func drawRimGauge(
@@ -228,17 +226,45 @@ extension GraphicsContext {
     let lit = rim.trimmedPath(from: value.lowerBound, to: value.upperBound)
 
     if glow > 0 {
-      stroke(
-        lit,
-        with: .color(color.opacity(glow)),
-        style: StrokeStyle(lineWidth: style.valueWidth * GLOW_WIDTH_MULTIPLIER, lineCap: .round)
-      )
+      drawInnerGlow(rim, lit: lit, color: color, strength: glow)
     }
     stroke(lit, with: .color(color), style: StrokeStyle(lineWidth: style.valueWidth, lineCap: .butt))
 
     guard style.drawsHead else { return }
     let tip = span.origin + (span.head - span.origin) * min(max(fraction, 0), 1)
     drawHeadTick(rim, at: tip, color: color, width: style.valueWidth, center: center)
+  }
+
+  /// Butt-ended strokes keep the glow perpendicular to the path at both ends. Clipping to the
+  /// rim removes their outer halves, leaving only the inward gradient, including around corners.
+  private func drawInnerGlow(_ rim: Path, lit: Path, color: Color, strength: Double) {
+    var fill = self
+    fill.clip(to: rim)
+    let depth = min(rim.boundingRect.width, rim.boundingRect.height) / 4
+    let steps = max(1, Int(ceil(depth * 2)))
+    var previousAlpha = 0.0
+    for step in 0..<steps {
+      let progress = 0.5 + 0.5 * (Double(step) + 0.5) / Double(steps)
+      // Android's stops: transparent halfway out, 40% at 80%, 74% at 95%, full at the rim.
+      let intensity: Double
+      if progress < 0.8 {
+        intensity = (progress - 0.5) / 0.3 * 0.4
+      } else if progress < 0.95 {
+        intensity = 0.4 + (progress - 0.8) / 0.15 * 0.34
+      } else {
+        intensity = 0.74 + (progress - 0.95) / 0.05 * 0.26
+      }
+      let alpha = min(1, strength * intensity)
+      // Each narrower stroke adds only the opacity missing from the wider passes beneath it.
+      let addedAlpha = (alpha - previousAlpha) / max(1 - previousAlpha, 0.0001)
+      fill.stroke(
+        lit, with: .color(color.opacity(addedAlpha)),
+        style: StrokeStyle(
+          lineWidth: depth * 4 * (1 - progress), lineCap: .butt, lineJoin: .round
+        )
+      )
+      previousAlpha = alpha
+    }
   }
 
   /// A short tick across the rim at the current value, perpendicular to whichever edge it landed
@@ -277,9 +303,6 @@ extension GraphicsContext {
     stroke(tick, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
   }
 }
-
-/// How far the glow pass spreads either side of the value line.
-private let GLOW_WIDTH_MULTIPLIER: CGFloat = 2.6
 
 /// The head tick reaches inward, where there is room, and barely past the rim, where there is not.
 private let HEAD_TICK_INNER: CGFloat = 7
