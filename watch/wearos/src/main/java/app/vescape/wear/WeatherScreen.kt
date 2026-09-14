@@ -38,6 +38,8 @@ import androidx.wear.compose.material.Text
  *
  * Read-only, like every wrist surface: the phone owns the forecast and there is no way to ask it for
  * a fresher one from here (ADR-0019 keeps the mirror one-way for data).
+ *
+ * @parity /watch/watchos/WeatherScreen.swift
  */
 @Composable
 fun WeatherScreen() {

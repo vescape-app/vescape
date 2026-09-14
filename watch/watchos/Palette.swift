@@ -30,6 +30,25 @@ enum Palette {
     parseWatchRiderColor(hex).map { Color(red: $0.red, green: $0.green, blue: $0.blue) }
   }
 
+  /// Condition slug into its colour. The phone resolves the slug from the WMO code, so the wrist
+  /// never classifies weather — an unknown slug from a newer phone takes the neutral grey rather
+  /// than nothing.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/Palette.kt `weatherColor`
+  static func weather(_ slug: String) -> Color {
+    switch slug {
+    case "sun": return Color(red: 0.984, green: 0.749, blue: 0.141)  // amber.light #FBBF24
+    case "moon": return Color(red: 0.655, green: 0.545, blue: 0.980)  // violet.moon #A78BFA
+    case "cloud-sun": return Color(red: 0.961, green: 0.620, blue: 0.043)  // amber.color #F59E0B
+    case "cloud-moon": return Color(red: 0.486, green: 0.435, blue: 0.937)  // violet.color #7C6FEF
+    case "cloud-fog": return Color(red: 0.796, green: 0.835, blue: 0.882)  // slate.text #CBD5E1
+    case "cloud-rain": return Color(red: 0.376, green: 0.647, blue: 0.980)  // blue.color #60A5FA
+    case "cloud-snow": return Color(red: 0.729, green: 0.902, blue: 0.992)  // sky.snow #BAE6FD
+    case "cloud-lightning": return Color(red: 0.753, green: 0.518, blue: 0.988)  // purple.thunder #C084FC
+    default: return Color(red: 0.580, green: 0.639, blue: 0.722)  // slate.light #94A3B8
+    }
+  }
+
   static func battery(for value: Double?) -> Color {
     guard let value else { return secondaryText }
     return value < WatchGauge.batteryWarningPercent ? warning : battery

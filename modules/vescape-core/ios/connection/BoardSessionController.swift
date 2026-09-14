@@ -2431,7 +2431,30 @@ internal final class BoardSessionController: VescGattListener {
     }
     watchPusher.start()
     reloadWatchSettings()
+    // Native, not through the module's `onChange`: that slot is re-assigned on every JS reload, and
+    // the wrist forecast must survive one. A forecast already in hand at launch is pushed straight
+    // away — the coordinator keeps it for the life of the process, so waiting for the next refresh
+    // would leave a reconnecting wrist blank for up to ten minutes.
+    WeatherCoordinator.shared.onNativeChange = { [weak self] weather in
+      self?.scheduler.post { self?.pushWatchWeather(weather) }
+    }
+    if let known = WeatherCoordinator.shared.current { pushWatchWeather(known) }
     watchTick.start()
+  }
+
+  /// Last forecast handed to the cold-state channel. Compared with `WatchWeather`'s own equality,
+  /// which deliberately ignores `fetchedAtMs`: refetching the same numbers ten minutes later is not
+  /// something the wrist should redraw for.
+  private var pushedWatchWeather: WatchWeather?
+
+  /// A new forecast, mirrored to the wrist.
+  ///
+  /// @parity /modules/vescape-core/android/src/main/java/expo/modules/vescapecore/connection/BoardSessionController.kt `onWeatherChanged`
+  private func pushWatchWeather(_ weather: Weather) {
+    let next = weather.watchWeather
+    if let pushedWatchWeather, pushedWatchWeather == next { return }
+    pushedWatchWeather = next
+    watchPusher.pushColdState(channel: watchWeatherChannel, payload: next.payload)
   }
 
   /// Latest wrist wake level and when it landed. The Mirror re-sends on a heartbeat, so a level

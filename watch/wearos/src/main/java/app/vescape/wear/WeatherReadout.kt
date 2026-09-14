@@ -23,6 +23,8 @@ import androidx.wear.compose.material.Text
  *
  * Renders nothing until the phone has pushed a forecast, so the layout above the gauges is unchanged
  * on a phone too old to send one. Tapping opens [WeatherScreen].
+ *
+ * @parity /watch/watchos/WeatherReadout.swift
  */
 @Composable
 internal fun WeatherReadout(muted: Boolean, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {

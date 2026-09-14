@@ -42,6 +42,17 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchSettings.kt `SettingsState`
   @Published private(set) var settings: WatchSettings = .wristDefaults
 
+  /// The phone's forecast, as last pushed. Cold state on the same channel-merged context as the
+  /// settings, so a wrist restart or a reconnect finds the current forecast already there instead
+  /// of a blank weather page until the phone next refreshes.
+  ///
+  /// Held raw, including when it has aged out: `freshWeather(nowMs:)` is what decides whether it is
+  /// still worth showing, and the difference between "stale" and "never arrived" is what the radar
+  /// and weather pages say to the rider.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `WeatherState`
+  @Published private(set) var weather: WatchWeather?
+
   /// Latest wake level reported to the phone, and the heartbeat that keeps re-asserting it.
   private var wakeLevel: WatchMirrorWakeLevel = .asleep
   private var wakeHeartbeat: Timer?
@@ -182,6 +193,19 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
   private func acceptColdState(_ context: [String: Any]) {
     let next = WatchSettings.decode(context: context)
     if next != settings { settings = next }
+    let forecast = WatchWeather.decode(context: context)
+    // Equality ignores `fetchedAtMs`, so a re-push of the same numbers must still land: the wrist
+    // ages a forecast off that stamp, and keeping the old one would retire weather the phone is
+    // still refreshing. Only an absent channel leaves the wrist with nothing.
+    if forecast != weather || forecast?.fetchedAtMs != weather?.fetchedAtMs { weather = forecast }
+  }
+
+  /// The pushed forecast while it is still worth believing, else nil.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `freshWeather`
+  func freshWeather(nowMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) -> WatchWeather? {
+    guard let weather, weather.isFresh(nowMs: nowMs) else { return nil }
+    return weather
   }
 
   // MARK: - WCSessionDelegate

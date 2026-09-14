@@ -127,6 +127,23 @@ struct MirrorScreen: View {
   /// once per body evaluation.
   private var tick: Int { Int(Date().timeIntervalSince1970 / refreshInterval) }
 
+  /// Whether the radar page is allowed to fetch. It is the one surface on the wrist that spends
+  /// network on its own, so this is the difference between an idle watch and a fetching one: the
+  /// radar page has to be the settled page, the app has to be in the foreground, and the wrist must
+  /// not be in the Always On state. A wrist left on the radar page and then lowered stops fetching
+  /// rather than looping on a screen nobody can see.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `radarVisible`
+  private var radarVisible: Bool {
+    vertical == .radar && scenePhase == .active && !isLuminanceReduced
+  }
+
+  /// The phone's forecast while it is still worth believing. Re-read per timeline beat, so an
+  /// aged-out reading disappears on its own without waiting for a push that is never coming.
+  ///
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/WatchWeather.kt `freshWeather`
+  private var freshWeather: WatchWeather? { link.freshWeather() }
+
   // MARK: - Axes
 
   /// One scroll view owns the whole vertical axis, and the crown with it. Android stacks the same
@@ -168,9 +185,13 @@ struct MirrorScreen: View {
   private func verticalContent(_ page: VerticalPage) -> some View {
     switch page {
     case .radar:
-      PendingPage(title: "Radar")
+      RadarScreen(
+        visible: radarVisible,
+        forecast: freshWeather,
+        riderColor: Palette.rider(link.settings.riderColor) ?? Palette.speed
+      )
     case .weather:
-      PendingPage(title: "Weather")
+      WeatherScreen(forecast: freshWeather, everReceived: link.weather != nil)
     case .gauges:
       controls
     case .nav:
@@ -214,7 +235,13 @@ struct MirrorScreen: View {
       if case .disconnected = link.mirror.status {
         DisconnectedLayout(link: link.link, ambient: ambient)
       } else {
-        Color.clear
+        WeatherReadout(
+          forecast: freshWeather,
+          ambient: ambient,
+          // Only tappable while this page actually owns the screen; mid-transition the target
+          // would swallow the drag that is moving the pager.
+          onTap: interactionEnabled(.gauges) ? { withAnimation { vertical = .weather } } : nil
+        )
       }
     case .move:
       PendingPage(title: "Move")

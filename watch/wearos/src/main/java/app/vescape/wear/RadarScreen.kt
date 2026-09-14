@@ -53,6 +53,8 @@ import kotlin.math.roundToInt
  *
  * The only wrist surface that fetches for itself (see [RadarState]); it does so only while it is
  * the page on screen.
+ *
+ * @parity /watch/watchos/RadarScreen.swift
  */
 @Composable
 fun RadarScreen(visible: Boolean) {

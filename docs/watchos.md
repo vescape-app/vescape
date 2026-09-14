@@ -412,3 +412,87 @@ device session, as does whether `scenePhase` reports `.inactive` for the Always 
 hardware. The `ios/` tree on this machine has no Pods and no workspace, so the iPhone app itself was
 not compiled: the one edit outside the SwiftPM package is the four-line settings-key hook in
 `VescapeCoreModule.swift`.
+
+## Weather and radar (#488)
+
+The forecast now reaches the wrist from native iOS, and Wear OS's forecast and radar pages are on
+the rectangle.
+
+### Weather is a cold-state channel, not a second writer
+
+`WatchWeather.swift` is compiled into both targets, the arrangement `WatchFrame.swift` and
+`WatchSettings.swift` already use, so the encoder and the decoder cannot drift. It rides the merged
+Application Context as the `weather` channel through `WatchColdState` — the single writer — for the
+reasons that file documents: latest-value-wins, survives a restart and a reconnect, no backlog.
+Android publishes the same bag on its own `/weather` Data Layer path; the keys are Android's, key
+for key, so the two wrists read the same forecast.
+
+The push is native and process scoped. `WeatherCoordinator.onChange` belongs to the Expo module and
+is re-assigned on every JS reload, so the mirror hangs off a second slot, `onNativeChange`, wired in
+`startWatchMirror()` — the wrist keeps its forecast through a backgrounded phone and a JS restart.
+A forecast already in hand at launch is pushed immediately rather than waited for: the coordinator
+keeps the last successful one for the life of the process, and a reconnecting wrist would otherwise
+sit blank for up to ten minutes.
+
+Equality deliberately ignores `fetchedAtMs`, matching Android: refetching the same numbers ten
+minutes later is not something the wrist should redraw for. The wrist reads the stamp anyway and
+retires a forecast after three hours, so a phone that stopped refreshing shows "Forecast too old"
+rather than yesterday's conditions looking current. Nothing arrived at all reads as "No forecast /
+Waiting for your phone" — a different sentence, because it is a different problem.
+
+### Radar fetches on the watch, and only while its page is on screen
+
+RainViewer imagery is a dozen 256 px PNGs per refresh, worthless once stale, looked at on exactly
+one page. Both `WCSession` deliveries are the wrong shape for it: `sendMessageData` is capped well
+below a frame set and drops whenever the phone is away — which is when a watch on Wi-Fi can still
+fetch — and `transferFile` is a background queue with no cancellation, so a page the rider swiped
+past would keep spending the phone's radio and then deliver frames that are already history. So the
+watch fetches the frames itself, the same decision Wear OS made, and the phone still owns _where_
+the rider is: frames are centred on the forecast location it pushed, so the watch never touches
+location services. A watch with no network shows "No radar / Watch has no network" and every other
+page is unaffected.
+
+The lifecycle is structured concurrency, not a flag consulted by a timer. `radarVisible` is the
+radar page being the settled vertical page, `scenePhase == .active`, and not `isLuminanceReduced`;
+both the fetch and the frame animation hang off `task(id:)` keyed on it. Leaving the page, lowering
+the wrist or backgrounding the app cancels the task, and with it the in-flight `URLSession`
+request — there is no detached task anywhere in `RadarStore`, which is what makes that cancellation
+complete rather than advisory. A cancelled load is not reported as a failure: the rider left, and
+telling them the watch has no network next time would be a lie.
+
+### What the rectangle changed
+
+- **Range rings are measured off the long side.** Wear OS scales its square frame to the circle's
+  diameter. Here the frame covers the display's long side so there are no blank bands, and the rings
+  are derived from that same side, so the scale stays honest. A ring that would fall outside the
+  narrow dimension is dropped rather than clipped, the same rule Android applies near the poles.
+- **The timeline is a rim span, not an arc.** It reuses `Rim.Metrics.battery` on a path one inset
+  further in, so it sits inside the battery gauge on every case size without restating the geometry.
+- **SF Symbols, not ported artwork.** Wear OS bundles Phosphor drawables because Android has no
+  system set worth the name. The slugs — and therefore which condition gets which shape — are still
+  the phone's; only the artwork is the platform's.
+- **The forecast strip sits in the free centre.** Wear OS hangs it under its own wall clock, in the
+  gap the rim arcs leave at the top. watchOS draws the system clock there and the app has no clock
+  of its own, so the strip takes the centre the rectangle leaves free, and tapping it opens the
+  weather page — only while the gauges page actually owns the screen, or the target would swallow
+  drags meant for the pagers.
+
+### Verified, 2026-09-15
+
+- `bun run test:ios` — the weather wire contract (round trip, absent sun times, a short hour lane
+  dropping that hour rather than fabricating a 0 °C clear sky, an absent channel, the channel read
+  out of a merged context, refetch-is-not-a-change, the staleness window and a clock that jumped
+  backwards) and the radar provider contract (observed frames only and not the nowcast, frame URLs,
+  Web-Mercator ground range, and the centre-rounding that keeps GPS jitter from throwing the
+  animation away).
+- `VescapeWatch` against `watchsimulator26.5` — builds, with all seven new wrist files confirmed
+  present in `VescapeWatch.SwiftFileList` rather than only in a build that succeeded.
+
+**Not verified.** Nothing here has run against a physical Apple Watch, a locked iPhone, or live
+weather. Not measured: a real forecast arriving on the wrist and surviving a watch restart, the
+radar actually fetching over the watch's own network (and what it does on a cellular or
+Wi-Fi-only watch), the frame animation's cost, whether cancellation on wrist-down is observable as
+a stopped request rather than only as a cancelled task, and the rendered layout of either page on
+hardware. The `ios/` tree on this machine has no Pods and no workspace, so the iPhone app itself was
+not compiled — the phone-side changes were compiled by the SwiftPM package that `test:ios` builds,
+not by an app build.
