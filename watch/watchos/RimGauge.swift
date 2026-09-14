@@ -241,7 +241,9 @@ extension GraphicsContext {
     var fill = self
     fill.clip(to: rim)
     let depth = min(rim.boundingRect.width, rim.boundingRect.height) / 4
-    let steps = max(1, Int(ceil(depth * 2)))
+    // Fixed work per gauge, independent of display size. Sixteen overlapping bands retain
+    // the soft falloff without the previous 75–100 strokes per gauge.
+    let steps = 16
     var previousAlpha = 0.0
     for step in 0..<steps {
       let progress = 0.5 + 0.5 * (Double(step) + 0.5) / Double(steps)

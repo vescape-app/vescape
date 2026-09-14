@@ -296,3 +296,20 @@ forced on the simulator, and per Apple's Always On guidance a simulator would no
 behaviour even if it could. Crown rotation, the swipe gestures and the transition gating were not
 exercised — `simctl` drives neither the crown nor a paired-phone frame stream. All of that belongs
 to the device session, along with everything the first slice already listed as unmeasured.
+
+### Pager and glow implementation notes
+
+The watchOS 10 pager observes unbounded page positions for both axes. Control interaction requires
+page alignment and 100 ms without a geometry change; movement cancels that check. This is a
+geometry-based fallback, not native scroll-phase parity. The outer vertical pager locks after a
+horizontal control page settles; the horizontal pager explicitly remains enabled for returning.
+Touches reset the 45-second idle return, and a finger held down prevents the return.
+
+Before implementing Board Move, connect its hold lifecycle to both pager locks and command release.
+Move is currently a placeholder; the touch observer only protects idle return and does not establish
+motor-control gesture safety. Verify cancelled drags, crown scrolling, nested diagnostics scrolling,
+and long holds on the device before enabling those controls.
+
+The inward glow uses 16 overlapping clipped strokes per active gauge, independent of display size.
+Its intensity and fade stops match Wear OS. This reduces draw calls from the previous size-dependent
+75–100 strokes per gauge; physical-device frame time and power improvements remain unmeasured.

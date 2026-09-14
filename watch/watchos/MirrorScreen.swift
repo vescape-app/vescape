@@ -28,13 +28,11 @@ struct MirrorScreen: View {
   /// pages, and every read below treats that as "not on the gauges".
   @State private var vertical: VerticalPage? = .gauges
   @State private var control: ControlPage? = .gauges
-  @State private var pageFocus: [Axis: Double] = [:]
-  /// A page is interactive only once it has settled: a tap landing mid-transition belongs to the
-  /// gesture, not to the control it happened to be over.
-  ///
-  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `activePage`
-  @State private var settling = false
-  /// Restarted by every page change; the horizontal axis drifts back to the gauges when it runs out.
+  @State private var pagePositions: [Axis: Double] = [:]
+  @State private var settledPositions: [Axis: Double] = [:]
+  @State private var verticalPagingEnabled = true
+  @GestureState private var touching = false
+  @GestureState private var dragging = false
   @State private var lastInteraction = Date()
 
   private var ambient: AmbientMode { AmbientMode(active: isLuminanceReduced) }
@@ -52,10 +50,37 @@ struct MirrorScreen: View {
         frame
           .allowsHitTesting(false)
       }
-      .onPreferenceChange(PageFocusKey.self) { values in
+      .onPreferenceChange(PagePositionKey.self) { values in
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        withTransaction(transaction) { pageFocus = values }
+        withTransaction(transaction) {
+          pagePositions = values
+          settledPositions = [:]
+        }
+      }
+      .task(id: pagePositions) {
+        // A cancellable quiet period validates measured alignment, never an assumed animation
+        // duration. Every movement cancels this task and closes the interaction gate immediately.
+        let positions = pagePositions
+        try? await Task.sleep(for: .milliseconds(100))
+        guard !Task.isCancelled else { return }
+        settledPositions = positions
+        if let horizontal = positions[.horizontal], abs(horizontal.rounded() - horizontal) < 0.001 {
+          verticalPagingEnabled = abs(horizontal) < 0.001
+        }
+      }
+      .simultaneousGesture(
+        DragGesture(minimumDistance: 0)
+          .updating($touching) { _, state, _ in state = true }
+          .updating($dragging) { value, state, _ in
+            state = hypot(value.translation.width, value.translation.height) > 6
+          }
+      )
+      .onChange(of: touching) { _, _ in lastInteraction = Date() }
+      .task(id: lastInteraction) {
+        try? await Task.sleep(for: .seconds(CONTROL_IDLE_RETURN_SECONDS))
+        guard !Task.isCancelled, !touching, !isLuminanceReduced, control != .gauges else { return }
+        withAnimation { control = .gauges }
       }
       .task(id: tick) { link.refresh() }
     }
@@ -66,6 +91,7 @@ struct MirrorScreen: View {
       guard reduced else { return }
       vertical = .gauges
       control = .gauges
+      verticalPagingEnabled = true
     }
   }
 
@@ -112,8 +138,8 @@ struct MirrorScreen: View {
     // fixed here, not a thing to keep.
     .scrollIndicators(.hidden)
     // Ambient has already parked the axis, and a page animation there is wasted panel.
-    .scrollDisabled(isLuminanceReduced)
-    .onChange(of: vertical) { _, _ in beginSettling() }
+    .scrollDisabled(isLuminanceReduced || !verticalPagingEnabled)
+    .onChange(of: vertical) { _, _ in lastInteraction = Date() }
   }
 
   @ViewBuilder
@@ -133,7 +159,7 @@ struct MirrorScreen: View {
 
   /// The horizontal control axis, live only on the gauges page. From a control page a vertical
   /// swipe would open a blank page over something the rider is working on, which is why Android
-  /// gates the vertical axis on the control page too — here the nesting does that by itself.
+  /// gates the vertical axis on the control page too. Each axis has its own scroll-enabled value.
   private var controls: some View {
     ScrollView(.horizontal) {
       LazyHStack(spacing: 0) {
@@ -152,20 +178,9 @@ struct MirrorScreen: View {
     .scrollTargetBehavior(.paging)
     .scrollPosition(id: $control)
     .scrollIndicators(.hidden)
-    .scrollDisabled(isLuminanceReduced)
-    .onChange(of: control) { _, _ in
-      beginSettling()
-      lastInteraction = Date()
-    }
-    .task(id: lastInteraction) {
-      // Horizontal pages are transient controls, so an untouched wrist drifts back to the gauges.
-      // The vertical axis is never moved: weather and the navigation map are places a rider parks
-      // on deliberately.
-      guard !isLuminanceReduced, control != .gauges else { return }
-      try? await Task.sleep(for: .seconds(CONTROL_IDLE_RETURN_SECONDS))
-      guard !Task.isCancelled else { return }
-      withAnimation { control = .gauges }
-    }
+    // Override the outer vertical scroll lock: returning horizontally must remain possible.
+    .environment(\.isScrollEnabled, !isLuminanceReduced)
+    .onChange(of: control) { _, _ in lastInteraction = Date() }
   }
 
   @ViewBuilder
@@ -220,34 +235,31 @@ struct MirrorScreen: View {
       let offset = axis == .horizontal ? bounds.minX : bounds.minY
       let position = length > 0 ? Double(index - origin) - Double(offset / length) : 0
       Color.clear.preference(
-        key: PageFocusKey.self,
-        value: [axis: min(1, abs(position))]
+        key: PagePositionKey.self,
+        value: [axis: position]
       )
     }
   }
 
   private var focus: Double {
     guard !isLuminanceReduced else { return 0 }
-    return max(
-      pageFocus[.vertical] ?? (vertical == .gauges ? 0 : 1),
-      pageFocus[.horizontal] ?? (control == .gauges ? 0 : 1)
-    )
+    return min(1, max(
+      abs(pagePositions[.vertical] ?? (vertical == .gauges ? 0 : 1)),
+      abs(pagePositions[.horizontal] ?? (control == .gauges ? 0 : 1))
+    ))
   }
 
   // MARK: - Transition gating
 
-  /// Holds every page's controls off until the transition that brought it here has finished.
-  private func beginSettling() {
-    settling = true
-    Task {
-      try? await Task.sleep(for: .seconds(PAGE_SETTLE_SECONDS))
-      settling = false
-    }
+  /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `activePage`
+  private func interactionEnabled(_ page: ControlPage) -> Bool {
+    guard !isLuminanceReduced, !dragging, control == page, vertical == .gauges,
+      let horizontal = settledPositions[.horizontal],
+      let verticalPosition = settledPositions[.vertical]
+    else { return false }
+    return abs(horizontal - Double(page.rawValue)) < 0.001 && abs(verticalPosition) < 0.001
   }
 
-  private func interactionEnabled(_ page: ControlPage) -> Bool {
-    !isLuminanceReduced && !settling && control == page && vertical == .gauges
-  }
 }
 
 /// Radar and weather above the gauges, navigation focus below. Radar sits above the forecast
@@ -281,12 +293,8 @@ enum ControlPage: Int, CaseIterable, Identifiable {
 /// @parity /watch/wearos/src/main/java/app/vescape/wear/MirrorScreen.kt `CONTROL_IDLE_RETURN_MS`
 private let CONTROL_IDLE_RETURN_SECONDS: TimeInterval = 45
 
-/// How long a page transition is assumed to take. Android reads the pager's own scroll state;
-/// watchOS does not publish one, so the gate is a timer over the system page animation.
-private let PAGE_SETTLE_SECONDS: TimeInterval = 0.35
-
 /// Each page on an axis reports the same displacement, including when the gauges are offscreen.
-private struct PageFocusKey: PreferenceKey {
+private struct PagePositionKey: PreferenceKey {
   static let defaultValue: [Axis: Double] = [:]
 
   static func reduce(value: inout [Axis: Double], nextValue: () -> [Axis: Double]) {
