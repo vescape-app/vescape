@@ -98,6 +98,57 @@ Run on this machine, unsigned:
 Release builds also need `SENTRY_DISABLE_AUTO_UPLOAD=true` (or a `SENTRY_AUTH_TOKEN`) locally. That
 gate predates the watch app and has nothing to do with it.
 
+### The apple-targets patch is load-bearing
+
+`patches/@bacons%2Fapple-targets@4.0.7.patch` anchors the shared `expo:targets` group at the project
+parent and gives each synchronized root group its full path from there. Upstream derives the group
+path from `path.dirname(props.cwd)` of whichever target it processes first. With targets under two
+roots — `targets/*` and `watch/watchos` — the first target won the group path and the second
+resolved to a directory that does not exist.
+
+This fails **silently**: the target, its build settings, its Info.plist and its embed phase are all
+correct, the build succeeds, and it produces a watch app with no sources in it. Verify a watch
+change by checking the build actually compiled the source files, not by checking that it succeeded.
+
+### Running on the watch simulator
+
+There is no Series 6 simulator in the watchOS 26.5 runtime; **Apple Watch SE 3 (40mm)** is the
+closest geometry. A watch simulator on its own reports `not activated` — WatchConnectivity needs a
+paired phone, so pair the two before expecting frames:
+
+```
+xcrun simctl pair <watch-udid> <phone-udid>     # once; both must be shut down
+xcrun simctl boot <phone-udid> && xcrun simctl boot <watch-udid>
+xcrun simctl list pairs                          # wait for "(active, connected)"
+```
+
+Install the phone app first and the watch app second — installing the iPhone app also installs the
+watch app embedded in it, which is not necessarily the one just built:
+
+```
+xcrun simctl install <phone-udid> <DerivedData>/Debug-iphonesimulator/vescapedev.app
+xcrun simctl install <watch-udid> ios/build/Debug-watchsimulator/VescapeWatch.app
+xcrun simctl launch <phone-udid> app.vescape.dev
+xcrun simctl launch <watch-udid> app.vescape.dev.watchkitapp
+```
+
+Frames start with the phone app, not with a board session, so the wrist fills in with no board
+connected: every Board lane reads `—` and the instrumentation panel goes live.
+
+### Measured on the simulator, 2026-09-14
+
+Paired SE 3 (40mm) + iPhone 17, no board:
+
+- `link: reachable` — session activated, paired, companion installed, reachable.
+- `age: 0.0s` sustained.
+- `rx: 4.0 / 4.0 Hz` received/drawn, against the configured 250 ms tick. Readings during the first
+  few seconds run high (4.5 Hz) while the 5-second rate window is still filling; wait for it before
+  believing a cadence number.
+
+This proves the encode → `sendMessageData` → decode → render path and the cadence. It proves
+**nothing** about wrist-down execution, ambient behavior or a locked phone: both simulator apps were
+foreground on a Mac. Simulator rendering is not evidence of background execution.
+
 ### Telemetry path
 
 `vescape-core` owns the phone side, beside the telemetry truth, so the wrist keeps updating while

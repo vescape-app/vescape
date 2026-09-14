@@ -7,16 +7,28 @@ import WatchConnectivity
 /// Deliberately not the Wear OS layout. Rim gauges, pages, Digital Crown navigation and the rest of
 /// the rectangular design follow once the runtime question below is answered — putting the finished
 /// UI on top of an unproven execution model would just make a stalled mirror look healthy.
+///
+/// Dense on purpose: the instrumentation has to be readable without scrolling on the smallest
+/// supported watch, because the thing being measured is what the screen does when nobody is
+/// touching it.
 struct MirrorView: View {
   @ObservedObject var link: PhoneLink
+
+  private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
   var body: some View {
     // A timeline rather than a timer: in the Always On state the system decides how often this
     // re-evaluates, so the age readout degrading is itself the measurement docs/watchos.md wants.
     TimelineView(.periodic(from: .now, by: 1)) { context in
       ScrollView {
-        VStack(alignment: .leading, spacing: 8) {
-          metrics
+        VStack(alignment: .leading, spacing: 6) {
+          speed
+          LazyVGrid(columns: columns, alignment: .leading, spacing: 2) {
+            cell("duty", value(link.frame?.duty, decimals: 0, unit: "%"))
+            cell("batt", value(link.frame?.battery, decimals: 0, unit: "%"))
+            cell("motor", value(link.frame?.motorTemp, decimals: 0, unit: "°"))
+            cell("ctrl", value(link.frame?.ctrlTemp, decimals: 0, unit: "°"))
+          }
           Divider()
           lifecycle(now: context.date)
         }
@@ -25,16 +37,18 @@ struct MirrorView: View {
     }
   }
 
-  private var metrics: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(value(link.frame?.speed, decimals: 1))
-        .font(.system(size: 40, weight: .semibold, design: .rounded))
+  private var speed: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 3) {
+      // The placeholder is not just a small number: an em dash set at display size reads as a
+      // progress bar, which is exactly the wrong thing for "no board connected" to look like.
+      Text(link.frame?.speed.map { String(format: "%.1f", $0) } ?? "—")
+        .font(
+          link.frame?.speed == nil
+            ? .title3
+            : .system(size: 34, weight: .semibold, design: .rounded)
+        )
         .foregroundStyle(link.frame?.stale == false ? .primary : .secondary)
       Text("km/h").font(.caption2).foregroundStyle(.secondary)
-      row("duty", value(link.frame?.duty, decimals: 0, unit: "%"))
-      row("battery", value(link.frame?.battery, decimals: 0, unit: "%"))
-      row("motor", value(link.frame?.motorTemp, decimals: 0, unit: "°C"))
-      row("ctrl", value(link.frame?.ctrlTemp, decimals: 0, unit: "°C"))
     }
   }
 
@@ -42,37 +56,38 @@ struct MirrorView: View {
   /// app stops executing while lowered, this climbs and the numbers above it freeze at a value that
   /// still looks plausible.
   private func lifecycle(now: Date) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      row("session", activationLabel)
-      row("phone", link.reachable ? "reachable" : "unreachable")
-      row("companion", link.companionInstalled ? "installed" : "absent")
-      row("age", link.lastFrameAt.map { String(format: "%.1fs", now.timeIntervalSince($0)) } ?? "—")
-      row("rx", String(format: "%.1f Hz", link.receivedHz))
-      row("drawn", String(format: "%.1f Hz", link.appliedHz))
+    VStack(alignment: .leading, spacing: 1) {
+      cell("link", statusLabel)
+      cell("age", link.lastFrameAt.map { String(format: "%.1fs", now.timeIntervalSince($0)) } ?? "—")
+      cell("rx", String(format: "%.1f / %.1f Hz", link.receivedHz, link.appliedHz))
       if link.rejected > 0 {
         // Not a transient: a lane-count mismatch means the phone and the wrist were built from
         // different commits and every frame will keep being rejected until one is reinstalled.
-        row("rejected", "\(link.rejected)")
+        cell("rejected", "\(link.rejected)")
       }
     }
-    .font(.caption2)
   }
 
-  private var activationLabel: String {
+  /// One line for the whole counterpart state. The failures are ordered — an unactivated session
+  /// says nothing about reachability — so the first unmet condition is the only useful one to show.
+  private var statusLabel: String {
     switch link.activation {
-    case .activated: return "activated"
+    case .activated: break
     case .inactive: return "inactive"
     case .notActivated: return "not activated"
     @unknown default: return "unknown"
     }
+    if !link.companionInstalled { return "no phone app" }
+    return link.reachable ? "reachable" : "unreachable"
   }
 
-  private func row(_ label: String, _ value: String) -> some View {
-    HStack {
+  private func cell(_ label: String, _ value: String) -> some View {
+    HStack(spacing: 3) {
       Text(label).foregroundStyle(.secondary)
-      Spacer(minLength: 4)
+      Spacer(minLength: 2)
       Text(value).monospacedDigit()
     }
+    .font(.caption2)
   }
 
   /// An empty lane reads as "—", never as zero: a board that is not connected and a board sitting
