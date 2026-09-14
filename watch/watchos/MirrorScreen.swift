@@ -10,7 +10,7 @@ import SwiftUI
 /// same directions, and gate their contents the same way.
 ///
 /// **Navigation inputs.** Swipes are kept exactly as Android has them. The Digital Crown drives the
-/// vertical axis as well, which is what `.verticalPage` gives for free: an alternative input, not a
+/// vertical scroll view as well: an alternative input, not a
 /// replacement for touch and not a Board control (docs/watchos.md).
 ///
 /// Ambient does not replace this tree, it settles it: the pages stay mounted and are parked on the
@@ -27,7 +27,8 @@ struct MirrorScreen: View {
   /// Optional because `scrollPosition(id:)` binds an optional; it is only nil mid-flight between
   /// pages, and every read below treats that as "not on the gauges".
   @State private var vertical: VerticalPage? = .gauges
-  @State private var control: ControlPage = .gauges
+  @State private var control: ControlPage? = .gauges
+  @State private var pageFocus: [Axis: Double] = [:]
   /// A page is interactive only once it has settled: a tap landing mid-transition belongs to the
   /// gesture, not to the control it happened to be over.
   ///
@@ -50,6 +51,11 @@ struct MirrorScreen: View {
         // reachable through it.
         frame
           .allowsHitTesting(false)
+      }
+      .onPreferenceChange(PageFocusKey.self) { values in
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { pageFocus = values }
       }
       .task(id: tick) { link.refresh() }
     }
@@ -91,11 +97,15 @@ struct MirrorScreen: View {
           verticalContent(page)
             // Each page is exactly one screen, which is what makes paging land on page boundaries.
             .containerRelativeFrame([.horizontal, .vertical])
+            .background {
+              pagePosition(axis: .vertical, index: page.rawValue, origin: VerticalPage.gauges.rawValue)
+            }
             .id(page)
         }
       }
       .scrollTargetLayout()
     }
+    .coordinateSpace(name: Axis.vertical)
     .scrollTargetBehavior(.paging)
     .scrollPosition(id: $vertical)
     // The rim gauges are the furniture on this edge; a scroll bar over them is the thing being
@@ -116,9 +126,7 @@ struct MirrorScreen: View {
     case .gauges:
       controls
     case .nav:
-      // Gesture-only on Android: the drag offset alone is the nav-focus progress and the pinned
-      // gauges shed their readouts on the way. A `TabView` publishes no drag offset, so here the
-      // page is a real page and the focus it drives is a settled 0 or 1.
+      // The pinned gauges shed their readouts as this page moves into view.
       PendingPage(title: "Navigation")
     }
   }
@@ -127,18 +135,24 @@ struct MirrorScreen: View {
   /// swipe would open a blank page over something the rider is working on, which is why Android
   /// gates the vertical axis on the control page too — here the nesting does that by itself.
   private var controls: some View {
-    TabView(selection: $control) {
-      ForEach(ControlPage.allCases) { page in
-        controlContent(page)
-          .tag(page)
+    ScrollView(.horizontal) {
+      LazyHStack(spacing: 0) {
+        ForEach(ControlPage.allCases) { page in
+          controlContent(page)
+            .containerRelativeFrame([.horizontal, .vertical])
+            .background {
+              pagePosition(axis: .horizontal, index: page.rawValue, origin: ControlPage.gauges.rawValue)
+            }
+            .id(page)
+        }
       }
+      .scrollTargetLayout()
     }
-    // No page dots on this axis. They land on the battery gauge, which owns the whole bottom edge,
-    // and Android shows no indicator here either — the control pages are somewhere a rider swipes
-    // to and back from, not a place to be told they are. The vertical axis keeps its indicator,
-    // because that one is the crown's only affordance.
-    .tabViewStyle(.page(indexDisplayMode: .never))
-    .disabled(isLuminanceReduced)
+    .coordinateSpace(name: Axis.horizontal)
+    .scrollTargetBehavior(.paging)
+    .scrollPosition(id: $control)
+    .scrollIndicators(.hidden)
+    .scrollDisabled(isLuminanceReduced)
     .onChange(of: control) { _, _ in
       beginSettling()
       lastInteraction = Date()
@@ -197,14 +211,27 @@ struct MirrorScreen: View {
     }
   }
 
-  /// How far a page has taken over the centre. Android reads this off the live drag offset, so its
-  /// readouts fade exactly as far as the gesture has travelled. A `TabView` does not publish one,
-  /// so this settles between the two ends instead of tracking the finger.
-  ///
-  /// @platform-diff watchOS paging exposes no drag offset; the focus transition is animated between
-  ///   settled pages rather than driven by the gesture.
+  /// Read actual page displacement so dragging, cancelling, crown scrolling and snapping all
+  /// drive the same fade. Measure every mounted page because lazy stacks can unload the gauges.
+  private func pagePosition(axis: Axis, index: Int, origin: Int) -> some View {
+    GeometryReader { geometry in
+      let bounds = geometry.frame(in: .named(axis))
+      let length = axis == .horizontal ? geometry.size.width : geometry.size.height
+      let offset = axis == .horizontal ? bounds.minX : bounds.minY
+      let position = length > 0 ? Double(index - origin) - Double(offset / length) : 0
+      Color.clear.preference(
+        key: PageFocusKey.self,
+        value: [axis: min(1, abs(position))]
+      )
+    }
+  }
+
   private var focus: Double {
-    vertical == .gauges && control == .gauges ? 0 : 1
+    guard !isLuminanceReduced else { return 0 }
+    return max(
+      pageFocus[.vertical] ?? (vertical == .gauges ? 0 : 1),
+      pageFocus[.horizontal] ?? (control == .gauges ? 0 : 1)
+    )
   }
 
   // MARK: - Transition gating
@@ -257,3 +284,12 @@ private let CONTROL_IDLE_RETURN_SECONDS: TimeInterval = 45
 /// How long a page transition is assumed to take. Android reads the pager's own scroll state;
 /// watchOS does not publish one, so the gate is a timer over the system page animation.
 private let PAGE_SETTLE_SECONDS: TimeInterval = 0.35
+
+/// Each page on an axis reports the same displacement, including when the gauges are offscreen.
+private struct PageFocusKey: PreferenceKey {
+  static let defaultValue: [Axis: Double] = [:]
+
+  static func reduce(value: inout [Axis: Double], nextValue: () -> [Axis: Double]) {
+    value.merge(nextValue(), uniquingKeysWith: { current, _ in current })
+  }
+}
